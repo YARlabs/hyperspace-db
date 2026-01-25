@@ -4,3 +4,9 @@ language = "en"
 multilingual = false
 src = "src"
 title = "HyperspaceDB Documentation"
+
+[output.html]
+mathjax-support = true
+theme = "navy"
+site-url = "/hyperspace-db/"
+git-repository-url = "https://github.com/yarlabs/hyperspace-db"
