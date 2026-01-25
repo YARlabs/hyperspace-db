@@ -17,6 +17,15 @@ service Database {
   
   // Dynamic Configuration
   rpc Configure (ConfigUpdate) returns (StatusResponse);
+  
+  // Replication (Leader -> Follower)
+  rpc Replicate (Empty) returns (stream ReplicationLog);
+}
+
+message ReplicationLog {
+  uint32 id = 1;
+  repeated double vector = 2;
+  map<string, string> metadata = 3;
 }
 
 enum QuantizationMode {

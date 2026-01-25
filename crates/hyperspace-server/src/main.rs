@@ -14,6 +14,25 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, service::Interceptor};
 use sha2::{Sha256, Digest};
+use clap::Parser;
+use tokio::sync::broadcast;
+use hyperspace_proto::hyperspace::{ReplicationLog, Empty};
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Port to listen on
+    #[arg(short, long, default_value = "50051")]
+    port: u16,
+
+    /// Role: leader or follower
+    #[arg(long, default_value = "leader")]
+    role: String,
+
+    /// Leader address (if follower)
+    #[arg(long)]
+    leader: Option<String>,
+}
 
 #[derive(Clone)]
 struct AuthInterceptor {
@@ -55,6 +74,9 @@ pub struct HyperspaceService {
     wal: Arc<Mutex<Wal>>,
     index_tx: mpsc::Sender<(u32, std::collections::HashMap<String, String>)>,
     config: Arc<GlobalConfig>,
+    // Replication (Leader broadcasts to followers)
+    replication_tx: broadcast::Sender<ReplicationLog>,
+    role: String,
 }
 
 #[tonic::async_trait]
@@ -63,6 +85,9 @@ impl Database for HyperspaceService {
         &self,
         request: Request<InsertRequest>,
     ) -> Result<Response<InsertResponse>, Status> {
+        if self.role == "follower" {
+            return Err(Status::permission_denied("Followers are read-only"));
+        }
         let req = request.into_inner();
         let vector = req.vector;
         let metadata_map = req.metadata;
@@ -82,14 +107,24 @@ impl Database for HyperspaceService {
         // Write to WAL
         {
             let mut wal = self.wal.lock().unwrap();
-            let _ = wal.append(id, &vector);
+            let _ = wal.append(id, &vector, &meta);
         }
 
         // 2. Async Indexing (Track queue size)
         self.config.inc_queue();
-        if self.index_tx.send((id, meta)).await.is_err() {
+        if self.index_tx.send((id, meta.clone())).await.is_err() {
             self.config.dec_queue(); // Rollback on error
             return Err(Status::internal("Indexer channel closed"));
+        }
+
+        // 3. Replicate (Best Effort)
+        if self.replication_tx.receiver_count() > 0 {
+             let rep_log = ReplicationLog {
+                 id,
+                 vector: vector.clone(),
+                 metadata: meta,
+             };
+             let _ = self.replication_tx.send(rep_log);
         }
 
         Ok(Response::new(InsertResponse { success: true }))
@@ -203,6 +238,30 @@ impl Database for HyperspaceService {
         Ok(Response::new(ReceiverStream::new(rx)))
     }
 
+    type ReplicateStream = ReceiverStream<Result<ReplicationLog, Status>>;
+
+    async fn replicate(
+        &self,
+        _request: Request<Empty>,
+    ) -> Result<Response<Self::ReplicateStream>, Status> {
+        if self.role == "follower" {
+             return Err(Status::failed_precondition("I am a follower, cannot replicate from me"));
+        }
+        
+        let mut rx = self.replication_tx.subscribe();
+        let (tx, out_rx) = mpsc::channel(100);
+        
+        tokio::spawn(async move {
+            while let Ok(log) = rx.recv().await {
+                if tx.send(Ok(log)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(Response::new(ReceiverStream::new(out_rx)))
+    }
+
     async fn trigger_snapshot(
         &self,
         _request: Request<hyperspace_proto::hyperspace::Empty>,
@@ -259,7 +318,8 @@ impl Database for HyperspaceService {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "0.0.0.0:50051".parse()?;
+    let args = Args::parse();
+    let addr = format!("0.0.0.0:{}", args.port).parse()?;
     let wal_path = std::path::Path::new("wal.log");
 
     // Directory for segmented storage
@@ -327,9 +387,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let mut replayed = 0;
     Wal::replay(wal_path, |entry| match entry {
-        hyperspace_store::wal::WalEntry::Insert { id, vector } => {
+        hyperspace_store::wal::WalEntry::Insert { id, vector, metadata } => {
             if (id as usize) >= recovered_count {
-                if let Err(e) = index.insert(&vector, std::collections::HashMap::new()) {
+                if let Err(e) = index.insert(&vector, metadata) {
                     eprintln!("Replay Error: {}", e);
                 }
                 replayed += 1;
@@ -339,6 +399,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Replayed {} new vectors from WAL.", replayed);
 
     let wal_arc = Arc::new(Mutex::new(wal));
+
+    // Channel for Leader -> Followers
+    let (replication_tx, _) = broadcast::channel(1024);
+
+    // FOLLOWER LOGIC
+    if args.role == "follower" {
+        if let Some(leader) = args.leader {
+             println!("🚀 Starting as FOLLOWER of: {}", leader);
+             let index_weak = Arc::downgrade(&index);
+             
+             // Spawn replication task
+             tokio::spawn(async move {
+                 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
+                 // Retry loop
+                 loop {
+                     println!("Connecting to leader {}...", leader);
+                     match DatabaseClient::connect(leader.clone()).await {
+                        Ok(mut client) => {
+                             println!("Connected! Requesting replication stream...");
+                             match client.replicate(Empty {}).await {
+                                 Ok(resp) => {
+                                     let mut stream = resp.into_inner();
+                                     while let Ok(Some(log)) = stream.message().await {
+                                         if let Some(idx) = index_weak.upgrade() {
+                                            // Apply to local index
+                                            // Note: We skip WAL append on follower for now to avoid ID conflict or duplicating?
+                                            // Ideally Follower writes to its own WAL too for durability.
+                                            // But for MVP, let's just update Memory Index.
+                                            if let Err(e) = idx.insert(&log.vector, log.metadata) {
+                                                eprintln!("Replication Error: {}", e);
+                                            }
+                                         } else {
+                                             break; // shutting down
+                                         }
+                                     }
+                                     println!("Replication stream ended.");
+                                 },
+                                 Err(e) => eprintln!("Failed to start replication: {}", e),
+                             }
+                        },
+                        Err(e) => eprintln!("Failed to connect to leader: {}", e),
+                     }
+                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                 }
+             });
+        } else {
+            eprintln!("Error: --leader is required for follower role");
+            std::process::exit(1);
+        }
+    } else {
+         println!("🚀 Starting as LEADER");
+    }
 
     // 3. Spawn Snapshot Task
     let index_clone = index.clone();
@@ -381,6 +493,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wal: wal_arc,
         index_tx: index_tx.clone(),
         config: config.clone(),
+        replication_tx: replication_tx.clone(),
+        role: args.role.clone(),
     };
 
     println!("HyperspaceDB listening on {}", addr);
