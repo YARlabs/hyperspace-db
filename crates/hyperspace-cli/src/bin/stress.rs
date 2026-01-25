@@ -4,8 +4,8 @@ use rand::Rng;
 use std::time::Instant;
 use tonic::transport::Channel;
 
-const TOTAL_VECTORS: usize = 10_000;
-const SEARCH_QUERIES: usize = 1_000;
+const TOTAL_VECTORS: usize = 1_000_000;
+const SEARCH_QUERIES: usize = 10_000;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

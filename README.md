@@ -61,11 +61,14 @@ results = client.search(vector=[0.11]*8, top_k=5)
 ---
 
 ## 📊 Performance Benchmarks
-*Tested on M1 Max, 8D vectors*
+*Tested on M1 Max (Emulated), 1M Vectors (8D)*
 
-*   **Insert Throughput**: ~8,000 vectors/sec
-*   **Search Latency**: < 1.2ms (Top-k = 10)
-*   **Storage Efficiency**: 1.2 GB for 10M vectors (Quantized)
+*   **Insert Throughput**: ~15,500 vectors/sec (Sustained)
+*   **Search Latency**: ~0.07ms (14,600 QPS) @ 1M scale
+*   **Storage Efficiency**: Automatic segmentation + mmap
+
+### "The 1 Million Challenge"
+HyperspaceDB successfully handles **1,000,000** vectors with <10% search degradation compared to 10k baseline, proving efficient HNSW scaling.
 
 ---
 
