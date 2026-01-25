@@ -31,7 +31,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float], top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None) -> List[Dict]:
+    def search(self, vector: List[float], top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None) -> List[Dict]:
         if filter is None:
             filter = {}
             
@@ -54,7 +54,9 @@ class HyperspaceClient:
             vector=vector,
             top_k=top_k,
             filter=filter,
-            filters=proto_filters
+            filters=proto_filters,
+            hybrid_query=hybrid_query,
+            hybrid_alpha=hybrid_alpha
         )
         try:
             resp = self.stub.Search(req, metadata=self.metadata)

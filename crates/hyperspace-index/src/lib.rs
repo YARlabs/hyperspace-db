@@ -231,7 +231,14 @@ impl HnswIndex {
         ef_search: usize,
         filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
+        hybrid_query: Option<&str>,
+        hybrid_alpha: Option<f32>,
     ) -> Vec<(NodeId, f64)> {
+        // If hybrid query is present, we use RRF Fusion
+        if let Some(text) = hybrid_query {
+             return self.search_hybrid(query, k, ef_search, filter, complex_filters, text, hybrid_alpha.unwrap_or(60.0));
+        }
+        
         // 1. Prepare Filter Bitmap
         // Start with Logic: (Tag1 AND Tag2 ...) AND (Complex1 AND Complex2 ...) AND !Deleted
         let allowed_bitmap = {
@@ -631,7 +638,7 @@ impl HnswIndex {
         meta: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
         // 2. Index Metadata
-        for (key, val) in meta {
+        for (key, val) in &meta {
             // A. Inverted Index (Text)
             let tag = format!("{}:{}", key, val);
             self.metadata.inverted.entry(tag).or_default().insert(id);
@@ -641,11 +648,18 @@ impl HnswIndex {
             if let Ok(num) = val.parse::<i64>() {
                 self.metadata
                     .numeric
-                    .entry(key)
+                    .entry(key.clone())
                     .or_default()
                     .entry(num)
                     .or_default()
                     .insert(id);
+            }
+            
+            // C. Full Text Tokenization (Simple)
+            let tokens = Self::tokenize(val);
+            for token in tokens {
+                 let token_key = format!("_txt:{}", token);
+                 self.metadata.inverted.entry(token_key).or_default().insert(id);
             }
         }
 
@@ -825,5 +839,88 @@ impl HnswIndex {
             level += 1;
         }
         level
+    }
+    
+    fn tokenize(text: &str) -> Vec<String> {
+        text.split_whitespace()
+            .map(|s| s.to_lowercase())
+            .map(|s| s.chars().filter(|c| c.is_alphanumeric()).collect())
+            .filter(|s: &String| !s.is_empty())
+            .collect()
+    }
+    
+    // RRF Fusion Logic
+    fn search_hybrid(
+        &self,
+        query: &[f64],
+        k: usize,
+        ef_search: usize,
+        filter: &std::collections::HashMap<String, String>,
+        complex_filters: &[FilterExpr],
+        text: &str,
+        alpha: f32,
+    ) -> Vec<(NodeId, f64)> {
+        // 1. Get Vector Search Results (Semantic) -> Top K*2 for recall
+        // We reuse the basic search but with NO hybrid query to avoid recursion
+        let vec_k = k * 2;
+        let vector_results = self.search(query, vec_k, ef_search, filter, complex_filters, None, None);
+        
+        // 2. Get Keyword Search Results (Lexical) -> All matching or Top N
+        // Scan inverted index for tokens
+        let tokens = Self::tokenize(text);
+        if tokens.is_empty() {
+            return vector_results.into_iter().take(k).collect();
+        }
+        
+        // We calculate a score for each doc based on token overlap
+        // Map<NodeId, score>
+        let mut keyword_scores: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
+        
+        for token in tokens {
+            let key = format!("_txt:{}", token);
+            if let Some(bitmap) = self.metadata.inverted.get(&key) {
+                 for id in bitmap.iter() {
+                     *keyword_scores.entry(id).or_default() += 1.0;
+                 }
+            }
+        }
+        
+        // Sort keyword results
+        let mut keyword_ranking: Vec<(u32, f32)> = keyword_scores.into_iter().collect();
+        keyword_ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Take Top appropriate
+        let keyword_results = keyword_ranking; 
+        
+        // 3. RRF Fusion
+        // RRF_score = 1 / (alpha + rank_vec) + 1 / (alpha + rank_key)
+        
+        let mut final_scores: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
+        
+        // Process Vector Ranks (1-based)
+        for (rank, (id, _dist)) in vector_results.iter().enumerate() {
+            let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
+            *final_scores.entry(*id).or_default() += rrf;
+        }
+
+        // Process Keyword Ranks
+        for (rank, (id, _score)) in keyword_results.iter().enumerate() {
+             let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
+             *final_scores.entry(*id).or_default() += rrf;
+        }
+        
+        // Sort Final
+        let mut final_ranking: Vec<(NodeId, f32)> = final_scores.into_iter().collect();
+        // Sort DESCENDING by score (Higher is better)
+        final_ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        
+        // Convert back to (id, distance) interface. 
+        // Note: Distance is weird here because RRF score is not distance.
+        // We invert it back? Or just return 1.0 - score?
+        // Let's return (1.0 / score) to mimic "smaller is better"?
+        // Or just negative score? Proto expects 'double distance'.
+        // For semantic search, smaller is better.
+        // Let's make it 1.0 - normalized_score?
+        // Limit to K
+        final_ranking.into_iter().take(k).map(|(id, score)| (id, (10.0 - score) as f64)).collect()
     }
 }

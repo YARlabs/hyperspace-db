@@ -175,9 +175,12 @@ impl Database for HyperspaceService {
 
         // Use dynamic ef_search from config
         let ef_search = self.config.get_ef_search();
+        
+        let hybrid_query = req.hybrid_query.as_deref();
+        
         let res = self
             .index
-            .search(&req.vector, req.top_k as usize, ef_search, &legacy_filter, &complex_filters);
+            .search(&req.vector, req.top_k as usize, ef_search, &legacy_filter, &complex_filters, hybrid_query, req.hybrid_alpha);
 
         let output = res
             .into_iter()

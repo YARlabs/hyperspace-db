@@ -69,6 +69,11 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.ConfigUpdate.SerializeToString,
                 response_deserializer=hyperspace__pb2.StatusResponse.FromString,
                 _registered_method=True)
+        self.Replicate = channel.unary_stream(
+                '/hyperspace.Database/Replicate',
+                request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                response_deserializer=hyperspace__pb2.ReplicationLog.FromString,
+                _registered_method=True)
 
 
 class DatabaseServicer(object):
@@ -122,6 +127,13 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Replicate(self, request, context):
+        """Replication (Leader -> Follower)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -159,6 +171,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.Configure,
                     request_deserializer=hyperspace__pb2.ConfigUpdate.FromString,
                     response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'Replicate': grpc.unary_stream_rpc_method_handler(
+                    servicer.Replicate,
+                    request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.ReplicationLog.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -350,6 +367,33 @@ class Database(object):
             '/hyperspace.Database/Configure',
             hyperspace__pb2.ConfigUpdate.SerializeToString,
             hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Replicate(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/hyperspace.Database/Replicate',
+            hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.ReplicationLog.FromString,
             options,
             channel_credentials,
             insecure,

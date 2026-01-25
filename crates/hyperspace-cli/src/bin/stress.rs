@@ -88,6 +88,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             top_k: 10,
             filter: std::collections::HashMap::new(),
             filters: Vec::new(),
+            hybrid_query: None,
+            hybrid_alpha: None,
         };
         client.search(req).await?;
     }

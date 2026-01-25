@@ -28,6 +28,8 @@ impl Client {
             top_k,
             filter: Default::default(),
             filters: Default::default(),
+            hybrid_query: None,
+            hybrid_alpha: None,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
