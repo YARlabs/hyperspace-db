@@ -13,6 +13,7 @@ service Database {
 message InsertRequest {
   repeated double vector = 1;
   uint32 id = 2; // Explicit ID for simplicity in this proto
+  map<string, string> metadata = 3;
 }
 
 message InsertResponse {
@@ -22,6 +23,7 @@ message InsertResponse {
 message SearchRequest {
   repeated double vector = 1; // Query vector
   uint32 top_k = 2;           // How many neighbors to find
+  map<string, string> filter = 3; // Metadata filter (equality check)
 }
 
 message SearchResponse {

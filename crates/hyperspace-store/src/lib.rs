@@ -1,3 +1,4 @@
+pub mod wal;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::{OpenOptions, File};
 use std::path::Path;

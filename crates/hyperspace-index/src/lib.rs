@@ -21,6 +21,9 @@ pub struct HnswIndex {
     // Topology storage. Index in vector = NodeId.
     nodes: RwLock<Vec<Node>>,
     
+    // Metadata storage
+    pub metadata: RwLock<std::collections::HashMap<NodeId, std::collections::HashMap<String, String>>>,
+
     // Graph entry point (top level)
     entry_point: AtomicU32,
     
@@ -64,14 +67,15 @@ impl HnswIndex {
     pub fn new(storage: Arc<VectorStore>) -> Self {
         Self {
             nodes: RwLock::new(Vec::new()),
+            metadata: RwLock::new(std::collections::HashMap::new()),
             entry_point: AtomicU32::new(0),
             max_layer: AtomicU32::new(0),
             storage,
         }
     }
 
-    /// Search K nearest neighbors
-    pub fn search(&self, query: &[f64], k: usize, ef_search: usize) -> Vec<(NodeId, f64)> {
+    /// Search K nearest neighbors with Filter
+    pub fn search(&self, query: &[f64], k: usize, ef_search: usize, filter: &std::collections::HashMap<String, String>) -> Vec<(NodeId, f64)> {
         // 1. Create HyperVector from query.
         // Assuming DIM=8 for MVP as per user hardcode in dist()
         let mut aligned_query = [0.0; 8];
@@ -115,8 +119,8 @@ impl HnswIndex {
             }
         }
 
-        // 2. Local search phase: Layer 0
-        self.search_layer0(curr_node, &q_vec, k, ef_search)
+        // 2. Local search phase: Layer 0 with Filter
+        self.search_layer0(curr_node, &q_vec, k, ef_search, filter)
     }
 
     // Distance calculation helper
@@ -136,7 +140,7 @@ impl HnswIndex {
         query.poincare_distance_sq(&node_vec)
     }
     
-    fn search_layer0(&self, start_node: NodeId, query: &HyperVector<8>, k: usize, ef: usize) -> Vec<(NodeId, f64)> {
+    fn search_layer0(&self, start_node: NodeId, query: &HyperVector<8>, k: usize, ef: usize, filter: &std::collections::HashMap<String, String>) -> Vec<(NodeId, f64)> {
         let mut candidates = BinaryHeap::new(); 
         let mut results = BinaryHeap::new();    
         let mut visited = HashSet::new();
@@ -183,9 +187,32 @@ impl HnswIndex {
             }
         }
         
+        // Filter results after traversal (Post-filtering)
+        // Note: Ideally filtering should happen during collection to guarantee K results.
+        // HNSW Post-filtering can return < K results if many are filtered.
+        // For MVP, we filter the results heap.
+        let meta_guard = self.metadata.read();
+        
         let mut output = Vec::new();
         while let Some(c) = results.pop() {
-            output.push((c.id, c.distance));
+            // Check filter
+            let mut match_filter = true;
+            if !filter.is_empty() {
+                if let Some(node_meta) = meta_guard.get(&c.id) {
+                     for (k, v) in filter {
+                         if node_meta.get(k) != Some(v) {
+                             match_filter = false;
+                             break;
+                         }
+                     }
+                } else {
+                    match_filter = false; // No metadata, but filter requested -> mismatch? Or assume allow? USUALLY mismatch.
+                }
+            }
+            
+            if match_filter {
+                output.push((c.id, c.distance));
+            }
         }
         output.reverse();
         output.truncate(k);
@@ -285,9 +312,17 @@ impl HnswIndex {
          HyperVector { coords: arr, alpha } 
     }
 
-    pub fn insert(&self, vector: &[f64]) -> Result<u32, String> {
+    // Insert with Metadata
+    pub fn insert(&self, vector: &[f64], meta: std::collections::HashMap<String, String>) -> Result<u32, String> {
         // 1. Storage Append
         let new_id = self.storage.append(vector)?;
+        
+        // 2. Save Metadata
+        {
+            let mut m = self.metadata.write();
+            m.insert(new_id, meta);
+        }
+
         let q_vec = self.get_vector(new_id);
 
         let max_layer = self.max_layer.load(Ordering::Relaxed);

@@ -31,13 +31,17 @@ def run():
     channel = grpc.insecure_channel(HOST)
     stub = hyperspace_pb2_grpc.DatabaseStub(channel)
 
-    # 1. Insert Data
+    # 1. Insert Data with Metadata
     print("🚀 Inserting vectors...")
     start = time.time()
     for i in range(100):
         vec = generate_poincare_point(DIM)
+        # Half "red", Half "blue"
+        category = "red" if i % 2 == 0 else "blue"
+        meta = {"category": category}
+        
         try:
-            stub.Insert(hyperspace_pb2.InsertRequest(vector=vec))
+            stub.Insert(hyperspace_pb2.InsertRequest(vector=vec, metadata=meta))
             if i % 10 == 0: print(f".", end="", flush=True)
         except grpc.RpcError as e:
             print(f"Insert failed: {e}")
@@ -46,15 +50,35 @@ def run():
     elapsed = time.time() - start
     print(f"\n✅ Inserted 100 vectors in {elapsed:.4f}s")
 
-    # 2. Search
+    # 2. Search with Filter
     query_vec = generate_poincare_point(DIM)
-    print(f"🔍 Searching nearest neighbors...")
     
+    print(f"\n🔍 Searching nearest neighbors (Filter: category='red')...")
     try:
-        response = stub.Search(hyperspace_pb2.SearchRequest(vector=query_vec, top_k=5))
-        print("🎯 Search Results:")
+        # Filter for RED only
+        f = {"category": "red"}
+        response = stub.Search(hyperspace_pb2.SearchRequest(vector=query_vec, top_k=5, filter=f))
+        print("🎯 Search Results (Red Only):")
         for res in response.results:
             print(f"   ID: {res.id}, Dist: {res.distance:.4f}")
+            # Note: We can't verify metadata in response because SearchResult doesn't return metadata yet. 
+            # But the detailed logic in server ensures filtering.
+            # ID check: Even IDs are red.
+            if res.id % 2 != 0:
+                print(f"   ⚠️ ERROR: Found ID {res.id} which should be blue (odd)!")
+    except grpc.RpcError as e:
+        print(f"❌ RPC Error: {e.details()}")
+
+    print(f"\n🔍 Searching nearest neighbors (Filter: category='blue')...")
+    try:
+        # Filter for BLUE only
+        f = {"category": "blue"}
+        response = stub.Search(hyperspace_pb2.SearchRequest(vector=query_vec, top_k=5, filter=f))
+        print("🎯 Search Results (Blue Only):")
+        for res in response.results:
+            print(f"   ID: {res.id}, Dist: {res.distance:.4f}")
+            if res.id % 2 == 0:
+                print(f"   ⚠️ ERROR: Found ID {res.id} which should be red (even)!")
     except grpc.RpcError as e:
         print(f"❌ RPC Error: {e.details()}")
 

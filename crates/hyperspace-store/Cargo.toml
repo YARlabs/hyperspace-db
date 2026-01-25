@@ -7,3 +7,4 @@ edition = "2021"
 memmap2 = { workspace = true }
 thiserror = { workspace = true }
 hyperspace-core = { workspace = true }
+byteorder = "1.5.0"
