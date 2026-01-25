@@ -1,5 +1,9 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::ser::Serializer;
+use std::fs::File;
+use std::io::Write;
 use parking_lot::RwLock;
 use rand::Rng;
 use std::cmp::Ordering as CmpOrdering;
@@ -8,6 +12,95 @@ use std::collections::{BinaryHeap, HashSet};
 // Imports
 use hyperspace_core::vector::HyperVector;
 use hyperspace_store::VectorStore;
+
+#[derive(Archive, Deserialize, Serialize)]
+#[archive(check_bytes)] // Requires "validation" feature
+pub struct SnapshotData {
+    pub max_layer: u32,
+    pub entry_point: u32,
+    pub nodes: Vec<SnapshotNode>,
+}
+
+#[derive(Archive, Deserialize, Serialize)]
+#[archive(check_bytes)]
+pub struct SnapshotNode {
+    pub id: u32,
+    pub layers: Vec<Vec<u32>>,
+}
+
+// Consts removed here to use existing ones defined below in the file
+
+impl HnswIndex {
+    pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
+        let max_layer = self.max_layer.load(Ordering::Relaxed);
+        let entry_point = self.entry_point.load(Ordering::Relaxed);
+        
+        let nodes_guard = self.nodes.read();
+        let mut snapshot_nodes = Vec::with_capacity(nodes_guard.len());
+        
+        for node in nodes_guard.iter() {
+            let mut layers = Vec::new();
+            for layer_lock in &node.layers {
+                layers.push(layer_lock.read().clone());
+            }
+            snapshot_nodes.push(SnapshotNode {
+                id: node.id,
+                layers,
+            });
+        }
+        
+        let data = SnapshotData {
+            max_layer,
+            entry_point,
+            nodes: snapshot_nodes,
+        };
+        
+        // Serialize
+        let mut serializer = rkyv::ser::serializers::AllocSerializer::<256>::default();
+        serializer.serialize_value(&data).map_err(|e: rkyv::ser::serializers::CompositeSerializerError<_,_,_>| e.to_string())?;
+        let bytes = serializer.into_serializer().into_inner();
+        
+        let mut file = File::create(path).map_err(|e| e.to_string())?;
+        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        
+        Ok(())
+    }
+
+    pub fn load_snapshot(path: &std::path::Path, storage: Arc<VectorStore>) -> Result<Self, String> {
+        let file_content = std::fs::read(path).map_err(|e| e.to_string())?;
+        
+        // Validate and deserialize
+        let archived = rkyv::check_archived_root::<SnapshotData>(&file_content)
+            .map_err(|e| format!("Snapshot corruption: {}", e))?;
+            
+        let deserialized: SnapshotData = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        
+        // Reconstruct Graph
+        let mut nodes = Vec::with_capacity(deserialized.nodes.len());
+        for s_node in deserialized.nodes {
+            let mut layers = Vec::new();
+            for s_layer in s_node.layers {
+                layers.push(RwLock::new(s_layer));
+            }
+            nodes.push(Node {
+                id: s_node.id,
+                layers,
+            });
+        }
+        
+        // Sync storage count
+        storage.set_count(nodes.len());
+        println!("Restored {} nodes from snapshot topology.", nodes.len());
+
+        Ok(Self {
+            nodes: RwLock::new(nodes),
+            metadata: RwLock::new(std::collections::HashMap::new()), 
+            entry_point: AtomicU32::new(deserialized.entry_point),
+            max_layer: AtomicU32::new(deserialized.max_layer),
+            storage,
+        })
+    }
+}
 
 /// Node Identifier (index in VectorStore)
 pub type NodeId = u32;

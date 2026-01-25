@@ -104,65 +104,75 @@ impl Database for HyperspaceService {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "0.0.0.0:50051".parse()?;
-    
-    // 1. Init Storage
-    // We do NOT remove file, we want persistence!
+    let wal_path = std::path::Path::new("wal.log");
     let store_path = std::path::Path::new("vectors.hyp");
-    // We need to know current count to init store? 
-    // VectorStore::new takes 'count'.
-    // If we rely on WAL replay to rebuild, we can start with 0 count and let replay bump it?
-    // Or we simply trust the WAL.
-    
-    // Simplification: Count will be restored via WAL replay if we replay into Store logic?
-    // If Store persists, we shouldn't re-append to it during replay.
-    // Issue: My VectorStore logic is "append only".
-    // If I replay WAL, I might double-append if I use `store.append`.
-    
-    // REPLAY STRATEGY:
-    // 1. Open Store.
-    // 2. Open WAL.
-    // 3. Read WAL.
-    // 4. For each entry in WAL:
-    //    - If entry ID < store.count(), it's already in Store. Just add to Index.
-    //    - If entry ID >= store.count(), it's new (maybe Store didn't flush). Append to Store (or set specific position) AND add to Index.
-    //
-    // Current `VectorStore` doesn't support random write or check easily without strict state.
-    // 
-    // FORCE BRUTE STRATEGY (Reliable):
-    // 1. Delete `vectors.hyp` on start (Treat it as cache).
-    // 2. Rebuild Store AND Index from WAL entirely.
-    // Cons: Slow startup.
-    // Pros: Correctness guaranteed.
-    // Given we said "Mmap... OS flushes lazily", we implied we want to keep `vectors.hyp`.
-    
-    // Let's do the Brute Strategy for stability in this MVP phase.
-    // "Crash Recovery" means we recover FROM WAL.
-    let _ = std::fs::remove_file("vectors.hyp"); 
-    
-    let store = Arc::new(VectorStore::new(store_path, 8, 0));
-    let index = Arc::new(HnswIndex::new(store.clone()));
+    let snap_path = std::path::Path::new("index.snap");
+
+    let (store, index, mut recovered_count) = if snap_path.exists() {
+        println!("Found snapshot. Loading...");
+        let store = Arc::new(VectorStore::new(store_path, 8, 0));
+        match HnswIndex::load_snapshot(snap_path, store.clone()) {
+            Ok(idx) => {
+                let count = idx.count_nodes();
+                println!("Snapshot loaded. Nodes: {}", count);
+                (store, Arc::new(idx), count)
+            },
+            Err(e) => {
+                eprintln!("Failed to load snapshot: {}. Starting fresh.", e);
+                let _ = std::fs::remove_file(store_path);
+                let store = Arc::new(VectorStore::new(store_path, 8, 0));
+                (store.clone(), Arc::new(HnswIndex::new(store)), 0)
+            }
+        }
+    } else {
+        println!("No snapshot found. Starting fresh.");
+        let _ = std::fs::remove_file(store_path);
+        let store = Arc::new(VectorStore::new(store_path, 8, 0));
+        (store.clone(), Arc::new(HnswIndex::new(store)), 0)
+    };
     
     // 2. Init WAL and Replay
-    let wal_path = std::path::Path::new("wal.log");
     let mut wal = Wal::new(wal_path)?;
     
-    println!("Recovering from WAL...");
-    let mut recovered_count = 0;
+    println!("Recovering from WAL (Skipping first {})...", recovered_count);
+    let mut replayed = 0;
+    // We need WAL to be able to skip? `wal.replay` iterates all.
+    // We just ignore inside callback.
     Wal::replay(wal_path, |entry| {
         match entry {
-            hyperspace_store::wal::WalEntry::Insert { id: _, vector } => {
-                // WAL doesn't have metadata yet, pass empty
-                if let Err(e) = index.insert(&vector, std::collections::HashMap::new()) {
-                    eprintln!("Replay Error: {}", e);
+            hyperspace_store::wal::WalEntry::Insert { id, vector } => {
+                // If id < recovered_count, it's already in snapshot (assuming sequential 0..N IDs)
+                // In real world, IDs might not be sequential or fully packed, but for this MVP they are.
+                if (id as usize) >= recovered_count {
+                     if let Err(e) = index.insert(&vector, std::collections::HashMap::new()) {
+                        eprintln!("Replay Error: {}", e);
+                    }
+                    replayed += 1;
                 }
-                recovered_count += 1;
             }
         }
     })?;
-    println!("Recovered {} vectors.", recovered_count);
+    println!("Replayed {} new vectors from WAL.", replayed);
 
     let wal_arc = Arc::new(Mutex::new(wal));
     
+    // 3. Spawn Snapshot Task
+    let index_clone = index.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            println!("Saving snapshot...");
+            if let Err(e) = index_clone.save_snapshot(std::path::Path::new("index.snap")) {
+                eprintln!("Snapshot save failed: {}", e);
+            } else {
+                println!("Snapshot saved.");
+                // Optional: Truncate WAL here? 
+                // To safely truncate WAL, we must ensure all data in Snapshot is persisted.
+                // For MVP, keep WAL growing.
+            }
+        }
+    });
+
     let service = HyperspaceService { 
         index, 
         store,

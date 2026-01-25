@@ -90,4 +90,8 @@ impl VectorStore {
     pub fn count(&self) -> usize {
         self.count.load(Ordering::Relaxed)
     }
+
+    pub fn set_count(&self, c: usize) {
+        self.count.store(c, Ordering::Relaxed);
+    }
 }
