@@ -10,3 +10,4 @@ tokio = { workspace = true, features = ["full"] }
 hyperspace-proto = { workspace = true }
 hyperspace-core = { workspace = true }
 tonic = { workspace = true }
+rand = "0.8"

@@ -653,6 +653,7 @@ dependencies = [
  "crossterm",
  "hyperspace-core",
  "hyperspace-proto",
+ "rand",
  "ratatui",
  "tokio",
  "tonic",

@@ -154,7 +154,7 @@ mod tests {
         let coords = [0.1, -0.1, 0.1, -0.1, 0.1, -0.1, 0.1, -0.1];
         let v = HyperVector::new(coords).unwrap();
         let q = QuantizedHyperVector::from_float(&v);
-        
+
         // Check if coords are roughly preserved in sign
         assert!(q.coords[0] > 0);
         assert!(q.coords[1] < 0);

@@ -175,17 +175,17 @@ mod tests {
     fn test_store_segments() {
         let dir = tempdir().unwrap();
         let store = VectorStore::new(dir.path(), 8);
-        
+
         // Initially 1 segment
         assert_eq!(store.segment_count(), 1);
-        
+
         let data = [1u8; 8];
         // Append 10 vectors
         for _ in 0..10 {
             store.append(&data).unwrap();
         }
         assert_eq!(store.count(), 10);
-        
+
         let retrieved = store.get(0);
         assert_eq!(retrieved, &data);
     }
