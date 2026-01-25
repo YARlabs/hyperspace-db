@@ -47,9 +47,10 @@ fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(6), // Compression
+            Constraint::Length(5), // Compression
             Constraint::Length(3), // Stats Row 1
-            Constraint::Min(1),    // Other
+            Constraint::Length(3), // Config Row
+            Constraint::Min(1),    // Queue status
         ])
         .split(area);
 
@@ -59,13 +60,7 @@ fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
     let actual = app.stats.actual_storage_mb;
     let saved = raw - actual;
     
-    let label = format!("Compression Efficiency: {:.2}x (Saved {:.2} MB)", ratio, saved);
-    
-    // Ratio for gauge: actual / raw. If actual is small, gauge is empty-ish?
-    // User wants "Compression Efficiency".
-    // Usually Gauge shows 0..100%. 
-    // If we want to show "Optimization", maybe we show "Saved %"?
-    // Saved % = (Raw - Actual) / Raw.
+    let label = format!("Compression: {:.2}x (Saved {:.2} MB)", ratio, saved);
     let saved_percent = if raw > 0.0 { (raw - actual) / raw } else { 0.0 };
     
     let gauge = Gauge::default()
@@ -76,7 +71,7 @@ fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
 
     f.render_widget(gauge, chunks[0]);
     
-    // 2. Stats
+    // 2. Stats Row
     let stats_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(33)])
@@ -87,12 +82,32 @@ fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(count_text, stats_layout[0]);
     
     let active_text = Paragraph::new(format!("{}", app.stats.active_segments))
-        .block(Block::default().title("Active Segments").borders(Borders::ALL));
+        .block(Block::default().title("Segments").borders(Borders::ALL));
     f.render_widget(active_text, stats_layout[1]);
     
     let soft_text = Paragraph::new(format!("{}", app.stats.soft_deleted))
-        .block(Block::default().title("Soft Deleted").borders(Borders::ALL).style(Style::default().fg(Color::Red)));
+        .block(Block::default().title("Deleted").borders(Borders::ALL).style(Style::default().fg(Color::Red)));
     f.render_widget(soft_text, stats_layout[2]);
+    
+    // 3. Config Row (Dynamic Tuning Parameters)
+    let config_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(33)])
+        .split(chunks[2]);
+        
+    let ef_s = Paragraph::new(format!("{}", app.stats.ef_search))
+        .block(Block::default().title("ef_search").borders(Borders::ALL).style(Style::default().fg(Color::Cyan)));
+    f.render_widget(ef_s, config_layout[0]);
+    
+    let ef_c = Paragraph::new(format!("{}", app.stats.ef_construction))
+        .block(Block::default().title("ef_construction").borders(Borders::ALL).style(Style::default().fg(Color::Cyan)));
+    f.render_widget(ef_c, config_layout[1]);
+    
+    // Queue Size (Pending Indexing)
+    let queue_color = if app.stats.index_queue_size > 100 { Color::Yellow } else { Color::Green };
+    let queue_text = Paragraph::new(format!("{}", app.stats.index_queue_size))
+        .block(Block::default().title("Index Queue").borders(Borders::ALL).style(Style::default().fg(queue_color)));
+    f.render_widget(queue_text, config_layout[2]);
 }
 
 fn draw_storage(f: &mut Frame, app: &App, area: Rect) {

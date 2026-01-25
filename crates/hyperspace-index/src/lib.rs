@@ -14,6 +14,7 @@ use roaring::RoaringBitmap;
 // Imports
 use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
 use hyperspace_core::QuantizationMode;
+use hyperspace_core::GlobalConfig;
 use hyperspace_store::VectorStore;
 
 #[derive(Archive, Deserialize, Serialize)]
@@ -84,7 +85,7 @@ impl HnswIndex {
         Ok(())
     }
 
-    pub fn load_snapshot(path: &std::path::Path, storage: Arc<VectorStore>, mode: QuantizationMode) -> Result<Self, String> {
+    pub fn load_snapshot(path: &std::path::Path, storage: Arc<VectorStore>, mode: QuantizationMode, config: Arc<GlobalConfig>) -> Result<Self, String> {
         let file_content = std::fs::read(path).map_err(|e| e.to_string())?;
         
         // Validate and deserialize
@@ -117,6 +118,7 @@ impl HnswIndex {
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
             mode,
+            config,
         })
     }
 }
@@ -147,6 +149,9 @@ pub struct HnswIndex {
     
     // Quantization
     pub mode: QuantizationMode,
+    
+    // Runtime configuration
+    pub config: Arc<GlobalConfig>,
 }
 
 #[derive(Debug)]
@@ -179,7 +184,7 @@ impl PartialOrd for Candidate {
 }
 
 impl HnswIndex {
-    pub fn new(storage: Arc<VectorStore>, mode: QuantizationMode) -> Self {
+    pub fn new(storage: Arc<VectorStore>, mode: QuantizationMode, config: Arc<GlobalConfig>) -> Self {
         Self {
             nodes: RwLock::new(Vec::new()),
             metadata: MetadataIndex::default(),
@@ -187,6 +192,7 @@ impl HnswIndex {
             max_layer: AtomicU32::new(0),
             storage,
             mode,
+            config,
         }
     }
     
@@ -573,12 +579,12 @@ impl HnswIndex {
         }
 
         // 3. Phase 2: Insert links from new_level down to 0
-        const EF_CONSTRUCTION: usize = 100; // Tuning param
+        let ef_construction = self.config.get_ef_construction();
         const M_MAX: usize = M; 
 
         for level in (0..=std::cmp::min(new_level, max_layer as usize)).rev() {
             // a) Search candidates
-            let candidates_heap = self.search_layer_candidates(curr_obj, &q_vec, level, EF_CONSTRUCTION);
+            let candidates_heap = self.search_layer_candidates(curr_obj, &q_vec, level, ef_construction);
             
             // b) Select neighbors with heuristic
             let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, M);

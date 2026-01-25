@@ -64,6 +64,11 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.Empty.SerializeToString,
                 response_deserializer=hyperspace__pb2.StatusResponse.FromString,
                 _registered_method=True)
+        self.Configure = channel.unary_unary(
+                '/hyperspace.Database/Configure',
+                request_serializer=hyperspace__pb2.ConfigUpdate.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
 
 
 class DatabaseServicer(object):
@@ -110,6 +115,13 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Configure(self, request, context):
+        """Dynamic Configuration
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -141,6 +153,11 @@ def add_DatabaseServicer_to_server(servicer, server):
             'TriggerVacuum': grpc.unary_unary_rpc_method_handler(
                     servicer.TriggerVacuum,
                     request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'Configure': grpc.unary_unary_rpc_method_handler(
+                    servicer.Configure,
+                    request_deserializer=hyperspace__pb2.ConfigUpdate.FromString,
                     response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
             ),
     }
@@ -305,6 +322,33 @@ class Database(object):
             target,
             '/hyperspace.Database/TriggerVacuum',
             hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Configure(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Configure',
+            hyperspace__pb2.ConfigUpdate.SerializeToString,
             hyperspace__pb2.StatusResponse.FromString,
             options,
             channel_credentials,

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10hyperspace.proto\x12\nhyperspace\"\x97\x01\n\rInsertRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\n\n\x02id\x18\x02 \x01(\r\x12\x39\n\x08metadata\x18\x03 \x03(\x0b\x32\'.hyperspace.InsertRequest.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"!\n\x0eInsertResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x1b\n\rDeleteRequest\x12\n\n\x02id\x18\x01 \x01(\r\"!\n\x0e\x44\x65leteResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x94\x01\n\rSearchRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\r\n\x05top_k\x18\x02 \x01(\r\x12\x35\n\x06\x66ilter\x18\x03 \x03(\x0b\x32%.hyperspace.SearchRequest.FilterEntry\x1a-\n\x0b\x46ilterEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\";\n\x0eSearchResponse\x12)\n\x07results\x18\x01 \x03(\x0b\x32\x18.hyperspace.SearchResult\",\n\x0cSearchResult\x12\n\n\x02id\x18\x01 \x01(\r\x12\x10\n\x08\x64istance\x18\x02 \x01(\x01\"\x07\n\x05\x45mpty\" \n\x0eStatusResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\"\x10\n\x0eMonitorRequest\"\xc8\x01\n\x0bSystemStats\x12\x17\n\x0findexed_vectors\x18\x01 \x01(\x04\x12\x14\n\x0csoft_deleted\x18\x02 \x01(\x04\x12\x18\n\x10raw_data_size_mb\x18\x03 \x01(\x01\x12\x19\n\x11\x61\x63tual_storage_mb\x18\x04 \x01(\x01\x12\x19\n\x11\x63ompression_ratio\x18\x05 \x01(\x01\x12\x17\n\x0f\x61\x63tive_segments\x18\x06 \x01(\r\x12\x0b\n\x03qps\x18\x07 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x08 \x01(\x01*+\n\x10QuantizationMode\x12\x08\n\x04NONE\x10\x00\x12\r\n\tSCALAR_I8\x10\x01\x32\x91\x03\n\x08\x44\x61tabase\x12?\n\x06Insert\x12\x19.hyperspace.InsertRequest\x1a\x1a.hyperspace.InsertResponse\x12?\n\x06\x44\x65lete\x12\x19.hyperspace.DeleteRequest\x1a\x1a.hyperspace.DeleteResponse\x12?\n\x06Search\x12\x19.hyperspace.SearchRequest\x1a\x1a.hyperspace.SearchResponse\x12@\n\x07Monitor\x12\x1a.hyperspace.MonitorRequest\x1a\x17.hyperspace.SystemStats0\x01\x12@\n\x0fTriggerSnapshot\x12\x11.hyperspace.Empty\x1a\x1a.hyperspace.StatusResponse\x12>\n\rTriggerVacuum\x12\x11.hyperspace.Empty\x1a\x1a.hyperspace.StatusResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10hyperspace.proto\x12\nhyperspace\"f\n\x0c\x43onfigUpdate\x12\x16\n\tef_search\x18\x01 \x01(\rH\x00\x88\x01\x01\x12\x1c\n\x0f\x65\x66_construction\x18\x02 \x01(\rH\x01\x88\x01\x01\x42\x0c\n\n_ef_searchB\x12\n\x10_ef_construction\"\x97\x01\n\rInsertRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\n\n\x02id\x18\x02 \x01(\r\x12\x39\n\x08metadata\x18\x03 \x03(\x0b\x32\'.hyperspace.InsertRequest.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"!\n\x0eInsertResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x1b\n\rDeleteRequest\x12\n\n\x02id\x18\x01 \x01(\r\"!\n\x0e\x44\x65leteResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x94\x01\n\rSearchRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\r\n\x05top_k\x18\x02 \x01(\r\x12\x35\n\x06\x66ilter\x18\x03 \x03(\x0b\x32%.hyperspace.SearchRequest.FilterEntry\x1a-\n\x0b\x46ilterEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\";\n\x0eSearchResponse\x12)\n\x07results\x18\x01 \x03(\x0b\x32\x18.hyperspace.SearchResult\",\n\x0cSearchResult\x12\n\n\x02id\x18\x01 \x01(\r\x12\x10\n\x08\x64istance\x18\x02 \x01(\x01\"\x07\n\x05\x45mpty\" \n\x0eStatusResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\"\x10\n\x0eMonitorRequest\"\x8e\x02\n\x0bSystemStats\x12\x17\n\x0findexed_vectors\x18\x01 \x01(\x04\x12\x14\n\x0csoft_deleted\x18\x02 \x01(\x04\x12\x18\n\x10raw_data_size_mb\x18\x03 \x01(\x01\x12\x19\n\x11\x61\x63tual_storage_mb\x18\x04 \x01(\x01\x12\x19\n\x11\x63ompression_ratio\x18\x05 \x01(\x01\x12\x17\n\x0f\x61\x63tive_segments\x18\x06 \x01(\r\x12\x0b\n\x03qps\x18\x07 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x08 \x01(\x01\x12\x11\n\tef_search\x18\t \x01(\r\x12\x17\n\x0f\x65\x66_construction\x18\n \x01(\r\x12\x18\n\x10index_queue_size\x18\x0b \x01(\x04*+\n\x10QuantizationMode\x12\x08\n\x04NONE\x10\x00\x12\r\n\tSCALAR_I8\x10\x01\x32\xd4\x03\n\x08\x44\x61tabase\x12?\n\x06Insert\x12\x19.hyperspace.InsertRequest\x1a\x1a.hyperspace.InsertResponse\x12?\n\x06\x44\x65lete\x12\x19.hyperspace.DeleteRequest\x1a\x1a.hyperspace.DeleteResponse\x12?\n\x06Search\x12\x19.hyperspace.SearchRequest\x1a\x1a.hyperspace.SearchResponse\x12@\n\x07Monitor\x12\x1a.hyperspace.MonitorRequest\x1a\x17.hyperspace.SystemStats0\x01\x12@\n\x0fTriggerSnapshot\x12\x11.hyperspace.Empty\x1a\x1a.hyperspace.StatusResponse\x12>\n\rTriggerVacuum\x12\x11.hyperspace.Empty\x1a\x1a.hyperspace.StatusResponse\x12\x41\n\tConfigure\x12\x18.hyperspace.ConfigUpdate\x1a\x1a.hyperspace.StatusResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,34 +35,36 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_INSERTREQUEST_METADATAENTRY']._serialized_options = b'8\001'
   _globals['_SEARCHREQUEST_FILTERENTRY']._loaded_options = None
   _globals['_SEARCHREQUEST_FILTERENTRY']._serialized_options = b'8\001'
-  _globals['_QUANTIZATIONMODE']._serialized_start=807
-  _globals['_QUANTIZATIONMODE']._serialized_end=850
-  _globals['_INSERTREQUEST']._serialized_start=33
-  _globals['_INSERTREQUEST']._serialized_end=184
-  _globals['_INSERTREQUEST_METADATAENTRY']._serialized_start=137
-  _globals['_INSERTREQUEST_METADATAENTRY']._serialized_end=184
-  _globals['_INSERTRESPONSE']._serialized_start=186
-  _globals['_INSERTRESPONSE']._serialized_end=219
-  _globals['_DELETEREQUEST']._serialized_start=221
-  _globals['_DELETEREQUEST']._serialized_end=248
-  _globals['_DELETERESPONSE']._serialized_start=250
-  _globals['_DELETERESPONSE']._serialized_end=283
-  _globals['_SEARCHREQUEST']._serialized_start=286
-  _globals['_SEARCHREQUEST']._serialized_end=434
-  _globals['_SEARCHREQUEST_FILTERENTRY']._serialized_start=389
-  _globals['_SEARCHREQUEST_FILTERENTRY']._serialized_end=434
-  _globals['_SEARCHRESPONSE']._serialized_start=436
-  _globals['_SEARCHRESPONSE']._serialized_end=495
-  _globals['_SEARCHRESULT']._serialized_start=497
-  _globals['_SEARCHRESULT']._serialized_end=541
-  _globals['_EMPTY']._serialized_start=543
-  _globals['_EMPTY']._serialized_end=550
-  _globals['_STATUSRESPONSE']._serialized_start=552
-  _globals['_STATUSRESPONSE']._serialized_end=584
-  _globals['_MONITORREQUEST']._serialized_start=586
-  _globals['_MONITORREQUEST']._serialized_end=602
-  _globals['_SYSTEMSTATS']._serialized_start=605
-  _globals['_SYSTEMSTATS']._serialized_end=805
-  _globals['_DATABASE']._serialized_start=853
-  _globals['_DATABASE']._serialized_end=1254
+  _globals['_QUANTIZATIONMODE']._serialized_start=981
+  _globals['_QUANTIZATIONMODE']._serialized_end=1024
+  _globals['_CONFIGUPDATE']._serialized_start=32
+  _globals['_CONFIGUPDATE']._serialized_end=134
+  _globals['_INSERTREQUEST']._serialized_start=137
+  _globals['_INSERTREQUEST']._serialized_end=288
+  _globals['_INSERTREQUEST_METADATAENTRY']._serialized_start=241
+  _globals['_INSERTREQUEST_METADATAENTRY']._serialized_end=288
+  _globals['_INSERTRESPONSE']._serialized_start=290
+  _globals['_INSERTRESPONSE']._serialized_end=323
+  _globals['_DELETEREQUEST']._serialized_start=325
+  _globals['_DELETEREQUEST']._serialized_end=352
+  _globals['_DELETERESPONSE']._serialized_start=354
+  _globals['_DELETERESPONSE']._serialized_end=387
+  _globals['_SEARCHREQUEST']._serialized_start=390
+  _globals['_SEARCHREQUEST']._serialized_end=538
+  _globals['_SEARCHREQUEST_FILTERENTRY']._serialized_start=493
+  _globals['_SEARCHREQUEST_FILTERENTRY']._serialized_end=538
+  _globals['_SEARCHRESPONSE']._serialized_start=540
+  _globals['_SEARCHRESPONSE']._serialized_end=599
+  _globals['_SEARCHRESULT']._serialized_start=601
+  _globals['_SEARCHRESULT']._serialized_end=645
+  _globals['_EMPTY']._serialized_start=647
+  _globals['_EMPTY']._serialized_end=654
+  _globals['_STATUSRESPONSE']._serialized_start=656
+  _globals['_STATUSRESPONSE']._serialized_end=688
+  _globals['_MONITORREQUEST']._serialized_start=690
+  _globals['_MONITORREQUEST']._serialized_end=706
+  _globals['_SYSTEMSTATS']._serialized_start=709
+  _globals['_SYSTEMSTATS']._serialized_end=979
+  _globals['_DATABASE']._serialized_start=1027
+  _globals['_DATABASE']._serialized_end=1495
 # @@protoc_insertion_point(module_scope)

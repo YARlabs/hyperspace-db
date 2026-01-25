@@ -2,6 +2,9 @@
 
 pub mod metric;
 pub mod vector;
+pub mod config;
+
+pub use config::GlobalConfig;
 
 pub type HyperFloat = f64;
 

@@ -4,11 +4,12 @@ use hyperspace_store::wal::Wal;
 use std::sync::{Arc, Mutex};
 use tonic::{transport::Server, Request, Response, Status};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
-use hyperspace_proto::hyperspace::{InsertRequest, InsertResponse, DeleteRequest, DeleteResponse, SearchRequest, SearchResponse, SearchResult, MonitorRequest, SystemStats};
+use hyperspace_proto::hyperspace::{InsertRequest, InsertResponse, DeleteRequest, DeleteResponse, SearchRequest, SearchResponse, SearchResult, MonitorRequest, SystemStats, ConfigUpdate};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use hyperspace_core::QuantizationMode;
 use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
+use hyperspace_core::GlobalConfig;
 
 #[derive(Debug)]
 pub struct HyperspaceService {
@@ -16,6 +17,7 @@ pub struct HyperspaceService {
     store: Arc<VectorStore>,
     wal: Arc<Mutex<Wal>>,
     index_tx: mpsc::Sender<(u32, std::collections::HashMap<String, String>)>,
+    config: Arc<GlobalConfig>,
 }
 
 #[tonic::async_trait]
@@ -40,8 +42,10 @@ impl Database for HyperspaceService {
              let _ = wal.append(id, &vector);
         }
 
-        // 2. Async Indexing
+        // 2. Async Indexing (Track queue size)
+        self.config.inc_queue();
         if self.index_tx.send((id, meta)).await.is_err() {
+            self.config.dec_queue(); // Rollback on error
             return Err(Status::internal("Indexer channel closed"));
         }
         
@@ -64,7 +68,9 @@ impl Database for HyperspaceService {
         let req = request.into_inner();
         let filter = req.filter;
         
-        let res = self.index.search(&req.vector, req.top_k as usize, 100, &filter);
+        // Use dynamic ef_search from config
+        let ef_search = self.config.get_ef_search();
+        let res = self.index.search(&req.vector, req.top_k as usize, ef_search, &filter);
         
         let output = res.into_iter().map(|(id, dist)| SearchResult {
             id,
@@ -79,6 +85,7 @@ impl Database for HyperspaceService {
     async fn monitor(&self, _request: Request<MonitorRequest>) -> Result<Response<Self::MonitorStream>, Status> {
         let (tx, rx) = mpsc::channel(4);
         let index = self.index.clone();
+        let config = self.config.clone();
         
         tokio::spawn(async move {
             loop {
@@ -106,7 +113,10 @@ impl Database for HyperspaceService {
                     compression_ratio: compression,
                     active_segments: segments as u32,
                     qps: 0.0, 
-                    ram_usage_mb: 0.0, 
+                    ram_usage_mb: 0.0,
+                    ef_search: config.get_ef_search() as u32,
+                    ef_construction: config.get_ef_construction() as u32,
+                    index_queue_size: config.get_queue_size(),
                 };
 
                 if tx.send(Ok(stats)).await.is_err() {
@@ -128,6 +138,29 @@ impl Database for HyperspaceService {
     async fn trigger_vacuum(&self, _request: Request<hyperspace_proto::hyperspace::Empty>) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
          Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse { status: "Vacuum started (simulated)".into() }))
     }
+    
+    async fn configure(&self, request: Request<ConfigUpdate>) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let req = request.into_inner();
+        let mut changes = Vec::new();
+        
+        if let Some(ef_s) = req.ef_search {
+            self.config.set_ef_search(ef_s as usize);
+            changes.push(format!("ef_search={}", ef_s));
+        }
+        
+        if let Some(ef_c) = req.ef_construction {
+            self.config.set_ef_construction(ef_c as usize);
+            changes.push(format!("ef_construction={}", ef_c));
+        }
+        
+        let status = if changes.is_empty() {
+            "No changes applied".to_string()
+        } else {
+            format!("Config updated: {}", changes.join(", "))
+        };
+        
+        Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse { status }))
+    }
 }
 
 #[tokio::main]
@@ -139,10 +172,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = std::path::Path::new("data");
     let snap_path = std::path::Path::new("index.snap");
 
-    let (store, index, mut recovered_count) = if snap_path.exists() {
+    // Global Runtime Config
+    let config = Arc::new(GlobalConfig::new());
+
+    let (store, index, recovered_count) = if snap_path.exists() {
         println!("Found snapshot. Loading...");
         
-        // Determine element size based on target mode (For now hardcoded to ScalarI8 for update)
         let mode = QuantizationMode::ScalarI8; 
         let element_size = match mode {
              QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
@@ -150,7 +185,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let store = Arc::new(VectorStore::new(data_dir, element_size));
-        match HnswIndex::load_snapshot(snap_path, store.clone(), mode) {
+        match HnswIndex::load_snapshot(snap_path, store.clone(), mode, config.clone()) {
             Ok(idx) => {
                 let count = idx.count_nodes();
                 println!("Snapshot loaded. Nodes: {}", count);
@@ -162,7 +197,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                      let _ = std::fs::remove_dir_all(data_dir);
                 }
                 let store = Arc::new(VectorStore::new(data_dir, element_size));
-                (store.clone(), Arc::new(HnswIndex::new(store, mode)), 0)
+                (store.clone(), Arc::new(HnswIndex::new(store, mode, config.clone())), 0)
             }
         }
     } else {
@@ -178,21 +213,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         
         let store = Arc::new(VectorStore::new(data_dir, element_size));
-        (store.clone(), Arc::new(HnswIndex::new(store, mode)), 0)
+        (store.clone(), Arc::new(HnswIndex::new(store, mode, config.clone())), 0)
     };
     
     // 2. Init WAL and Replay
-    let mut wal = Wal::new(wal_path)?;
+    let wal = Wal::new(wal_path)?;
     
     println!("Recovering from WAL (Skipping first {})...", recovered_count);
     let mut replayed = 0;
-    // We need WAL to be able to skip? `wal.replay` iterates all.
-    // We just ignore inside callback.
     Wal::replay(wal_path, |entry| {
         match entry {
             hyperspace_store::wal::WalEntry::Insert { id, vector } => {
-                // If id < recovered_count, it's already in snapshot (assuming sequential 0..N IDs)
-                // In real world, IDs might not be sequential or fully packed, but for this MVP they are.
                 if (id as usize) >= recovered_count {
                      if let Err(e) = index.insert(&vector, std::collections::HashMap::new()) {
                         eprintln!("Replay Error: {}", e);
@@ -208,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // 3. Spawn Snapshot Task
     let index_clone = index.clone();
-    tokio::spawn(async move {
+    let snapshot_handle = tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
             println!("Saving snapshot...");
@@ -216,9 +247,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Snapshot save failed: {}", e);
             } else {
                 println!("Snapshot saved.");
-                // Optional: Truncate WAL here? 
-                // To safely truncate WAL, we must ensure all data in Snapshot is persisted.
-                // For MVP, keep WAL growing.
             }
         }
     });
@@ -226,32 +254,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 4. Spawn Indexer Worker (Async Write)
     let (index_tx, mut index_rx) = mpsc::channel(1000);
     let index_worker = index.clone();
+    let config_worker = config.clone();
     
-    tokio::spawn(async move {
+    let indexer_handle = tokio::spawn(async move {
         println!("⚙️ Background Indexer started");
         while let Some((id, meta)) = index_rx.recv().await {
             let idx = index_worker.clone();
+            let cfg = config_worker.clone();
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = idx.index_node(id, meta) {
                     eprintln!("Indexer error for ID {}: {}", id, e);
                 }
+                cfg.dec_queue();
             }).await;
         }
+        println!("⚙️ Indexer shutting down...");
     });
 
     let service = HyperspaceService { 
-        index, 
+        index: index.clone(), 
         store,
         wal: wal_arc,
-        index_tx,
+        index_tx: index_tx.clone(),
+        config: config.clone(),
     };
 
     println!("HyperspaceDB listening on {}", addr);
+    println!("Config: ef_search={}, ef_construction={}", config.get_ef_search(), config.get_ef_construction());
 
-    Server::builder()
+    // Graceful Shutdown Handler
+    let server = Server::builder()
         .add_service(DatabaseServer::new(service))
-        .serve(addr)
-        .await?;
+        .serve_with_shutdown(addr, async {
+            tokio::signal::ctrl_c().await.ok();
+            println!("\n🛑 Received Ctrl+C. Initiating graceful shutdown...");
+        });
+
+    server.await?;
+    
+    // Shutdown sequence
+    println!("Draining index queue ({} pending)...", config.get_queue_size());
+    drop(index_tx); // Close sender to signal indexer to stop
+    let _ = indexer_handle.await;
+    
+    println!("Saving final snapshot...");
+    if let Err(e) = index.save_snapshot(snap_path) {
+        eprintln!("Final snapshot failed: {}", e);
+    } else {
+        println!("Final snapshot saved.");
+    }
+    
+    snapshot_handle.abort();
+    println!("✅ HyperspaceDB shutdown complete.");
 
     Ok(())
 }

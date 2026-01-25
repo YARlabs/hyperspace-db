@@ -14,11 +14,19 @@ service Database {
   // Admin Controls
   rpc TriggerSnapshot (Empty) returns (StatusResponse);
   rpc TriggerVacuum (Empty) returns (StatusResponse);
+  
+  // Dynamic Configuration
+  rpc Configure (ConfigUpdate) returns (StatusResponse);
 }
 
 enum QuantizationMode {
   NONE = 0;       // f64 (Default)
   SCALAR_I8 = 1;  // 8-bit
+}
+
+message ConfigUpdate {
+  optional uint32 ef_search = 1;
+  optional uint32 ef_construction = 2;
 }
 
 message InsertRequest {
@@ -75,4 +83,9 @@ message SystemStats {
   // Performance
   double qps = 7;
   double ram_usage_mb = 8;
+  
+  // Current Config (for TUI display)
+  uint32 ef_search = 9;
+  uint32 ef_construction = 10;
+  uint64 index_queue_size = 11;     // Pending indexing tasks
 }
