@@ -1,6 +1,11 @@
 # Contributing to HyperspaceDB
 
-Thank you for your interest in contributing to HyperspaceDB! As an experimental, high-performance vector database, we welcome contributions that improve speed, accuracy, or usability.
+By submitting contributions to HyperspaceDB, you agree that
+YARlabs may use your contributions under both the AGPLv3 license
+and under commercial licenses.
+
+This ensures that improvements contributed by the community
+can be included in both open-source and commercial releases.
 
 ## 🛠 Development Setup
 

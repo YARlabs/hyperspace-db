@@ -1,21 +1,23 @@
-MIT License
+HyperspaceDB Dual License
 
 Copyright (c) 2026 YARlabs
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software is made available under a dual-license model:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. GNU Affero General Public License v3.0 (AGPL-3.0),
+   as published by the Free Software Foundation.
+   You may use, copy, modify, and redistribute this
+   software under the terms of AGPL-3.0.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+   The full text of the AGPL-3.0 is included below and
+   also available at:
+   https://www.gnu.org/licenses/agpl-3.0.txt
+
+2. Commercial License.
+   If you intend to use HyperspaceDB in a proprietary
+   or closed-source product, or do not wish to comply
+   with the AGPL-3.0 obligations (including source
+   disclosure of derivative works), you must obtain
+   a commercial license from the copyright holder.
+
+   Contact: sglukhota@gmail.com
