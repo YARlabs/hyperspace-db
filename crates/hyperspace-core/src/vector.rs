@@ -1,5 +1,7 @@
 use std::simd::prelude::*;
 
+
+
 /// Aligned vector struct. N is the dimension.
 /// align(64) is critical for AVX-512 and cache lines.
 #[repr(C, align(64))]
@@ -113,6 +115,80 @@ impl<const N: usize> QuantizedHyperVector<N> {
     }
 }
 
+/// Binary Quantized (1 bit per dimension)
+/// Packed into u8 array. N dimensions -> ceil(N/8) bytes.
+/// For N=8, it is exactly 1 byte.
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct BinaryHyperVector<const N: usize> {
+    // For N=8, we only need [u8; 1]. 
+    // Generic const exprs are unstable, so we use [u8; 1] hardcoded for N=8 MVP.
+    // Ideally: [u8; (N + 7) / 8]
+    pub bits: [u8; 1], 
+    pub alpha: f32,
+}
+
+impl<const N: usize> BinaryHyperVector<N> {
+    pub fn from_float(v: &HyperVector<N>) -> Self {
+        let mut byte: u8 = 0;
+        for (i, &val) in v.coords.iter().enumerate() {
+            if val > 0.0 {
+                byte |= 1 << i;
+            }
+        }
+        Self {
+            bits: [byte],
+            alpha: v.alpha as f32,
+        }
+    }
+
+    #[inline(always)]
+    pub fn hamming_distance(&self, other: &Self) -> u32 {
+        // XOR gives 1 where bits differ
+        // count_ones gives Hamming distance
+        (self.bits[0] ^ other.bits[0]).count_ones()
+    }
+    
+    // Approximate Poincaré distance from Binary
+    // 1. Hamming distance -> Approximate L2
+    // L2^2 ≈ 4 * Hamming / N (Rule of thumb for unit sphere)
+    // But we are in Poincaré ball. This is tricky.
+    // For MVP, we treat Binary as a "Rough Filter" (Reranking).
+    // Or we implement "Poincaré from Hamming"?
+    // The user wants Binary Quantization. Usually implies Hamming search.
+    // Let's implement `distance_to_float`.
+    // We can just unpack bits to +1/-1 and calc L2.
+    // +1 if bit 1, -1 if bit 0.
+    // Then mapped to original scale? Hard without knowing magnitude.
+    // Standard BQ assumes unit magnitude vectors on sphere.
+    // Poincaré vectors have varying magnitude (norm < 1).
+    // Assuming magnitude is lost, BQ is only good for angular/cosine similarity.
+    // However, for MVP, we'll try to reconstruct.
+    // "Unpack to +/- 0.5?" (Avg magnitude?)
+    // This is lossy.
+    
+    pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
+        // Reconstruct vector `r` from bits
+        // If bit=1 -> +val, bit=0 -> -val.
+        // What val? Maybe 1.0 / sqrt(N)? Unit sphere?
+        // Let's assume unit sphere projection.
+        let val = 1.0 / (N as f64).sqrt() * 0.99; // 0.99 to be safe inside ball?
+        
+        let mut sum_sq_diff = 0.0;
+        for i in 0..N {
+            let bit = (self.bits[0] >> i) & 1;
+            let recon = if bit == 1 { val } else { -val };
+            let diff = recon - query.coords[i];
+            sum_sq_diff += diff * diff;
+        }
+        
+        // Use stored alpha? Or recompute?
+        // We stored alpha.
+        let delta = sum_sq_diff * (self.alpha as f64) * query.alpha;
+        1.0 + 2.0 * delta
+    }
+}
+
 impl<const N: usize> HyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();
 
@@ -126,6 +202,18 @@ impl<const N: usize> HyperVector<N> {
 }
 
 impl<const N: usize> QuantizedHyperVector<N> {
+    pub const SIZE: usize = std::mem::size_of::<Self>();
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self as *const _ as *const u8, Self::SIZE) }
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> &Self {
+        unsafe { &*(bytes.as_ptr() as *const Self) }
+    }
+}
+
+impl<const N: usize> BinaryHyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();
 
     pub fn as_bytes(&self) -> &[u8] {

@@ -12,4 +12,5 @@ pub type HyperFloat = f64;
 pub enum QuantizationMode {
     None,
     ScalarI8,
+    Binary,
 }

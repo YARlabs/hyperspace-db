@@ -338,6 +338,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mode = QuantizationMode::ScalarI8;
         let element_size = match mode {
             QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
+            QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<8>::SIZE,
             QuantizationMode::None => HyperVector::<8>::SIZE,
         };
 
@@ -370,6 +371,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mode = QuantizationMode::ScalarI8;
         let element_size = match mode {
             QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
+            QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<8>::SIZE,
             QuantizationMode::None => HyperVector::<8>::SIZE,
         };
 

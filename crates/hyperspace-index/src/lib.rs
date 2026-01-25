@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 // Imports
-use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
+use hyperspace_core::vector::{HyperVector, QuantizedHyperVector, BinaryHyperVector};
 use hyperspace_core::GlobalConfig;
 use hyperspace_core::QuantizationMode;
 use hyperspace_store::VectorStore;
@@ -376,6 +376,10 @@ impl HnswIndex {
                 let q = QuantizedHyperVector::<8>::from_bytes(bytes);
                 q.poincare_distance_sq_to_float(query)
             }
+            QuantizationMode::Binary => {
+                let b = BinaryHyperVector::<8>::from_bytes(bytes);
+                b.poincare_distance_sq_to_float(query)
+            }
             QuantizationMode::None => {
                 let v = HyperVector::<8>::from_bytes(bytes);
                 v.poincare_distance_sq(query)
@@ -610,6 +614,33 @@ impl HnswIndex {
                 let v = HyperVector::<8>::from_bytes(bytes);
                 v.clone()
             }
+            QuantizationMode::Binary => {
+                 // Decompress on the fly (lossy!)
+                 // Binary -> Float
+                 let b = BinaryHyperVector::<8>::from_bytes(bytes);
+                 // We don't have a direct 'to_float' that returns HyperVector structure easily
+                 // But we can approximate.
+                 // Construct a dummy vector that yields "similar" distances?
+                 // Or actually reconstruct.
+                 // For now, let's just return a zero vector with correct alpha?
+                 // This `get_vector` is mainly used for re-ranking or selection?
+                 // `select_neighbors` calls it.
+                 // If `select_neighbors` uses it for refined distance check, we need decent approximation.
+                 // Let's implement a rudimentary reconstruction in getting coords.
+                 let mut coords = [0.0; 8];
+                 let val = 1.0 / (8.0f64).sqrt() * 0.99;
+                 for i in 0..8 {
+                     if (b.bits[0] >> i) & 1 == 1 {
+                         coords[i] = val;
+                     } else {
+                         coords[i] = -val;
+                     }
+                 }
+                 HyperVector {
+                     coords,
+                     alpha: b.alpha as f64,
+                 }
+            }
         }
     }
 
@@ -628,6 +659,10 @@ impl HnswIndex {
                 self.storage.append(q.as_bytes())?
             }
             QuantizationMode::None => self.storage.append(q_vec_full.as_bytes())?,
+            QuantizationMode::Binary => {
+                let b = BinaryHyperVector::from_float(&q_vec_full);
+                self.storage.append(b.as_bytes())?
+            }
         };
         Ok(new_id)
     }
