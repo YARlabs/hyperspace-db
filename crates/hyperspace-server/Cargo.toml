@@ -1,0 +1,15 @@
+[package]
+name = "hyperspace-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+tonic = { workspace = true }
+tracing = { workspace = true }
+hyperspace-proto = { workspace = true }
+hyperspace-core = { workspace = true }
+hyperspace-index = { workspace = true }
+hyperspace-store = { workspace = true }
+tokio-stream = "0.1"
+rand = "0.8"

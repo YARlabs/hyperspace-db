@@ -1,0 +1,4 @@
+[toolchain]
+channel = "nightly" # Updated to latest nightly for dependency compatibility
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]

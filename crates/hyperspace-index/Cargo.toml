@@ -1,0 +1,12 @@
+[package]
+name = "hyperspace-index"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+parking_lot = "0.12"
+rand = "0.8"
+smallvec = { workspace = true }
+ordered-float = "4.0"
+hyperspace-core = { path = "../hyperspace-core" }
+hyperspace-store = { path = "../hyperspace-store" }

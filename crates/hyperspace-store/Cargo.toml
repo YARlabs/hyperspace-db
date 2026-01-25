@@ -1,0 +1,9 @@
+[package]
+name = "hyperspace-store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+memmap2 = { workspace = true }
+thiserror = { workspace = true }
+hyperspace-core = { workspace = true }

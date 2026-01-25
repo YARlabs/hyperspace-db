@@ -1,0 +1,42 @@
+syntax = "proto3";
+package hyperspace;
+
+service Database {
+  // Insert vectors
+  rpc Insert (InsertRequest) returns (InsertResponse);
+  // Search (ANN)
+  rpc Search (SearchRequest) returns (SearchResponse);
+  // Stream statistics for TUI
+  rpc Monitor (MonitorRequest) returns (stream SystemStats);
+}
+
+message InsertRequest {
+  repeated double vector = 1;
+  uint32 id = 2; // Explicit ID for simplicity in this proto
+}
+
+message InsertResponse {
+  bool success = 1;
+}
+
+message SearchRequest {
+  repeated double vector = 1; // Query vector
+  uint32 top_k = 2;           // How many neighbors to find
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  uint32 id = 1;
+  double distance = 2;
+}
+
+message MonitorRequest {}
+
+message SystemStats {
+  uint64 indexed_vectors = 1;
+  double ram_usage_mb = 2;
+  double qps = 3;             // Queries per second
+}

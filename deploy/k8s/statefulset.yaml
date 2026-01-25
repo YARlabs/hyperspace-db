@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hyperspace
+spec:
+  serviceName: "hyperspace-headless"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hyperspace
+  template:
+    metadata:
+      labels:
+        app: hyperspace
+    spec:
+      containers:
+        - name: db
+          image: your-repo/hyperspace:latest
+          ports:
+            - containerPort: 50051 # gRPC
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/hyperspace
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 100Gi

@@ -1,0 +1,24 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1.35", features = ["full"] }
+tonic = "0.10"
+prost = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+thiserror = "1.0"
+# Local crates
+hyperspace-core = { path = "crates/hyperspace-core" }
+hyperspace-proto = { path = "crates/hyperspace-proto" }
+hyperspace-index = { path = "crates/hyperspace-index" }
+hyperspace-store = { path = "crates/hyperspace-store" }
+rand = "0.8"
+memmap2 = "0.9"
+parking_lot = "0.12"
+ratatui = "0.24" # Check recent version or use what fits
+anyhow = "1.0"
+criterion = "0.5"
+rkyv = "0.7"
+smallvec = "1.11"
