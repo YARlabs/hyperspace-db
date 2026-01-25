@@ -33,12 +33,28 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
     <td>A custom implementation of Hierarchical Navigable Small Worlds, mathematically tuned for the Poincaré metric (no expensive `acosh` overhead).</td>
   </tr>
   <tr>
-    <td>📦 <b>Smart Compression</b></td>
-    <td>Integrated <b>ScalarI8</b> zero-copy quantization reduces memory footprint by <b>87%</b> (8x compression) without significant recall loss.</td>
+    <td>🔒 <b>Secure & Auth</b></td>
+    <td>Native API Key security (SHA-256) and Role-based Access Control for production deploy.</td>
+  </tr>
+  <tr>
+    <td>🔎 <b>Advanced Filtering</b></td>
+    <td>Complex metadata filtering with `Range` and `Match` operators using Roaring Bitmaps.</td>
+  </tr>
+  <tr>
+    <td>🤝 <b>Distributed HA</b></td>
+    <td>Leader-Follower replication with WAL streaming for High Availability and Read Scaling.</td>
+  </tr>
+  <tr>
+    <td>🧠 <b>Hybrid Search</b></td>
+    <td>Combine semantic (vector) search with keyword (lexical) search using Reciprocal Rank Fusion (RRF).</td>
+  </tr>
+  <tr>
+    <td>📦 <b>ScalarI8 & Binary</b></td>
+    <td>Integrated <b>ScalarI8</b> and <b>Binary (1-bit)</b> quantization reduces memory footprint by up to <b>64x</b> with blazing speed.</td>
   </tr>
   <tr>
     <td>🧵 <b>Async Write Pipeline</b></td>
-    <td>Decoupled ingestion with a WAL (Write-Ahead Log) ensures <b>15k+ vectors/sec</b> ingestion without blocking reads.</td>
+    <td>Decoupled ingestion with a WAL V2 ensures persistence of data and metadata without blocking reads.</td>
   </tr>
   <tr>
     <td>🖥️ <b>Mission Control TUI</b></td>
@@ -49,6 +65,48 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
     <td>Dynamically adjust `ef_search` and `ef_construction` parameters via gRPC without restarting the server.</td>
   </tr>
 </table>
+
+---
+
+## 🔒 Security
+
+* **API Keys**: Secure endpoints with `HYPERSPACE_API_KEY` environment variable.
+* **Header**: Clients must send `x-api-key: <key>`.
+* **Zero-Knowledge**: Server stores only SHA-256 hash of the key in memory.
+
+## 🤝 Distributed Replication
+
+HyperspaceDB supports **Leader-Follower** architecture for High Availability.
+
+* **Leader**: Handles Writes & Reads. Streams WAL events to followers.
+* **Follower**: Read-Only. Replicates data in real-time.
+
+```bash
+# Start Leader
+./hyperspace-server --port 50051 --role leader
+
+# Start Follower
+./hyperspace-server --port 50052 --role follower --leader http://127.0.0.1:50051
+```
+
+## 🧠 Hybrid Search (RRF)
+
+Combine the power of Hyperbolic Embeddings with traditional Keyword Search.
+
+```python
+# Search for semantic similarity AND keyword match (e.g. "iphone")
+results = client.search(
+    vector=[0.1]*8, 
+    top_k=5, 
+    hybrid_query="iphone", 
+    hybrid_alpha=0.3
+)
+```
+
+## 📉 Binary Quantization (1-bit)
+
+Use `Binary` quantization mode to compress vectors by **32x-64x** (vs f32/f64).
+Ideal for large-scale datasets where memory is the bottleneck.
 
 ---
 

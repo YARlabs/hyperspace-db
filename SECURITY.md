@@ -21,4 +21,6 @@ We will acknowledge your report within 48 hours and provide an estimated timefra
 ## Security Features
 
 *   **Memory Safety**: Built 100% in Rust to prevent buffer overflows and use-after-free errors.
+*   **Authentication**: Built-in API Key support (SHA-256 hashed storage, Constant-time comparison).
+*   **Role Based Access**: Strict Leader (Read/Write) and Follower (Read-Only) separation.
 *   **Dependency Audits**: We regularly audit our crate dependencies.

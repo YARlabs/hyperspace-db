@@ -17,3 +17,6 @@ keywords:
   - hnsw
   - rust
   - simd
+  - distributed-systems
+  - reciprocal-rank-fusion
+  - binary-quantization
