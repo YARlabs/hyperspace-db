@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite it as below."
+authors:
+  - family-names: "Glukhota"
+    given-names: "Sergey"
+    email: "sglukhota@gmail.com"
+    affiliation: "YARlabs"
+title: "HyperspaceDB: High-Performance Hyperbolic Vector Database"
+version: 1.0.0
+date-released: 2026-01-25
+url: "https://github.com/yarlabs/hyperspace-db"
+license: AGPL-3.0
+keywords:
+  - vector-database
+  - hyperbolic-geometry
+  - poincare-ball
+  - hnsw
+  - rust
+  - simd

@@ -1,0 +1,54 @@
+name: HyperspaceDB CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: info
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install Protoc (Required for tonic-build)
+      - name: Install Protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      # Install Rust Nightly
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo Registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # 1. Check Formatting
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      # 2. Build
+      - name: Build
+        run: cargo build --verbose
+
+      # 3. Test
+      - name: Run Tests
+        # Run all tests, including doc tests
+        run: cargo test --workspace --verbose
+
+      # 4. Clippy (Linter)
+      - name: Run Clippy
+        # Fail on warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
