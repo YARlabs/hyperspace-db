@@ -61,7 +61,7 @@ results = client.search(vector=[0.11]*8, top_k=5)
 ---
 
 ## 📊 Performance Benchmarks
-*Tested on M1 Max (Emulated), 1M Vectors (8D)*
+*Tested on M4 Pro (Emulated), 1M Vectors (8D)*
 
 *   **Insert Throughput**: ~15,500 vectors/sec (Sustained)
 *   **Search Latency**: ~0.07ms (14,600 QPS) @ 1M scale
