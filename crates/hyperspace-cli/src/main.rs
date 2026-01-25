@@ -1,26 +1,40 @@
+mod app;
 mod ui;
-use ui::{ui, App};
-use std::{error::Error, io};
-use ratatui::{
-    backend::CrosstermBackend,
-    widgets::{Block, Borders, Paragraph},
-    layout::{Layout, Constraint, Direction},
-    Terminal,
-};
+
+use std::error::Error;
+use std::io;
+use std::time::Duration;
+use ratatui::{backend::CrosstermBackend, Terminal};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use hyperspace_proto::hyperspace::database_client::DatabaseClient; // Fix import path
-use hyperspace_proto::hyperspace::MonitorRequest;
+use hyperspace_proto::hyperspace::database_client::DatabaseClient;
+use hyperspace_proto::hyperspace::{MonitorRequest, Empty, SystemStats};
+use app::{App, CurrentTab};
+use ui::ui;
+use tonic::transport::Channel;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // 1. Connect gRPC
-    // Note: Use http scheme for tonic local connection usually
+    // 1. Setup Network
     let mut client = DatabaseClient::connect("http://[::1]:50051").await?;
-    let mut stream = client.monitor(MonitorRequest {}).await?.into_inner();
+    
+    // Start Monitor Stream
+    let mut monitor_stream = client.monitor(MonitorRequest {}).await?.into_inner();
+
+    // Channel for Async -> Sync UI
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<SystemStats>(10);
+
+    // Background Task: Network Listener
+    tokio::spawn(async move {
+        while let Ok(Some(stats)) = monitor_stream.message().await {
+            if tx.send(stats).await.is_err() {
+                break;
+            }
+        }
+    });
 
     // 2. Setup Terminal
     enable_raw_mode()?;
@@ -29,82 +43,68 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut node_count: u64 = 0;
+    // 3. Create App State
+    let mut app = App::new();
 
-    // 3. UI Loop
-    loop {
-        terminal.draw(|f| {
-             let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Min(1)])
-                .split(f.size());
+    // 4. Run UI Loop
+    let res = run_app(&mut terminal, &mut app, &mut rx, client.clone()).await;
 
-             let title = Paragraph::new("HyperspaceDB :: Poincaré Monitor")
-                .block(Block::default().borders(Borders::ALL));
-             f.render_widget(title, chunks[0]);
-
-            let info = Paragraph::new(format!(
-                "Nodes: {}\nStatus: Online\nMode: HNSW+SIMD", 
-                node_count
-            ))
-            .block(Block::default().title("Stats").borders(Borders::ALL));
-            f.render_widget(info, chunks[1]);
-        })?;
-
-        tokio::select! {
-            msg = stream.message() => {
-                match msg {
-                    Ok(Some(stats)) => {
-                        node_count = stats.indexed_vectors;
-                    }
-                    Ok(None) => break,
-                    Err(_) => break,
-                }
-            }
-            _ = async {
-                 if event::poll(std::time::Duration::from_millis(100)).unwrap() {
-                    if let Event::Key(key) = event::read().unwrap() {
-                        if key.code == KeyCode::Char('q') { return Some(()); }
-                    }
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                None
-            } => {
-                 // Check return from async block? 
-                 // Actually this poll logic is blocking, might be choppy.
-                 // Better to use a separate thread for input ideally, but for demo:
-                 // The poll above returns immediately. 
-            }
-        }
-        
-        // Manual check for exit since 'select' branch return isn't propagating break easily
-        if crossterm::event::poll(std::time::Duration::from_millis(0))? {
-             if let Event::Key(key) = event::read()? {
-                if let KeyCode::Char('q') = key.code {
-                    break;
-                }
-            }
-        }
-    }
-
-    // Restore
+    // 5. Restore Terminal
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
 
+    if let Err(err) = res {
+        println!("{:?}", err);
+    }
+
     Ok(())
 }
 
-fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
+async fn run_app<B: ratatui::backend::Backend>(
+    terminal: &mut Terminal<B>,
+    app: &mut App,
+    rx: &mut tokio::sync::mpsc::Receiver<SystemStats>,
+    mut client: DatabaseClient<Channel>, 
+) -> io::Result<()> {
     loop {
-        terminal.draw(|f| ui(f, &app))?;
+        terminal.draw(|f| ui(f, app))?;
 
-        if crossterm::event::poll(std::time::Duration::from_millis(100))? {
+        // Process network updates (Non-blocking)
+        if let Ok(stats) = rx.try_recv() {
+            app.stats = stats;
+        }
+
+        // Process Input (Blocking with timeout)
+        if crossterm::event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if let KeyCode::Char('q') = key.code {
-                    return Ok(());
+                match key.code {
+                    KeyCode::Char('q') => app.should_quit = true,
+                    KeyCode::Tab => app.next_tab(), 
+                    KeyCode::Char('1') => app.current_tab = CurrentTab::Overview,
+                    KeyCode::Char('2') => app.current_tab = CurrentTab::Storage,
+                    KeyCode::Char('3') => app.current_tab = CurrentTab::Admin,
+                    KeyCode::Char('s') => {
+                        let mut c = client.clone();
+                        tokio::spawn(async move {
+                            let _ = c.trigger_snapshot(Empty{}).await;
+                        });
+                        app.logs.push("Snapshot triggered...".to_string());
+                    },
+                    KeyCode::Char('v') => {
+                        let mut c = client.clone();
+                        tokio::spawn(async move {
+                            let _ = c.trigger_vacuum(Empty{}).await;
+                        });
+                        app.logs.push("Vacuum triggered...".to_string());
+                    },
+                    _ => {}
                 }
             }
+        }
+
+        if app.should_quit {
+            return Ok(());
         }
     }
 }
