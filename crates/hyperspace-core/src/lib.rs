@@ -1,8 +1,8 @@
 #![feature(portable_simd)]
 
+pub mod config;
 pub mod metric;
 pub mod vector;
-pub mod config;
 
 pub use config::GlobalConfig;
 

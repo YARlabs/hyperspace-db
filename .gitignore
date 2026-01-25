@@ -1,9 +1,11 @@
 /target.gitignore
 target/
-vectors.hyp
 sdks/python/venv
 __pycache__
+**/*.pyc
 .DS_Store
-index.snap
-wal.log
-
+*.hyp
+*.snap
+*.log
+venv/
+data/

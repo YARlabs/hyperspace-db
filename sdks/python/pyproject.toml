@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hyperspacedb"
+version = "0.1.0"
+description = "Fastest Hyperbolic Vector DB Client"
+authors = [
+    {name = "YARlabs"}
+]
+dependencies = [
+    "grpcio>=1.50.0",
+    "protobuf>=4.21.0",
+    "numpy>=1.20.0"
+]
+requires-python = ">=3.8"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hyperspace*"]

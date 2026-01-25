@@ -1,7 +1,7 @@
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::fs::{File, OpenOptions};
-use std::io::{self, Write, Read, BufWriter, BufReader};
+use std::io::{self, BufReader, BufWriter, Write};
 use std::path::Path;
-use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 
 #[derive(Debug)]
 pub struct Wal {
@@ -15,10 +15,7 @@ pub enum WalEntry {
 
 impl Wal {
     pub fn new(path: &Path) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(Self {
             file: BufWriter::new(file),
         })
@@ -31,14 +28,17 @@ impl Wal {
         for &val in vector {
             self.file.write_f64::<LittleEndian>(val)?;
         }
-        self.file.flush()?; 
+        self.file.flush()?;
         Ok(())
     }
 
-    pub fn replay<F>(path: &Path, mut callback: F) -> io::Result<()> 
-    where F: FnMut(WalEntry) 
+    pub fn replay<F>(path: &Path, mut callback: F) -> io::Result<()>
+    where
+        F: FnMut(WalEntry),
     {
-        if !path.exists() { return Ok(()); }
+        if !path.exists() {
+            return Ok(());
+        }
         let file = File::open(path)?;
         let mut reader = BufReader::new(file);
 

@@ -1,26 +1,26 @@
 mod app;
 mod ui;
 
-use std::error::Error;
-use std::io;
-use std::time::Duration;
-use ratatui::{backend::CrosstermBackend, Terminal};
+use app::{App, CurrentTab};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
-use hyperspace_proto::hyperspace::{MonitorRequest, Empty, SystemStats};
-use app::{App, CurrentTab};
-use ui::ui;
+use hyperspace_proto::hyperspace::{Empty, MonitorRequest, SystemStats};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::error::Error;
+use std::io;
+use std::time::Duration;
 use tonic::transport::Channel;
+use ui::ui;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // 1. Setup Network
     let mut client = DatabaseClient::connect("http://[::1]:50051").await?;
-    
+
     // Start Monitor Stream
     let mut monitor_stream = client.monitor(MonitorRequest {}).await?.into_inner();
 
@@ -51,7 +51,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // 5. Restore Terminal
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     if let Err(err) = res {
@@ -65,7 +69,7 @@ async fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     rx: &mut tokio::sync::mpsc::Receiver<SystemStats>,
-    mut client: DatabaseClient<Channel>, 
+    client: DatabaseClient<Channel>,
 ) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui(f, app))?;
@@ -80,24 +84,24 @@ async fn run_app<B: ratatui::backend::Backend>(
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => app.should_quit = true,
-                    KeyCode::Tab => app.next_tab(), 
+                    KeyCode::Tab => app.next_tab(),
                     KeyCode::Char('1') => app.current_tab = CurrentTab::Overview,
                     KeyCode::Char('2') => app.current_tab = CurrentTab::Storage,
                     KeyCode::Char('3') => app.current_tab = CurrentTab::Admin,
                     KeyCode::Char('s') => {
                         let mut c = client.clone();
                         tokio::spawn(async move {
-                            let _ = c.trigger_snapshot(Empty{}).await;
+                            let _ = c.trigger_snapshot(Empty {}).await;
                         });
                         app.logs.push("Snapshot triggered...".to_string());
-                    },
+                    }
                     KeyCode::Char('v') => {
                         let mut c = client.clone();
                         tokio::spawn(async move {
-                            let _ = c.trigger_vacuum(Empty{}).await;
+                            let _ = c.trigger_vacuum(Empty {}).await;
                         });
                         app.logs.push("Vacuum triggered...".to_string());
-                    },
+                    }
                     _ => {}
                 }
             }

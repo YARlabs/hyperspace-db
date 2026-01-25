@@ -8,8 +8,10 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
 
     // Generate two random vectors inside the unit ball
-    let v1_data: [f64; DIM] = core::array::from_fn(|_| rng.gen_range(-0.5..0.5) / (DIM as f64).sqrt());
-    let v2_data: [f64; DIM] = core::array::from_fn(|_| rng.gen_range(-0.5..0.5) / (DIM as f64).sqrt());
+    let v1_data: [f64; DIM] =
+        core::array::from_fn(|_| rng.gen_range(-0.5..0.5) / (DIM as f64).sqrt());
+    let v2_data: [f64; DIM] =
+        core::array::from_fn(|_| rng.gen_range(-0.5..0.5) / (DIM as f64).sqrt());
 
     let v1 = HyperVector::<DIM>::new(v1_data).unwrap();
     let v2 = HyperVector::<DIM>::new(v2_data).unwrap();
@@ -18,9 +20,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     // Bench SIMD implementation
     group.bench_function("simd_f64x8", |b| {
-        b.iter(|| {
-            black_box(v1.poincare_distance_sq(black_box(&v2)))
-        })
+        b.iter(|| black_box(v1.poincare_distance_sq(black_box(&v2))))
     });
 
     // Bench Naive implementation for comparison

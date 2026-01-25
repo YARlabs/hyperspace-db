@@ -1,20 +1,20 @@
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
-use rkyv::{Archive, Deserialize, Serialize};
-use rkyv::ser::Serializer;
-use std::fs::File;
-use std::io::Write;
+use dashmap::DashMap;
 use parking_lot::RwLock;
 use rand::Rng;
+use rkyv::ser::Serializer;
+use rkyv::{Archive, Deserialize, Serialize};
+use roaring::RoaringBitmap;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::{BinaryHeap, HashSet};
-use dashmap::DashMap;
-use roaring::RoaringBitmap;
+use std::fs::File;
+use std::io::Write;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 // Imports
 use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
-use hyperspace_core::QuantizationMode;
 use hyperspace_core::GlobalConfig;
+use hyperspace_core::QuantizationMode;
 use hyperspace_store::VectorStore;
 
 #[derive(Archive, Deserialize, Serialize)]
@@ -53,10 +53,10 @@ impl HnswIndex {
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
         let entry_point = self.entry_point.load(Ordering::Relaxed);
-        
+
         let nodes_guard = self.nodes.read();
         let mut snapshot_nodes = Vec::with_capacity(nodes_guard.len());
-        
+
         for node in nodes_guard.iter() {
             let mut layers = Vec::new();
             for layer_lock in &node.layers {
@@ -67,33 +67,40 @@ impl HnswIndex {
                 layers,
             });
         }
-        
+
         let data = SnapshotData {
             max_layer,
             entry_point,
             nodes: snapshot_nodes,
         };
-        
+
         // Serialize
         let mut serializer = rkyv::ser::serializers::AllocSerializer::<256>::default();
-        serializer.serialize_value(&data).map_err(|e: rkyv::ser::serializers::CompositeSerializerError<_,_,_>| e.to_string())?;
+        serializer.serialize_value(&data).map_err(
+            |e: rkyv::ser::serializers::CompositeSerializerError<_, _, _>| e.to_string(),
+        )?;
         let bytes = serializer.into_serializer().into_inner();
-        
+
         let mut file = File::create(path).map_err(|e| e.to_string())?;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
-        
+
         Ok(())
     }
 
-    pub fn load_snapshot(path: &std::path::Path, storage: Arc<VectorStore>, mode: QuantizationMode, config: Arc<GlobalConfig>) -> Result<Self, String> {
+    pub fn load_snapshot(
+        path: &std::path::Path,
+        storage: Arc<VectorStore>,
+        mode: QuantizationMode,
+        config: Arc<GlobalConfig>,
+    ) -> Result<Self, String> {
         let file_content = std::fs::read(path).map_err(|e| e.to_string())?;
-        
+
         // Validate and deserialize
         let archived = rkyv::check_archived_root::<SnapshotData>(&file_content)
             .map_err(|e| format!("Snapshot corruption: {}", e))?;
-            
+
         let deserialized: SnapshotData = archived.deserialize(&mut rkyv::Infallible).unwrap();
-        
+
         // Reconstruct Graph
         let mut nodes = Vec::with_capacity(deserialized.nodes.len());
         for s_node in deserialized.nodes {
@@ -106,14 +113,14 @@ impl HnswIndex {
                 layers,
             });
         }
-        
+
         // Sync storage count
         storage.set_count(nodes.len());
         println!("Restored {} nodes from snapshot topology.", nodes.len());
 
         Ok(Self {
             nodes: RwLock::new(nodes),
-            metadata: MetadataIndex::default(), 
+            metadata: MetadataIndex::default(),
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
@@ -127,34 +134,34 @@ impl HnswIndex {
 pub type NodeId = u32;
 
 const MAX_LAYERS: usize = 16;
-const M: usize = 16; 
+const M: usize = 16;
 // const M_MAX0: usize = M * 2; // Not used in MVP yet
 
 #[derive(Debug)]
 pub struct HnswIndex {
     // Topology storage. Index in vector = NodeId.
     nodes: RwLock<Vec<Node>>,
-    
+
     // Metadata storage
     pub metadata: MetadataIndex,
 
     // Graph entry point (top level)
     entry_point: AtomicU32,
-    
+
     // Current max layer
     max_layer: AtomicU32,
-    
+
     // Reference to data (raw vectors)
     storage: Arc<VectorStore>,
-    
+
     // Quantization
     pub mode: QuantizationMode,
-    
+
     // Runtime configuration
     pub config: Arc<GlobalConfig>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Node {
     id: NodeId,
     // Neighbor lists by layer.
@@ -174,7 +181,10 @@ impl Eq for Candidate {}
 impl Ord for Candidate {
     fn cmp(&self, other: &Self) -> CmpOrdering {
         // Reverse because BinaryHeap is MaxHeap
-        other.distance.partial_cmp(&self.distance).unwrap_or(CmpOrdering::Equal)
+        other
+            .distance
+            .partial_cmp(&self.distance)
+            .unwrap_or(CmpOrdering::Equal)
     }
 }
 impl PartialOrd for Candidate {
@@ -184,7 +194,11 @@ impl PartialOrd for Candidate {
 }
 
 impl HnswIndex {
-    pub fn new(storage: Arc<VectorStore>, mode: QuantizationMode, config: Arc<GlobalConfig>) -> Self {
+    pub fn new(
+        storage: Arc<VectorStore>,
+        mode: QuantizationMode,
+        config: Arc<GlobalConfig>,
+    ) -> Self {
         Self {
             nodes: RwLock::new(Vec::new()),
             metadata: MetadataIndex::default(),
@@ -195,7 +209,7 @@ impl HnswIndex {
             config,
         }
     }
-    
+
     // Support Soft Delete
     pub fn delete(&self, id: NodeId) {
         let mut del = self.metadata.deleted.write();
@@ -203,42 +217,48 @@ impl HnswIndex {
     }
 
     /// Search K nearest neighbors with Filter and Soft Deletes
-    pub fn search(&self, query: &[f64], k: usize, ef_search: usize, filter: &std::collections::HashMap<String, String>) -> Vec<(NodeId, f64)> {
+    pub fn search(
+        &self,
+        query: &[f64],
+        k: usize,
+        ef_search: usize,
+        filter: &std::collections::HashMap<String, String>,
+    ) -> Vec<(NodeId, f64)> {
         // 1. Prepare Filter Bitmap
         // Start with Logic: (Tag1 AND Tag2 ...) AND !Deleted
         let allowed_bitmap = {
-             let deleted = self.metadata.deleted.read();
-             let mut bitmap: Option<RoaringBitmap> = None;
-             
-             // Tag Filters
-             if !filter.is_empty() {
-                 for (key, val) in filter {
-                     let tag = format!("{}:{}", key, val);
-                     if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
-                         match bitmap {
-                             Some(ref mut bm) => *bm &= &*tag_bitmap,
-                             None => bitmap = Some(tag_bitmap.clone()),
-                         }
-                     } else {
-                         // Tag not found, result is empty
-                         return Vec::new();
-                     }
-                 }
-             }
-             
-             // Apply Deleted mask
-             match bitmap {
-                 Some(mut bm) => {
-                     bm -= &*deleted;
-                     Some(bm)
-                 },
-                 None => {
-                     // No filters? Then ALL allowed except deleted.
-                     // But RoaringBitmap is sparse. We can't represent "ALL" easily without max bound.
-                     // Option: If None, we check "not deleted" explicitly during traversal.
-                     None
-                 }
-             }
+            let deleted = self.metadata.deleted.read();
+            let mut bitmap: Option<RoaringBitmap> = None;
+
+            // Tag Filters
+            if !filter.is_empty() {
+                for (key, val) in filter {
+                    let tag = format!("{}:{}", key, val);
+                    if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
+                        match bitmap {
+                            Some(ref mut bm) => *bm &= &*tag_bitmap,
+                            None => bitmap = Some(tag_bitmap.clone()),
+                        }
+                    } else {
+                        // Tag not found, result is empty
+                        return Vec::new();
+                    }
+                }
+            }
+
+            // Apply Deleted mask
+            match bitmap {
+                Some(mut bm) => {
+                    bm -= &*deleted;
+                    Some(bm)
+                }
+                None => {
+                    // No filters? Then ALL allowed except deleted.
+                    // But RoaringBitmap is sparse. We can't represent "ALL" easily without max bound.
+                    // Option: If None, we check "not deleted" explicitly during traversal.
+                    None
+                }
+            }
         };
 
         // 1. Create HyperVector from query.
@@ -246,14 +266,17 @@ impl HnswIndex {
         let mut aligned_query = [0.0; 8];
         if query.len() != 8 {
             // Panic for now, real code should handle error
-            panic!("Query dimension mismatch provided {}, expected 8", query.len());
+            panic!(
+                "Query dimension mismatch provided {}, expected 8",
+                query.len()
+            );
         }
         aligned_query.copy_from_slice(query);
         let q_vec = HyperVector::new(aligned_query).unwrap(); // Validate logic in real app
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);
         let max_layer = self.max_layer.load(Ordering::Relaxed);
-        
+
         let mut curr_dist = self.dist(entry_node, &q_vec);
         let mut curr_node = entry_node;
 
@@ -266,13 +289,13 @@ impl HnswIndex {
                 // Note: This 2-step lock might be tricky if nodes is resizing, but RwLock<Vec> holds the reference.
                 // Actually nodes[id] gives us the Node struct.
                 let nodes_guard = self.nodes.read();
-                // Check bounds 
-                if (curr_node as usize) >= nodes_guard.len() { break; } 
+                // Check bounds
+                if (curr_node as usize) >= nodes_guard.len() {
+                    break;
+                }
 
-                let neighbors = nodes_guard[curr_node as usize]
-                    .layers[level as usize]
-                    .read();
-                
+                let neighbors = nodes_guard[curr_node as usize].layers[level as usize].read();
+
                 for &neighbor in neighbors.iter() {
                     let d = self.dist(neighbor, &q_vec);
                     if d < curr_dist {
@@ -290,25 +313,32 @@ impl HnswIndex {
 
     // Distance calculation helper
     #[inline]
-    fn dist(&self, node_id: NodeId, query: &HyperVector<8>) -> f64 { 
+    fn dist(&self, node_id: NodeId, query: &HyperVector<8>) -> f64 {
         let bytes = self.storage.get(node_id);
         match self.mode {
-             QuantizationMode::ScalarI8 => {
-                 let q = QuantizedHyperVector::<8>::from_bytes(bytes);
-                 q.poincare_distance_sq_to_float(query)
-             },
-             QuantizationMode::None => {
-                 let v = HyperVector::<8>::from_bytes(bytes);
-                 v.poincare_distance_sq(query)
-             }
+            QuantizationMode::ScalarI8 => {
+                let q = QuantizedHyperVector::<8>::from_bytes(bytes);
+                q.poincare_distance_sq_to_float(query)
+            }
+            QuantizationMode::None => {
+                let v = HyperVector::<8>::from_bytes(bytes);
+                v.poincare_distance_sq(query)
+            }
         }
     }
-    
-    fn search_layer0(&self, start_node: NodeId, query: &HyperVector<8>, k: usize, ef: usize, allowed: Option<&RoaringBitmap>) -> Vec<(NodeId, f64)> {
-        let mut candidates = BinaryHeap::new(); 
-        let mut results = BinaryHeap::new();    
+
+    fn search_layer0(
+        &self,
+        start_node: NodeId,
+        query: &HyperVector<8>,
+        k: usize,
+        ef: usize,
+        allowed: Option<&RoaringBitmap>,
+    ) -> Vec<(NodeId, f64)> {
+        let mut candidates = BinaryHeap::new();
+        let mut results = BinaryHeap::new();
         let mut visited = HashSet::new();
-        
+
         // Helper to check validity
         // Note: We need to access 'deleted' lock if 'allowed' is None?
         // Or we assume 'allowed = None' means 'Check deleted manually'.
@@ -318,7 +348,7 @@ impl HnswIndex {
         } else {
             None
         };
-        
+
         let is_valid = |id: u32| -> bool {
             if let Some(bm) = allowed {
                 bm.contains(id)
@@ -328,8 +358,11 @@ impl HnswIndex {
         };
 
         let d = self.dist(start_node, query);
-        let first = Candidate { id: start_node, distance: d };
-        
+        let first = Candidate {
+            id: start_node,
+            distance: d,
+        };
+
         candidates.push(first);
         if is_valid(start_node) {
             results.push(first);
@@ -345,18 +378,18 @@ impl HnswIndex {
             // But results only contains VALID nodes.
             // So if we have `ef` VALID nodes, and candidate is worse, we stop.
             if let Some(worst) = results.peek() {
-                 if results.len() >= ef && cand.distance > worst.distance {
-                     break;
-                 }
+                if results.len() >= ef && cand.distance > worst.distance {
+                    break;
+                }
             }
 
             let neighbors_ids = {
                 let nodes_guard = self.nodes.read();
-                if (cand.id as usize) >= nodes_guard.len() { 
-                    Vec::new() 
+                if (cand.id as usize) >= nodes_guard.len() {
+                    Vec::new()
                 } else {
                     let layer_guard = nodes_guard[cand.id as usize].layers[0].read();
-                    layer_guard.clone() 
+                    layer_guard.clone()
                 }
             };
 
@@ -364,9 +397,9 @@ impl HnswIndex {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
                     let dist = self.dist(neighbor, query);
-                    
+
                     // Add to Candidates (Navigation)
-                    // Logic: Keep expanding? 
+                    // Logic: Keep expanding?
                     // We add to candidates if dist < worst_result OR results not full.
                     // This ensures we traverse "through" invalid nodes if they are promising (close to query).
                     let mut add_to_candidates = true;
@@ -375,11 +408,14 @@ impl HnswIndex {
                             add_to_candidates = false;
                         }
                     }
-                    
+
                     if add_to_candidates {
-                        let c = Candidate { id: neighbor, distance: dist };
+                        let c = Candidate {
+                            id: neighbor,
+                            distance: dist,
+                        };
                         candidates.push(c);
-                        
+
                         // Add to Results (Only if Valid)
                         if is_valid(neighbor) {
                             results.push(c);
@@ -391,7 +427,7 @@ impl HnswIndex {
                 }
             }
         }
-        
+
         let mut output = Vec::new();
         while let Some(c) = results.pop() {
             output.push((c.id, c.distance));
@@ -402,14 +438,23 @@ impl HnswIndex {
     }
 
     // Search candidates on a layer (returns Heap instead of sorted vec)
-    fn search_layer_candidates(&self, start_node: NodeId, query: &HyperVector<8>, level: usize, ef: usize) -> BinaryHeap<Candidate> {
-        let mut candidates = BinaryHeap::new(); 
-        let mut results = BinaryHeap::new();    
+    fn search_layer_candidates(
+        &self,
+        start_node: NodeId,
+        query: &HyperVector<8>,
+        level: usize,
+        ef: usize,
+    ) -> BinaryHeap<Candidate> {
+        let mut candidates = BinaryHeap::new();
+        let mut results = BinaryHeap::new();
         let mut visited = HashSet::new();
 
         let d = self.dist(start_node, query);
-        let first = Candidate { id: start_node, distance: d };
-        
+        let first = Candidate {
+            id: start_node,
+            distance: d,
+        };
+
         candidates.push(first);
         results.push(first);
         visited.insert(start_node);
@@ -423,11 +468,11 @@ impl HnswIndex {
             // Lock scope
             let neighbors_ids = {
                 let nodes_guard = self.nodes.read();
-                if (cand.id as usize) >= nodes_guard.len() { 
-                    Vec::new() 
+                if (cand.id as usize) >= nodes_guard.len() {
+                    Vec::new()
                 } else {
                     let layer_guard = nodes_guard[cand.id as usize].layers[level].read();
-                    layer_guard.clone() 
+                    layer_guard.clone()
                 }
             };
 
@@ -435,14 +480,17 @@ impl HnswIndex {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
                     let dist = self.dist(neighbor, query);
-                    
+
                     if results.len() < ef || dist < curr_worst {
-                        let c = Candidate { id: neighbor, distance: dist };
+                        let c = Candidate {
+                            id: neighbor,
+                            distance: dist,
+                        };
                         candidates.push(c);
                         results.push(c);
-                        
+
                         if results.len() > ef {
-                            results.pop(); 
+                            results.pop();
                         }
                     }
                 }
@@ -454,15 +502,18 @@ impl HnswIndex {
     /// HNSW Heuristic for neighbor selection
     fn select_neighbors(
         &self,
-        query_vec: &HyperVector<8>,
-        mut candidates: BinaryHeap<Candidate>,
+        _query_vec: &HyperVector<8>,
+        candidates: BinaryHeap<Candidate>,
         m: usize,
     ) -> Vec<NodeId> {
         let mut result = Vec::with_capacity(m);
-        let mut sorted_candidates = candidates.into_sorted_vec(); 
-        
-        while let Some(cand) = sorted_candidates.pop() { // Gets closest (sorted vec is ascending, pop from end)
-            if result.len() >= m { break; }
+        let mut sorted_candidates = candidates.into_sorted_vec();
+
+        while let Some(cand) = sorted_candidates.pop() {
+            // Gets closest (sorted vec is ascending, pop from end)
+            if result.len() >= m {
+                break;
+            }
 
             let mut is_good = true;
             let cand_vec = self.get_vector(cand.id);
@@ -470,7 +521,7 @@ impl HnswIndex {
             for &existing_neighbor in &result {
                 let neighbor_vec = self.get_vector(existing_neighbor);
                 let dist_to_neighbor = cand_vec.poincare_distance_sq(&neighbor_vec);
-                
+
                 if dist_to_neighbor < cand.distance {
                     is_good = false;
                     break;
@@ -483,44 +534,53 @@ impl HnswIndex {
         }
         result
     }
-    
+
     // Helper to get HyperVector from id
     fn get_vector(&self, id: NodeId) -> HyperVector<8> {
-         let bytes = self.storage.get(id);
-         match self.mode {
-             QuantizationMode::ScalarI8 => {
-                 let q = QuantizedHyperVector::<8>::from_bytes(bytes);
-                 let mut coords = [0.0; 8];
-                 for i in 0..8 { coords[i] = q.coords[i] as f64 / 127.0; }
-                 HyperVector { coords, alpha: q.alpha as f64 }
-             },
-             QuantizationMode::None => {
-                 let v = HyperVector::<8>::from_bytes(bytes);
-                 v.clone()
-             }
-         }
+        let bytes = self.storage.get(id);
+        match self.mode {
+            QuantizationMode::ScalarI8 => {
+                let q = QuantizedHyperVector::<8>::from_bytes(bytes);
+                let mut coords = [0.0; 8];
+                for (i, &c) in q.coords.iter().enumerate() {
+                    coords[i] = c as f64 / 127.0;
+                }
+                HyperVector {
+                    coords,
+                    alpha: q.alpha as f64,
+                }
+            }
+            QuantizationMode::None => {
+                let v = HyperVector::<8>::from_bytes(bytes);
+                v.clone()
+            }
+        }
     }
 
     // Insert with Metadata
     pub fn insert_to_storage(&self, vector: &[f64]) -> Result<u32, String> {
-         let mut arr = [0.0; 8];
-        if vector.len() != 8 { return Err("Dim mismatch".into()); }
+        let mut arr = [0.0; 8];
+        if vector.len() != 8 {
+            return Err("Dim mismatch".into());
+        }
         arr.copy_from_slice(vector);
         let q_vec_full = HyperVector::new(arr)?;
 
         let new_id = match self.mode {
             QuantizationMode::ScalarI8 => {
-                 let q = QuantizedHyperVector::from_float(&q_vec_full);
-                 self.storage.append(q.as_bytes())?
-            },
-            QuantizationMode::None => {
-                 self.storage.append(q_vec_full.as_bytes())?
+                let q = QuantizedHyperVector::from_float(&q_vec_full);
+                self.storage.append(q.as_bytes())?
             }
+            QuantizationMode::None => self.storage.append(q_vec_full.as_bytes())?,
         };
         Ok(new_id)
     }
 
-    pub fn index_node(&self, id: NodeId, meta: std::collections::HashMap<String, String>) -> Result<(), String> {
+    pub fn index_node(
+        &self,
+        id: NodeId,
+        meta: std::collections::HashMap<String, String>,
+    ) -> Result<(), String> {
         // 2. Index Metadata (Inverted Index)
         for (key, val) in meta {
             let tag = format!("{}:{}", key, val);
@@ -532,60 +592,65 @@ impl HnswIndex {
 
         let max_layer = self.max_layer.load(Ordering::Relaxed);
         let entry_point = self.entry_point.load(Ordering::Relaxed);
-        
+
         // Generate Level
         let new_level = self.random_level();
-        
+
         // Create Node
         {
             let mut nodes = self.nodes.write();
             if nodes.len() <= id as usize {
-                 nodes.resize_with(id as usize + 1, Node::default); 
+                nodes.resize_with(id as usize + 1, Node::default);
             }
-             let mut layers = Vec::new();
-             for _ in 0..=new_level { layers.push(RwLock::new(Vec::new())); }
-             nodes[id as usize] = Node { id, layers };
+            let mut layers = Vec::new();
+            for _ in 0..=new_level {
+                layers.push(RwLock::new(Vec::new()));
+            }
+            nodes[id as usize] = Node { id, layers };
         }
 
         let mut curr_obj = entry_point;
         let mut curr_dist = self.dist(curr_obj, &q_vec);
 
         // 2. Phase 1: Zoom in (Greedy Search) from top to new_level
-        for level in (new_level+1..=(max_layer as usize)).rev() {
-             let mut changed = true;
-             while changed {
-                 changed = false;
-                 // Read lock scope
-                 let neighbor = {
+        for level in (new_level + 1..=(max_layer as usize)).rev() {
+            let mut changed = true;
+            while changed {
+                changed = false;
+                // Read lock scope
+                let neighbor = {
                     let nodes_guard = self.nodes.read();
-                    if curr_obj as usize >= nodes_guard.len() { break; }
+                    if curr_obj as usize >= nodes_guard.len() {
+                        break;
+                    }
                     let neighbors = nodes_guard[curr_obj as usize].layers[level].read();
                     let mut best_n = None;
                     for &n in neighbors.iter() {
                         let d = self.dist(n, &q_vec);
-                         if d < curr_dist {
-                             curr_dist = d;
-                             best_n = Some(n);
-                             changed = true;
-                         }
+                        if d < curr_dist {
+                            curr_dist = d;
+                            best_n = Some(n);
+                            changed = true;
+                        }
                     }
                     best_n
-                 };
-                 
-                 if let Some(n) = neighbor {
-                     curr_obj = n;
-                 }
-             }
+                };
+
+                if let Some(n) = neighbor {
+                    curr_obj = n;
+                }
+            }
         }
 
         // 3. Phase 2: Insert links from new_level down to 0
         let ef_construction = self.config.get_ef_construction();
-        const M_MAX: usize = M; 
+        const M_MAX: usize = M;
 
         for level in (0..=std::cmp::min(new_level, max_layer as usize)).rev() {
             // a) Search candidates
-            let candidates_heap = self.search_layer_candidates(curr_obj, &q_vec, level, ef_construction);
-            
+            let candidates_heap =
+                self.search_layer_candidates(curr_obj, &q_vec, level, ef_construction);
+
             // b) Select neighbors with heuristic
             let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, M);
 
@@ -593,17 +658,19 @@ impl HnswIndex {
             for &neighbor_id in &selected_neighbors {
                 self.add_link(id, neighbor_id, level);
                 self.add_link(neighbor_id, id, level);
-                
+
                 // d) Pruning
-                let neighbors_len = self.nodes.read()[neighbor_id as usize].layers[level].read().len();
+                let neighbors_len = self.nodes.read()[neighbor_id as usize].layers[level]
+                    .read()
+                    .len();
                 if neighbors_len > M_MAX {
                     self.prune_connections(neighbor_id, level, M_MAX);
                 }
             }
-            
+
             // Move entry point for next layer to the best found candidate
             if !selected_neighbors.is_empty() {
-                 curr_obj = selected_neighbors[0]; 
+                curr_obj = selected_neighbors[0];
             }
         }
 
@@ -617,17 +684,23 @@ impl HnswIndex {
     }
 
     // Wrapped insert for backward compatibility
-    pub fn insert(&self, vector: &[f64], meta: std::collections::HashMap<String, String>) -> Result<u32, String> {
+    pub fn insert(
+        &self,
+        vector: &[f64],
+        meta: std::collections::HashMap<String, String>,
+    ) -> Result<u32, String> {
         let new_id = self.insert_to_storage(vector)?;
         self.index_node(new_id, meta)?;
         Ok(new_id)
     }
 
     fn add_link(&self, src: NodeId, dst: NodeId, level: usize) {
-        let nodes = self.nodes.read(); 
+        let nodes = self.nodes.read();
         // Ensure src exists
-        if src as usize >= nodes.len() { return; }
-        
+        if src as usize >= nodes.len() {
+            return;
+        }
+
         // Potential deadlock if we hold read lock on nodes and try to write lock on layer?
         // No, RwLock is reentrant only for Read. Here we have Read on nodes, Write on layer.
         // parking_lot RwLock IS NOT Reentrant. But nodes is RwLock<Vec<Node>>.
@@ -643,11 +716,13 @@ impl HnswIndex {
         // Drop logic inside to avoid long write locks block
         let links_copy: Vec<u32> = {
             let nodes = self.nodes.read();
-            if node_id as usize >= nodes.len() { return; }
+            if node_id as usize >= nodes.len() {
+                return;
+            }
             let layer_read = nodes[node_id as usize].layers[level].read();
             layer_read.clone()
         };
-        
+
         // 1. Get vectors
         let node_vec = self.get_vector(node_id);
         let mut candidates = Vec::new();
@@ -656,11 +731,11 @@ impl HnswIndex {
             let d = node_vec.poincare_distance_sq(&n_vec);
             candidates.push(Candidate { id: n, distance: d });
         }
-        
+
         // 2. Select best
         let heap = BinaryHeap::from(candidates);
         let keepers = self.select_neighbors(&node_vec, heap, max_links);
-        
+
         // 3. Replace list
         let nodes = self.nodes.read();
         let mut links = nodes[node_id as usize].layers[level].write();
@@ -676,7 +751,10 @@ impl HnswIndex {
     }
 
     pub fn storage_stats(&self) -> (usize, usize) {
-        (self.storage.segment_count(), self.storage.total_size_bytes())
+        (
+            self.storage.segment_count(),
+            self.storage.total_size_bytes(),
+        )
     }
 
     fn random_level(&self) -> usize {
@@ -686,11 +764,5 @@ impl HnswIndex {
             level += 1;
         }
         level
-    }
-}
-
-impl Default for Node {
-    fn default() -> Self {
-        Self { id: 0, layers: Vec::new() }
     }
 }
