@@ -219,7 +219,7 @@ impl HnswIndex {
     // Distance calculation helper
     #[inline]
     fn dist(&self, node_id: NodeId, query: &HyperVector<8>) -> f64 { 
-        let slice = self.storage.get(node_id as usize); 
+        let slice = self.storage.get(node_id); 
         // Force copy into simple array to avoid reference issues
         let mut array = [0.0; 8];
         // Ensure slice has enough data (should be guaranteed by storage logic, but safe check needed in real prod)
@@ -397,7 +397,7 @@ impl HnswIndex {
     
     // Helper to get HyperVector from id
     fn get_vector(&self, id: NodeId) -> HyperVector<8> {
-         let slice = self.storage.get(id as usize);
+         let slice = self.storage.get(id);
          let arr: [f64; 8] = slice[0..8].try_into().unwrap();
          // Alpha is stored at the end of DIM coords. 
          // Stride was (DIM+1)*8 bytes. Slice includes alpha at index 8.

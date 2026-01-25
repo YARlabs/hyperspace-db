@@ -684,6 +684,7 @@ dependencies = [
  "byteorder",
  "hyperspace-core",
  "memmap2",
+ "parking_lot",
  "thiserror",
 ]
 

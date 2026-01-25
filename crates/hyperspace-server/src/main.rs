@@ -105,12 +105,15 @@ impl Database for HyperspaceService {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "0.0.0.0:50051".parse()?;
     let wal_path = std::path::Path::new("wal.log");
-    let store_path = std::path::Path::new("vectors.hyp");
+    
+    // Directory for segmented storage
+    let data_dir = std::path::Path::new("data");
     let snap_path = std::path::Path::new("index.snap");
 
     let (store, index, mut recovered_count) = if snap_path.exists() {
         println!("Found snapshot. Loading...");
-        let store = Arc::new(VectorStore::new(store_path, 8, 0));
+        // VectorStore auto-loads chunks from data_dir
+        let store = Arc::new(VectorStore::new(data_dir, 8));
         match HnswIndex::load_snapshot(snap_path, store.clone()) {
             Ok(idx) => {
                 let count = idx.count_nodes();
@@ -119,15 +122,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             Err(e) => {
                 eprintln!("Failed to load snapshot: {}. Starting fresh.", e);
-                let _ = std::fs::remove_file(store_path);
-                let store = Arc::new(VectorStore::new(store_path, 8, 0));
+                // Reset data dir
+                if data_dir.exists() {
+                    let _ = std::fs::remove_dir_all(data_dir);
+                }
+                let store = Arc::new(VectorStore::new(data_dir, 8));
                 (store.clone(), Arc::new(HnswIndex::new(store)), 0)
             }
         }
     } else {
         println!("No snapshot found. Starting fresh.");
-        let _ = std::fs::remove_file(store_path);
-        let store = Arc::new(VectorStore::new(store_path, 8, 0));
+        if data_dir.exists() {
+            let _ = std::fs::remove_dir_all(data_dir);
+        }
+        let store = Arc::new(VectorStore::new(data_dir, 8));
         (store.clone(), Arc::new(HnswIndex::new(store)), 0)
     };
     
