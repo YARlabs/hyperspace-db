@@ -58,3 +58,92 @@ impl<const N: usize> HyperVector<N> {
         self.poincare_distance_sq(other).acosh()
     }
 }
+
+/// Quantized version (i8 coordinates)
+#[repr(C, align(64))]
+#[derive(Debug, Clone)]
+pub struct QuantizedHyperVector<const N: usize> {
+    pub coords: [i8; N],
+    pub alpha: f32, // Storing as f32 to save space
+}
+
+impl<const N: usize> QuantizedHyperVector<N> {
+    pub fn from_float(v: &HyperVector<N>) -> Self {
+        let mut coords = [0; N];
+        for i in 0..N {
+            // Scale [-1, 1] mapped to [-127, 127]
+            let val = (v.coords[i] * 127.0).clamp(-127.0, 127.0);
+            coords[i] = val as i8;
+        }
+        
+        Self {
+            coords,
+            alpha: v.alpha as f32,
+        }
+    }
+
+    /// Calculate distance between Quantized Vector (Storage) and Float Vector (Query)
+    /// We dequantize 'self' on the fly.
+    #[inline(always)]
+    pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
+        let mut sum_sq_diff = f64x8::splat(0.0);
+        const LANES: usize = 8;
+        const SCALE_INV: f64 = 1.0 / 127.0;
+
+        for i in (0..N).step_by(LANES) {
+            // Load 8 i8s
+            let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i+LANES]);
+            // Cast to f64 (via cast -> i32 -> f64? or direct?)
+            // Simd::cast is available for primitive numeric types
+            let a_f64: Simd<f64, LANES> = a_i8.cast(); 
+            
+            // Dequantize: a_f64 / 127.0
+            let a_scaled = a_f64 * Simd::splat(SCALE_INV);
+            
+            let b = Simd::<f64, LANES>::from_slice(&query.coords[i..i+LANES]);
+            
+            let diff = a_scaled - b;
+            sum_sq_diff += diff * diff;
+        }
+
+        let l2_sq = sum_sq_diff.reduce_sum();
+        let delta = l2_sq * (self.alpha as f64) * query.alpha;
+        
+        1.0 + 2.0 * delta
+    }
+
+}
+
+impl<const N: usize> HyperVector<N> {
+    pub const SIZE: usize = std::mem::size_of::<Self>();
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const _ as *const u8,
+                Self::SIZE
+            )
+        }
+    }
+    
+    pub fn from_bytes(bytes: &[u8]) -> &Self {
+        unsafe { &*(bytes.as_ptr() as *const Self) }
+    }
+}
+
+impl<const N: usize> QuantizedHyperVector<N> {
+    pub const SIZE: usize = std::mem::size_of::<Self>();
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const _ as *const u8,
+                Self::SIZE
+            )
+        }
+    }
+    
+    pub fn from_bytes(bytes: &[u8]) -> &Self {
+        unsafe { &*(bytes.as_ptr() as *const Self) }
+    }
+}

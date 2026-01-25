@@ -12,6 +12,11 @@ service Database {
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
 }
 
+enum QuantizationMode {
+  NONE = 0;       // f64 (Default)
+  SCALAR_I8 = 1;  // 8-bit
+}
+
 message InsertRequest {
   repeated double vector = 1;
   uint32 id = 2; // Explicit ID for simplicity in this proto

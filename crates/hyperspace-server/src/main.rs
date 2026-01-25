@@ -7,6 +7,8 @@ use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{InsertRequest, InsertResponse, DeleteRequest, DeleteResponse, SearchRequest, SearchResponse, SearchResult, MonitorRequest, SystemStats};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use hyperspace_core::QuantizationMode;
+use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
 
 #[derive(Debug)]
 pub struct HyperspaceService {
@@ -107,9 +109,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (store, index, mut recovered_count) = if snap_path.exists() {
         println!("Found snapshot. Loading...");
-        // VectorStore auto-loads chunks from data_dir
-        let store = Arc::new(VectorStore::new(data_dir, 8));
-        match HnswIndex::load_snapshot(snap_path, store.clone()) {
+        
+        // Determine element size based on target mode (For now hardcoded to ScalarI8 for update)
+        let mode = QuantizationMode::ScalarI8; 
+        let element_size = match mode {
+             QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
+             QuantizationMode::None => HyperVector::<8>::SIZE,
+        };
+
+        let store = Arc::new(VectorStore::new(data_dir, element_size));
+        match HnswIndex::load_snapshot(snap_path, store.clone(), mode) {
             Ok(idx) => {
                 let count = idx.count_nodes();
                 println!("Snapshot loaded. Nodes: {}", count);
@@ -117,12 +126,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             Err(e) => {
                 eprintln!("Failed to load snapshot: {}. Starting fresh.", e);
-                // Reset data dir
                 if data_dir.exists() {
-                    let _ = std::fs::remove_dir_all(data_dir);
+                     let _ = std::fs::remove_dir_all(data_dir);
                 }
-                let store = Arc::new(VectorStore::new(data_dir, 8));
-                (store.clone(), Arc::new(HnswIndex::new(store)), 0)
+                let store = Arc::new(VectorStore::new(data_dir, element_size));
+                (store.clone(), Arc::new(HnswIndex::new(store, mode)), 0)
             }
         }
     } else {
@@ -130,8 +138,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if data_dir.exists() {
             let _ = std::fs::remove_dir_all(data_dir);
         }
-        let store = Arc::new(VectorStore::new(data_dir, 8));
-        (store.clone(), Arc::new(HnswIndex::new(store)), 0)
+        
+        let mode = QuantizationMode::ScalarI8;
+        let element_size = match mode {
+             QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
+             QuantizationMode::None => HyperVector::<8>::SIZE,
+        };
+        
+        let store = Arc::new(VectorStore::new(data_dir, element_size));
+        (store.clone(), Arc::new(HnswIndex::new(store, mode)), 0)
     };
     
     // 2. Init WAL and Replay

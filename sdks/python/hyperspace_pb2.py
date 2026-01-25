@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10hyperspace.proto\x12\nhyperspace\"\x97\x01\n\rInsertRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\n\n\x02id\x18\x02 \x01(\r\x12\x39\n\x08metadata\x18\x03 \x03(\x0b\x32\'.hyperspace.InsertRequest.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"!\n\x0eInsertResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x1b\n\rDeleteRequest\x12\n\n\x02id\x18\x01 \x01(\r\"!\n\x0e\x44\x65leteResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x94\x01\n\rSearchRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\r\n\x05top_k\x18\x02 \x01(\r\x12\x35\n\x06\x66ilter\x18\x03 \x03(\x0b\x32%.hyperspace.SearchRequest.FilterEntry\x1a-\n\x0b\x46ilterEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\";\n\x0eSearchResponse\x12)\n\x07results\x18\x01 \x03(\x0b\x32\x18.hyperspace.SearchResult\",\n\x0cSearchResult\x12\n\n\x02id\x18\x01 \x01(\r\x12\x10\n\x08\x64istance\x18\x02 \x01(\x01\"\x10\n\x0eMonitorRequest\"I\n\x0bSystemStats\x12\x17\n\x0findexed_vectors\x18\x01 \x01(\x04\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x0b\n\x03qps\x18\x03 \x01(\x01\x32\x8f\x02\n\x08\x44\x61tabase\x12?\n\x06Insert\x12\x19.hyperspace.InsertRequest\x1a\x1a.hyperspace.InsertResponse\x12?\n\x06\x44\x65lete\x12\x19.hyperspace.DeleteRequest\x1a\x1a.hyperspace.DeleteResponse\x12?\n\x06Search\x12\x19.hyperspace.SearchRequest\x1a\x1a.hyperspace.SearchResponse\x12@\n\x07Monitor\x12\x1a.hyperspace.MonitorRequest\x1a\x17.hyperspace.SystemStats0\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10hyperspace.proto\x12\nhyperspace\"\x97\x01\n\rInsertRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\n\n\x02id\x18\x02 \x01(\r\x12\x39\n\x08metadata\x18\x03 \x03(\x0b\x32\'.hyperspace.InsertRequest.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"!\n\x0eInsertResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x1b\n\rDeleteRequest\x12\n\n\x02id\x18\x01 \x01(\r\"!\n\x0e\x44\x65leteResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\"\x94\x01\n\rSearchRequest\x12\x0e\n\x06vector\x18\x01 \x03(\x01\x12\r\n\x05top_k\x18\x02 \x01(\r\x12\x35\n\x06\x66ilter\x18\x03 \x03(\x0b\x32%.hyperspace.SearchRequest.FilterEntry\x1a-\n\x0b\x46ilterEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\";\n\x0eSearchResponse\x12)\n\x07results\x18\x01 \x03(\x0b\x32\x18.hyperspace.SearchResult\",\n\x0cSearchResult\x12\n\n\x02id\x18\x01 \x01(\r\x12\x10\n\x08\x64istance\x18\x02 \x01(\x01\"\x10\n\x0eMonitorRequest\"I\n\x0bSystemStats\x12\x17\n\x0findexed_vectors\x18\x01 \x01(\x04\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x0b\n\x03qps\x18\x03 \x01(\x01*+\n\x10QuantizationMode\x12\x08\n\x04NONE\x10\x00\x12\r\n\tSCALAR_I8\x10\x01\x32\x8f\x02\n\x08\x44\x61tabase\x12?\n\x06Insert\x12\x19.hyperspace.InsertRequest\x1a\x1a.hyperspace.InsertResponse\x12?\n\x06\x44\x65lete\x12\x19.hyperspace.DeleteRequest\x1a\x1a.hyperspace.DeleteResponse\x12?\n\x06Search\x12\x19.hyperspace.SearchRequest\x1a\x1a.hyperspace.SearchResponse\x12@\n\x07Monitor\x12\x1a.hyperspace.MonitorRequest\x1a\x17.hyperspace.SystemStats0\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,6 +35,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_INSERTREQUEST_METADATAENTRY']._serialized_options = b'8\001'
   _globals['_SEARCHREQUEST_FILTERENTRY']._loaded_options = None
   _globals['_SEARCHREQUEST_FILTERENTRY']._serialized_options = b'8\001'
+  _globals['_QUANTIZATIONMODE']._serialized_start=636
+  _globals['_QUANTIZATIONMODE']._serialized_end=679
   _globals['_INSERTREQUEST']._serialized_start=33
   _globals['_INSERTREQUEST']._serialized_end=184
   _globals['_INSERTREQUEST_METADATAENTRY']._serialized_start=137
@@ -57,6 +59,6 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_MONITORREQUEST']._serialized_end=559
   _globals['_SYSTEMSTATS']._serialized_start=561
   _globals['_SYSTEMSTATS']._serialized_end=634
-  _globals['_DATABASE']._serialized_start=637
-  _globals['_DATABASE']._serialized_end=908
+  _globals['_DATABASE']._serialized_start=682
+  _globals['_DATABASE']._serialized_end=953
 # @@protoc_insertion_point(module_scope)

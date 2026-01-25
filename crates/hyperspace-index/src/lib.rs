@@ -12,7 +12,8 @@ use dashmap::DashMap;
 use roaring::RoaringBitmap;
 
 // Imports
-use hyperspace_core::vector::HyperVector;
+use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
+use hyperspace_core::QuantizationMode;
 use hyperspace_store::VectorStore;
 
 #[derive(Archive, Deserialize, Serialize)]
@@ -83,7 +84,7 @@ impl HnswIndex {
         Ok(())
     }
 
-    pub fn load_snapshot(path: &std::path::Path, storage: Arc<VectorStore>) -> Result<Self, String> {
+    pub fn load_snapshot(path: &std::path::Path, storage: Arc<VectorStore>, mode: QuantizationMode) -> Result<Self, String> {
         let file_content = std::fs::read(path).map_err(|e| e.to_string())?;
         
         // Validate and deserialize
@@ -115,6 +116,7 @@ impl HnswIndex {
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
+            mode,
         })
     }
 }
@@ -142,6 +144,9 @@ pub struct HnswIndex {
     
     // Reference to data (raw vectors)
     storage: Arc<VectorStore>,
+    
+    // Quantization
+    pub mode: QuantizationMode,
 }
 
 #[derive(Debug)]
@@ -174,13 +179,14 @@ impl PartialOrd for Candidate {
 }
 
 impl HnswIndex {
-    pub fn new(storage: Arc<VectorStore>) -> Self {
+    pub fn new(storage: Arc<VectorStore>, mode: QuantizationMode) -> Self {
         Self {
             nodes: RwLock::new(Vec::new()),
             metadata: MetadataIndex::default(),
             entry_point: AtomicU32::new(0),
             max_layer: AtomicU32::new(0),
             storage,
+            mode,
         }
     }
     
@@ -279,18 +285,17 @@ impl HnswIndex {
     // Distance calculation helper
     #[inline]
     fn dist(&self, node_id: NodeId, query: &HyperVector<8>) -> f64 { 
-        let slice = self.storage.get(node_id); 
-        // Force copy into simple array to avoid reference issues
-        let mut array = [0.0; 8];
-        // Ensure slice has enough data (should be guaranteed by storage logic, but safe check needed in real prod)
-        if slice.len() >= 8 {
-            array.copy_from_slice(&slice[0..8]);
+        let bytes = self.storage.get(node_id);
+        match self.mode {
+             QuantizationMode::ScalarI8 => {
+                 let q = QuantizedHyperVector::<8>::from_bytes(bytes);
+                 q.poincare_distance_sq_to_float(query)
+             },
+             QuantizationMode::None => {
+                 let v = HyperVector::<8>::from_bytes(bytes);
+                 v.poincare_distance_sq(query)
+             }
         }
-        
-        // Create temp vector on stack (copy)
-        let node_vec = HyperVector::new(array).unwrap(); 
-        
-        query.poincare_distance_sq(&node_vec)
     }
     
     fn search_layer0(&self, start_node: NodeId, query: &HyperVector<8>, k: usize, ef: usize, allowed: Option<&RoaringBitmap>) -> Vec<(NodeId, f64)> {
@@ -475,18 +480,38 @@ impl HnswIndex {
     
     // Helper to get HyperVector from id
     fn get_vector(&self, id: NodeId) -> HyperVector<8> {
-         let slice = self.storage.get(id);
-         let arr: [f64; 8] = slice[0..8].try_into().unwrap();
-         // Alpha is stored at the end of DIM coords. 
-         // Stride was (DIM+1)*8 bytes. Slice includes alpha at index 8.
-         let alpha = slice[8]; 
-         HyperVector { coords: arr, alpha } 
+         let bytes = self.storage.get(id);
+         match self.mode {
+             QuantizationMode::ScalarI8 => {
+                 let q = QuantizedHyperVector::<8>::from_bytes(bytes);
+                 let mut coords = [0.0; 8];
+                 for i in 0..8 { coords[i] = q.coords[i] as f64 / 127.0; }
+                 HyperVector { coords, alpha: q.alpha as f64 }
+             },
+             QuantizationMode::None => {
+                 let v = HyperVector::<8>::from_bytes(bytes);
+                 v.clone()
+             }
+         }
     }
 
     // Insert with Metadata
     pub fn insert(&self, vector: &[f64], meta: std::collections::HashMap<String, String>) -> Result<u32, String> {
         // 1. Storage Append
-        let new_id = self.storage.append(vector)?;
+        let mut arr = [0.0; 8];
+        if vector.len() != 8 { return Err("Dim mismatch".into()); }
+        arr.copy_from_slice(vector);
+        let q_vec_full = HyperVector::new(arr)?;
+
+        let new_id = match self.mode {
+            QuantizationMode::ScalarI8 => {
+                 let q = QuantizedHyperVector::from_float(&q_vec_full);
+                 self.storage.append(q.as_bytes())?
+            },
+            QuantizationMode::None => {
+                 self.storage.append(q_vec_full.as_bytes())?
+            }
+        };
         
         // 2. Index Metadata (Inverted Index)
         for (key, val) in meta {
