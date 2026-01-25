@@ -137,6 +137,17 @@ impl VectorStore {
         unsafe { std::slice::from_raw_parts(ptr, self.element_size) }
     }
 
+    pub fn segment_count(&self) -> usize {
+        self.segments.read().len()
+    }
+    
+    pub fn total_size_bytes(&self) -> usize {
+        let segs = self.segments.read();
+        if segs.is_empty() { return 0; }
+        let segment_capacity = (self.element_size * CHUNK_SIZE);
+        segs.len() * segment_capacity
+    }
+
     pub fn count(&self) -> usize {
         self.count.load(Ordering::Relaxed)
     }

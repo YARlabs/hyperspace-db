@@ -54,6 +54,16 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.MonitorRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.SystemStats.FromString,
                 _registered_method=True)
+        self.TriggerSnapshot = channel.unary_unary(
+                '/hyperspace.Database/TriggerSnapshot',
+                request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.TriggerVacuum = channel.unary_unary(
+                '/hyperspace.Database/TriggerVacuum',
+                request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
 
 
 class DatabaseServicer(object):
@@ -87,6 +97,19 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def TriggerSnapshot(self, request, context):
+        """Admin Controls
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TriggerVacuum(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -109,6 +132,16 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.Monitor,
                     request_deserializer=hyperspace__pb2.MonitorRequest.FromString,
                     response_serializer=hyperspace__pb2.SystemStats.SerializeToString,
+            ),
+            'TriggerSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.TriggerSnapshot,
+                    request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'TriggerVacuum': grpc.unary_unary_rpc_method_handler(
+                    servicer.TriggerVacuum,
+                    request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -219,6 +252,60 @@ class Database(object):
             '/hyperspace.Database/Monitor',
             hyperspace__pb2.MonitorRequest.SerializeToString,
             hyperspace__pb2.SystemStats.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TriggerSnapshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/TriggerSnapshot',
+            hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TriggerVacuum(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/TriggerVacuum',
+            hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

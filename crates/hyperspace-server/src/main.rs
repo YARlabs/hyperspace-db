@@ -79,22 +79,50 @@ impl Database for HyperspaceService {
         tokio::spawn(async move {
             loop {
                 let count = index.count_nodes() as u64;
-                // Mock memory usage
-                let mem = (count * 8 * 8) as f64 / 1024.0 / 1024.0; 
+                let soft_deleted = index.count_deleted() as u64;
+                
+                let (segments, bytes) = index.storage_stats();
+                
+                // Baseline: 8 dims * 8 bytes (f64)
+                const DIM: usize = 8;
+                let raw_size_bytes = (count as f64) * (DIM as f64) * 8.0; 
+                let actual_size_bytes = bytes as f64;
+                
+                let compression = if actual_size_bytes > 0.0 {
+                    raw_size_bytes / actual_size_bytes
+                } else {
+                    0.0
+                };
                 
                 let stats = SystemStats {
                     indexed_vectors: count,
-                    ram_usage_mb: mem,
+                    soft_deleted,
+                    raw_data_size_mb: raw_size_bytes / 1024.0 / 1024.0,
+                    actual_storage_mb: actual_size_bytes / 1024.0 / 1024.0,
+                    compression_ratio: compression,
+                    active_segments: segments as u32,
                     qps: 0.0, 
+                    ram_usage_mb: 0.0, 
                 };
 
                 if tx.send(Ok(stats)).await.is_err() {
                     break; 
                 }
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
             }
         });
         Ok(Response::new(ReceiverStream::new(rx)))
+    }
+    
+    async fn trigger_snapshot(&self, _request: Request<hyperspace_proto::hyperspace::Empty>) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+         match self.index.save_snapshot(std::path::Path::new("index.snap")) {
+             Ok(_) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse { status: "Snapshot saved".into() })),
+             Err(e) => Err(Status::internal(e)),
+         }
+    }
+
+    async fn trigger_vacuum(&self, _request: Request<hyperspace_proto::hyperspace::Empty>) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+         Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse { status: "Vacuum started (simulated)".into() }))
     }
 }
 

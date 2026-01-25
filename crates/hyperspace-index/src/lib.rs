@@ -656,6 +656,14 @@ impl HnswIndex {
         self.storage.count()
     }
 
+    pub fn count_deleted(&self) -> usize {
+        self.metadata.deleted.read().len() as usize
+    }
+
+    pub fn storage_stats(&self) -> (usize, usize) {
+        (self.storage.segment_count(), self.storage.total_size_bytes())
+    }
+
     fn random_level(&self) -> usize {
         let mut rng = rand::thread_rng();
         let mut level = 0;

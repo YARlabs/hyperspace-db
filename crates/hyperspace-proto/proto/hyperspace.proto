@@ -10,6 +10,10 @@ service Database {
   rpc Search (SearchRequest) returns (SearchResponse);
   // Stream statistics for TUI
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
+  
+  // Admin Controls
+  rpc TriggerSnapshot (Empty) returns (StatusResponse);
+  rpc TriggerVacuum (Empty) returns (StatusResponse);
 }
 
 enum QuantizationMode {
@@ -50,10 +54,25 @@ message SearchResult {
   double distance = 2;
 }
 
+message Empty {}
+
+message StatusResponse {
+  string status = 1;
+}
+
 message MonitorRequest {}
 
 message SystemStats {
   uint64 indexed_vectors = 1;
-  double ram_usage_mb = 2;
-  double qps = 3;             // Queries per second
+  uint64 soft_deleted = 2;
+  
+  // Storage Metrics
+  double raw_data_size_mb = 3;      // Size if f64
+  double actual_storage_mb = 4;     // Size on disk
+  double compression_ratio = 5;     // Ratio
+  uint32 active_segments = 6;       // Count
+  
+  // Performance
+  double qps = 7;
+  double ram_usage_mb = 8;
 }
