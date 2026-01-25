@@ -50,7 +50,26 @@ message DeleteResponse {
 message SearchRequest {
   repeated double vector = 1; // Query vector
   uint32 top_k = 2;           // How many neighbors to find
-  map<string, string> filter = 3; // Metadata filter (equality check)
+  map<string, string> filter = 3; // Metadata filter (legacy, equality)
+  repeated Filter filters = 4;    // Advanced filters
+}
+
+message Filter {
+  oneof condition {
+    Match match = 1;
+    Range range = 2;
+  }
+}
+
+message Match {
+  string key = 1;
+  string value = 2;
+}
+
+message Range {
+  string key = 1;
+  optional int64 gte = 2;
+  optional int64 lte = 3;
 }
 
 message SearchResponse {

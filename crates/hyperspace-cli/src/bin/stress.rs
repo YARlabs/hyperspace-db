@@ -87,6 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vector: query_vec,
             top_k: 10,
             filter: std::collections::HashMap::new(),
+            filters: Vec::new(),
         };
         client.search(req).await?;
     }

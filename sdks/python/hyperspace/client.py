@@ -10,9 +10,10 @@ from .proto import hyperspace_pb2
 from .proto import hyperspace_pb2_grpc
 
 class HyperspaceClient:
-    def __init__(self, host: str = "localhost:50051"):
+    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None):
         self.channel = grpc.insecure_channel(host)
         self.stub = hyperspace_pb2_grpc.DatabaseStub(self.channel)
+        self.metadata = (('x-api-key', api_key),) if api_key else None
 
     def insert(self, id: int, vector: List[float], metadata: Dict[str, str] = None) -> bool:
         if metadata is None:
@@ -24,23 +25,39 @@ class HyperspaceClient:
             metadata=metadata
         )
         try:
-            resp = self.stub.Insert(req)
+            resp = self.stub.Insert(req, metadata=self.metadata)
             return resp.success
         except grpc.RpcError as e:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float], top_k: int = 10, filter: Dict[str, str] = None) -> List[Dict]:
+    def search(self, vector: List[float], top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None) -> List[Dict]:
         if filter is None:
             filter = {}
             
+        proto_filters = []
+        if filters:
+            for f in filters:
+                if f.get("type") == "match":
+                    proto_filters.append(hyperspace_pb2.Filter(
+                        match=hyperspace_pb2.Match(key=f["key"], value=f["value"])
+                    ))
+                elif f.get("type") == "range":
+                    kwargs = {"key": f["key"]}
+                    if "gte" in f: kwargs["gte"] = int(f["gte"])
+                    if "lte" in f: kwargs["lte"] = int(f["lte"])
+                    proto_filters.append(hyperspace_pb2.Filter(
+                        range=hyperspace_pb2.Range(**kwargs)
+                    ))
+
         req = hyperspace_pb2.SearchRequest(
             vector=vector,
             top_k=top_k,
-            filter=filter
+            filter=filter,
+            filters=proto_filters
         )
         try:
-            resp = self.stub.Search(req)
+            resp = self.stub.Search(req, metadata=self.metadata)
             return [
                 {"id": r.id, "distance": r.distance}
                 for r in resp.results

@@ -13,3 +13,5 @@ hyperspace-index = { workspace = true }
 hyperspace-store = { workspace = true }
 tokio-stream = "0.1"
 rand = "0.8"
+sha2 = "0.10.9"
+hex = "0.4.3"

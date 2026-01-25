@@ -27,6 +27,7 @@ impl Client {
             vector,
             top_k,
             filter: Default::default(),
+            filters: Default::default(),
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)

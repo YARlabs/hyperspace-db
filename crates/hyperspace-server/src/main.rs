@@ -12,7 +12,40 @@ use hyperspace_store::VectorStore;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{transport::Server, Request, Response, Status, service::Interceptor};
+use sha2::{Sha256, Digest};
+
+#[derive(Clone)]
+struct AuthInterceptor {
+    expected_hash: Option<String>,
+}
+
+impl Interceptor for AuthInterceptor {
+    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+        if let Some(expected) = &self.expected_hash {
+             match request.metadata().get("x-api-key") {
+                 Some(t) => {
+                     // Hash the received token
+                     if let Ok(token_str) = t.to_str() {
+                         let mut hasher = Sha256::new();
+                         hasher.update(token_str.as_bytes());
+                         let result = hasher.finalize();
+                         let request_hash = hex::encode(result);
+                         
+                         // Constant-time comparison is better for security, but string eq is fine for MVP
+                         if request_hash == *expected {
+                             return Ok(request);
+                         }
+                     }
+                     Err(Status::unauthenticated("Invalid API Key"))
+                 },
+                 None => Err(Status::unauthenticated("Missing x-api-key header")),
+            }
+        } else {
+            Ok(request)
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct HyperspaceService {
@@ -82,13 +115,34 @@ impl Database for HyperspaceService {
         request: Request<SearchRequest>,
     ) -> Result<Response<SearchResponse>, Status> {
         let req = request.into_inner();
-        let filter = req.filter;
+        let legacy_filter = req.filter;
+        
+        let mut complex_filters = Vec::new();
+        for f in req.filters {
+            if let Some(cond) = f.condition {
+                match cond {
+                     hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
+                         complex_filters.push(hyperspace_index::FilterExpr::Match {
+                             key: m.key,
+                             value: m.value
+                         });
+                     },
+                     hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                         complex_filters.push(hyperspace_index::FilterExpr::Range {
+                             key: r.key,
+                             gte: r.gte,
+                             lte: r.lte,
+                         });
+                     }
+                }
+            }
+        }
 
         // Use dynamic ef_search from config
         let ef_search = self.config.get_ef_search();
         let res = self
             .index
-            .search(&req.vector, req.top_k as usize, ef_search, &filter);
+            .search(&req.vector, req.top_k as usize, ef_search, &legacy_filter, &complex_filters);
 
         let output = res
             .into_iter()
@@ -337,8 +391,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Graceful Shutdown Handler
+
+
+    // Setup Auth
+    let api_key = std::env::var("HYPERSPACE_API_KEY").ok();
+    let interceptor = if let Some(key) = api_key {
+        println!("🔒 API Auth Enabled (SHA256 check active)");
+        let mut hasher = Sha256::new();
+        hasher.update(key.as_bytes());
+        let hash = hex::encode(hasher.finalize());
+        AuthInterceptor {
+            expected_hash: Some(hash),
+        }
+    } else {
+        println!("⚠️ API Auth Disabled (No HYPERSPACE_API_KEY set)");
+        AuthInterceptor {
+            expected_hash: None,
+        }
+    };
+
+    // Graceful Shutdown Handler
     let server = Server::builder()
-        .add_service(DatabaseServer::new(service))
+        .add_service(DatabaseServer::with_interceptor(service, interceptor))
         .serve_with_shutdown(addr, async {
             tokio::signal::ctrl_c().await.ok();
             println!("\n🛑 Received Ctrl+C. Initiating graceful shutdown...");

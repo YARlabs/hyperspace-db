@@ -5,7 +5,7 @@ use rkyv::ser::Serializer;
 use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
 use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::{BinaryHeap, HashSet, BTreeMap};
 use std::fs::File;
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -34,9 +34,16 @@ pub struct SnapshotNode {
 
 // Consts removed here to use existing ones defined below in the file
 
+#[derive(Debug, Clone)]
+pub enum FilterExpr {
+    Match { key: String, value: String }, // Exact match
+    Range { key: String, gte: Option<i64>, lte: Option<i64> },
+}
+
 #[derive(Debug)]
 pub struct MetadataIndex {
     pub inverted: DashMap<String, RoaringBitmap>,
+    pub numeric: DashMap<String, BTreeMap<i64, RoaringBitmap>>,
     pub deleted: RwLock<RoaringBitmap>,
 }
 
@@ -44,6 +51,7 @@ impl Default for MetadataIndex {
     fn default() -> Self {
         Self {
             inverted: DashMap::new(),
+            numeric: DashMap::new(),
             deleted: RwLock::new(RoaringBitmap::new()),
         }
     }
@@ -216,32 +224,75 @@ impl HnswIndex {
         del.insert(id);
     }
 
-    /// Search K nearest neighbors with Filter and Soft Deletes
     pub fn search(
         &self,
         query: &[f64],
         k: usize,
         ef_search: usize,
         filter: &std::collections::HashMap<String, String>,
+        complex_filters: &[FilterExpr],
     ) -> Vec<(NodeId, f64)> {
         // 1. Prepare Filter Bitmap
-        // Start with Logic: (Tag1 AND Tag2 ...) AND !Deleted
+        // Start with Logic: (Tag1 AND Tag2 ...) AND (Complex1 AND Complex2 ...) AND !Deleted
         let allowed_bitmap = {
             let deleted = self.metadata.deleted.read();
             let mut bitmap: Option<RoaringBitmap> = None;
 
-            // Tag Filters
+            // Helper to intersect
+            let mut apply_mask = |mask: &RoaringBitmap| {
+                if let Some(ref mut bm) = bitmap {
+                    *bm &= mask;
+                } else {
+                    bitmap = Some(mask.clone());
+                }
+            };
+
+            // 1. Legacy Tag Filters
             if !filter.is_empty() {
                 for (key, val) in filter {
                     let tag = format!("{}:{}", key, val);
                     if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
-                        match bitmap {
-                            Some(ref mut bm) => *bm &= &*tag_bitmap,
-                            None => bitmap = Some(tag_bitmap.clone()),
-                        }
+                        apply_mask(&tag_bitmap);
                     } else {
-                        // Tag not found, result is empty
-                        return Vec::new();
+                        return Vec::new(); // Short circuit
+                    }
+                }
+            }
+
+            // 2. Complex Filters (Range / Match)
+            for expr in complex_filters {
+                match expr {
+                    FilterExpr::Match { key, value } => {
+                       let tag = format!("{}:{}", key, value);
+                       if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
+                           apply_mask(&tag_bitmap);
+                       } else {
+                           return Vec::new();
+                       }
+                    }
+                    FilterExpr::Range { key, gte, lte } => {
+                        if let Some(tree) = self.metadata.numeric.get(key) {
+                            // Union all bitmaps in range
+                            let mut range_union = RoaringBitmap::new();
+                            
+                            // BTreeMap range
+                            let start = gte.unwrap_or(i64::MIN);
+                            let end = lte.unwrap_or(i64::MAX);
+
+                            // BTreeMap::range is (Bound, Bound). 
+                            // We use Included.
+                            for (_, bm) in tree.range(start..=end) {
+                                range_union |= bm;
+                            }
+                            
+                            if range_union.is_empty() {
+                                return Vec::new();
+                            }
+                            apply_mask(&range_union);
+                        } else {
+                            // Key not found in numeric index
+                            return Vec::new();
+                        }
                     }
                 }
             }
@@ -254,8 +305,6 @@ impl HnswIndex {
                 }
                 None => {
                     // No filters? Then ALL allowed except deleted.
-                    // But RoaringBitmap is sparse. We can't represent "ALL" easily without max bound.
-                    // Option: If None, we check "not deleted" explicitly during traversal.
                     None
                 }
             }
@@ -581,11 +630,23 @@ impl HnswIndex {
         id: NodeId,
         meta: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
-        // 2. Index Metadata (Inverted Index)
+        // 2. Index Metadata
         for (key, val) in meta {
+            // A. Inverted Index (Text)
             let tag = format!("{}:{}", key, val);
-            // DashMap entry API
             self.metadata.inverted.entry(tag).or_default().insert(id);
+
+            // B. Numeric Index (i64)
+            // Try parsing
+            if let Ok(num) = val.parse::<i64>() {
+                self.metadata
+                    .numeric
+                    .entry(key)
+                    .or_default()
+                    .entry(num)
+                    .or_default()
+                    .insert(id);
+            }
         }
 
         let q_vec = self.get_vector(id); // Helper reads from storage
