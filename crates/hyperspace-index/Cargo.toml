@@ -11,3 +11,5 @@ ordered-float = "4.0"
 hyperspace-core = { path = "../hyperspace-core" }
 hyperspace-store = { path = "../hyperspace-store" }
 rkyv = { workspace = true, features = ["validation"] }
+roaring = "0.11.3"
+dashmap = "6.1.0"

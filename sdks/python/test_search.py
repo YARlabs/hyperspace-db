@@ -49,8 +49,16 @@ def run():
     
     elapsed = time.time() - start
     print(f"\n✅ Inserted 100 vectors in {elapsed:.4f}s")
+    
+    # 2. DELETE Test
+    print("\n🗑️ Deleting Vector ID 0 (which is Red)...")
+    try:
+        stub.Delete(hyperspace_pb2.DeleteRequest(id=0))
+        print("✅ Delete confirmed.")
+    except grpc.RpcError as e:
+        print(f"❌ Delete failed: {e}")
 
-    # 2. Search with Filter
+    # 3. Search with Filter
     query_vec = generate_poincare_point(DIM)
     
     print(f"\n🔍 Searching nearest neighbors (Filter: category='red')...")
@@ -61,9 +69,10 @@ def run():
         print("🎯 Search Results (Red Only):")
         for res in response.results:
             print(f"   ID: {res.id}, Dist: {res.distance:.4f}")
-            # Note: We can't verify metadata in response because SearchResult doesn't return metadata yet. 
-            # But the detailed logic in server ensures filtering.
-            # ID check: Even IDs are red.
+            
+            if res.id == 0:
+                print(f"   ⚠️ FATAL: ID 0 found! Soft Delete FAILED!")
+            
             if res.id % 2 != 0:
                 print(f"   ⚠️ ERROR: Found ID {res.id} which should be blue (odd)!")
     except grpc.RpcError as e:

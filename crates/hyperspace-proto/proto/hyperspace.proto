@@ -4,6 +4,8 @@ package hyperspace;
 service Database {
   // Insert vectors
   rpc Insert (InsertRequest) returns (InsertResponse);
+  // Delete vectors
+  rpc Delete (DeleteRequest) returns (DeleteResponse);
   // Search (ANN)
   rpc Search (SearchRequest) returns (SearchResponse);
   // Stream statistics for TUI
@@ -17,6 +19,14 @@ message InsertRequest {
 }
 
 message InsertResponse {
+  bool success = 1;
+}
+
+message DeleteRequest {
+  uint32 id = 1;
+}
+
+message DeleteResponse {
   bool success = 1;
 }
 

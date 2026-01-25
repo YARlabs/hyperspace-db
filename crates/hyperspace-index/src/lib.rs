@@ -8,6 +8,8 @@ use parking_lot::RwLock;
 use rand::Rng;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::{BinaryHeap, HashSet};
+use dashmap::DashMap;
+use roaring::RoaringBitmap;
 
 // Imports
 use hyperspace_core::vector::HyperVector;
@@ -29,6 +31,21 @@ pub struct SnapshotNode {
 }
 
 // Consts removed here to use existing ones defined below in the file
+
+#[derive(Debug)]
+pub struct MetadataIndex {
+    pub inverted: DashMap<String, RoaringBitmap>,
+    pub deleted: RwLock<RoaringBitmap>,
+}
+
+impl Default for MetadataIndex {
+    fn default() -> Self {
+        Self {
+            inverted: DashMap::new(),
+            deleted: RwLock::new(RoaringBitmap::new()),
+        }
+    }
+}
 
 impl HnswIndex {
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
@@ -94,7 +111,7 @@ impl HnswIndex {
 
         Ok(Self {
             nodes: RwLock::new(nodes),
-            metadata: RwLock::new(std::collections::HashMap::new()), 
+            metadata: MetadataIndex::default(), 
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
@@ -115,7 +132,7 @@ pub struct HnswIndex {
     nodes: RwLock<Vec<Node>>,
     
     // Metadata storage
-    pub metadata: RwLock<std::collections::HashMap<NodeId, std::collections::HashMap<String, String>>>,
+    pub metadata: MetadataIndex,
 
     // Graph entry point (top level)
     entry_point: AtomicU32,
@@ -160,15 +177,58 @@ impl HnswIndex {
     pub fn new(storage: Arc<VectorStore>) -> Self {
         Self {
             nodes: RwLock::new(Vec::new()),
-            metadata: RwLock::new(std::collections::HashMap::new()),
+            metadata: MetadataIndex::default(),
             entry_point: AtomicU32::new(0),
             max_layer: AtomicU32::new(0),
             storage,
         }
     }
+    
+    // Support Soft Delete
+    pub fn delete(&self, id: NodeId) {
+        let mut del = self.metadata.deleted.write();
+        del.insert(id);
+    }
 
-    /// Search K nearest neighbors with Filter
+    /// Search K nearest neighbors with Filter and Soft Deletes
     pub fn search(&self, query: &[f64], k: usize, ef_search: usize, filter: &std::collections::HashMap<String, String>) -> Vec<(NodeId, f64)> {
+        // 1. Prepare Filter Bitmap
+        // Start with Logic: (Tag1 AND Tag2 ...) AND !Deleted
+        let allowed_bitmap = {
+             let deleted = self.metadata.deleted.read();
+             let mut bitmap: Option<RoaringBitmap> = None;
+             
+             // Tag Filters
+             if !filter.is_empty() {
+                 for (key, val) in filter {
+                     let tag = format!("{}:{}", key, val);
+                     if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
+                         match bitmap {
+                             Some(ref mut bm) => *bm &= &*tag_bitmap,
+                             None => bitmap = Some(tag_bitmap.clone()),
+                         }
+                     } else {
+                         // Tag not found, result is empty
+                         return Vec::new();
+                     }
+                 }
+             }
+             
+             // Apply Deleted mask
+             match bitmap {
+                 Some(mut bm) => {
+                     bm -= &*deleted;
+                     Some(bm)
+                 },
+                 None => {
+                     // No filters? Then ALL allowed except deleted.
+                     // But RoaringBitmap is sparse. We can't represent "ALL" easily without max bound.
+                     // Option: If None, we check "not deleted" explicitly during traversal.
+                     None
+                 }
+             }
+        };
+
         // 1. Create HyperVector from query.
         // Assuming DIM=8 for MVP as per user hardcode in dist()
         let mut aligned_query = [0.0; 8];
@@ -213,7 +273,7 @@ impl HnswIndex {
         }
 
         // 2. Local search phase: Layer 0 with Filter
-        self.search_layer0(curr_node, &q_vec, k, ef_search, filter)
+        self.search_layer0(curr_node, &q_vec, k, ef_search, allowed_bitmap.as_ref())
     }
 
     // Distance calculation helper
@@ -233,29 +293,56 @@ impl HnswIndex {
         query.poincare_distance_sq(&node_vec)
     }
     
-    fn search_layer0(&self, start_node: NodeId, query: &HyperVector<8>, k: usize, ef: usize, filter: &std::collections::HashMap<String, String>) -> Vec<(NodeId, f64)> {
+    fn search_layer0(&self, start_node: NodeId, query: &HyperVector<8>, k: usize, ef: usize, allowed: Option<&RoaringBitmap>) -> Vec<(NodeId, f64)> {
         let mut candidates = BinaryHeap::new(); 
         let mut results = BinaryHeap::new();    
         let mut visited = HashSet::new();
+        
+        // Helper to check validity
+        // Note: We need to access 'deleted' lock if 'allowed' is None?
+        // Or we assume 'allowed = None' means 'Check deleted manually'.
+        // For perf, let's capture 'deleted' if allowed is None.
+        let deleted_guard = if allowed.is_none() {
+            Some(self.metadata.deleted.read())
+        } else {
+            None
+        };
+        
+        let is_valid = |id: u32| -> bool {
+            if let Some(bm) = allowed {
+                bm.contains(id)
+            } else {
+                !deleted_guard.as_ref().unwrap().contains(id)
+            }
+        };
 
         let d = self.dist(start_node, query);
         let first = Candidate { id: start_node, distance: d };
         
         candidates.push(first);
-        results.push(first);
+        if is_valid(start_node) {
+            results.push(first);
+        }
         visited.insert(start_node);
 
         while let Some(cand) = candidates.pop() {
-            let curr_worst = results.peek().unwrap().distance;
-            if cand.distance > curr_worst && results.len() >= ef {
-                break;
+            // Lower Bound Pruning:
+            // If we have full results, and candidate is worse than worst result, stop?
+            // ONLY if candidate is valid?
+            // Actually, if candidate is worse than worst *valid* result found so far, we might still find better valid node through it?
+            // HNSW Logic: "If cand.dist > results.peek().dist" -> stop.
+            // But results only contains VALID nodes.
+            // So if we have `ef` VALID nodes, and candidate is worse, we stop.
+            if let Some(worst) = results.peek() {
+                 if results.len() >= ef && cand.distance > worst.distance {
+                     break;
+                 }
             }
 
-            // Lock scope: get neighbors list
             let neighbors_ids = {
                 let nodes_guard = self.nodes.read();
                 if (cand.id as usize) >= nodes_guard.len() { 
-                    Vec::new() // Handle out of bounds gracefully
+                    Vec::new() 
                 } else {
                     let layer_guard = nodes_guard[cand.id as usize].layers[0].read();
                     layer_guard.clone() 
@@ -267,45 +354,36 @@ impl HnswIndex {
                     visited.insert(neighbor);
                     let dist = self.dist(neighbor, query);
                     
-                    if results.len() < ef || dist < curr_worst {
+                    // Add to Candidates (Navigation)
+                    // Logic: Keep expanding? 
+                    // We add to candidates if dist < worst_result OR results not full.
+                    // This ensures we traverse "through" invalid nodes if they are promising (close to query).
+                    let mut add_to_candidates = true;
+                    if let Some(worst) = results.peek() {
+                        if results.len() >= ef && dist > worst.distance {
+                            add_to_candidates = false;
+                        }
+                    }
+                    
+                    if add_to_candidates {
                         let c = Candidate { id: neighbor, distance: dist };
                         candidates.push(c);
-                        results.push(c);
                         
-                        if results.len() > ef {
-                            results.pop(); 
+                        // Add to Results (Only if Valid)
+                        if is_valid(neighbor) {
+                            results.push(c);
+                            if results.len() > ef {
+                                results.pop();
+                            }
                         }
                     }
                 }
             }
         }
         
-        // Filter results after traversal (Post-filtering)
-        // Note: Ideally filtering should happen during collection to guarantee K results.
-        // HNSW Post-filtering can return < K results if many are filtered.
-        // For MVP, we filter the results heap.
-        let meta_guard = self.metadata.read();
-        
         let mut output = Vec::new();
         while let Some(c) = results.pop() {
-            // Check filter
-            let mut match_filter = true;
-            if !filter.is_empty() {
-                if let Some(node_meta) = meta_guard.get(&c.id) {
-                     for (k, v) in filter {
-                         if node_meta.get(k) != Some(v) {
-                             match_filter = false;
-                             break;
-                         }
-                     }
-                } else {
-                    match_filter = false; // No metadata, but filter requested -> mismatch? Or assume allow? USUALLY mismatch.
-                }
-            }
-            
-            if match_filter {
-                output.push((c.id, c.distance));
-            }
+            output.push((c.id, c.distance));
         }
         output.reverse();
         output.truncate(k);
@@ -410,10 +488,11 @@ impl HnswIndex {
         // 1. Storage Append
         let new_id = self.storage.append(vector)?;
         
-        // 2. Save Metadata
-        {
-            let mut m = self.metadata.write();
-            m.insert(new_id, meta);
+        // 2. Index Metadata (Inverted Index)
+        for (key, val) in meta {
+            let tag = format!("{}:{}", key, val);
+            // DashMap entry API
+            self.metadata.inverted.entry(tag).or_default().insert(new_id);
         }
 
         let q_vec = self.get_vector(new_id);

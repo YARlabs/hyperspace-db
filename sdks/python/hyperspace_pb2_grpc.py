@@ -39,6 +39,11 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.InsertRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.InsertResponse.FromString,
                 _registered_method=True)
+        self.Delete = channel.unary_unary(
+                '/hyperspace.Database/Delete',
+                request_serializer=hyperspace__pb2.DeleteRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.DeleteResponse.FromString,
+                _registered_method=True)
         self.Search = channel.unary_unary(
                 '/hyperspace.Database/Search',
                 request_serializer=hyperspace__pb2.SearchRequest.SerializeToString,
@@ -56,6 +61,13 @@ class DatabaseServicer(object):
 
     def Insert(self, request, context):
         """Insert vectors
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Delete(self, request, context):
+        """Delete vectors
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -82,6 +94,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.Insert,
                     request_deserializer=hyperspace__pb2.InsertRequest.FromString,
                     response_serializer=hyperspace__pb2.InsertResponse.SerializeToString,
+            ),
+            'Delete': grpc.unary_unary_rpc_method_handler(
+                    servicer.Delete,
+                    request_deserializer=hyperspace__pb2.DeleteRequest.FromString,
+                    response_serializer=hyperspace__pb2.DeleteResponse.SerializeToString,
             ),
             'Search': grpc.unary_unary_rpc_method_handler(
                     servicer.Search,
@@ -121,6 +138,33 @@ class Database(object):
             '/hyperspace.Database/Insert',
             hyperspace__pb2.InsertRequest.SerializeToString,
             hyperspace__pb2.InsertResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Delete(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Delete',
+            hyperspace__pb2.DeleteRequest.SerializeToString,
+            hyperspace__pb2.DeleteResponse.FromString,
             options,
             channel_credentials,
             insecure,
