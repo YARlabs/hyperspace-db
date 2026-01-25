@@ -1,59 +1,59 @@
 import grpc
-import numpy as np
-import typing
-from . import hyperspace_pb2
-from . import hyperspace_pb2_grpc
+from typing import List, Dict, Optional
+import sys
+import os
+
+# Fix import path for generated proto files
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from .proto import hyperspace_pb2
+from .proto import hyperspace_pb2_grpc
 
 class HyperspaceClient:
-    def __init__(self, host="localhost:50051"):
+    def __init__(self, host: str = "localhost:50051"):
         self.channel = grpc.insecure_channel(host)
         self.stub = hyperspace_pb2_grpc.DatabaseStub(self.channel)
 
-    def insert(self, vector: typing.List[float], metadata: typing.Optional[typing.Dict[str, str]] = None):
-        """Insert a vector with optional metadata into HyperspaceDB."""
-        if len(vector) != 8:
-            raise ValueError("HyperspaceDB currently only supports 8D vectors")
+    def insert(self, id: int, vector: List[float], metadata: Dict[str, str] = None) -> bool:
+        if metadata is None:
+            metadata = {}
             
         req = hyperspace_pb2.InsertRequest(
+            id=id,
             vector=vector,
-            metadata=metadata or {}
+            metadata=metadata
         )
-        return self.stub.Insert(req)
+        try:
+            resp = self.stub.Insert(req)
+            return resp.success
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
 
-    def search(self, vector: typing.List[float], top_k: int = 10, filter: typing.Optional[typing.Dict[str, str]] = None):
-        """Perform Approximate Nearest Neighbor search."""
-        if len(vector) != 8:
-            raise ValueError("Query vector must be 8D")
+    def search(self, vector: List[float], top_k: int = 10, filter: Dict[str, str] = None) -> List[Dict]:
+        if filter is None:
+            filter = {}
             
         req = hyperspace_pb2.SearchRequest(
             vector=vector,
             top_k=top_k,
-            filter=filter or {}
+            filter=filter
         )
-        return self.stub.Search(req)
+        try:
+            resp = self.stub.Search(req)
+            return [
+                {"id": r.id, "distance": r.distance}
+                for r in resp.results
+            ]
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
 
-    def delete(self, vector_id: int):
-        """Soft-delete a vector by its ID."""
-        req = hyperspace_pb2.DeleteRequest(id=vector_id)
-        return self.stub.Delete(req)
+    def close(self):
+        self.channel.close()
 
-    def monitor(self):
-        """Get a stream of system statistics."""
-        req = hyperspace_pb2.MonitorRequest()
-        return self.stub.Monitor(req)
+    def __enter__(self):
+        return self
 
-    def configure(self, ef_search: typing.Optional[int] = None, ef_construction: typing.Optional[int] = None):
-        """Dynamically tune database performance parameters."""
-        req = hyperspace_pb2.ConfigUpdate(
-            ef_search=ef_search,
-            ef_construction=ef_construction
-        )
-        return self.stub.Configure(req)
-
-    def trigger_snapshot(self):
-        """Manually trigger an index snapshot to disk."""
-        return self.stub.TriggerSnapshot(hyperspace_pb2.Empty())
-
-    def trigger_vacuum(self):
-        """Manually trigger vacuum (cleaning soft-deleted records)."""
-        return self.stub.TriggerVacuum(hyperspace_pb2.Empty())
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

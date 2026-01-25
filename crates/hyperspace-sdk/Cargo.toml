@@ -1,0 +1,9 @@
+[package]
+name = "hyperspace-sdk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hyperspace-proto = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }

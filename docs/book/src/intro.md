@@ -50,49 +50,12 @@ cargo build --release
 pip install ./sdks/python
 ```
 
-## 🐳 Deployment
-
-### Docker
-HyperspaceDB is available as a lightweight Docker image.
-
-```bash
-# Build
-docker build -t hyperspacedb:latest .
-
-# Run
-docker run -p 50051:50051 hyperspacedb:latest
-```
-
-### Docker Compose
-Run the full stack (Server + Client Tool):
-```bash
-docker-compose up -d
-```
-
----
-
-## 📦 SDKs
-
-Official 1st-party drivers:
-
-| Language | Path | Status |
-|----------|------|--------|
-| **Python** | `sdks/python` | ✅ Beta |
-| **Rust** | `crates/hyperspace-sdk` | ✅ Beta |
-| **Go** | `sdks/go` | 🚧 Planned |
-| **TypeScript** | `sdks/ts` | 🚧 Planned |
-
-### Python Example
-```bash
-cd sdks/python
-pip install .
-```
 ```python
 from hyperspace import HyperspaceClient
 
-with HyperspaceClient() as client:
-    client.insert(id=1, vector=[0.1]*8, metadata={"tag": "fast"})
-    results = client.search([0.1]*8, top_k=5)
+client = HyperspaceClient("localhost:50051")
+client.insert(vector=[0.1]*8, metadata={"category": "tech"})
+results = client.search(vector=[0.11]*8, top_k=5)
 ```
 
 ---

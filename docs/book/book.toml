@@ -1,0 +1,6 @@
+[book]
+authors = ["YARlabs"]
+language = "en"
+multilingual = false
+src = "src"
+title = "HyperspaceDB Documentation"

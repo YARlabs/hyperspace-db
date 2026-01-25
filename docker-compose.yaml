@@ -1,0 +1,26 @@
+services:
+  hyperspace:
+    build: .
+    image: hyperspacedb:v1.0
+    container_name: hyperspace-node-1
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./data:/app/data
+      - ./wal.log:/app/wal.log
+      - ./index.snap:/app/index.snap
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # Optional: Client Tool Container to run stress tests inside docker network
+  client:
+    build: .
+    image: hyperspacedb:v1.0
+    command: tail -f /dev/null # Keep alive
+    depends_on:
+      - hyperspace
+    environment:
+      - HYPERSPACE_HOST=hyperspace:50051
