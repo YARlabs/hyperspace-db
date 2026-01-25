@@ -15,6 +15,7 @@ pub struct HyperspaceService {
     index: Arc<HnswIndex>,
     store: Arc<VectorStore>,
     wal: Arc<Mutex<Wal>>,
+    index_tx: mpsc::Sender<(u32, std::collections::HashMap<String, String>)>,
 }
 
 #[tonic::async_trait]
@@ -24,24 +25,27 @@ impl Database for HyperspaceService {
         let vector = req.vector;
         let metadata_map = req.metadata;
         
-        // Convert map<string, string> to HashMap
         let mut meta = std::collections::HashMap::new();
         for (k, v) in metadata_map {
             meta.insert(k, v);
         }
 
-        match self.index.insert(&vector, meta) {
-            Ok(id) => {
-                // WAL Log
-                {
-                   let mut wal = self.wal.lock().unwrap();
-                   let _ = wal.append(id, &vector);
-                }
-                
-                Ok(Response::new(InsertResponse { success: true }))
-            },
-            Err(e) => Err(Status::internal(e)),
+        // 1. Persistence (Storage + WAL)
+        // Write to storage and get ID
+        let id = self.index.insert_to_storage(&vector).map_err(|e| Status::internal(e))?;
+        
+        // Write to WAL
+        {
+             let mut wal = self.wal.lock().unwrap();
+             let _ = wal.append(id, &vector);
         }
+
+        // 2. Async Indexing
+        if self.index_tx.send((id, meta)).await.is_err() {
+            return Err(Status::internal("Indexer channel closed"));
+        }
+        
+        Ok(Response::new(InsertResponse { success: true }))
     }
     
     async fn delete(&self, request: Request<DeleteRequest>) -> Result<Response<DeleteResponse>, Status> {
@@ -219,10 +223,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // 4. Spawn Indexer Worker (Async Write)
+    let (index_tx, mut index_rx) = mpsc::channel(1000);
+    let index_worker = index.clone();
+    
+    tokio::spawn(async move {
+        println!("⚙️ Background Indexer started");
+        while let Some((id, meta)) = index_rx.recv().await {
+            let idx = index_worker.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(e) = idx.index_node(id, meta) {
+                    eprintln!("Indexer error for ID {}: {}", id, e);
+                }
+            }).await;
+        }
+    });
+
     let service = HyperspaceService { 
         index, 
         store,
         wal: wal_arc,
+        index_tx,
     };
 
     println!("HyperspaceDB listening on {}", addr);

@@ -496,9 +496,8 @@ impl HnswIndex {
     }
 
     // Insert with Metadata
-    pub fn insert(&self, vector: &[f64], meta: std::collections::HashMap<String, String>) -> Result<u32, String> {
-        // 1. Storage Append
-        let mut arr = [0.0; 8];
+    pub fn insert_to_storage(&self, vector: &[f64]) -> Result<u32, String> {
+         let mut arr = [0.0; 8];
         if vector.len() != 8 { return Err("Dim mismatch".into()); }
         arr.copy_from_slice(vector);
         let q_vec_full = HyperVector::new(arr)?;
@@ -512,15 +511,18 @@ impl HnswIndex {
                  self.storage.append(q_vec_full.as_bytes())?
             }
         };
-        
+        Ok(new_id)
+    }
+
+    pub fn index_node(&self, id: NodeId, meta: std::collections::HashMap<String, String>) -> Result<(), String> {
         // 2. Index Metadata (Inverted Index)
         for (key, val) in meta {
             let tag = format!("{}:{}", key, val);
             // DashMap entry API
-            self.metadata.inverted.entry(tag).or_default().insert(new_id);
+            self.metadata.inverted.entry(tag).or_default().insert(id);
         }
 
-        let q_vec = self.get_vector(new_id);
+        let q_vec = self.get_vector(id); // Helper reads from storage
 
         let max_layer = self.max_layer.load(Ordering::Relaxed);
         let entry_point = self.entry_point.load(Ordering::Relaxed);
@@ -531,12 +533,12 @@ impl HnswIndex {
         // Create Node
         {
             let mut nodes = self.nodes.write();
-            if nodes.len() <= new_id as usize {
-                 nodes.resize_with(new_id as usize + 1, Node::default); 
+            if nodes.len() <= id as usize {
+                 nodes.resize_with(id as usize + 1, Node::default); 
             }
              let mut layers = Vec::new();
              for _ in 0..=new_level { layers.push(RwLock::new(Vec::new())); }
-             nodes[new_id as usize] = Node { id: new_id, layers };
+             nodes[id as usize] = Node { id, layers };
         }
 
         let mut curr_obj = entry_point;
@@ -583,8 +585,8 @@ impl HnswIndex {
 
             // c) Bidirectional connect
             for &neighbor_id in &selected_neighbors {
-                self.add_link(new_id, neighbor_id, level);
-                self.add_link(neighbor_id, new_id, level);
+                self.add_link(id, neighbor_id, level);
+                self.add_link(neighbor_id, id, level);
                 
                 // d) Pruning
                 let neighbors_len = self.nodes.read()[neighbor_id as usize].layers[level].read().len();
@@ -602,9 +604,16 @@ impl HnswIndex {
         // Update global entry point if needed
         if (new_level as u32) > max_layer {
             self.max_layer.store(new_level as u32, Ordering::SeqCst);
-            self.entry_point.store(new_id, Ordering::SeqCst);
+            self.entry_point.store(id, Ordering::SeqCst);
         }
 
+        Ok(())
+    }
+
+    // Wrapped insert for backward compatibility
+    pub fn insert(&self, vector: &[f64], meta: std::collections::HashMap<String, String>) -> Result<u32, String> {
+        let new_id = self.insert_to_storage(vector)?;
+        self.index_node(new_id, meta)?;
         Ok(new_id)
     }
 
