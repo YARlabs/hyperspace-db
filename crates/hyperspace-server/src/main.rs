@@ -31,7 +31,13 @@ struct Args {
 
     /// Leader address (if follower)
     #[arg(long)]
+    /// Leader address (if follower)
+    #[arg(long)]
     leader: Option<String>,
+
+    /// Quantization Mode: none, scalar (default), binary
+    #[arg(long, default_value = "scalar")]
+    mode: String,
 }
 
 #[derive(Clone)]
@@ -332,10 +338,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Global Runtime Config
     let config = Arc::new(GlobalConfig::new());
 
+    let mode = match args.mode.as_str() {
+        "binary" => QuantizationMode::Binary,
+        "none" => QuantizationMode::None,
+        _ => QuantizationMode::ScalarI8,
+    };
+    println!("Selected Quantization Mode: {:?}", mode);
+
     let (store, index, recovered_count) = if snap_path.exists() {
         println!("Found snapshot. Loading...");
 
-        let mode = QuantizationMode::ScalarI8;
         let element_size = match mode {
             QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
             QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<8>::SIZE,
@@ -368,7 +380,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = std::fs::remove_dir_all(data_dir);
         }
 
-        let mode = QuantizationMode::ScalarI8;
         let element_size = match mode {
             QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
             QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<8>::SIZE,

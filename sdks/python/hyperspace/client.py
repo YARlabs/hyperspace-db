@@ -68,6 +68,28 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return []
 
+    def trigger_snapshot(self) -> bool:
+        try:
+            resp = self.stub.TriggerSnapshot(hyperspace_pb2.Empty(), metadata=self.metadata)
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
+    def configure(self, ef_search: int = None, ef_construction: int = None) -> bool:
+        req = hyperspace_pb2.ConfigUpdate()
+        if ef_search is not None:
+            req.ef_search = ef_search
+        if ef_construction is not None:
+            req.ef_construction = ef_construction
+            
+        try:
+            resp = self.stub.Configure(req, metadata=self.metadata)
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
     def close(self):
         self.channel.close()
 
