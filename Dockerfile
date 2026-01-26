@@ -18,15 +18,20 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# Create a non-root user to fix security vulnerability
+RUN useradd -m -u 1000 -U -s /bin/sh -d /app hyperspace
+
 WORKDIR /app
 
 # Copy binaries
 COPY --from=builder /app/target/release/hyperspace-server /usr/local/bin/
 COPY --from=builder /app/target/release/hyperspace-cli /usr/local/bin/
 
-# Copy resources if needed (e.g. config files, though we use flags currently)
-# Create data dir
-RUN mkdir -p /app/data
+# Create data dir and set permissions
+RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
+
+# Switch to non-root user
+USER hyperspace
 
 ENV RUST_LOG=info
 
