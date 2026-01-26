@@ -286,6 +286,33 @@ docker-compose up -d
 
 ```
 
+## 🐳 How to use this image
+
+### 1. Start a single instance
+
+To start the database and expose the gRPC port (50051):
+
+```bash
+docker run -d \
+  --name hyperspace \
+  -p 50051:50051 \
+  glukhota/hyperspace-db:latest
+
+```
+
+### 2. Persisting Data (Critical)
+
+By default, data is stored inside the container. To prevent data loss when the container is removed, you **must** mount a volume to `/data`.
+
+```bash
+docker run -d \
+  --name hyperspace \
+  -p 50051:50051 \
+  -v $(pwd)/hs_data:/data \
+  glukhota/hyperspace-db:latest
+
+```
+
 ---
 
 ## 📦 SDKs
