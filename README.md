@@ -1,4 +1,4 @@
-# 🌌 HyperspaceDB
+# [H] HyperspaceDB
 
 <div align="center">
 
@@ -9,7 +9,7 @@
 
 **The Fastest Hyperbolic Vector Database written in Rust.**
 
-[Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks) • [License](#-license)
+[Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks) • [License](#-license) • [Contributing](#-contributing) • [Roadmap](#-roadmap) • [DockerHub](https://hub.docker.com/r/glukhota/hyperspace-db)
 
 </div>
 
