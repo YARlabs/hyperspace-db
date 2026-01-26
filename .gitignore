@@ -1,11 +1,14 @@
-/target.gitignore
-target/
+/target/
+**/target/
 sdks/python/venv
 __pycache__
 **/*.pyc
 .DS_Store
-*.hyp
-*.snap
-*.log
+# Data files (Exclude everywhere)
+**/*.hyp
+**/*.snap
+**/*.log
+**/*.bin
+# Directories
 venv/
 data/

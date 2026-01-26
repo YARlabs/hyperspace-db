@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y protobuf-compiler cmake
 
 WORKDIR /app
 COPY . .
+# Remove toolchain file to use the container's default nightly and avoid os error 18
+RUN rm -f rust-toolchain.toml
 
 # Build Release
 # Note: We build the workspace
