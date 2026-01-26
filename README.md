@@ -116,20 +116,19 @@ HyperspaceDB strictly follows a **Command-Query Separation (CQS)** pattern:
 
 ```mermaid
 graph TD
-    Client[Client (gRPC)] -->|Insert| S[Server Service]
+    Client["Client (gRPC)"] -->|Insert| S["Server Service"]
     Client -->|Search| S
     
-    subgraph Persistence Layer
-        S -->|1. Append| WAL[Write-Ahead Log]
-        S -->|2. Append| VS[Vector Store (mmap)]
+    subgraph Persistence_Layer ["Persistence Layer"]
+        S -->|"1. Append"| WAL["Write-Ahead Log"]
+        S -->|"2. Append"| VS["Vector Store (mmap)"]
     end
     
-    subgraph Indexing Layer
-        S -->|3. Send ID| Q[Async Queue]
-        Q -->|Pop| W[Indexer Worker]
-        W -->|Update| HNSW[HNSW Graph (RAM)]
+    subgraph Indexing_Layer ["Indexing Layer"]
+        S -->|"3. Send ID"| Q["Async Queue"]
+        Q -->|Pop| W["Indexer Worker"]
+        W -->|Update| HNSW["HNSW Graph (RAM)"]
     end
-
 ```
 
 1. **Transport**: gRPC/Tonic server accepts requests (Insert/Search).
