@@ -231,6 +231,7 @@ impl HnswIndex {
         del.insert(id);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn search(
         &self,
         query: &[f64],
@@ -644,11 +645,11 @@ impl HnswIndex {
                 // Let's implement a rudimentary reconstruction in getting coords.
                 let mut coords = [0.0; 8];
                 let val = 1.0 / (8.0f64).sqrt() * 0.99;
-                for i in 0..8 {
+                for (i, coord) in coords.iter_mut().enumerate() {
                     if (b.bits[0] >> i) & 1 == 1 {
-                        coords[i] = val;
+                        *coord = val;
                     } else {
-                        coords[i] = -val;
+                        *coord = -val;
                     }
                 }
                 HyperVector {
@@ -904,6 +905,7 @@ impl HnswIndex {
     }
 
     // RRF Fusion Logic
+    #[allow(clippy::too_many_arguments)]
     fn search_hybrid(
         &self,
         query: &[f64],
