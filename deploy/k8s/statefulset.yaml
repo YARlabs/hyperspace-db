@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: db
-          image: yarlabs/hyperspace-db:latest
+          image: glukhota/hyperspace-db:latest
           ports:
             - containerPort: 50051 # gRPC
           volumeMounts:

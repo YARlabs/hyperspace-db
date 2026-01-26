@@ -11,7 +11,7 @@ HyperspaceDB runs on Linux and macOS. Windows is supported via WSL2.
 The easiest way to get started.
 
 ```bash
-docker pull ghcr.io/yarlabs/hyperspacedb:latest
+docker pull glukhota/hyperspace-db:latest
 # or build locally
 docker build -t hyperspacedb .
 

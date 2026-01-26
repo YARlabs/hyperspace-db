@@ -1,7 +1,7 @@
 services:
   hyperspace:
     # build: .
-    image: yarlabs/hyperspace-db:latest
+    image: glukhota/hyperspace-db:latest
     container_name: hyperspace-node-1
     ports:
       - "50051:50051"
@@ -18,7 +18,7 @@ services:
   # Optional: Client Tool Container to run stress tests inside docker network
   client:
     # build: .
-    image: yarlabs/hyperspace-db:latest
+    image: glukhota/hyperspace-db:latest
     command: tail -f /dev/null # Keep alive
     depends_on:
       - hyperspace
