@@ -5,14 +5,14 @@ use rkyv::ser::Serializer;
 use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
 use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BinaryHeap, HashSet, BTreeMap};
+use std::collections::{BTreeMap, BinaryHeap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 // Imports
-use hyperspace_core::vector::{HyperVector, QuantizedHyperVector, BinaryHyperVector};
+use hyperspace_core::vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 use hyperspace_core::GlobalConfig;
 use hyperspace_core::QuantizationMode;
 use hyperspace_store::VectorStore;
@@ -36,8 +36,15 @@ pub struct SnapshotNode {
 
 #[derive(Debug, Clone)]
 pub enum FilterExpr {
-    Match { key: String, value: String }, // Exact match
-    Range { key: String, gte: Option<i64>, lte: Option<i64> },
+    Match {
+        key: String,
+        value: String,
+    }, // Exact match
+    Range {
+        key: String,
+        gte: Option<i64>,
+        lte: Option<i64>,
+    },
 }
 
 #[derive(Debug)]
@@ -236,9 +243,17 @@ impl HnswIndex {
     ) -> Vec<(NodeId, f64)> {
         // If hybrid query is present, we use RRF Fusion
         if let Some(text) = hybrid_query {
-             return self.search_hybrid(query, k, ef_search, filter, complex_filters, text, hybrid_alpha.unwrap_or(60.0));
+            return self.search_hybrid(
+                query,
+                k,
+                ef_search,
+                filter,
+                complex_filters,
+                text,
+                hybrid_alpha.unwrap_or(60.0),
+            );
         }
-        
+
         // 1. Prepare Filter Bitmap
         // Start with Logic: (Tag1 AND Tag2 ...) AND (Complex1 AND Complex2 ...) AND !Deleted
         let allowed_bitmap = {
@@ -270,28 +285,28 @@ impl HnswIndex {
             for expr in complex_filters {
                 match expr {
                     FilterExpr::Match { key, value } => {
-                       let tag = format!("{}:{}", key, value);
-                       if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
-                           apply_mask(&tag_bitmap);
-                       } else {
-                           return Vec::new();
-                       }
+                        let tag = format!("{}:{}", key, value);
+                        if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
+                            apply_mask(&tag_bitmap);
+                        } else {
+                            return Vec::new();
+                        }
                     }
                     FilterExpr::Range { key, gte, lte } => {
                         if let Some(tree) = self.metadata.numeric.get(key) {
                             // Union all bitmaps in range
                             let mut range_union = RoaringBitmap::new();
-                            
+
                             // BTreeMap range
                             let start = gte.unwrap_or(i64::MIN);
                             let end = lte.unwrap_or(i64::MAX);
 
-                            // BTreeMap::range is (Bound, Bound). 
+                            // BTreeMap::range is (Bound, Bound).
                             // We use Included.
                             for (_, bm) in tree.range(start..=end) {
                                 range_union |= bm;
                             }
-                            
+
                             if range_union.is_empty() {
                                 return Vec::new();
                             }
@@ -615,31 +630,31 @@ impl HnswIndex {
                 v.clone()
             }
             QuantizationMode::Binary => {
-                 // Decompress on the fly (lossy!)
-                 // Binary -> Float
-                 let b = BinaryHyperVector::<8>::from_bytes(bytes);
-                 // We don't have a direct 'to_float' that returns HyperVector structure easily
-                 // But we can approximate.
-                 // Construct a dummy vector that yields "similar" distances?
-                 // Or actually reconstruct.
-                 // For now, let's just return a zero vector with correct alpha?
-                 // This `get_vector` is mainly used for re-ranking or selection?
-                 // `select_neighbors` calls it.
-                 // If `select_neighbors` uses it for refined distance check, we need decent approximation.
-                 // Let's implement a rudimentary reconstruction in getting coords.
-                 let mut coords = [0.0; 8];
-                 let val = 1.0 / (8.0f64).sqrt() * 0.99;
-                 for i in 0..8 {
-                     if (b.bits[0] >> i) & 1 == 1 {
-                         coords[i] = val;
-                     } else {
-                         coords[i] = -val;
-                     }
-                 }
-                 HyperVector {
-                     coords,
-                     alpha: b.alpha as f64,
-                 }
+                // Decompress on the fly (lossy!)
+                // Binary -> Float
+                let b = BinaryHyperVector::<8>::from_bytes(bytes);
+                // We don't have a direct 'to_float' that returns HyperVector structure easily
+                // But we can approximate.
+                // Construct a dummy vector that yields "similar" distances?
+                // Or actually reconstruct.
+                // For now, let's just return a zero vector with correct alpha?
+                // This `get_vector` is mainly used for re-ranking or selection?
+                // `select_neighbors` calls it.
+                // If `select_neighbors` uses it for refined distance check, we need decent approximation.
+                // Let's implement a rudimentary reconstruction in getting coords.
+                let mut coords = [0.0; 8];
+                let val = 1.0 / (8.0f64).sqrt() * 0.99;
+                for i in 0..8 {
+                    if (b.bits[0] >> i) & 1 == 1 {
+                        coords[i] = val;
+                    } else {
+                        coords[i] = -val;
+                    }
+                }
+                HyperVector {
+                    coords,
+                    alpha: b.alpha as f64,
+                }
             }
         }
     }
@@ -689,12 +704,16 @@ impl HnswIndex {
                     .or_default()
                     .insert(id);
             }
-            
+
             // C. Full Text Tokenization (Simple)
             let tokens = Self::tokenize(val);
             for token in tokens {
-                 let token_key = format!("_txt:{}", token);
-                 self.metadata.inverted.entry(token_key).or_default().insert(id);
+                let token_key = format!("_txt:{}", token);
+                self.metadata
+                    .inverted
+                    .entry(token_key)
+                    .or_default()
+                    .insert(id);
             }
         }
 
@@ -875,7 +894,7 @@ impl HnswIndex {
         }
         level
     }
-    
+
     fn tokenize(text: &str) -> Vec<String> {
         text.split_whitespace()
             .map(|s| s.to_lowercase())
@@ -883,7 +902,7 @@ impl HnswIndex {
             .filter(|s: &String| !s.is_empty())
             .collect()
     }
-    
+
     // RRF Fusion Logic
     fn search_hybrid(
         &self,
@@ -898,39 +917,42 @@ impl HnswIndex {
         // 1. Get Vector Search Results (Semantic) -> Top K*2 for recall
         // We reuse the basic search but with NO hybrid query to avoid recursion
         let vec_k = k * 2;
-        let vector_results = self.search(query, vec_k, ef_search, filter, complex_filters, None, None);
-        
+        let vector_results =
+            self.search(query, vec_k, ef_search, filter, complex_filters, None, None);
+
         // 2. Get Keyword Search Results (Lexical) -> All matching or Top N
         // Scan inverted index for tokens
         let tokens = Self::tokenize(text);
         if tokens.is_empty() {
             return vector_results.into_iter().take(k).collect();
         }
-        
+
         // We calculate a score for each doc based on token overlap
         // Map<NodeId, score>
-        let mut keyword_scores: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
-        
+        let mut keyword_scores: std::collections::HashMap<u32, f32> =
+            std::collections::HashMap::new();
+
         for token in tokens {
             let key = format!("_txt:{}", token);
             if let Some(bitmap) = self.metadata.inverted.get(&key) {
-                 for id in bitmap.iter() {
-                     *keyword_scores.entry(id).or_default() += 1.0;
-                 }
+                for id in bitmap.iter() {
+                    *keyword_scores.entry(id).or_default() += 1.0;
+                }
             }
         }
-        
+
         // Sort keyword results
         let mut keyword_ranking: Vec<(u32, f32)> = keyword_scores.into_iter().collect();
         keyword_ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         // Take Top appropriate
-        let keyword_results = keyword_ranking; 
-        
+        let keyword_results = keyword_ranking;
+
         // 3. RRF Fusion
         // RRF_score = 1 / (alpha + rank_vec) + 1 / (alpha + rank_key)
-        
-        let mut final_scores: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
-        
+
+        let mut final_scores: std::collections::HashMap<u32, f32> =
+            std::collections::HashMap::new();
+
         // Process Vector Ranks (1-based)
         for (rank, (id, _dist)) in vector_results.iter().enumerate() {
             let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
@@ -939,16 +961,16 @@ impl HnswIndex {
 
         // Process Keyword Ranks
         for (rank, (id, _score)) in keyword_results.iter().enumerate() {
-             let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
-             *final_scores.entry(*id).or_default() += rrf;
+            let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
+            *final_scores.entry(*id).or_default() += rrf;
         }
-        
+
         // Sort Final
         let mut final_ranking: Vec<(NodeId, f32)> = final_scores.into_iter().collect();
         // Sort DESCENDING by score (Higher is better)
         final_ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        
-        // Convert back to (id, distance) interface. 
+
+        // Convert back to (id, distance) interface.
         // Note: Distance is weird here because RRF score is not distance.
         // We invert it back? Or just return 1.0 - score?
         // Let's return (1.0 / score) to mimic "smaller is better"?
@@ -956,6 +978,10 @@ impl HnswIndex {
         // For semantic search, smaller is better.
         // Let's make it 1.0 - normalized_score?
         // Limit to K
-        final_ranking.into_iter().take(k).map(|(id, score)| (id, (10.0 - score) as f64)).collect()
+        final_ranking
+            .into_iter()
+            .take(k)
+            .map(|(id, score)| (id, (10.0 - score) as f64))
+            .collect()
     }
 }

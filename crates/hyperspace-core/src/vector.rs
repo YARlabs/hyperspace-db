@@ -1,7 +1,5 @@
 use std::simd::prelude::*;
 
-
-
 /// Aligned vector struct. N is the dimension.
 /// align(64) is critical for AVX-512 and cache lines.
 #[repr(C, align(64))]
@@ -121,10 +119,10 @@ impl<const N: usize> QuantizedHyperVector<N> {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct BinaryHyperVector<const N: usize> {
-    // For N=8, we only need [u8; 1]. 
+    // For N=8, we only need [u8; 1].
     // Generic const exprs are unstable, so we use [u8; 1] hardcoded for N=8 MVP.
     // Ideally: [u8; (N + 7) / 8]
-    pub bits: [u8; 1], 
+    pub bits: [u8; 1],
     pub alpha: f32,
 }
 
@@ -148,7 +146,7 @@ impl<const N: usize> BinaryHyperVector<N> {
         // count_ones gives Hamming distance
         (self.bits[0] ^ other.bits[0]).count_ones()
     }
-    
+
     // Approximate Poincaré distance from Binary
     // 1. Hamming distance -> Approximate L2
     // L2^2 ≈ 4 * Hamming / N (Rule of thumb for unit sphere)
@@ -166,14 +164,14 @@ impl<const N: usize> BinaryHyperVector<N> {
     // However, for MVP, we'll try to reconstruct.
     // "Unpack to +/- 0.5?" (Avg magnitude?)
     // This is lossy.
-    
+
     pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
         // Reconstruct vector `r` from bits
         // If bit=1 -> +val, bit=0 -> -val.
         // What val? Maybe 1.0 / sqrt(N)? Unit sphere?
         // Let's assume unit sphere projection.
         let val = 1.0 / (N as f64).sqrt() * 0.99; // 0.99 to be safe inside ball?
-        
+
         let mut sum_sq_diff = 0.0;
         for i in 0..N {
             let bit = (self.bits[0] >> i) & 1;
@@ -181,7 +179,7 @@ impl<const N: usize> BinaryHyperVector<N> {
             let diff = recon - query.coords[i];
             sum_sq_diff += diff * diff;
         }
-        
+
         // Use stored alpha? Or recompute?
         // We stored alpha.
         let delta = sum_sq_diff * (self.alpha as f64) * query.alpha;

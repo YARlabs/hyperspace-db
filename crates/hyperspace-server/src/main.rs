@@ -1,3 +1,4 @@
+use clap::Parser;
 use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
 use hyperspace_core::GlobalConfig;
 use hyperspace_core::QuantizationMode;
@@ -7,16 +8,15 @@ use hyperspace_proto::hyperspace::{
     ConfigUpdate, DeleteRequest, DeleteResponse, InsertRequest, InsertResponse, MonitorRequest,
     SearchRequest, SearchResponse, SearchResult, SystemStats,
 };
+use hyperspace_proto::hyperspace::{Empty, ReplicationLog};
 use hyperspace_store::wal::Wal;
 use hyperspace_store::VectorStore;
+use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
+use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{transport::Server, Request, Response, Status, service::Interceptor};
-use sha2::{Sha256, Digest};
-use clap::Parser;
-use tokio::sync::broadcast;
-use hyperspace_proto::hyperspace::{ReplicationLog, Empty};
+use tonic::{service::Interceptor, transport::Server, Request, Response, Status};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -48,23 +48,23 @@ struct AuthInterceptor {
 impl Interceptor for AuthInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
         if let Some(expected) = &self.expected_hash {
-             match request.metadata().get("x-api-key") {
-                 Some(t) => {
-                     // Hash the received token
-                     if let Ok(token_str) = t.to_str() {
-                         let mut hasher = Sha256::new();
-                         hasher.update(token_str.as_bytes());
-                         let result = hasher.finalize();
-                         let request_hash = hex::encode(result);
-                         
-                         // Constant-time comparison is better for security, but string eq is fine for MVP
-                         if request_hash == *expected {
-                             return Ok(request);
-                         }
-                     }
-                     Err(Status::unauthenticated("Invalid API Key"))
-                 },
-                 None => Err(Status::unauthenticated("Missing x-api-key header")),
+            match request.metadata().get("x-api-key") {
+                Some(t) => {
+                    // Hash the received token
+                    if let Ok(token_str) = t.to_str() {
+                        let mut hasher = Sha256::new();
+                        hasher.update(token_str.as_bytes());
+                        let result = hasher.finalize();
+                        let request_hash = hex::encode(result);
+
+                        // Constant-time comparison is better for security, but string eq is fine for MVP
+                        if request_hash == *expected {
+                            return Ok(request);
+                        }
+                    }
+                    Err(Status::unauthenticated("Invalid API Key"))
+                }
+                None => Err(Status::unauthenticated("Missing x-api-key header")),
             }
         } else {
             Ok(request)
@@ -125,12 +125,12 @@ impl Database for HyperspaceService {
 
         // 3. Replicate (Best Effort)
         if self.replication_tx.receiver_count() > 0 {
-             let rep_log = ReplicationLog {
-                 id,
-                 vector: vector.clone(),
-                 metadata: meta,
-             };
-             let _ = self.replication_tx.send(rep_log);
+            let rep_log = ReplicationLog {
+                id,
+                vector: vector.clone(),
+                metadata: meta,
+            };
+            let _ = self.replication_tx.send(rep_log);
         }
 
         Ok(Response::new(InsertResponse { success: true }))
@@ -157,36 +157,42 @@ impl Database for HyperspaceService {
     ) -> Result<Response<SearchResponse>, Status> {
         let req = request.into_inner();
         let legacy_filter = req.filter;
-        
+
         let mut complex_filters = Vec::new();
         for f in req.filters {
             if let Some(cond) = f.condition {
                 match cond {
-                     hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
-                         complex_filters.push(hyperspace_index::FilterExpr::Match {
-                             key: m.key,
-                             value: m.value
-                         });
-                     },
-                     hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
-                         complex_filters.push(hyperspace_index::FilterExpr::Range {
-                             key: r.key,
-                             gte: r.gte,
-                             lte: r.lte,
-                         });
-                     }
+                    hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
+                        complex_filters.push(hyperspace_index::FilterExpr::Match {
+                            key: m.key,
+                            value: m.value,
+                        });
+                    }
+                    hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                        complex_filters.push(hyperspace_index::FilterExpr::Range {
+                            key: r.key,
+                            gte: r.gte,
+                            lte: r.lte,
+                        });
+                    }
                 }
             }
         }
 
         // Use dynamic ef_search from config
         let ef_search = self.config.get_ef_search();
-        
+
         let hybrid_query = req.hybrid_query.as_deref();
-        
-        let res = self
-            .index
-            .search(&req.vector, req.top_k as usize, ef_search, &legacy_filter, &complex_filters, hybrid_query, req.hybrid_alpha);
+
+        let res = self.index.search(
+            &req.vector,
+            req.top_k as usize,
+            ef_search,
+            &legacy_filter,
+            &complex_filters,
+            hybrid_query,
+            req.hybrid_alpha,
+        );
 
         let output = res
             .into_iter()
@@ -254,12 +260,14 @@ impl Database for HyperspaceService {
         _request: Request<Empty>,
     ) -> Result<Response<Self::ReplicateStream>, Status> {
         if self.role == "follower" {
-             return Err(Status::failed_precondition("I am a follower, cannot replicate from me"));
+            return Err(Status::failed_precondition(
+                "I am a follower, cannot replicate from me",
+            ));
         }
-        
+
         let mut rx = self.replication_tx.subscribe();
         let (tx, out_rx) = mpsc::channel(100);
-        
+
         tokio::spawn(async move {
             while let Ok(log) = rx.recv().await {
                 if tx.send(Ok(log)).await.is_err() {
@@ -403,7 +411,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let mut replayed = 0;
     Wal::replay(wal_path, |entry| match entry {
-        hyperspace_store::wal::WalEntry::Insert { id, vector, metadata } => {
+        hyperspace_store::wal::WalEntry::Insert {
+            id,
+            vector,
+            metadata,
+        } => {
             if (id as usize) >= recovered_count {
                 if let Err(e) = index.insert(&vector, metadata) {
                     eprintln!("Replay Error: {}", e);
@@ -422,23 +434,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // FOLLOWER LOGIC
     if args.role == "follower" {
         if let Some(leader) = args.leader {
-             println!("🚀 Starting as FOLLOWER of: {}", leader);
-             let index_weak = Arc::downgrade(&index);
-             
-             // Spawn replication task
-             tokio::spawn(async move {
-                 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
-                 // Retry loop
-                 loop {
-                     println!("Connecting to leader {}...", leader);
-                     match DatabaseClient::connect(leader.clone()).await {
+            println!("🚀 Starting as FOLLOWER of: {}", leader);
+            let index_weak = Arc::downgrade(&index);
+
+            // Spawn replication task
+            tokio::spawn(async move {
+                use hyperspace_proto::hyperspace::database_client::DatabaseClient;
+                // Retry loop
+                loop {
+                    println!("Connecting to leader {}...", leader);
+                    match DatabaseClient::connect(leader.clone()).await {
                         Ok(mut client) => {
-                             println!("Connected! Requesting replication stream...");
-                             match client.replicate(Empty {}).await {
-                                 Ok(resp) => {
-                                     let mut stream = resp.into_inner();
-                                     while let Ok(Some(log)) = stream.message().await {
-                                         if let Some(idx) = index_weak.upgrade() {
+                            println!("Connected! Requesting replication stream...");
+                            match client.replicate(Empty {}).await {
+                                Ok(resp) => {
+                                    let mut stream = resp.into_inner();
+                                    while let Ok(Some(log)) = stream.message().await {
+                                        if let Some(idx) = index_weak.upgrade() {
                                             // Apply to local index
                                             // Note: We skip WAL append on follower for now to avoid ID conflict or duplicating?
                                             // Ideally Follower writes to its own WAL too for durability.
@@ -446,26 +458,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             if let Err(e) = idx.insert(&log.vector, log.metadata) {
                                                 eprintln!("Replication Error: {}", e);
                                             }
-                                         } else {
-                                             break; // shutting down
-                                         }
-                                     }
-                                     println!("Replication stream ended.");
-                                 },
-                                 Err(e) => eprintln!("Failed to start replication: {}", e),
-                             }
-                        },
+                                        } else {
+                                            break; // shutting down
+                                        }
+                                    }
+                                    println!("Replication stream ended.");
+                                }
+                                Err(e) => eprintln!("Failed to start replication: {}", e),
+                            }
+                        }
                         Err(e) => eprintln!("Failed to connect to leader: {}", e),
-                     }
-                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                 }
-             });
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                }
+            });
         } else {
             eprintln!("Error: --leader is required for follower role");
             std::process::exit(1);
         }
     } else {
-         println!("🚀 Starting as LEADER");
+        println!("🚀 Starting as LEADER");
     }
 
     // 3. Spawn Snapshot Task
@@ -521,7 +533,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Graceful Shutdown Handler
-
 
     // Setup Auth
     let api_key = std::env::var("HYPERSPACE_API_KEY").ok();

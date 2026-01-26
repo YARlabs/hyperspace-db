@@ -216,6 +216,7 @@ with HyperspaceClient() as client:
     results = client.search([0.1]*8, top_k=5)
     print(results)
 
+```
 
 ---
 

@@ -1,6 +1,6 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::io::Read;
 use std::fs::{File, OpenOptions};
+use std::io::Read;
 use std::io::{self, BufReader, BufWriter, Write};
 use std::path::Path;
 
@@ -28,11 +28,16 @@ impl Wal {
         })
     }
 
-    pub fn append(&mut self, id: u32, vector: &[f64], metadata: &HashMap<String, String>) -> io::Result<()> {
+    pub fn append(
+        &mut self,
+        id: u32,
+        vector: &[f64],
+        metadata: &HashMap<String, String>,
+    ) -> io::Result<()> {
         // OpCode 2 = Insert V2 (With Metadata)
-        self.file.write_u8(2)?; 
+        self.file.write_u8(2)?;
         self.file.write_u32::<LittleEndian>(id)?;
-        
+
         // Vector
         self.file.write_u32::<LittleEndian>(vector.len() as u32)?;
         for &val in vector {
@@ -45,7 +50,7 @@ impl Wal {
             let k_bytes = k.as_bytes();
             self.file.write_u32::<LittleEndian>(k_bytes.len() as u32)?;
             self.file.write_all(k_bytes)?;
-            
+
             let v_bytes = v.as_bytes();
             self.file.write_u32::<LittleEndian>(v_bytes.len() as u32)?;
             self.file.write_all(v_bytes)?;
@@ -81,12 +86,16 @@ impl Wal {
                     for _ in 0..len {
                         vector.push(reader.read_f64::<LittleEndian>()?);
                     }
-                    callback(WalEntry::Insert { id, vector, metadata: HashMap::new() });
+                    callback(WalEntry::Insert {
+                        id,
+                        vector,
+                        metadata: HashMap::new(),
+                    });
                 }
                 2 => {
                     // V2 (With Metadata)
                     let id = reader.read_u32::<LittleEndian>()?;
-                    
+
                     // Vector
                     let vec_len = reader.read_u32::<LittleEndian>()?;
                     let mut vector = Vec::with_capacity(vec_len as usize);
@@ -102,18 +111,24 @@ impl Wal {
                         let k_len = reader.read_u32::<LittleEndian>()? as usize;
                         let mut k_buf = vec![0u8; k_len];
                         reader.read_exact(&mut k_buf)?;
-                        let key = String::from_utf8(k_buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                        let key = String::from_utf8(k_buf)
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
                         // Value
                         let v_len = reader.read_u32::<LittleEndian>()? as usize;
                         let mut v_buf = vec![0u8; v_len];
                         reader.read_exact(&mut v_buf)?;
-                        let val = String::from_utf8(v_buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                        let val = String::from_utf8(v_buf)
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
                         metadata.insert(key, val);
                     }
 
-                    callback(WalEntry::Insert { id, vector, metadata });
+                    callback(WalEntry::Insert {
+                        id,
+                        vector,
+                        metadata,
+                    });
                 }
                 _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown OpCode")),
             }
