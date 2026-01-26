@@ -216,7 +216,34 @@ with HyperspaceClient() as client:
     results = client.search([0.1]*8, top_k=5)
     print(results)
 
-```
+
+---
+
+## 📊 Best Practices
+
+HyperspaceDB follows the microservices philosophy: One Index per Instance. To manage multiple datasets, we recommend deploying separate Docker containers or using Metadata Filtering for logical separation within a single index.
+
+### 1. Vector Dimensionality
+
+* **Recommendation**: Use **8-dimensional** vectors.
+* **Reason**: HyperspaceDB is optimized for low-dimensional hyperbolic embeddings. Higher dimensions (e.g., 128+) will significantly increase memory usage and search latency.
+
+### 2. Quantization Strategy
+
+* **Mode**: Use `Binary` quantization for maximum memory savings.
+* **Trade-off**: `Binary` mode reduces precision but compresses vectors by **32x-64x** compared to floating-point.
+* **When to use**: Large-scale datasets where memory is the bottleneck.
+
+### 3. Indexing Parameters
+
+* **`ef_construction`**: Controls index build time vs. search quality. Higher values = better recall but slower indexing.
+* **`ef_search`**: Controls search time vs. recall. Higher values = better recall but slower search.
+* **Tuning**: Adjust via gRPC without restarting the server.
+
+### 4. Hybrid Search
+
+* **Enable**: Use `hybrid_query` parameter in search requests.
+* **Tuning**: Adjust `hybrid_alpha` (0.0 to 1.0) to balance semantic similarity and keyword matching.
 
 ---
 

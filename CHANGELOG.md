@@ -14,7 +14,7 @@ HyperspaceDB v1.0 is the first production-ready release of the fastest hyperboli
 ### Features
 *   **Core Engine**: Hyperbolic HNSW implementation optimized for Poincaré ball model.
 *   **Performance**: Sub-millisecond search at 1M+ vector scale.
-*   **Storage**: Segmented memory-mapped storage with `ScalarI8` quantization (8x compression).
+*   **Storage**: Segmented memory-mapped storage with `ScalarI8` and `Binary` quantization (8x and 32x-64x compression respectively).
 *   **Persistence**: Write-Ahead Log (WAL) and Zero-Copy Snapshots (Rkyv).
 *   **Concurrency**: Async Write Buffer handling 15k+ inserts/sec.
 *   **Monitoring**: Real-time TUI dashboard (ratatui) for QPS and system health.
