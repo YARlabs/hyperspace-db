@@ -27,10 +27,10 @@ impl<const N: usize> HyperVector<N> {
 
         for i in (0..N).step_by(LANES) {
             if i + LANES <= N {
-                 let a = f64x8::from_slice(&self.coords[i..i + LANES]);
-                 let b = f64x8::from_slice(&other.coords[i..i + LANES]);
-                 let diff = a - b;
-                 sum_sq_diff += diff * diff;
+                let a = f64x8::from_slice(&self.coords[i..i + LANES]);
+                let b = f64x8::from_slice(&other.coords[i..i + LANES]);
+                let diff = a - b;
+                sum_sq_diff += diff * diff;
             } else {
                 // Tail handled implicitly/ignored for MVP if N%8==0
             }
@@ -105,7 +105,9 @@ impl<const N: usize> BinaryHyperVector<N> {
     pub fn from_float(v: &HyperVector<N>) -> Self {
         let mut bits = [0u8; 512];
         for (i, &val) in v.coords.iter().enumerate() {
-            if i >= 4096 { break; } // Safety cap
+            if i >= 4096 {
+                break;
+            } // Safety cap
             if val > 0.0 {
                 let byte_idx = i / 8;
                 let bit_idx = i % 8;
@@ -131,15 +133,17 @@ impl<const N: usize> BinaryHyperVector<N> {
     }
 
     pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
-        let val = 1.0 / (N as f64).sqrt() * 0.99; 
+        let val = 1.0 / (N as f64).sqrt() * 0.99;
         let mut sum_sq_diff = 0.0;
-        
+
         for i in 0..N {
-            if i >= 4096 { break; }
+            if i >= 4096 {
+                break;
+            }
             let byte_idx = i / 8;
             let bit_idx = i % 8;
             let bit = (self.bits[byte_idx] >> bit_idx) & 1;
-            
+
             let recon = if bit == 1 { val } else { -val };
             let diff = recon - query.coords[i];
             sum_sq_diff += diff * diff;

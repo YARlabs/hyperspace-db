@@ -1,8 +1,7 @@
-
 use clap::Parser;
 use hyperspace_core::vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
-use hyperspace_core::{GlobalConfig, Metric, PoincareMetric};
 use hyperspace_core::QuantizationMode;
+use hyperspace_core::{GlobalConfig, Metric, PoincareMetric};
 use hyperspace_index::HnswIndex;
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
@@ -68,8 +67,7 @@ impl Interceptor for AuthInterceptor {
 }
 
 #[derive(Debug)]
-pub struct HyperspaceService<const N: usize, M: Metric<N>>
-{
+pub struct HyperspaceService<const N: usize, M: Metric<N>> {
     index: Arc<HnswIndex<N, M>>,
     #[allow(dead_code)]
     store: Arc<VectorStore>,
@@ -82,8 +80,7 @@ pub struct HyperspaceService<const N: usize, M: Metric<N>>
 }
 
 #[tonic::async_trait]
-impl<const N: usize, M: Metric<N>> Database for HyperspaceService<N, M>
-{
+impl<const N: usize, M: Metric<N>> Database for HyperspaceService<N, M> {
     async fn insert(
         &self,
         request: Request<InsertRequest>,
@@ -341,8 +338,9 @@ impl<const N: usize, M: Metric<N>> Database for HyperspaceService<N, M>
     }
 }
 
-async fn boot_server<const N: usize, M: Metric<N>>(args: Args) -> Result<(), Box<dyn std::error::Error>>
-{
+async fn boot_server<const N: usize, M: Metric<N>>(
+    args: Args,
+) -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("0.0.0.0:{}", args.port).parse()?;
     let wal_path = std::path::Path::new("wal.log");
 
@@ -350,24 +348,30 @@ async fn boot_server<const N: usize, M: Metric<N>>(args: Args) -> Result<(), Box
     let data_dir = std::path::Path::new("data");
     let snap_path = std::path::Path::new("index.snap");
 
-    // Global Runtime Config (loaded from env in main, but let's refresh or pass it? 
+    // Global Runtime Config (loaded from env in main, but let's refresh or pass it?
     // GlobalConfig::new reads defaults? No, it's just atomic counters.
     // IndexConfig (construction vars) is also needed.
     // Env vars: HS_HNSW_EF_CONSTRUCT, HS_HNSW_M, HS_QUANTIZATION_LEVEL
     // We should read them here or pass them.
     // Since GlobalConfig is 'Runtime' config (ef_search), we create it here.
-    
+
     // Default values for HNSW construction
-    let ef_cons_env = std::env::var("HS_HNSW_EF_CONSTRUCT").unwrap_or("100".to_string()).parse().unwrap_or(100);
-    let ef_search_env = std::env::var("HS_HNSW_EF_SEARCH").unwrap_or("10".to_string()).parse().unwrap_or(10);
-    
-    // Note: ef_construction is currently in GlobalConfig separately? 
+    let ef_cons_env = std::env::var("HS_HNSW_EF_CONSTRUCT")
+        .unwrap_or("100".to_string())
+        .parse()
+        .unwrap_or(100);
+    let ef_search_env = std::env::var("HS_HNSW_EF_SEARCH")
+        .unwrap_or("10".to_string())
+        .parse()
+        .unwrap_or(10);
+
+    // Note: ef_construction is currently in GlobalConfig separately?
     // HnswIndex has GlobalConfig. And select_neighbors uses config.
     // We should initialze GlobalConfig with env vars.
     let config = Arc::new(GlobalConfig::new());
     config.set_ef_construction(ef_cons_env);
     config.set_ef_search(ef_search_env);
-    
+
     // Quantization
     let quant_env = std::env::var("HS_QUANTIZATION_LEVEL").unwrap_or("scalar".to_string());
     let mode = match quant_env.as_str() {
@@ -546,7 +550,7 @@ async fn boot_server<const N: usize, M: Metric<N>>(args: Args) -> Result<(), Box
     };
 
     println!("HyperspaceDB listening on {}", addr);
-    
+
     // Setup Auth
     let api_key = std::env::var("HYPERSPACE_API_KEY").ok();
     let interceptor = if let Some(key) = api_key {
@@ -600,13 +604,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok(); // Reading .env
 
     let args = Args::parse();
-    
+
     // Read Config
     let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
     let dim: usize = dim_str.parse().expect("HS_DIMENSION must be a number");
     let metric_str = std::env::var("HS_DISTANCE_METRIC").unwrap_or("poincare".to_string());
 
-    println!("DISPATCHER: Booting kernel with N={}, Metric={}", dim, metric_str);
+    println!(
+        "DISPATCHER: Booting kernel with N={}, Metric={}",
+        dim, metric_str
+    );
 
     // Dispatcher
     match (dim, metric_str.as_str()) {
@@ -614,10 +621,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (768, "poincare") => boot_server::<768, PoincareMetric>(args).await?,
         (1536, "poincare") => boot_server::<1536, PoincareMetric>(args).await?,
         (8, "poincare") => boot_server::<8, PoincareMetric>(args).await?,
-        
+
         // Add more combinations here (e.g. Cosine)
         // (1024, "cosine") => boot_server::<1024, CosineMetric>(args).await?,
-        
+
         _ => panic!("Unsupported combination: Dimension {} with Metric {}. Please update main.rs Dispatcher.", dim, metric_str),
     }
 

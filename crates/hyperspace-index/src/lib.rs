@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 // Imports
 use hyperspace_core::vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
-use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_core::QuantizationMode;
+use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_store::VectorStore;
 use std::marker::PhantomData;
 
@@ -65,8 +65,7 @@ impl Default for MetadataIndex {
     }
 }
 
-impl<const N: usize, M: Metric<N>> HnswIndex<N, M>
-{
+impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
         let entry_point = self.entry_point.load(Ordering::Relaxed);
@@ -156,8 +155,7 @@ const M: usize = 16;
 // const M_MAX0: usize = M * 2; // Not used in MVP yet
 
 #[derive(Debug)]
-pub struct HnswIndex<const N: usize, M: Metric<N>>
-{
+pub struct HnswIndex<const N: usize, M: Metric<N>> {
     // Topology storage. Index in vector = NodeId.
     nodes: RwLock<Vec<Node>>,
 
@@ -178,7 +176,7 @@ pub struct HnswIndex<const N: usize, M: Metric<N>>
 
     // Runtime configuration
     pub config: Arc<GlobalConfig>,
-    
+
     _marker: PhantomData<M>,
 }
 
@@ -214,8 +212,7 @@ impl PartialOrd for Candidate {
     }
 }
 
-impl<const N: usize, M: Metric<N>> HnswIndex<N, M>
-{
+impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     pub fn new(
         storage: Arc<VectorStore>,
         mode: QuantizationMode,
@@ -346,7 +343,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M>
         if query.len() != N {
             panic!(
                 "Query dimension mismatch provided {}, expected {}",
-                query.len(), N
+                query.len(),
+                N
             );
         }
         aligned_query.copy_from_slice(query);
