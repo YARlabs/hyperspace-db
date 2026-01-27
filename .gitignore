@@ -14,3 +14,4 @@ Cargo.lock
 # Directories
 venv/
 data/
+docs/book/

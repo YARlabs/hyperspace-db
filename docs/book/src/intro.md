@@ -1,4 +1,4 @@
-# 🌌 HyperspaceDB
+# [H] HyperspaceDB
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
