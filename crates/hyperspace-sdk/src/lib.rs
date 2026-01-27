@@ -5,6 +5,11 @@ use tonic::service::Interceptor;
 use tonic::transport::Channel;
 use tonic::{Request, Status};
 
+#[cfg(feature = "embedders")]
+mod embedder;
+#[cfg(feature = "embedders")]
+pub use embedder::*;
+
 #[derive(Clone)]
 pub struct AuthInterceptor {
     api_key: Option<String>,
@@ -24,6 +29,8 @@ impl Interceptor for AuthInterceptor {
 
 pub struct Client {
     inner: DatabaseClient<InterceptedService<Channel, AuthInterceptor>>,
+    #[cfg(feature = "embedders")]
+    embedder: Option<Box<dyn Embedder>>,
 }
 
 impl Client {
@@ -34,7 +41,16 @@ impl Client {
         let channel = Channel::from_shared(dst)?.connect().await?;
         let interceptor = AuthInterceptor { api_key };
         let client = DatabaseClient::with_interceptor(channel, interceptor);
-        Ok(Self { inner: client })
+        Ok(Self {
+            inner: client,
+            #[cfg(feature = "embedders")]
+            embedder: None,
+        })
+    }
+
+    #[cfg(feature = "embedders")]
+    pub fn set_embedder(&mut self, embedder: Box<dyn Embedder>) {
+        self.embedder = Some(embedder);
     }
 
     pub async fn insert(
@@ -52,12 +68,45 @@ impl Client {
         Ok(resp.into_inner().success)
     }
 
+    #[cfg(feature = "embedders")]
+    pub async fn insert_document(
+        &mut self,
+        id: u32,
+        document: &str,
+        metadata: std::collections::HashMap<String, String>,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        if let Some(embedder) = &self.embedder {
+            let vector = embedder.encode(document).await?;
+            self.insert(id, vector, metadata)
+                .await
+                .map_err(|e| e.into())
+        } else {
+            Err("No embedder configured".into())
+        }
+    }
+
     pub async fn search(
         &mut self,
         vector: Vec<f64>,
         top_k: u32,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         self.search_advanced(vector, top_k, vec![], None).await
+    }
+
+    #[cfg(feature = "embedders")]
+    pub async fn search_document(
+        &mut self,
+        query_text: &str,
+        top_k: u32,
+    ) -> Result<Vec<SearchResult>, Box<dyn std::error::Error>> {
+        if let Some(embedder) = &self.embedder {
+            let vector = embedder.encode(query_text).await?;
+            self.search_advanced(vector, top_k, vec![], None)
+                .await
+                .map_err(|e| e.into())
+        } else {
+            Err("No embedder configured".into())
+        }
     }
 
     pub async fn search_advanced(

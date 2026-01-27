@@ -204,17 +204,19 @@ pip install ./sdks/python
 ```
 
 ```python
-from hyperspace import HyperspaceClient
+from hyperspace import HyperspaceClient, OpenAIEmbedder
 
-# Connect to local instance
-with HyperspaceClient() as client:
-    # Insert vector into Poincaré ball
-    client.insert(id=1, vector=[0.1]*8, metadata={"tag": "hierarchy"})
-    
-    # Search nearest neighbors
-    results = client.search([0.1]*8, top_k=5)
-    print(results)
+# Connect to local instance with built-in Embedder
+client = HyperspaceClient(
+    embedder=OpenAIEmbedder(api_key="sk-...")
+)
 
+# Insert text document (auto-vectorized)
+client.insert(id=1, document="HyperspaceDB is fast.", metadata={"tag": "docs"})
+
+# Search with text (auto-vectorized)
+results = client.search(query_text="fast database", top_k=5)
+print(results)
 ```
 
 ---

@@ -35,6 +35,9 @@ USER hyperspace
 
 ENV RUST_LOG=info
 
+# Label the image
+LABEL org.opencontainers.image.source=https://github.com/yarlabs/hyperspace-db
+
 # Expose gRPC port
 EXPOSE 50051
 
