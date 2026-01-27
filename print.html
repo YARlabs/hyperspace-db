@@ -1,0 +1,872 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>HyperspaceDB Documentation</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+        <!-- MathJax -->
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">5.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">6.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">7.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">7.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">7.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">7.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">7.4.</strong> Security & Auth</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">8.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">9.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">10.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">11.</strong> Zero-Copy HNSW</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">HyperspaceDB Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/yarlabs/hyperspace-db" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="-hyperspacedb"><a class="header" href="#-hyperspacedb">🌌 HyperspaceDB</a></h1>
+<p><a href="intro.html#"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Status" /></a>
+<a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+<a href="intro.html#"><img src="https://img.shields.io/badge/rust-nightly-orange.svg" alt="Rust" /></a></p>
+<p><strong>Fastest Hyperbolic Vector Database written in Rust.</strong><br />
+HyperspaceDB implements the Poincaré ball model for high-precision, low-latency search in hyperbolic space—ideal for hierarchical and taxonomical data representation.</p>
+<hr />
+<h2 id="-key-features"><a class="header" href="#-key-features">🚀 Key Features</a></h2>
+<ul>
+<li><strong>⚡️ Extreme Performance</strong>: Built with Nightly Rust and SIMD intrinsics for maximum search throughput.</li>
+<li><strong>📐 Hyperbolic HNSW</strong>: Custom implementation of Hierarchical Navigable Small Worlds optimized for the Poincaré metric.</li>
+<li><strong>📦 8x Compression</strong>: Integrated <code>ScalarI8</code> quantization reduces memory footprint by 87% without losing accuracy.</li>
+<li><strong>🧵 Async Write Pipeline</strong>: Decoupled ingestion with a background indexing worker and WAL for 10x faster inserts.</li>
+<li><strong>🖥️ Mission Control TUI</strong>: Real-time terminal dashboard for monitoring QPS, segments, and system health.</li>
+<li><strong>🛠️ Runtime Tuning</strong>: Dynamically adjust <code>ef_search</code> and <code>ef_construction</code> parameters via gRPC on-the-fly.</li>
+</ul>
+<hr />
+<h2 id="-architecture"><a class="header" href="#-architecture">🛠 Architecture</a></h2>
+<p>HyperspaceDB follows a <strong>Persistence-First, Index-Second</strong> design:</p>
+<ol>
+<li><strong>gRPC Request</strong>: Insert/Search commands arrive via a high-performance Tonic server.</li>
+<li><strong>WAL &amp; Segmented Storage</strong>: Every insert is immediate persisted to a Write-Ahead Log and a memory-mapped segmented file store.</li>
+<li><strong>Background Indexer</strong>: The HNSW graph is updated asynchronously by a dedicated thread-pool, ensuring 0ms search blocking.</li>
+<li><strong>Snapshots</strong>: Real-time graph topology is periodically serialized using <code>rkyv</code> for near-instant restarts.</li>
+</ol>
+<hr />
+<h2 id="-quick-start"><a class="header" href="#-quick-start">🏃 Quick Start</a></h2>
+<h3 id="1-build-and-start-server"><a class="header" href="#1-build-and-start-server">1. Build and Start Server</a></h3>
+<p>Make sure you have <code>just</code> and <code>nightly rust</code> installed.</p>
+<pre><code class="language-bash">cargo build --release
+./target/release/hyperspace-server
+</code></pre>
+<h3 id="2-launch-dashboard"><a class="header" href="#2-launch-dashboard">2. Launch Dashboard</a></h3>
+<pre><code class="language-bash">./target/release/hyperspace-cli
+</code></pre>
+<h3 id="3-use-python-sdk"><a class="header" href="#3-use-python-sdk">3. Use Python SDK</a></h3>
+<pre><code class="language-bash">pip install ./sdks/python
+</code></pre>
+<pre><code class="language-python">from hyperspace import HyperspaceClient
+
+client = HyperspaceClient(&quot;localhost:50051&quot;)
+client.insert(vector=[0.1]*8, metadata={&quot;category&quot;: &quot;tech&quot;})
+results = client.search(vector=[0.11]*8, top_k=5)
+</code></pre>
+<hr />
+<h2 id="-performance-benchmarks"><a class="header" href="#-performance-benchmarks">📊 Performance Benchmarks</a></h2>
+<p><em>Tested on M4 Pro (Emulated), 1M Vectors (8D)</em></p>
+<ul>
+<li><strong>Insert Throughput</strong>: ~15,500 vectors/sec (Sustained)</li>
+<li><strong>Search Latency</strong>: ~0.07ms (14,600 QPS) @ 1M scale</li>
+<li><strong>Storage Efficiency</strong>: Automatic segmentation + mmap</li>
+</ul>
+<h3 id="the-1-million-challenge"><a class="header" href="#the-1-million-challenge">&quot;The 1 Million Challenge&quot;</a></h3>
+<p>HyperspaceDB successfully handles <strong>1,000,000</strong> vectors with &lt;10% search degradation compared to 10k baseline, proving efficient HNSW scaling.</p>
+<hr />
+<h2 id="-license"><a class="header" href="#-license">📄 License</a></h2>
+<p>AGPLv3 © YARlabs</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="evaluation--benchmarks"><a class="header" href="#evaluation--benchmarks">Evaluation &amp; Benchmarks</a></h1>
+<p>HyperspaceDB is optimized for two critical metrics: <strong>Throughput</strong> (Ingestion speed) and <strong>Latency</strong> (Search speed).</p>
+<h2 id="test-environment"><a class="header" href="#test-environment">Test Environment</a></h2>
+<ul>
+<li><strong>Hardware</strong>: Apple M4 Pro (Emulated Environment) / Linux AVX2</li>
+<li><strong>Dataset</strong>: 1,000,000 vectors, 8 Dimensions, Random Distribution in Unit Ball.</li>
+<li><strong>Config</strong>: <code>ef_construction=100</code>, <code>ef_search=100</code></li>
+</ul>
+<h2 id="results"><a class="header" href="#results">Results</a></h2>
+<h3 id="-ingestion-speed"><a class="header" href="#-ingestion-speed">🚀 Ingestion Speed</a></h3>
+<p>Thanks to the Async Write Buffer (WAL) and background indexing, ingestion does not block user requests.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Count</th><th style="text-align: left">Time</th><th style="text-align: left">Throughput</th><th style="text-align: left">Storage Sements</th></tr></thead><tbody>
+<tr><td style="text-align: left">10,000</td><td style="text-align: left">0.6s</td><td style="text-align: left">15,624 vec/s</td><td style="text-align: left">1</td></tr>
+<tr><td style="text-align: left">100,000</td><td style="text-align: left">6.5s</td><td style="text-align: left">15,300 vec/s</td><td style="text-align: left">2</td></tr>
+<tr><td style="text-align: left"><strong>1,000,000</strong></td><td style="text-align: left"><strong>64.8s</strong></td><td style="text-align: left"><strong>15,420 vec/s</strong></td><td style="text-align: left"><strong>15</strong></td></tr>
+</tbody></table>
+</div>
+<h3 id="-search-latency-1m-scale"><a class="header" href="#-search-latency-1m-scale">🔍 Search Latency (1M Scale)</a></h3>
+<p>At 1 million vectors, search performance degrades linearly with graph depth ($\log N$), proving effective HNSW implementation.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Metric</th><th style="text-align: left">Value</th></tr></thead><tbody>
+<tr><td style="text-align: left"><strong>QPS</strong></td><td style="text-align: left">14,668 queries/sec</td></tr>
+<tr><td style="text-align: left"><strong>Avg Latency</strong></td><td style="text-align: left"><strong>0.07 ms</strong></td></tr>
+<tr><td style="text-align: left"><strong>P99 Latency</strong></td><td style="text-align: left">&lt; 1.0 ms</td></tr>
+</tbody></table>
+</div>
+<h2 id="why-is-it-so-fast"><a class="header" href="#why-is-it-so-fast">Why is it so fast?</a></h2>
+<ol>
+<li><strong>ScalarI8 Quantization</strong>: Fits 8x more vectors in CPU cache.</li>
+<li><strong>No <code>acosh</code></strong>: Inner loop uses a monotonic proxy function ($\delta$).</li>
+<li><strong>SIMD</strong>: Vector operations use platform-specific intrinsics.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<p>HyperspaceDB runs on Linux and macOS. Windows is supported via WSL2.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<ul>
+<li><strong>Rust</strong>: Nightly toolchain is required for SIMD features.</li>
+<li><strong>Protoc</strong>: Protocol Buffer compiler for gRPC.</li>
+</ul>
+<h2 id="option-1-docker-recommended"><a class="header" href="#option-1-docker-recommended">Option 1: Docker (Recommended)</a></h2>
+<p>The easiest way to get started.</p>
+<pre><code class="language-bash">docker pull glukhota/hyperspace-db:latest
+# or build locally
+docker build -t hyperspacedb .
+
+docker run -p 50051:50051 -v $(pwd)/data:/app/data hyperspacedb
+</code></pre>
+<h2 id="option-2-build-from-source"><a class="header" href="#option-2-build-from-source">Option 2: Build from Source</a></h2>
+<ol>
+<li>
+<p><strong>Install dependencies</strong></p>
+<pre><code class="language-bash"># Ubuntu/Debian
+sudo apt install protobuf-compiler cmake
+
+# macOS
+brew install protobuf
+</code></pre>
+</li>
+<li>
+<p><strong>Install Rust Nightly</strong></p>
+<pre><code class="language-bash">rustup toolchain install nightly
+rustup default nightly
+</code></pre>
+</li>
+<li>
+<p><strong>Clone and Build</strong></p>
+<pre><code class="language-bash">git clone https://github.com/yarlabs/hyperspace-db
+cd hyperspace-db
+cargo build --release
+</code></pre>
+</li>
+<li>
+<p><strong>Run</strong></p>
+<pre><code class="language-bash">./target/release/hyperspace-server
+</code></pre>
+</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
+<p>Once the server is running on <code>localhost:50051</code>, you can interact with it using the CLI dashboard or an SDK.</p>
+<h2 id="using-the-cli-dashboard-tui"><a class="header" href="#using-the-cli-dashboard-tui">Using the CLI Dashboard (TUI)</a></h2>
+<p>HyperspaceDB comes with a beautiful terminal interface for monitoring and basic administration.</p>
+<pre><code class="language-bash"># Assuming you built from source
+./target/release/hyperspace-cli
+</code></pre>
+<ul>
+<li><strong>Metric 1: Compression</strong>: Shows how much RAM you are saving with <code>ScalarI8</code>.</li>
+<li><strong>Metric 2: Index Queue</strong>: Shows if the background worker is keeping up with writes.</li>
+<li><strong>Controls</strong>: Press <code>s</code> to force a snapshot save.</li>
+</ul>
+<h2 id="first-interaction-python"><a class="header" href="#first-interaction-python">First Interaction (Python)</a></h2>
+<pre><code class="language-python">from hyperspace import HyperspaceClient
+
+# 1. Connect
+client = HyperspaceClient(&quot;localhost:50051&quot;)
+
+# 2. Insert (ID must be uint32)
+# Vectors must be inside the Poincaré ball (norm &lt; 1.0)
+client.insert(id=101, vector=[0.1, 0.5, -0.2, 0.1, 0.0, 0.0, 0.0, 0.1], metadata={&quot;label&quot;: &quot;demo&quot;})
+
+# 3. Search
+results = client.search(vector=[0.1, 0.5, -0.2, 0.1, 0.0, 0.0, 0.0, 0.0], top_k=1)
+
+print(f&quot;Found ID: {results[0]['id']} with distance {results[0]['distance']}&quot;)
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="python-sdk"><a class="header" href="#python-sdk">Python SDK</a></h1>
+<p>The official Python client provides an ergonomic wrapper around the gRPC interface.</p>
+<h2 id="installation-1"><a class="header" href="#installation-1">Installation</a></h2>
+<p>Currently, install directly from the source:</p>
+<pre><code class="language-bash">git clone https://github.com/yarlabs/hyperspace-db
+cd hyperspace-db/sdks/python
+pip install .
+</code></pre>
+<p>(Coming soon to PyPI as <code>hyperspacedb</code>)</p>
+<h2 id="client-side-vectorization-fat-client"><a class="header" href="#client-side-vectorization-fat-client">Client-Side Vectorization (Fat Client)</a></h2>
+<p>The SDK supports built-in embedding generation using popular providers (OpenAI, Cohere, etc.). This allows you to insert and search using raw text.</p>
+<h3 id="installation-with-extras"><a class="header" href="#installation-with-extras">Installation with Extras</a></h3>
+<pre><code class="language-bash"># Install with OpenAI support
+pip install &quot;.[openai]&quot;
+
+# Install with All embedders support
+pip install &quot;.[all]&quot;
+</code></pre>
+<h3 id="usage"><a class="header" href="#usage">Usage</a></h3>
+<pre><code class="language-python">from hyperspace import HyperspaceClient, OpenAIEmbedder
+
+# 1. Init with Embedder
+embedder = OpenAIEmbedder(api_key=&quot;sk-...&quot;)
+client = HyperspaceClient(embedder=embedder)
+
+# 2. Insert Document
+client.insert(id=1, document=&quot;HyperspaceDB supports Hyperbolic geometry.&quot;, metadata={&quot;tag&quot;: &quot;math&quot;})
+
+# 3. Search by Text
+results = client.search(query_text=&quot;non-euclidean geometry&quot;, top_k=5)
+</code></pre>
+<h2 id="reference"><a class="header" href="#reference">Reference</a></h2>
+<h3 id="hyperspaceclient"><a class="header" href="#hyperspaceclient"><code>HyperspaceClient</code></a></h3>
+<pre><code class="language-python">class HyperspaceClient(host=&quot;localhost:50051&quot;, api_key=None, embedder=None)
+</code></pre>
+<ul>
+<li><code>embedder</code>: Instance of <code>BaseEmbedder</code> subclass.</li>
+</ul>
+<h3 id="supported-embedders"><a class="header" href="#supported-embedders">Supported Embedders</a></h3>
+<ul>
+<li><code>OpenAIEmbedder</code></li>
+<li><code>OpenRouterEmbedder</code></li>
+<li><code>CohereEmbedder</code></li>
+<li><code>VoyageEmbedder</code></li>
+<li><code>GoogleEmbedder</code></li>
+<li><code>SentenceTransformerEmbedder</code> (Local models)</li>
+</ul>
+<h3 id="methods"><a class="header" href="#methods">Methods</a></h3>
+<h4 id="insertid-vectornone-documentnone-metadatanone---bool"><a class="header" href="#insertid-vectornone-documentnone-metadatanone---bool"><code>insert(id, vector=None, document=None, metadata=None) -&gt; bool</code></a></h4>
+<ul>
+<li><code>id</code> (int): Unique identifier (u32).</li>
+<li><code>vector</code> (List[float]): The embedding.</li>
+<li><code>document</code> (str): Raw text to embed (requires configured embedder).</li>
+<li><strong>Note</strong>: Provide either <code>vector</code> OR <code>document</code>.</li>
+</ul>
+<h4 id="searchvectornone-query_textnone-top_k10----listdict"><a class="header" href="#searchvectornone-query_textnone-top_k10----listdict"><code>search(vector=None, query_text=None, top_k=10, ...) -&gt; List[dict]</code></a></h4>
+<ul>
+<li><code>vector</code> (List[float]): Query vector.</li>
+<li><code>query_text</code> (str): Raw text query.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="rust-sdk"><a class="header" href="#rust-sdk">Rust SDK</a></h1>
+<p>For low-latency applications, connect directly using the Rust SDK.</p>
+<h2 id="installation-2"><a class="header" href="#installation-2">Installation</a></h2>
+<p>Add to your <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+hyperspace-sdk = { git = &quot;https://github.com/yarlabs/hyperspace-db&quot; }
+tokio = { version = &quot;1&quot;, features = [&quot;full&quot;] }
+</code></pre>
+<h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust">use hyperspace_sdk::Client;
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    // 1. Connect (with optional API Key)
+    let api_key = std::env::var(&quot;HYPERSPACE_API_KEY&quot;).ok();
+    let mut client = Client::connect(&quot;http://127.0.0.1:50051&quot;.into(), api_key).await?;
+
+    // --- Optional: Configure Embedder (Feature: &quot;embedders&quot;) ---
+    #[cfg(feature = &quot;embedders&quot;)]
+    {
+        // Example: OpenAI
+        use hyperspace_sdk::OpenAIEmbedder;
+        let openai_key = std::env::var(&quot;OPENAI_API_KEY&quot;).unwrap();
+        let embedder = OpenAIEmbedder::new(openai_key, &quot;text-embedding-3-small&quot;.to_string());
+        
+        // Or: Voyage AI
+        // use hyperspace_sdk::VoyageEmbedder;
+        // let embedder = VoyageEmbedder::new(api_key, &quot;voyage-large-2&quot;.to_string());
+
+        client.set_embedder(Box::new(embedder));
+        
+        // Insert Document
+        let mut meta = HashMap::new();
+        meta.insert(&quot;tag&quot;.to_string(), &quot;rust&quot;.to_string());
+        client.insert_document(100, &quot;Rust is blazing fast.&quot;, meta).await?;
+        
+        // Search Document
+        let results = client.search_document(&quot;fast systems language&quot;, 5).await?;
+        println!(&quot;Document Search Results: {:?}&quot;, results);
+    }
+    // -----------------------------------------------------------
+
+    // 2. Insert with Vector (Low-Level)
+    let vec = vec![0.1; 8];
+    let mut meta = HashMap::new();
+    meta.insert(&quot;name&quot;.to_string(), &quot;item-42&quot;.to_string());
+    
+    client.insert(42, vec.clone(), meta).await?;
+
+    // 3. Basic Search
+    let results = client.search(vec.clone(), 5).await?;
+    
+    // 4. Advanced / Hybrid Search
+    // e.g. Find semantically similar items that also mention &quot;item&quot;
+    let hybrid = Some((&quot;item&quot;.to_string(), 0.5)); 
+    let results = client.search_advanced(vec, 5, vec![], hybrid).await?;
+    
+    for res in results {
+        println!(&quot;Match: {} (dist: {})&quot;, res.id, res.distance);
+    }
+    
+    Ok(())
+}</code></pre></pre>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<ul>
+<li><code>embedders</code>: Enables <code>set_embedder</code>, <code>insert_document</code>, and <code>search_document</code>. Requires <code>reqwest</code> and <code>serde</code>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="grpc-api-reference"><a class="header" href="#grpc-api-reference">gRPC API Reference</a></h1>
+<p>HyperspaceDB exposes a simple yet powerful gRPC interface defined in <code>hyperspace.proto</code>.</p>
+<h2 id="service-database"><a class="header" href="#service-database">Service: <code>Database</code></a></h2>
+<h3 id="insert"><a class="header" href="#insert"><code>Insert</code></a></h3>
+<p>Ingests a vector into the database. This is an asynchronous operation regarding the index, but synchronous regarding durability (WAL).</p>
+<pre><code class="language-protobuf">rpc Insert (InsertRequest) returns (InsertResponse);
+
+message InsertRequest {
+  uint32 id = 1;             // External unique ID
+  repeated float vector = 2; // The data point (must be norm &lt; 1)
+  map&lt;string, string&gt; metadata = 3; // Tags for filtering
+}
+</code></pre>
+<h3 id="search"><a class="header" href="#search"><code>Search</code></a></h3>
+<p>Finds the nearest neighbors using the Poincaré metric.</p>
+<pre><code class="language-protobuf">rpc Search (SearchRequest) returns (SearchResponse);
+
+message SearchRequest {
+  repeated float vector = 1; // Query vector
+  uint32 top_k = 2;          // Number of results
+  map&lt;string, string&gt; filter = 3; // Optional metadata filter (AND logic)
+}
+</code></pre>
+<h3 id="configure"><a class="header" href="#configure"><code>Configure</code></a></h3>
+<p>Updates runtime parameters.</p>
+<pre><code class="language-protobuf">rpc Configure (ConfigUpdate) returns (StatusResponse);
+
+message ConfigUpdate {
+  optional uint32 ef_search = 1;       // Search beam width (higher = more accurate)
+  optional uint32 ef_construction = 2; // Indexing beam width (higher = better graph)
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="user-guide"><a class="header" href="#user-guide">User Guide</a></h1>
+<h2 id="server-configuration"><a class="header" href="#server-configuration">Server Configuration</a></h2>
+<p>HyperspaceDB is configured via gRPC commands at runtime, but defaults can be set via environment variables.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Variable</th><th style="text-align: left">Default</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>RUST_LOG</code></td><td style="text-align: left"><code>info</code></td><td style="text-align: left">Log level (debug, info, error)</td></tr>
+<tr><td style="text-align: left"><code>HS_PORT</code></td><td style="text-align: left"><code>50051</code></td><td style="text-align: left">gRPC listening port</td></tr>
+<tr><td style="text-align: left"><code>HS_DATA_DIR</code></td><td style="text-align: left"><code>./data</code></td><td style="text-align: left">Path to store segments and WAL</td></tr>
+<tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Vector dimensionality (8, 768, 1024, 1536)</td></tr>
+<tr><td style="text-align: left"><code>HS_DISTANCE_METRIC</code></td><td style="text-align: left"><code>poincare</code></td><td style="text-align: left">Distance metric (poincare)</td></tr>
+<tr><td style="text-align: left"><code>HS_QUANTIZATION_LEVEL</code></td><td style="text-align: left"><code>scalar</code></td><td style="text-align: left">Compression (none, scalar, binary)</td></tr>
+<tr><td style="text-align: left"><code>HS_HNSW_EF_CONSTRUCT</code></td><td style="text-align: left"><code>100</code></td><td style="text-align: left">Index build quality (50-500)</td></tr>
+<tr><td style="text-align: left"><code>HS_HNSW_EF_SEARCH</code></td><td style="text-align: left"><code>10</code></td><td style="text-align: left">Search beam width (10-500)</td></tr>
+</tbody></table>
+</div>
+<h2 id="tui-dashboard-mission-control"><a class="header" href="#tui-dashboard-mission-control">TUI Dashboard (Mission Control)</a></h2>
+<p>Launch the dashboard to monitor your instance:</p>
+<pre><code class="language-bash">./hyperspace-cli
+</code></pre>
+<h3 id="key-controls"><a class="header" href="#key-controls">Key Controls</a></h3>
+<ul>
+<li><strong>TAB</strong>: Switch between Overview, Storage, and Admin tabs.</li>
+<li><strong>[S]</strong>: Trigger an immediate graph snapshot.</li>
+<li><strong>[V]</strong>: Trigger storage vacuum (compaction, experimental).</li>
+<li><strong>[Q]</strong>: Quit the dashboard.</li>
+</ul>
+<h2 id="persistence--recovery"><a class="header" href="#persistence--recovery">Persistence &amp; Recovery</a></h2>
+<p>HyperspaceDB uses a <strong>Write-Ahead Log (WAL)</strong>.</p>
+<ol>
+<li><strong>Insert</strong>: Data is appended to <code>wal.log</code> immediately.</li>
+<li><strong>Snapshot</strong>: The in-memory graph is periodically serialized to <code>index.snap</code>.</li>
+<li><strong>Recovery</strong>: On restart, the system loads <code>index.snap</code> (instant mmap) and replays any entries in <code>wal.log</code> that occurred after the snapshot.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="advanced-features"><a class="header" href="#advanced-features">Advanced Features</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="-distributed-replication"><a class="header" href="#-distributed-replication">🤝 Distributed Replication</a></h1>
+<p>To scale <strong>Read Throughput</strong> and ensure <strong>High Availability</strong>, HyperspaceDB supports a Leader-Follower architecture.</p>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<ul>
+<li><strong>Leader</strong>:
+<ul>
+<li>Accepts Writes (Insert/Delete).</li>
+<li>Accepts Reads.</li>
+<li>Streams WAL (Write-Ahead Log) entries to connected followers via gRPC streaming.</li>
+</ul>
+</li>
+<li><strong>Follower</strong>:
+<ul>
+<li>Replicates state from Leader in real-time.</li>
+<li>Accepts Reads (Scaling).</li>
+<li>Rejects Writes.</li>
+</ul>
+</li>
+</ul>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<h3 id="leader"><a class="header" href="#leader">Leader</a></h3>
+<p>Simply start the server (default role is leader).</p>
+<pre><code class="language-bash">./hyperspace-server --port 50051
+</code></pre>
+<h3 id="follower"><a class="header" href="#follower">Follower</a></h3>
+<p>Start with <code>--role follower</code> and point to the leader's URL.</p>
+<pre><code class="language-bash">./hyperspace-server --port 50052 --role follower --leader http://127.0.0.1:50051
+</code></pre>
+<blockquote>
+<p><strong>Note</strong>: Followers store data in memory and can optionally persist snapshots. Currently, followers replicate the in-memory state.</p>
+</blockquote>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="-hybrid-search"><a class="header" href="#-hybrid-search">🧠 Hybrid Search</a></h1>
+<p>HyperspaceDB combines <strong>Hyperbolic Vector Search</strong> with <strong>Lexical (Keyword) Search</strong> to provide the best of both worlds.</p>
+<p>This is powered by <strong>Reciprocal Rank Fusion (RRF)</strong>, which normalizes scores from both engines and merges them.</p>
+<h2 id="conceptual-flow"><a class="header" href="#conceptual-flow">Conceptual Flow</a></h2>
+<ol>
+<li><strong>Vector Search</strong>: Finds semantically similar items (e.g. &quot;smartphone&quot; finds &quot;iPhone&quot;).</li>
+<li><strong>Keyword Search</strong>: Finds exact token matches in metadata (e.g. &quot;iphone&quot; finds items with &quot;iphone&quot; in title).</li>
+<li><strong>RRF Fusion</strong>: <code>Score = 1/(k + rank_vec) + 1/(k + rank_lex)</code>.</li>
+</ol>
+<h2 id="api-usage"><a class="header" href="#api-usage">API Usage</a></h2>
+<h3 id="python"><a class="header" href="#python">Python</a></h3>
+<pre><code class="language-python">results = client.search(
+    vector=query_vector,
+    top_k=10,
+    hybrid_query=&quot;apple macbook&quot;,  # Lexical query
+    hybrid_alpha=0.5               # Balance factor (default 60.0 in RRF usually, but exposed as alpha here)
+)
+</code></pre>
+<h3 id="rust"><a class="header" href="#rust">Rust</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let results = client.search_advanced(
+    query_vector,
+    10,
+    vec![], 
+    Some((&quot;apple macbook&quot;.to_string(), 0.5))
+).await?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tokenization"><a class="header" href="#tokenization">Tokenization</a></h2>
+<p>Currently, all string metadata values are automatically tokenized (split by whitespace, lowercase, alphanumeric) and indexed in an inverted index.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="-binary-quantization"><a class="header" href="#-binary-quantization">📉 Binary Quantization</a></h1>
+<p>HyperspaceDB supports multiple storage modes to balance <strong>Performance vs Memory</strong>.</p>
+<h2 id="modes"><a class="header" href="#modes">Modes</a></h2>
+<ol>
+<li><strong>ScalarI8</strong> (Default): Vectors are compressed to 8-bit integers (<code>[-127, 127]</code>).
+<ul>
+<li>Compression: ~8x vs <code>f64</code>.</li>
+<li>Recall: High (~98%).</li>
+</ul>
+</li>
+<li><strong>Binary</strong> (1-bit): Vectors are compressed to single bits using sign threshold.
+<ul>
+<li>Compression: <strong>64x</strong> vs <code>f64</code>.</li>
+<li>Performance: Blazing fast Hamming distance.</li>
+<li>Recall: Moderate (Great for Re-ranking or large datasets).</li>
+</ul>
+</li>
+<li><strong>None</strong>: Full precision <code>f64</code> storage.</li>
+</ol>
+<h2 id="usage-2"><a class="header" href="#usage-2">Usage</a></h2>
+<p>Start the server with your desired mode:</p>
+<pre><code class="language-bash"># Default (ScalarI8)
+./hyperspace-server
+
+# Ultra-Compact (Binary)
+./hyperspace-server --mode binary
+
+# Full Precision (Research)
+./hyperspace-server --mode none
+</code></pre>
+<blockquote>
+<p><strong>Note</strong>: The mode is set at server startup and applies to the entire database instance. Mixing modes is not currently supported.</p>
+</blockquote>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="-security--auth"><a class="header" href="#-security--auth">🔒 Security &amp; Auth</a></h1>
+<p>HyperspaceDB includes built-in security features for production deployments.</p>
+<h2 id="api-authentication"><a class="header" href="#api-authentication">API Authentication</a></h2>
+<p>We use a simple but effective <strong>API Key</strong> mechanism.</p>
+<h3 id="enabling-auth"><a class="header" href="#enabling-auth">Enabling Auth</a></h3>
+<p>Set the <code>HYPERSPACE_API_KEY</code> environment variable when starting the server.</p>
+<pre><code class="language-bash">export HYPERSPACE_API_KEY=&quot;my-secret-key-123&quot;
+./hyperspace-server
+</code></pre>
+<p>If this variable is NOT set, authentication is <strong>disabled</strong> (dev mode).</p>
+<h3 id="client-usage"><a class="header" href="#client-usage">Client Usage</a></h3>
+<p>Clients must pass the key in the <code>x-api-key</code> metadata header.</p>
+<p><strong>Python:</strong></p>
+<pre><code class="language-python">client = HyperspaceClient(host=&quot;localhost:50051&quot;, api_key=&quot;my-secret-key-123&quot;)
+</code></pre>
+<p><strong>Rust:</strong></p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Internally configured via Tonic Interceptor if you implement it or pass metadata manually.
+// The SDK handles this if extended in future. 
+// Current Rust SDK v0.1 does not explicit expose auth arg yet, planned for v0.2.
+<span class="boring">}</span></code></pre></pre>
+<h2 id="security-implementation"><a class="header" href="#security-implementation">Security Implementation</a></h2>
+<ul>
+<li><strong>SHA-256 Hashing</strong>: The server computes <code>SHA256(env_key)</code> at startup and stores only the hash.</li>
+<li><strong>Constant-Time Comparison</strong>: Incoming keys are hashed and compared to prevent timing attacks.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="hyperspacedb-architecture-guide"><a class="header" href="#hyperspacedb-architecture-guide">HyperspaceDB Architecture Guide</a></h1>
+<p>HyperspaceDB is a specialized vector database designed for high-performance hyperbolic embedding search. This document details its internal architecture, storage format, and indexing strategies.</p>
+<hr />
+<h2 id="-system-overview"><a class="header" href="#-system-overview">🏗 System Overview</a></h2>
+<p>The system follows a strict <strong>Command-Query Separation (CQS)</strong> pattern, tailored for write-heavy ingestion and latency-sensitive search.</p>
+<pre><code class="language-mermaid">graph TD
+    Client[Client (gRPC)] --&gt;|Insert| S[Server Service]
+    Client --&gt;|Search| S
+    
+    subgraph Persistence Layer
+        S --&gt;|1. Append| WAL[Write-Ahead Log]
+        S --&gt;|2. Append| VS[Vector Store]
+    end
+    
+    subgraph Indexing Layer
+        S --&gt;|3. Send ID| Q[Async Queue (Channel)]
+        Q --&gt;|Pop| W[Indexer Worker]
+        W --&gt;|Update| HNSW[HNSW Graph (RAM)]
+    end
+    
+    subgraph Background Tasks
+        Snap[Snapshotter] --&gt;|Serialize| Disk[Index Snapshot (.snap)]
+    end
+</code></pre>
+<hr />
+<h2 id="-storage-layer-hyperspace-store"><a class="header" href="#-storage-layer-hyperspace-store">💾 Storage Layer (hyperspace-store)</a></h2>
+<h3 id="1-vector-storage-data"><a class="header" href="#1-vector-storage-data">1. Vector Storage (<code>data/</code>)</a></h3>
+<p>Vectors are stored in a segmented, append-only format using <strong>Memory-Mapped Files (mmap)</strong>.</p>
+<ul>
+<li><strong>Segments</strong>: Data is split into chunks of 65,536 vectors (<code>2^16</code>).</li>
+<li><strong>Files</strong>: <code>chunk_0.hyp</code>, <code>chunk_1.hyp</code>, etc.</li>
+<li><strong>Quantization</strong>: Vectors are optionally quantized (e.g., <code>ScalarI8</code>), reducing size from 64-bit float to 8-bit integer per dimension (8x compression).</li>
+</ul>
+<h3 id="2-write-ahead-log-wallog"><a class="header" href="#2-write-ahead-log-wallog">2. Write-Ahead Log (<code>wal.log</code>)</a></h3>
+<p>Writes are durable. Every insert is appended to <code>wal.log</code> before being acknowledged. Upon restart, the WAL helps recover data that wasn't yet persisted in the Index Snapshot.</p>
+<hr />
+<h2 id="-indexing-layer-hyperspace-index"><a class="header" href="#-indexing-layer-hyperspace-index">🕸 Indexing Layer (hyperspace-index)</a></h2>
+<h3 id="hyperbolic-hnsw"><a class="header" href="#hyperbolic-hnsw">Hyperbolic HNSW</a></h3>
+<p>We implement a modified <strong>Hierarchical Navigable Small World</strong> graph optimized for the Poincaré Ball model.</p>
+<ul>
+<li><strong>Distance Metric</strong>: Poincaré distance formula:
+$$ d(u, v) = \text{acosh}\left(1 + 2 \frac{||u-v||^2}{(1-||u||^2)(1-||v||^2)}\right) $$</li>
+<li><strong>Optimization</strong>: We compare $||u-v||^2$ and cached normalization factors $\alpha = 1/(1-||u||^2)$ to avoid expensive <code>acosh</code> calls during graph traversal.</li>
+<li><strong>Locking</strong>: The graph uses fine-grained <code>RwLock</code> per node layer, allowing concurrent searches and updates.</li>
+</ul>
+<h3 id="dynamic-configuration"><a class="header" href="#dynamic-configuration">Dynamic Configuration</a></h3>
+<p>Parameters <code>ef_search</code> (search depth) and <code>ef_construction</code> (build quality) are stored in <code>AtomicUsize</code> global config, allowing runtime tuning without restarts.</p>
+<hr />
+<h2 id="-performance-traits"><a class="header" href="#-performance-traits">⚡️ Performance Traits</a></h2>
+<ol>
+<li><strong>Async Indexing</strong>: Client receives <code>OK</code> as soon as data hits the WAL. Indexing happens in the background.</li>
+<li><strong>Zero-Copy Read</strong>: Search uses <code>mmap</code> to read quantized vectors directly from OS cache without heap allocation.</li>
+<li><strong>SIMD Acceleration</strong>: Distance calculations use <code>std::simd</code> (Portable SIMD) for 4-8x speedup on supported CPUs (AVX2, Neon).</li>
+</ol>
+<hr />
+<h2 id="-lifecycle"><a class="header" href="#-lifecycle">🔄 Lifecycle</a></h2>
+<ol>
+<li><strong>Startup</strong>: 
+<ul>
+<li>Load <code>index.snap</code> (Rkyv zero-copy deserialization).</li>
+<li>Replay <code>wal.log</code> for any missing vectors.</li>
+</ul>
+</li>
+<li><strong>Runtime</strong>:
+<ul>
+<li>Serve read/write requests.</li>
+<li>Background worker consumes indexing queue.</li>
+<li>Snapshotter periodically saves graph state.</li>
+</ul>
+</li>
+<li><strong>Shutdown</strong>:
+<ul>
+<li>Stop accepting writes.</li>
+<li>Drain indexing queue.</li>
+<li>Save final snapshot.</li>
+<li>Close file handles.</li>
+</ul>
+</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="storage-format"><a class="header" href="#storage-format">Storage Format</a></h1>
+<p>HyperspaceDB uses a custom segmented file format designed for:</p>
+<ol>
+<li><strong>Fast Appends</strong> (Zero seek time).</li>
+<li><strong>Mmap Compatibility</strong> (OS manages caching).</li>
+<li><strong>Space Efficiency</strong> (Quantization).</li>
+</ol>
+<h2 id="segmentation"><a class="header" href="#segmentation">Segmentation</a></h2>
+<p>Data is split into &quot;Chunks&quot; of fixed size ($2^{16} = 65,536$ vectors). This avoids allocating one giant file and allows easier lifecycle management.</p>
+<ul>
+<li><code>data/chunk_0.hyp</code></li>
+<li><code>data/chunk_1.hyp</code></li>
+<li>...</li>
+</ul>
+<h2 id="file-layout"><a class="header" href="#file-layout">File Layout</a></h2>
+<p>Each <code>.hyp</code> file is a flat array of fixed-size records. No headers, no metadata. Metadata is stored in the Index Snapshot or recovered from layout.</p>
+<h3 id="record-structure-scalari8"><a class="header" href="#record-structure-scalari8">Record Structure (<code>ScalarI8</code>)</a></h3>
+<p>When <code>QuantizationMode::ScalarI8</code> is active:</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Byte Offset</th><th style="text-align: left">Content</th><th style="text-align: left">Type</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>0..N</code></td><td style="text-align: left">Quantized Coordinates</td><td style="text-align: left"><code>[i8; N]</code></td></tr>
+<tr><td style="text-align: left"><code>N..N+4</code></td><td style="text-align: left">Pre-computed Alpha</td><td style="text-align: left"><code>f32</code></td></tr>
+</tbody></table>
+</div>
+<p>Total size per vector (for N=8): $8 + 4 = 12$ bytes.
+Without quantization (f64), it would be $8 \times 8 = 64$ bytes.
+<strong>Savings: ~81%</strong>.</p>
+<h2 id="write-ahead-log-wal"><a class="header" href="#write-ahead-log-wal">Write-Ahead Log (WAL)</a></h2>
+<p>Path: <code>wal.log</code></p>
+<p>The WAL ensures durability.
+Format:</p>
+<ul>
+<li><code>id</code> (u32)</li>
+<li><code>vector</code> ([f64; N])</li>
+</ul>
+<p>It is only read during startup if the Index Snapshot is older than the last WAL entry.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="the-hyperbolic-geometry"><a class="header" href="#the-hyperbolic-geometry">The Hyperbolic Geometry</a></h1>
+<p>HyperspaceDB operates in the <strong>Poincaré Ball Model</strong> of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of &quot;space&quot; available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.</p>
+<h2 id="the-distance-formula"><a class="header" href="#the-distance-formula">The Distance Formula</a></h2>
+<p>The distance $d(u, v)$ between two vectors $u, v$ in the Poincaré ball ($\mathbb{D}^n$) is defined as:</p>
+<p>$$
+d(u, v) = \text{arccosh}\left( 1 + 2 \frac{|u - v|^2}{(1 - |u|^2)(1 - |v|^2)} \right)
+$$</p>
+<p>Where:</p>
+<ul>
+<li>$|u|$ is the Euclidean norm of vector $u$.</li>
+<li>The vectors must satisfy $|u| &lt; 1$.</li>
+</ul>
+<h2 id="optimization-the-alpha-trick"><a class="header" href="#optimization-the-alpha-trick">Optimization: The &quot;Alpha&quot; Trick</a></h2>
+<p>Calculating <code>arccosh</code> and divisions for every distance check in HNSW is expensive. HyperspaceDB optimizes this by pre-computing the curvature factors.</p>
+<p>For every vector $x$, we store an additional scalar $\alpha_x$:</p>
+<p>$$
+\alpha_x = \frac{1}{1 - |x|^2}
+$$</p>
+<p>This is stored alongside the quantized vector in our memory-mapped storage.</p>
+<h2 id="the-monotonicity-trick"><a class="header" href="#the-monotonicity-trick">The Monotonicity Trick</a></h2>
+<p>Since $f(x) = \text{arccosh}(x)$ is a monotonically increasing function for $x \ge 1$, we do not need to compute the full <code>arccosh</code> during the <strong>Nearest Neighbor Search</strong> phase. We only need to compare the arguments:</p>
+<p>$$
+\delta(u, v) = |u - v|^2 \cdot \alpha_u \cdot \alpha_v
+$$</p>
+<p>If $\delta(A) &lt; \delta(B)$, then $d(A) &lt; d(B)$.</p>
+<p>HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy <code>arccosh</code> only once: when returning the final top-K results to the client.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="zero-copy-hyperbolic-hnsw"><a class="header" href="#zero-copy-hyperbolic-hnsw">Zero-Copy Hyperbolic HNSW</a></h1>
+<p>Our implementation of <a href="https://arxiv.org/abs/1603.09320">Hierarchical Navigable Small Worlds</a> is unique in two ways:</p>
+<ol>
+<li><strong>Metric</strong>: It natively speaks hyperbolic geometry.</li>
+<li><strong>Concurrency</strong>: It uses fine-grained locking (<code>parking_lot::RwLock</code>) on every node.</li>
+</ol>
+<h2 id="graph-structure"><a class="header" href="#graph-structure">Graph Structure</a></h2>
+<p>The graph consists of Layers (0..max).</p>
+<ul>
+<li><strong>Layer 0</strong>: Contains ALL vectors. This is the base ground truth.</li>
+<li><strong>Layer N</strong>: Contains a random subset of vectors from Layer N-1.</li>
+</ul>
+<p>This creates a skip-list-like structure for navigation.</p>
+<h2 id="the-select-neighbors-heuristic"><a class="header" href="#the-select-neighbors-heuristic">The &quot;Select Neighbors&quot; Heuristic</a></h2>
+<p>When connecting a new node $U$ to neighbors in HNSW, we use a heuristic to ensure diversity.</p>
+<p>Standard Euclidean HNSW checks:</p>
+<ul>
+<li>Add neighbor $V$ if $dist(U, V)$ is minimal.</li>
+<li>Skip $V$ if it is closer to an <em>already selected</em> neighbor than to $U$.</li>
+</ul>
+<p><strong>Hyperbolic Adaptation</strong>:
+We use the Poincaré distance for this check. Because the space expands exponentially, &quot;diversity&quot; is easier to achieve, but &quot;closeness&quot; is tricky because points near the boundary (norm $\approx$ 1) have massive distances even if they look close in Euclidean space.</p>
+<p>Our heuristic strictly respects the Poincaré metric, preventing &quot;short-circuiting&quot; through the center of the ball unless mathematically valid.</p>
+<h2 id="locking-strategy"><a class="header" href="#locking-strategy">Locking Strategy</a></h2>
+<p>We do not use a global lock.</p>
+<ul>
+<li><strong>Reading</strong>: Search traverses nodes acquiring brief Read Locks.</li>
+<li><strong>Writing</strong>: Indexer acquires Write Locks only on the specific adjacency lists (layers) it is modifying.</li>
+</ul>
+<p>This allows <code>insert</code> and <code>search</code> to run in parallel with high throughput.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            MathJax.Hub.Register.StartupHook('End', function() {
+                window.setTimeout(window.print, 100);
+            });
+        });
+        </script>
+
+    </div>
+    </body>
+</html>
