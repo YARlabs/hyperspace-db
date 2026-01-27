@@ -23,7 +23,4 @@
 - [Storage Format](storage.md)
 - [The Mathematics](math.md)
 - [Zero-Copy HNSW](hnsw.md)
-- [System Overview](architecture.md)
-- [Storage Format](storage.md)
-- [The Mathematics](math.md)
-- [Zero-Copy HNSW](hnsw.md)
+
