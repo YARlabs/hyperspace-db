@@ -13,3 +13,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "metric_bench"
 harness = false
+
+[features]
+default = []
+nightly-simd = []

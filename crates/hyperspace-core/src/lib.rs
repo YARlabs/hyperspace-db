@@ -1,4 +1,4 @@
-#![feature(portable_simd)]
+#![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 
 pub mod config;
 pub mod vector;

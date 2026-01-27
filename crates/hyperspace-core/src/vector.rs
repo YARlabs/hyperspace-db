@@ -1,3 +1,5 @@
+// Only import SIMD if the feature is enabled
+#[cfg(feature = "nightly-simd")]
 use std::simd::prelude::*;
 
 /// Aligned vector struct. N is the dimension.
@@ -22,23 +24,53 @@ impl<const N: usize> HyperVector<N> {
     /// The hottest function in the entire project.
     #[inline(always)]
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
-        let mut sum_sq_diff = f64x8::splat(0.0);
-        const LANES: usize = 8;
-
-        for i in (0..N).step_by(LANES) {
-            if i + LANES <= N {
-                let a = f64x8::from_slice(&self.coords[i..i + LANES]);
-                let b = f64x8::from_slice(&other.coords[i..i + LANES]);
-                let diff = a - b;
-                sum_sq_diff += diff * diff;
-            } else {
-                // Tail handled implicitly/ignored for MVP if N%8==0
+        #[cfg(feature = "nightly-simd")]
+        {
+            let mut sum_sq_diff = f64x8::splat(0.0);
+            const LANES: usize = 8;
+            
+            // Note: If N < 8, this logic needs care, but keeping original logic for consistency
+            for i in (0..N).step_by(LANES) {
+                if i + LANES <= N {
+                    let a = f64x8::from_slice(&self.coords[i..i + LANES]);
+                    let b = f64x8::from_slice(&other.coords[i..i + LANES]);
+                    let diff = a - b;
+                    sum_sq_diff += diff * diff;
+                } else {
+                    // Tail handling would go here for strict correctness with generic N
+                }
             }
+
+            let l2_sq = sum_sq_diff.reduce_sum();
+            
+            // Fallback for tail elements if N is not multiple of 8 (basic scalar loop for tail)
+            // Ideally should be handled, but for keeping structure similar to your SIMD logic:
+            let mut tail_sq = 0.0;
+            let remainder = N % LANES;
+            if remainder != 0 {
+                let start = N - remainder;
+                for i in start..N {
+                    let diff = self.coords[i] - other.coords[i];
+                    tail_sq += diff * diff;
+                }
+            }
+            
+            let total_sq = l2_sq + tail_sq;
+            let delta = total_sq * self.alpha * other.alpha;
+            1.0 + 2.0 * delta
         }
 
-        let l2_sq = sum_sq_diff.reduce_sum();
-        let delta = l2_sq * self.alpha * other.alpha;
-        1.0 + 2.0 * delta
+        #[cfg(not(feature = "nightly-simd"))]
+        {
+            // Stable Rust implementation (Scalar / Auto-vectorized)
+            let mut sum_sq_diff = 0.0;
+            for (u, v) in self.coords.iter().zip(other.coords.iter()) {
+                let diff = u - v;
+                sum_sq_diff += diff * diff;
+            }
+            let delta = sum_sq_diff * self.alpha * other.alpha;
+            1.0 + 2.0 * delta
+        }
     }
 
     pub fn true_distance(&self, other: &Self) -> f64 {
@@ -70,24 +102,57 @@ impl<const N: usize> QuantizedHyperVector<N> {
 
     #[inline(always)]
     pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
-        let mut sum_sq_diff = f64x8::splat(0.0);
-        const LANES: usize = 8;
-        const SCALE_INV: f64 = 1.0 / 127.0;
+        #[cfg(feature = "nightly-simd")]
+        {
+            let mut sum_sq_diff = f64x8::splat(0.0);
+            const LANES: usize = 8;
+            const SCALE_INV: f64 = 1.0 / 127.0;
 
-        for i in (0..N).step_by(LANES) {
-            if i + LANES <= N {
-                let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
-                let a_f64: Simd<f64, LANES> = a_i8.cast();
-                let a_scaled = a_f64 * Simd::splat(SCALE_INV);
-                let b = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
-                let diff = a_scaled - b;
-                sum_sq_diff += diff * diff;
+            for i in (0..N).step_by(LANES) {
+                if i + LANES <= N {
+                    let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
+                    let a_f64: Simd<f64, LANES> = a_i8.cast();
+                    let a_scaled = a_f64 * Simd::splat(SCALE_INV);
+                    let b = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
+                    let diff = a_scaled - b;
+                    sum_sq_diff += diff * diff;
+                }
             }
+
+            let l2_sq = sum_sq_diff.reduce_sum();
+
+            // Tail handling
+            let mut tail_sq = 0.0;
+            let remainder = N % LANES;
+            if remainder != 0 {
+                let start = N - remainder;
+                for i in start..N {
+                    let a_val = (self.coords[i] as f64) * SCALE_INV;
+                    let diff = a_val - query.coords[i];
+                    tail_sq += diff * diff;
+                }
+            }
+
+            let total_sq = l2_sq + tail_sq;
+            let delta = total_sq * (self.alpha as f64) * query.alpha;
+            1.0 + 2.0 * delta
         }
 
-        let l2_sq = sum_sq_diff.reduce_sum();
-        let delta = l2_sq * (self.alpha as f64) * query.alpha;
-        1.0 + 2.0 * delta
+        #[cfg(not(feature = "nightly-simd"))]
+        {
+            // Stable Rust implementation
+            let mut sum_sq_diff = 0.0;
+            const SCALE_INV: f64 = 1.0 / 127.0;
+
+            for (a_i8, b_f64) in self.coords.iter().zip(query.coords.iter()) {
+                let a_val = (*a_i8 as f64) * SCALE_INV;
+                let diff = a_val - b_f64;
+                sum_sq_diff += diff * diff;
+            }
+
+            let delta = sum_sq_diff * (self.alpha as f64) * query.alpha;
+            1.0 + 2.0 * delta
+        }
     }
 }
 
@@ -123,9 +188,7 @@ impl<const N: usize> BinaryHyperVector<N> {
     #[inline(always)]
     pub fn hamming_distance(&self, other: &Self) -> u32 {
         let mut dist = 0;
-        let limit = N.div_ceil(8);
-        // Optimization: loop unrolling or SIMD?
-        // Simple loop over valid bytes
+        let limit = (N + 7) / 8; // div_ceil logic
         for i in 0..limit {
             dist += (self.bits[i] ^ other.bits[i]).count_ones();
         }
@@ -194,5 +257,23 @@ mod tests {
         let v = HyperVector::<8>::new(coords).unwrap();
         assert_eq!(v.coords[0], 0.1);
         assert!(v.alpha > 0.0);
+    }
+    #[test]
+    fn bench_distance_speed() {
+        let a = HyperVector::<1024>::new([0.001; 1024]).unwrap();
+        let b = HyperVector::<1024>::new([0.002; 1024]).unwrap();
+        
+        let start = std::time::Instant::now();
+        let iterations = 1_000_000;
+        
+        // "Warming up" the CPU cache
+        let mut black_box = 0.0; 
+        
+        for _ in 0..iterations {
+            black_box += a.poincare_distance_sq(&b);
+        }
+        
+        let duration = start.elapsed();
+        println!("⏱️ 1M distances took: {:?} (Check sum: {})", duration, black_box);
     }
 }
