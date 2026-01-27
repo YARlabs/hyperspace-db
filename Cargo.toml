@@ -18,7 +18,5 @@ rand = "0.8"
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24" # Check recent version or use what fits
-anyhow = "1.0"
-criterion = "0.5"
 rkyv = "0.7"
 smallvec = "1.11"

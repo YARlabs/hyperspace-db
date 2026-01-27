@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-index"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2021"
 
 [dependencies]
@@ -13,3 +13,4 @@ hyperspace-store = { path = "../hyperspace-store" }
 rkyv = { workspace = true, features = ["validation"] }
 roaring = "0.11.3"
 dashmap = "6.1.0"
+serde = { workspace = true, features = ["derive"] }

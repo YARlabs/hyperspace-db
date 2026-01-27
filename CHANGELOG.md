@@ -5,12 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Features
-*   **Client-Side Vectorization (Fat Client)**: SDKs now support built-in embedding generation. Clients can pass raw text documents and queries, which are automatically vectorized before reaching the server.
+## [1.1.0] - 2026-01-27
+### Added
+* **Generic Dimensions**: Support for 1024, 1536, and 768 dimensional vectors (previously limited to 8).
+* **Runtime Config**: Configuration via `.env` files (Dispatcher pattern) for dimensions and HNSW params.
+* **Metric Abstraction**: Generic `Metric` trait for swappable distance formulas.
+* **Client-Side Vectorization (Fat Client)**: SDKs now support built-in embedding generation.
     *   **Python SDK**: Support for OpenAI, Cohere, Voyage, Google (Gemini), and local SentenceTransformers (`bge-m3`).
-    *   **Rust SDK**: Added `Embedder` trait with implementations for OpenAI, OpenRouter, Cohere, Voyage, and Google (Gemini) behind `embedders` feature flag.
+    *   **Rust SDK**: Added `Embedder` trait with implementations for OpenAI, OpenRouter, Cohere, Voyage, and Google (Gemini).
 
 ## [1.0.0] - 2026-01-25
 

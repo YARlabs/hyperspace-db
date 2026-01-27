@@ -13,9 +13,10 @@ use std::sync::Arc;
 
 // Imports
 use hyperspace_core::vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
-use hyperspace_core::GlobalConfig;
+use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_core::QuantizationMode;
 use hyperspace_store::VectorStore;
+use std::marker::PhantomData;
 
 #[derive(Archive, Deserialize, Serialize)]
 #[archive(check_bytes)] // Requires "validation" feature
@@ -64,7 +65,8 @@ impl Default for MetadataIndex {
     }
 }
 
-impl HnswIndex {
+impl<const N: usize, M: Metric<N>> HnswIndex<N, M>
+{
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
         let entry_point = self.entry_point.load(Ordering::Relaxed);
@@ -141,6 +143,7 @@ impl HnswIndex {
             storage,
             mode,
             config,
+            _marker: PhantomData,
         })
     }
 }
@@ -153,7 +156,8 @@ const M: usize = 16;
 // const M_MAX0: usize = M * 2; // Not used in MVP yet
 
 #[derive(Debug)]
-pub struct HnswIndex {
+pub struct HnswIndex<const N: usize, M: Metric<N>>
+{
     // Topology storage. Index in vector = NodeId.
     nodes: RwLock<Vec<Node>>,
 
@@ -174,6 +178,8 @@ pub struct HnswIndex {
 
     // Runtime configuration
     pub config: Arc<GlobalConfig>,
+    
+    _marker: PhantomData<M>,
 }
 
 #[derive(Debug, Default)]
@@ -208,7 +214,8 @@ impl PartialOrd for Candidate {
     }
 }
 
-impl HnswIndex {
+impl<const N: usize, M: Metric<N>> HnswIndex<N, M>
+{
     pub fn new(
         storage: Arc<VectorStore>,
         mode: QuantizationMode,
@@ -222,6 +229,7 @@ impl HnswIndex {
             storage,
             mode,
             config,
+            _marker: PhantomData,
         }
     }
 
@@ -334,17 +342,15 @@ impl HnswIndex {
         };
 
         // 1. Create HyperVector from query.
-        // Assuming DIM=8 for MVP as per user hardcode in dist()
-        let mut aligned_query = [0.0; 8];
-        if query.len() != 8 {
-            // Panic for now, real code should handle error
+        let mut aligned_query = [0.0; N];
+        if query.len() != N {
             panic!(
-                "Query dimension mismatch provided {}, expected 8",
-                query.len()
+                "Query dimension mismatch provided {}, expected {}",
+                query.len(), N
             );
         }
         aligned_query.copy_from_slice(query);
-        let q_vec = HyperVector::new(aligned_query).unwrap(); // Validate logic in real app
+        let q_vec = HyperVector::new(aligned_query).expect("Invalid Query Vector");
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);
         let max_layer = self.max_layer.load(Ordering::Relaxed);
@@ -384,21 +390,23 @@ impl HnswIndex {
     }
 
     // Distance calculation helper
+    // Distance calculation helper
     #[inline]
-    fn dist(&self, node_id: NodeId, query: &HyperVector<8>) -> f64 {
+    fn dist(&self, node_id: NodeId, query: &HyperVector<N>) -> f64 {
         let bytes = self.storage.get(node_id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<8>::from_bytes(bytes);
+                let q = QuantizedHyperVector::<N>::from_bytes(bytes);
                 q.poincare_distance_sq_to_float(query)
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::<8>::from_bytes(bytes);
+                let b = BinaryHyperVector::<N>::from_bytes(bytes);
                 b.poincare_distance_sq_to_float(query)
             }
             QuantizationMode::None => {
-                let v = HyperVector::<8>::from_bytes(bytes);
-                v.poincare_distance_sq(query)
+                let v = HyperVector::<N>::from_bytes(bytes);
+                // Use Generic Metric!
+                M::distance(&v.coords, &query.coords)
             }
         }
     }
@@ -406,7 +414,7 @@ impl HnswIndex {
     fn search_layer0(
         &self,
         start_node: NodeId,
-        query: &HyperVector<8>,
+        query: &HyperVector<N>,
         k: usize,
         ef: usize,
         allowed: Option<&RoaringBitmap>,
@@ -517,7 +525,7 @@ impl HnswIndex {
     fn search_layer_candidates(
         &self,
         start_node: NodeId,
-        query: &HyperVector<8>,
+        query: &HyperVector<N>,
         level: usize,
         ef: usize,
     ) -> BinaryHeap<Candidate> {
@@ -578,7 +586,7 @@ impl HnswIndex {
     /// HNSW Heuristic for neighbor selection
     fn select_neighbors(
         &self,
-        _query_vec: &HyperVector<8>,
+        _query_vec: &HyperVector<N>,
         candidates: BinaryHeap<Candidate>,
         m: usize,
     ) -> Vec<NodeId> {
@@ -612,12 +620,12 @@ impl HnswIndex {
     }
 
     // Helper to get HyperVector from id
-    fn get_vector(&self, id: NodeId) -> HyperVector<8> {
+    fn get_vector(&self, id: NodeId) -> HyperVector<N> {
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<8>::from_bytes(bytes);
-                let mut coords = [0.0; 8];
+                let q = QuantizedHyperVector::<N>::from_bytes(bytes);
+                let mut coords = [0.0; N];
                 for (i, &c) in q.coords.iter().enumerate() {
                     coords[i] = c as f64 / 127.0;
                 }
@@ -627,26 +635,17 @@ impl HnswIndex {
                 }
             }
             QuantizationMode::None => {
-                let v = HyperVector::<8>::from_bytes(bytes);
+                let v = HyperVector::<N>::from_bytes(bytes);
                 v.clone()
             }
             QuantizationMode::Binary => {
-                // Decompress on the fly (lossy!)
-                // Binary -> Float
-                let b = BinaryHyperVector::<8>::from_bytes(bytes);
-                // We don't have a direct 'to_float' that returns HyperVector structure easily
-                // But we can approximate.
-                // Construct a dummy vector that yields "similar" distances?
-                // Or actually reconstruct.
-                // For now, let's just return a zero vector with correct alpha?
-                // This `get_vector` is mainly used for re-ranking or selection?
-                // `select_neighbors` calls it.
-                // If `select_neighbors` uses it for refined distance check, we need decent approximation.
-                // Let's implement a rudimentary reconstruction in getting coords.
-                let mut coords = [0.0; 8];
-                let val = 1.0 / (8.0f64).sqrt() * 0.99;
+                let b = BinaryHyperVector::<N>::from_bytes(bytes);
+                let mut coords = [0.0; N];
+                let val = 1.0 / (N as f64).sqrt() * 0.99;
                 for (i, coord) in coords.iter_mut().enumerate() {
-                    if (b.bits[0] >> i) & 1 == 1 {
+                    let byte_idx = i / 8;
+                    let bit_idx = i % 8;
+                    if (b.bits[byte_idx] >> bit_idx) & 1 == 1 {
                         *coord = val;
                     } else {
                         *coord = -val;
@@ -662,8 +661,8 @@ impl HnswIndex {
 
     // Insert with Metadata
     pub fn insert_to_storage(&self, vector: &[f64]) -> Result<u32, String> {
-        let mut arr = [0.0; 8];
-        if vector.len() != 8 {
+        let mut arr = [0.0; N];
+        if vector.len() != N {
             return Err("Dim mismatch".into());
         }
         arr.copy_from_slice(vector);

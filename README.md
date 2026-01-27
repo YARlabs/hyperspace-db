@@ -219,7 +219,24 @@ results = client.search(query_text="fast database", top_k=5)
 print(results)
 ```
 
+```
+
+## ⚙️ Runtime Configuration
+
+HyperspaceDB v1.1 supports dynamic dimensionality selection via Environment Variables (`.env`).
+
+| Variable | Description | Supported Values | Default |
+| :--- | :--- | :--- | :--- |
+| `HS_DIMENSION` | Vector dimensions | `1024` (BGE-M3), `1536` (OpenAI), `768` (Bert), `8` (Test) | `1024` |
+| `HS_DISTANCE_METRIC` | Distance formula | `poincare` | `poincare` |
+| `HS_QUANTIZATION_LEVEL` | Compression level | `scalar` (i8), `binary` (1-bit), `none` (f32) | `scalar` |
+| `HS_HNSW_EF_SEARCH` | Search beam width | Integer (10-500) | `10` |
+| `HS_HNSW_EF_CONSTRUCT` | Index build quality | Integer (50-500) | `100` |
+
+*Note: The server binary includes optimized kernels for these specific dimensions. To change dimensions, simply update `.env` and restart.*
+
 ---
+
 
 ## 📊 Best Practices
 
@@ -227,8 +244,9 @@ HyperspaceDB follows the microservices philosophy: One Index per Instance. To ma
 
 ### 1. Vector Dimensionality
 
-* **Recommendation**: Use **8-dimensional** vectors.
-* **Reason**: HyperspaceDB is optimized for low-dimensional hyperbolic embeddings. Higher dimensions (e.g., 128+) will significantly increase memory usage and search latency.
+* **Recommendation**: Choose dimensions matching your embedding model.
+* **Support**: Native support for **1024** (BGE-M3), **1536** (OpenAI), **768** (BERT), and **8** (Hyperbolic).
+* **Reason**: HyperspaceDB now uses Const Generics to optimize for specific dimensions at compile time.
 
 ### 2. Quantization Strategy
 

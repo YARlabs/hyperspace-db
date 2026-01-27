@@ -1,6 +1,7 @@
+
 use clap::Parser;
-use hyperspace_core::vector::{HyperVector, QuantizedHyperVector};
-use hyperspace_core::GlobalConfig;
+use hyperspace_core::vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
+use hyperspace_core::{GlobalConfig, Metric, PoincareMetric};
 use hyperspace_core::QuantizationMode;
 use hyperspace_index::HnswIndex;
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
@@ -18,7 +19,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{service::Interceptor, transport::Server, Request, Response, Status};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Port to listen on
@@ -31,13 +32,7 @@ struct Args {
 
     /// Leader address (if follower)
     #[arg(long)]
-    /// Leader address (if follower)
-    #[arg(long)]
     leader: Option<String>,
-
-    /// Quantization Mode: none, scalar (default), binary
-    #[arg(long, default_value = "scalar")]
-    mode: String,
 }
 
 #[derive(Clone)]
@@ -73,8 +68,9 @@ impl Interceptor for AuthInterceptor {
 }
 
 #[derive(Debug)]
-pub struct HyperspaceService {
-    index: Arc<HnswIndex>,
+pub struct HyperspaceService<const N: usize, M: Metric<N>>
+{
+    index: Arc<HnswIndex<N, M>>,
     #[allow(dead_code)]
     store: Arc<VectorStore>,
     wal: Arc<Mutex<Wal>>,
@@ -86,7 +82,8 @@ pub struct HyperspaceService {
 }
 
 #[tonic::async_trait]
-impl Database for HyperspaceService {
+impl<const N: usize, M: Metric<N>> Database for HyperspaceService<N, M>
+{
     async fn insert(
         &self,
         request: Request<InsertRequest>,
@@ -104,6 +101,15 @@ impl Database for HyperspaceService {
         }
 
         // 1. Persistence (Storage + WAL)
+        // Check dimension first
+        if vector.len() != N {
+            return Err(Status::invalid_argument(format!(
+                "Vector dimension mismatch: expected {}, got {}",
+                N,
+                vector.len()
+            )));
+        }
+
         // Write to storage and get ID
         let id = self
             .index
@@ -142,12 +148,6 @@ impl Database for HyperspaceService {
     ) -> Result<Response<DeleteResponse>, Status> {
         let req = request.into_inner();
         self.index.delete(req.id);
-        // We should also log deletion to WAL for persistence!
-        // But WAL impl currently only supports Insert.
-        // For MVP, we skip persisting deletes (resurrect on restart).
-        // Or we should update WAL? User didn't ask explicitly but it's implied "Production Ready".
-        // Given constraints and "Soft Delete" focuses on runtime filtering, I'll allow resurrect for now or fix WAL if I have token counts.
-        // I will just do runtime delete.
         Ok(Response::new(DeleteResponse { success: true }))
     }
 
@@ -157,6 +157,14 @@ impl Database for HyperspaceService {
     ) -> Result<Response<SearchResponse>, Status> {
         let req = request.into_inner();
         let legacy_filter = req.filter;
+
+        if req.vector.len() != N {
+            return Err(Status::invalid_argument(format!(
+                "Vector dimension mismatch: expected {}, got {}",
+                N,
+                req.vector.len()
+            )));
+        }
 
         let mut complex_filters = Vec::new();
         for f in req.filters {
@@ -183,6 +191,8 @@ impl Database for HyperspaceService {
         let ef_search = self.config.get_ef_search();
 
         let hybrid_query = req.hybrid_query.as_deref();
+        // Convert input slice to array for Metric/HNSW
+        // HNSW search takes &[f64]. Inside it converts.
 
         let res = self.index.search(
             &req.vector,
@@ -219,9 +229,7 @@ impl Database for HyperspaceService {
 
                 let (segments, bytes) = index.storage_stats();
 
-                // Baseline: 8 dims * 8 bytes (f64)
-                const DIM: usize = 8;
-                let raw_size_bytes = (count as f64) * (DIM as f64) * 8.0;
+                let raw_size_bytes = (count as f64) * (N as f64) * 8.0;
                 let actual_size_bytes = bytes as f64;
 
                 let compression = if actual_size_bytes > 0.0 {
@@ -333,9 +341,8 @@ impl Database for HyperspaceService {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
+async fn boot_server<const N: usize, M: Metric<N>>(args: Args) -> Result<(), Box<dyn std::error::Error>>
+{
     let addr = format!("0.0.0.0:{}", args.port).parse()?;
     let wal_path = std::path::Path::new("wal.log");
 
@@ -343,27 +350,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = std::path::Path::new("data");
     let snap_path = std::path::Path::new("index.snap");
 
-    // Global Runtime Config
+    // Global Runtime Config (loaded from env in main, but let's refresh or pass it? 
+    // GlobalConfig::new reads defaults? No, it's just atomic counters.
+    // IndexConfig (construction vars) is also needed.
+    // Env vars: HS_HNSW_EF_CONSTRUCT, HS_HNSW_M, HS_QUANTIZATION_LEVEL
+    // We should read them here or pass them.
+    // Since GlobalConfig is 'Runtime' config (ef_search), we create it here.
+    
+    // Default values for HNSW construction
+    let ef_cons_env = std::env::var("HS_HNSW_EF_CONSTRUCT").unwrap_or("100".to_string()).parse().unwrap_or(100);
+    let ef_search_env = std::env::var("HS_HNSW_EF_SEARCH").unwrap_or("10".to_string()).parse().unwrap_or(10);
+    
+    // Note: ef_construction is currently in GlobalConfig separately? 
+    // HnswIndex has GlobalConfig. And select_neighbors uses config.
+    // We should initialze GlobalConfig with env vars.
     let config = Arc::new(GlobalConfig::new());
-
-    let mode = match args.mode.as_str() {
+    config.set_ef_construction(ef_cons_env);
+    config.set_ef_search(ef_search_env);
+    
+    // Quantization
+    let quant_env = std::env::var("HS_QUANTIZATION_LEVEL").unwrap_or("scalar".to_string());
+    let mode = match quant_env.as_str() {
         "binary" => QuantizationMode::Binary,
         "none" => QuantizationMode::None,
         _ => QuantizationMode::ScalarI8,
     };
-    println!("Selected Quantization Mode: {:?}", mode);
+    println!("Init Server [N={}] Mode={:?}", N, mode);
 
     let (store, index, recovered_count) = if snap_path.exists() {
         println!("Found snapshot. Loading...");
 
         let element_size = match mode {
-            QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
-            QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<8>::SIZE,
-            QuantizationMode::None => HyperVector::<8>::SIZE,
+            QuantizationMode::ScalarI8 => QuantizedHyperVector::<N>::SIZE,
+            QuantizationMode::Binary => BinaryHyperVector::<N>::SIZE,
+            QuantizationMode::None => HyperVector::<N>::SIZE,
         };
 
         let store = Arc::new(VectorStore::new(data_dir, element_size));
-        match HnswIndex::load_snapshot(snap_path, store.clone(), mode, config.clone()) {
+        match HnswIndex::<N, M>::load_snapshot(snap_path, store.clone(), mode, config.clone()) {
             Ok(idx) => {
                 let count = idx.count_nodes();
                 println!("Snapshot loaded. Nodes: {}", count);
@@ -389,9 +413,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let element_size = match mode {
-            QuantizationMode::ScalarI8 => QuantizedHyperVector::<8>::SIZE,
-            QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<8>::SIZE,
-            QuantizationMode::None => HyperVector::<8>::SIZE,
+            QuantizationMode::ScalarI8 => QuantizedHyperVector::<N>::SIZE,
+            QuantizationMode::Binary => BinaryHyperVector::<N>::SIZE,
+            QuantizationMode::None => HyperVector::<N>::SIZE,
         };
 
         let store = Arc::new(VectorStore::new(data_dir, element_size));
@@ -433,7 +457,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // FOLLOWER LOGIC
     if args.role == "follower" {
-        if let Some(leader) = args.leader {
+        if let Some(leader) = args.leader.clone() {
             println!("🚀 Starting as FOLLOWER of: {}", leader);
             let index_weak = Arc::downgrade(&index);
 
@@ -451,10 +475,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let mut stream = resp.into_inner();
                                     while let Ok(Some(log)) = stream.message().await {
                                         if let Some(idx) = index_weak.upgrade() {
-                                            // Apply to local index
-                                            // Note: We skip WAL append on follower for now to avoid ID conflict or duplicating?
-                                            // Ideally Follower writes to its own WAL too for durability.
-                                            // But for MVP, let's just update Memory Index.
                                             if let Err(e) = idx.insert(&log.vector, log.metadata) {
                                                 eprintln!("Replication Error: {}", e);
                                             }
@@ -526,18 +546,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     println!("HyperspaceDB listening on {}", addr);
-    println!(
-        "Config: ef_search={}, ef_construction={}",
-        config.get_ef_search(),
-        config.get_ef_construction()
-    );
-
-    // Graceful Shutdown Handler
-
+    
     // Setup Auth
     let api_key = std::env::var("HYPERSPACE_API_KEY").ok();
     let interceptor = if let Some(key) = api_key {
-        println!("🔒 API Auth Enabled (SHA256 check active)");
+        println!("🔒 API Auth Enabled");
         let mut hasher = Sha256::new();
         hasher.update(key.as_bytes());
         let hash = hex::encode(hasher.finalize());
@@ -545,7 +558,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             expected_hash: Some(hash),
         }
     } else {
-        println!("⚠️ API Auth Disabled (No HYPERSPACE_API_KEY set)");
+        println!("⚠️ API Auth Disabled");
         AuthInterceptor {
             expected_hash: None,
         }
@@ -566,7 +579,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Draining index queue ({} pending)...",
         config.get_queue_size()
     );
-    drop(index_tx); // Close sender to signal indexer to stop
+    drop(index_tx);
     let _ = indexer_handle.await;
 
     println!("Saving final snapshot...");
@@ -578,6 +591,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     snapshot_handle.abort();
     println!("✅ HyperspaceDB shutdown complete.");
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv::dotenv().ok(); // Reading .env
+
+    let args = Args::parse();
+    
+    // Read Config
+    let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
+    let dim: usize = dim_str.parse().expect("HS_DIMENSION must be a number");
+    let metric_str = std::env::var("HS_DISTANCE_METRIC").unwrap_or("poincare".to_string());
+
+    println!("DISPATCHER: Booting kernel with N={}, Metric={}", dim, metric_str);
+
+    // Dispatcher
+    match (dim, metric_str.as_str()) {
+        (1024, "poincare") => boot_server::<1024, PoincareMetric>(args).await?,
+        (768, "poincare") => boot_server::<768, PoincareMetric>(args).await?,
+        (1536, "poincare") => boot_server::<1536, PoincareMetric>(args).await?,
+        (8, "poincare") => boot_server::<8, PoincareMetric>(args).await?,
+        
+        // Add more combinations here (e.g. Cosine)
+        // (1024, "cosine") => boot_server::<1024, CosineMetric>(args).await?,
+        
+        _ => panic!("Unsupported combination: Dimension {} with Metric {}. Please update main.rs Dispatcher.", dim, metric_str),
+    }
 
     Ok(())
 }
