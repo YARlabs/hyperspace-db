@@ -123,7 +123,7 @@ impl<const N: usize> BinaryHyperVector<N> {
     #[inline(always)]
     pub fn hamming_distance(&self, other: &Self) -> u32 {
         let mut dist = 0;
-        let limit = (N + 7) / 8;
+        let limit = N.div_ceil(8);
         // Optimization: loop unrolling or SIMD?
         // Simple loop over valid bytes
         for i in 0..limit {

@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "crossterm",
  "hyperspace-core",
@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "criterion",
  "rand",
@@ -899,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "dashmap",
  "hyperspace-core",
@@ -915,7 +915,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "prost",
  "tonic",
@@ -924,7 +924,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "0.1.1"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "hyperspace-proto",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "clap",
  "dotenv",
@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "byteorder",
  "hyperspace-core",

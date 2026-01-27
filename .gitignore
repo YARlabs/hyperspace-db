@@ -4,11 +4,13 @@ sdks/python/venv
 __pycache__
 **/*.pyc
 .DS_Store
+Cargo.lock
 # Data files (Exclude everywhere)
 **/*.hyp
 **/*.snap
 **/*.log
 **/*.bin
+**/*.tar.gz
 # Directories
 venv/
 data/

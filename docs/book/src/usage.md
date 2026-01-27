@@ -9,6 +9,11 @@ HyperspaceDB is configured via gRPC commands at runtime, but defaults can be set
 | `RUST_LOG` | `info` | Log level (debug, info, error) |
 | `HS_PORT` | `50051` | gRPC listening port |
 | `HS_DATA_DIR` | `./data` | Path to store segments and WAL |
+| `HS_DIMENSION` | `1024` | Vector dimensionality (8, 768, 1024, 1536) |
+| `HS_DISTANCE_METRIC` | `poincare` | Distance metric (poincare) |
+| `HS_QUANTIZATION_LEVEL` | `scalar` | Compression (none, scalar, binary) |
+| `HS_HNSW_EF_CONSTRUCT` | `100` | Index build quality (50-500) |
+| `HS_HNSW_EF_SEARCH` | `10` | Search beam width (10-500) |
 
 ## TUI Dashboard (Mission Control)
 
