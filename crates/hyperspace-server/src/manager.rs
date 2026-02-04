@@ -105,6 +105,7 @@ impl CollectionManager {
         let col_dir = self.base_path.join(name);
         let wal_path = col_dir.join("wal.log");
         let quant_mode = meta.quantization_mode();
+        let node_id = self.cluster_state.read().await.node_id.clone();
 
         // Dispatch based on generic args (N, M).
         // This is the "Dispatcher" logic moved here.
@@ -113,6 +114,7 @@ impl CollectionManager {
             (16, "poincare") => Arc::new(
                 CollectionImpl::<16, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -123,6 +125,7 @@ impl CollectionManager {
             (32, "poincare") => Arc::new(
                 CollectionImpl::<32, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -133,6 +136,7 @@ impl CollectionManager {
             (64, "poincare") => Arc::new(
                 CollectionImpl::<64, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -143,6 +147,7 @@ impl CollectionManager {
             (128, "poincare") => Arc::new(
                 CollectionImpl::<128, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -153,6 +158,7 @@ impl CollectionManager {
             (768, "poincare") => Arc::new(
                 CollectionImpl::<768, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -163,6 +169,7 @@ impl CollectionManager {
             (1024, "poincare") => Arc::new(
                 CollectionImpl::<1024, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -173,6 +180,7 @@ impl CollectionManager {
             (1536, "poincare") => Arc::new(
                 CollectionImpl::<1536, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -183,6 +191,7 @@ impl CollectionManager {
             (2048, "poincare") => Arc::new(
                 CollectionImpl::<2048, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -193,6 +202,7 @@ impl CollectionManager {
             (8, "poincare") => Arc::new(
                 CollectionImpl::<8, PoincareMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -205,6 +215,7 @@ impl CollectionManager {
             (1024, "euclidean") | (1024, "l2") => Arc::new(
                 CollectionImpl::<1024, EuclideanMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -215,6 +226,7 @@ impl CollectionManager {
             (1536, "euclidean") | (1536, "l2") => Arc::new(
                 CollectionImpl::<1536, EuclideanMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -225,6 +237,7 @@ impl CollectionManager {
             (2048, "euclidean") | (2048, "l2") => Arc::new(
                 CollectionImpl::<2048, EuclideanMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,
@@ -236,6 +249,7 @@ impl CollectionManager {
             (8, "euclidean") | (8, "l2") => Arc::new(
                 CollectionImpl::<8, EuclideanMetric>::new(
                     name.to_string(),
+                    node_id.clone(),
                     col_dir,
                     wal_path,
                     quant_mode,

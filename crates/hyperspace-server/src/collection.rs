@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 
 pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     name: String,
+    node_id: String,
     index: Arc<HnswIndex<N, M>>,
     wal: Arc<Mutex<Wal>>,
     index_tx: mpsc::Sender<(u32, HashMap<String, String>)>,
@@ -20,6 +21,7 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
     pub async fn new(
         name: String,
+        node_id: String,
         data_dir: std::path::PathBuf,
         wal_path: std::path::PathBuf,
         mode: hyperspace_core::QuantizationMode,
@@ -109,6 +111,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         Ok(Self {
             name,
+            node_id,
             index,
             wal: wal_arc,
             index_tx,
@@ -168,8 +171,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 vector: vector.to_vec(),
                 metadata,
                 collection: self.name.clone(),
-                origin_node_id: "".to_string(),
-                logical_clock: 0,
+                origin_node_id: self.node_id.clone(),
+                logical_clock: 0, // TODO: Implement logical clock (Lamport) in next sprint
             };
             let _ = self.replication_tx.send(log);
         }

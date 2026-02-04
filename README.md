@@ -41,8 +41,8 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
     <td>Complex metadata filtering with `Range` and `Match` operators using Roaring Bitmaps.</td>
   </tr>
   <tr>
-    <td>🤝 <b>Distributed HA</b></td>
-    <td>Leader-Follower replication with WAL streaming for High Availability and Read Scaling.</td>
+    <td>🤝 <b>Federated Cluster</b></td>
+    <td>Leader-Follower replication with <b>CRDT-ready</b> architecture for distributed consistency and Edge Sync.</td>
   </tr>
   <tr>
     <td>🧠 <b>Hybrid Search</b></td>
@@ -54,7 +54,7 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
   </tr>
   <tr>
     <td>🖥️ <b>Web Dashboard</b></td>
-    <td>A built-in web-based <b>Dashboard</b> (React + Vite) for real-time visualization, collection management, and system monitoring.</td>
+    <td>Built-in dashboard with <b>Cluster Topology</b> visualization, real-time metrics, and data exploration.</td>
   </tr>
   <tr>
     <td>📦 <b>ScalarI8 & Binary</b></td>
@@ -78,13 +78,32 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
 * **Header**: Clients must send `x-api-key: <key>`.
 * **Zero-Knowledge**: Server stores only SHA-256 hash of the key in memory.
 
-## 🤝 Distributed Replication
+## 🤝 Federated Clustering (v1.2)
+HyperspaceDB implements a **Federated Leader-Follower** architecture designed for both high availability and Edge-Cloud synchronization.
 
-HyperspaceDB supports **Leader-Follower** architecture for High Availability.
+* **Node Identity**: Each node generates a unique UUID (`node_id`) and maintains a logical clock.
+* **Leader**: Handles Writes (Coordinator). Streams WAL events. Manages Cluster Topology.
+* **Follower**: Read-Only replica. Can be promoted to Leader.
+* **Edge Node**: (Coming in v1.4) Offline-first node that syncs via Merkle Trees.
 
-* **Leader**: Handles Writes & Reads. Streams WAL events to followers.
-* **Follower**: Read-Only. Replicates data in real-time.
+### Cluster Topology API
+View the logic state of the cluster via HTTP:
 
+```bash
+curl http://localhost:50050/api/cluster/status
+```
+
+```json
+{
+  "node_id": "e8...0e",
+  "role": "Leader",
+  "upstream_peer": null,
+  "downstream_peers": [],
+  "logical_clock": 0
+}
+```
+
+### Starting a Cluster
 ```bash
 # Start Leader
 ./hyperspace-server --port 50051 --role leader
@@ -204,7 +223,8 @@ http://localhost:50050
 **Dashboard Features:**
 - 📊 **System Overview**: Real-time metrics (RAM, CPU, vector count)
 - 🗂️ **Collections Manager**: Create, delete, and inspect collections
-- 🔍 **Data Explorer**: View recent vectors and test search queries
+- �️ **Cluster Nodes**: Visualize node topology and replication status
+- �🔍 **Data Explorer**: View recent vectors and test search queries
 - ⚙️ **Settings**: Integration snippets (Python, cURL) and live logs
 - 📈 **Graph Explorer**: (Coming in v1.4) Visualize HNSW graph structure
 
