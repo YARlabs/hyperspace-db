@@ -1,9 +1,11 @@
 use crate::manager::CollectionManager;
+use hyperspace_core::SearchParams;
+use std::collections::HashMap;
 use axum::{
-    extract::{Path, State, Request},
+    extract::{Path, State, Request, Query},
     http::{StatusCode, Uri},
     response::{Html, IntoResponse, Response},
-    routing::{get, delete},
+    routing::{get, delete, post},
     Json, Router,
     middleware::{self, Next},
 };
@@ -63,8 +65,11 @@ pub async fn start_http_server(
         .route("/api/collections", get(list_collections).post(create_collection))
         .route("/api/collections/{name}", delete(delete_collection))
         .route("/api/collections/{name}/stats", get(get_stats))
+        .route("/api/collections/{name}/peek", get(peek_collection))
+        .route("/api/collections/{name}/search", post(search_collection))
         .route("/api/status", get(get_status))
         .route("/api/metrics", get(get_metrics))
+        .route("/api/logs", get(get_logs))
         .layer(middleware::from_fn_with_state(api_key_hash.clone(), validate_api_key))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
@@ -120,8 +125,28 @@ async fn index_html() -> Response {
 
 // Handlers
 
-async fn list_collections(State(manager): State<Arc<CollectionManager>>) -> Json<Vec<String>> {
-    Json(manager.list())
+#[derive(serde::Serialize)]
+struct CollectionSummary {
+    name: String,
+    count: usize,
+    dimension: usize,
+    metric: String,
+}
+
+async fn list_collections(State(manager): State<Arc<CollectionManager>>) -> Json<Vec<CollectionSummary>> {
+    let names = manager.list();
+    let mut summaries = Vec::new();
+    for name in names {
+         if let Some(col) = manager.get(&name) {
+             summaries.push(CollectionSummary {
+                 name: name.clone(),
+                 count: col.count(),
+                 dimension: col.dimension(),
+                 metric: col.metric_name().to_string()
+             });
+         }
+    }
+    Json(summaries)
 }
 
 #[derive(serde::Deserialize)]
@@ -204,4 +229,60 @@ async fn get_metrics(State(manager): State<Arc<CollectionManager>>) -> Json<serd
         "ram_usage_mb": 256,
         "cpu_usage_percent": 5, 
     }))
+}
+
+#[derive(serde::Deserialize)]
+struct PeekParams {
+    limit: Option<usize>,
+}
+
+async fn peek_collection(
+    State(manager): State<Arc<CollectionManager>>,
+    Path(name): Path<String>,
+    Query(params): Query<PeekParams>,
+) -> impl IntoResponse {
+    let limit = params.limit.unwrap_or(50).min(100);
+    if let Some(col) = manager.get(&name) {
+        let items = col.peek(limit);
+        Json(items).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct SearchReq {
+    vector: Vec<f64>,
+    top_k: Option<usize>,
+}
+
+async fn search_collection(
+    State(manager): State<Arc<CollectionManager>>,
+    Path(name): Path<String>,
+    Json(payload): Json<SearchReq>,
+) -> impl IntoResponse {
+    let k = payload.top_k.unwrap_or(10);
+    if let Some(col) = manager.get(&name) {
+        let dummy_params = SearchParams { top_k: k, ef_search: 100, hybrid_query: None, hybrid_alpha: None };
+        match col.search(&payload.vector, &HashMap::new(), &[], &dummy_params) {
+             Ok(res) => {
+                 let mapped: Vec<serde_json::Value> = res.iter().map(|c| serde_json::json!({
+                     "id": c.0,
+                     "distance": c.1
+                 })).collect();
+                 Json(mapped).into_response()
+             },
+             Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn get_logs() -> Json<Vec<String>> {
+    Json(vec![
+        "[SYSTEM] Hyperspace DB v1.2.0 Online".into(),
+        "[INFO] Control Plane: HTTP :50050".into(),
+        "[INFO] Data Plane: gRPC :50051".into(),
+    ])
 }

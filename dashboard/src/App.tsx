@@ -1,28 +1,35 @@
-import { useState } from 'react'
-// @ts-ignore
-import logo from '/hyperspace.svg'
-import './App.css'
-import Login from './components/Login'
-import Dashboard from './components/Dashboard'
+import { Routes, Route, Navigate } from "react-router-dom"
+import { DashboardLayout } from "./layouts/DashboardLayout"
+import { AuthProvider, RequireAuth } from "./hooks/use-auth"
+import { AuthPage } from "./pages/AuthPage"
+import { OverviewPage } from "./pages/OverviewPage"
+import { CollectionsPage } from "./pages/CollectionsPage"
+import { DataExplorerPage } from "./pages/DataExplorerPage"
+import { GraphExplorerPage } from "./pages/GraphExplorerPage"
+import { SettingsPage } from "./pages/SettingsPage"
 
 function App() {
-  const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem('hyperspace_api_key'))
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<AuthPage />} />
 
-  const handleLogin = (key: string) => {
-    localStorage.setItem('hyperspace_api_key', key)
-    setApiKey(key)
-  }
+        <Route element={
+          <RequireAuth>
+            <DashboardLayout />
+          </RequireAuth>
+        }>
+          <Route path="/" element={<OverviewPage />} />
+          <Route path="/collections" element={<CollectionsPage />} />
+          <Route path="/explorer" element={<DataExplorerPage />} />
+          <Route path="/graph" element={<GraphExplorerPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
 
-  const handleLogout = () => {
-    localStorage.removeItem('hyperspace_api_key')
-    setApiKey(null)
-  }
-
-  if (!apiKey) {
-    return <Login onLogin={handleLogin} logo={logo} />
-  }
-
-  return <Dashboard apiKey={apiKey} onLogout={handleLogout} logo={logo} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AuthProvider>
+  )
 }
 
 export default App

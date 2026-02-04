@@ -58,6 +58,7 @@ pub trait Collection: Send + Sync {
     fn count(&self) -> usize;
     fn dimension(&self) -> usize;
     fn metric_name(&self) -> &'static str;
+    fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
 }
 
 pub trait Metric<const N: usize>: Send + Sync + 'static {

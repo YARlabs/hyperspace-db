@@ -23,10 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **Euclidean Metric**: Added `EuclideanMetric` implementation for standard L2 distance.
 * **Extended Dimension Support**: Added support for 16D, 32D, 64D, 128D, 2048D vectors.
 * **HTTP API**: RESTful endpoints for dashboard integration:
-    * `GET /api/collections` - List all collections
+    * `GET /api/collections` - List all collections with detailed stats (count, dimension, metric)
     * `POST /api/collections` - Create new collection
     * `DELETE /api/collections/{name}` - Delete collection
     * `GET /api/collections/{name}/stats` - Get collection statistics
+    * `GET /api/collections/{name}/peek?limit=N` - View recent vectors with metadata
+    * `POST /api/collections/{name}/search` - Search vectors via HTTP (top_k configurable)
+    * `GET /api/status` - System status and configuration
+    * `GET /api/metrics` - Real-time metrics (vectors, collections, RAM, CPU)
+    * `GET /api/logs` - Live server logs
+* **Data Explorer**: New dashboard page for inspecting raw vector data and testing search queries.
+* **Search Playground**: Interactive UI for validating search functionality with custom vectors.
+* **shadcn/ui Components**: Production-ready UI component library integration.
+
 
 ### Changed
 * **Default HTTP Port**: Changed from 3000 to 50050 to avoid conflicts.

@@ -215,4 +215,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     fn metric_name(&self) -> &'static str {
         M::name()
     }
+
+    fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
+        self.index.peek(limit)
+    }
 }

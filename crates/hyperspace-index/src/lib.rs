@@ -42,6 +42,7 @@ pub struct MetadataIndex {
     pub inverted: DashMap<String, RoaringBitmap>,
     pub numeric: DashMap<String, BTreeMap<i64, RoaringBitmap>>,
     pub deleted: RwLock<RoaringBitmap>,
+    pub forward: DashMap<u32, std::collections::HashMap<String, String>>,
 }
 
 impl Default for MetadataIndex {
@@ -50,6 +51,7 @@ impl Default for MetadataIndex {
             inverted: DashMap::new(),
             numeric: DashMap::new(),
             deleted: RwLock::new(RoaringBitmap::new()),
+            forward: DashMap::new(),
         }
     }
 }
@@ -378,6 +380,28 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         self.search_layer0(curr_node, &q_vec, k, ef_search, allowed_bitmap.as_ref())
     }
 
+    pub fn peek(
+        &self,
+        limit: usize,
+    ) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)> {
+        let max_len = self.nodes.read().len();
+        let mut result = Vec::with_capacity(limit);
+        
+        for id in (0..max_len).rev() {
+            if result.len() >= limit { break; }
+            let id = id as u32;
+            
+            if self.metadata.deleted.read().contains(id) {
+                continue;
+            }
+             
+             let vec = self.get_vector(id).coords.to_vec();
+             let meta = self.metadata.forward.get(&id).map(|m| m.clone()).unwrap_or_default();
+             result.push((id, vec, meta));
+        }
+        result
+    }
+
     // Distance calculation helper
     // Distance calculation helper
     #[inline]
@@ -680,6 +704,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         id: NodeId,
         meta: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
+        // Store full metadata for lookup (Data Explorer)
+        self.metadata.forward.insert(id, meta.clone());
+
         // 2. Index Metadata
         for (key, val) in &meta {
             // A. Inverted Index (Text)

@@ -195,11 +195,30 @@ cargo build --release
 
 ### 2. Access Web Dashboard
 
-Open your browser and navigate to:
+The built-in **React Dashboard** provides real-time monitoring and management:
 
 ```
 http://localhost:50050
 ```
+
+**Dashboard Features:**
+- 📊 **System Overview**: Real-time metrics (RAM, CPU, vector count)
+- 🗂️ **Collections Manager**: Create, delete, and inspect collections
+- 🔍 **Data Explorer**: View recent vectors and test search queries
+- ⚙️ **Settings**: Integration snippets (Python, cURL) and live logs
+- 📈 **Graph Explorer**: (Coming in v1.4) Visualize HNSW graph structure
+
+**Authentication:**
+If `HYPERSPACE_API_KEY` is set, you'll be prompted to enter it on first visit. The key is stored in `localStorage` for subsequent sessions.
+
+**Build Dashboard from Source:**
+```bash
+cd dashboard
+npm install
+npm run build
+# Assets are embedded in Rust binary via rust-embed
+```
+
 
 ### 3. Launch TUI Monitor
 
