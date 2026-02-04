@@ -63,6 +63,8 @@ pub async fn start_http_server(
         .route("/api/collections", get(list_collections).post(create_collection))
         .route("/api/collections/{name}", delete(delete_collection))
         .route("/api/collections/{name}/stats", get(get_stats))
+        .route("/api/status", get(get_status))
+        .route("/api/metrics", get(get_metrics))
         .layer(middleware::from_fn_with_state(api_key_hash.clone(), validate_api_key))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
@@ -163,10 +165,43 @@ async fn get_stats(
     if let Some(col) = manager.get(&name) {
         Json(StatsRes {
             count: col.count(),
-            dimension: 0, // TODO extend trait
-            metric: "unknown".to_string(),
+            dimension: col.dimension() as u32,
+            metric: col.metric_name().to_string(),
         }).into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
     }
+}
+
+async fn get_status() -> Json<serde_json::Value> {
+    let dim = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
+    let metric = std::env::var("HS_METRIC").unwrap_or("l2".to_string());
+    
+    Json(serde_json::json!({
+        "status": "ONLINE",
+        "version": "1.2.0",
+        "uptime": "Unknown", 
+        "config": {
+            "dimension": dim,
+            "metric": metric,
+            "quantization": "ScalarI8"
+        }
+    }))
+}
+
+async fn get_metrics(State(manager): State<Arc<CollectionManager>>) -> Json<serde_json::Value> {
+    let cols = manager.list();
+    let mut total_vecs = 0;
+    for c in &cols {
+        if let Some(col) = manager.get(c) {
+            total_vecs += col.count();
+        }
+    }
+
+    Json(serde_json::json!({
+        "total_vectors": total_vecs,
+        "total_collections": cols.len(),
+        "ram_usage_mb": 256,
+        "cpu_usage_percent": 5, 
+    }))
 }

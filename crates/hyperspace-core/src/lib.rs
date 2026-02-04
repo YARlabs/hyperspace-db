@@ -56,9 +56,12 @@ pub trait Collection: Send + Sync {
         params: &SearchParams,
     ) -> Result<Vec<(u32, f64)>, String>;
     fn count(&self) -> usize;
+    fn dimension(&self) -> usize;
+    fn metric_name(&self) -> &'static str;
 }
 
 pub trait Metric<const N: usize>: Send + Sync + 'static {
+    fn name() -> &'static str;
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64;
     
     // Default valid verification (Euclidean accepts all)
@@ -72,6 +75,8 @@ pub trait Metric<const N: usize>: Send + Sync + 'static {
 }
 
 impl<const N: usize> Metric<N> for PoincareMetric {
+    fn name() -> &'static str { "poincare" }
+
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
         let norm_u_sq: f64 = a.iter().map(|&x| x * x).sum();
@@ -101,6 +106,8 @@ impl<const N: usize> Metric<N> for PoincareMetric {
 }
 
 impl<const N: usize> Metric<N> for EuclideanMetric {
+    fn name() -> &'static str { "l2" }
+
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
         // Squared L2 distance for optimization (sqrt is monotonic)

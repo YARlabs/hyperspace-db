@@ -207,4 +207,12 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     fn count(&self) -> usize {
         self.index.count_nodes()
     }
+
+    fn dimension(&self) -> usize {
+        N
+    }
+
+    fn metric_name(&self) -> &'static str {
+        M::name()
+    }
 }
