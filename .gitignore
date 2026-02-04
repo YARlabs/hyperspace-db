@@ -15,3 +15,6 @@ Cargo.lock
 venv/
 data/
 docs/book/
+node_modules/
+dist/
+package-lock.json

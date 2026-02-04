@@ -49,16 +49,20 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
     <td>Combine semantic (vector) search with keyword (lexical) search using Reciprocal Rank Fusion (RRF).</td>
   </tr>
   <tr>
+    <td>🏘️ <b>Multi-Tenancy</b></td>
+    <td>Native support for logic separation via <b>Collections</b>. Manage multiple independent vector indexes on a single instance.</td>
+  </tr>
+  <tr>
+    <td>🖥️ <b>Web Dashboard</b></td>
+    <td>A built-in web-based <b>Dashboard</b> (React + Vite) for real-time visualization, collection management, and system monitoring.</td>
+  </tr>
+  <tr>
     <td>📦 <b>ScalarI8 & Binary</b></td>
     <td>Integrated <b>ScalarI8</b> and <b>Binary (1-bit)</b> quantization reduces memory footprint by up to <b>64x</b> with blazing speed.</td>
   </tr>
   <tr>
     <td>🧵 <b>Async Write Pipeline</b></td>
     <td>Decoupled ingestion with a WAL V2 ensures persistence of data and metadata without blocking reads.</td>
-  </tr>
-  <tr>
-    <td>🖥️ <b>Mission Control TUI</b></td>
-    <td>A real-time terminal dashboard (Ratatui) for monitoring QPS, segment growth, and system health.</td>
   </tr>
   <tr>
     <td>🛠️ <b>Runtime Tuning</b></td>
@@ -182,12 +186,22 @@ Make sure you have `just` and `nightly rust` installed.
 # Build release binary
 cargo build --release
 
-# Run server
+# Run server (Default HTTP port: 50050)
 ./target/release/hyperspace-server
 
+# Or with custom ports
+./target/release/hyperspace-server --port 50051 --http-port 50050
 ```
 
-### 2. Launch Dashboard (TUI)
+### 2. Access Web Dashboard
+
+Open your browser and navigate to:
+
+```
+http://localhost:50050
+```
+
+### 3. Launch TUI Monitor
 
 Open a new terminal to monitor the database:
 
@@ -219,7 +233,42 @@ results = client.search(query_text="fast database", top_k=5)
 print(results)
 ```
 
+## 🏘️ Collections Management
+
+HyperspaceDB v1.1+ supports **Multi-Tenancy** via Collections. Each collection is an independent vector index with its own dimension and metric.
+
+### Via Web Dashboard
+
+Access the dashboard at `http://localhost:50050`:
+
+1. **Create Collection**: Enter name, select dimension (8D, 768D, 1024D, 1536D), click Create
+2. **View Collections**: See all active collections with their stats
+3. **Delete Collection**: Remove collections you no longer need
+
+### Via gRPC/SDK
+
+```python
+from hyperspace import HyperspaceClient
+
+client = HyperspaceClient()
+
+# Create a new collection
+client.create_collection(name="my_vectors", dimension=1536, metric="poincare")
+
+# Insert into specific collection
+client.insert(id=1, document="...", collection="my_vectors")
+
+# Search in specific collection
+results = client.search(query_text="...", collection="my_vectors", top_k=5)
+
+# List all collections
+collections = client.list_collections()
+
+# Delete a collection
+client.delete_collection("my_vectors")
 ```
+
+**Note**: If no collection is specified, operations default to the `"default"` collection.
 
 ## ⚙️ Runtime Configuration
 
@@ -293,8 +342,7 @@ HyperspaceDB is available as a lightweight Docker image.
 docker build -t hyperspacedb:latest .
 
 # Run
-docker run -p 50051:50051 hyperspacedb:latest
-
+docker run -p 50051:50051 -p 50050:50050 hyperspacedb:latest
 ```
 
 ### Docker Compose
@@ -303,34 +351,35 @@ Run the full stack (Server + Client Tool):
 
 ```bash
 docker-compose up -d
-
 ```
 
 ## 🐳 How to use this image
 
 ### 1. Start a single instance
 
-To start the database and expose the gRPC port (50051):
+To start the database and expose both gRPC (50051) and Dashboard (50050) ports:
 
 ```bash
 docker run -d \
   --name hyperspace \
   -p 50051:50051 \
+  -p 50050:50050 \
   glukhota/hyperspace-db:latest
-
 ```
+
+Access the dashboard at `http://localhost:50050`
 
 ### 2. Persisting Data (Critical)
 
-By default, data is stored inside the container. To prevent data loss when the container is removed, you **must** mount a volume to `/data`.
+By default, data is stored inside the container. To prevent data loss when the container is removed, you **must** mount a volume to `/app/data`.
 
 ```bash
 docker run -d \
   --name hyperspace \
   -p 50051:50051 \
-  -v $(pwd)/hs_data:/data \
+  -p 50050:50050 \
+  -v $(pwd)/hs_data:/app/data \
   glukhota/hyperspace-db:latest
-
 ```
 
 ---

@@ -71,12 +71,28 @@ async fn run_app<B: ratatui::backend::Backend>(
     rx: &mut tokio::sync::mpsc::Receiver<SystemStats>,
     client: DatabaseClient<Channel>,
 ) -> io::Result<()> {
+    // List Collections Thread
+    let (tx_col, mut rx_col) = tokio::sync::mpsc::channel::<Vec<String>>(1);
+    let mut client_col = client.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Ok(resp) = client_col.list_collections(Empty {}).await {
+                let list = resp.into_inner().collections;
+                if tx_col.send(list).await.is_err() { break; }
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    });
+
     loop {
         terminal.draw(|f| ui(f, app))?;
 
         // Process network updates (Non-blocking)
         if let Ok(stats) = rx.try_recv() {
             app.stats = stats;
+        }
+        if let Ok(cols) = rx_col.try_recv() {
+            app.collections_list = cols;
         }
 
         // Process Input (Blocking with timeout)
@@ -86,8 +102,9 @@ async fn run_app<B: ratatui::backend::Backend>(
                     KeyCode::Char('q') => app.should_quit = true,
                     KeyCode::Tab => app.next_tab(),
                     KeyCode::Char('1') => app.current_tab = CurrentTab::Overview,
-                    KeyCode::Char('2') => app.current_tab = CurrentTab::Storage,
-                    KeyCode::Char('3') => app.current_tab = CurrentTab::Admin,
+                    KeyCode::Char('2') => app.current_tab = CurrentTab::Collections,
+                    KeyCode::Char('3') => app.current_tab = CurrentTab::Storage,
+                    KeyCode::Char('4') => app.current_tab = CurrentTab::Admin,
                     KeyCode::Char('s') => {
                         let mut c = client.clone();
                         tokio::spawn(async move {

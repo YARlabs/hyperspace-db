@@ -6,7 +6,7 @@ use axum::{
     routing::{get, delete},
     Json, Router,
 };
-use rust_embed::{Embed, RustEmbed};
+use rust_embed::RustEmbed;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 

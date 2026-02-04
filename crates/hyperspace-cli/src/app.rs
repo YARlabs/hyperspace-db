@@ -33,6 +33,7 @@ impl App {
             current_tab: CurrentTab::Overview,
             should_quit: false,
             stats: SystemStats::default(),
+            collections_list: Vec::new(),
             logs: vec!["Ready. Waiting for connection...".to_string()],
         }
     }

@@ -1,5 +1,5 @@
 # === Stage 1: UI Builder ===
-FROM node:20-slim as ui-builder
+FROM node:slim as ui-builder
 WORKDIR /app/dashboard
 COPY dashboard/package*.json ./
 RUN npm install

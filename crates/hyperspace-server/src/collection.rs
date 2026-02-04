@@ -76,10 +76,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // Replay
         let index_ref = index.clone();
         Wal::replay(&wal_path, |entry| {
-            if let hyperspace_store::wal::WalEntry::Insert { id, vector, metadata } = entry {
-                if (id as usize) >= recovered_count {
-                    let _ = index_ref.insert(&vector, metadata);
-                }
+            let hyperspace_store::wal::WalEntry::Insert { id, vector, metadata } = entry;
+            if (id as usize) >= recovered_count {
+                let _ = index_ref.insert(&vector, metadata);
             }
         })?;
 
@@ -142,7 +141,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         // 3. Index Queue
         self.config.inc_queue();
-        let _ = self.index_tx.blocking_send((internal_id, metadata.clone())); 
+        let _ = tokio::task::block_in_place(|| {
+             self.index_tx.blocking_send((internal_id, metadata.clone()))
+        }); 
         // Note: blocking_send inside async function? Collection trait is sync methods?
         // Collection trait definition has: fn insert(...) -> Result
         // It is NOT async. This works for gRPC `insert` which is async but calls this?

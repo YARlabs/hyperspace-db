@@ -1,11 +1,12 @@
 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
-use hyperspace_proto::hyperspace::{ConfigUpdate, Empty, InsertRequest, SearchRequest};
+use hyperspace_proto::hyperspace::{ConfigUpdate, CreateCollectionRequest, Empty, InsertRequest, SearchRequest};
 use rand::Rng;
 use std::time::Instant;
 use tonic::transport::Channel;
 
 const TOTAL_VECTORS: usize = 1_000_000;
 const SEARCH_QUERIES: usize = 10_000;
+const COLLECTION_NAME: &str = "benchmark_8d";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,13 +19,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     let mut client = DatabaseClient::new(channel);
 
+    // 0. Create Collection
+    println!("✨ Creating collection '{}'...", COLLECTION_NAME);
+    let _ = client.create_collection(CreateCollectionRequest {
+        name: COLLECTION_NAME.to_string(),
+        dimension: 8,
+        metric: "poincare".to_string(),
+    }).await.ok(); // Ignore if exists
+
     // 1. Configure for speed (High Throughput)
     println!("🔧 Configuring DB for ingestion (ef_construction=50)...");
     let _ = client
         .configure(ConfigUpdate {
             ef_construction: Some(50),
             ef_search: None,
-            collection: "".to_string(),
+            collection: COLLECTION_NAME.to_string(),
         })
         .await?;
 
@@ -51,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vector,
             id: i as u32,
             metadata: std::collections::HashMap::new(),
-            collection: "".to_string(),
+            collection: COLLECTION_NAME.to_string(),
         };
 
         client.insert(req).await?;
@@ -80,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .configure(ConfigUpdate {
             ef_search: Some(100),
             ef_construction: None,
-            collection: "".to_string(),
+            collection: COLLECTION_NAME.to_string(),
         })
         .await?;
 
@@ -104,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             filters: Vec::new(),
             hybrid_query: None,
             hybrid_alpha: None,
-            collection: "".to_string(),
+            collection: COLLECTION_NAME.to_string(),
         };
         client.search(req).await?;
     }

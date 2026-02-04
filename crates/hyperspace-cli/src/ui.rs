@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, Paragraph, Tabs, Wrap},
+    widgets::{Block, Borders, Paragraph, Tabs, Wrap},
     Frame,
 };
 
@@ -18,7 +18,7 @@ pub fn ui(f: &mut Frame, app: &App) {
         .split(f.size());
 
     // Tabs
-    let titles = vec!["Overview [1]", "Storage [2]", "Admin [3]"];
+    let titles = vec!["Overview [1]", "Collections [2]", "Storage [3]", "Admin [4]"];
     let tabs = Tabs::new(titles)
         .select(app.current_tab as usize)
         .block(
@@ -36,6 +36,7 @@ pub fn ui(f: &mut Frame, app: &App) {
     // Content
     match app.current_tab {
         CurrentTab::Overview => draw_overview(f, app, chunks[1]),
+        CurrentTab::Collections => draw_collections(f, app, chunks[1]),
         CurrentTab::Storage => draw_storage(f, app, chunks[1]),
         CurrentTab::Admin => draw_admin(f, app, chunks[1]),
     }
@@ -158,4 +159,22 @@ fn draw_admin(f: &mut Frame, app: &App, area: Rect) {
         .block(Block::default().title("System Logs").borders(Borders::ALL))
         .wrap(Wrap { trim: true });
     f.render_widget(p_logs, chunks[1]);
+}
+
+fn draw_collections(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+        ])
+        .split(area);
+
+    let items: Vec<Line> = app.collections_list.iter()
+        .map(|c| Line::from(Span::raw(c)))
+        .collect();
+
+    let list = Paragraph::new(items)
+        .block(Block::default().title("Active Collections").borders(Borders::ALL));
+    
+    f.render_widget(list, chunks[0]);
 }

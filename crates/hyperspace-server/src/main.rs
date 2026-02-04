@@ -349,8 +349,14 @@ impl Database for HyperspaceService {
         // TODO: Update config for specific collection
         // ConfigUpdate now has `collection` field.
          let req = request.into_inner();
-         if req.collection.is_empty() {
-             return Err(Status::invalid_argument("Collection name required"));
+         let col_name = if req.collection.is_empty() {
+             "default".to_string()
+         } else {
+             req.collection
+         };
+         
+         if self.manager.get(&col_name).is_none() {
+             return Err(Status::not_found(format!("Collection '{}' not found", col_name)));
          }
          // Not implemented on trait yet.
          Ok(Response::new(
