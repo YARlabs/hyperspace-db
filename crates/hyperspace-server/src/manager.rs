@@ -6,19 +6,67 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tokio::sync::RwLock;
+use serde::{Serialize, Deserialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ClusterRole {
+    Leader,
+    Follower,
+    Standalone,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterState {
+    pub node_id: String,
+    pub role: ClusterRole,
+    pub upstream_peer: Option<String>, // For followers
+    pub downstream_peers: Vec<String>, // For leaders
+    pub logical_clock: u64,
+}
+
+impl ClusterState {
+    pub fn new() -> Self {
+        Self {
+            node_id: Uuid::new_v4().to_string(),
+            role: ClusterRole::Leader, // Default to Leader for now as per plan
+            upstream_peer: None,
+            downstream_peers: Vec::new(),
+            logical_clock: 0,
+        }
+    }
+}
 
 pub struct CollectionManager {
     base_path: PathBuf,
     collections: DashMap<String, Arc<dyn Collection>>,
     replication_tx: broadcast::Sender<ReplicationLog>,
+    pub cluster_state: Arc<RwLock<ClusterState>>,
 }
 
 impl CollectionManager {
     pub fn new(base_path: PathBuf, replication_tx: broadcast::Sender<ReplicationLog>) -> Self {
+        // Try load cluster state
+        let state_path = base_path.join("cluster.json");
+        let state = if state_path.exists() {
+            let data = fs::read_to_string(&state_path).unwrap_or_default();
+            serde_json::from_str(&data).unwrap_or_else(|_| ClusterState::new())
+        } else {
+            let s = ClusterState::new();
+            if let Ok(data) = serde_json::to_string_pretty(&s) {
+                 // Create dir if needed
+                 let _ = fs::create_dir_all(&base_path);
+                 let _ = fs::write(&state_path, data);
+            }
+            s
+        };
+
         Self {
             base_path,
             collections: DashMap::new(),
             replication_tx,
+            cluster_state: Arc::new(RwLock::new(state)),
         }
     }
 

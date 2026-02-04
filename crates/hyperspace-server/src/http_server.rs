@@ -72,6 +72,7 @@ pub async fn start_http_server(
         .route("/api/collections/{name}/peek", get(peek_collection))
         .route("/api/collections/{name}/search", post(search_collection))
         .route("/api/status", get(get_status))
+        .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
         .route("/api/logs", get(get_logs))
         .layer(middleware::from_fn_with_state(api_key_hash.clone(), validate_api_key))
@@ -135,6 +136,11 @@ struct CollectionSummary {
     count: usize,
     dimension: usize,
     metric: String,
+}
+
+async fn get_cluster_status(State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>) -> Json<crate::manager::ClusterState> {
+    let state = manager.cluster_state.read().await;
+    Json(state.clone())
 }
 
 async fn list_collections(State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>) -> Json<Vec<CollectionSummary>> {

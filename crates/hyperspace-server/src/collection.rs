@@ -168,6 +168,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 vector: vector.to_vec(),
                 metadata,
                 collection: self.name.clone(),
+                origin_node_id: "".to_string(),
+                logical_clock: 0,
             };
             let _ = self.replication_tx.send(log);
         }

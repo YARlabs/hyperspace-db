@@ -19,6 +19,7 @@ export function DashboardLayout() {
                 <nav className="space-y-1 px-4 flex-1">
                     <NavItem to="/" icon={LayoutDashboard} label="Overview" />
                     <NavItem to="/collections" icon={Database} label="Collections" />
+                    <NavItem to="/nodes" icon={Network} label="Cluster Nodes" />
                     <NavItem to="/explorer" icon={Search} label="Data Explorer" />
                     <NavItem to="/graph" icon={Network} label="Graph Explorer" badge="Soon" disabled />
                     <NavItem to="/settings" icon={Settings} label="Settings" />

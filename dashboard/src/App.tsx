@@ -5,7 +5,7 @@ import { AuthPage } from "./pages/AuthPage"
 import { OverviewPage } from "./pages/OverviewPage"
 import { CollectionsPage } from "./pages/CollectionsPage"
 import { DataExplorerPage } from "./pages/DataExplorerPage"
-import { GraphExplorerPage } from "./pages/GraphExplorerPage"
+import { NodesPage } from "./pages/NodesPage"
 import { SettingsPage } from "./pages/SettingsPage"
 
 function App() {
@@ -21,8 +21,8 @@ function App() {
         }>
           <Route path="/" element={<OverviewPage />} />
           <Route path="/collections" element={<CollectionsPage />} />
+          <Route path="/nodes" element={<NodesPage />} />
           <Route path="/explorer" element={<DataExplorerPage />} />
-          <Route path="/graph" element={<GraphExplorerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
 

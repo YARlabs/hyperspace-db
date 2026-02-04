@@ -39,7 +39,7 @@ export function AuthPage() {
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-background p-4">
-            <div className="absolute inset-0 bg-[url('/hyperspace.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
+            <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
             <Card className="w-full max-w-md relative z-10 border-primary/20 shadow-[0_0_30px_rgba(124,58,237,0.1)]">
                 <CardHeader>
                     <div className="flex justify-center mb-4">
