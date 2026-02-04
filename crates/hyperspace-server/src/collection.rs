@@ -234,7 +234,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // 4. Replication
         if self.replication_tx.receiver_count() > 0 {
             let log = ReplicationLog {
-                id: internal_id,
+                id, // Use user-provided ID, not internal_id!
                 vector: vector.to_vec(),
                 metadata,
                 collection: self.name.clone(),

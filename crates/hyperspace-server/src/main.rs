@@ -75,6 +75,21 @@ impl Interceptor for AuthInterceptor {
     }
 }
 
+// Client-side interceptor (for Follower connecting to Leader)
+#[derive(Clone)]
+struct ClientAuthInterceptor {
+    api_key: String,
+}
+
+impl Interceptor for ClientAuthInterceptor {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        let token = self.api_key.parse()
+            .map_err(|_| Status::invalid_argument("Invalid API Key format"))?;
+        request.metadata_mut().insert("x-api-key", token);
+        Ok(request)
+    }
+}
+
 pub struct HyperspaceService {
     manager: Arc<CollectionManager>,
     replication_tx: broadcast::Sender<ReplicationLog>,
@@ -479,13 +494,25 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         if let Some(leader) = args.leader.clone() {
             println!("🚀 Starting as FOLLOWER of: {}", leader);
             let manager_weak = Arc::downgrade(&manager);
+            let api_key_for_client = std::env::var("HYPERSPACE_API_KEY").ok();
 
             tokio::spawn(async move {
                 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
+                use tonic::transport::Channel;
+                
                 loop {
                     println!("Connecting to leader {}...", leader);
-                    match DatabaseClient::connect(leader.clone()).await {
-                        Ok(mut client) => {
+                    match Channel::from_shared(leader.clone())
+                        .expect("Invalid leader URL")
+                        .connect()
+                        .await
+                    {
+                        Ok(channel) => {
+                            let interceptor = ClientAuthInterceptor {
+                                api_key: api_key_for_client.clone().unwrap_or_default(),
+                            };
+                            let mut client = DatabaseClient::with_interceptor(channel, interceptor);
+                            
                             println!("Connected! Requesting replication stream...");
                             match client.replicate(Empty {}).await {
                                 Ok(resp) => {
