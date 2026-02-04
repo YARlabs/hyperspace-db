@@ -1,45 +1,119 @@
-# gRPC API Reference
+# API Reference
 
-HyperspaceDB exposes a simple yet powerful gRPC interface defined in `hyperspace.proto`.
+HyperspaceDB operates on a **Dual-API** architecture:
+1. **gRPC (Data Plane)**: High-performance ingestion and search.
+2. **HTTP (Control Plane)**: Management, monitoring, and dashboard integration.
 
-## Service: `Database`
+## 📡 gRPC API (Data Plane)
 
-### `Insert`
-Ingests a vector into the database. This is an asynchronous operation regarding the index, but synchronous regarding durability (WAL).
+Defined in `hyperspace.proto`. Used by SDKs (Python, Rust, Go).
+
+### Collection Management
+
+#### `CreateCollection`
+Creates a new independent vector index.
+
+```protobuf
+rpc CreateCollection (CreateCollectionRequest) returns (StatusResponse);
+
+message CreateCollectionRequest {
+  string name = 1;
+  uint32 dimension = 2; // e.g. 1536, 1024, 64
+  string metric = 3;    // "l2", "cosine", "poincare"
+}
+```
+
+#### `DeleteCollection`
+Drops a collection and all its data.
+
+```protobuf
+rpc DeleteCollection (DeleteCollectionRequest) returns (StatusResponse);
+```
+
+### Vector Operations
+
+#### `Insert`
+Ingests a vector into a specific collection.
 
 ```protobuf
 rpc Insert (InsertRequest) returns (InsertResponse);
 
 message InsertRequest {
-  uint32 id = 1;             // External unique ID
-  repeated float vector = 2; // The data point (must be norm < 1)
-  map<string, string> metadata = 3; // Tags for filtering
+  string collection = 1;      // Collection name
+  repeated double vector = 2; // Data point
+  uint32 id = 3;              // External ID
+  map<string, string> metadata = 4; // Metadata tags
 }
 ```
 
-### `Search`
-
-Finds the nearest neighbors using the Poincaré metric.
+#### `Search`
+Finds nearest neighbors.
 
 ```protobuf
 rpc Search (SearchRequest) returns (SearchResponse);
 
 message SearchRequest {
-  repeated float vector = 1; // Query vector
-  uint32 top_k = 2;          // Number of results
-  map<string, string> filter = 3; // Optional metadata filter (AND logic)
+  string collection = 1;
+  repeated double vector = 2;
+  uint32 top_k = 3;
+  // Metadata string filter (e.g. "category:book")
+  map<string, string> filter = 4;
+  // Complex filter object
+  repeated Filter filters = 5;
+  // Hybrid search
+  optional string hybrid_query = 6;
+  optional float hybrid_alpha = 7;
 }
 ```
 
-### `Configure`
+---
 
-Updates runtime parameters.
+## 🌐 HTTP API (Control Plane)
 
-```protobuf
-rpc Configure (ConfigUpdate) returns (StatusResponse);
+Served on port `50050` (default). All endpoints under `/api`.
+Authentication: `x-api-key` header required.
 
-message ConfigUpdate {
-  optional uint32 ef_search = 1;       // Search beam width (higher = more accurate)
-  optional uint32 ef_construction = 2; // Indexing beam width (higher = better graph)
+### Cluster Status
+`GET /api/cluster/status`
+
+Returns the node's identity and topology role.
+
+```json
+{
+  "node_id": "uuid...",
+  "role": "Leader", // or "Follower"
+  "upstream_peer": null,
+  "downstream_peers": []
 }
+```
+
+### System Metrics
+`GET /api/metrics`
+
+Real-time system resource usage.
+
+```json
+{
+    "cpu_usage_percent": 12,
+    "ram_usage_mb": 512,
+    "disk_usage_mb": 1024,
+    "total_collections": 5,
+    "total_vectors": 1000000
+}
+```
+
+### List Collections
+`GET /api/collections`
+
+Returns summary of all active collections.
+
+```json
+[
+  {
+    "name": "my_docs",
+    "count": 1500,
+    "dimension": 1536,
+    "metric": "l2"
+  }
+]
 ```

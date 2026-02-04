@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     * `GET /api/logs` - Live server logs
 * **Data Explorer**: New dashboard page for inspecting raw vector data and testing search queries.
 * **Search Playground**: Interactive UI for validating search functionality with custom vectors.
+* **Federated Clustering (Beta)**: Initial implementation of distributed state managment.
+    *   **Node Identity**: Each node has a persistent `node_id`.
+    *   **Cluster Topology**: HTTP API `/api/cluster/status` to view mesh topology.
+    *   **Logical Clocks**: Lamport clocks added to replication logs for causal ordering.
+* **SDK Ecosystem Expansion**:
+    *   **Python SDK**: Complete API coverage including collection management (`create_collection`, `list_collections`).
+    *   **TypeScript SDK (Beta)**: Native Node.js client with Promise-based API.
+    *   **Rust SDK**: Updated for v1.2.0 with cluster awareness.
 * **shadcn/ui Components**: Production-ready UI component library integration.
 
 

@@ -23,6 +23,22 @@ can be included in both open-source and commercial releases.
     just build
     ```
 
+4.  **Python SDK**:
+    ```bash
+    cd sdks/python
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install grpcio-tools grpcio protobuf
+    ./generate_protos.sh
+    ```
+
+5.  **TypeScript SDK**:
+    ```bash
+    cd sdks/ts
+    npm install
+    npm run build
+    ```
+
 ## 🧪 Testing
 
 We value stability. Please ensure all tests pass before submitting a PR:

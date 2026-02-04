@@ -3,7 +3,6 @@ from typing import List, Dict, Optional, Union
 import sys
 import os
 
-# Fix import path for generated proto files
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from .proto import hyperspace_pb2
@@ -17,7 +16,34 @@ class HyperspaceClient:
         self.metadata = (('x-api-key', api_key),) if api_key else None
         self.embedder = embedder
 
-    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None) -> bool:
+    def create_collection(self, name: str, dimension: int, metric: str) -> bool:
+        req = hyperspace_pb2.CreateCollectionRequest(name=name, dimension=dimension, metric=metric)
+        try:
+            resp = self.stub.CreateCollection(req, metadata=self.metadata)
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
+    def delete_collection(self, name: str) -> bool:
+        req = hyperspace_pb2.DeleteCollectionRequest(name=name)
+        try:
+            resp = self.stub.DeleteCollection(req, metadata=self.metadata)
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
+    def list_collections(self) -> List[str]:
+        req = hyperspace_pb2.Empty()
+        try:
+            resp = self.stub.ListCollections(req, metadata=self.metadata)
+            return resp.collections
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
+
+    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, collection: str = "") -> bool:
         if metadata is None:
             metadata = {}
             
@@ -32,7 +58,10 @@ class HyperspaceClient:
         req = hyperspace_pb2.InsertRequest(
             id=id,
             vector=vector,
-            metadata=metadata
+            metadata=metadata,
+            collection=collection,
+            origin_node_id="",
+            logical_clock=0
         )
         try:
             resp = self.stub.Insert(req, metadata=self.metadata)
@@ -41,7 +70,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None) -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, collection: str = "") -> List[Dict]:
         if filter is None:
             filter = {}
             
@@ -52,14 +81,9 @@ class HyperspaceClient:
             vector = self.embedder.encode(query_text)
             
             # Auto-enable hybrid if not specified but meaningful?
-            # User might just want vector search by text. 
-            # If they want hybrid, they pass hybrid_query explicitly or we could default it to query_text?
-            # Keeping it simple: query_text just generates the vector.
-            # If user wants hybrid, they should pass hybrid_query or we can be smart:
             if hybrid_query is None and hybrid_alpha is not None:
-                 # If user specified alpha but no text, assume they want to use the query text for hybrid too
                  hybrid_query = query_text
-
+        
         if vector is None:
              raise ValueError("Either 'vector' or 'query_text' must be provided.")
 
@@ -84,7 +108,8 @@ class HyperspaceClient:
             filter=filter,
             filters=proto_filters,
             hybrid_query=hybrid_query,
-            hybrid_alpha=hybrid_alpha
+            hybrid_alpha=hybrid_alpha,
+            collection=collection
         )
         try:
             resp = self.stub.Search(req, metadata=self.metadata)
@@ -104,8 +129,8 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def configure(self, ef_search: int = None, ef_construction: int = None) -> bool:
-        req = hyperspace_pb2.ConfigUpdate()
+    def configure(self, ef_search: int = None, ef_construction: int = None, collection: str = "") -> bool:
+        req = hyperspace_pb2.ConfigUpdate(collection=collection)
         if ef_search is not None:
             req.ef_search = ef_search
         if ef_construction is not None:

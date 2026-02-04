@@ -34,6 +34,26 @@ class DatabaseStub(object):
         Args:
             channel: A grpc.Channel.
         """
+        self.CreateCollection = channel.unary_unary(
+                '/hyperspace.Database/CreateCollection',
+                request_serializer=hyperspace__pb2.CreateCollectionRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.DeleteCollection = channel.unary_unary(
+                '/hyperspace.Database/DeleteCollection',
+                request_serializer=hyperspace__pb2.DeleteCollectionRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.ListCollections = channel.unary_unary(
+                '/hyperspace.Database/ListCollections',
+                request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                response_deserializer=hyperspace__pb2.ListCollectionsResponse.FromString,
+                _registered_method=True)
+        self.GetCollectionStats = channel.unary_unary(
+                '/hyperspace.Database/GetCollectionStats',
+                request_serializer=hyperspace__pb2.CollectionStatsRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.CollectionStatsResponse.FromString,
+                _registered_method=True)
         self.Insert = channel.unary_unary(
                 '/hyperspace.Database/Insert',
                 request_serializer=hyperspace__pb2.InsertRequest.SerializeToString,
@@ -79,6 +99,31 @@ class DatabaseStub(object):
 class DatabaseServicer(object):
     """Missing associated documentation comment in .proto file."""
 
+    def CreateCollection(self, request, context):
+        """Collection Management
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteCollection(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListCollections(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCollectionStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Insert(self, request, context):
         """Insert vectors
         """
@@ -101,7 +146,7 @@ class DatabaseServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Monitor(self, request, context):
-        """Stream statistics for TUI
+        """Stream statistics for TUI (Global or Collection tailored)
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -137,6 +182,26 @@ class DatabaseServicer(object):
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'CreateCollection': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateCollection,
+                    request_deserializer=hyperspace__pb2.CreateCollectionRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'DeleteCollection': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteCollection,
+                    request_deserializer=hyperspace__pb2.DeleteCollectionRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'ListCollections': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCollections,
+                    request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.ListCollectionsResponse.SerializeToString,
+            ),
+            'GetCollectionStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCollectionStats,
+                    request_deserializer=hyperspace__pb2.CollectionStatsRequest.FromString,
+                    response_serializer=hyperspace__pb2.CollectionStatsResponse.SerializeToString,
+            ),
             'Insert': grpc.unary_unary_rpc_method_handler(
                     servicer.Insert,
                     request_deserializer=hyperspace__pb2.InsertRequest.FromString,
@@ -187,6 +252,114 @@ def add_DatabaseServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class Database(object):
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def CreateCollection(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/CreateCollection',
+            hyperspace__pb2.CreateCollectionRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteCollection(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/DeleteCollection',
+            hyperspace__pb2.DeleteCollectionRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCollections(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/ListCollections',
+            hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.ListCollectionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCollectionStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/GetCollectionStats',
+            hyperspace__pb2.CollectionStatsRequest.SerializeToString,
+            hyperspace__pb2.CollectionStatsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def Insert(request,
