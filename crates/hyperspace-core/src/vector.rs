@@ -21,6 +21,16 @@ impl<const N: usize> HyperVector<N> {
         Ok(Self { coords, alpha })
     }
 
+    pub fn new_unchecked(coords: [f64; N]) -> Self {
+        let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
+        // Calculate alpha anyway, but handle >= 1.0 gracefully (though unused for L2)
+        // If sq_norm >= 1.0, alpha is negative or inf.
+        // We just store it as is, or 1.0. 
+        // Let's store as is for now, assuming Metric will ignore it.
+        let alpha = 1.0 / (1.0 - sq_norm);
+        Self { coords, alpha }
+    }
+
     /// The hottest function in the entire project.
     #[inline(always)]
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
@@ -215,7 +225,34 @@ impl<const N: usize> BinaryHyperVector<N> {
         let delta = sum_sq_diff * (self.alpha as f64) * query.alpha;
         1.0 + 2.0 * delta
     }
+
+    pub fn l2_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
+        let val = 1.0 / (N as f64).sqrt() * 0.99;
+        let mut sum_sq_diff = 0.0;
+
+        for i in 0..N {
+            if i >= 4096 {
+                break;
+            }
+            let byte_idx = i / 8;
+            let bit_idx = i % 8;
+            let bit = (self.bits[byte_idx] >> bit_idx) & 1;
+
+            let recon = if bit == 1 { val } else { -val };
+            let diff = recon - query.coords[i];
+            sum_sq_diff += diff * diff;
+        }
+        sum_sq_diff
+    }
 }
+
+// ... inside QuantizedHyperVector impl ...
+// I need to use another block for QuantizedHyperVector since it is earlier in file.
+// I will target the existing method and add the new one below it.
+// Wait, REPLACE tool effectively replaces the block. I can't target two separate blocks easily if they are far apart.
+// Quantized is lines 89-158. Binary is 169-218.
+// I will start with Binary as it matches the snippet above.
+
 
 impl<const N: usize> HyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();

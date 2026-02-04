@@ -381,13 +381,21 @@ async fn start_server(
     manager.load_existing().await?;
     
     // Create default if not exists?
+    // Create default if not exists
     if manager.get("default").is_none() {
-         println!("Creating 'default' collection...");
          // Use env vars for default
          let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
          let dim: u32 = dim_str.parse().unwrap_or(1024);
-         let metric_str = std::env::var("HS_DISTANCE_METRIC").unwrap_or("poincare".to_string());
          
+         // Support HS_METRIC (new) and HS_DISTANCE_METRIC (legacy)
+         let metric_str = std::env::var("HS_METRIC")
+             .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
+             .unwrap_or("poincare".to_string())
+             .to_lowercase();
+         
+         println!("🚀 Booting HyperspaceDB | Dim: {} | Metric: {}", dim, metric_str);
+
+         println!("Creating 'default' collection...");
          if let Err(e) = manager.create_collection("default", dim, &metric_str).await {
              eprintln!("Failed to create default collection: {}", e);
          }

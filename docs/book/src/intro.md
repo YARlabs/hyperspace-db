@@ -4,8 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-nightly-orange.svg)](#)
 
-**Fastest Hyperbolic Vector Database written in Rust.**  
-HyperspaceDB implements the Poincaré ball model for high-precision, low-latency search in hyperbolic space—ideal for hierarchical and taxonomical data representation.
+**Fastest Vector Database for Hierarchical & Flat Data written in Rust.**  
+HyperspaceDB natively supports both the **Poincaré ball model** (for hierarchies) and **Euclidean space** (for standard OpenAI/BGE embeddings), delivering extreme performance through specialized SIMD kernels.
 
 ---
 

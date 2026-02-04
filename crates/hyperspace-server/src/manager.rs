@@ -154,7 +154,7 @@ impl CollectionManager {
             ),
             
             // Euclidean configurations
-            (1024, "euclidean") => Arc::new(
+            (1024, "euclidean") | (1024, "l2") => Arc::new(
                 CollectionImpl::<1024, EuclideanMetric>::new(
                     name.to_string(),
                     col_dir,
@@ -164,7 +164,7 @@ impl CollectionManager {
                 )
                 .await?,
             ),
-            (1536, "euclidean") => Arc::new(
+            (1536, "euclidean") | (1536, "l2") => Arc::new(
                 CollectionImpl::<1536, EuclideanMetric>::new(
                     name.to_string(),
                     col_dir,
@@ -174,8 +174,19 @@ impl CollectionManager {
                 )
                 .await?,
             ),
-            (2048, "euclidean") => Arc::new(
+            (2048, "euclidean") | (2048, "l2") => Arc::new(
                 CollectionImpl::<2048, EuclideanMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            // Test configurations
+            (8, "euclidean") | (8, "l2") => Arc::new(
+                CollectionImpl::<8, EuclideanMetric>::new(
                     name.to_string(),
                     col_dir,
                     wal_path,

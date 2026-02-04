@@ -4,6 +4,7 @@ pub mod config;
 pub mod vector;
 
 pub use config::GlobalConfig;
+use vector::{HyperVector, QuantizedHyperVector, BinaryHyperVector};
 
 pub type HyperFloat = f64;
 
@@ -15,9 +16,7 @@ pub enum QuantizationMode {
 }
 
 /// Metric abstraction for distance calculation
-pub trait Metric<const N: usize>: Send + Sync + 'static {
-    fn distance(a: &[f64; N], b: &[f64; N]) -> f64;
-}
+
 
 pub struct PoincareMetric;
 
@@ -59,31 +58,22 @@ pub trait Collection: Send + Sync {
     fn count(&self) -> usize;
 }
 
+pub trait Metric<const N: usize>: Send + Sync + 'static {
+    fn distance(a: &[f64; N], b: &[f64; N]) -> f64;
+    
+    // Default valid verification (Euclidean accepts all)
+    fn validate(vector: &[f64; N]) -> Result<(), String> {
+        let _ = vector;
+        Ok(())
+    }
+    
+    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64;
+    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64;
+}
+
 impl<const N: usize> Metric<N> for PoincareMetric {
-
-
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // We use the math from HyperVector::poincare_distance_sq here
-        // But HyperVector stores precomputed alpha.
-        // Metric trait assumes raw coordinates?
-        // Or should Metric work on HyperVector?
-        // User prompt Example: "fn distance(a: &[f32; N], b: &[f32; N])"
-        // And implementation computes norm_sq inside.
-        // This recalculates norms every time? That's slow.
-        // But HNSW stores Vectors.
-        // Ideally HnsIndex should call HyperVector::distance.
-        // But HyperVector handles Poincare logic internally.
-        // If we want to switch metric to Cosine, HyperVector logic (alpha) might be useless.
-        // However, for MVP, let's follow the User's snippet pattern but Keep HyperVector optimization if possible.
-        // Actually, existing code uses `HyperVector::poincare_distance_sq`.
-        // If we switch to Generic M, `HnswIndex` will call `M::distance`.
-        // We should move the optimized logic into `PoincareMetric::distance`.
-        // AND we should probably pass HyperVector to it if we want to use precomputed alpha?
-        // Or the User snippet implies recalculating norms is acceptable for "Generic" check?
-        // Let's implement the User's logic for now (Raw calculation).
-        // Optimization: We can specialize later or pass structs.
-
         let norm_u_sq: f64 = a.iter().map(|&x| x * x).sum();
         let norm_v_sq: f64 = b.iter().map(|&x| x * x).sum();
         let diff_sq: f64 = a.iter().zip(b.iter()).map(|(u, v)| (u - v).powi(2)).sum();
@@ -92,16 +82,50 @@ impl<const N: usize> Metric<N> for PoincareMetric {
         let arg = 1.0 + 2.0 * diff_sq / denom.max(1e-9);
         arg.acosh()
     }
+
+    fn validate(vector: &[f64; N]) -> Result<(), String> {
+        let sq_norm: f64 = vector.iter().map(|&x| x * x).sum();
+        if sq_norm >= 1.0 - 1e-9 {
+            return Err("Vector must be strictly inside the Poincaré ball".to_string());
+        }
+        Ok(())
+    }
+    
+    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+        a.poincare_distance_sq_to_float(b)
+    }
+
+    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
+        a.poincare_distance_sq_to_float(b)
+    }
 }
 
 impl<const N: usize> Metric<N> for EuclideanMetric {
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // L2 (Euclidean) distance
+        // Squared L2 distance for optimization (sqrt is monotonic)
         a.iter()
             .zip(b.iter())
             .map(|(x, y)| (x - y).powi(2))
-            .sum::<f64>()
-            .sqrt()
+            .sum()
+    }
+    
+    // validate uses default
+
+    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+         let mut sum_sq_diff = 0.0;
+         const SCALE_INV: f64 = 1.0 / 127.0;
+
+         for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
+             let a_val = (*a_i8 as f64) * SCALE_INV;
+             let diff = a_val - b_f64;
+             sum_sq_diff += diff * diff;
+         }
+         sum_sq_diff
+    }
+
+    // Binary implementation calls the method added to vector struct
+    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
+        a.l2_distance_sq_to_float(b)
     }
 }

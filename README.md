@@ -270,19 +270,31 @@ client.delete_collection("my_vectors")
 
 **Note**: If no collection is specified, operations default to the `"default"` collection.
 
-## ⚙️ Runtime Configuration
+## ⚙️ Configuration & Presets
 
-HyperspaceDB v1.1 supports dynamic dimensionality selection via Environment Variables (`.env`).
+HyperspaceDB v1.2 introduces flexible configuration presets to support both **Scientific** (Hyperbolic) and **Classic** (Euclidean) use cases.
+
+Configure these via `.env` file or environment variables:
 
 | Variable | Description | Supported Values | Default |
 | :--- | :--- | :--- | :--- |
-| `HS_DIMENSION` | Vector dimensions | `1024` (BGE-M3), `1536` (OpenAI), `768` (Bert), `8` (Test) | `1024` |
-| `HS_DISTANCE_METRIC` | Distance formula | `poincare` | `poincare` |
-| `HS_QUANTIZATION_LEVEL` | Compression level | `scalar` (i8), `binary` (1-bit), `none` (f32) | `scalar` |
-| `HS_HNSW_EF_SEARCH` | Search beam width | Integer (10-500) | `10` |
-| `HS_HNSW_EF_CONSTRUCT` | Index build quality | Integer (50-500) | `100` |
+| `HS_DIMENSION` | Vector dimensions | `16`, `32`, `64`, `128` (Hyperbolic) <br> `1024` (BGE), `1536` (OpenAI), `2048` (Voyage) | `1024` |
+| `HS_METRIC`    | Distance formula | `poincare` (Hyperbolic) <br> `l2`, `euclidean` (Squared L2) | `l2` |
+| `HS_QUANTIZATION_LEVEL` | Compression | `scalar` (i8), `binary` (1-bit), `none` (f32) | `scalar` |
 
-*Note: The server binary includes optimized kernels for these specific dimensions. To change dimensions, simply update `.env` and restart.*
+### 🎯 Supported Presets
+
+**1. Classic RAG (Default)**
+Optimized for standard embeddings from OpenAI, Cohere, Voyage, etc.
+* **Metric**: `l2` (Euclidean)
+* **Dimensions**: `1024`, `1536`, `2048`
+* **Note**: `Scalar` quantization clamps values to `[-1, 1]`. Ensure your vectors are normalized (standard for OpenAI/BGE) or use `none`.
+
+**2. Scientific / Hyperbolic**
+Optimized for hierarchical data, graph embeddings, and low-dimensional efficiency.
+* **Metric**: `poincare`
+* **Dimensions**: `16`, `32`, `64`, `128` (Common: 64)
+* **Requirement**: Input vectors must strictly satisfy `||x|| < 1.0` (Poincaré ball constraint). Server will reject invalid vectors.
 
 ---
 

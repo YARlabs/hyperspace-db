@@ -337,7 +337,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             );
         }
         aligned_query.copy_from_slice(query);
-        let q_vec = HyperVector::new(aligned_query).expect("Invalid Query Vector");
+        
+        M::validate(&aligned_query).expect("Invalid Query Vector for this Metric");
+        let q_vec = HyperVector::new_unchecked(aligned_query);
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);
         let max_layer = self.max_layer.load(Ordering::Relaxed);
@@ -384,15 +386,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         match self.mode {
             QuantizationMode::ScalarI8 => {
                 let q = QuantizedHyperVector::<N>::from_bytes(bytes);
-                q.poincare_distance_sq_to_float(query)
+                M::distance_quantized(q, query)
             }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::<N>::from_bytes(bytes);
-                b.poincare_distance_sq_to_float(query)
+                M::distance_binary(b, query)
             }
             QuantizationMode::None => {
                 let v = HyperVector::<N>::from_bytes(bytes);
-                // Use Generic Metric!
                 M::distance(&v.coords, &query.coords)
             }
         }
@@ -653,7 +654,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return Err("Dim mismatch".into());
         }
         arr.copy_from_slice(vector);
-        let q_vec_full = HyperVector::new(arr)?;
+        
+        // Validate against Metric logic (Poincare checks bounds, Euclidean doesn't)
+        M::validate(&arr)?;
+        
+        // Create vector (we already validated)
+        let q_vec_full = HyperVector::new_unchecked(arr);
 
         let new_id = match self.mode {
             QuantizationMode::ScalarI8 => {

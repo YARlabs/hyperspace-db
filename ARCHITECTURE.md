@@ -47,12 +47,19 @@ Writes are durable. Every insert is appended to `wal.log` before being acknowled
 
 ## 🕸 Indexing Layer (hyperspace-index)
 
-### Hyperbolic HNSW
-We implement a modified **Hierarchical Navigable Small World** graph optimized for the Poincaré Ball model.
+### Metric Abstraction & HNSW
+We use a Generic Metric system (`Metric<N>`) to support multiple geometries efficiently, dispatched at compile-time via Const Generics.
 
-*   **Distance Metric**: Poincaré distance formula:
-    $$ d(u, v) = \text{acosh}\left(1 + 2 \frac{||u-v||^2}{(1-||u||^2)(1-||v||^2)}\right) $$
-*   **Optimization**: We compare $||u-v||^2$ and cached normalization factors $\alpha = 1/(1-||u||^2)$ to avoid expensive `acosh` calls during graph traversal.
+1.  **Hyperbolic Space (Poincaré Ball)**
+    *   **Formula**: $ d(u, v) = \text{acosh}\left(1 + 2 \frac{||u-v||^2}{(1-||u||^2)(1-||v||^2)}\right) $
+    *   **Optimization**: We utilize pre-computed normalization factors $\alpha$ and avoid `acosh` during graph traversal.
+    *   **Constraint**: Vectors strictly inside unit ball ($||u|| < 1$).
+
+2.  **Euclidean Space (Squared L2)**
+    *   **Formula**: $ d(u, v) = \sum (u_i - v_i)^2 $
+    *   **Optimization**: We use Squared L2 distance to avoid expensive `sqrt` calls (monotonicity is preserved for HNSW).
+    *   **Compatibility**: Optimized for OpenAI, Cohere, and other standard embeddings.
+
 *   **Locking**: The graph uses fine-grained `RwLock` per node layer, allowing concurrent searches and updates.
 
 ### Dynamic Configuration

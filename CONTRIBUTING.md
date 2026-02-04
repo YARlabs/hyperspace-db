@@ -38,6 +38,14 @@ cargo fmt --all
 cargo clippy --all-features -- -D warnings
 ```
 
+## 📐 Adding New Metrics
+
+To implement a new metric:
+1.  Implement `Metric<N>` trait in `crates/hyperspace-core/src/lib.rs`.
+2.  Implement `distance`, `validate`, and quantized distance methods (`distance_quantized`, `distance_binary`).
+3.  Register alias and instantiation logic in `crates/hyperspace-server/src/manager.rs`.
+4.  Add integration tests in `tests/`.
+
 ## 🚀 Future Roadmap
 
 We focus on building the **Universal Spatial Memory** for AI Agents.
@@ -45,10 +53,10 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 ### Phase 1: Ecosystem & Ubiquity (v1.x)
 *The goal: Run everywhere RuVector runs, but faster and with better math.*
 
-* **v1.1**: ✅ **Multi-Tenancy (Collections)**. Support for named Collections within a single instance. Includes Web Dashboard for management. *Completed.*
-* **v1.2**: **Universal TypeScript SDK**. Native bindings for Node.js, Deno, and Bun. *Direct challenge to RuVector's ecosystem.*
-* **v1.3**: **WASM Core ("Edge Memory")**. Compiling `hyperspace-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls.
-* **v1.4**: ✅ **Visual Graph Explorer**. A web-based tool to visualize the Poincaré disk and navigate your data's hierarchy interactively. *Completed.*
+* **v1.1**: ✅ **Multi-Tenancy (Collections)**. Support for named Collections within a single instance. *Completed.*
+* **v1.2**: ✅ **Web Dashboard & Euclidean Support**. Full management UI, L2 Metric support, and Presets. *Completed.*
+* **v1.3**: **Universal TypeScript SDK**. Native bindings for Node.js, Deno, and Bun. *Direct challenge to RuVector's ecosystem.*
+* **v1.4**: **WASM Core ("Edge Memory")**. Compiling `hyperspace-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls.
 
 ### Phase 2: Scale & Structure (v2.x)
 *The goal: True Enterprise Scale and Graph Capabilities.*
