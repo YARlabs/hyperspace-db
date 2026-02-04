@@ -81,10 +81,33 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
 ## 🤝 Federated Clustering (v1.2)
 HyperspaceDB implements a **Federated Leader-Follower** architecture designed for both high availability and Edge-Cloud synchronization.
 
-* **Node Identity**: Each node generates a unique UUID (`node_id`) and maintains a logical clock.
+* **Node Identity**: Each node generates a unique UUID (`node_id`) and maintains a Lamport logical clock.
 * **Leader**: Handles Writes (Coordinator). Streams WAL events. Manages Cluster Topology.
 * **Follower**: Read-Only replica. Can be promoted to Leader.
 * **Edge Node**: (Coming in v1.4) Offline-first node that syncs via Merkle Trees.
+
+### Data Synchronization (Bucket Merkle Tree)
+HyperspaceDB uses a **256-bucket Merkle Tree** for efficient data drift detection:
+
+* **Granular Hashing**: Each collection is partitioned into 256 buckets (by vector ID % 256)
+* **XOR Rolling Hash**: Each bucket maintains an incremental hash of its vectors
+* **Fast Diffing**: Compare bucket hashes to identify which partition is out of sync
+* **Bandwidth Optimization**: Sync only affected buckets instead of full collection
+
+#### Digest API
+```bash
+# HTTP
+GET /api/collections/{name}/digest
+
+# gRPC
+rpc GetDigest(DigestRequest) returns (DigestResponse)
+```
+
+Response includes:
+- `logical_clock`: Lamport timestamp
+- `state_hash`: Root hash (XOR of all buckets)
+- `buckets`: Array of 256 bucket hashes
+- `count`: Total vector count
 
 ### Cluster Topology API
 View the logic state of the cluster via HTTP:

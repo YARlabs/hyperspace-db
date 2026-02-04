@@ -1,13 +1,13 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
-use hyperspace_core::{Collection, PoincareMetric, EuclideanMetric};
+use hyperspace_core::{Collection, EuclideanMetric, PoincareMetric};
 use hyperspace_proto::hyperspace::ReplicationLog;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
-use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -67,9 +67,9 @@ impl CollectionManager {
         } else {
             let s = ClusterState::new();
             if let Ok(data) = serde_json::to_string_pretty(&s) {
-                 // Create dir if needed
-                 let _ = fs::create_dir_all(&base_path);
-                 let _ = fs::write(&state_path, data);
+                // Create dir if needed
+                let _ = fs::create_dir_all(&base_path);
+                let _ = fs::write(&state_path, data);
             }
             s
         };
@@ -96,10 +96,10 @@ impl CollectionManager {
                     // For now, MVP assumes 1024 Poincare for everyone or uses a metadata file.
                     // To properly support dynamic loading, we need to save metadata about each collection.
                     // For this MVP, let's assume we store a "meta.json" in the collection dir.
-                    
+
                     if let Ok(meta) = CollectionMetadata::load(&path) {
-                         self.instantiate_collection(name, meta).await?;
-                         println!("Loaded collection: {}", name);
+                        self.instantiate_collection(name, meta).await?;
+                        println!("Loaded collection: {}", name);
                     } else {
                         eprintln!("Skipping unknown directory (no meta.json): {}", name);
                     }
@@ -143,11 +143,11 @@ impl CollectionManager {
             (32, "poincare") => inst!(32, PoincareMetric),
             (64, "poincare") => inst!(64, PoincareMetric),
             (128, "poincare") => inst!(128, PoincareMetric),
-            (768, "poincare") => inst!(768, PoincareMetric), 
+            (768, "poincare") => inst!(768, PoincareMetric),
             (1024, "poincare") => inst!(1024, PoincareMetric),
             (1536, "poincare") => inst!(1536, PoincareMetric),
             (2048, "poincare") => inst!(2048, PoincareMetric),
-            
+
             // Euclidean (L2)
             (8, "euclidean") | (8, "l2") => inst!(8, EuclideanMetric),
             (16, "euclidean") | (16, "l2") => inst!(16, EuclideanMetric),
@@ -167,7 +167,6 @@ impl CollectionManager {
                 .into());
             }
         };
-
 
         self.collections.insert(name.to_string(), collection);
         Ok(())
@@ -193,7 +192,7 @@ impl CollectionManager {
             metric: metric.to_string(),
             quantization: "scalar".to_string(), // Default to scalar
         };
-        
+
         meta.save(&col_dir).map_err(|e| e.to_string())?;
 
         self.instantiate_collection(name, meta)
@@ -231,7 +230,10 @@ impl CollectionManager {
     }
 
     pub fn list(&self) -> Vec<String> {
-        self.collections.iter().map(|entry| entry.key().clone()).collect()
+        self.collections
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 }
 

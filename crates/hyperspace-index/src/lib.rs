@@ -339,7 +339,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             );
         }
         aligned_query.copy_from_slice(query);
-        
+
         M::validate(&aligned_query).expect("Invalid Query Vector for this Metric");
         let q_vec = HyperVector::new_unchecked(aligned_query);
 
@@ -386,18 +386,25 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     ) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)> {
         let max_len = self.nodes.read().len();
         let mut result = Vec::with_capacity(limit);
-        
+
         for id in (0..max_len).rev() {
-            if result.len() >= limit { break; }
+            if result.len() >= limit {
+                break;
+            }
             let id = id as u32;
-            
+
             if self.metadata.deleted.read().contains(id) {
                 continue;
             }
-             
-             let vec = self.get_vector(id).coords.to_vec();
-             let meta = self.metadata.forward.get(&id).map(|m| m.clone()).unwrap_or_default();
-             result.push((id, vec, meta));
+
+            let vec = self.get_vector(id).coords.to_vec();
+            let meta = self
+                .metadata
+                .forward
+                .get(&id)
+                .map(|m| m.clone())
+                .unwrap_or_default();
+            result.push((id, vec, meta));
         }
         result
     }
@@ -678,10 +685,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return Err("Dim mismatch".into());
         }
         arr.copy_from_slice(vector);
-        
+
         // Validate against Metric logic (Poincare checks bounds, Euclidean doesn't)
         M::validate(&arr)?;
-        
+
         // Create vector (we already validated)
         let q_vec_full = HyperVector::new_unchecked(arr);
 

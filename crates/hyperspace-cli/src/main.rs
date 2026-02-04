@@ -78,7 +78,9 @@ async fn run_app<B: ratatui::backend::Backend>(
         loop {
             if let Ok(resp) = client_col.list_collections(Empty {}).await {
                 let list = resp.into_inner().collections;
-                if tx_col.send(list).await.is_err() { break; }
+                if tx_col.send(list).await.is_err() {
+                    break;
+                }
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
         }

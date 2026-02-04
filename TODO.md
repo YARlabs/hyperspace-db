@@ -21,10 +21,13 @@
     - [x] Create a `CollectionFactory` or helper trait to handle the `16..2048` generic dispatch cleanly.
     - [x] Remove the massive 100-line match duplication introduced in Sprint 1.
 
-- [ ] **Data Drift Detection (Merkle/Hash)**
-    - [ ] **Goal:** Efficiently compare data state between nodes.
-    - [ ] Implement `CollectionDigest`: A rolling hash of all vector IDs + timestamps (or clock).
-    - [ ] Add `GET /api/collections/{name}/digest` endpoint.
+- [x] **Data Drift Detection (Merkle/Hash)**
+    - [x] **Goal:** Efficiently compare data state between nodes.
+    - [x] Implement `CollectionDigest`: A rolling hash of all vector IDs + timestamps (or clock).
+    - [x] Add `GET /api/collections/{name}/digest` endpoint.
+    - [x] Implement Bucket Merkle Tree (256 buckets)
+    - [x] Add gRPC `GetDigest` endpoint
+
 
 ## MINOR (Polish & UX)
 - [x] **Linter & Compiler Clean-up**
@@ -32,15 +35,19 @@
 - [x] **Dashboard Sync Status**
     - [x] Update "Cluster Nodes" page to show real `logical_clock` ticking in real-time. (Implemented via polling)
 
-## NEXT UP: HIGH COMPLEXITY
-- [x] **Data Drift Detection (Merkle/Hash)** (Foundation)
-    - [x] Defining `CollectionDigest` structure.
-    - [x] Implementing XOR Rolling Hash for Vector entries.
-    - [x] Exposing `GET /api/collections/{name}/digest`.
-    - [ ] **Full Merkle Tree**: Implement hierarchical hashing for faster diffing (Sprint 4).
+## COMPLETED ✅
+- [x] **Full Merkle Tree**: Implement hierarchical hashing for faster diffing (Sprint 4).
+    - [x] Bucket-based XOR hashing (256 buckets)
+    - [x] gRPC `GetDigest` endpoint
+    - [x] HTTP `/api/collections/{name}/digest` endpoint
+    - [x] SDK support (Rust SDK updated)
+    - [x] Cluster simulation test created
 
-## MINOR
-- [ ] **Refine API**: Add `state_hash` to `CollectionStats` as well?
+## NEXT STEPS
+- [ ] **Python & TypeScript SDK Updates**: Add `get_digest` methods
+- [ ] **Production Hardening**: Error handling, retries, backpressure
+- [ ] **Performance Testing**: Run cluster_test and benchmark latency
+- [ ] **Documentation**: Update API docs with sync protocol
 
 ---
 

@@ -1,13 +1,13 @@
+use crate::sync::CollectionDigest;
 use hyperspace_core::{Collection, FilterExpr, GlobalConfig, Metric, SearchParams};
 use hyperspace_index::HnswIndex;
 use hyperspace_proto::hyperspace::ReplicationLog;
 use hyperspace_store::{wal::Wal, VectorStore};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
-use crate::sync::CollectionDigest;
 
 pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     name: String,
@@ -18,7 +18,8 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     replication_tx: broadcast::Sender<ReplicationLog>,
     config: Arc<GlobalConfig>,
     _tasks: Vec<JoinHandle<()>>,
-    state_hash: AtomicU64,
+    // Buckets for Merkle Tree
+    buckets: Vec<AtomicU64>,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
@@ -34,7 +35,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let config = Arc::new(GlobalConfig::new());
         // Initialize config from env or defaults
         // For MVP, we use defaults or global env vars. Ideally passed in.
-         let ef_cons_env = std::env::var("HS_HNSW_EF_CONSTRUCT")
+        let ef_cons_env = std::env::var("HS_HNSW_EF_CONSTRUCT")
             .unwrap_or("100".to_string())
             .parse()
             .unwrap_or(100);
@@ -46,9 +47,15 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         config.set_ef_search(ef_search_env);
 
         let element_size = match mode {
-            hyperspace_core::QuantizationMode::ScalarI8 => hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE,
-            hyperspace_core::QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<N>::SIZE,
-            hyperspace_core::QuantizationMode::None => hyperspace_core::vector::HyperVector::<N>::SIZE,
+            hyperspace_core::QuantizationMode::ScalarI8 => {
+                hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
+            }
+            hyperspace_core::QuantizationMode::Binary => {
+                hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
+            }
+            hyperspace_core::QuantizationMode::None => {
+                hyperspace_core::vector::HyperVector::<N>::SIZE
+            }
         };
 
         if !data_dir.exists() {
@@ -57,21 +64,33 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         let (_store, index, recovered_count) = if snap_path.exists() {
             let store = Arc::new(VectorStore::new(&data_dir, element_size));
-            match HnswIndex::<N, M>::load_snapshot(&snap_path, store.clone(), mode, config.clone()) {
+            match HnswIndex::<N, M>::load_snapshot(&snap_path, store.clone(), mode, config.clone())
+            {
                 Ok(idx) => {
                     let count = idx.count_nodes();
                     (store, Arc::new(idx), count)
                 }
                 Err(e) => {
-                    eprintln!("Failed to load snapshot for {}: {}. Starting fresh.", name, e);
-                     // Cleanup?
+                    eprintln!(
+                        "Failed to load snapshot for {}: {}. Starting fresh.",
+                        name, e
+                    );
+                    // Cleanup?
                     let store = Arc::new(VectorStore::new(&data_dir, element_size));
-                    (store.clone(), Arc::new(HnswIndex::new(store, mode, config.clone())), 0)
+                    (
+                        store.clone(),
+                        Arc::new(HnswIndex::new(store, mode, config.clone())),
+                        0,
+                    )
                 }
             }
         } else {
             let store = Arc::new(VectorStore::new(&data_dir, element_size));
-            (store.clone(), Arc::new(HnswIndex::new(store, mode, config.clone())), 0)
+            (
+                store.clone(),
+                Arc::new(HnswIndex::new(store, mode, config.clone())),
+                0,
+            )
         };
 
         // WAL
@@ -81,7 +100,11 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // Replay
         let index_ref = index.clone();
         Wal::replay(&wal_path, |entry| {
-            let hyperspace_store::wal::WalEntry::Insert { id, vector, metadata } = entry;
+            let hyperspace_store::wal::WalEntry::Insert {
+                id,
+                vector,
+                metadata,
+            } = entry;
             if (id as usize) >= recovered_count {
                 let _ = index_ref.insert(&vector, metadata);
             }
@@ -91,7 +114,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let (index_tx, mut index_rx) = mpsc::channel(1000);
         let idx_worker = index.clone();
         let cfg_worker = config.clone();
-        
+
         let indexer_handle = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
                 let idx = idx_worker.clone();
@@ -99,7 +122,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 let _ = tokio::task::spawn_blocking(move || {
                     let _ = idx.index_node(id, meta);
                     cfg.dec_queue();
-                }).await;
+                })
+                .await;
             }
         });
 
@@ -121,7 +145,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             replication_tx,
             config,
             _tasks: vec![indexer_handle, snapshot_handle],
-            state_hash: AtomicU64::new(0),
+            buckets: (0..crate::sync::SYNC_BUCKETS)
+                .map(|_| AtomicU64::new(0))
+                .collect(),
         })
     }
 }
@@ -136,21 +162,46 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn state_hash(&self) -> u64 {
-        self.state_hash.load(Ordering::Relaxed)
+        let mut root = 0;
+        for b in &self.buckets {
+            root ^= b.load(Ordering::Relaxed);
+        }
+        root
     }
 
-    fn insert(&self, vector: &[f64], id: u32, metadata: HashMap<String, String>, clock: u64) -> Result<(), String> {
+    fn buckets(&self) -> Vec<u64> {
+        self.buckets
+            .iter()
+            .map(|b| b.load(Ordering::Relaxed))
+            .collect()
+    }
+
+    fn insert(
+        &self,
+        vector: &[f64],
+        id: u32,
+        metadata: HashMap<String, String>,
+        clock: u64,
+    ) -> Result<(), String> {
         // Validation
         if vector.len() != N {
-            return Err(format!("Vector dimension mismatch. Expected {}, got {}", N, vector.len()));
+            return Err(format!(
+                "Vector dimension mismatch. Expected {}, got {}",
+                N,
+                vector.len()
+            ));
         }
 
         // Update State Hash (XOR rolling hash)
         let entry_hash = CollectionDigest::hash_entry(id, vector);
-        self.state_hash.fetch_xor(entry_hash, Ordering::Relaxed);
+        let bucket_idx = CollectionDigest::get_bucket_index(id);
+        self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
         // 1. Storage
-        let internal_id = self.index.insert_to_storage(vector).map_err(|e| e.to_string())?;
+        let internal_id = self
+            .index
+            .insert_to_storage(vector)
+            .map_err(|e| e.to_string())?;
 
         // 2. WAL
         {
@@ -161,8 +212,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // 3. Index Queue
         self.config.inc_queue();
         let _ = tokio::task::block_in_place(|| {
-             self.index_tx.blocking_send((internal_id, metadata.clone()))
-        }); 
+            self.index_tx.blocking_send((internal_id, metadata.clone()))
+        });
         // Note: blocking_send inside async function? Collection trait is sync methods?
         // Collection trait definition has: fn insert(...) -> Result
         // It is NOT async. This works for gRPC `insert` which is async but calls this?
@@ -179,7 +230,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // Let's use `try_send` or strictly `block_in_place`.
         // Or just use std::sync::mpsc? No, executor needs to await rx.
         // I will use `try_send` and error if full (backpressure).
-        
+
         // 4. Replication
         if self.replication_tx.receiver_count() > 0 {
             let log = ReplicationLog {
@@ -195,7 +246,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         Ok(())
     }
-    
+
     fn delete(&self, id: u32) -> Result<(), String> {
         self.index.delete(id);
         Ok(())
@@ -209,19 +260,23 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         params: &SearchParams,
     ) -> Result<Vec<(u32, f64)>, String> {
         if query.len() != N {
-             return Err(format!("Query dimension mismatch. Expected {}, got {}", N, query.len()));
+            return Err(format!(
+                "Query dimension mismatch. Expected {}, got {}",
+                N,
+                query.len()
+            ));
         }
-        
+
         let results = self.index.search(
             query,
             params.top_k,
-            params.ef_search, 
+            params.ef_search,
             filters,
             complex_filters,
             params.hybrid_query.as_deref(),
             params.hybrid_alpha,
         );
-        
+
         Ok(results)
     }
 
@@ -232,8 +287,6 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     fn dimension(&self) -> usize {
         N
     }
-
-
 
     fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
         self.index.peek(limit)

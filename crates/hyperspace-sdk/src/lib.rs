@@ -144,8 +144,12 @@ impl Client {
         Ok(resp.into_inner().results)
     }
 
-    pub async fn delete(&mut self, id: u32, collection: Option<String>) -> Result<bool, tonic::Status> {
-        let req = hyperspace_proto::hyperspace::DeleteRequest { 
+    pub async fn delete(
+        &mut self,
+        id: u32,
+        collection: Option<String>,
+    ) -> Result<bool, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::DeleteRequest {
             id,
             collection: collection.unwrap_or_default(),
         };
@@ -166,5 +170,16 @@ impl Client {
         };
         let resp = self.inner.configure(req).await?;
         Ok(resp.into_inner().status)
+    }
+
+    pub async fn get_digest(
+        &mut self,
+        collection: Option<String>,
+    ) -> Result<hyperspace_proto::hyperspace::DigestResponse, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::DigestRequest {
+            collection: collection.unwrap_or_default(),
+        };
+        let resp = self.inner.get_digest(req).await?;
+        Ok(resp.into_inner())
     }
 }

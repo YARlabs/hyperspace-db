@@ -26,6 +26,7 @@ service Database {
   
   // Replication (Leader -> Follower)
   rpc Replicate (Empty) returns (stream ReplicationLog);
+  rpc GetDigest (DigestRequest) returns (DigestResponse);
 }
 
 message ReplicationLog {
@@ -150,4 +151,15 @@ message SystemStats {
   uint64 total_vectors = 2;
   double total_memory_mb = 3;
   double qps = 4;
+}
+
+message DigestRequest {
+  string collection = 1;
+}
+
+message DigestResponse {
+  uint64 logical_clock = 1;
+  uint64 state_hash = 2;
+  repeated uint64 buckets = 3;
+  uint64 count = 4;
 }

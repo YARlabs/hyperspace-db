@@ -1,18 +1,19 @@
 use clap::Parser;
 // Remove direct index usage, we go through manager
-// use hyperspace_index::HnswIndex; 
+// use hyperspace_index::HnswIndex;
 
 mod collection;
-mod manager;
 mod http_server;
+mod manager;
 mod sync;
 use manager::CollectionManager;
 
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
-    ConfigUpdate, DeleteRequest, DeleteResponse, InsertRequest, InsertResponse, MonitorRequest,
-    SearchRequest, SearchResponse, SearchResult, SystemStats,
-    CreateCollectionRequest, DeleteCollectionRequest, ListCollectionsResponse, CollectionStatsRequest, CollectionStatsResponse, 
+    CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest,
+    DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest, DigestResponse,
+    InsertRequest, InsertResponse, ListCollectionsResponse, MonitorRequest, SearchRequest,
+    SearchResponse, SearchResult, SystemStats,
 };
 use hyperspace_proto::hyperspace::{Empty, ReplicationLog};
 use sha2::{Digest, Sha256};
@@ -83,35 +84,43 @@ pub struct HyperspaceService {
 #[tonic::async_trait]
 impl Database for HyperspaceService {
     // --- Collection Management ---
-    
+
     async fn create_collection(
         &self,
         request: Request<CreateCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
         let req = request.into_inner();
         if req.name.is_empty() {
-             return Err(Status::invalid_argument("Collection name cannot be empty"));
+            return Err(Status::invalid_argument("Collection name cannot be empty"));
         }
-        
+
         // Map string metric to internal
-         // TODO: The manager takes string metric.
-        match self.manager.create_collection(&req.name, req.dimension, &req.metric).await {
-            Ok(_) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-                status: format!("Collection '{}' created.", req.name),
-            })),
+        // TODO: The manager takes string metric.
+        match self
+            .manager
+            .create_collection(&req.name, req.dimension, &req.metric)
+            .await
+        {
+            Ok(_) => Ok(Response::new(
+                hyperspace_proto::hyperspace::StatusResponse {
+                    status: format!("Collection '{}' created.", req.name),
+                },
+            )),
             Err(e) => Err(Status::already_exists(e)),
         }
     }
 
-     async fn delete_collection(
+    async fn delete_collection(
         &self,
         request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
         let req = request.into_inner();
         match self.manager.delete_collection(&req.name) {
-             Ok(_) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-                status: format!("Collection '{}' deleted.", req.name),
-            })),
+            Ok(_) => Ok(Response::new(
+                hyperspace_proto::hyperspace::StatusResponse {
+                    status: format!("Collection '{}' deleted.", req.name),
+                },
+            )),
             Err(e) => Err(Status::not_found(e)),
         }
     }
@@ -130,15 +139,15 @@ impl Database for HyperspaceService {
     ) -> Result<Response<CollectionStatsResponse>, Status> {
         let req = request.into_inner();
         if let Some(col) = self.manager.get(&req.name) {
-             // We need to extend Collection trait to return dim/metric?
-             // collection.name() is available.
-             // But dim/metric are generic in implementation, not exposed via trait yet.
-             // For now return dummy or count.
-             Ok(Response::new(CollectionStatsResponse {
-                 count: col.count() as u64,
-                 dimension: 0, // TODO: Expose from trait
-                 metric: "unknown".into(),
-             }))
+            // We need to extend Collection trait to return dim/metric?
+            // collection.name() is available.
+            // But dim/metric are generic in implementation, not exposed via trait yet.
+            // For now return dummy or count.
+            Ok(Response::new(CollectionStatsResponse {
+                count: col.count() as u64,
+                dimension: 0, // TODO: Expose from trait
+                metric: "unknown".into(),
+            }))
         } else {
             Err(Status::not_found("Collection not found"))
         }
@@ -154,7 +163,7 @@ impl Database for HyperspaceService {
             return Err(Status::permission_denied("Followers are read-only"));
         }
         let req = request.into_inner();
-        
+
         let col_name = if req.collection.is_empty() {
             "default".to_string()
         } else {
@@ -162,7 +171,8 @@ impl Database for HyperspaceService {
         };
 
         if let Some(col) = self.manager.get(&col_name) {
-            let meta: std::collections::HashMap<String, String> = req.metadata.into_iter().collect();
+            let meta: std::collections::HashMap<String, String> =
+                req.metadata.into_iter().collect();
             // Tick clock
             let clock = self.manager.tick_cluster_clock().await;
 
@@ -172,7 +182,10 @@ impl Database for HyperspaceService {
             }
             Ok(Response::new(InsertResponse { success: true }))
         } else {
-            Err(Status::not_found(format!("Collection '{}' not found", col_name)))
+            Err(Status::not_found(format!(
+                "Collection '{}' not found",
+                col_name
+            )))
         }
     }
 
@@ -181,19 +194,22 @@ impl Database for HyperspaceService {
         request: Request<DeleteRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
         let req = request.into_inner();
-         let col_name = if req.collection.is_empty() {
+        let col_name = if req.collection.is_empty() {
             "default".to_string()
         } else {
             req.collection
         };
 
         if let Some(col) = self.manager.get(&col_name) {
-             if let Err(e) = col.delete(req.id) {
+            if let Err(e) = col.delete(req.id) {
                 return Err(Status::internal(e));
-             }
-             Ok(Response::new(DeleteResponse { success: true }))
+            }
+            Ok(Response::new(DeleteResponse { success: true }))
         } else {
-             Err(Status::not_found(format!("Collection '{}' not found", col_name)))
+            Err(Status::not_found(format!(
+                "Collection '{}' not found",
+                col_name
+            )))
         }
     }
 
@@ -209,49 +225,51 @@ impl Database for HyperspaceService {
         };
 
         if let Some(col) = self.manager.get(&col_name) {
-             let legacy_filter = req.filter.into_iter().collect();
-             let mut complex_filters = Vec::new();
-             for f in req.filters {
-                 if let Some(cond) = f.condition {
-                     match cond {
+            let legacy_filter = req.filter.into_iter().collect();
+            let mut complex_filters = Vec::new();
+            for f in req.filters {
+                if let Some(cond) = f.condition {
+                    match cond {
                         hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
-                             complex_filters.push(hyperspace_core::FilterExpr::Match {
-                                 key: m.key,
-                                 value: m.value,
-                             });
+                            complex_filters.push(hyperspace_core::FilterExpr::Match {
+                                key: m.key,
+                                value: m.value,
+                            });
                         }
                         hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
-                             complex_filters.push(hyperspace_core::FilterExpr::Range {
-                                 key: r.key,
-                                 gte: r.gte,
-                                 lte: r.lte,
-                             });
+                            complex_filters.push(hyperspace_core::FilterExpr::Range {
+                                key: r.key,
+                                gte: r.gte,
+                                lte: r.lte,
+                            });
                         }
-                     }
-                 }
-             }
-             
-             // Search Params
-             let params = hyperspace_core::SearchParams {
-                 top_k: req.top_k as usize,
-                 ef_search: 100, // TODO: Load from config/request?
-                 hybrid_query: req.hybrid_query,
-                 hybrid_alpha: req.hybrid_alpha,
-             };
+                    }
+                }
+            }
 
-             match col.search(&req.vector, &legacy_filter, &complex_filters, &params) {
-                 Ok(res) => {
-                     let output = res
+            // Search Params
+            let params = hyperspace_core::SearchParams {
+                top_k: req.top_k as usize,
+                ef_search: 100, // TODO: Load from config/request?
+                hybrid_query: req.hybrid_query,
+                hybrid_alpha: req.hybrid_alpha,
+            };
+
+            match col.search(&req.vector, &legacy_filter, &complex_filters, &params) {
+                Ok(res) => {
+                    let output = res
                         .into_iter()
                         .map(|(id, dist)| SearchResult { id, distance: dist })
                         .collect();
-                     Ok(Response::new(SearchResponse { results: output }))
-                 }
-                 Err(e) => Err(Status::internal(e)),
-             }
-
+                    Ok(Response::new(SearchResponse { results: output }))
+                }
+                Err(e) => Err(Status::internal(e)),
+            }
         } else {
-             Err(Status::not_found(format!("Collection '{}' not found", col_name)))
+            Err(Status::not_found(format!(
+                "Collection '{}' not found",
+                col_name
+            )))
         }
     }
 
@@ -271,7 +289,7 @@ impl Database for HyperspaceService {
                 // Aggregate stats
                 let collections = manager.list();
                 let mut total_count = 0;
-                
+
                 for name in &collections {
                     if let Some(c) = manager.get(name) {
                         total_count += c.count();
@@ -282,7 +300,7 @@ impl Database for HyperspaceService {
                     total_collections: collections.len() as u64,
                     total_vectors: total_count as u64,
                     total_memory_mb: 0.0, // TODO
-                    qps: 0.0, // TODO
+                    qps: 0.0,             // TODO
                 };
 
                 if tx.send(Ok(stats)).await.is_err() {
@@ -296,9 +314,33 @@ impl Database for HyperspaceService {
 
     type ReplicateStream = ReceiverStream<Result<ReplicationLog, Status>>;
 
+    async fn get_digest(
+        &self,
+        request: Request<DigestRequest>,
+    ) -> Result<Response<DigestResponse>, Status> {
+        let req = request.into_inner();
+        let name = if req.collection.is_empty() {
+            "default"
+        } else {
+            &req.collection
+        };
+
+        if let Some(col) = self.manager.get(name) {
+            let clock = self.manager.cluster_state.read().await.logical_clock;
+            Ok(Response::new(DigestResponse {
+                logical_clock: clock,
+                state_hash: col.state_hash(),
+                buckets: col.buckets(),
+                count: col.count() as u64,
+            }))
+        } else {
+            Err(Status::not_found("Collection not found"))
+        }
+    }
+
     async fn replicate(
         &self,
-        _request: Request<Empty>,
+        request: Request<Empty>,
     ) -> Result<Response<Self::ReplicateStream>, Status> {
         if self.role == "follower" {
             return Err(Status::failed_precondition(
@@ -306,8 +348,25 @@ impl Database for HyperspaceService {
             ));
         }
 
+        // Extract peer address
+        let peer_addr = request
+            .remote_addr()
+            .map(|addr| addr.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Register follower
+        {
+            let mut state = self.manager.cluster_state.write().await;
+            if !state.downstream_peers.contains(&peer_addr) {
+                state.downstream_peers.push(peer_addr.clone());
+                println!("📡 Follower connected: {}", peer_addr);
+            }
+        }
+
         let mut rx = self.replication_tx.subscribe();
         let (tx, out_rx) = mpsc::channel(100);
+        let manager = self.manager.clone();
+        let peer_addr_clone = peer_addr.clone();
 
         tokio::spawn(async move {
             while let Ok(log) = rx.recv().await {
@@ -315,6 +374,10 @@ impl Database for HyperspaceService {
                     break;
                 }
             }
+            // Unregister on disconnect
+            let mut state = manager.cluster_state.write().await;
+            state.downstream_peers.retain(|p| p != &peer_addr_clone);
+            println!("📡 Follower disconnected: {}", peer_addr_clone);
         });
 
         Ok(Response::new(ReceiverStream::new(out_rx)))
@@ -324,15 +387,15 @@ impl Database for HyperspaceService {
         &self,
         _request: Request<hyperspace_proto::hyperspace::Empty>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-         // Snapshot all?
-         // Individual collections handle their own snapshots via background tasks currently.
-         // We can force trigger?
-         // The trait doesn't have trigger_snapshot.
-         Ok(Response::new(
-             hyperspace_proto::hyperspace::StatusResponse {
-                 status: "Snapshots are handled automatically by background tasks.".into(),
-             },
-         ))
+        // Snapshot all?
+        // Individual collections handle their own snapshots via background tasks currently.
+        // We can force trigger?
+        // The trait doesn't have trigger_snapshot.
+        Ok(Response::new(
+            hyperspace_proto::hyperspace::StatusResponse {
+                status: "Snapshots are handled automatically by background tasks.".into(),
+            },
+        ))
     }
 
     async fn trigger_vacuum(
@@ -352,107 +415,125 @@ impl Database for HyperspaceService {
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
         // TODO: Update config for specific collection
         // ConfigUpdate now has `collection` field.
-         let req = request.into_inner();
-         let col_name = if req.collection.is_empty() {
-             "default".to_string()
-         } else {
-             req.collection
-         };
-         
-         if self.manager.get(&col_name).is_none() {
-             return Err(Status::not_found(format!("Collection '{}' not found", col_name)));
-         }
-         // Not implemented on trait yet.
-         Ok(Response::new(
-            hyperspace_proto::hyperspace::StatusResponse { status: "Dynamic config not yet implemented for collections".into() },
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+
+        if self.manager.get(&col_name).is_none() {
+            return Err(Status::not_found(format!(
+                "Collection '{}' not found",
+                col_name
+            )));
+        }
+        // Not implemented on trait yet.
+        Ok(Response::new(
+            hyperspace_proto::hyperspace::StatusResponse {
+                status: "Dynamic config not yet implemented for collections".into(),
+            },
         ))
     }
 }
 
-async fn start_server(
-    args: Args,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = format!("0.0.0.0:{}", args.port).parse()?;
-    
+
     // Setup Manager
     let data_dir = std::path::PathBuf::from("data");
     let (replication_tx, _) = broadcast::channel(1024);
-    
+
     let manager = Arc::new(CollectionManager::new(data_dir, replication_tx.clone()));
-    
+
     // Load existing
     println!("Loading collections...");
     manager.load_existing().await?;
-    
+
     // Create default if not exists?
     // Create default if not exists
     if manager.get("default").is_none() {
-         // Use env vars for default
-         let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
-         let dim: u32 = dim_str.parse().unwrap_or(1024);
-         
-         // Support HS_METRIC (new) and HS_DISTANCE_METRIC (legacy)
-         let metric_str = std::env::var("HS_METRIC")
-             .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
-             .unwrap_or("poincare".to_string())
-             .to_lowercase();
-         
-         println!("🚀 Booting HyperspaceDB | Dim: {} | Metric: {}", dim, metric_str);
+        // Use env vars for default
+        let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
+        let dim: u32 = dim_str.parse().unwrap_or(1024);
 
-         println!("Creating 'default' collection...");
-         if let Err(e) = manager.create_collection("default", dim, &metric_str).await {
-             eprintln!("Failed to create default collection: {}", e);
-         }
+        // Support HS_METRIC (new) and HS_DISTANCE_METRIC (legacy)
+        let metric_str = std::env::var("HS_METRIC")
+            .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
+            .unwrap_or("poincare".to_string())
+            .to_lowercase();
+
+        println!(
+            "🚀 Booting HyperspaceDB | Dim: {} | Metric: {}",
+            dim, metric_str
+        );
+
+        println!("Creating 'default' collection...");
+        if let Err(e) = manager.create_collection("default", dim, &metric_str).await {
+            eprintln!("Failed to create default collection: {}", e);
+        }
     }
 
     // Follower Logic
     if args.role == "follower" {
-         if let Some(leader) = args.leader.clone() {
+        if let Some(leader) = args.leader.clone() {
             println!("🚀 Starting as FOLLOWER of: {}", leader);
             let manager_weak = Arc::downgrade(&manager);
-            
-            tokio::spawn(async move {
-                 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
-                 loop {
-                    println!("Connecting to leader {}...", leader);
-                     match DatabaseClient::connect(leader.clone()).await {
-                         Ok(mut client) => {
-                             println!("Connected! Requesting replication stream...");
-                             match client.replicate(Empty {}).await {
-                                  Ok(resp) => {
-                                      let mut stream = resp.into_inner();
-                                      while let Ok(Some(log)) = stream.message().await {
-                                          if let Some(mgr) = manager_weak.upgrade() {
-                                              // Log contains collection name
-                                              let col_name = if log.collection.is_empty() { "default" } else { &log.collection };
-                                              if let Some(col) = mgr.get(col_name) {
-                                                   let meta: std::collections::HashMap<String, String> = log.metadata.into_iter().collect();
-                                                   
-                                                   // Merge clock from leader
-                                                   mgr.merge_cluster_clock(log.logical_clock).await;
 
-                                                   if let Err(e) = col.insert(&log.vector, log.id, meta, log.logical_clock) {
-                                                       eprintln!("Rep Error: {}", e);
-                                                   }
-                                              } else {
-                                                  // Create collection if missing?
-                                                  // For now just error.
-                                                  eprintln!("Replication received for unknown collection: {}", col_name);
-                                              }
-                                          } else {
-                                              break;
-                                          }
-                                      }
-                                  }
-                                  Err(e) => eprintln!("Failed: {}", e),
-                             }
-                         }
-                         Err(e) => eprintln!("Conn failed: {}", e),
-                     }
-                      tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                 }
+            tokio::spawn(async move {
+                use hyperspace_proto::hyperspace::database_client::DatabaseClient;
+                loop {
+                    println!("Connecting to leader {}...", leader);
+                    match DatabaseClient::connect(leader.clone()).await {
+                        Ok(mut client) => {
+                            println!("Connected! Requesting replication stream...");
+                            match client.replicate(Empty {}).await {
+                                Ok(resp) => {
+                                    let mut stream = resp.into_inner();
+                                    while let Ok(Some(log)) = stream.message().await {
+                                        if let Some(mgr) = manager_weak.upgrade() {
+                                            // Log contains collection name
+                                            let col_name = if log.collection.is_empty() {
+                                                "default"
+                                            } else {
+                                                &log.collection
+                                            };
+                                            if let Some(col) = mgr.get(col_name) {
+                                                let meta: std::collections::HashMap<
+                                                    String,
+                                                    String,
+                                                > = log.metadata.into_iter().collect();
+
+                                                // Merge clock from leader
+                                                mgr.merge_cluster_clock(log.logical_clock).await;
+
+                                                if let Err(e) = col.insert(
+                                                    &log.vector,
+                                                    log.id,
+                                                    meta,
+                                                    log.logical_clock,
+                                                ) {
+                                                    eprintln!("Rep Error: {}", e);
+                                                }
+                                            } else {
+                                                // Create collection if missing?
+                                                // For now just error.
+                                                eprintln!("Replication received for unknown collection: {}", col_name);
+                                            }
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                                Err(e) => eprintln!("Failed: {}", e),
+                            }
+                        }
+                        Err(e) => eprintln!("Conn failed: {}", e),
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                }
             });
-         }
+        }
     } else {
         println!("🚀 Starting as LEADER");
     }

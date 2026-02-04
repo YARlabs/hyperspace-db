@@ -4,7 +4,7 @@ pub mod config;
 pub mod vector;
 
 pub use config::GlobalConfig;
-use vector::{HyperVector, QuantizedHyperVector, BinaryHyperVector};
+use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 
 pub type HyperFloat = f64;
 
@@ -16,12 +16,9 @@ pub enum QuantizationMode {
 }
 
 /// Metric abstraction for distance calculation
-
-
 pub struct PoincareMetric;
 
 pub struct EuclideanMetric;
-
 
 #[derive(Debug, Clone)]
 pub enum FilterExpr {
@@ -46,7 +43,13 @@ pub struct SearchParams {
 
 pub trait Collection: Send + Sync {
     fn name(&self) -> &str;
-    fn insert(&self, vector: &[f64], id: u32, metadata: std::collections::HashMap<String, String>, clock: u64) -> Result<(), String>;
+    fn insert(
+        &self,
+        vector: &[f64],
+        id: u32,
+        metadata: std::collections::HashMap<String, String>,
+        clock: u64,
+    ) -> Result<(), String>;
     fn delete(&self, id: u32) -> Result<(), String>;
     fn search(
         &self,
@@ -58,26 +61,30 @@ pub trait Collection: Send + Sync {
     fn count(&self) -> usize;
     fn dimension(&self) -> usize;
     fn metric_name(&self) -> &'static str;
-    fn state_hash(&self) -> u64; // New method
-    fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
+    fn state_hash(&self) -> u64;
+    fn buckets(&self) -> Vec<u64>; // New method
+    fn peek(&self, limit: usize)
+        -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
 }
 
 pub trait Metric<const N: usize>: Send + Sync + 'static {
     fn name() -> &'static str;
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64;
-    
+
     // Default valid verification (Euclidean accepts all)
     fn validate(vector: &[f64; N]) -> Result<(), String> {
         let _ = vector;
         Ok(())
     }
-    
+
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64;
     fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64;
 }
 
 impl<const N: usize> Metric<N> for PoincareMetric {
-    fn name() -> &'static str { "poincare" }
+    fn name() -> &'static str {
+        "poincare"
+    }
 
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
@@ -97,7 +104,7 @@ impl<const N: usize> Metric<N> for PoincareMetric {
         }
         Ok(())
     }
-    
+
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
         a.poincare_distance_sq_to_float(b)
     }
@@ -108,29 +115,28 @@ impl<const N: usize> Metric<N> for PoincareMetric {
 }
 
 impl<const N: usize> Metric<N> for EuclideanMetric {
-    fn name() -> &'static str { "l2" }
+    fn name() -> &'static str {
+        "l2"
+    }
 
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
         // Squared L2 distance for optimization (sqrt is monotonic)
-        a.iter()
-            .zip(b.iter())
-            .map(|(x, y)| (x - y).powi(2))
-            .sum()
+        a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum()
     }
-    
+
     // validate uses default
 
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
-         let mut sum_sq_diff = 0.0;
-         const SCALE_INV: f64 = 1.0 / 127.0;
+        let mut sum_sq_diff = 0.0;
+        const SCALE_INV: f64 = 1.0 / 127.0;
 
-         for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
-             let a_val = (*a_i8 as f64) * SCALE_INV;
-             let diff = a_val - b_f64;
-             sum_sq_diff += diff * diff;
-         }
-         sum_sq_diff
+        for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
+            let a_val = (*a_i8 as f64) * SCALE_INV;
+            let diff = a_val - b_f64;
+            sum_sq_diff += diff * diff;
+        }
+        sum_sq_diff
     }
 
     // Binary implementation calls the method added to vector struct

@@ -18,7 +18,12 @@ pub fn ui(f: &mut Frame, app: &App) {
         .split(f.size());
 
     // Tabs
-    let titles = vec!["Overview [1]", "Collections [2]", "Storage [3]", "Admin [4]"];
+    let titles = vec![
+        "Overview [1]",
+        "Collections [2]",
+        "Storage [3]",
+        "Admin [4]",
+    ];
     let tabs = Tabs::new(titles)
         .select(app.current_tab as usize)
         .block(
@@ -68,10 +73,7 @@ fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
     // 1. Stats Row
     let stats_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
-        ])
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[0]);
 
     let count_text = Paragraph::new(format!("{}", app.stats.total_vectors)).block(
@@ -81,34 +83,22 @@ fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
     );
     f.render_widget(count_text, stats_layout[0]);
 
-    let cols_text = Paragraph::new(format!("{}", app.stats.total_collections)).block(
-        Block::default()
-            .title("Collections")
-            .borders(Borders::ALL),
-    );
+    let cols_text = Paragraph::new(format!("{}", app.stats.total_collections))
+        .block(Block::default().title("Collections").borders(Borders::ALL));
     f.render_widget(cols_text, stats_layout[1]);
 
     // 2. Stats Row 2
     let stats_layout2 = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
-        ])
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[1]);
-        
-    let mem_text = Paragraph::new(format!("{:.2} MB", app.stats.total_memory_mb)).block(
-        Block::default()
-            .title("Memory Usage")
-            .borders(Borders::ALL),
-    );
+
+    let mem_text = Paragraph::new(format!("{:.2} MB", app.stats.total_memory_mb))
+        .block(Block::default().title("Memory Usage").borders(Borders::ALL));
     f.render_widget(mem_text, stats_layout2[0]);
 
-    let qps_text = Paragraph::new(format!("{:.2}", app.stats.qps)).block(
-        Block::default()
-            .title("QPS")
-            .borders(Borders::ALL),
-    );
+    let qps_text = Paragraph::new(format!("{:.2}", app.stats.qps))
+        .block(Block::default().title("QPS").borders(Borders::ALL));
     f.render_widget(qps_text, stats_layout2[1]);
 }
 
@@ -164,17 +154,20 @@ fn draw_admin(f: &mut Frame, app: &App, area: Rect) {
 fn draw_collections(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),
-        ])
+        .constraints([Constraint::Min(1)])
         .split(area);
 
-    let items: Vec<Line> = app.collections_list.iter()
+    let items: Vec<Line> = app
+        .collections_list
+        .iter()
         .map(|c| Line::from(Span::raw(c)))
         .collect();
 
-    let list = Paragraph::new(items)
-        .block(Block::default().title("Active Collections").borders(Borders::ALL));
-    
+    let list = Paragraph::new(items).block(
+        Block::default()
+            .title("Active Collections")
+            .borders(Borders::ALL),
+    );
+
     f.render_widget(list, chunks[0]);
 }

@@ -25,7 +25,7 @@ impl<const N: usize> HyperVector<N> {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
         // Calculate alpha anyway, but handle >= 1.0 gracefully (though unused for L2)
         // If sq_norm >= 1.0, alpha is negative or inf.
-        // We just store it as is, or 1.0. 
+        // We just store it as is, or 1.0.
         // Let's store as is for now, assuming Metric will ignore it.
         let alpha = 1.0 / (1.0 - sq_norm);
         Self { coords, alpha }
@@ -38,7 +38,7 @@ impl<const N: usize> HyperVector<N> {
         {
             let mut sum_sq_diff = f64x8::splat(0.0);
             const LANES: usize = 8;
-            
+
             // Note: If N < 8, this logic needs care, but keeping original logic for consistency
             for i in (0..N).step_by(LANES) {
                 if i + LANES <= N {
@@ -52,7 +52,7 @@ impl<const N: usize> HyperVector<N> {
             }
 
             let l2_sq = sum_sq_diff.reduce_sum();
-            
+
             // Fallback for tail elements if N is not multiple of 8 (basic scalar loop for tail)
             // Ideally should be handled, but for keeping structure similar to your SIMD logic:
             let mut tail_sq = 0.0;
@@ -64,7 +64,7 @@ impl<const N: usize> HyperVector<N> {
                     tail_sq += diff * diff;
                 }
             }
-            
+
             let total_sq = l2_sq + tail_sq;
             let delta = total_sq * self.alpha * other.alpha;
             1.0 + 2.0 * delta
@@ -198,7 +198,7 @@ impl<const N: usize> BinaryHyperVector<N> {
     #[inline(always)]
     pub fn hamming_distance(&self, other: &Self) -> u32 {
         let mut dist = 0;
-        let limit = (N + 7) / 8; // div_ceil logic
+        let limit = N.div_ceil(8);
         for i in 0..limit {
             dist += (self.bits[i] ^ other.bits[i]).count_ones();
         }
@@ -253,7 +253,6 @@ impl<const N: usize> BinaryHyperVector<N> {
 // Quantized is lines 89-158. Binary is 169-218.
 // I will start with Binary as it matches the snippet above.
 
-
 impl<const N: usize> HyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();
     pub fn as_bytes(&self) -> &[u8] {
@@ -299,18 +298,21 @@ mod tests {
     fn bench_distance_speed() {
         let a = HyperVector::<1024>::new([0.001; 1024]).unwrap();
         let b = HyperVector::<1024>::new([0.002; 1024]).unwrap();
-        
+
         let start = std::time::Instant::now();
         let iterations = 1_000_000;
-        
+
         // "Warming up" the CPU cache
-        let mut black_box = 0.0; 
-        
+        let mut black_box = 0.0;
+
         for _ in 0..iterations {
             black_box += a.poincare_distance_sq(&b);
         }
-        
+
         let duration = start.elapsed();
-        println!("⏱️ 1M distances took: {:?} (Check sum: {})", duration, black_box);
+        println!(
+            "⏱️ 1M distances took: {:?} (Check sum: {})",
+            duration, black_box
+        );
     }
 }

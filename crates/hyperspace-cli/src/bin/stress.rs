@@ -1,5 +1,7 @@
 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
-use hyperspace_proto::hyperspace::{ConfigUpdate, CreateCollectionRequest, Empty, InsertRequest, SearchRequest};
+use hyperspace_proto::hyperspace::{
+    ConfigUpdate, CreateCollectionRequest, Empty, InsertRequest, SearchRequest,
+};
 use rand::Rng;
 use std::time::Instant;
 use tonic::transport::Channel;
@@ -21,11 +23,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 0. Create Collection
     println!("✨ Creating collection '{}'...", COLLECTION_NAME);
-    let _ = client.create_collection(CreateCollectionRequest {
-        name: COLLECTION_NAME.to_string(),
-        dimension: 8,
-        metric: "poincare".to_string(),
-    }).await.ok(); // Ignore if exists
+    let _ = client
+        .create_collection(CreateCollectionRequest {
+            name: COLLECTION_NAME.to_string(),
+            dimension: 8,
+            metric: "poincare".to_string(),
+        })
+        .await
+        .ok(); // Ignore if exists
 
     // 1. Configure for speed (High Throughput)
     println!("🔧 Configuring DB for ingestion (ef_construction=50)...");
@@ -61,6 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             id: i as u32,
             metadata: std::collections::HashMap::new(),
             collection: COLLECTION_NAME.to_string(),
+            origin_node_id: String::new(),
+            logical_clock: 0,
         };
 
         client.insert(req).await?;

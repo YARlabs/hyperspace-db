@@ -1015,6 +1015,7 @@ dependencies = [
  "crossterm",
  "hyperspace-core",
  "hyperspace-proto",
+ "hyperspace-sdk",
  "rand",
  "ratatui",
  "tokio",
