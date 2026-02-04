@@ -1,33 +1,80 @@
 use crate::manager::CollectionManager;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, State, Request},
     http::{StatusCode, Uri},
     response::{Html, IntoResponse, Response},
     routing::{get, delete},
     Json, Router,
+    middleware::{self, Next},
 };
 use rust_embed::RustEmbed;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+use sha2::{Digest, Sha256};
 
 #[derive(RustEmbed)]
 #[folder = "../../dashboard/dist"]
 struct FrontendAssets;
 
+// API Key validation middleware
+async fn validate_api_key(
+    State(expected_hash): State<Option<String>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    // Skip auth for static files
+    if !request.uri().path().starts_with("/api/") {
+        return Ok(next.run(request).await);
+    }
+
+    if let Some(expected) = expected_hash {
+        match request.headers().get("x-api-key") {
+            Some(key) => {
+                if let Ok(key_str) = key.to_str() {
+                    let mut hasher = Sha256::new();
+                    hasher.update(key_str.as_bytes());
+                    let hash = hex::encode(hasher.finalize());
+                    
+                    if hash == expected {
+                        return Ok(next.run(request).await);
+                    }
+                }
+                Err(StatusCode::UNAUTHORIZED)
+            }
+            None => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Ok(next.run(request).await)
+    }
+}
+
 pub async fn start_http_server(
     manager: Arc<CollectionManager>,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Get API key hash if set
+    let api_key_hash = std::env::var("HYPERSPACE_API_KEY").ok().map(|key| {
+        let mut hasher = Sha256::new();
+        hasher.update(key.as_bytes());
+        hex::encode(hasher.finalize())
+    });
+
     let app = Router::new()
         .route("/api/collections", get(list_collections).post(create_collection))
         .route("/api/collections/{name}", delete(delete_collection))
         .route("/api/collections/{name}/stats", get(get_stats))
+        .layer(middleware::from_fn_with_state(api_key_hash.clone(), validate_api_key))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
         .with_state(manager);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     println!("HTTP Dashboard listening on http://{}", addr);
+    if api_key_hash.is_some() {
+        println!("🔒 Dashboard API Key Auth Enabled");
+    } else {
+        println!("⚠️  Dashboard API Key Auth Disabled");
+    }
 
     let listener = tokio::net::TcpListener::bind(addr).await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;

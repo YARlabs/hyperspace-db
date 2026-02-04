@@ -21,6 +21,8 @@ pub trait Metric<const N: usize>: Send + Sync + 'static {
 
 pub struct PoincareMetric;
 
+pub struct EuclideanMetric;
+
 
 #[derive(Debug, Clone)]
 pub enum FilterExpr {
@@ -50,7 +52,7 @@ pub trait Collection: Send + Sync {
     fn search(
         &self,
         query: &[f64],
-        filters: &std::collections::HashMap<String, String>,
+        filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
         params: &SearchParams,
     ) -> Result<Vec<(u32, f64)>, String>;
@@ -89,5 +91,17 @@ impl<const N: usize> Metric<N> for PoincareMetric {
         let denom = (1.0 - norm_u_sq) * (1.0 - norm_v_sq);
         let arg = 1.0 + 2.0 * diff_sq / denom.max(1e-9);
         arg.acosh()
+    }
+}
+
+impl<const N: usize> Metric<N> for EuclideanMetric {
+    #[inline(always)]
+    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
+        // L2 (Euclidean) distance
+        a.iter()
+            .zip(b.iter())
+            .map(|(x, y)| (x - y).powi(2))
+            .sum::<f64>()
+            .sqrt()
     }
 }

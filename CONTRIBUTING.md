@@ -48,7 +48,7 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v1.1**: ✅ **Multi-Tenancy (Collections)**. Support for named Collections within a single instance. Includes Web Dashboard for management. *Completed.*
 * **v1.2**: **Universal TypeScript SDK**. Native bindings for Node.js, Deno, and Bun. *Direct challenge to RuVector's ecosystem.*
 * **v1.3**: **WASM Core ("Edge Memory")**. Compiling `hyperspace-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls.
-* **v1.4**: **Visual Graph Explorer**. A web-based tool to visualize the Poincaré disk and navigate your data's hierarchy interactively.
+* **v1.4**: ✅ **Visual Graph Explorer**. A web-based tool to visualize the Poincaré disk and navigate your data's hierarchy interactively. *Completed.*
 
 ### Phase 2: Scale & Structure (v2.x)
 *The goal: True Enterprise Scale and Graph Capabilities.*

@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-04
+
+### Added
+* **Multi-Tenancy (Collections)**: Full support for named collections within a single instance.
+    * Each collection has independent dimension, metric (Poincaré/Euclidean), and quantization settings.
+    * Persistent metadata storage (`meta.json`) for collection configuration.
+    * gRPC APIs: `CreateCollection`, `DeleteCollection`, `ListCollections`, `GetCollectionStats`.
+* **Web Dashboard**: Professional React-based management interface.
+    * **Authentication**: API key-based access control (default: `I_LOVE_HYPERSPACEDB`).
+    * **Collection Management**: Create/delete collections with preset configurations:
+        * Hyperbolic: 16D, 32D, 64D, 128D (Poincaré metric)
+        * Euclidean: 1024D, 1536D, 2048D (L2 metric)
+    * **Poincaré Disk Visualizer**: Interactive canvas-based visualization of hyperbolic vector space.
+    * **System Metrics**: Real-time monitoring of collections, vectors, memory, and QPS.
+    * **Responsive UI**: Modern design with tab-based navigation.
+* **Euclidean Metric**: Added `EuclideanMetric` implementation for standard L2 distance.
+* **Extended Dimension Support**: Added support for 16D, 32D, 64D, 128D, 2048D vectors.
+* **HTTP API**: RESTful endpoints for dashboard integration:
+    * `GET /api/collections` - List all collections
+    * `POST /api/collections` - Create new collection
+    * `DELETE /api/collections/{name}` - Delete collection
+    * `GET /api/collections/{name}/stats` - Get collection statistics
+
+### Changed
+* **Default HTTP Port**: Changed from 3000 to 50050 to avoid conflicts.
+* **Collection-Scoped Operations**: All data operations (insert/search/delete) now support `collection` field.
+* **Backward Compatibility**: Empty `collection` field defaults to `"default"` collection.
+
+### Fixed
+* **Blocking Send Panic**: Wrapped `blocking_send` in `tokio::task::block_in_place` to prevent runtime panics.
+* **Collection Metadata**: Proper persistence and loading of collection configuration.
+
+### Security
+* **Dashboard Authentication**: API key validation middleware for all HTTP endpoints.
+* **SHA-256 Hashing**: Secure API key comparison using cryptographic hashing.
+
 ## [1.1.0] - 2026-01-27
 ### Added
 * **Generic Dimensions**: Support for 1024, 1536, and 768 dimensional vectors (previously limited to 8).

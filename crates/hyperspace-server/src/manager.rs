@@ -1,6 +1,6 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
-use hyperspace_core::{Collection, PoincareMetric};
+use hyperspace_core::{Collection, PoincareMetric, EuclideanMetric};
 use hyperspace_proto::hyperspace::ReplicationLog;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -61,6 +61,57 @@ impl CollectionManager {
         // Dispatch based on generic args (N, M).
         // This is the "Dispatcher" logic moved here.
         let collection: Arc<dyn Collection> = match (meta.dimension, meta.metric.as_str()) {
+            // Hyperbolic (Poincaré) configurations
+            (16, "poincare") => Arc::new(
+                CollectionImpl::<16, PoincareMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            (32, "poincare") => Arc::new(
+                CollectionImpl::<32, PoincareMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            (64, "poincare") => Arc::new(
+                CollectionImpl::<64, PoincareMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            (128, "poincare") => Arc::new(
+                CollectionImpl::<128, PoincareMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            (768, "poincare") => Arc::new(
+                CollectionImpl::<768, PoincareMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
             (1024, "poincare") => Arc::new(
                 CollectionImpl::<1024, PoincareMetric>::new(
                     name.to_string(),
@@ -71,8 +122,8 @@ impl CollectionManager {
                 )
                 .await?,
             ),
-             (768, "poincare") => Arc::new(
-                CollectionImpl::<768, PoincareMetric>::new(
+            (1536, "poincare") => Arc::new(
+                CollectionImpl::<1536, PoincareMetric>::new(
                     name.to_string(),
                     col_dir,
                     wal_path,
@@ -81,8 +132,8 @@ impl CollectionManager {
                 )
                 .await?,
             ),
-             (1536, "poincare") => Arc::new(
-                CollectionImpl::<1536, PoincareMetric>::new(
+            (2048, "poincare") => Arc::new(
+                CollectionImpl::<2048, PoincareMetric>::new(
                     name.to_string(),
                     col_dir,
                     wal_path,
@@ -101,6 +152,39 @@ impl CollectionManager {
                 )
                 .await?,
             ),
+            
+            // Euclidean configurations
+            (1024, "euclidean") => Arc::new(
+                CollectionImpl::<1024, EuclideanMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            (1536, "euclidean") => Arc::new(
+                CollectionImpl::<1536, EuclideanMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            (2048, "euclidean") => Arc::new(
+                CollectionImpl::<2048, EuclideanMetric>::new(
+                    name.to_string(),
+                    col_dir,
+                    wal_path,
+                    quant_mode,
+                    self.replication_tx.clone(),
+                )
+                .await?,
+            ),
+            
             // Add more as needed
             _ => return Err(format!("Unsupported configuration: dim={}, metric={}", meta.dimension, meta.metric).into()),
         };
