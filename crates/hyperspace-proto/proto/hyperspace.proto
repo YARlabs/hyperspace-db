@@ -2,13 +2,19 @@ syntax = "proto3";
 package hyperspace;
 
 service Database {
+  // Collection Management
+  rpc CreateCollection (CreateCollectionRequest) returns (StatusResponse);
+  rpc DeleteCollection (DeleteCollectionRequest) returns (StatusResponse);
+  rpc ListCollections (Empty) returns (ListCollectionsResponse);
+  rpc GetCollectionStats (CollectionStatsRequest) returns (CollectionStatsResponse);
+
   // Insert vectors
   rpc Insert (InsertRequest) returns (InsertResponse);
   // Delete vectors
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   // Search (ANN)
   rpc Search (SearchRequest) returns (SearchResponse);
-  // Stream statistics for TUI
+  // Stream statistics for TUI (Global or Collection tailored)
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
   
   // Admin Controls
@@ -26,6 +32,11 @@ message ReplicationLog {
   uint32 id = 1;
   repeated double vector = 2;
   map<string, string> metadata = 3;
+  string collection = 4;
+}
+
+message QuantizationConfig {
+  QuantizationMode mode = 1;
 }
 
 enum QuantizationMode {
@@ -33,15 +44,41 @@ enum QuantizationMode {
   SCALAR_I8 = 1;  // 8-bit
 }
 
+message CreateCollectionRequest {
+  string name = 1;
+  uint32 dimension = 2;
+  string metric = 3; // "cosine", "l2", "poincare"
+}
+
+message DeleteCollectionRequest {
+  string name = 1;
+}
+
+message ListCollectionsResponse {
+  repeated string collections = 1;
+}
+
+message CollectionStatsRequest {
+  string name = 1;
+}
+
+message CollectionStatsResponse {
+  uint64 count = 1;
+  uint32 dimension = 2;
+  string metric = 3;
+}
+
 message ConfigUpdate {
-  optional uint32 ef_search = 1;
-  optional uint32 ef_construction = 2;
+  string collection = 1; 
+  optional uint32 ef_search = 2;
+  optional uint32 ef_construction = 3;
 }
 
 message InsertRequest {
-  repeated double vector = 1;
-  uint32 id = 2; // Explicit ID for simplicity in this proto
-  map<string, string> metadata = 3;
+  string collection = 1;
+  repeated double vector = 2;
+  uint32 id = 3; 
+  map<string, string> metadata = 4;
 }
 
 message InsertResponse {
@@ -49,7 +86,8 @@ message InsertResponse {
 }
 
 message DeleteRequest {
-  uint32 id = 1;
+  string collection = 1;
+  uint32 id = 2;
 }
 
 message DeleteResponse {
@@ -57,12 +95,13 @@ message DeleteResponse {
 }
 
 message SearchRequest {
-  repeated double vector = 1; // Query vector
-  uint32 top_k = 2;           // How many neighbors to find
-  map<string, string> filter = 3; // Metadata filter (legacy, equality)
-  repeated Filter filters = 4;    // Advanced filters
-  optional string hybrid_query = 5; // Text for Hybrid Search (BM25/TF-IDF)
-  optional float hybrid_alpha = 6;  // RRF Weight (default 0.5 or 60.0 constant logic)
+  string collection = 1;
+  repeated double vector = 2;
+  uint32 top_k = 3;
+  map<string, string> filter = 4;
+  repeated Filter filters = 5;
+  optional string hybrid_query = 6;
+  optional float hybrid_alpha = 7;
 }
 
 message Filter {
@@ -101,21 +140,8 @@ message StatusResponse {
 message MonitorRequest {}
 
 message SystemStats {
-  uint64 indexed_vectors = 1;
-  uint64 soft_deleted = 2;
-  
-  // Storage Metrics
-  double raw_data_size_mb = 3;      // Size if f64
-  double actual_storage_mb = 4;     // Size on disk
-  double compression_ratio = 5;     // Ratio
-  uint32 active_segments = 6;       // Count
-  
-  // Performance
-  double qps = 7;
-  double ram_usage_mb = 8;
-  
-  // Current Config (for TUI display)
-  uint32 ef_search = 9;
-  uint32 ef_construction = 10;
-  uint64 index_queue_size = 11;     // Pending indexing tasks
+  uint64 total_collections = 1;
+  uint64 total_vectors = 2;
+  double total_memory_mb = 3;
+  double qps = 4;
 }

@@ -35,18 +35,7 @@ pub struct SnapshotNode {
 
 // Consts removed here to use existing ones defined below in the file
 
-#[derive(Debug, Clone)]
-pub enum FilterExpr {
-    Match {
-        key: String,
-        value: String,
-    }, // Exact match
-    Range {
-        key: String,
-        gte: Option<i64>,
-        lte: Option<i64>,
-    },
-}
+use hyperspace_core::FilterExpr;
 
 #[derive(Debug)]
 pub struct MetadataIndex {

@@ -58,98 +58,57 @@ fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5), // Compression
             Constraint::Length(3), // Stats Row 1
-            Constraint::Length(3), // Config Row
-            Constraint::Min(1),    // Queue status
+            Constraint::Length(3), // Stats Row 2
+            Constraint::Min(1),    // Empty
         ])
         .split(area);
 
-    // 1. Compression Ratio
-    let ratio = app.stats.compression_ratio;
-    let raw = app.stats.raw_data_size_mb;
-    let actual = app.stats.actual_storage_mb;
-    let saved = raw - actual;
-
-    let label = format!("Compression: {:.2}x (Saved {:.2} MB)", ratio, saved);
-    let saved_percent = if raw > 0.0 { (raw - actual) / raw } else { 0.0 };
-
-    let gauge = Gauge::default()
-        .block(Block::default().title(label).borders(Borders::ALL))
-        .gauge_style(Style::default().fg(Color::Green))
-        .ratio(saved_percent.clamp(0.0, 1.0))
-        .label(format!("{:.1}% Space Saved", saved_percent * 100.0));
-
-    f.render_widget(gauge, chunks[0]);
-
-    // 2. Stats Row
+    // 1. Stats Row
     let stats_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(33),
-            Constraint::Percentage(33),
-            Constraint::Percentage(33),
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
         ])
-        .split(chunks[1]);
+        .split(chunks[0]);
 
-    let count_text = Paragraph::new(format!("{}", app.stats.indexed_vectors)).block(
+    let count_text = Paragraph::new(format!("{}", app.stats.total_vectors)).block(
         Block::default()
-            .title("Indexed Vectors")
+            .title("Total Vectors")
             .borders(Borders::ALL),
     );
     f.render_widget(count_text, stats_layout[0]);
 
-    let active_text = Paragraph::new(format!("{}", app.stats.active_segments))
-        .block(Block::default().title("Segments").borders(Borders::ALL));
-    f.render_widget(active_text, stats_layout[1]);
-
-    let soft_text = Paragraph::new(format!("{}", app.stats.soft_deleted)).block(
+    let cols_text = Paragraph::new(format!("{}", app.stats.total_collections)).block(
         Block::default()
-            .title("Deleted")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Red)),
+            .title("Collections")
+            .borders(Borders::ALL),
     );
-    f.render_widget(soft_text, stats_layout[2]);
+    f.render_widget(cols_text, stats_layout[1]);
 
-    // 3. Config Row (Dynamic Tuning Parameters)
-    let config_layout = Layout::default()
+    // 2. Stats Row 2
+    let stats_layout2 = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(33),
-            Constraint::Percentage(33),
-            Constraint::Percentage(33),
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
         ])
-        .split(chunks[2]);
-
-    let ef_s = Paragraph::new(format!("{}", app.stats.ef_search)).block(
+        .split(chunks[1]);
+        
+    let mem_text = Paragraph::new(format!("{:.2} MB", app.stats.total_memory_mb)).block(
         Block::default()
-            .title("ef_search")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan)),
+            .title("Memory Usage")
+            .borders(Borders::ALL),
     );
-    f.render_widget(ef_s, config_layout[0]);
+    f.render_widget(mem_text, stats_layout2[0]);
 
-    let ef_c = Paragraph::new(format!("{}", app.stats.ef_construction)).block(
+    let qps_text = Paragraph::new(format!("{:.2}", app.stats.qps)).block(
         Block::default()
-            .title("ef_construction")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan)),
+            .title("QPS")
+            .borders(Borders::ALL),
     );
-    f.render_widget(ef_c, config_layout[1]);
-
-    // Queue Size (Pending Indexing)
-    let queue_color = if app.stats.index_queue_size > 100 {
-        Color::Yellow
-    } else {
-        Color::Green
-    };
-    let queue_text = Paragraph::new(format!("{}", app.stats.index_queue_size)).block(
-        Block::default()
-            .title("Index Queue")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(queue_color)),
-    );
-    f.render_widget(queue_text, config_layout[2]);
+    f.render_widget(qps_text, stats_layout2[1]);
 }
 
 fn draw_storage(f: &mut Frame, app: &App, area: Rect) {
@@ -159,13 +118,11 @@ fn draw_storage(f: &mut Frame, app: &App, area: Rect) {
         .split(area);
 
     let info = format!(
-        "Storage Mode: ScalarI8 (8-bit Quantization)\n\
-          Raw Size (f64): {:.2} MB\n\
-          Actual Size:    {:.2} MB\n\
-          \n\
-          Segments: {}\n\
-          (Vacuum feature coming in v1.6)",
-        app.stats.raw_data_size_mb, app.stats.actual_storage_mb, app.stats.active_segments
+        "Storage Mode: Multi-Collection\n\
+          Total Vectors: {}\n\
+          Total Memory: {:.2} MB\n\
+          (Detailed storage stats moved to Dashboard)",
+        app.stats.total_vectors, app.stats.total_memory_mb
     );
 
     let p = Paragraph::new(info).block(

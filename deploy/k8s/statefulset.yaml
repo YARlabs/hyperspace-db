@@ -18,9 +18,10 @@ spec:
           image: glukhota/hyperspace-db:latest
           ports:
             - containerPort: 50051 # gRPC
+            - containerPort: 50050 # Dashboard
           volumeMounts:
             - name: data
-              mountPath: /var/lib/hyperspace
+              mountPath: /app/data
   volumeClaimTemplates:
     - metadata:
         name: data

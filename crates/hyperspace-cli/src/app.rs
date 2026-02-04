@@ -3,6 +3,7 @@ use hyperspace_proto::hyperspace::SystemStats;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CurrentTab {
     Overview,
+    Collections,
     Storage,
     Admin,
 }
@@ -10,7 +11,8 @@ pub enum CurrentTab {
 impl CurrentTab {
     pub fn next(&self) -> Self {
         match self {
-            Self::Overview => Self::Storage,
+            Self::Overview => Self::Collections,
+            Self::Collections => Self::Storage,
             Self::Storage => Self::Admin,
             Self::Admin => Self::Overview,
         }
@@ -21,6 +23,7 @@ pub struct App {
     pub current_tab: CurrentTab,
     pub should_quit: bool,
     pub stats: SystemStats,
+    pub collections_list: Vec<String>,
     pub logs: Vec<String>,
 }
 

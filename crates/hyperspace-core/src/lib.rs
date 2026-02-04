@@ -21,7 +21,45 @@ pub trait Metric<const N: usize>: Send + Sync + 'static {
 
 pub struct PoincareMetric;
 
+
+#[derive(Debug, Clone)]
+pub enum FilterExpr {
+    Match {
+        key: String,
+        value: String,
+    },
+    Range {
+        key: String,
+        gte: Option<i64>,
+        lte: Option<i64>,
+    },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchParams {
+    pub top_k: usize,
+    pub ef_search: usize,
+    pub hybrid_query: Option<String>,
+    pub hybrid_alpha: Option<f32>,
+}
+
+pub trait Collection: Send + Sync {
+    fn name(&self) -> &str;
+    fn insert(&self, vector: &[f64], id: u32, metadata: std::collections::HashMap<String, String>) -> Result<(), String>;
+    fn delete(&self, id: u32) -> Result<(), String>;
+    fn search(
+        &self,
+        query: &[f64],
+        filters: &std::collections::HashMap<String, String>,
+        complex_filters: &[FilterExpr],
+        params: &SearchParams,
+    ) -> Result<Vec<(u32, f64)>, String>;
+    fn count(&self) -> usize;
+}
+
 impl<const N: usize> Metric<N> for PoincareMetric {
+
+
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
         // We use the math from HyperVector::poincare_distance_sq here

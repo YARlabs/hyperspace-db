@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .configure(ConfigUpdate {
             ef_construction: Some(50),
             ef_search: None,
+            collection: "".to_string(),
         })
         .await?;
 
@@ -50,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vector,
             id: i as u32,
             metadata: std::collections::HashMap::new(),
+            collection: "".to_string(),
         };
 
         client.insert(req).await?;
@@ -78,6 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .configure(ConfigUpdate {
             ef_search: Some(100),
             ef_construction: None,
+            collection: "".to_string(),
         })
         .await?;
 
@@ -101,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             filters: Vec::new(),
             hybrid_query: None,
             hybrid_alpha: None,
+            collection: "".to_string(),
         };
         client.search(req).await?;
     }

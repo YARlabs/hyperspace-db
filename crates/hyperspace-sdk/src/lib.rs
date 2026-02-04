@@ -63,51 +63,13 @@ impl Client {
             id,
             vector,
             metadata,
+            collection: "".to_string(), // Default collection
         };
         let resp = self.inner.insert(req).await?;
         Ok(resp.into_inner().success)
     }
 
-    #[cfg(feature = "embedders")]
-    pub async fn insert_document(
-        &mut self,
-        id: u32,
-        document: &str,
-        metadata: std::collections::HashMap<String, String>,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        if let Some(embedder) = &self.embedder {
-            let vector = embedder.encode(document).await?;
-            self.insert(id, vector, metadata)
-                .await
-                .map_err(|e| e.into())
-        } else {
-            Err("No embedder configured".into())
-        }
-    }
-
-    pub async fn search(
-        &mut self,
-        vector: Vec<f64>,
-        top_k: u32,
-    ) -> Result<Vec<SearchResult>, tonic::Status> {
-        self.search_advanced(vector, top_k, vec![], None).await
-    }
-
-    #[cfg(feature = "embedders")]
-    pub async fn search_document(
-        &mut self,
-        query_text: &str,
-        top_k: u32,
-    ) -> Result<Vec<SearchResult>, Box<dyn std::error::Error>> {
-        if let Some(embedder) = &self.embedder {
-            let vector = embedder.encode(query_text).await?;
-            self.search_advanced(vector, top_k, vec![], None)
-                .await
-                .map_err(|e| e.into())
-        } else {
-            Err("No embedder configured".into())
-        }
-    }
+// ...
 
     pub async fn search_advanced(
         &mut self,
@@ -128,23 +90,21 @@ impl Client {
             filters,
             hybrid_query,
             hybrid_alpha,
+            collection: "".to_string(), // Default collection
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
     }
     pub async fn delete(&mut self, id: u32) -> Result<bool, tonic::Status> {
-        let req = hyperspace_proto::hyperspace::DeleteRequest { id };
+        let req = hyperspace_proto::hyperspace::DeleteRequest { 
+            id,
+            collection: "".to_string(),
+        };
         let resp = self.inner.delete(req).await?;
         Ok(resp.into_inner().success)
     }
 
-    pub async fn trigger_snapshot(&mut self) -> Result<String, tonic::Status> {
-        let resp = self
-            .inner
-            .trigger_snapshot(hyperspace_proto::hyperspace::Empty {})
-            .await?;
-        Ok(resp.into_inner().status)
-    }
+// ...
 
     pub async fn configure(
         &mut self,
@@ -154,6 +114,7 @@ impl Client {
         let req = hyperspace_proto::hyperspace::ConfigUpdate {
             ef_search,
             ef_construction,
+            collection: "".to_string(),
         };
         let resp = self.inner.configure(req).await?;
         Ok(resp.into_inner().status)
