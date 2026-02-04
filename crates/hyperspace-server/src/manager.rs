@@ -36,6 +36,18 @@ impl ClusterState {
             logical_clock: 0,
         }
     }
+
+    pub fn tick(&mut self) -> u64 {
+        self.logical_clock += 1;
+        self.logical_clock
+    }
+
+    pub fn merge(&mut self, remote_clock: u64) {
+        if remote_clock > self.logical_clock {
+            self.logical_clock = remote_clock;
+        }
+        self.logical_clock += 1;
+    }
 }
 
 pub struct CollectionManager {
@@ -107,160 +119,55 @@ impl CollectionManager {
         let quant_mode = meta.quantization_mode();
         let node_id = self.cluster_state.read().await.node_id.clone();
 
-        // Dispatch based on generic args (N, M).
-        // This is the "Dispatcher" logic moved here.
+        // Helper macro to reduce boilerplate
+        macro_rules! inst {
+            ($N:expr, $M:ty) => {
+                Arc::new(
+                    CollectionImpl::<$N, $M>::new(
+                        name.to_string(),
+                        node_id.clone(),
+                        col_dir.clone(),
+                        wal_path.clone(),
+                        quant_mode,
+                        self.replication_tx.clone(),
+                    )
+                    .await?,
+                )
+            };
+        }
+
         let collection: Arc<dyn Collection> = match (meta.dimension, meta.metric.as_str()) {
-            // Hyperbolic (Poincaré) configurations
-            (16, "poincare") => Arc::new(
-                CollectionImpl::<16, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (32, "poincare") => Arc::new(
-                CollectionImpl::<32, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (64, "poincare") => Arc::new(
-                CollectionImpl::<64, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (128, "poincare") => Arc::new(
-                CollectionImpl::<128, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (768, "poincare") => Arc::new(
-                CollectionImpl::<768, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (1024, "poincare") => Arc::new(
-                CollectionImpl::<1024, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (1536, "poincare") => Arc::new(
-                CollectionImpl::<1536, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (2048, "poincare") => Arc::new(
-                CollectionImpl::<2048, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (8, "poincare") => Arc::new(
-                CollectionImpl::<8, PoincareMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
+            // Hyperbolic (Poincaré)
+            (8, "poincare") => inst!(8, PoincareMetric),
+            (16, "poincare") => inst!(16, PoincareMetric),
+            (32, "poincare") => inst!(32, PoincareMetric),
+            (64, "poincare") => inst!(64, PoincareMetric),
+            (128, "poincare") => inst!(128, PoincareMetric),
+            (768, "poincare") => inst!(768, PoincareMetric), 
+            (1024, "poincare") => inst!(1024, PoincareMetric),
+            (1536, "poincare") => inst!(1536, PoincareMetric),
+            (2048, "poincare") => inst!(2048, PoincareMetric),
             
-            // Euclidean configurations
-            (1024, "euclidean") | (1024, "l2") => Arc::new(
-                CollectionImpl::<1024, EuclideanMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
+            // Euclidean (L2)
+            (8, "euclidean") | (8, "l2") => inst!(8, EuclideanMetric),
+            (16, "euclidean") | (16, "l2") => inst!(16, EuclideanMetric),
+            (32, "euclidean") | (32, "l2") => inst!(32, EuclideanMetric),
+            (64, "euclidean") | (64, "l2") => inst!(64, EuclideanMetric),
+            (128, "euclidean") | (128, "l2") => inst!(128, EuclideanMetric),
+            (768, "euclidean") | (768, "l2") => inst!(768, EuclideanMetric),
+            (1024, "euclidean") | (1024, "l2") => inst!(1024, EuclideanMetric),
+            (1536, "euclidean") | (1536, "l2") => inst!(1536, EuclideanMetric),
+            (2048, "euclidean") | (2048, "l2") => inst!(2048, EuclideanMetric),
+
+            _ => {
+                return Err(format!(
+                    "Unsupported configuration: dim={}, metric={}",
+                    meta.dimension, meta.metric
                 )
-                .await?,
-            ),
-            (1536, "euclidean") | (1536, "l2") => Arc::new(
-                CollectionImpl::<1536, EuclideanMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            (2048, "euclidean") | (2048, "l2") => Arc::new(
-                CollectionImpl::<2048, EuclideanMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            // Test configurations
-            (8, "euclidean") | (8, "l2") => Arc::new(
-                CollectionImpl::<8, EuclideanMetric>::new(
-                    name.to_string(),
-                    node_id.clone(),
-                    col_dir,
-                    wal_path,
-                    quant_mode,
-                    self.replication_tx.clone(),
-                )
-                .await?,
-            ),
-            
-            // Add more as needed
-            _ => return Err(format!("Unsupported configuration: dim={}, metric={}", meta.dimension, meta.metric).into()),
+                .into());
+            }
         };
+
 
         self.collections.insert(name.to_string(), collection);
         Ok(())
@@ -298,6 +205,16 @@ impl CollectionManager {
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Collection>> {
         self.collections.get(name).map(|c| c.clone())
+    }
+
+    pub async fn tick_cluster_clock(&self) -> u64 {
+        let mut state = self.cluster_state.write().await;
+        state.tick()
+    }
+
+    pub async fn merge_cluster_clock(&self, remote_clock: u64) {
+        let mut state = self.cluster_state.write().await;
+        state.merge(remote_clock);
     }
 
     pub fn delete_collection(&self, name: &str) -> Result<(), String> {
@@ -343,5 +260,29 @@ impl CollectionMetadata {
             "none" => hyperspace_core::QuantizationMode::None,
             _ => hyperspace_core::QuantizationMode::ScalarI8,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_logical_clock() {
+        let mut state = ClusterState::new();
+        assert_eq!(state.logical_clock, 0);
+
+        // Tick
+        let t1 = state.tick();
+        assert_eq!(t1, 1);
+        assert_eq!(state.logical_clock, 1);
+
+        // Merge (no change)
+        state.merge(0);
+        assert_eq!(state.logical_clock, 2); // merge behaves as event (+1)
+
+        // Merge (remote is ahead)
+        state.merge(10);
+        assert_eq!(state.logical_clock, 11); // max(2, 10) + 1 = 11
     }
 }

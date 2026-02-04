@@ -5,6 +5,7 @@ use clap::Parser;
 mod collection;
 mod manager;
 mod http_server;
+mod sync;
 use manager::CollectionManager;
 
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
@@ -162,8 +163,11 @@ impl Database for HyperspaceService {
 
         if let Some(col) = self.manager.get(&col_name) {
             let meta: std::collections::HashMap<String, String> = req.metadata.into_iter().collect();
+            // Tick clock
+            let clock = self.manager.tick_cluster_clock().await;
+
             // id is u32 in proto.
-            if let Err(e) = col.insert(&req.vector, req.id, meta) {
+            if let Err(e) = col.insert(&req.vector, req.id, meta, clock) {
                 return Err(Status::internal(e));
             }
             Ok(Response::new(InsertResponse { success: true }))
@@ -423,7 +427,11 @@ async fn start_server(
                                               let col_name = if log.collection.is_empty() { "default" } else { &log.collection };
                                               if let Some(col) = mgr.get(col_name) {
                                                    let meta: std::collections::HashMap<String, String> = log.metadata.into_iter().collect();
-                                                   if let Err(e) = col.insert(&log.vector, log.id, meta) {
+                                                   
+                                                   // Merge clock from leader
+                                                   mgr.merge_cluster_clock(log.logical_clock).await;
+
+                                                   if let Err(e) = col.insert(&log.vector, log.id, meta, log.logical_clock) {
                                                        eprintln!("Rep Error: {}", e);
                                                    }
                                               } else {

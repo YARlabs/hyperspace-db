@@ -4,8 +4,10 @@ use hyperspace_proto::hyperspace::ReplicationLog;
 use hyperspace_store::{wal::Wal, VectorStore};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
+use crate::sync::CollectionDigest;
 
 pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     name: String,
@@ -16,6 +18,7 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     replication_tx: broadcast::Sender<ReplicationLog>,
     config: Arc<GlobalConfig>,
     _tasks: Vec<JoinHandle<()>>,
+    state_hash: AtomicU64,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
@@ -118,6 +121,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             replication_tx,
             config,
             _tasks: vec![indexer_handle, snapshot_handle],
+            state_hash: AtomicU64::new(0),
         })
     }
 }
@@ -127,11 +131,23 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         &self.name
     }
 
-    fn insert(&self, vector: &[f64], _id: u32, metadata: HashMap<String, String>) -> Result<(), String> {
+    fn metric_name(&self) -> &'static str {
+        M::name()
+    }
+
+    fn state_hash(&self) -> u64 {
+        self.state_hash.load(Ordering::Relaxed)
+    }
+
+    fn insert(&self, vector: &[f64], id: u32, metadata: HashMap<String, String>, clock: u64) -> Result<(), String> {
         // Validation
         if vector.len() != N {
             return Err(format!("Vector dimension mismatch. Expected {}, got {}", N, vector.len()));
         }
+
+        // Update State Hash (XOR rolling hash)
+        let entry_hash = CollectionDigest::hash_entry(id, vector);
+        self.state_hash.fetch_xor(entry_hash, Ordering::Relaxed);
 
         // 1. Storage
         let internal_id = self.index.insert_to_storage(vector).map_err(|e| e.to_string())?;
@@ -172,7 +188,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 metadata,
                 collection: self.name.clone(),
                 origin_node_id: self.node_id.clone(),
-                logical_clock: 0, // TODO: Implement logical clock (Lamport) in next sprint
+                logical_clock: clock,
             };
             let _ = self.replication_tx.send(log);
         }
@@ -217,9 +233,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         N
     }
 
-    fn metric_name(&self) -> &'static str {
-        M::name()
-    }
+
 
     fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
         self.index.peek(limit)

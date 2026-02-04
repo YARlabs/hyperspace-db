@@ -46,7 +46,7 @@ pub struct SearchParams {
 
 pub trait Collection: Send + Sync {
     fn name(&self) -> &str;
-    fn insert(&self, vector: &[f64], id: u32, metadata: std::collections::HashMap<String, String>) -> Result<(), String>;
+    fn insert(&self, vector: &[f64], id: u32, metadata: std::collections::HashMap<String, String>, clock: u64) -> Result<(), String>;
     fn delete(&self, id: u32) -> Result<(), String>;
     fn search(
         &self,
@@ -58,6 +58,7 @@ pub trait Collection: Send + Sync {
     fn count(&self) -> usize;
     fn dimension(&self) -> usize;
     fn metric_name(&self) -> &'static str;
+    fn state_hash(&self) -> u64; // New method
     fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
 }
 

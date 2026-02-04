@@ -69,6 +69,7 @@ pub async fn start_http_server(
         .route("/api/collections", get(list_collections).post(create_collection))
         .route("/api/collections/{name}", delete(delete_collection))
         .route("/api/collections/{name}/stats", get(get_stats))
+        .route("/api/collections/{name}/digest", get(get_collection_digest))
         .route("/api/collections/{name}/peek", get(peek_collection))
         .route("/api/collections/{name}/search", post(search_collection))
         .route("/api/status", get(get_status))
@@ -203,6 +204,24 @@ async fn get_stats(
             dimension: col.dimension() as u32,
             metric: col.metric_name().to_string(),
         }).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn get_collection_digest(
+    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&name) {
+        let clock = manager.cluster_state.read().await.logical_clock;
+        let digest = crate::sync::CollectionDigest::new(
+            name.clone(),
+            clock,
+            col.count(),
+            col.state_hash(),
+        );
+        Json(digest).into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
     }
