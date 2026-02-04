@@ -43,7 +43,7 @@ export function AuthPage() {
             <Card className="w-full max-w-md relative z-10 border-primary/20 shadow-[0_0_30px_rgba(124,58,237,0.1)]">
                 <CardHeader>
                     <div className="flex justify-center mb-4">
-                        <div className="h-16 w-16 rounded border-2 border-primary flex items-center justify-center font-bold text-primary text-3xl">
+                        <div className="h-16 w-16 flex items-center justify-center font-bold text-primary text-3xl">
                             [H]
                         </div>
                     </div>

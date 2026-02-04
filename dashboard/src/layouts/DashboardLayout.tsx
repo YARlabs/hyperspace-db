@@ -9,7 +9,7 @@ export function DashboardLayout() {
             <aside className="w-64 border-r bg-card flex flex-col hidden md:flex">
                 <div className="p-6">
                     <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded border-2 border-primary flex items-center justify-center font-bold text-primary text-lg">
+                        <div className="h-8 w-8 flex items-center justify-center font-bold text-primary text-lg">
                             [H]
                         </div>
                         <span className="text-lg font-bold tracking-tight">HyperspaceDB</span>

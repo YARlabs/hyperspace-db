@@ -1,6 +1,8 @@
 use crate::manager::CollectionManager;
 use hyperspace_core::SearchParams;
 use std::collections::HashMap;
+use std::time::Instant;
+use sysinfo::{System, Pid};
 use axum::{
     extract::{Path, State, Request, Query},
     http::{StatusCode, Uri},
@@ -61,6 +63,8 @@ pub async fn start_http_server(
         hex::encode(hasher.finalize())
     });
 
+    let start_time = Arc::new(Instant::now());
+
     let app = Router::new()
         .route("/api/collections", get(list_collections).post(create_collection))
         .route("/api/collections/{name}", delete(delete_collection))
@@ -73,7 +77,7 @@ pub async fn start_http_server(
         .layer(middleware::from_fn_with_state(api_key_hash.clone(), validate_api_key))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
-        .with_state(manager);
+        .with_state((manager, start_time));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     println!("HTTP Dashboard listening on http://{}", addr);
@@ -133,7 +137,7 @@ struct CollectionSummary {
     metric: String,
 }
 
-async fn list_collections(State(manager): State<Arc<CollectionManager>>) -> Json<Vec<CollectionSummary>> {
+async fn list_collections(State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>) -> Json<Vec<CollectionSummary>> {
     let names = manager.list();
     let mut summaries = Vec::new();
     for name in names {
@@ -157,7 +161,7 @@ struct CreateReq {
 }
 
 async fn create_collection(
-    State(manager): State<Arc<CollectionManager>>,
+    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
     Json(payload): Json<CreateReq>,
 ) -> impl IntoResponse {
     match manager.create_collection(&payload.name, payload.dimension, &payload.metric).await {
@@ -167,7 +171,7 @@ async fn create_collection(
 }
 
 async fn delete_collection(
-    State(manager): State<Arc<CollectionManager>>,
+    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     match manager.delete_collection(&name) {
@@ -184,7 +188,7 @@ struct StatsRes {
 }
 
 async fn get_stats(
-    State(manager): State<Arc<CollectionManager>>,
+    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     if let Some(col) = manager.get(&name) {
@@ -198,14 +202,23 @@ async fn get_stats(
     }
 }
 
-async fn get_status() -> Json<serde_json::Value> {
+async fn get_status(State((_, start_time)): State<(Arc<CollectionManager>, Arc<Instant>)>) -> Json<serde_json::Value> {
     let dim = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
     let metric = std::env::var("HS_METRIC").unwrap_or("l2".to_string());
+    
+    let uptime_secs = start_time.elapsed().as_secs();
+    let uptime_str = if uptime_secs < 60 {
+        format!("{}s", uptime_secs)
+    } else if uptime_secs < 3600 {
+        format!("{}m {}s", uptime_secs / 60, uptime_secs % 60)
+    } else {
+        format!("{}h {}m", uptime_secs / 3600, (uptime_secs % 3600) / 60)
+    };
     
     Json(serde_json::json!({
         "status": "ONLINE",
         "version": "1.2.0",
-        "uptime": "Unknown", 
+        "uptime": uptime_str, 
         "config": {
             "dimension": dim,
             "metric": metric,
@@ -214,7 +227,7 @@ async fn get_status() -> Json<serde_json::Value> {
     }))
 }
 
-async fn get_metrics(State(manager): State<Arc<CollectionManager>>) -> Json<serde_json::Value> {
+async fn get_metrics(State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>) -> Json<serde_json::Value> {
     let cols = manager.list();
     let mut total_vecs = 0;
     for c in &cols {
@@ -223,12 +236,48 @@ async fn get_metrics(State(manager): State<Arc<CollectionManager>>) -> Json<serd
         }
     }
 
+    // Calculate disk usage from data directory
+    let disk_usage_bytes = calculate_dir_size("./data").unwrap_or(0);
+    let disk_usage_mb = (disk_usage_bytes as f64 / 1_048_576.0).round() as u64;
+
+    // Get real system metrics
+    let sys = System::new_all();
+    
+    // Get current process memory and CPU usage
+    let current_pid = Pid::from_u32(std::process::id());
+    
+    let (ram_usage_mb, cpu_usage_percent) = if let Some(process) = sys.process(current_pid) {
+        let ram = (process.memory() as f64 / 1_048_576.0).round() as u64;
+        let cpu = process.cpu_usage().round() as u64;
+        (ram, cpu)
+    } else {
+        (0, 0)
+    };
+
     Json(serde_json::json!({
         "total_vectors": total_vecs,
         "total_collections": cols.len(),
-        "ram_usage_mb": 256,
-        "cpu_usage_percent": 5, 
+        "ram_usage_mb": ram_usage_mb,
+        "cpu_usage_percent": cpu_usage_percent,
+        "disk_usage_mb": disk_usage_mb,
     }))
+}
+
+fn calculate_dir_size(path: &str) -> std::io::Result<u64> {
+    let mut total_size = 0u64;
+    
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let metadata = entry.metadata()?;
+            if metadata.is_file() {
+                total_size += metadata.len();
+            } else if metadata.is_dir() {
+                total_size += calculate_dir_size(&entry.path().to_string_lossy())?;
+            }
+        }
+    }
+    
+    Ok(total_size)
 }
 
 #[derive(serde::Deserialize)]
@@ -237,7 +286,7 @@ struct PeekParams {
 }
 
 async fn peek_collection(
-    State(manager): State<Arc<CollectionManager>>,
+    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
     Path(name): Path<String>,
     Query(params): Query<PeekParams>,
 ) -> impl IntoResponse {
@@ -257,7 +306,7 @@ struct SearchReq {
 }
 
 async fn search_collection(
-    State(manager): State<Arc<CollectionManager>>,
+    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
     Path(name): Path<String>,
     Json(payload): Json<SearchReq>,
 ) -> impl IntoResponse {
