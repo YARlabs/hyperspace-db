@@ -9,8 +9,12 @@ rand = "0.8"
 smallvec = { workspace = true }
 ordered-float = "4.0"
 hyperspace-core = { path = "../hyperspace-core" }
-hyperspace-store = { path = "../hyperspace-store" }
+hyperspace-store = { path = "../hyperspace-store", default-features = false }
 rkyv = { workspace = true, features = ["validation"] }
 roaring = "0.11.3"
 dashmap = "6.1.0"
 serde = { workspace = true, features = ["derive"] }
+
+[features]
+default = ["persistence"]
+persistence = ["hyperspace-store/mmap"]

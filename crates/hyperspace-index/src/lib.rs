@@ -6,7 +6,9 @@ use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::{BTreeMap, BinaryHeap, HashSet};
+#[cfg(feature = "persistence")]
 use std::fs::File;
+#[cfg(feature = "persistence")]
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -57,6 +59,7 @@ impl Default for MetadataIndex {
 }
 
 impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
+    #[cfg(feature = "persistence")]
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
         let entry_point = self.entry_point.load(Ordering::Relaxed);
@@ -94,6 +97,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         Ok(())
     }
 
+    #[cfg(feature = "persistence")]
     pub fn load_snapshot(
         path: &std::path::Path,
         storage: Arc<VectorStore>,

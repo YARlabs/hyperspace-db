@@ -4,11 +4,15 @@ version = "1.1.0"
 edition = "2021"
 
 [dependencies]
-memmap2 = { workspace = true }
+memmap2 = { workspace = true, optional = true }
 thiserror = { workspace = true }
 hyperspace-core = { workspace = true }
 byteorder = "1.5.0"
 parking_lot.workspace = true
+
+[features]
+default = ["mmap"]
+mmap = ["dep:memmap2"]
 
 [dev-dependencies]
 tempfile = "3.8"

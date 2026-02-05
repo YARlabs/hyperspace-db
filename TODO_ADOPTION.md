@@ -73,6 +73,12 @@
 
 ## 🟡 ВАЖНЫЕ (Week 3) - Market Demonstration
 
+
+### SPRINT 2.5: WASM & Local-First (New) ✅ READY
+- [x] **Task 2.5.1**: Refactor VectorStore for RAM/WASM support
+- [x] **Task 2.5.2**: Create `hyperspace-wasm` crate with JS bindings
+- [x] **Task 2.5.3**: Ensure `wasm32-unknown-unknown` compilation
+
 ### SPRINT 3: Showcase Project (Week 3)
 **Goal**: Prove the value of Edge-Cloud Federation
 
@@ -169,6 +175,7 @@
 - [x] **SPRINT 1.2**: LangChain JS/TS Integration
 - [x] **SPRINT 1.3**: Documentation for Integrations
 - [x] **SPRINT 2**: Core Stability & Testing (9087 QPS, All tests passing, Hash sync fixed, Upsert Fixed)
+- [x] **SPRINT 2.5**: WASM & Local-First Support (hyperspace-wasm crate created)
 
 ### In Progress 🔄
 - [ ] SPRINT 3: Showcase Project (Next priority)

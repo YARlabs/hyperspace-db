@@ -71,8 +71,8 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 
 * **v1.1**: ✅ **Multi-Tenancy (Collections)**. Support for named Collections within a single instance. *Completed.*
 * **v1.2**: ✅ **Web Dashboard & Euclidean Support**. Full management UI, L2 Metric support, and Presets. *Completed.*
-* **v1.3**: **Universal TypeScript SDK**. Native bindings for Node.js, Deno, and Bun. *Direct challenge to RuVector's ecosystem.*
-* **v1.4**: **WASM Core ("Edge Memory")**. Compiling `hyperspace-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls.
+* **v1.3**: ✅ **Universal TypeScript SDK**. Native bindings for Node.js, Deno, and Bun. *Completed.*
+* **v1.4**: ✅ **WASM Core ("Edge Memory")**. Compiling `hyperspace-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls. *Core implementation ready.*
 
 ### Phase 2: Scale & Structure (v2.x)
 *The goal: True Enterprise Scale and Graph Capabilities.*
