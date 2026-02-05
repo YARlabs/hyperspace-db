@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HyperspaceDB WASM Demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: #646cff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        pre {
+            background: #333;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+            max-height: 400px;
+        }
+
+        .success {
+            color: #4ade80;
+        }
+
+        .error {
+            color: #f87171;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>HyperspaceDB Edge (WASM)</h1>
+    <p>Running entirely in your browser memory (Local-First AI).</p>
+
+    <div style="margin-bottom: 20px;">
+        <button id="initBtn">1. Initialize DB</button>
+        <button id="insertBtn" disabled>2. Insert 100 Vectors</button>
+        <button id="searchBtn" disabled>3. Search</button>
+    </div>
+
+    <h3>Status: <span id="status">Not initialized</span></h3>
+
+    <h3>Logs</h3>
+    <pre id="logs"></pre>
+
+    <p><i>Note: You must run <code>./scripts/build_wasm.sh</code> first to generate the pkg.</i></p>
+
+    <script type="module">
+        // Import from the built pkg
+        // Note: This path assumes build_wasm.sh was run and artifacts are in ./pkg
+        import init, { HyperspaceDB } from './pkg/hyperspace_wasm.js';
+
+        let db = null;
+        const logEl = document.getElementById('logs');
+        const statusEl = document.getElementById('status');
+
+        function log(msg) {
+            logEl.textContent += '> ' + msg + '\n';
+            console.log(msg);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        document.getElementById('initBtn').onclick = async () => {
+            try {
+                statusEl.textContent = 'Initializing WASM...';
+                await init();
+
+                log('WASM Module loaded.');
+                db = new HyperspaceDB();
+
+                statusEl.innerHTML = '<span class="success">Ready (RamStore)</span>';
+                log('HyperspaceDB initialized successfully!');
+                log('Backend: In-Memory / Feature: mmap disabled');
+
+                document.getElementById('insertBtn').disabled = false;
+                document.getElementById('initBtn').disabled = true;
+            } catch (e) {
+                statusEl.innerHTML = '<span class="error">Failed to load</span>';
+                log('Error loading WASM: ' + e + '\nMake sure you ran ./scripts/build_wasm.sh');
+            }
+        };
+
+        document.getElementById('insertBtn').onclick = () => {
+            if (!db) return;
+            statusEl.textContent = 'Inserting...';
+            setTimeout(() => {
+                const start = performance.now();
+                try {
+                    for (let i = 0; i < 100; i++) {
+                        // Create dummy vector 1024-dim
+                        // We use Float64 because JS numbers are doubles, creating Float64Array avoids conversion overhead
+                        const vec = new Float64Array(1024);
+                        for (let j = 0; j < 1024; j++) vec[j] = Math.random();
+
+                        // Make vector i distinct
+                        vec[0] = i * 1.0;
+
+                        db.insert(i, vec);
+                    }
+                    const took = performance.now() - start;
+                    log(`Inserted 100 vectors (1024-dim) in ${took.toFixed(2)}ms`);
+                    log(`Throughput: ${(100 / (took / 1000)).toFixed(0)} ops/sec`);
+
+                    statusEl.innerHTML = '<span class="success">Data Loaded (100 docs)</span>';
+                    document.getElementById('searchBtn').disabled = false;
+                } catch (e) {
+                    log('Insert Error: ' + e);
+                }
+            }, 10);
+        };
+
+        document.getElementById('searchBtn').onclick = () => {
+            if (!db) return;
+            // Search query looking for ID 50 (whose vec[0] == 50.0)
+            const query = new Float64Array(1024).fill(0.0);
+            query[0] = 50.0;
+
+            const start = performance.now();
+            const k = 5;
+            const results = db.search(query, k);
+            const took = performance.now() - start;
+
+            log(`Search found ${results.length} results in ${took.toFixed(2)}ms`);
+            log('Results: ' + JSON.stringify(results, null, 2));
+        };
+
+    </script>
+</body>
+
+</html>
