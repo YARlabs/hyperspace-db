@@ -144,6 +144,38 @@ impl VectorStore {
         unsafe { std::slice::from_raw_parts(ptr, self.element_size) }
     }
 
+    /// Update existing vector in-place (for upsert)
+    pub fn update(&self, id: u32, vector_bytes: &[u8]) -> Result<(), String> {
+        if vector_bytes.len() != self.element_size {
+            return Err(format!(
+                "Vector size mismatch: {} vs {}",
+                vector_bytes.len(),
+                self.element_size
+            ));
+        }
+
+        let id_val = id as usize;
+        let segment_idx = id_val >> CHUNK_SHIFT;
+        let local_idx = id_val & CHUNK_MASK;
+
+        let segs = self.segments.read();
+        if segment_idx >= segs.len() {
+            return Err(format!("VectorStore: ID {} out of bounds", id));
+        }
+        let segment = &segs[segment_idx];
+
+        let start = local_idx * self.element_size;
+
+        let mut guard = segment.mmap.write();
+        let ptr = unsafe { guard.as_mut_ptr().add(start) };
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(vector_bytes.as_ptr(), ptr, self.element_size);
+        }
+
+        Ok(())
+    }
+
     pub fn segment_count(&self) -> usize {
         self.segments.read().len()
     }

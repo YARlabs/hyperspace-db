@@ -639,7 +639,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     }
 
     // Helper to get HyperVector from id
-    fn get_vector(&self, id: NodeId) -> HyperVector<N> {
+    pub fn get_vector(&self, id: NodeId) -> HyperVector<N> {
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
@@ -704,6 +704,37 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
         };
         Ok(new_id)
+    }
+
+    /// Update existing vector in storage (for upsert)
+    pub fn update_storage(&self, id: u32, vector: &[f64]) -> Result<u32, String> {
+        let mut arr = [0.0; N];
+        if vector.len() != N {
+            return Err("Dim mismatch".into());
+        }
+        arr.copy_from_slice(vector);
+
+        // Validate against Metric logic
+        M::validate(&arr)?;
+
+        // Create vector
+        let q_vec_full = HyperVector::new_unchecked(arr);
+
+        // Update storage at existing ID
+        match self.mode {
+            QuantizationMode::ScalarI8 => {
+                let q = QuantizedHyperVector::from_float(&q_vec_full);
+                self.storage.update(id, q.as_bytes())?;
+            }
+            QuantizationMode::None => {
+                self.storage.update(id, q_vec_full.as_bytes())?;
+            }
+            QuantizationMode::Binary => {
+                let b = BinaryHyperVector::from_float(&q_vec_full);
+                self.storage.update(id, b.as_bytes())?;
+            }
+        };
+        Ok(id)
     }
 
     pub fn index_node(

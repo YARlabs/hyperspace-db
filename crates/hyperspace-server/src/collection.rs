@@ -20,6 +20,8 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     _tasks: Vec<JoinHandle<()>>,
     // Buckets for Merkle Tree
     buckets: Vec<AtomicU64>,
+    // Mapping from user ID to internal ID for upsert support
+    id_map: Arc<Mutex<HashMap<u32, u32>>>,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
@@ -148,6 +150,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             buckets: (0..crate::sync::SYNC_BUCKETS)
                 .map(|_| AtomicU64::new(0))
                 .collect(),
+            id_map: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 }
@@ -192,16 +195,45 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             ));
         }
 
-        // Update State Hash (XOR rolling hash)
+        // Check if this user ID already exists (for upsert)
+        let mut id_map = self.id_map.lock().unwrap();
+        let existing_internal_id = id_map.get(&id).copied();
+        
+        // If updating existing vector, remove old hash first
+        if let Some(old_internal_id) = existing_internal_id {
+            // Get old vector to compute old hash
+            let old_vector = self.index.get_vector(old_internal_id);
+            let old_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
+            let bucket_idx = CollectionDigest::get_bucket_index(id);
+            // XOR with old hash to remove it
+            self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
+        }
+
+        // Update State Hash with new vector (XOR rolling hash)
         let entry_hash = CollectionDigest::hash_entry(id, vector);
         let bucket_idx = CollectionDigest::get_bucket_index(id);
         self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
-        // 1. Storage
-        let internal_id = self
-            .index
-            .insert_to_storage(vector)
-            .map_err(|e| e.to_string())?;
+        // 1. Storage - reuse internal_id if updating, create new if inserting
+        let internal_id = if let Some(old_id) = existing_internal_id {
+            // Update existing vector in storage
+            self.index
+                .update_storage(old_id, vector)
+                .map_err(|e| e.to_string())?;
+            old_id
+        } else {
+            // Insert new vector
+            let new_id = self
+                .index
+                .insert_to_storage(vector)
+                .map_err(|e| e.to_string())?;
+            // Store mapping
+            id_map.insert(id, new_id);
+            new_id
+        };
+        
+        // Release lock early
+        drop(id_map);
 
         // 2. WAL
         {

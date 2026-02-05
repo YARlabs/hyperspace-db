@@ -262,9 +262,8 @@ async fn test_merkle_tree_consistency() -> Result<(), Box<dyn std::error::Error>
         .await?;
 
     let digest3 = client.get_digest(Some(collection.clone())).await?;
-    // Note: Current implementation creates new entry, not update
-    // TODO: Implement proper upsert logic
-    assert_eq!(digest3.count, 2, "Should have 2 vectors (insert creates new entry)");
+    // ✅ UPSERT WORKING! Same ID updates existing vector, count stays 1
+    assert_eq!(digest3.count, 1, "Should have 1 vector (upsert updates existing)");
 
     Ok(())
 }
