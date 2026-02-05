@@ -40,3 +40,12 @@ Format:
 *   `vector` ([f64; N])
 
 It is only read during startup if the Index Snapshot is older than the last WAL entry.
+
+## RAM Backend (WASM)
+
+For WebAssembly deployments (`hyperspace-wasm`), the storage backend automatically switches to `RAMVectorStore`.
+
+*   **Structure**: Uses `Vec<Arc<RwLock<Vec<u8>>>>` (Heap Memory) instead of memory-mapped files.
+*   **Segmentation**: The same chunking logic (64k vectors) is preserved. This allows the core `HNSW` index to use the same addressing logic (`id >> 16`, `id & 0xFFFF`) regardless of the backend.
+*   **Persistence**: Persistence is achieved by serializing the "used" portion of segments into a `Vec<u8>` blob and storing it in the browser's **IndexedDB**.
+*   **Pre-allocation**: Creating a DB instance pre-allocates the first chunk (64k * VectorSize bytes) to avoid frequent allocation calls during inserts.

@@ -140,6 +140,75 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             _marker: PhantomData,
         })
     }
+    pub fn save_to_bytes(&self) -> Result<Vec<u8>, String> {
+        let max_layer = self.max_layer.load(Ordering::Relaxed);
+        let entry_point = self.entry_point.load(Ordering::Relaxed);
+
+        let nodes_guard = self.nodes.read();
+        let mut snapshot_nodes = Vec::with_capacity(nodes_guard.len());
+        for node in nodes_guard.iter() {
+            let mut layers = Vec::new();
+            for layer in &node.layers {
+                layers.push(layer.read().clone());
+            }
+            snapshot_nodes.push(SnapshotNode {
+                id: node.id,
+                layers,
+            });
+        }
+
+        let snapshot = SnapshotData {
+            max_layer,
+            entry_point,
+            nodes: snapshot_nodes,
+        };
+
+        let bytes = rkyv::to_bytes::<_, 1024>(&snapshot)
+            .map_err(|e| format!("Serialization error: {}", e))?;
+        
+        Ok(bytes.into_vec())
+    }
+
+    pub fn load_from_bytes(
+        data: &[u8],
+        storage: Arc<VectorStore>,
+        mode: QuantizationMode,
+        config: Arc<GlobalConfig>,
+    ) -> Result<Self, String> {
+        let archived = unsafe { rkyv::archived_root::<SnapshotData>(data) };
+
+        let deserialized: SnapshotData = archived.deserialize(&mut rkyv::Infallible)
+            .map_err(|e| format!("Deserialization error: {}", e))?;
+
+        let mut nodes = Vec::with_capacity(deserialized.nodes.len());
+        for s_node in deserialized.nodes {
+            let mut layers = Vec::new();
+            for s_layer in s_node.layers {
+                layers.push(RwLock::new(s_layer));
+            }
+            nodes.push(Node {
+                id: s_node.id,
+                layers,
+            });
+        }
+
+        storage.set_count(nodes.len());
+
+        Ok(Self {
+            nodes: RwLock::new(nodes),
+            metadata: MetadataIndex::default(),
+            entry_point: AtomicU32::new(deserialized.entry_point),
+            max_layer: AtomicU32::new(deserialized.max_layer),
+            storage,
+            mode,
+            config,
+            _marker: PhantomData,
+        })
+    }    
+    
+    pub fn get_storage(&self) -> Arc<VectorStore> {
+        self.storage.clone()
+    }
 }
 
 /// Node Identifier (index in VectorStore)

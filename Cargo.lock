@@ -1155,6 +1155,7 @@ dependencies = [
  "hyperspace-store",
  "js-sys",
  "parking_lot",
+ "rexie",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -2001,6 +2002,21 @@ dependencies = [
  "web-sys",
  "webpki-roots",
  "winreg",
+]
+
+[[package]]
+name = "rexie"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fef172ff9cdf146cdc934e28cdeb137517bf954fb75e6ee8987dd44b58f351b1"
+dependencies = [
+ "console_error_panic_hook",
+ "js-sys",
+ "num-traits",
+ "thiserror",
+ "tokio",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

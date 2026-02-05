@@ -15,6 +15,10 @@ HyperspaceDB is configured via gRPC commands at runtime, but defaults can be set
 | `HS_HNSW_EF_CONSTRUCT` | `100` | Index build quality (50-500) |
 | `HS_HNSW_EF_SEARCH` | `10` | Search beam width (10-500) |
 
+## Client-Side (WASM)
+For in-browser usage, see the [WASM Guide](wasm.md).
+
+
 ## TUI Dashboard (Mission Control)
 
 Launch the dashboard to monitor your instance:

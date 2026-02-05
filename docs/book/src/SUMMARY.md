@@ -10,6 +10,8 @@
 # User Guide
 - [Python SDK](python.md)
 - [Rust SDK](rust.md)
+- [WebAssembly (WASM)](wasm.md)
+- [Integrations (LangChain)](integrations.md)
 - [gRPC API](api.md)
 - [Server Configuration](usage.md)
 - [Advanced Features](features.md)

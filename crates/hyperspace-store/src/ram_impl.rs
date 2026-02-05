@@ -123,6 +123,85 @@ impl VectorStore {
     pub fn set_count(&self, c: usize) {
         self.count.store(c, Ordering::Relaxed);
     }
+
+    /// Serializes only the used portion of the storage to a byte vector.
+    pub fn export(&self) -> Vec<u8> {
+        let count = self.count.load(Ordering::Relaxed);
+        let total_bytes = count * self.element_size;
+        let mut result = Vec::with_capacity(total_bytes);
+
+        let segs = self.segments.read();
+        let mut bytes_read = 0;
+
+        for segment in segs.iter() {
+            let data = segment.read();
+            let remaining = total_bytes - bytes_read;
+            if remaining == 0 {
+                break;
+            }
+            
+            let chunk_data_size = data.len();
+            let to_copy = std::cmp::min(remaining, chunk_data_size);
+            
+            result.extend_from_slice(&data[0..to_copy]);
+            bytes_read += to_copy;
+        }
+
+        result
+    }
+
+    /// Reconstructs the store from bytes.
+    pub fn from_bytes(path: &Path, element_size: usize, data: &[u8]) -> Self {
+        let store = Self::new(path, element_size);
+        
+        // Calculate count derived from data length
+        let count = data.len() / element_size;
+        store.set_count(count);
+
+        // Fill segments
+        // Self::new created the first empty segment.
+        // We write data into it (and grow if needed).
+        // Since 'new' allocates full Chunk, we can just copy if it fits.
+        
+        let mut offset = 0;
+        let segs = store.segments.read(); // Read lock is enough to access Arc<RwLock>
+        
+        // We might need write lock on segments vector if we need to grow beyond first chunk
+        // Use loop logic similar to append but batching
+        drop(segs); // Drop read lock to allow logic
+        
+        // Naive implementation: just use update/append logic or unsafe copy?
+        // Better: fill segment 0, then create segment 1...
+        
+        let mut current_seg_idx = 0;
+        
+        while offset < data.len() {
+             let segs = store.segments.read();
+             if current_seg_idx >= segs.len() {
+                 drop(segs);
+                 let mut w_segs = store.segments.write();
+                 // Grow
+                 let seg_size = element_size * CHUNK_SIZE;
+                 let vec = vec![0u8; seg_size];
+                 w_segs.push(Arc::new(RwLock::new(vec)));
+                 continue;
+             }
+             
+             let segment = &segs[current_seg_idx];
+             let mut seg_data = segment.write();
+             
+             let seg_capacity = seg_data.len();
+             let remaining_data = data.len() - offset;
+             let to_copy = std::cmp::min(remaining_data, seg_capacity);
+             
+             seg_data[0..to_copy].copy_from_slice(&data[offset..offset+to_copy]);
+             
+             offset += to_copy;
+             current_seg_idx += 1;
+        }
+        
+        store
+    }
 }
 
 #[cfg(test)]
