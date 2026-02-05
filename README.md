@@ -135,6 +135,17 @@ curl http://localhost:50050/api/cluster/status
 ./hyperspace-server --port 50052 --role follower --leader http://127.0.0.1:50051
 ```
 
+
+## 🕸️ WebAssembly (WASM) Support
+
+HyperspaceDB can run directly in the browser via WebAssembly, enabling **Local-First AI** applications with zero network latency.
+
+* **Zero Latency**: Search runs in-memory on the client.
+* **Privacy**: Data never leaves the device.
+* **Optimized**: Uses `RAMVectorStore` backend for browser environments.
+
+👉 **[Read the WASM Documentation](docs/wasm.md)**
+
 ## 🧠 Hybrid Search (RRF)
 
 Combine the power of Hyperbolic Embeddings with traditional Keyword Search.
@@ -466,8 +477,9 @@ Official 1st-party drivers:
 | --- | --- | --- |
 | 🐍 **Python** | `sdks/python` | ✅ Beta |
 | 🦀 **Rust** | `crates/hyperspace-sdk` | ✅ Beta |
+| 🦕 **TypeScript** | `sdks/ts` | ✅ Beta (v1.3) |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ MVP (v1.4) |
 | 🐹 **Go** | `sdks/go` | 🚧 Planned |
-| 🦕 **TypeScript** | `sdks/ts` | 🚧 Planned |
 
 ---
 

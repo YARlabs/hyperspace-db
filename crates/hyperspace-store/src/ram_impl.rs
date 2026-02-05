@@ -81,6 +81,7 @@ impl VectorStore {
 
         // UNSAFE: We assume the Vec is pinned and never reallocated/resized.
         // The pointer is valid as long as Vec exists (which is kept in Arc in self.segments).
+        // Since we wrap inner Vec in RwLock and Arc, the buffer address is stable.
         unsafe {
             let ptr = ptr.add(start);
             std::slice::from_raw_parts(ptr, self.element_size)
@@ -121,5 +122,31 @@ impl VectorStore {
 
     pub fn set_count(&self, c: usize) {
         self.count.store(c, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ram_store() {
+        let store = VectorStore::new(Path::new("mem"), 8);
+        assert_eq!(store.segment_count(), 1);
+
+        let data = [1u8; 8];
+        for _ in 0..10 {
+            store.append(&data).unwrap();
+        }
+
+        assert_eq!(store.count(), 10);
+        
+        let retrieved = store.get(0);
+        assert_eq!(retrieved, &data);
+
+        // Test update
+        let new_data = [2u8; 8];
+        store.update(0, &new_data).unwrap();
+        assert_eq!(store.get(0), &new_data);
     }
 }
