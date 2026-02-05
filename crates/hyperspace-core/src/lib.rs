@@ -57,7 +57,7 @@ pub trait Collection: Send + Sync {
         filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
         params: &SearchParams,
-    ) -> Result<Vec<(u32, f64)>, String>;
+    ) -> Result<Vec<(u32, f64, std::collections::HashMap<String, String>)>, String>;
     fn count(&self) -> usize;
     fn dimension(&self) -> usize;
     fn metric_name(&self) -> &'static str;

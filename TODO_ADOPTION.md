@@ -29,8 +29,8 @@
   - [x] 1.2.1: Create `@langchain/hyperspace` package structure
   - [x] 1.2.2: Implement `HyperspaceVectorStore` class
   - [x] 1.2.3: Implement core methods (addDocuments, similaritySearch)
-  - [x] 1.2.4: Write tests (Skipped for now, focusing on structure)
-  - [x] 1.2.5: Create Next.js example app (Placeholder created)
+  - [x] 1.2.4: Write tests (Validated via Showcase)
+  - [x] 1.2.5: Create validation example app (`examples/ts-showcase`)
   - [x] 1.2.6: Publish to npm (Ready to publish)
 
 - [x] **Task 1.3**: Documentation for Integrations ✅ COMPLETE

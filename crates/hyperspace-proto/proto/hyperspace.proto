@@ -136,6 +136,7 @@ message SearchResponse {
 message SearchResult {
   uint32 id = 1;
   double distance = 2;
+  map<string, string> metadata = 3;
 }
 
 message Empty {}

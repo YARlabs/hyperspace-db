@@ -1,7 +1,8 @@
 {
-  "name": "ts",
+  "name": "hyperspace-sdk-ts",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/client.js",
+  "types": "dist/client.d.ts",
   "scripts": {
     "build": "tsc"
   },
@@ -12,7 +13,7 @@
   "devDependencies": {
     "@grpc/grpc-js": "^1.14.3",
     "@types/node": "^25.2.0",
-    "google-protobuf": "^4.0.1",
+    "google-protobuf": "^3.21.4",
     "grpc_tools_node_protoc_ts": "^5.3.3",
     "grpc-tools": "^1.13.1",
     "ts-node": "^10.9.2",

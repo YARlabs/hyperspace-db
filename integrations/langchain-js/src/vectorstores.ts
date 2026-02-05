@@ -2,22 +2,17 @@ import { VectorStore } from "@langchain/core/vectorstores";
 import { Embeddings } from "@langchain/core/embeddings";
 import { Document } from "@langchain/core/documents";
 import * as crypto from "crypto";
-
-// Minimal interface for gRPC client (placeholder for generated code)
-interface HyperspaceClient {
-    insert(collection: string, id: number, vector: number[], metadata: Record<string, string>): Promise<void>;
-    search(collection: string, vector: number[], k: number): Promise<Array<{ id: number; score: number; metadata: Record<string, string> }>>;
-}
+import { HyperspaceClient } from "hyperspace-sdk-ts";
 
 export interface HyperspaceStoreArgs {
-    client: any; // Using any for now until we have generated gRPC types
+    client: HyperspaceClient;
     collectionName?: string;
     enableDeduplication?: boolean;
 }
 
 export class HyperspaceStore extends VectorStore {
     declare FilterType: object;
-    private client: any;
+    private client: HyperspaceClient;
     private collectionName: string;
     private enableDeduplication: boolean;
 
@@ -34,13 +29,9 @@ export class HyperspaceStore extends VectorStore {
 
     async addDocuments(documents: Document[]): Promise<string[]> {
         const texts = documents.map(({ pageContent }) => pageContent);
-        const metadatas = documents.map(({ metadata }) => metadata);
         return this.addVectors(
             await this.embeddings.embedDocuments(texts),
-            documents,
-            { metadatas } // Passing metadata in options/kwargs equivalent if needed, but VectorStore method signature varies. 
-            // Actually standard addVectors takes documents as 2nd arg usually for metadata extraction? 
-            // Let's implement addVectors directly.
+            documents
         );
     }
 
@@ -51,8 +42,6 @@ export class HyperspaceStore extends VectorStore {
     ): Promise<string[]> {
         const ids = options?.ids || [];
         const resultIds: string[] = [];
-
-        // User provided metadata or extract from documents
         const metadatas = options?.metadatas || documents.map((d) => d.metadata);
 
         for (let i = 0; i < vectors.length; i++) {
@@ -60,7 +49,6 @@ export class HyperspaceStore extends VectorStore {
             const vector = vectors[i];
             const metadata = metadatas[i] || {};
 
-            // Add text to metadata for retrieval
             const fullMetadata: Record<string, string> = {};
             for (const [key, value] of Object.entries(metadata)) {
                 fullMetadata[key] = String(value);
@@ -71,26 +59,17 @@ export class HyperspaceStore extends VectorStore {
             let idNum: number;
 
             if (!idStr && this.enableDeduplication) {
-                // Content-based deduplication
                 idNum = this.computeContentHash(text);
                 idStr = idNum.toString();
             } else if (idStr) {
                 idNum = parseInt(idStr) || this.computeContentHash(idStr);
             } else {
-                // Random ID if no deduplication and no ID provided
                 idNum = Math.floor(Math.random() * 4294967295);
                 idStr = idNum.toString();
             }
 
             try {
-                // Mocking gRPC call for now until we generate clients
-                // await this.client.insert(this.collectionName, idNum, vector, fullMetadata);
-                // console.log(`[HyperspaceDB] Inserted ${idNum} into ${this.collectionName}`);
-
-                // In a real implementation this would be:
-                // await new Promise((resolve, reject) => {
-                //   this.client.insert({ ... }, (err, response) => ...)
-                // })
+                await this.client.insert(idNum, vector, fullMetadata, this.collectionName);
             } catch (e) {
                 console.error(`Failed to insert vector ${idNum}:`, e);
                 throw e;
@@ -107,17 +86,31 @@ export class HyperspaceStore extends VectorStore {
         k: number,
         filter?: this["FilterType"]
     ): Promise<[Document, number][]> {
-        // Mock search result
-        // In reality: await this.client.search(...)
+        const results = await this.client.search(query, k, this.collectionName);
 
-        const results: [Document, number][] = [];
+        const output: [Document, number][] = results.map(r => {
+            // r is { id, distance, metadata } which we added in SDK
+            // @ts-ignore - metadata is added in our modified SDK
+            const metadata = r.metadata || {};
+            const text = metadata["text"] || "";
+            // Remove text from metadata to avoid duplication
+            const docMeta = { ...metadata };
+            // delete docMeta["text"]; // Optional: keep it or remove it
 
-        return results;
+            return [
+                new Document({
+                    pageContent: text,
+                    metadata: docMeta
+                }),
+                r.distance
+            ];
+        });
+
+        return output;
     }
 
     private computeContentHash(text: string): number {
         const hash = crypto.createHash("sha256").update(text).digest();
-        // Use first 4 bytes as u32
         return hash.readUInt32BE(0);
     }
 

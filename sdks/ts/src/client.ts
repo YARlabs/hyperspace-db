@@ -72,10 +72,18 @@ export class HyperspaceClient {
 
             this.client.search(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
-                const results = resp.getResultsList().map(r => ({
-                    id: r.getId(),
-                    distance: r.getDistance()
-                }));
+                const results = resp.getResultsList().map(r => {
+                    const metaMap = r.getMetadataMap();
+                    const meta: { [key: string]: string } = {};
+                    metaMap.forEach((entry: any, key: any) => {
+                        meta[key as string] = entry as string;
+                    });
+                    return {
+                        id: r.getId(),
+                        distance: r.getDistance(),
+                        metadata: meta
+                    };
+                });
                 resolve(results);
             });
         });

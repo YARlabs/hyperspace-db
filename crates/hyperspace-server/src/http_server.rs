@@ -370,10 +370,11 @@ async fn search_collection(
             Ok(res) => {
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
-                    .map(|c| {
+                    .map(|(id, dist, meta)| {
                         serde_json::json!({
-                            "id": c.0,
-                            "distance": c.1
+                            "id": id,
+                            "distance": dist,
+                            "metadata": meta
                         })
                     })
                     .collect();

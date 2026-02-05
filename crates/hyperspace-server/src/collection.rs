@@ -290,7 +290,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         filters: &HashMap<String, String>,
         complex_filters: &[FilterExpr],
         params: &SearchParams,
-    ) -> Result<Vec<(u32, f64)>, String> {
+    ) -> Result<Vec<(u32, f64, HashMap<String, String>)>, String> {
         if query.len() != N {
             return Err(format!(
                 "Query dimension mismatch. Expected {}, got {}",
@@ -309,7 +309,22 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             params.hybrid_alpha,
         );
 
-        Ok(results)
+        // Fetch metadata for results
+        let results_with_meta = results
+            .into_iter()
+            .map(|(id, dist)| {
+                let meta = self
+                    .index
+                    .metadata
+                    .forward
+                    .get(&id)
+                    .map(|m| m.clone())
+                    .unwrap_or_default();
+                (id, dist, meta)
+            })
+            .collect();
+
+        Ok(results_with_meta)
     }
 
     fn count(&self) -> usize {

@@ -484,6 +484,9 @@ export class SearchResult extends jspb.Message {
     getDistance(): number;
     setDistance(value: number): SearchResult;
 
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchResult.AsObject;
     static toObject(includeInstance: boolean, msg: SearchResult): SearchResult.AsObject;
@@ -498,6 +501,8 @@ export namespace SearchResult {
     export type AsObject = {
         id: number,
         distance: number,
+
+        metadataMap: Array<[string, string]>,
     }
 }
 
@@ -581,6 +586,57 @@ export namespace SystemStats {
         totalVectors: number,
         totalMemoryMb: number,
         qps: number,
+    }
+}
+
+export class DigestRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): DigestRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): DigestRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: DigestRequest): DigestRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: DigestRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): DigestRequest;
+    static deserializeBinaryFromReader(message: DigestRequest, reader: jspb.BinaryReader): DigestRequest;
+}
+
+export namespace DigestRequest {
+    export type AsObject = {
+        collection: string,
+    }
+}
+
+export class DigestResponse extends jspb.Message { 
+    getLogicalClock(): number;
+    setLogicalClock(value: number): DigestResponse;
+    getStateHash(): number;
+    setStateHash(value: number): DigestResponse;
+    clearBucketsList(): void;
+    getBucketsList(): Array<number>;
+    setBucketsList(value: Array<number>): DigestResponse;
+    addBuckets(value: number, index?: number): number;
+    getCount(): number;
+    setCount(value: number): DigestResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): DigestResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: DigestResponse): DigestResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: DigestResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): DigestResponse;
+    static deserializeBinaryFromReader(message: DigestResponse, reader: jspb.BinaryReader): DigestResponse;
+}
+
+export namespace DigestResponse {
+    export type AsObject = {
+        logicalClock: number,
+        stateHash: number,
+        bucketsList: Array<number>,
+        count: number,
     }
 }
 

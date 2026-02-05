@@ -274,7 +274,7 @@ impl Database for HyperspaceService {
                 Ok(res) => {
                     let output = res
                         .into_iter()
-                        .map(|(id, dist)| SearchResult { id, distance: dist })
+                        .map(|(id, dist, meta)| SearchResult { id, distance: dist, metadata: meta })
                         .collect();
                     Ok(Response::new(SearchResponse { results: output }))
                 }

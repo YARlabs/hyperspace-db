@@ -1,0 +1,23 @@
+{
+    "name": "hyperspace-showcase",
+    "version": "1.0.0",
+    "description": "Showcase of HyperspaceDB with LangChain",
+    "main": "src/index.ts",
+    "scripts": {
+        "start": "ts-node src/index.ts",
+        "ingest": "ts-node src/ingest.ts",
+        "search": "ts-node src/search.ts"
+    },
+    "dependencies": {
+        "langchain-hyperspace": "file:../../integrations/langchain-js",
+        "hyperspace-sdk-ts": "file:../../sdks/ts",
+        "@langchain/openai": "^0.0.14",
+        "@langchain/core": "^0.1.5",
+        "dotenv": "^16.0.0"
+    },
+    "devDependencies": {
+        "ts-node": "^10.0.0",
+        "typescript": "^5.0.0",
+        "@types/node": "^20.0.0"
+    }
+}

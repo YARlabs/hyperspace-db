@@ -81,6 +81,28 @@ function deserialize_hyperspace_DeleteResponse(buffer_arg) {
   return hyperspace_pb.DeleteResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_DigestRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.DigestRequest)) {
+    throw new Error('Expected argument of type hyperspace.DigestRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_DigestRequest(buffer_arg) {
+  return hyperspace_pb.DigestRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_DigestResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.DigestResponse)) {
+    throw new Error('Expected argument of type hyperspace.DigestResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_DigestResponse(buffer_arg) {
+  return hyperspace_pb.DigestResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_Empty(arg) {
   if (!(arg instanceof hyperspace_pb.Empty)) {
     throw new Error('Expected argument of type hyperspace.Empty');
@@ -332,6 +354,17 @@ replicate: {
     requestDeserialize: deserialize_hyperspace_Empty,
     responseSerialize: serialize_hyperspace_ReplicationLog,
     responseDeserialize: deserialize_hyperspace_ReplicationLog,
+  },
+  getDigest: {
+    path: '/hyperspace.Database/GetDigest',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.DigestRequest,
+    responseType: hyperspace_pb.DigestResponse,
+    requestSerialize: serialize_hyperspace_DigestRequest,
+    requestDeserialize: deserialize_hyperspace_DigestRequest,
+    responseSerialize: serialize_hyperspace_DigestResponse,
+    responseDeserialize: deserialize_hyperspace_DigestResponse,
   },
 };
 
