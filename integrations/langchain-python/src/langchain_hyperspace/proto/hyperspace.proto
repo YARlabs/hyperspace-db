@@ -1,0 +1,165 @@
+syntax = "proto3";
+package hyperspace;
+
+service Database {
+  // Collection Management
+  rpc CreateCollection (CreateCollectionRequest) returns (StatusResponse);
+  rpc DeleteCollection (DeleteCollectionRequest) returns (StatusResponse);
+  rpc ListCollections (Empty) returns (ListCollectionsResponse);
+  rpc GetCollectionStats (CollectionStatsRequest) returns (CollectionStatsResponse);
+
+  // Insert vectors
+  rpc Insert (InsertRequest) returns (InsertResponse);
+  // Delete vectors
+  rpc Delete (DeleteRequest) returns (DeleteResponse);
+  // Search (ANN)
+  rpc Search (SearchRequest) returns (SearchResponse);
+  // Stream statistics for TUI (Global or Collection tailored)
+  rpc Monitor (MonitorRequest) returns (stream SystemStats);
+  
+  // Admin Controls
+  rpc TriggerSnapshot (Empty) returns (StatusResponse);
+  rpc TriggerVacuum (Empty) returns (StatusResponse);
+  
+  // Dynamic Configuration
+  rpc Configure (ConfigUpdate) returns (StatusResponse);
+  
+  // Replication (Leader -> Follower)
+  rpc Replicate (Empty) returns (stream ReplicationLog);
+  rpc GetDigest (DigestRequest) returns (DigestResponse);
+}
+
+message ReplicationLog {
+  uint32 id = 1;
+  repeated double vector = 2;
+  map<string, string> metadata = 3;
+  string collection = 4;
+  string origin_node_id = 5;
+  uint64 logical_clock = 6;
+}
+
+message QuantizationConfig {
+  QuantizationMode mode = 1;
+}
+
+enum QuantizationMode {
+  NONE = 0;       // f64 (Default)
+  SCALAR_I8 = 1;  // 8-bit
+}
+
+message CreateCollectionRequest {
+  string name = 1;
+  uint32 dimension = 2;
+  string metric = 3; // "cosine", "l2", "poincare"
+}
+
+message DeleteCollectionRequest {
+  string name = 1;
+}
+
+message ListCollectionsResponse {
+  repeated string collections = 1;
+}
+
+message CollectionStatsRequest {
+  string name = 1;
+}
+
+message CollectionStatsResponse {
+  uint64 count = 1;
+  uint32 dimension = 2;
+  string metric = 3;
+}
+
+message ConfigUpdate {
+  string collection = 1; 
+  optional uint32 ef_search = 2;
+  optional uint32 ef_construction = 3;
+}
+
+message InsertRequest {
+  string collection = 1;
+  repeated double vector = 2;
+  uint32 id = 3; 
+  map<string, string> metadata = 4;
+  
+  // Replication fields
+  string origin_node_id = 5;
+  uint64 logical_clock = 6;
+}
+
+message InsertResponse {
+  bool success = 1;
+}
+
+message DeleteRequest {
+  string collection = 1;
+  uint32 id = 2;
+}
+
+message DeleteResponse {
+  bool success = 1;
+}
+
+message SearchRequest {
+  string collection = 1;
+  repeated double vector = 2;
+  uint32 top_k = 3;
+  map<string, string> filter = 4;
+  repeated Filter filters = 5;
+  optional string hybrid_query = 6;
+  optional float hybrid_alpha = 7;
+}
+
+message Filter {
+  oneof condition {
+    Match match = 1;
+    Range range = 2;
+  }
+}
+
+message Match {
+  string key = 1;
+  string value = 2;
+}
+
+message Range {
+  string key = 1;
+  optional int64 gte = 2;
+  optional int64 lte = 3;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  uint32 id = 1;
+  double distance = 2;
+}
+
+message Empty {}
+
+message StatusResponse {
+  string status = 1;
+}
+
+message MonitorRequest {}
+
+message SystemStats {
+  uint64 total_collections = 1;
+  uint64 total_vectors = 2;
+  double total_memory_mb = 3;
+  double qps = 4;
+}
+
+message DigestRequest {
+  string collection = 1;
+}
+
+message DigestResponse {
+  uint64 logical_clock = 1;
+  uint64 state_hash = 2;
+  repeated uint64 buckets = 3;
+  uint64 count = 4;
+}

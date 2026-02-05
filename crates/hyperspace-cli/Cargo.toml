@@ -12,3 +12,4 @@ hyperspace-core = { workspace = true }
 tonic = { workspace = true }
 rand = "0.8"
 hyperspace-sdk = { path = "../hyperspace-sdk" }
+chrono = "0.4"
