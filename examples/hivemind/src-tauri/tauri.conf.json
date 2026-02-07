@@ -1,0 +1,28 @@
+{
+    "build": {
+        "beforeBuildCommand": "",
+        "beforeDevCommand": "",
+        "devPath": "../src",
+        "distDir": "../src"
+    },
+    "package": {
+        "productName": "hivemind",
+        "version": "0.1.0"
+    },
+    "tauri": {
+        "bundle": {
+            "identifier": "com.yar.hivemind",
+            "active": false
+        },
+        "security": {
+            "csp": null
+        },
+        "windows": [
+            {
+                "title": "HiveMind - Edge Federation",
+                "width": 900,
+                "height": 700
+            }
+        ]
+    }
+}

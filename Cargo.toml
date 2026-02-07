@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "examples/hivemind/src-tauri"]
 resolver = "2"
 
 [workspace.dependencies]
