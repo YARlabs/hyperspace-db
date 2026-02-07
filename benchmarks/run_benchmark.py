@@ -207,6 +207,13 @@ class VectorDBBenchmark:
             
             latencies.sort()
             
+            # Cleanup
+            try:
+                client.delete_collection("benchmark")
+                print("  ✅ Cleaned up collection")
+            except Exception as e:
+                print(f"  ⚠️ Cleanup failed: {e}")
+            
             return BenchmarkResult(
                 database="HyperspaceDB",
                 version="1.5.0",
@@ -287,6 +294,13 @@ class VectorDBBenchmark:
             
             latencies.sort()
             
+            # Cleanup
+            try:
+                client.delete_collection(collection_name)
+                print("  ✅ Cleaned up collection")
+            except Exception as e:
+                print(f"  ⚠️ Cleanup failed: {e}")
+            
             return BenchmarkResult(
                 database="Qdrant",
                 version="latest",
@@ -337,7 +351,7 @@ class VectorDBBenchmark:
             # Create collection
             collection = client.collections.create(
                 name=collection_name,
-                vectorizer_config=wvc.config.Configure.Vectorizer.none(),
+                vector_config=wvc.config.Configure.Vectorizer.none(),
                 properties=[
                     wvc.config.Property(name="idx", data_type=wvc.config.DataType.INT)
                 ]
@@ -377,6 +391,13 @@ class VectorDBBenchmark:
                 latencies.append(latency)
             
             latencies.sort()
+            
+            # Cleanup
+            try:
+                client.collections.delete(collection_name)
+                print("  ✅ Cleaned up collection")
+            except Exception as e:
+                print(f"  ⚠️ Cleanup failed: {e}")
             
             return BenchmarkResult(
                 database="Weaviate",
@@ -466,6 +487,14 @@ class VectorDBBenchmark:
                 latencies.append(latency)
             
             latencies.sort()
+            
+            # Cleanup
+            try:
+                if utility.has_collection(collection_name):
+                    utility.drop_collection(collection_name)
+                    print("  ✅ Cleaned up collection")
+            except Exception as e:
+                print(f"  ⚠️ Cleanup failed: {e}")
             
             return BenchmarkResult(
                 database="Milvus",
