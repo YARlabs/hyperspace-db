@@ -5,7 +5,7 @@ import warnings
 
 from . import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.76.0'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -59,6 +59,11 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.InsertRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.InsertResponse.FromString,
                 _registered_method=True)
+        self.BatchInsert = channel.unary_unary(
+                '/hyperspace.Database/BatchInsert',
+                request_serializer=hyperspace__pb2.BatchInsertRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.InsertResponse.FromString,
+                _registered_method=True)
         self.Delete = channel.unary_unary(
                 '/hyperspace.Database/Delete',
                 request_serializer=hyperspace__pb2.DeleteRequest.SerializeToString,
@@ -94,6 +99,11 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.Empty.SerializeToString,
                 response_deserializer=hyperspace__pb2.ReplicationLog.FromString,
                 _registered_method=True)
+        self.GetDigest = channel.unary_unary(
+                '/hyperspace.Database/GetDigest',
+                request_serializer=hyperspace__pb2.DigestRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.DigestResponse.FromString,
+                _registered_method=True)
 
 
 class DatabaseServicer(object):
@@ -127,6 +137,12 @@ class DatabaseServicer(object):
     def Insert(self, request, context):
         """Insert vectors
         """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchInsert(self, request, context):
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -179,6 +195,12 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetDigest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -205,6 +227,11 @@ def add_DatabaseServicer_to_server(servicer, server):
             'Insert': grpc.unary_unary_rpc_method_handler(
                     servicer.Insert,
                     request_deserializer=hyperspace__pb2.InsertRequest.FromString,
+                    response_serializer=hyperspace__pb2.InsertResponse.SerializeToString,
+            ),
+            'BatchInsert': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchInsert,
+                    request_deserializer=hyperspace__pb2.BatchInsertRequest.FromString,
                     response_serializer=hyperspace__pb2.InsertResponse.SerializeToString,
             ),
             'Delete': grpc.unary_unary_rpc_method_handler(
@@ -241,6 +268,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.Replicate,
                     request_deserializer=hyperspace__pb2.Empty.FromString,
                     response_serializer=hyperspace__pb2.ReplicationLog.SerializeToString,
+            ),
+            'GetDigest': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDigest,
+                    request_deserializer=hyperspace__pb2.DigestRequest.FromString,
+                    response_serializer=hyperspace__pb2.DigestResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -377,6 +409,33 @@ class Database(object):
             target,
             '/hyperspace.Database/Insert',
             hyperspace__pb2.InsertRequest.SerializeToString,
+            hyperspace__pb2.InsertResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchInsert(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/BatchInsert',
+            hyperspace__pb2.BatchInsertRequest.SerializeToString,
             hyperspace__pb2.InsertResponse.FromString,
             options,
             channel_credentials,
@@ -567,6 +626,33 @@ class Database(object):
             '/hyperspace.Database/Replicate',
             hyperspace__pb2.Empty.SerializeToString,
             hyperspace__pb2.ReplicationLog.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDigest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/GetDigest',
+            hyperspace__pb2.DigestRequest.SerializeToString,
+            hyperspace__pb2.DigestResponse.FromString,
             options,
             channel_credentials,
             insecure,

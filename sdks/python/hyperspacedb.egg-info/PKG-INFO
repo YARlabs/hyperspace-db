@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: hyperspacedb
+Version: 0.1.0
+Summary: Fastest Hyperbolic Vector DB Client
+Author: YARlabs
+Requires-Python: >=3.8
+Requires-Dist: grpcio>=1.50.0
+Requires-Dist: protobuf>=4.21.0
+Requires-Dist: numpy>=1.20.0
+Provides-Extra: openai
+Requires-Dist: openai>=1.0.0; extra == "openai"
+Provides-Extra: cohere
+Requires-Dist: cohere>=4.0.0; extra == "cohere"
+Provides-Extra: voyage
+Requires-Dist: voyageai>=0.1.0; extra == "voyage"
+Provides-Extra: google
+Requires-Dist: google-generativeai>=0.3.0; extra == "google"
+Provides-Extra: sentence-transformers
+Requires-Dist: sentence-transformers>=2.2.0; extra == "sentence-transformers"
+Provides-Extra: all
+Requires-Dist: openai>=1.0.0; extra == "all"
+Requires-Dist: cohere>=4.0.0; extra == "all"
+Requires-Dist: voyageai>=0.1.0; extra == "all"
+Requires-Dist: google-generativeai>=0.3.0; extra == "all"
+Requires-Dist: sentence-transformers>=2.2.0; extra == "all"

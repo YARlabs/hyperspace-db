@@ -1,0 +1,12 @@
+pyproject.toml
+hyperspace/__init__.py
+hyperspace/client.py
+hyperspace/embedders.py
+hyperspace/proto/__init__.py
+hyperspace/proto/hyperspace_pb2.py
+hyperspace/proto/hyperspace_pb2_grpc.py
+hyperspacedb.egg-info/PKG-INFO
+hyperspacedb.egg-info/SOURCES.txt
+hyperspacedb.egg-info/dependency_links.txt
+hyperspacedb.egg-info/requires.txt
+hyperspacedb.egg-info/top_level.txt

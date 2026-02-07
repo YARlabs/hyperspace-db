@@ -12,7 +12,7 @@ use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
     CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest,
     DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest, DigestResponse,
-    InsertRequest, InsertResponse, ListCollectionsResponse, MonitorRequest, SearchRequest,
+    InsertRequest, InsertResponse, BatchInsertRequest, ListCollectionsResponse, MonitorRequest, SearchRequest,
     SearchResponse, SearchResult, SystemStats,
 };
 use hyperspace_proto::hyperspace::{Empty, ReplicationLog};
@@ -201,6 +201,39 @@ impl Database for HyperspaceService {
                 "Collection '{}' not found",
                 col_name
             )))
+        }
+    }
+
+    async fn batch_insert(
+        &self,
+        request: Request<BatchInsertRequest>,
+    ) -> Result<Response<InsertResponse>, Status> {
+        if self.role == "follower" {
+            return Err(Status::permission_denied("Followers are read-only"));
+        }
+        let req = request.into_inner();
+
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+
+        if let Some(col) = self.manager.get(&col_name) {
+            // Convert protos to internal types
+            let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req.vectors.into_iter().map(|v| {
+                (v.vector, v.id, v.metadata.into_iter().collect())
+            }).collect();
+
+            // Tick clock
+            let clock = self.manager.tick_cluster_clock().await;
+
+            if let Err(e) = col.insert_batch(vectors, clock) {
+                 return Err(Status::internal(e));
+            }
+            Ok(Response::new(InsertResponse { success: true }))
+        } else {
+             Err(Status::not_found(format!("Collection '{}' not found", col_name)))
         }
     }
 

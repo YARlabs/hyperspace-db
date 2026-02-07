@@ -94,13 +94,14 @@
   - [ ] 3.1.9: Record demo video (Loom/YouTube)
   - [x] 3.1.10: Publish demo app to GitHub (Code ready)
 
-- [x] **Task 3.2**: Benchmarks & Comparisons ✅
-  - [x] 3.2.1: Benchmark vs Qdrant (insert, search, memory)
-  - [x] 3.2.2: Benchmark vs Pinecone (latency, throughput)
-  - [x] 3.2.3: Benchmark vs Weaviate (sync bandwidth)
-  - [x] 3.2.4: Create comparison table with results
+- [x] **Task 3.2**: Benchmarks & Comparisons ✅ **REAL & REPRODUCIBLE**
+  - [x] 3.2.1: Benchmark vs Qdrant (Docker + Python script)
+  - [x] 3.2.2: Benchmark vs Pinecone (N/A - cloud only, documented)
+  - [x] 3.2.3: Benchmark vs Weaviate (Docker + Python script)
+  - [x] 3.2.4: Create comparison table with results (auto-generated)
   - [x] 3.2.5: Highlight advantages (1-bit quantization, Merkle sync)
   - [x] 3.2.6: Publish benchmark results to docs (docs/BENCHMARKS.md)
+  - [x] 3.2.7: **NEW**: Create reproducible benchmark suite (benchmarks/)
 
 - [x] **Task 3.3**: Content Creation ✅
   - [x] 3.3.1: Write "Why Euclidean Geometry Kills RAG" article (docs/articles/hyperbolic-rag.md)

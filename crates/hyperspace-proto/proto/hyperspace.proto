@@ -10,6 +10,7 @@ service Database {
 
   // Insert vectors
   rpc Insert (InsertRequest) returns (InsertResponse);
+  rpc BatchInsert (BatchInsertRequest) returns (InsertResponse);
   // Delete vectors
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   // Search (ANN)
@@ -86,6 +87,19 @@ message InsertRequest {
   // Replication fields
   string origin_node_id = 5;
   uint64 logical_clock = 6;
+}
+
+message VectorData {
+  repeated double vector = 1;
+  uint32 id = 2;
+  map<string, string> metadata = 3;
+}
+
+message BatchInsertRequest {
+  string collection = 1;
+  repeated VectorData vectors = 2;
+  string origin_node_id = 3;
+  uint64 logical_clock = 4;
 }
 
 message InsertResponse {

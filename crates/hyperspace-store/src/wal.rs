@@ -60,6 +60,37 @@ impl Wal {
         Ok(())
     }
 
+    pub fn append_batch(
+        &mut self,
+        entries: &[(Vec<f64>, u32, HashMap<String, String>)],
+    ) -> io::Result<()> {
+        for (vector, id, metadata) in entries {
+            // OpCode 2 = Insert V2 (With Metadata)
+            self.file.write_u8(2)?;
+            self.file.write_u32::<LittleEndian>(*id)?;
+
+            // Vector
+            self.file.write_u32::<LittleEndian>(vector.len() as u32)?;
+            for &val in vector {
+                self.file.write_f64::<LittleEndian>(val)?;
+            }
+
+            // Metadata
+            self.file.write_u32::<LittleEndian>(metadata.len() as u32)?;
+            for (k, v) in metadata {
+                let k_bytes = k.as_bytes();
+                self.file.write_u32::<LittleEndian>(k_bytes.len() as u32)?;
+                self.file.write_all(k_bytes)?;
+
+                let v_bytes = v.as_bytes();
+                self.file.write_u32::<LittleEndian>(v_bytes.len() as u32)?;
+                self.file.write_all(v_bytes)?;
+            }
+        }
+        self.file.flush()?;
+        Ok(())
+    }
+
     pub fn replay<F>(path: &Path, mut callback: F) -> io::Result<()>
     where
         F: FnMut(WalEntry),

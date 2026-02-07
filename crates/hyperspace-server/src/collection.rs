@@ -279,6 +279,108 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         Ok(())
     }
 
+    fn insert_batch(
+        &self,
+        vectors: Vec<(Vec<f64>, u32, HashMap<String, String>)>,
+        clock: u64,
+    ) -> Result<(), String> {
+        // 1. Validation
+        for (vec, _, _) in &vectors {
+            if vec.len() != N {
+                return Err(format!(
+                    "Vector dimension mismatch. Expected {}, got {}",
+                    N,
+                    vec.len()
+                ));
+            }
+        }
+
+        // 2. Lock id_map once
+        let mut id_map = self.id_map.lock().unwrap();
+
+        // We need separate vectors for diff tasks
+        // internal_entries stores (internal_id, user_id, vector_clone, metadata)
+        let mut internal_data = Vec::with_capacity(vectors.len());
+
+        for (vector, id, metadata) in &vectors {
+             // Check if this user ID already exists (for upsert)
+            let existing_internal_id = id_map.get(id).copied();
+            
+            // If updating existing vector, bucket update
+            if let Some(old_internal_id) = existing_internal_id {
+                let old_vector = self.index.get_vector(old_internal_id);
+                let old_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
+                let bucket_idx = CollectionDigest::get_bucket_index(*id);
+                self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
+            }
+
+            // Update State Hash with new vector
+            let entry_hash = CollectionDigest::hash_entry(*id, vector);
+            let bucket_idx = CollectionDigest::get_bucket_index(*id);
+            self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
+
+            // Storage
+            let internal_id = if let Some(old_id) = existing_internal_id {
+                self.index
+                    .update_storage(old_id, vector)
+                    .map_err(|e| e.to_string())?;
+                old_id
+            } else {
+                let new_id = self
+                    .index
+                    .insert_to_storage(vector)
+                    .map_err(|e| e.to_string())?;
+                id_map.insert(*id, new_id);
+                new_id
+            };
+            
+            internal_data.push((internal_id, vector.clone(), metadata.clone()));
+        }
+        
+        drop(id_map);
+
+        // 3. WAL Batch
+        let wal_data: Vec<_> = internal_data.iter()
+            .map(|(internal_id, vector, metadata)| {
+                (vector.clone(), *internal_id, metadata.clone())
+            })
+            .collect();
+
+        {
+            let mut wal = self.wal.lock().unwrap();
+            wal.append_batch(&wal_data).map_err(|e| e.to_string())?;
+        }
+
+        // 4. Index Queue
+        // TODO: config.inc_queue_by is not available, calling inc_queue in loop
+        for _ in 0..internal_data.len() {
+             self.config.inc_queue();
+        }
+
+        let _ = tokio::task::block_in_place(|| {
+            for (id, _, meta) in &internal_data {
+                let _ = self.index_tx.blocking_send((*id, meta.clone()));
+            }
+        });
+        
+        // 5. Replication
+        if self.replication_tx.receiver_count() > 0 {
+            for (vector, id, metadata) in vectors {
+                let log = ReplicationLog {
+                    id, 
+                    vector, 
+                    metadata, 
+                    collection: self.name.clone(),
+                    origin_node_id: self.node_id.clone(),
+                    logical_clock: clock,
+                };
+                let _ = self.replication_tx.send(log);
+            }
+        }
+
+        Ok(())
+    }
+
     fn delete(&self, id: u32) -> Result<(), String> {
         self.index.delete(id);
         Ok(())

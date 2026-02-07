@@ -29,6 +29,7 @@ except ImportError:
 
 try:
     import weaviate
+    import weaviate.classes as wvc
     WEAVIATE_AVAILABLE = True
 except ImportError:
     WEAVIATE_AVAILABLE = False
@@ -64,7 +65,70 @@ class BenchmarkResult:
     search_p95_ms: float
     search_p99_ms: float
     memory_mb: float
+    # cpu_percent: float
+    # disk_usage_mb: float
     errors: List[str]
+
+# import psutil
+# import os
+# import threading
+
+# class ResourceMonitor:
+#     def __init__(self, target_process_name: str = "hyperspace-server"):
+#         self.target_name = target_process_name
+#         self.running = False
+#         self.cpu_usage = []
+#         self.mem_usage = []
+#         self.thread = None
+# 
+#     def start(self):
+#         self.running = True
+#         self.cpu_usage = []
+#         self.mem_usage = []
+#         self.thread = threading.Thread(target=self._monitor)
+#         self.thread.start()
+# 
+#     def stop(self):
+#         self.running = False
+#         if self.thread:
+#             self.thread.join()
+#         
+#         avg_cpu = statistics.mean(self.cpu_usage) if self.cpu_usage else 0
+#         max_mem = max(self.mem_usage) if self.mem_usage else 0
+#         return avg_cpu, max_mem
+# 
+#     def _monitor(self):
+#         process = None
+#         for p in psutil.process_iter(['name']):
+#             if self.target_name in p.info['name']:
+#                 process = p
+#                 break
+#         
+#         while self.running:
+#             if process:
+#                 try:
+#                     self.cpu_usage.append(process.cpu_percent(interval=0.1))
+#                     self.mem_usage.append(process.memory_info().rss / 1024 / 1024)
+#                 except:
+#                     pass
+#             else:
+#                  # Try to find again
+#                 for p in psutil.process_iter(['name']):
+#                     if p.info['name'] and self.target_name in p.info['name']:
+#                         process = p
+#                         break
+#                 time.sleep(0.1)
+# 
+#     def get_disk_usage(self, path: str) -> float:
+#         try:
+#              total_size = 0
+#              for dirpath, dirnames, filenames in os.walk(path):
+#                  for f in filenames:
+#                      fp = os.path.join(dirpath, f)
+#                      total_size += os.path.getsize(fp)
+#              return total_size / 1024 / 1024
+#         except:
+#             return 0.0
 
 
 class VectorDBBenchmark:
@@ -94,25 +158,42 @@ class VectorDBBenchmark:
             
             # Create collection
             try:
-                client.create_collection("benchmark", dimension=self.config.dimensions)
-            except:
-                pass  # May already exist
+                client.create_collection("benchmark", dimension=self.config.dimensions, metric="euclidean")
+            except Exception as e:
+                print(f"  Collection may already exist: {e}")
             
+            # Start monitoring
+            # monitor = ResourceMonitor("hyperspace-server")
+            # monitor.start()
+
             # Insert benchmark
             start = time.time()
-            for i in range(0, len(self.vectors), self.config.batch_size):
-                batch = self.vectors[i:i+self.config.batch_size]
-                for j, vec in enumerate(batch):
-                    client.insert(vector=vec.tolist(), metadata={"id": i+j})
+            hs_batch_size = 100 # Reduced due to gRPC 4MB limit
+            for i in range(0, len(self.vectors), hs_batch_size):
+                batch = self.vectors[i:i+hs_batch_size]
+                ids = list(range(i, i+len(batch)))
+                metadatas = [{"idx": str(j)} for j in ids]
                 
-                if (i + self.config.batch_size) % 10000 == 0:
+                if hasattr(client, 'batch_insert'):
+                    success = client.batch_insert(batch.tolist(), ids, metadatas, collection="benchmark")
+                    if not success:
+                        print(f"Batch insert failed at index {i}")
+                else:
+                    for j, vec in enumerate(batch):
+                        client.insert(id=i+j, vector=vec.tolist(), metadata={"idx": str(i+j)}, collection="benchmark")
+                
+                if (i + hs_batch_size) % 10000 == 0:
                     elapsed = time.time() - start
-                    qps = (i + self.config.batch_size) / elapsed
-                    print(f"  Inserted {i+self.config.batch_size:,} | {qps:.0f} QPS")
+                    qps = (i + hs_batch_size) / elapsed
+                    print(f"  Inserted {i+hs_batch_size:,} | {qps:.0f} QPS")
             
             insert_time = time.time() - start
             insert_qps = len(self.vectors) / insert_time
-            
+
+            # Stop monitoring
+            # avg_cpu, max_mem = monitor.stop()
+            # disk_usage = monitor.get_disk_usage("./data") # Assuming default data dir
+
             # Search benchmark
             query = self.vectors[0].tolist()
             latencies = []
@@ -120,7 +201,7 @@ class VectorDBBenchmark:
             print(f"  Running {self.config.search_queries} search queries...")
             for i in range(self.config.search_queries):
                 start = time.time()
-                results = client.search(vector=query, top_k=self.config.top_k)
+                results = client.search(vector=query, top_k=self.config.top_k, collection="benchmark")
                 latency = (time.time() - start) * 1000
                 latencies.append(latency)
             
@@ -128,14 +209,16 @@ class VectorDBBenchmark:
             
             return BenchmarkResult(
                 database="HyperspaceDB",
-                version="1.4.0",
+                version="1.5.0",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
                 search_avg_ms=statistics.mean(latencies),
                 search_p50_ms=latencies[len(latencies)//2],
                 search_p95_ms=latencies[int(len(latencies)*0.95)],
                 search_p99_ms=latencies[int(len(latencies)*0.99)],
-                memory_mb=0.0,  # TODO: Get from server
+                memory_mb=0.0,  # max_mem,
+                # cpu_percent=avg_cpu,
+                # disk_usage_mb=disk_usage,
                 errors=errors
             )
             
@@ -143,10 +226,10 @@ class VectorDBBenchmark:
             errors.append(str(e))
             return BenchmarkResult(
                 database="HyperspaceDB",
-                version="1.4.0",
+                version="1.5.0",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors
+                memory_mb=0, errors=errors  # cpu_percent=0, disk_usage_mb=0,
             )
     
     def benchmark_qdrant(self) -> BenchmarkResult:
@@ -194,9 +277,9 @@ class VectorDBBenchmark:
             print(f"  Running {self.config.search_queries} search queries...")
             for i in range(self.config.search_queries):
                 start = time.time()
-                results = client.search(
+                results = client.query_points(
                     collection_name=collection_name,
-                    query_vector=query,
+                    query=query,
                     limit=self.config.top_k
                 )
                 latency = (time.time() - start) * 1000
@@ -206,7 +289,7 @@ class VectorDBBenchmark:
             
             return BenchmarkResult(
                 database="Qdrant",
-                version="1.7.4",
+                version="latest",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
                 search_avg_ms=statistics.mean(latencies),
@@ -214,6 +297,8 @@ class VectorDBBenchmark:
                 search_p95_ms=latencies[int(len(latencies)*0.95)],
                 search_p99_ms=latencies[int(len(latencies)*0.99)],
                 memory_mb=0.0,
+                # cpu_percent=0.0,
+                # disk_usage_mb=0.0,
                 errors=errors
             )
             
@@ -221,51 +306,58 @@ class VectorDBBenchmark:
             errors.append(str(e))
             return BenchmarkResult(
                 database="Qdrant",
-                version="1.7.4",
+                version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors
+                memory_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
             )
     
     def benchmark_weaviate(self) -> BenchmarkResult:
         """Benchmark Weaviate"""
         print("\n🟢 Benchmarking Weaviate...")
         errors = []
+        client = None
         
         try:
-            client = weaviate.Client("http://localhost:8080")
-            class_name = "Benchmark"
+            # Weaviate v4 API
+            client = weaviate.connect_to_local(
+                host="localhost",
+                port=8080,
+                grpc_port=50052,  # Avoid conflict with HyperspaceDB on 50051
+                skip_init_checks=False
+            )
+            collection_name = "Benchmark"
             
-            # Create schema
+            # Delete collection if exists
             try:
-                client.schema.delete_class(class_name)
+                client.collections.delete(collection_name)
             except:
                 pass
             
-            class_obj = {
-                "class": class_name,
-                "vectorizer": "none",
-                "properties": [
-                    {"name": "idx", "dataType": ["int"]}
+            # Create collection
+            collection = client.collections.create(
+                name=collection_name,
+                vectorizer_config=wvc.config.Configure.Vectorizer.none(),
+                properties=[
+                    wvc.config.Property(name="idx", data_type=wvc.config.DataType.INT)
                 ]
-            }
-            client.schema.create_class(class_obj)
+            )
             
             # Insert benchmark
             start = time.time()
-            with client.batch as batch:
-                batch.batch_size = self.config.batch_size
-                for i, vec in enumerate(self.vectors):
-                    batch.add_data_object(
-                        {"idx": i},
-                        class_name,
-                        vector=vec.tolist()
-                    )
-                    
-                    if (i + 1) % 10000 == 0:
-                        elapsed = time.time() - start
-                        qps = (i + 1) / elapsed
-                        print(f"  Inserted {i+1:,} | {qps:.0f} QPS")
+            for i in range(0, len(self.vectors), self.config.batch_size):
+                batch = self.vectors[i:i+self.config.batch_size]
+                with collection.batch.dynamic() as batch_ctx:
+                    for j, vec in enumerate(batch):
+                        batch_ctx.add_object(
+                            properties={"idx": i+j},
+                            vector=vec.tolist()
+                        )
+                
+                if (i + self.config.batch_size) % 10000 == 0:
+                    elapsed = time.time() - start
+                    qps = (i + self.config.batch_size) / elapsed
+                    print(f"  Inserted {i+self.config.batch_size:,} | {qps:.0f} QPS")
             
             insert_time = time.time() - start
             insert_qps = len(self.vectors) / insert_time
@@ -277,10 +369,10 @@ class VectorDBBenchmark:
             print(f"  Running {self.config.search_queries} search queries...")
             for i in range(self.config.search_queries):
                 start = time.time()
-                results = client.query.get(class_name, ["idx"]) \
-                    .with_near_vector({"vector": query}) \
-                    .with_limit(self.config.top_k) \
-                    .do()
+                results = collection.query.near_vector(
+                    near_vector=query,
+                    limit=self.config.top_k
+                )
                 latency = (time.time() - start) * 1000
                 latencies.append(latency)
             
@@ -288,7 +380,7 @@ class VectorDBBenchmark:
             
             return BenchmarkResult(
                 database="Weaviate",
-                version="1.23.1",
+                version="latest",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
                 search_avg_ms=statistics.mean(latencies),
@@ -296,6 +388,8 @@ class VectorDBBenchmark:
                 search_p95_ms=latencies[int(len(latencies)*0.95)],
                 search_p99_ms=latencies[int(len(latencies)*0.99)],
                 memory_mb=0.0,
+                # cpu_percent=0.0,
+                # disk_usage_mb=0.0,
                 errors=errors
             )
             
@@ -303,11 +397,14 @@ class VectorDBBenchmark:
             errors.append(str(e))
             return BenchmarkResult(
                 database="Weaviate",
-                version="1.23.1",
+                version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors
+                memory_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
             )
+        finally:
+            if client:
+                client.close()
     
     def benchmark_milvus(self) -> BenchmarkResult:
         """Benchmark Milvus"""
@@ -372,7 +469,7 @@ class VectorDBBenchmark:
             
             return BenchmarkResult(
                 database="Milvus",
-                version="2.3.3",
+                version="latest",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
                 search_avg_ms=statistics.mean(latencies),
@@ -380,6 +477,8 @@ class VectorDBBenchmark:
                 search_p95_ms=latencies[int(len(latencies)*0.95)],
                 search_p99_ms=latencies[int(len(latencies)*0.99)],
                 memory_mb=0.0,
+                # cpu_percent=0.0,
+                # disk_usage_mb=0.0,
                 errors=errors
             )
             
@@ -387,10 +486,10 @@ class VectorDBBenchmark:
             errors.append(str(e))
             return BenchmarkResult(
                 database="Milvus",
-                version="2.3.3",
+                version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors
+                memory_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
             )
     
     def run_all(self) -> List[BenchmarkResult]:
@@ -428,13 +527,13 @@ def generate_report(results: List[BenchmarkResult], config: BenchmarkConfig) -> 
 
 ## Insert Performance
 
-| Database | Version | QPS | Total Time | Throughput |
-|----------|---------|-----|------------|------------|
+| Database | Version | QPS | Total Time | Throughput | Mem (MB) |
+|----------|---------|-----|------------|------------|-----------|
 """
     
     for r in results:
         if r.insert_qps > 0:
-            report += f"| **{r.database}** | {r.version} | **{r.insert_qps:,.0f}** | {r.insert_total_time:.1f}s | {r.insert_qps * config.dimensions / 1e6:.2f} M dims/s |\n"
+            report += f"| **{r.database}** | {r.version} | **{r.insert_qps:,.0f}** | {r.insert_total_time:.1f}s | {r.insert_qps * config.dimensions / 1e6:.2f} M dims/s | {r.memory_mb:.1f} |\n"
     
     report += "\n---\n\n## Search Performance\n\n"
     report += "| Database | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) |\n"

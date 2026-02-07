@@ -70,6 +70,34 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
+    def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, collection: str = "") -> bool:
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(vectors))]
+        
+        if len(vectors) != len(ids):
+             raise ValueError("Vectors and IDs length mismatch")
+        
+        proto_vectors = []
+        for v, i, m in zip(vectors, ids, metadatas):
+            proto_vectors.append(hyperspace_pb2.VectorData(
+                vector=v,
+                id=i,
+                metadata=m
+            ))
+
+        req = hyperspace_pb2.BatchInsertRequest(
+            collection=collection,
+            vectors=proto_vectors,
+            origin_node_id="",
+            logical_clock=0
+        )
+        try:
+            resp = self.stub.BatchInsert(req, metadata=self.metadata)
+            return resp.success
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
     def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, collection: str = "") -> List[Dict]:
         if filter is None:
             filter = {}

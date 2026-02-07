@@ -50,6 +50,17 @@ pub trait Collection: Send + Sync {
         metadata: std::collections::HashMap<String, String>,
         clock: u64,
     ) -> Result<(), String>;
+    fn insert_batch(
+        &self,
+        vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)>,
+        clock: u64,
+    ) -> Result<(), String> {
+        // Default implementation calls insert one by one (inefficient)
+        for (vec, id, meta) in vectors {
+            self.insert(&vec, id, meta, clock)?;
+        }
+        Ok(())
+    }
     fn delete(&self, id: u32) -> Result<(), String>;
     fn search(
         &self,

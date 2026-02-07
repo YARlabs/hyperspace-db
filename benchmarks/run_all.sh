@@ -38,19 +38,28 @@ else
 fi
 
 # Install Python dependencies
-echo -e "${GREEN}📦 Installing Python dependencies...${NC}"
-pip install -q numpy qdrant-client weaviate-client pymilvus 2>/dev/null || {
+echo -e "${GREEN}📦 Setting up Python environment...${NC}"
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+fi
+source venv/bin/activate
+
+# Install HyperspaceDB SDK from local directory
+echo -e "${GREEN}📦 Installing HyperspaceDB Python SDK...${NC}"
+pip install -q -e ../sdks/python || {
+    echo -e "${YELLOW}⚠️  HyperspaceDB SDK installation failed. Will skip HyperspaceDB benchmark.${NC}"
+}
+
+# Install other database clients (latest versions)
+pip install -q --upgrade numpy qdrant-client weaviate-client pymilvus 2>/dev/null || {
     echo -e "${YELLOW}⚠️  Some Python packages failed to install. Continuing anyway...${NC}"
 }
 
-# Build HyperspaceDB Docker image
-echo -e "${GREEN}🔨 Building HyperspaceDB Docker image...${NC}"
-cd ..
-docker build -t hyperspace-db:benchmark -f Dockerfile . || {
-    echo -e "${YELLOW}⚠️  HyperspaceDB build failed. Will skip HyperspaceDB benchmark.${NC}"
+# Pull HyperspaceDB Docker image
+echo -e "${GREEN}⬇️  Pulling HyperspaceDB Docker image...${NC}"
+$DOCKER_COMPOSE pull hyperspace || {
+    echo -e "${YELLOW}⚠️  Failed to pull HyperspaceDB image. Will try to use local if available.${NC}"
 }
-cd benchmarks
-
 # Start all databases
 echo -e "${GREEN}🚀 Starting all vector databases...${NC}"
 $DOCKER_COMPOSE up -d
@@ -85,12 +94,12 @@ echo -e "${YELLOW}This will take approximately 5-10 minutes...${NC}"
 echo ""
 
 # Run benchmark
-python3 run_benchmark.py
+venv/bin/python3 run_benchmark.py
 
 # Copy results to docs
 if [ -f "BENCHMARK_RESULTS.md" ]; then
-    cp BENCHMARK_RESULTS.md ../docs/BENCHMARK_RESULTS_REAL.md
-    echo -e "${GREEN}✅ Results copied to docs/BENCHMARK_RESULTS_REAL.md${NC}"
+    cp BENCHMARK_RESULTS.md ../benchmarks/BENCHMARK_RESULTS_REAL.md
+    echo -e "${GREEN}✅ Results copied to benchmarks/BENCHMARK_RESULTS_REAL.md${NC}"
 fi
 
 # Cleanup
@@ -112,5 +121,5 @@ echo -e "${GREEN}  Benchmark Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "Results: ${BLUE}benchmarks/BENCHMARK_RESULTS.md${NC}"
-echo -e "Docs:    ${BLUE}docs/BENCHMARK_RESULTS_REAL.md${NC}"
+echo -e "Docs:    ${BLUE}benchmarks/BENCHMARK_RESULTS_REAL.md${NC}"
 echo ""

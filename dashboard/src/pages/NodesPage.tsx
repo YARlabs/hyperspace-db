@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Network, Server, ArrowDown, Activity, Clock, Box } from "lucide-react"
+import { Network, ArrowDown, Activity, Clock, Box } from "lucide-react"
 
 export function NodesPage() {
     const { data: cluster, isLoading } = useQuery({

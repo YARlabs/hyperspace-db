@@ -1,30 +1,29 @@
 version: "3.8"
 
 services:
-  # HyperspaceDB
-  hyperspace:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    ports:
-      - "50051:50051"
-    environment:
-      - RUST_LOG=info
-      - HS_PORT=50051
-      - HS_DIMENSION=1024
-    volumes:
-      - hyperspace_data:/data
-    networks:
-      - benchmark_net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:50051/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+  # HyperspaceDB (Pre-built)
+  # hyperspace:
+  #   image: glukhota/hyperspace-db:latest
+  #   pull_policy: always
+  #   ports:
+  #     - "50051:50051"
+  #   environment:
+  #     - RUST_LOG=info
+  #     - HS_PORT=50051
+  #     - HS_DIMENSION=1024
+  #   volumes:
+  #     - hyperspace_data:/data
+  #   networks:
+  #     - benchmark_net
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:50051/health"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 10
 
   # Qdrant
   qdrant:
-    image: qdrant/qdrant:v1.7.4
+    image: qdrant/qdrant:latest
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -40,15 +39,17 @@ services:
 
   # Weaviate
   weaviate:
-    image: semitechnologies/weaviate:1.23.1
+    image: semitechnologies/weaviate:latest
     ports:
       - "8080:8080"
+      - "50052:50051" # Map internal 50051 to host 50052 to avoid conflict
     environment:
       - QUERY_DEFAULTS_LIMIT=25
       - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
       - PERSISTENCE_DATA_PATH=/var/lib/weaviate
       - DEFAULT_VECTORIZER_MODULE=none
       - CLUSTER_HOSTNAME=node1
+      - GRPC_PORT=50051 # Internal gRPC port
     volumes:
       - weaviate_data:/var/lib/weaviate
     networks:
@@ -61,7 +62,7 @@ services:
 
   # Milvus (Standalone)
   milvus-etcd:
-    image: quay.io/coreos/etcd:v3.5.5
+    image: quay.io/coreos/etcd:v3.5.17
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
@@ -74,7 +75,7 @@ services:
       - benchmark_net
 
   milvus-minio:
-    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    image: minio/minio:latest
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -90,7 +91,7 @@ services:
       retries: 3
 
   milvus:
-    image: milvusdb/milvus:v2.3.3
+    image: milvusdb/milvus:latest
     command: ["milvus", "run", "standalone"]
     environment:
       ETCD_ENDPOINTS: milvus-etcd:2379
