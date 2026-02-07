@@ -49,10 +49,6 @@ def test_batch_insert():
     print(f"Time: {total_time:.2f}s")
     print(f"QPS: {qps:.2f}")
 
-    # Check count
-    stats = client.get_collection_stats(name)
-    print(f"Collection Count: {stats['count']}")
-    
     # Cleanup
     # client.delete_collection(name)
 

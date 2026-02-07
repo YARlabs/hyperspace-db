@@ -1,6 +1,6 @@
 # Vector Database Benchmark Results
 
-**Date**: 2026-02-07 22:38:57  
+**Date**: 2026-02-07 22:48:32  
 **Configuration**:
 - Vectors: 100,000
 - Dimensions: 1024
@@ -14,10 +14,9 @@
 
 | Database | Version | QPS | Total Time | Throughput | Mem (MB) |
 |----------|---------|-----|------------|------------|-----------|
-| **HyperspaceDB** | 1.5.0 | **5,821** | 17.2s | 5.96 M dims/s | 0.0 |
-| **Qdrant** | latest | **1,581** | 63.3s | 1.62 M dims/s | 0.0 |
-| **Weaviate** | latest | **476** | 210.2s | 0.49 M dims/s | 0.0 |
-| **Milvus** | latest | **13,651** | 7.3s | 13.98 M dims/s | 0.0 |
+| **HyperspaceDB** | 1.5.0 | **175** | 573.0s | 0.18 M dims/s | 0.0 |
+| **Weaviate** | latest | **487** | 205.5s | 0.50 M dims/s | 0.0 |
+| **Milvus** | latest | **13,585** | 7.4s | 13.91 M dims/s | 0.0 |
 
 ---
 
@@ -25,28 +24,33 @@
 
 | Database | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) |
 |----------|----------|----------|----------|----------|
-| **HyperspaceDB** | 0.10 | 0.09 | 0.14 | 0.31 |
-| **Qdrant** | 5.47 | 4.43 | 12.14 | 17.54 |
-| **Weaviate** | 5.10 | 4.48 | 8.22 | 11.91 |
-| **Milvus** | 2.61 | 2.44 | 3.91 | 4.98 |
+| **HyperspaceDB** | 0.50 | 0.44 | 0.79 | 1.63 |
+| **Weaviate** | 4.79 | 4.58 | 6.33 | 8.59 |
+| **Milvus** | 2.71 | 2.53 | 4.12 | 5.04 |
 
 ---
 
 ## Performance Comparison
 
 ### Insert Throughput Winner: 🏆 **Milvus**
-- **13,651 QPS**
+- **13,585 QPS**
 
-- 2.35x faster than HyperspaceDB
-- 8.64x faster than Qdrant
-- 28.69x faster than Weaviate
+- 77.84x faster than HyperspaceDB
+- 27.92x faster than Weaviate
 
 ### Search Latency Winner: 🏆 **HyperspaceDB**
-- **0.31 ms** (p99)
+- **1.63 ms** (p99)
 
-- 56.95x faster than Qdrant
-- 38.66x faster than Weaviate
-- 16.17x faster than Milvus
+- 5.29x faster than Weaviate
+- 3.10x faster than Milvus
+
+---
+
+## Errors
+
+### Qdrant
+- timed out
+
 
 ---
 
@@ -57,48 +61,50 @@
   {
     "database": "HyperspaceDB",
     "version": "1.5.0",
-    "insert_qps": 5821.343562536726,
-    "insert_total_time": 17.178164958953857,
-    "search_avg_ms": 0.10232305526733398,
-    "search_p50_ms": 0.08893013000488281,
-    "search_p95_ms": 0.1399517059326172,
-    "search_p99_ms": 0.30803680419921875,
+    "insert_qps": 174.51089296637412,
+    "insert_total_time": 573.030131816864,
+    "search_avg_ms": 0.5034077167510986,
+    "search_p50_ms": 0.4439353942871094,
+    "search_p95_ms": 0.7863044738769531,
+    "search_p99_ms": 1.6252994537353516,
     "memory_mb": 0.0,
     "errors": []
   },
   {
     "database": "Qdrant",
     "version": "latest",
-    "insert_qps": 1580.8136331426717,
-    "insert_total_time": 63.25856375694275,
-    "search_avg_ms": 5.465744733810425,
-    "search_p50_ms": 4.426002502441406,
-    "search_p95_ms": 12.140035629272461,
-    "search_p99_ms": 17.54283905029297,
-    "memory_mb": 0.0,
-    "errors": []
+    "insert_qps": 0,
+    "insert_total_time": 0,
+    "search_avg_ms": 0,
+    "search_p50_ms": 0,
+    "search_p95_ms": 0,
+    "search_p99_ms": 0,
+    "memory_mb": 0,
+    "errors": [
+      "timed out"
+    ]
   },
   {
     "database": "Weaviate",
     "version": "latest",
-    "insert_qps": 475.79063122256906,
-    "insert_total_time": 210.17647981643677,
-    "search_avg_ms": 5.10451340675354,
-    "search_p50_ms": 4.477977752685547,
-    "search_p95_ms": 8.219003677368164,
-    "search_p99_ms": 11.909246444702148,
+    "insert_qps": 486.59550560387345,
+    "insert_total_time": 205.5095019340515,
+    "search_avg_ms": 4.791643142700195,
+    "search_p50_ms": 4.575967788696289,
+    "search_p95_ms": 6.329059600830078,
+    "search_p99_ms": 8.589982986450195,
     "memory_mb": 0.0,
     "errors": []
   },
   {
     "database": "Milvus",
     "version": "latest",
-    "insert_qps": 13651.226991668604,
-    "insert_total_time": 7.325348854064941,
-    "search_avg_ms": 2.608966112136841,
-    "search_p50_ms": 2.444028854370117,
-    "search_p95_ms": 3.9141178131103516,
-    "search_p99_ms": 4.9800872802734375,
+    "insert_qps": 13584.620008163783,
+    "insert_total_time": 7.3612658977508545,
+    "search_avg_ms": 2.7058982849121094,
+    "search_p50_ms": 2.529144287109375,
+    "search_p95_ms": 4.1179656982421875,
+    "search_p99_ms": 5.037069320678711,
     "memory_mb": 0.0,
     "errors": []
   }
