@@ -417,37 +417,63 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let q_vec = HyperVector::new_unchecked(aligned_query);
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);
-        let max_layer = self.max_layer.load(Ordering::Relaxed);
+        
+        let start_layer = {
+            let guard = self.nodes.read();
+            if guard.is_empty() {
+                return vec![];
+            }
+            if (entry_node as usize) >= guard.len() {
+                // Determine what to do: return empty or fallback? 
+                // Using 0 as safe fallback if entry_node is somehow out of bounds (race?)
+                0
+            } else {
+                guard[entry_node as usize].layers.len().saturating_sub(1)
+            }
+        };
+
+        // Safe check for current dist
+        if (entry_node as usize) >= self.nodes.read().len() {
+             return vec![];
+        }
 
         let mut curr_dist = self.dist(entry_node, &q_vec);
         let mut curr_node = entry_node;
 
         // 1. Zoom-in phase: Greedy search from top to layer 1
-        for level in (1..=max_layer).rev() {
-            let mut changed = true;
-            while changed {
-                changed = false;
-                // Read lock on nodes vector, then read lock on neighbors
-                // Note: This 2-step lock might be tricky if nodes is resizing, but RwLock<Vec> holds the reference.
-                // Actually nodes[id] gives us the Node struct.
-                let nodes_guard = self.nodes.read();
-                // Check bounds
-                if (curr_node as usize) >= nodes_guard.len() {
-                    break;
-                }
+        // Optimization: Hold read lock for the entire zoom-in phase to avoid repeated acquisition
+        {
+            let nodes_guard = self.nodes.read();
+            for level in (1..=start_layer).rev() {
+                let mut changed = true;
+                while changed {
+                    changed = false;
+                    
+                    // Check bounds
+                    if (curr_node as usize) >= nodes_guard.len() {
+                        break;
+                    }
+                    
+                    // Safety check for empty/uninitialized layers (prevent panic)
+                    let node = &nodes_guard[curr_node as usize];
+                    if node.layers.len() <= level {
+                        break; // Stop if node doesn't have this level initialized
+                    }
 
-                let neighbors = nodes_guard[curr_node as usize].layers[level as usize].read();
+                    // Read lock on neighbors (granular)
+                    let neighbors = node.layers[level as usize].read();
 
-                for &neighbor in neighbors.iter() {
-                    let d = self.dist(neighbor, &q_vec);
-                    if d < curr_dist {
-                        curr_dist = d;
-                        curr_node = neighbor;
-                        changed = true;
+                    for &neighbor in neighbors.iter() {
+                        let d = self.dist(neighbor, &q_vec);
+                        if d < curr_dist {
+                            curr_dist = d;
+                            curr_node = neighbor;
+                            changed = true;
+                        }
                     }
                 }
             }
-        }
+        } // Read lock released here
 
         // 2. Local search phase: Layer 0 with Filter
         self.search_layer0(curr_node, &q_vec, k, ef_search, allowed_bitmap.as_ref())
@@ -511,6 +537,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         ef: usize,
         allowed: Option<&RoaringBitmap>,
     ) -> Vec<(NodeId, f64)> {
+        // Optimization: Hold read lock for entire search_layer0 duration
+        let nodes_guard = self.nodes.read();
+
         let mut candidates = BinaryHeap::new();
         let mut results = BinaryHeap::new();
         let mut visited = HashSet::new();
@@ -533,6 +562,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
         };
 
+        // Safety check start_node
+        if (start_node as usize) >= nodes_guard.len() {
+             return vec![];
+        }
+
         let d = self.dist(start_node, query);
         let first = Candidate {
             id: start_node,
@@ -547,25 +581,21 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         while let Some(cand) = candidates.pop() {
             // Lower Bound Pruning:
-            // If we have full results, and candidate is worse than worst result, stop?
-            // ONLY if candidate is valid?
-            // Actually, if candidate is worse than worst *valid* result found so far, we might still find better valid node through it?
-            // HNSW Logic: "If cand.dist > results.peek().dist" -> stop.
-            // But results only contains VALID nodes.
-            // So if we have `ef` VALID nodes, and candidate is worse, we stop.
             if let Some(worst) = results.peek() {
                 if results.len() >= ef && cand.distance > worst.distance {
                     break;
                 }
             }
 
-            let neighbors_ids = {
-                let nodes_guard = self.nodes.read();
-                if (cand.id as usize) >= nodes_guard.len() {
+            // Using hoisted lock
+            let neighbors_ids = if (cand.id as usize) >= nodes_guard.len() {
+                Vec::new()
+            } else {
+                let node = &nodes_guard[cand.id as usize];
+                if node.layers.is_empty() {
                     Vec::new()
                 } else {
-                    let layer_guard = nodes_guard[cand.id as usize].layers[0].read();
-                    layer_guard.clone()
+                    node.layers[0].read().clone()
                 }
             };
 
@@ -621,6 +651,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         level: usize,
         ef: usize,
     ) -> BinaryHeap<Candidate> {
+        // Optimization: Hold read lock
+        let nodes_guard = self.nodes.read();
+
+        // Safety check
+        if (start_node as usize) >= nodes_guard.len() {
+            return BinaryHeap::new();
+        }
+        if nodes_guard[start_node as usize].layers.len() <= level {
+             return BinaryHeap::new();
+        }
+
         let mut candidates = BinaryHeap::new();
         let mut results = BinaryHeap::new();
         let mut visited = HashSet::new();
@@ -641,14 +682,15 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 break;
             }
 
-            // Lock scope
-            let neighbors_ids = {
-                let nodes_guard = self.nodes.read();
-                if (cand.id as usize) >= nodes_guard.len() {
+            // Using hoisted lock with bounds check
+            let neighbors_ids = if (cand.id as usize) >= nodes_guard.len() {
+                Vec::new()
+            } else {
+                let node = &nodes_guard[cand.id as usize];
+                if node.layers.len() <= level {
                     Vec::new()
                 } else {
-                    let layer_guard = nodes_guard[cand.id as usize].layers[level].read();
-                    layer_guard.clone()
+                    node.layers[level].read().clone()
                 }
             };
 
@@ -868,12 +910,34 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
             nodes[id as usize] = Node { id, layers };
         }
+        
+        // Determine safe start layer for search
+        let start_layer = {
+            let guard = self.nodes.read();
+            if guard.is_empty() {
+                0
+            } else if (entry_point as usize) >= guard.len() {
+                0
+            } else {
+                guard[entry_point as usize].layers.len().saturating_sub(1)
+            }
+        };
 
         let mut curr_obj = entry_point;
-        let mut curr_dist = self.dist(curr_obj, &q_vec);
+        // q_vec already loaded at start of function
+        
+        // Need to check if entry_point is valid before dist calc
+        let mut curr_dist = if (entry_point as usize) < self.nodes.read().len() {
+             self.dist(curr_obj, &q_vec)
+        } else {
+             f64::MAX 
+        };
 
         // 2. Phase 1: Zoom in (Greedy Search) from top to new_level
-        for level in (new_level + 1..=(max_layer as usize)).rev() {
+        // Ensure we don't start higher than what entry point supports
+        let search_limit = std::cmp::min(max_layer as usize, start_layer);
+        
+        for level in (new_level + 1..=search_limit).rev() {
             let mut changed = true;
             while changed {
                 changed = false;

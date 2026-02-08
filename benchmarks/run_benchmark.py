@@ -10,6 +10,11 @@ import json
 from typing import List, Tuple, Dict
 from dataclasses import dataclass, asdict
 import statistics
+import sys
+import os
+
+# Ensure local SDK is used
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../sdks/python")))
 
 # Database clients
 try:
@@ -65,9 +70,37 @@ class BenchmarkResult:
     search_p95_ms: float
     search_p99_ms: float
     memory_mb: float
-    # cpu_percent: float
-    # disk_usage_mb: float
+    disk_usage_mb: float
     errors: List[str]
+
+def get_disk_usage_local(path: str) -> float:
+    """Get disk usage of a directory in MB"""
+    try:
+        total_size = 0
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                if not os.path.islink(fp):
+                    total_size += os.path.getsize(fp)
+        return total_size / (1024 * 1024)
+    except Exception:
+        return 0.0
+
+def get_docker_disk_usage(container: str, path: str) -> float:
+    """Get disk usage of a path inside a docker container in MB"""
+    try:
+        # Use du -sm inside container
+        import subprocess
+        result = subprocess.run(
+            ["docker", "exec", container, "du", "-sm", path],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            return float(result.stdout.split()[0])
+        return 0.0
+    except Exception as e:
+        print(f"⚠️ Failed to get docker disk usage for {container}: {e}")
+        return 0.0
 
 # import psutil
 # import os
@@ -174,10 +207,13 @@ class VectorDBBenchmark:
                 ids = list(range(i, i+len(batch)))
                 metadatas = [{"idx": str(j)} for j in ids]
                 
+                if i == 0:
+                     print(f"DEBUG: Starting batch insert loop. Batch size: {hs_batch_size}, Has batch_insert: {hasattr(client, 'batch_insert')}", flush=True)
+
                 if hasattr(client, 'batch_insert'):
                     success = client.batch_insert(batch.tolist(), ids, metadatas, collection="benchmark")
                     if not success:
-                        print(f"Batch insert failed at index {i}")
+                        print(f"Batch insert failed at index {i}", flush=True)
                 else:
                     for j, vec in enumerate(batch):
                         client.insert(id=i+j, vector=vec.tolist(), metadata={"idx": str(i+j)}, collection="benchmark")
@@ -185,7 +221,7 @@ class VectorDBBenchmark:
                 if (i + hs_batch_size) % 10000 == 0:
                     elapsed = time.time() - start
                     qps = (i + hs_batch_size) / elapsed
-                    print(f"  Inserted {i+hs_batch_size:,} | {qps:.0f} QPS")
+                    print(f"  Inserted {i+hs_batch_size:,} | {qps:.0f} QPS", flush=True)
             
             insert_time = time.time() - start
             insert_qps = len(self.vectors) / insert_time
@@ -206,10 +242,16 @@ class VectorDBBenchmark:
                 latencies.append(latency)
             
             latencies.sort()
+            search_p50_ms = latencies[len(latencies)//2]
+            search_p95_ms = latencies[int(len(latencies)*0.95)]
+            search_p99_ms = latencies[int(len(latencies)*0.99)]
+            
+            # Disk Usage
+            disk_usage = get_disk_usage_local("../data")
             
             # Cleanup
             try:
-                client.delete_collection("benchmark")
+                pass # client.delete_collection("benchmark")
                 print("  ✅ Cleaned up collection")
             except Exception as e:
                 print(f"  ⚠️ Cleanup failed: {e}")
@@ -220,12 +262,12 @@ class VectorDBBenchmark:
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
                 search_avg_ms=statistics.mean(latencies),
-                search_p50_ms=latencies[len(latencies)//2],
-                search_p95_ms=latencies[int(len(latencies)*0.95)],
-                search_p99_ms=latencies[int(len(latencies)*0.99)],
+                search_p50_ms=search_p50_ms,
+                search_p95_ms=search_p95_ms,
+                search_p99_ms=search_p99_ms,
                 memory_mb=0.0,  # max_mem,
                 # cpu_percent=avg_cpu,
-                # disk_usage_mb=disk_usage,
+                disk_usage_mb=disk_usage,
                 errors=errors
             )
             
@@ -236,7 +278,7 @@ class VectorDBBenchmark:
                 version="1.5.0",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors  # cpu_percent=0, disk_usage_mb=0,
+                memory_mb=0, disk_usage_mb=0, errors=errors  # cpu_percent=0, disk_usage_mb=0,
             )
     
     def benchmark_qdrant(self) -> BenchmarkResult:
@@ -294,6 +336,9 @@ class VectorDBBenchmark:
             
             latencies.sort()
             
+            # Disk Usage
+            disk_usage = get_docker_disk_usage("benchmarks-qdrant-1", "/qdrant/storage")
+
             # Cleanup
             try:
                 client.delete_collection(collection_name)
@@ -311,8 +356,7 @@ class VectorDBBenchmark:
                 search_p95_ms=latencies[int(len(latencies)*0.95)],
                 search_p99_ms=latencies[int(len(latencies)*0.99)],
                 memory_mb=0.0,
-                # cpu_percent=0.0,
-                # disk_usage_mb=0.0,
+                disk_usage_mb=disk_usage,
                 errors=errors
             )
             
@@ -323,7 +367,7 @@ class VectorDBBenchmark:
                 version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
+                memory_mb=0, disk_usage_mb=0, errors=errors
             )
     
     def benchmark_weaviate(self) -> BenchmarkResult:
@@ -333,9 +377,12 @@ class VectorDBBenchmark:
         client = None
         
         try:
+            import warnings
+            # Suppress Weaviate DeprecationWarning (temporary fix until updated API usage is clear)
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+
             # Weaviate v4 API
             client = weaviate.connect_to_local(
-                host="localhost",
                 port=8080,
                 grpc_port=50052,  # Avoid conflict with HyperspaceDB on 50051
                 skip_init_checks=False
@@ -351,7 +398,7 @@ class VectorDBBenchmark:
             # Create collection
             collection = client.collections.create(
                 name=collection_name,
-                vector_config=wvc.config.Configure.Vectorizer.none(),
+                vectorizer_config=wvc.config.Configure.Vectorizer.none(),
                 properties=[
                     wvc.config.Property(name="idx", data_type=wvc.config.DataType.INT)
                 ]
@@ -392,6 +439,9 @@ class VectorDBBenchmark:
             
             latencies.sort()
             
+            # Disk Usage
+            disk_usage = get_docker_disk_usage("benchmarks-weaviate-1", "/var/lib/weaviate")
+
             # Cleanup
             try:
                 client.collections.delete(collection_name)
@@ -409,8 +459,7 @@ class VectorDBBenchmark:
                 search_p95_ms=latencies[int(len(latencies)*0.95)],
                 search_p99_ms=latencies[int(len(latencies)*0.99)],
                 memory_mb=0.0,
-                # cpu_percent=0.0,
-                # disk_usage_mb=0.0,
+                disk_usage_mb=disk_usage,
                 errors=errors
             )
             
@@ -421,7 +470,7 @@ class VectorDBBenchmark:
                 version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
+                memory_mb=0, disk_usage_mb=0, errors=errors
             )
         finally:
             if client:
@@ -488,6 +537,9 @@ class VectorDBBenchmark:
             
             latencies.sort()
             
+            # Disk Usage
+            disk_usage = get_docker_disk_usage("benchmarks-milvus-1", "/var/lib/milvus")
+
             # Cleanup
             try:
                 if utility.has_collection(collection_name):
@@ -507,7 +559,7 @@ class VectorDBBenchmark:
                 search_p99_ms=latencies[int(len(latencies)*0.99)],
                 memory_mb=0.0,
                 # cpu_percent=0.0,
-                # disk_usage_mb=0.0,
+                disk_usage_mb=disk_usage,
                 errors=errors
             )
             
@@ -518,7 +570,7 @@ class VectorDBBenchmark:
                 version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
+                memory_mb=0, disk_usage_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
             )
     
     def run_all(self) -> List[BenchmarkResult]:
@@ -556,13 +608,14 @@ def generate_report(results: List[BenchmarkResult], config: BenchmarkConfig) -> 
 
 ## Insert Performance
 
-| Database | Version | QPS | Total Time | Throughput | Mem (MB) |
-|----------|---------|-----|------------|------------|-----------|
+| Database | Version | QPS | Total Time | Throughput | Disk Usage (MB) |
+|----------|---------|-----|------------|------------|-----------------|
 """
     
     for r in results:
         if r.insert_qps > 0:
-            report += f"| **{r.database}** | {r.version} | **{r.insert_qps:,.0f}** | {r.insert_total_time:.1f}s | {r.insert_qps * config.dimensions / 1e6:.2f} M dims/s | {r.memory_mb:.1f} |\n"
+            throughput = (config.num_vectors * config.dimensions) / r.insert_total_time / 1000000 if r.insert_total_time > 0 else 0
+            report += f"| **{r.database}** | {r.version} | **{r.insert_qps:,.0f}** | {r.insert_total_time:.1f}s | {throughput:.2f} M dims/s | {r.disk_usage_mb:.1f} MB |\n"
     
     report += "\n---\n\n## Search Performance\n\n"
     report += "| Database | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) |\n"

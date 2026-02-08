@@ -1,0 +1,4 @@
+numpy>=1.21.0
+qdrant-client>=1.7.0
+weaviate-client>=4.4.0
+pymilvus>=2.3.0

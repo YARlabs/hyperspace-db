@@ -112,20 +112,34 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             }
         })?;
 
-        // Background Tasks
-        let (index_tx, mut index_rx) = mpsc::channel(1000);
+        // Background Tasks - Increased buffer to avoid blocking on bursts
+        let (index_tx, mut index_rx) = mpsc::channel(100000);
         let idx_worker = index.clone();
         let cfg_worker = config.clone();
 
+        // Limit concurrency to available logical cores
+        let concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
+
         let indexer_handle = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
+                // Acquire permit to limit concurrent HNSW updates
+                let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx = idx_worker.clone();
                 let cfg = cfg_worker.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    let _ = idx.index_node(id, meta);
-                    cfg.dec_queue();
-                })
-                .await;
+                
+                // Spawn independent task for each vector update
+                tokio::spawn(async move {
+                    let _permit = permit; // Hold permit until task completion
+                    
+                    // CPU-intensive HNSW update in blocking thread
+                    // HNSW implementation handles internal fine-grained locking
+                    let _ = tokio::task::spawn_blocking(move || {
+                        let _ = idx.index_node(id, meta);
+                        cfg.dec_queue();
+                    })
+                    .await;
+                });
             }
         });
 
