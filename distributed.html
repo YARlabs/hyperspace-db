@@ -90,7 +90,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">5.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">6.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">7.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html" class="active"><strong aria-hidden="true">7.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">7.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">7.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">7.4.</strong> Security & Auth</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">8.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">9.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">10.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">11.</strong> Zero-Copy HNSW</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="wasm.html"><strong aria-hidden="true">5.</strong> WebAssembly (WASM)</a></li><li class="chapter-item expanded "><a href="integrations.html"><strong aria-hidden="true">6.</strong> Integrations (LangChain)</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">7.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">8.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">9.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html" class="active"><strong aria-hidden="true">9.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">9.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">9.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">9.4.</strong> Security & Auth</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">10.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">11.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">12.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">13.</strong> Zero-Copy HNSW</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -178,37 +178,64 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="-distributed-replication"><a class="header" href="#-distributed-replication">🤝 Distributed Replication</a></h1>
-<p>To scale <strong>Read Throughput</strong> and ensure <strong>High Availability</strong>, HyperspaceDB supports a Leader-Follower architecture.</p>
-<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+                        <h1 id="-federated-clustering-v12"><a class="header" href="#-federated-clustering-v12">🤝 Federated Clustering (v1.2)</a></h1>
+<p>HyperspaceDB v1.2 introduces a <strong>Federated Leader-Follower</strong> architecture. This goes beyond simple read-replication, introducing <code>Node Identity</code>, <code>Logical Clocks</code>, and <code>Topology Awareness</code> to support future Edge-Cloud synchronization scenarios.</p>
+<h2 id="concepts"><a class="header" href="#concepts">Concepts</a></h2>
+<h3 id="node-identity"><a class="header" href="#node-identity">Node Identity</a></h3>
+<p>Every node in the cluster is assigned a persistent, unique UUID (<code>node_id</code>) upon first startup. This ID is used to track the origin of write operations in the replication log.</p>
+<h3 id="roles"><a class="header" href="#roles">Roles</a></h3>
 <ul>
-<li><strong>Leader</strong>:
+<li><strong>Leader</strong> (Coordinator):
 <ul>
-<li>Accepts Writes (Insert/Delete).</li>
-<li>Accepts Reads.</li>
-<li>Streams WAL (Write-Ahead Log) entries to connected followers via gRPC streaming.</li>
+<li>Accepts Writes (<code>Insert</code>, <code>Delete</code>, <code>CreateCollection</code>).</li>
+<li>Manages the Cluster Topology.</li>
+<li>Streams WAL events to connected Followers.</li>
 </ul>
 </li>
-<li><strong>Follower</strong>:
+<li><strong>Follower</strong> (Replica):
 <ul>
-<li>Replicates state from Leader in real-time.</li>
-<li>Accepts Reads (Scaling).</li>
-<li>Rejects Writes.</li>
+<li>Read-Only.</li>
+<li>Replicates state from the Leader in real-time.</li>
+<li>Can be promoted to Leader if needed.</li>
+</ul>
+</li>
+<li><strong>Edge Node</strong> (Planned v1.4):
+<ul>
+<li>Offline-first node that accumulates writes and syncs via Merkle Trees when online.</li>
 </ul>
 </li>
 </ul>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <h3 id="leader"><a class="header" href="#leader">Leader</a></h3>
-<p>Simply start the server (default role is leader).</p>
+<p>Simply start the server. By default, it assumes the <strong>Leader</strong> role.</p>
 <pre><code class="language-bash">./hyperspace-server --port 50051
 </code></pre>
 <h3 id="follower"><a class="header" href="#follower">Follower</a></h3>
 <p>Start with <code>--role follower</code> and point to the leader's URL.</p>
 <pre><code class="language-bash">./hyperspace-server --port 50052 --role follower --leader http://127.0.0.1:50051
 </code></pre>
-<blockquote>
-<p><strong>Note</strong>: Followers store data in memory and can optionally persist snapshots. Currently, followers replicate the in-memory state.</p>
-</blockquote>
+<h2 id="monitoring-topology"><a class="header" href="#monitoring-topology">Monitoring Topology</a></h2>
+<p>You can inspect the cluster state via the HTTP API on the Dashboard port (default <code>50050</code>).</p>
+<p><strong>Request:</strong></p>
+<pre><code class="language-bash">curl http://localhost:50050/api/cluster/status
+</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  &quot;node_id&quot;: &quot;e8b37fde-6c60-427f-8a09-47103c2da80e&quot;,
+  &quot;role&quot;: &quot;Leader&quot;,
+  &quot;upstream_peer&quot;: null,
+  &quot;downstream_peers&quot;: [],
+  &quot;logical_clock&quot;: 1234
+}
+</code></pre>
+<p>This JSON response tells you:</p>
+<ul>
+<li>The node's unique ID.</li>
+<li>Its current role.</li>
+<li>Who it is following (if Follower).</li>
+<li>Who is following it (if Leader).</li>
+<li>The current logical timestamp of its database state.</li>
+</ul>
 
                     </main>
 

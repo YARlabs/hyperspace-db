@@ -90,7 +90,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="api.html" class="active"><strong aria-hidden="true">5.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">6.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">7.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">7.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">7.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">7.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">7.4.</strong> Security & Auth</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">8.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">9.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">10.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">11.</strong> Zero-Copy HNSW</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="wasm.html"><strong aria-hidden="true">5.</strong> WebAssembly (WASM)</a></li><li class="chapter-item expanded "><a href="integrations.html"><strong aria-hidden="true">6.</strong> Integrations (LangChain)</a></li><li class="chapter-item expanded "><a href="api.html" class="active"><strong aria-hidden="true">7.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">8.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">9.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">9.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">9.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">9.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">9.4.</strong> Security & Auth</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">10.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">11.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">12.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">13.</strong> Zero-Copy HNSW</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -178,44 +178,101 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="grpc-api-reference"><a class="header" href="#grpc-api-reference">gRPC API Reference</a></h1>
-<p>HyperspaceDB exposes a simple yet powerful gRPC interface defined in <code>hyperspace.proto</code>.</p>
-<h2 id="service-database"><a class="header" href="#service-database">Service: <code>Database</code></a></h2>
-<h3 id="insert"><a class="header" href="#insert"><code>Insert</code></a></h3>
-<p>Ingests a vector into the database. This is an asynchronous operation regarding the index, but synchronous regarding durability (WAL).</p>
+                        <h1 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h1>
+<p>HyperspaceDB operates on a <strong>Dual-API</strong> architecture:</p>
+<ol>
+<li><strong>gRPC (Data Plane)</strong>: High-performance ingestion and search.</li>
+<li><strong>HTTP (Control Plane)</strong>: Management, monitoring, and dashboard integration.</li>
+</ol>
+<h2 id="-grpc-api-data-plane"><a class="header" href="#-grpc-api-data-plane">📡 gRPC API (Data Plane)</a></h2>
+<p>Defined in <code>hyperspace.proto</code>. Used by SDKs (Python, Rust, Go).</p>
+<h3 id="collection-management"><a class="header" href="#collection-management">Collection Management</a></h3>
+<h4 id="createcollection"><a class="header" href="#createcollection"><code>CreateCollection</code></a></h4>
+<p>Creates a new independent vector index.</p>
+<pre><code class="language-protobuf">rpc CreateCollection (CreateCollectionRequest) returns (StatusResponse);
+
+message CreateCollectionRequest {
+  string name = 1;
+  uint32 dimension = 2; // e.g. 1536, 1024, 64
+  string metric = 3;    // &quot;l2&quot;, &quot;cosine&quot;, &quot;poincare&quot;
+}
+</code></pre>
+<h4 id="deletecollection"><a class="header" href="#deletecollection"><code>DeleteCollection</code></a></h4>
+<p>Drops a collection and all its data.</p>
+<pre><code class="language-protobuf">rpc DeleteCollection (DeleteCollectionRequest) returns (StatusResponse);
+</code></pre>
+<h3 id="vector-operations"><a class="header" href="#vector-operations">Vector Operations</a></h3>
+<h4 id="insert"><a class="header" href="#insert"><code>Insert</code></a></h4>
+<p>Ingests a vector into a specific collection.</p>
 <pre><code class="language-protobuf">rpc Insert (InsertRequest) returns (InsertResponse);
 
 message InsertRequest {
-  uint32 id = 1;             // External unique ID
-  repeated float vector = 2; // The data point (must be norm &lt; 1)
-  map&lt;string, string&gt; metadata = 3; // Tags for filtering
+  string collection = 1;      // Collection name
+  repeated double vector = 2; // Data point
+  uint32 id = 3;              // External ID
+  map&lt;string, string&gt; metadata = 4; // Metadata tags
 }
 </code></pre>
-<h3 id="search"><a class="header" href="#search"><code>Search</code></a></h3>
-<p>Finds the nearest neighbors using the Poincaré metric.</p>
+<h4 id="search"><a class="header" href="#search"><code>Search</code></a></h4>
+<p>Finds nearest neighbors.</p>
 <pre><code class="language-protobuf">rpc Search (SearchRequest) returns (SearchResponse);
 
 message SearchRequest {
-  repeated float vector = 1; // Query vector
-  uint32 top_k = 2;          // Number of results
-  map&lt;string, string&gt; filter = 3; // Optional metadata filter (AND logic)
+  string collection = 1;
+  repeated double vector = 2;
+  uint32 top_k = 3;
+  // Metadata string filter (e.g. &quot;category:book&quot;)
+  map&lt;string, string&gt; filter = 4;
+  // Complex filter object
+  repeated Filter filters = 5;
+  // Hybrid search
+  optional string hybrid_query = 6;
+  optional float hybrid_alpha = 7;
 }
 </code></pre>
-<h3 id="configure"><a class="header" href="#configure"><code>Configure</code></a></h3>
-<p>Updates runtime parameters.</p>
-<pre><code class="language-protobuf">rpc Configure (ConfigUpdate) returns (StatusResponse);
-
-message ConfigUpdate {
-  optional uint32 ef_search = 1;       // Search beam width (higher = more accurate)
-  optional uint32 ef_construction = 2; // Indexing beam width (higher = better graph)
+<hr />
+<h2 id="-http-api-control-plane"><a class="header" href="#-http-api-control-plane">🌐 HTTP API (Control Plane)</a></h2>
+<p>Served on port <code>50050</code> (default). All endpoints under <code>/api</code>.
+Authentication: <code>x-api-key</code> header required.</p>
+<h3 id="cluster-status"><a class="header" href="#cluster-status">Cluster Status</a></h3>
+<p><code>GET /api/cluster/status</code></p>
+<p>Returns the node's identity and topology role.</p>
+<pre><code class="language-json">{
+  &quot;node_id&quot;: &quot;uuid...&quot;,
+  &quot;role&quot;: &quot;Leader&quot;, // or &quot;Follower&quot;
+  &quot;upstream_peer&quot;: null,
+  &quot;downstream_peers&quot;: []
 }
+</code></pre>
+<h3 id="system-metrics"><a class="header" href="#system-metrics">System Metrics</a></h3>
+<p><code>GET /api/metrics</code></p>
+<p>Real-time system resource usage.</p>
+<pre><code class="language-json">{
+    &quot;cpu_usage_percent&quot;: 12,
+    &quot;ram_usage_mb&quot;: 512,
+    &quot;disk_usage_mb&quot;: 1024,
+    &quot;total_collections&quot;: 5,
+    &quot;total_vectors&quot;: 1000000
+}
+</code></pre>
+<h3 id="list-collections"><a class="header" href="#list-collections">List Collections</a></h3>
+<p><code>GET /api/collections</code></p>
+<p>Returns summary of all active collections.</p>
+<pre><code class="language-json">[
+  {
+    &quot;name&quot;: &quot;my_docs&quot;,
+    &quot;count&quot;: 1500,
+    &quot;dimension&quot;: 1536,
+    &quot;metric&quot;: &quot;l2&quot;
+  }
+]
 </code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="rust.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="integrations.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -229,7 +286,7 @@ message ConfigUpdate {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="rust.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="integrations.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 

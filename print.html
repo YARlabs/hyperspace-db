@@ -91,7 +91,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">5.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">6.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">7.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">7.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">7.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">7.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">7.4.</strong> Security & Auth</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">8.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">9.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">10.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">11.</strong> Zero-Copy HNSW</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="wasm.html"><strong aria-hidden="true">5.</strong> WebAssembly (WASM)</a></li><li class="chapter-item expanded "><a href="integrations.html"><strong aria-hidden="true">6.</strong> Integrations (LangChain)</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">7.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">8.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">9.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">9.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">9.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">9.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">9.4.</strong> Security & Auth</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">10.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">11.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">12.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">13.</strong> Zero-Copy HNSW</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -182,9 +182,10 @@
                         <h1 id="h-hyperspacedb"><a class="header" href="#h-hyperspacedb">[H] HyperspaceDB</a></h1>
 <p><a href="intro.html#"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Status" /></a>
 <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-<a href="intro.html#"><img src="https://img.shields.io/badge/rust-nightly-orange.svg" alt="Rust" /></a></p>
-<p><strong>Fastest Hyperbolic Vector Database written in Rust.</strong><br />
-HyperspaceDB implements the Poincaré ball model for high-precision, low-latency search in hyperbolic space—ideal for hierarchical and taxonomical data representation.</p>
+<a href="intro.html#"><img src="https://img.shields.io/badge/rust-nightly-orange.svg" alt="Rust" /></a>
+<a href="intro.html#"><img src="https://img.shields.io/badge/version-1.2.0-blue.svg" alt="Version" /></a></p>
+<p><strong>Fastest Vector Database for Hierarchical &amp; Flat Data written in Rust.</strong><br />
+HyperspaceDB natively supports both the <strong>Poincaré ball model</strong> (for hierarchies) and <strong>Euclidean space</strong> (for standard OpenAI/BGE embeddings), delivering extreme performance through specialized SIMD kernels.</p>
 <hr />
 <h2 id="-key-features"><a class="header" href="#-key-features">🚀 Key Features</a></h2>
 <ul>
@@ -193,6 +194,7 @@ HyperspaceDB implements the Poincaré ball model for high-precision, low-latency
 <li><strong>📦 8x Compression</strong>: Integrated <code>ScalarI8</code> quantization reduces memory footprint by 87% without losing accuracy.</li>
 <li><strong>🧵 Async Write Pipeline</strong>: Decoupled ingestion with a background indexing worker and WAL for 10x faster inserts.</li>
 <li><strong>🖥️ Mission Control TUI</strong>: Real-time terminal dashboard for monitoring QPS, segments, and system health.</li>
+<li><strong>🕸️ Edge Ready</strong>: WASM compilation target allows running the full DB in browser with <strong>Local-First</strong> privacy and <strong>IndexedDB</strong> persistence.</li>
 <li><strong>🛠️ Runtime Tuning</strong>: Dynamically adjust <code>ef_search</code> and <code>ef_construction</code> parameters via gRPC on-the-fly.</li>
 </ul>
 <hr />
@@ -467,37 +469,96 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 <ul>
 <li><code>embedders</code>: Enables <code>set_embedder</code>, <code>insert_document</code>, and <code>search_document</code>. Requires <code>reqwest</code> and <code>serde</code>.</li>
 </ul>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="grpc-api-reference"><a class="header" href="#grpc-api-reference">gRPC API Reference</a></h1>
-<p>HyperspaceDB exposes a simple yet powerful gRPC interface defined in <code>hyperspace.proto</code>.</p>
-<h2 id="service-database"><a class="header" href="#service-database">Service: <code>Database</code></a></h2>
-<h3 id="insert"><a class="header" href="#insert"><code>Insert</code></a></h3>
-<p>Ingests a vector into the database. This is an asynchronous operation regarding the index, but synchronous regarding durability (WAL).</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="webassembly-wasm"><a class="header" href="#webassembly-wasm">WebAssembly (WASM)</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="integrations-langchain"><a class="header" href="#integrations-langchain">Integrations (LangChain)</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h1>
+<p>HyperspaceDB operates on a <strong>Dual-API</strong> architecture:</p>
+<ol>
+<li><strong>gRPC (Data Plane)</strong>: High-performance ingestion and search.</li>
+<li><strong>HTTP (Control Plane)</strong>: Management, monitoring, and dashboard integration.</li>
+</ol>
+<h2 id="-grpc-api-data-plane"><a class="header" href="#-grpc-api-data-plane">📡 gRPC API (Data Plane)</a></h2>
+<p>Defined in <code>hyperspace.proto</code>. Used by SDKs (Python, Rust, Go).</p>
+<h3 id="collection-management"><a class="header" href="#collection-management">Collection Management</a></h3>
+<h4 id="createcollection"><a class="header" href="#createcollection"><code>CreateCollection</code></a></h4>
+<p>Creates a new independent vector index.</p>
+<pre><code class="language-protobuf">rpc CreateCollection (CreateCollectionRequest) returns (StatusResponse);
+
+message CreateCollectionRequest {
+  string name = 1;
+  uint32 dimension = 2; // e.g. 1536, 1024, 64
+  string metric = 3;    // &quot;l2&quot;, &quot;cosine&quot;, &quot;poincare&quot;
+}
+</code></pre>
+<h4 id="deletecollection"><a class="header" href="#deletecollection"><code>DeleteCollection</code></a></h4>
+<p>Drops a collection and all its data.</p>
+<pre><code class="language-protobuf">rpc DeleteCollection (DeleteCollectionRequest) returns (StatusResponse);
+</code></pre>
+<h3 id="vector-operations"><a class="header" href="#vector-operations">Vector Operations</a></h3>
+<h4 id="insert"><a class="header" href="#insert"><code>Insert</code></a></h4>
+<p>Ingests a vector into a specific collection.</p>
 <pre><code class="language-protobuf">rpc Insert (InsertRequest) returns (InsertResponse);
 
 message InsertRequest {
-  uint32 id = 1;             // External unique ID
-  repeated float vector = 2; // The data point (must be norm &lt; 1)
-  map&lt;string, string&gt; metadata = 3; // Tags for filtering
+  string collection = 1;      // Collection name
+  repeated double vector = 2; // Data point
+  uint32 id = 3;              // External ID
+  map&lt;string, string&gt; metadata = 4; // Metadata tags
 }
 </code></pre>
-<h3 id="search"><a class="header" href="#search"><code>Search</code></a></h3>
-<p>Finds the nearest neighbors using the Poincaré metric.</p>
+<h4 id="search"><a class="header" href="#search"><code>Search</code></a></h4>
+<p>Finds nearest neighbors.</p>
 <pre><code class="language-protobuf">rpc Search (SearchRequest) returns (SearchResponse);
 
 message SearchRequest {
-  repeated float vector = 1; // Query vector
-  uint32 top_k = 2;          // Number of results
-  map&lt;string, string&gt; filter = 3; // Optional metadata filter (AND logic)
+  string collection = 1;
+  repeated double vector = 2;
+  uint32 top_k = 3;
+  // Metadata string filter (e.g. &quot;category:book&quot;)
+  map&lt;string, string&gt; filter = 4;
+  // Complex filter object
+  repeated Filter filters = 5;
+  // Hybrid search
+  optional string hybrid_query = 6;
+  optional float hybrid_alpha = 7;
 }
 </code></pre>
-<h3 id="configure"><a class="header" href="#configure"><code>Configure</code></a></h3>
-<p>Updates runtime parameters.</p>
-<pre><code class="language-protobuf">rpc Configure (ConfigUpdate) returns (StatusResponse);
-
-message ConfigUpdate {
-  optional uint32 ef_search = 1;       // Search beam width (higher = more accurate)
-  optional uint32 ef_construction = 2; // Indexing beam width (higher = better graph)
+<hr />
+<h2 id="-http-api-control-plane"><a class="header" href="#-http-api-control-plane">🌐 HTTP API (Control Plane)</a></h2>
+<p>Served on port <code>50050</code> (default). All endpoints under <code>/api</code>.
+Authentication: <code>x-api-key</code> header required.</p>
+<h3 id="cluster-status"><a class="header" href="#cluster-status">Cluster Status</a></h3>
+<p><code>GET /api/cluster/status</code></p>
+<p>Returns the node's identity and topology role.</p>
+<pre><code class="language-json">{
+  &quot;node_id&quot;: &quot;uuid...&quot;,
+  &quot;role&quot;: &quot;Leader&quot;, // or &quot;Follower&quot;
+  &quot;upstream_peer&quot;: null,
+  &quot;downstream_peers&quot;: []
 }
+</code></pre>
+<h3 id="system-metrics"><a class="header" href="#system-metrics">System Metrics</a></h3>
+<p><code>GET /api/metrics</code></p>
+<p>Real-time system resource usage.</p>
+<pre><code class="language-json">{
+    &quot;cpu_usage_percent&quot;: 12,
+    &quot;ram_usage_mb&quot;: 512,
+    &quot;disk_usage_mb&quot;: 1024,
+    &quot;total_collections&quot;: 5,
+    &quot;total_vectors&quot;: 1000000
+}
+</code></pre>
+<h3 id="list-collections"><a class="header" href="#list-collections">List Collections</a></h3>
+<p><code>GET /api/collections</code></p>
+<p>Returns summary of all active collections.</p>
+<pre><code class="language-json">[
+  {
+    &quot;name&quot;: &quot;my_docs&quot;,
+    &quot;count&quot;: 1500,
+    &quot;dimension&quot;: 1536,
+    &quot;metric&quot;: &quot;l2&quot;
+  }
+]
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="user-guide"><a class="header" href="#user-guide">User Guide</a></h1>
 <h2 id="server-configuration"><a class="header" href="#server-configuration">Server Configuration</a></h2>
@@ -513,6 +574,8 @@ message ConfigUpdate {
 <tr><td style="text-align: left"><code>HS_HNSW_EF_SEARCH</code></td><td style="text-align: left"><code>10</code></td><td style="text-align: left">Search beam width (10-500)</td></tr>
 </tbody></table>
 </div>
+<h2 id="client-side-wasm"><a class="header" href="#client-side-wasm">Client-Side (WASM)</a></h2>
+<p>For in-browser usage, see the <a href="wasm.html">WASM Guide</a>.</p>
 <h2 id="tui-dashboard-mission-control"><a class="header" href="#tui-dashboard-mission-control">TUI Dashboard (Mission Control)</a></h2>
 <p>Launch the dashboard to monitor your instance:</p>
 <pre><code class="language-bash">./hyperspace-cli
@@ -532,37 +595,64 @@ message ConfigUpdate {
 <li><strong>Recovery</strong>: On restart, the system loads <code>index.snap</code> (instant mmap) and replays any entries in <code>wal.log</code> that occurred after the snapshot.</li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="advanced-features"><a class="header" href="#advanced-features">Advanced Features</a></h1>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="-distributed-replication"><a class="header" href="#-distributed-replication">🤝 Distributed Replication</a></h1>
-<p>To scale <strong>Read Throughput</strong> and ensure <strong>High Availability</strong>, HyperspaceDB supports a Leader-Follower architecture.</p>
-<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="-federated-clustering-v12"><a class="header" href="#-federated-clustering-v12">🤝 Federated Clustering (v1.2)</a></h1>
+<p>HyperspaceDB v1.2 introduces a <strong>Federated Leader-Follower</strong> architecture. This goes beyond simple read-replication, introducing <code>Node Identity</code>, <code>Logical Clocks</code>, and <code>Topology Awareness</code> to support future Edge-Cloud synchronization scenarios.</p>
+<h2 id="concepts"><a class="header" href="#concepts">Concepts</a></h2>
+<h3 id="node-identity"><a class="header" href="#node-identity">Node Identity</a></h3>
+<p>Every node in the cluster is assigned a persistent, unique UUID (<code>node_id</code>) upon first startup. This ID is used to track the origin of write operations in the replication log.</p>
+<h3 id="roles"><a class="header" href="#roles">Roles</a></h3>
 <ul>
-<li><strong>Leader</strong>:
+<li><strong>Leader</strong> (Coordinator):
 <ul>
-<li>Accepts Writes (Insert/Delete).</li>
-<li>Accepts Reads.</li>
-<li>Streams WAL (Write-Ahead Log) entries to connected followers via gRPC streaming.</li>
+<li>Accepts Writes (<code>Insert</code>, <code>Delete</code>, <code>CreateCollection</code>).</li>
+<li>Manages the Cluster Topology.</li>
+<li>Streams WAL events to connected Followers.</li>
 </ul>
 </li>
-<li><strong>Follower</strong>:
+<li><strong>Follower</strong> (Replica):
 <ul>
-<li>Replicates state from Leader in real-time.</li>
-<li>Accepts Reads (Scaling).</li>
-<li>Rejects Writes.</li>
+<li>Read-Only.</li>
+<li>Replicates state from the Leader in real-time.</li>
+<li>Can be promoted to Leader if needed.</li>
+</ul>
+</li>
+<li><strong>Edge Node</strong> (Planned v1.4):
+<ul>
+<li>Offline-first node that accumulates writes and syncs via Merkle Trees when online.</li>
 </ul>
 </li>
 </ul>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <h3 id="leader"><a class="header" href="#leader">Leader</a></h3>
-<p>Simply start the server (default role is leader).</p>
+<p>Simply start the server. By default, it assumes the <strong>Leader</strong> role.</p>
 <pre><code class="language-bash">./hyperspace-server --port 50051
 </code></pre>
 <h3 id="follower"><a class="header" href="#follower">Follower</a></h3>
 <p>Start with <code>--role follower</code> and point to the leader's URL.</p>
 <pre><code class="language-bash">./hyperspace-server --port 50052 --role follower --leader http://127.0.0.1:50051
 </code></pre>
-<blockquote>
-<p><strong>Note</strong>: Followers store data in memory and can optionally persist snapshots. Currently, followers replicate the in-memory state.</p>
-</blockquote>
+<h2 id="monitoring-topology"><a class="header" href="#monitoring-topology">Monitoring Topology</a></h2>
+<p>You can inspect the cluster state via the HTTP API on the Dashboard port (default <code>50050</code>).</p>
+<p><strong>Request:</strong></p>
+<pre><code class="language-bash">curl http://localhost:50050/api/cluster/status
+</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  &quot;node_id&quot;: &quot;e8b37fde-6c60-427f-8a09-47103c2da80e&quot;,
+  &quot;role&quot;: &quot;Leader&quot;,
+  &quot;upstream_peer&quot;: null,
+  &quot;downstream_peers&quot;: [],
+  &quot;logical_clock&quot;: 1234
+}
+</code></pre>
+<p>This JSON response tells you:</p>
+<ul>
+<li>The node's unique ID.</li>
+<li>Its current role.</li>
+<li>Who it is following (if Follower).</li>
+<li>Who is following it (if Leader).</li>
+<li>The current logical timestamp of its database state.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="-hybrid-search"><a class="header" href="#-hybrid-search">🧠 Hybrid Search</a></h1>
 <p>HyperspaceDB combines <strong>Hyperbolic Vector Search</strong> with <strong>Lexical (Keyword) Search</strong> to provide the best of both worlds.</p>
 <p>This is powered by <strong>Reciprocal Rank Fusion (RRF)</strong>, which normalizes scores from both engines and merges them.</p>
@@ -767,6 +857,14 @@ Format:</p>
 <li><code>vector</code> ([f64; N])</li>
 </ul>
 <p>It is only read during startup if the Index Snapshot is older than the last WAL entry.</p>
+<h2 id="ram-backend-wasm"><a class="header" href="#ram-backend-wasm">RAM Backend (WASM)</a></h2>
+<p>For WebAssembly deployments (<code>hyperspace-wasm</code>), the storage backend automatically switches to <code>RAMVectorStore</code>.</p>
+<ul>
+<li><strong>Structure</strong>: Uses <code>Vec&lt;Arc&lt;RwLock&lt;Vec&lt;u8&gt;&gt;&gt;&gt;</code> (Heap Memory) instead of memory-mapped files.</li>
+<li><strong>Segmentation</strong>: The same chunking logic (64k vectors) is preserved. This allows the core <code>HNSW</code> index to use the same addressing logic (<code>id &gt;&gt; 16</code>, <code>id &amp; 0xFFFF</code>) regardless of the backend.</li>
+<li><strong>Persistence</strong>: Persistence is achieved by serializing the &quot;used&quot; portion of segments into a <code>Vec&lt;u8&gt;</code> blob and storing it in the browser's <strong>IndexedDB</strong>.</li>
+<li><strong>Pre-allocation</strong>: Creating a DB instance pre-allocates the first chunk (64k * VectorSize bytes) to avoid frequent allocation calls during inserts.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="the-hyperbolic-geometry"><a class="header" href="#the-hyperbolic-geometry">The Hyperbolic Geometry</a></h1>
 <p>HyperspaceDB operates in the <strong>Poincaré Ball Model</strong> of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of &quot;space&quot; available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.</p>
 <h2 id="the-distance-formula"><a class="header" href="#the-distance-formula">The Distance Formula</a></h2>
