@@ -181,92 +181,89 @@ class VectorDBBenchmark:
         vectors = vectors / norms
         return vectors
     
-    def benchmark_hyperspace(self) -> BenchmarkResult:
-        """Benchmark HyperspaceDB"""
-        print("\n🚀 Benchmarking HyperspaceDB...")
+    def benchmark_milvus(self) -> BenchmarkResult:
+        """Benchmark Milvus"""
+        print("\n🟣 Benchmarking Milvus...")
         errors = []
         
         try:
-            client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+            connections.connect(host="localhost", port="19530")
+            collection_name = "benchmark"
+            
+            # Drop if exists
+            if utility.has_collection(collection_name):
+                utility.drop_collection(collection_name)
             
             # Create collection
-            try:
-                client.create_collection("benchmark", dimension=self.config.dimensions, metric="euclidean")
-            except Exception as e:
-                print(f"  Collection may already exist: {e}")
+            fields = [
+                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=False),
+                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.config.dimensions)
+            ]
+            schema = CollectionSchema(fields, description="Benchmark collection")
+            collection = Collection(collection_name, schema)
             
-            # Start monitoring
-            # monitor = ResourceMonitor("hyperspace-server")
-            # monitor.start()
-
             # Insert benchmark
             start = time.time()
-            hs_batch_size = 100 # Reduced due to gRPC 4MB limit
-            for i in range(0, len(self.vectors), hs_batch_size):
-                batch = self.vectors[i:i+hs_batch_size]
+            for i in range(0, len(self.vectors), self.config.batch_size):
+                batch = self.vectors[i:i+self.config.batch_size]
                 ids = list(range(i, i+len(batch)))
-                metadatas = [{"idx": str(j)} for j in ids]
+                entities = [ids, batch.tolist()]
+                collection.insert(entities)
                 
-                if i == 0:
-                     print(f"DEBUG: Starting batch insert loop. Batch size: {hs_batch_size}, Has batch_insert: {hasattr(client, 'batch_insert')}", flush=True)
-
-                if hasattr(client, 'batch_insert'):
-                    success = client.batch_insert(batch.tolist(), ids, metadatas, collection="benchmark")
-                    if not success:
-                        print(f"Batch insert failed at index {i}", flush=True)
-                else:
-                    for j, vec in enumerate(batch):
-                        client.insert(id=i+j, vector=vec.tolist(), metadata={"idx": str(i+j)}, collection="benchmark")
-                
-                if (i + hs_batch_size) % 10000 == 0:
+                if (i + self.config.batch_size) % 10000 == 0:
                     elapsed = time.time() - start
-                    qps = (i + hs_batch_size) / elapsed
-                    print(f"  Inserted {i+hs_batch_size:,} | {qps:.0f} QPS", flush=True)
+                    qps = (i + self.config.batch_size) / elapsed
+                    print(f"  Inserted {i+self.config.batch_size:,} | {qps:.0f} QPS")
             
             insert_time = time.time() - start
             insert_qps = len(self.vectors) / insert_time
-
-            # Stop monitoring
-            # avg_cpu, max_mem = monitor.stop()
-            # disk_usage = monitor.get_disk_usage("./data") # Assuming default data dir
-
+            
+            # Create index
+            print("  Creating index...")
+            index_params = {
+                "metric_type": "L2",
+                "index_type": "IVF_FLAT",
+                "params": {"nlist": 128}
+            }
+            collection.create_index("embedding", index_params)
+            collection.load()
+            
             # Search benchmark
-            query = self.vectors[0].tolist()
+            query = [self.vectors[0].tolist()]
             latencies = []
             
             print(f"  Running {self.config.search_queries} search queries...")
+            search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
             for i in range(self.config.search_queries):
                 start = time.time()
-                results = client.search(vector=query, top_k=self.config.top_k, collection="benchmark")
+                results = collection.search(query, "embedding", search_params, limit=self.config.top_k)
                 latency = (time.time() - start) * 1000
                 latencies.append(latency)
             
             latencies.sort()
-            search_p50_ms = latencies[len(latencies)//2]
-            search_p95_ms = latencies[int(len(latencies)*0.95)]
-            search_p99_ms = latencies[int(len(latencies)*0.99)]
             
             # Disk Usage
-            disk_usage = get_disk_usage_local("../data")
-            
+            disk_usage = get_docker_disk_usage("benchmarks-milvus-1", "/var/lib/milvus")
+
             # Cleanup
             try:
-                pass # client.delete_collection("benchmark")
-                print("  ✅ Cleaned up collection")
+                if utility.has_collection(collection_name):
+                    utility.drop_collection(collection_name)
+                    print("  ✅ Cleaned up collection")
             except Exception as e:
                 print(f"  ⚠️ Cleanup failed: {e}")
             
             return BenchmarkResult(
-                database="HyperspaceDB",
-                version="1.5.0",
+                database="Milvus",
+                version="latest",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
                 search_avg_ms=statistics.mean(latencies),
-                search_p50_ms=search_p50_ms,
-                search_p95_ms=search_p95_ms,
-                search_p99_ms=search_p99_ms,
-                memory_mb=0.0,  # max_mem,
-                # cpu_percent=avg_cpu,
+                search_p50_ms=latencies[len(latencies)//2],
+                search_p95_ms=latencies[int(len(latencies)*0.95)],
+                search_p99_ms=latencies[int(len(latencies)*0.99)],
+                memory_mb=0.0,
+                # cpu_percent=0.0,
                 disk_usage_mb=disk_usage,
                 errors=errors
             )
@@ -274,11 +271,11 @@ class VectorDBBenchmark:
         except Exception as e:
             errors.append(str(e))
             return BenchmarkResult(
-                database="HyperspaceDB",
-                version="1.5.0",
+                database="Milvus",
+                version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, disk_usage_mb=0, errors=errors  # cpu_percent=0, disk_usage_mb=0,
+                memory_mb=0, disk_usage_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
             )
     
     def benchmark_qdrant(self) -> BenchmarkResult:
@@ -476,89 +473,92 @@ class VectorDBBenchmark:
             if client:
                 client.close()
     
-    def benchmark_milvus(self) -> BenchmarkResult:
-        """Benchmark Milvus"""
-        print("\n🟣 Benchmarking Milvus...")
+    def benchmark_hyperspace(self) -> BenchmarkResult:
+        """Benchmark HyperspaceDB"""
+        print("\n🚀 Benchmarking HyperspaceDB...")
         errors = []
         
         try:
-            connections.connect(host="localhost", port="19530")
-            collection_name = "benchmark"
-            
-            # Drop if exists
-            if utility.has_collection(collection_name):
-                utility.drop_collection(collection_name)
+            client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
             
             # Create collection
-            fields = [
-                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=False),
-                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.config.dimensions)
-            ]
-            schema = CollectionSchema(fields, description="Benchmark collection")
-            collection = Collection(collection_name, schema)
+            try:
+                client.create_collection("benchmark", dimension=self.config.dimensions, metric="euclidean")
+            except Exception as e:
+                print(f"  Collection may already exist: {e}")
             
+            # Start monitoring
+            # monitor = ResourceMonitor("hyperspace-server")
+            # monitor.start()
+
             # Insert benchmark
             start = time.time()
-            for i in range(0, len(self.vectors), self.config.batch_size):
-                batch = self.vectors[i:i+self.config.batch_size]
+            hs_batch_size = 500 # Reduced due to gRPC 4MB limit
+            for i in range(0, len(self.vectors), hs_batch_size):
+                batch = self.vectors[i:i+hs_batch_size]
                 ids = list(range(i, i+len(batch)))
-                entities = [ids, batch.tolist()]
-                collection.insert(entities)
+                metadatas = [{"idx": str(j)} for j in ids]
                 
-                if (i + self.config.batch_size) % 10000 == 0:
+                if i == 0:
+                     print(f"DEBUG: Starting batch insert loop. Batch size: {hs_batch_size}, Has batch_insert: {hasattr(client, 'batch_insert')}", flush=True)
+
+                if hasattr(client, 'batch_insert'):
+                    success = client.batch_insert(batch.tolist(), ids, metadatas, collection="benchmark")
+                    if not success:
+                        print(f"Batch insert failed at index {i}", flush=True)
+                else:
+                    for j, vec in enumerate(batch):
+                        client.insert(id=i+j, vector=vec.tolist(), metadata={"idx": str(i+j)}, collection="benchmark")
+                
+                if (i + hs_batch_size) % 10000 == 0:
                     elapsed = time.time() - start
-                    qps = (i + self.config.batch_size) / elapsed
-                    print(f"  Inserted {i+self.config.batch_size:,} | {qps:.0f} QPS")
+                    qps = (i + hs_batch_size) / elapsed
+                    print(f"  Inserted {i+hs_batch_size:,} | {qps:.0f} QPS", flush=True)
             
             insert_time = time.time() - start
             insert_qps = len(self.vectors) / insert_time
-            
-            # Create index
-            print("  Creating index...")
-            index_params = {
-                "metric_type": "L2",
-                "index_type": "IVF_FLAT",
-                "params": {"nlist": 128}
-            }
-            collection.create_index("embedding", index_params)
-            collection.load()
-            
+
+            # Stop monitoring
+            # avg_cpu, max_mem = monitor.stop()
+            # disk_usage = monitor.get_disk_usage("./data") # Assuming default data dir
+
             # Search benchmark
-            query = [self.vectors[0].tolist()]
+            query = self.vectors[0].tolist()
             latencies = []
             
             print(f"  Running {self.config.search_queries} search queries...")
-            search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
             for i in range(self.config.search_queries):
                 start = time.time()
-                results = collection.search(query, "embedding", search_params, limit=self.config.top_k)
+                results = client.search(vector=query, top_k=self.config.top_k, collection="benchmark")
                 latency = (time.time() - start) * 1000
                 latencies.append(latency)
             
             latencies.sort()
+            search_p50_ms = latencies[len(latencies)//2]
+            search_p95_ms = latencies[int(len(latencies)*0.95)]
+            search_p99_ms = latencies[int(len(latencies)*0.99)]
             
             # Disk Usage
-            disk_usage = get_docker_disk_usage("benchmarks-milvus-1", "/var/lib/milvus")
-
+            disk_usage = get_disk_usage_local("../data")
+            
             # Cleanup
             try:
-                if utility.has_collection(collection_name):
-                    utility.drop_collection(collection_name)
-                    print("  ✅ Cleaned up collection")
+                pass # client.delete_collection("benchmark")
+                print("  ✅ Cleaned up collection")
             except Exception as e:
                 print(f"  ⚠️ Cleanup failed: {e}")
             
             return BenchmarkResult(
-                database="Milvus",
-                version="latest",
+                database="HyperspaceDB",
+                version="1.5.0",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
                 search_avg_ms=statistics.mean(latencies),
-                search_p50_ms=latencies[len(latencies)//2],
-                search_p95_ms=latencies[int(len(latencies)*0.95)],
-                search_p99_ms=latencies[int(len(latencies)*0.99)],
-                memory_mb=0.0,
-                # cpu_percent=0.0,
+                search_p50_ms=search_p50_ms,
+                search_p95_ms=search_p95_ms,
+                search_p99_ms=search_p99_ms,
+                memory_mb=0.0,  # max_mem,
+                # cpu_percent=avg_cpu,
                 disk_usage_mb=disk_usage,
                 errors=errors
             )
@@ -566,28 +566,28 @@ class VectorDBBenchmark:
         except Exception as e:
             errors.append(str(e))
             return BenchmarkResult(
-                database="Milvus",
-                version="latest",
+                database="HyperspaceDB",
+                version="1.5.0",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
-                memory_mb=0, disk_usage_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
+                memory_mb=0, disk_usage_mb=0, errors=errors  # cpu_percent=0, disk_usage_mb=0,
             )
     
     def run_all(self) -> List[BenchmarkResult]:
         """Run all benchmarks"""
         results = []
         
-        if HYPERSPACE_AVAILABLE:
-            results.append(self.benchmark_hyperspace())
-        
+        if MILVUS_AVAILABLE:
+            results.append(self.benchmark_milvus())
+
         if QDRANT_AVAILABLE:
             results.append(self.benchmark_qdrant())
         
         if WEAVIATE_AVAILABLE:
             results.append(self.benchmark_weaviate())
-        
-        if MILVUS_AVAILABLE:
-            results.append(self.benchmark_milvus())
+
+        if HYPERSPACE_AVAILABLE:
+            results.append(self.benchmark_hyperspace())
         
         return results
 
