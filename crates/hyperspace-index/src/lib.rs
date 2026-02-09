@@ -104,18 +104,56 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
     ) -> Result<Self, String> {
-        let file_content = std::fs::read(path).map_err(|e| e.to_string())?;
+        use std::time::Instant;
+        let start = Instant::now();
+        
+        println!("📂 Loading snapshot: {}", path.display());
+        
+        // 1. Memory-map the file instead of reading it all into memory
+        let file = File::open(path).map_err(|e| format!("Failed to open snapshot: {}", e))?;
+        let file_size = file.metadata().map_err(|e| e.to_string())?.len();
+        println!("   File size: {:.2} MB", file_size as f64 / 1024.0 / 1024.0);
+        
+        let mmap = unsafe { 
+            memmap2::MmapOptions::new()
+                .map(&file)
+                .map_err(|e| format!("Failed to mmap snapshot: {}", e))? 
+        };
+        let mmap_time = start.elapsed();
+        println!("   ✓ Memory-mapped in {:.3}s", mmap_time.as_secs_f64());
 
-        // Validate and deserialize
-        let archived = rkyv::check_archived_root::<SnapshotData>(&file_content)
+        // 2. Validate archived data
+        let archived = rkyv::check_archived_root::<SnapshotData>(&mmap)
             .map_err(|e| format!("Snapshot corruption: {}", e))?;
+        let validate_time = start.elapsed();
+        println!("   ✓ Validated in {:.3}s", validate_time.as_secs_f64());
 
+        // 3. Deserialize
         let deserialized: SnapshotData = archived.deserialize(&mut rkyv::Infallible).unwrap();
+        let deserialize_time = start.elapsed();
+        println!("   ✓ Deserialized in {:.3}s", deserialize_time.as_secs_f64());
 
-        // Reconstruct Graph
-        let mut nodes = Vec::with_capacity(deserialized.nodes.len());
-        for s_node in deserialized.nodes {
-            let mut layers = Vec::new();
+        // 4. Reconstruct Graph with progress
+        let total_nodes = deserialized.nodes.len();
+        let mut nodes = Vec::with_capacity(total_nodes);
+        
+        println!("   ⏳ Reconstructing HNSW graph: {} nodes...", total_nodes);
+        
+        let progress_interval = if total_nodes > 100_000 { 50_000 } else { 10_000 };
+        
+        for (i, s_node) in deserialized.nodes.into_iter().enumerate() {
+            // Progress reporting
+            if i > 0 && i % progress_interval == 0 {
+                let elapsed = start.elapsed().as_secs_f64();
+                let progress_pct = (i as f64 / total_nodes as f64) * 100.0;
+                let nodes_per_sec = i as f64 / elapsed;
+                let eta = (total_nodes - i) as f64 / nodes_per_sec;
+                println!("      Progress: {}/{} ({:.1}%) | {:.0} nodes/s | ETA: {:.1}s", 
+                    i, total_nodes, progress_pct, nodes_per_sec, eta);
+            }
+            
+            // Reconstruct node
+            let mut layers = Vec::with_capacity(s_node.layers.len());
             for s_layer in s_node.layers {
                 layers.push(RwLock::new(s_layer));
             }
@@ -127,7 +165,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // Sync storage count
         storage.set_count(nodes.len());
-        println!("Restored {} nodes from snapshot topology.", nodes.len());
+        
+        let total_time = start.elapsed();
+        println!("   ✅ Loaded {} nodes in {:.3}s ({:.0} nodes/s)", 
+            total_nodes, 
+            total_time.as_secs_f64(),
+            total_nodes as f64 / total_time.as_secs_f64());
 
         Ok(Self {
             nodes: RwLock::new(nodes),

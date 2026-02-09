@@ -1975,6 +1975,7 @@ dependencies = [
  "dashmap",
  "hyperspace-core",
  "hyperspace-store",
+ "memmap2",
  "ordered-float",
  "parking_lot",
  "rand 0.8.5",

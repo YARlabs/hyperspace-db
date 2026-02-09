@@ -14,7 +14,8 @@ rkyv = { workspace = true, features = ["validation"] }
 roaring = "0.11.3"
 dashmap = "6.1.0"
 serde = { workspace = true, features = ["derive"] }
+memmap2 = { workspace = true, optional = true }
 
 [features]
 default = ["persistence"]
-persistence = ["hyperspace-store/mmap"]
+persistence = ["hyperspace-store/mmap", "dep:memmap2"]
