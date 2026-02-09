@@ -52,9 +52,9 @@ except ImportError:
 class BenchmarkConfig:
     """Benchmark configuration"""
     dimensions: int = 1024
-    num_vectors: int = 100_000
+    num_vectors: int = 1_000_000
     batch_size: int = 1000
-    search_queries: int = 1000
+    search_queries: int = 10000
     top_k: int = 10
 
 
