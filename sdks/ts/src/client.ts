@@ -63,7 +63,7 @@ export class HyperspaceClient {
         });
     }
 
-    public search(vector: number[], topK: number, collection: string = ''): Promise<{ id: number, distance: number }[]> {
+    public search(vector: number[], topK: number, collection: string = ''): Promise<{ id: number, distance: number, metadata: { [key: string]: string } }[]> {
         return new Promise((resolve, reject) => {
             const req = new SearchRequest();
             req.setVectorList(vector);

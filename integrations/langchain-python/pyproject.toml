@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "langchain-hyperspace"
-version = "0.1.0"
+version = "1.5.0"
 description = "LangChain integration for HyperspaceDB - Hyperbolic Vector Database with Edge-Cloud Federation"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "HyperspaceDB Team", email = "team@hyperspacedb.io"}
+    {name = "YARlabs", email = "hi@yar.ink"}
 ]
 keywords = ["langchain", "vector database", "embeddings", "AI", "RAG", "hyperbolic", "edge computing"]
 classifiers = [

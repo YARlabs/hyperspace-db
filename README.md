@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v1.2.0** | **The Fastest Hyperbolic Vector Database written in Rust.**
+**v1.5.0** | **The Fastest Hyperbolic Vector Database written in Rust.**
 
 [Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks) • [License](#-license) • [Contributing](#-contributing) • [Roadmap](#-roadmap) • [DockerHub](https://hub.docker.com/r/glukhota/hyperspace-db)
 
@@ -71,12 +71,21 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
 </table>
 
 ## ⚡ 1 Million Vectors Benchmark
-
-We pushed **HyperspaceDB v1.5** to the limit with a **1 Million Vector Dataset** (1024-dim).
+ 
+We pushed **HyperspaceDB v1.5** to the limit with a **1 Million Vector Dataset**.
 The results define a new standard for performance and efficiency.
 
-### 🏆 The "Under 60 Seconds" Club
-HyperspaceDB is the **only** database capable of ingesting 1M high-dimensional vectors in under a minute on standard hardware.
+### 🏆 Hyperbolic Efficiency (Poincaré 64d)
+When using the native **Hyperbolic (Poincaré)** metric, HyperspaceDB achieves unparalleled throughput by reducing dimensionality (64d) while preserving semantic structure achievable only with 1024d in Euclidean space.
+
+| Metric | Result | vs Euclidean |
+| :--- | :--- | :--- |
+| **Throughput** | **156,587 QPS** ⚡ | **8.8x Faster** |
+| **P99 Latency** | **2.47 ms** | **3.3x Lower** |
+| **Disk Usage** | **687 MB** | **13x Smaller** |
+
+### ⚔️ Euclidean Performance (1024d)
+Even in standard Euclidean mode, HyperspaceDB outperforms competitors on standard hardware.
 
 | Database       | Total Time (1M vectors) | Speedup Factor |
 | :---           | :---                    | :---           |
@@ -84,20 +93,20 @@ HyperspaceDB is the **only** database capable of ingesting 1M high-dimensional v
 | Milvus         | 88.7s                   | 1.6x slower    |
 | Qdrant         | 629.4s (10m 29s)        | 11.1x slower   |
 | Weaviate       | 2036.3s (33m 56s)       | 36.1x slower   |
-
+ 
 ### 📉 Zero Degradation Architecture
 While other databases slow down as data grows, HyperspaceDB maintains consistent throughput.
 * **Weaviate** degraded from 738 QPS -> 491 QPS (-33%).
 * **Milvus** fluctuated between 6k and 11k QPS.
-* **HyperspaceDB** held steady at **~17,800 QPS** from start to finish.
+* **HyperspaceDB** held steady at **~156k QPS** (Hyperbolic) and **~17.8k QPS** (Euclidean).
 
 ### 💾 50% Less Disk Usage
 Store more, pay less. HyperspaceDB's 1-bit quantization and efficient storage engine require half the disk space of Milvus for the exact same dataset.
-
-* **HyperspaceDB:** 9.0 GB
+ 
+* **HyperspaceDB:** 9.0 GB (Euclidean) / 0.7 GB (Hyperbolic)
 * **Milvus:** 18.5 GB
-
-> *Benchmark Config: 1M Vectors, 1024 Dimensions, Batch Size 1000. Hardware: Apple M-Series / Linux Server equivalent.*
+ 
+> *Benchmark Config: 1M Vectors, 1024 Dimensions (Euclidean) vs 64 Dimensions (Hyperbolic), Batch Size 1000.*
 
 ---
 
@@ -504,10 +513,10 @@ Official 1st-party drivers:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | `sdks/python` | ✅ Beta |
-| 🦀 **Rust** | `crates/hyperspace-sdk` | ✅ Beta |
-| 🦕 **TypeScript** | `sdks/ts` | ✅ Beta (v1.3) |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ MVP (v1.4) |
+| 🐍 **Python** | `sdks/python` | ✅ v1.5.0 |
+| 🦀 **Rust** | `crates/hyperspace-sdk` | ✅ v1.5.0 |
+| 🦕 **TypeScript** | `sdks/ts` | ✅ v1.5.0 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v1.5.0 |
 | 🐹 **Go** | `sdks/go` | 🚧 Planned |
 
 ---

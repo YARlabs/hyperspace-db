@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-09
+
+### Added
+*   **Hyperbolic Efficiency**: Optimized Poincaré ball model implementation for 64d vectors, achieving 2.47ms p99 latency with significant storage savings (64d vs 1024d is 16x compression).
+*   **Benchmarks**: Added comprehensive benchmarking suite comparisons against Milvus, Qdrant, and Weaviate.
+    *   `run_benchmark_hyperbolic.py`: Specific script for demonstrating Hyperbolic vs Euclidean efficiency.
+    *   `BENCHMARK_RESULTS.md` and `HYPERBOLIC_BENCHMARK_RESULTS.md`: Official performance reports.
+
+### Performance
+*   **Instant Startup**: Implemented `mmap` (memory-mapped file I/O) for snapshot loading.
+    *   Replaces synchronous read-all-at-once approach.
+    *   Added visual progress bar for graph reconstruction.
+    *   Significantly reduced memory pressure during startup.
+*   **High-Throughput Ingestion**: Replaced bounded channels with **Unbounded Channels** in the ingestion pipeline.
+    *   Eliminated backpressure bottlenecks that caused performance degradation after 100k vectors.
+    *   Ingestion stability improved to consistent ~156k QPS for 64d vectors.
+*   **Zero-Copy Deserialization**: Enhanced `rkyv` usage with `mmap` for true zero-copy snapshot restoration.
+
+### Fixed
+*   **Panic in Search**: Resolved `Index out of bounds` panic in `search_layer` caused by empty layers in edge cases.
+*   **WASM Compatibility**: Fixed missing `export` and `from_bytes` methods in `hyperspace-wasm` when using `mmap` feature.
+*   **Benchmark Script**: Fixed API key authentication issues and Weaviate deprecation warnings in benchmark scripts.
+
 ## [1.4.0] - 2026-02-05
 
 ### Added

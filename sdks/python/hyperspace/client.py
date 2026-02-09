@@ -142,7 +142,7 @@ class HyperspaceClient:
         try:
             resp = self.stub.Search(req, metadata=self.metadata)
             return [
-                {"id": r.id, "distance": r.distance}
+                {"id": r.id, "distance": r.distance, "metadata": dict(r.metadata)}
                 for r in resp.results
             ]
         except grpc.RpcError as e:

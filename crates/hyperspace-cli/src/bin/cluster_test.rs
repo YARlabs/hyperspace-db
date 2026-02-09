@@ -54,6 +54,7 @@ impl Node {
 
 impl Drop for Node {
     fn drop(&mut self) {
+        println!("💀 Stopping {} node (GRPC: {}, HTTP: {})", self.role, self.grpc_port, self.http_port);
         let _ = self.process.kill();
     }
 }
@@ -79,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Start Followers
     #[allow(unused)]
     let f1 = Node::spawn(50052, 50060, "follower", Some("http://0.0.0.0:50051"));
-    let mut f2 = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"));
+    let f2 = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"));
     println!("✅ Followers started");
     thread::sleep(Duration::from_secs(3));
 
@@ -143,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("♻️  Restarting Follower 2...");
-    f2 = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"));
+    let _f2_reborn = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"));
     thread::sleep(Duration::from_secs(5)); // Give time to sync (currently full stream sync on connect)
 
     let mut c2: Client = Client::connect(

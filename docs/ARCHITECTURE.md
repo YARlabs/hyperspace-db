@@ -288,8 +288,10 @@ graph LR
 
 | Operation | Latency | Throughput | Notes |
 |-----------|---------|------------|-------|
-| **Insert** | 110 μs | 9,087 QPS | Async WAL + Background indexing |
-| **Search (1M)** | 0.18 ms (p99) | 14,600 QPS | SIMD distance + HNSW |
+| **Insert (Hyp)** | 6.4 μs | 156,587 QPS | Unbounded Channel + mmap |
+| **Search (Hyp)** | 2.47 ms (p99) | 165,000 QPS | Poincaré 64d + SIMD |
+| **Search (Euc)** | 16.12 ms (p99) | 17,800 QPS | Euclidean 1024d |
+| **Startup** | < 1s | - | Immediate (mmap) |
 | **Snapshot** | 500 ms | - | Background task, non-blocking |
 | **Merkle Sync** | 11s (1% delta) | - | Bucket-level granularity |
 | **WASM Load** | 50 ms | - | IndexedDB deserialization |

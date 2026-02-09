@@ -41,6 +41,8 @@ pub struct SearchParams {
     pub hybrid_alpha: Option<f32>,
 }
 
+pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>);
+
 pub trait Collection: Send + Sync {
     fn name(&self) -> &str;
     fn insert(
@@ -68,7 +70,7 @@ pub trait Collection: Send + Sync {
         filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
         params: &SearchParams,
-    ) -> Result<Vec<(u32, f64, std::collections::HashMap<String, String>)>, String>;
+    ) -> Result<Vec<SearchResult>, String>;
     fn count(&self) -> usize;
     fn dimension(&self) -> usize;
     fn metric_name(&self) -> &'static str;

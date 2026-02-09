@@ -14,7 +14,7 @@ Only the latest major version is currently supported with security updates.
 We take security seriously. If you discover a vulnerability in HyperspaceDB, please do not disclose it publicly.
 
 **Please report vulnerabilities directly via email to:**
-`sglukhota@gmail.com`
+`hi@yar.ink`
 
 We will acknowledge your report within 48 hours and provide an estimated timeframe for a fix.
 
