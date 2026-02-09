@@ -14,7 +14,7 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     node_id: String,
     index: Arc<HnswIndex<N, M>>,
     wal: Arc<Mutex<Wal>>,
-    index_tx: mpsc::Sender<(u32, HashMap<String, String>)>,
+    index_tx: mpsc::UnboundedSender<(u32, HashMap<String, String>)>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     config: Arc<GlobalConfig>,
     _tasks: Vec<JoinHandle<()>>,
@@ -112,8 +112,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             }
         })?;
 
-        // Background Tasks - Increased buffer to avoid blocking on bursts
-        let (index_tx, mut index_rx) = mpsc::channel(100000);
+        // Background Tasks - Unbounded channel for maximum throughput
+        let (index_tx, mut index_rx) = mpsc::unbounded_channel();
         let idx_worker = index.clone();
         let cfg_worker = config.clone();
 
@@ -255,11 +255,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let _ = wal.append(internal_id, vector, &metadata);
         }
 
-        // 3. Index Queue
+        // 3. Index Queue (unbounded send never blocks)
         self.config.inc_queue();
-        let _ = tokio::task::block_in_place(|| {
-            self.index_tx.blocking_send((internal_id, metadata.clone()))
-        });
+        let _ = self.index_tx.send((internal_id, metadata.clone()));
         // Note: blocking_send inside async function? Collection trait is sync methods?
         // Collection trait definition has: fn insert(...) -> Result
         // It is NOT async. This works for gRPC `insert` which is async but calls this?
@@ -371,11 +369,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
              self.config.inc_queue();
         }
 
-        let _ = tokio::task::block_in_place(|| {
-            for (id, _, meta) in &internal_data {
-                let _ = self.index_tx.blocking_send((*id, meta.clone()));
-            }
-        });
+        // Queue for indexing (unbounded send never blocks)
+        for (id, _, meta) in &internal_data {
+            let _ = self.index_tx.send((*id, meta.clone()));
+        }
         
         // 5. Replication
         if self.replication_tx.receiver_count() > 0 {

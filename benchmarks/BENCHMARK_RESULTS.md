@@ -1,6 +1,6 @@
 # Vector Database Benchmark Results
 
-**Date**: 2026-02-09 11:39:05  
+**Date**: 2026-02-09 14:18:21  
 **Configuration**:
 - Vectors: 1,000,000
 - Dimensions: 1024
@@ -14,10 +14,10 @@
 
 | Database | Version | QPS | Total Time | Throughput | Disk Usage (MB) |
 |----------|---------|-----|------------|------------|-----------------|
-| **Milvus** | latest | **17,220** | 58.1s | 17.63 M dims/s | 14632.0 MB |
-| **Qdrant** | latest | **1,712** | 584.2s | 1.75 M dims/s | 4187.0 MB |
-| **Weaviate** | latest | **486** | 2055.9s | 0.50 M dims/s | 5041.0 MB |
-| **HyperspaceDB** | 1.5.0 | **803** | 1244.8s | 0.82 M dims/s | 9128.2 MB |
+| **Milvus** | latest | **11,269** | 88.7s | 11.54 M dims/s | 18561.0 MB |
+| **Qdrant** | latest | **1,589** | 629.4s | 1.63 M dims/s | 4187.0 MB |
+| **Weaviate** | latest | **491** | 2036.3s | 0.50 M dims/s | 5057.0 MB |
+| **HyperspaceDB** | 1.5.0 | **17,721** | 56.4s | 18.15 M dims/s | 9003.3 MB |
 
 ---
 
@@ -25,28 +25,28 @@
 
 | Database | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) |
 |----------|----------|----------|----------|----------|
-| **Milvus** | 7.10 | 6.94 | 10.64 | 15.15 |
-| **Qdrant** | 8.36 | 8.08 | 11.76 | 14.75 |
-| **Weaviate** | 3.72 | 3.63 | 4.50 | 5.45 |
-| **HyperspaceDB** | 1.97 | 1.44 | 4.91 | 7.69 |
+| **Milvus** | 6.69 | 6.13 | 9.44 | 16.12 |
+| **Qdrant** | 8.00 | 7.65 | 11.18 | 14.84 |
+| **Weaviate** | 6.73 | 6.51 | 8.15 | 9.04 |
+| **HyperspaceDB** | 2.10 | 1.53 | 5.29 | 8.22 |
 
 ---
 
 ## Performance Comparison
 
-### Insert Throughput Winner: 🏆 **Milvus**
-- **17,220 QPS**
+### Insert Throughput Winner: 🏆 **HyperspaceDB**
+- **17,721 QPS**
 
-- 10.06x faster than Qdrant
-- 35.40x faster than Weaviate
-- 21.43x faster than HyperspaceDB
+- 1.57x faster than Milvus
+- 11.15x faster than Qdrant
+- 36.08x faster than Weaviate
 
-### Search Latency Winner: 🏆 **Weaviate**
-- **5.45 ms** (p99)
+### Search Latency Winner: 🏆 **HyperspaceDB**
+- **8.22 ms** (p99)
 
-- 2.78x faster than Milvus
-- 2.71x faster than Qdrant
-- 1.41x faster than HyperspaceDB
+- 1.96x faster than Milvus
+- 1.81x faster than Qdrant
+- 1.10x faster than Weaviate
 
 ---
 
@@ -57,25 +57,25 @@
   {
     "database": "Milvus",
     "version": "latest",
-    "insert_qps": 17219.92950456697,
-    "insert_total_time": 58.07224702835083,
-    "search_avg_ms": 7.102082443237305,
-    "search_p50_ms": 6.9427490234375,
-    "search_p95_ms": 10.637044906616211,
-    "search_p99_ms": 15.151023864746094,
+    "insert_qps": 11268.587748547208,
+    "insert_total_time": 88.74226498603821,
+    "search_avg_ms": 6.693858790397644,
+    "search_p50_ms": 6.128072738647461,
+    "search_p95_ms": 9.435892105102539,
+    "search_p99_ms": 16.115188598632812,
     "memory_mb": 0.0,
-    "disk_usage_mb": 14632.0,
+    "disk_usage_mb": 18561.0,
     "errors": []
   },
   {
     "database": "Qdrant",
     "version": "latest",
-    "insert_qps": 1711.7688753331988,
-    "insert_total_time": 584.1910169124603,
-    "search_avg_ms": 8.36308195590973,
-    "search_p50_ms": 8.079051971435547,
-    "search_p95_ms": 11.757135391235352,
-    "search_p99_ms": 14.747858047485352,
+    "insert_qps": 1588.7940021511226,
+    "insert_total_time": 629.4082169532776,
+    "search_avg_ms": 7.996809124946594,
+    "search_p50_ms": 7.646083831787109,
+    "search_p95_ms": 11.17706298828125,
+    "search_p99_ms": 14.842748641967773,
     "memory_mb": 0.0,
     "disk_usage_mb": 4187.0,
     "errors": []
@@ -83,27 +83,27 @@
   {
     "database": "Weaviate",
     "version": "latest",
-    "insert_qps": 486.413177124161,
-    "insert_total_time": 2055.8653569221497,
-    "search_avg_ms": 3.718737483024597,
-    "search_p50_ms": 3.629922866821289,
-    "search_p95_ms": 4.497289657592773,
-    "search_p99_ms": 5.45191764831543,
+    "insert_qps": 491.0907904857622,
+    "insert_total_time": 2036.2833499908447,
+    "search_avg_ms": 6.728544020652771,
+    "search_p50_ms": 6.510019302368164,
+    "search_p95_ms": 8.146047592163086,
+    "search_p99_ms": 9.042978286743164,
     "memory_mb": 0.0,
-    "disk_usage_mb": 5041.0,
+    "disk_usage_mb": 5057.0,
     "errors": []
   },
   {
     "database": "HyperspaceDB",
     "version": "1.5.0",
-    "insert_qps": 803.3604878668461,
-    "insert_total_time": 1244.7712018489838,
-    "search_avg_ms": 1.9650747299194335,
-    "search_p50_ms": 1.4429092407226562,
-    "search_p95_ms": 4.911899566650391,
-    "search_p99_ms": 7.688999176025391,
+    "insert_qps": 17720.97928768356,
+    "insert_total_time": 56.43028998374939,
+    "search_avg_ms": 2.1044078350067137,
+    "search_p50_ms": 1.52587890625,
+    "search_p95_ms": 5.292654037475586,
+    "search_p99_ms": 8.215904235839844,
     "memory_mb": 0.0,
-    "disk_usage_mb": 9128.15635585785,
+    "disk_usage_mb": 9003.308634757996,
     "errors": []
   }
 ]
