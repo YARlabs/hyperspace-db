@@ -1,5 +1,5 @@
 # === Stage 1: UI Builder ===
-FROM node:slim as ui-builder
+FROM node:slim AS ui-builder
 WORKDIR /app/dashboard
 COPY dashboard/package*.json ./
 RUN npm install
@@ -7,7 +7,7 @@ COPY dashboard/ .
 RUN npm run build
 
 # === Stage 2: Rust Builder ===
-FROM rustlang/rust:nightly as builder
+FROM rustlang/rust:nightly AS builder
 
 # Install protobuf compiler
 RUN apt-get update && apt-get install -y protobuf-compiler cmake
