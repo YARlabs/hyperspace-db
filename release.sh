@@ -43,6 +43,8 @@ if docker buildx version >/dev/null 2>&1; then
     docker buildx build --platform linux/amd64,linux/arm64 \
         -t glukhota/hyperspace-db:latest \
         -t glukhota/hyperspace-db:$VERSION \
+        -t ghcr.io/yarlabs/hyperspace-db:latest \
+        -t ghcr.io/yarlabs/hyperspace-db:$VERSION \
         --push .
 else
     echo "❌ docker buildx not found. Cannot push multi-arch."
