@@ -194,4 +194,88 @@ impl VectorStore {
     pub fn set_count(&self, c: usize) {
         self.count.store(c, Ordering::Relaxed);
     }
+
+    /// Serializes only the used portion of the storage to a byte vector.
+    /// This is primarily for WASM/serialization use cases.
+    pub fn export(&self) -> Vec<u8> {
+        let count = self.count.load(Ordering::Relaxed);
+        let total_bytes = count * self.element_size;
+        let mut result = Vec::with_capacity(total_bytes);
+
+        let segs = self.segments.read();
+        let mut bytes_read = 0;
+
+        for segment in segs.iter() {
+            let data_guard = segment.mmap.read();
+            let remaining = total_bytes - bytes_read;
+            if remaining == 0 {
+                break;
+            }
+            
+            let chunk_data_size = self.element_size * CHUNK_SIZE;
+            let to_copy = std::cmp::min(remaining, chunk_data_size);
+            
+            unsafe {
+                let ptr = data_guard.as_ptr();
+                let slice = std::slice::from_raw_parts(ptr, to_copy);
+                result.extend_from_slice(slice);
+            }
+            bytes_read += to_copy;
+        }
+
+        result
+    }
+
+    /// Reconstructs the store from bytes.
+    /// This is primarily for WASM/deserialization use cases.
+    /// Note: For mmap implementation, this creates temporary files.
+    pub fn from_bytes(path: &Path, element_size: usize, data: &[u8]) -> Self {
+        let store = Self::new(path, element_size);
+        
+        // Calculate count derived from data length
+        let count = data.len() / element_size;
+        store.set_count(count);
+
+        // Fill segments by writing data
+        let mut offset = 0;
+        let mut segment_idx = 0;
+
+        while offset < data.len() {
+            let segs = store.segments.read();
+            
+            if segment_idx >= segs.len() {
+                drop(segs);
+                // Need to grow - create new segment
+                let mut w_segs = store.segments.write();
+                if segment_idx >= w_segs.len() {
+                    let new_chunk_id = w_segs.len();
+                    let seg_path = store.base_path.join(format!("chunk_{}.hyp", new_chunk_id));
+                    match Self::create_segment(&seg_path, element_size) {
+                        Ok(seg) => {
+                            w_segs.push(Arc::new(seg));
+                        }
+                        Err(e) => panic!("Failed to grow storage during from_bytes: {}", e),
+                    }
+                }
+                continue;
+            }
+            
+            let segment = &segs[segment_idx];
+            let mut mmap_guard = segment.mmap.write();
+            
+            let seg_capacity = element_size * CHUNK_SIZE;
+            let remaining_data = data.len() - offset;
+            let to_copy = std::cmp::min(remaining_data, seg_capacity);
+            
+            unsafe {
+                let ptr = mmap_guard.as_mut_ptr();
+                std::ptr::copy_nonoverlapping(data[offset..].as_ptr(), ptr, to_copy);
+            }
+            
+            offset += to_copy;
+            segment_idx += 1;
+        }
+        
+        store
+    }
 }

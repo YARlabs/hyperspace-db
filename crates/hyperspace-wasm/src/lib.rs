@@ -119,7 +119,7 @@ impl HyperspaceDB {
 
         // 1. Export Storage (Bytes)
         let vector_store = self.index.get_storage();
-        let store_bytes = vector_store.export();
+        let store_bytes = vector_store.as_ref().export();
         let store_js = serde_wasm_bindgen::to_value(&store_bytes)?;
         store_os.put(&store_js, Some(&JsValue::from_str("vectors"))).await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
