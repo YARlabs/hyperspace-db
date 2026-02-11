@@ -14,6 +14,7 @@
 - [Integrations (LangChain)](integrations.md)
 - [gRPC API](api.md)
 - [Server Configuration](usage.md)
+- [Embedding Service](embeddings.md)
 - [Advanced Features](features.md)
     - [Distributed Replication](distributed.md)
     - [Hybrid Search](hybrid.md)

@@ -54,7 +54,10 @@ impl Node {
 
 impl Drop for Node {
     fn drop(&mut self) {
-        println!("💀 Stopping {} node (GRPC: {}, HTTP: {})", self.role, self.grpc_port, self.http_port);
+        println!(
+            "💀 Stopping {} node (GRPC: {}, HTTP: {})",
+            self.role, self.grpc_port, self.http_port
+        );
         let _ = self.process.kill();
     }
 }

@@ -11,6 +11,8 @@ service Database {
   // Insert vectors
   rpc Insert (InsertRequest) returns (InsertResponse);
   rpc BatchInsert (BatchInsertRequest) returns (InsertResponse);
+  rpc InsertText (InsertTextRequest) returns (InsertResponse);
+
   // Delete vectors
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   // Search (ANN)
@@ -101,6 +103,14 @@ message BatchInsertRequest {
   string origin_node_id = 3;
   uint64 logical_clock = 4;
 }
+
+message InsertTextRequest {
+  string collection = 1;
+  uint32 id = 2;
+  string text = 3;
+  map<string, string> metadata = 4;
+}
+
 
 message InsertResponse {
   bool success = 1;

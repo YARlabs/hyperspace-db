@@ -16,10 +16,10 @@ use tokio::time::sleep;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧪 Running HyperspaceDB Integration Tests\n");
-    
+
     let mut passed = 0;
     let mut failed = 0;
-    
+
     // Test 1: Basic Operations
     print!("Test 1: Basic Operations... ");
     match test_basic_operations().await {
@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             failed += 1;
         }
     }
-    
+
     // Test 2: Leader-Follower Sync
     print!("Test 2: Leader-Follower Sync... ");
     match test_leader_follower_sync().await {
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             failed += 1;
         }
     }
-    
+
     // Test 3: Merkle Tree Consistency
     print!("Test 3: Merkle Tree Consistency... ");
     match test_merkle_tree_consistency().await {
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             failed += 1;
         }
     }
-    
+
     // Test 4: High Volume Inserts
     print!("Test 4: High Volume Inserts... ");
     match test_high_volume_inserts().await {
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             failed += 1;
         }
     }
-    
+
     // Test 5: Concurrent Inserts
     print!("Test 5: Concurrent Inserts... ");
     match test_concurrent_inserts().await {
@@ -84,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             failed += 1;
         }
     }
-    
+
     // Test 6: Collection Lifecycle
     print!("Test 6: Collection Lifecycle... ");
     match test_collection_lifecycle().await {
@@ -97,16 +97,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             failed += 1;
         }
     }
-    
+
     println!("\n📊 Test Results:");
     println!("   ✅ Passed: {}", passed);
     println!("   ❌ Failed: {}", failed);
     println!("   📈 Total:  {}", passed + failed);
-    
+
     if failed > 0 {
         std::process::exit(1);
     }
-    
+
     Ok(())
 }
 
@@ -263,7 +263,10 @@ async fn test_merkle_tree_consistency() -> Result<(), Box<dyn std::error::Error>
 
     let digest3 = client.get_digest(Some(collection.clone())).await?;
     // ✅ UPSERT WORKING! Same ID updates existing vector, count stays 1
-    assert_eq!(digest3.count, 1, "Should have 1 vector (upsert updates existing)");
+    assert_eq!(
+        digest3.count, 1,
+        "Should have 1 vector (upsert updates existing)"
+    );
 
     Ok(())
 }
@@ -300,7 +303,10 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
     let duration = start.elapsed();
     let qps = count as f64 / duration.as_secs_f64();
 
-    println!("Inserted {} vectors in {:?} ({:.0} QPS)", count, duration, qps);
+    println!(
+        "Inserted {} vectors in {:?} ({:.0} QPS)",
+        count, duration, qps
+    );
 
     // Verify count
     let digest = client.get_digest(Some(collection.clone())).await?;

@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-VERSION="1.5.0"
+VERSION="1.6.0"
+
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 ARCHIVE_NAME="hyperspace-db-v$VERSION-$OS-$ARCH.tar.gz"

@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v1.5.0** | **The Fastest Hyperbolic Vector Database written in Rust.**
+**v1.6.0** | **The Fastest Hyperbolic Vector Database written in Rust.**
 
 [Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks) • [License](#-license) • [Contributing](#-contributing) • [Roadmap](#-roadmap) • [DockerHub](https://hub.docker.com/r/glukhota/hyperspace-db)
 
@@ -513,10 +513,10 @@ Official 1st-party drivers:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | `sdks/python` | ✅ v1.5.0 |
-| 🦀 **Rust** | `crates/hyperspace-sdk` | ✅ v1.5.0 |
-| 🦕 **TypeScript** | `sdks/ts` | ✅ v1.5.0 |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v1.5.0 |
+| 🐍 **Python** | `sdks/python` | ✅ v1.6.0 |
+| 🦀 **Rust** | `crates/hyperspace-sdk` | ✅ v1.6.0 |
+| 🦕 **TypeScript** | `sdks/ts` | ✅ v1.6.0 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v1.6.0 |
 | 🐹 **Go** | `sdks/go` | 🚧 Planned |
 
 ---

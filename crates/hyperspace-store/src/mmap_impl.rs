@@ -211,10 +211,10 @@ impl VectorStore {
             if remaining == 0 {
                 break;
             }
-            
+
             let chunk_data_size = self.element_size * CHUNK_SIZE;
             let to_copy = std::cmp::min(remaining, chunk_data_size);
-            
+
             unsafe {
                 let ptr = data_guard.as_ptr();
                 let slice = std::slice::from_raw_parts(ptr, to_copy);
@@ -231,7 +231,7 @@ impl VectorStore {
     /// Note: For mmap implementation, this creates temporary files.
     pub fn from_bytes(path: &Path, element_size: usize, data: &[u8]) -> Self {
         let store = Self::new(path, element_size);
-        
+
         // Calculate count derived from data length
         let count = data.len() / element_size;
         store.set_count(count);
@@ -242,7 +242,7 @@ impl VectorStore {
 
         while offset < data.len() {
             let segs = store.segments.read();
-            
+
             if segment_idx >= segs.len() {
                 drop(segs);
                 // Need to grow - create new segment
@@ -259,23 +259,23 @@ impl VectorStore {
                 }
                 continue;
             }
-            
+
             let segment = &segs[segment_idx];
             let mut mmap_guard = segment.mmap.write();
-            
+
             let seg_capacity = element_size * CHUNK_SIZE;
             let remaining_data = data.len() - offset;
             let to_copy = std::cmp::min(remaining_data, seg_capacity);
-            
+
             unsafe {
                 let ptr = mmap_guard.as_mut_ptr();
                 std::ptr::copy_nonoverlapping(data[offset..].as_ptr(), ptr, to_copy);
             }
-            
+
             offset += to_copy;
             segment_idx += 1;
         }
-        
+
         store
     }
 }

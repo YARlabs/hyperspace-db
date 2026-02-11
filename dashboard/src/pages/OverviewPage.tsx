@@ -55,6 +55,13 @@ export function OverviewPage() {
                             <ConfigRow label="Metric Space" value={status?.config?.metric === 'l2' ? 'Euclidean (L2)' : 'Hyperbolic (Poincaré)'} />
                             <ConfigRow label="Quantization" value={status?.config?.quantization || "Scalar I8"} />
                             <ConfigRow label="Uptime" value={status?.uptime} />
+                            <ConfigRow label="Embedding" value={status?.embedding?.enabled ? "Enabled" : "Disabled"} />
+                            {status?.embedding?.enabled && (
+                                <>
+                                    <ConfigRow label="Provider" value={status?.embedding?.provider} />
+                                    <ConfigRow label="Model" value={status?.embedding?.model} />
+                                </>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

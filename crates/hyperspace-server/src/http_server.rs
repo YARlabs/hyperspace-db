@@ -52,9 +52,18 @@ async fn validate_api_key(
     }
 }
 
+#[derive(Clone, serde::Serialize)]
+pub struct EmbeddingInfo {
+    pub enabled: bool,
+    pub provider: String,
+    pub model: String,
+    pub dimension: usize,
+}
+
 pub async fn start_http_server(
     manager: Arc<CollectionManager>,
     port: u16,
+    embedding_info: Option<EmbeddingInfo>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Get API key hash if set
     let api_key_hash = std::env::var("HYPERSPACE_API_KEY").ok().map(|key| {
@@ -64,6 +73,7 @@ pub async fn start_http_server(
     });
 
     let start_time = Arc::new(Instant::now());
+    let embedding_state = Arc::new(embedding_info);
 
     let app = Router::new()
         .route(
@@ -85,7 +95,7 @@ pub async fn start_http_server(
         ))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
-        .with_state((manager, start_time));
+        .with_state((manager, start_time, embedding_state));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     println!("HTTP Dashboard listening on http://{}", addr);
@@ -155,14 +165,14 @@ struct CollectionSummary {
 }
 
 async fn get_cluster_status(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
 ) -> Json<crate::manager::ClusterState> {
     let state = manager.cluster_state.read().await;
     Json(state.clone())
 }
 
 async fn list_collections(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
 ) -> Json<Vec<CollectionSummary>> {
     let names = manager.list();
     let mut summaries = Vec::new();
@@ -187,7 +197,7 @@ struct CreateReq {
 }
 
 async fn create_collection(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Json(payload): Json<CreateReq>,
 ) -> impl IntoResponse {
     match manager
@@ -200,7 +210,7 @@ async fn create_collection(
 }
 
 async fn delete_collection(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     match manager.delete_collection(&name) {
@@ -217,7 +227,7 @@ struct StatsRes {
 }
 
 async fn get_stats(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     if let Some(col) = manager.get(&name) {
@@ -233,7 +243,7 @@ async fn get_stats(
 }
 
 async fn get_collection_digest(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     if let Some(col) = manager.get(&name) {
@@ -247,7 +257,7 @@ async fn get_collection_digest(
 }
 
 async fn get_status(
-    State((_, start_time)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((_, start_time, embedding)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
 ) -> Json<serde_json::Value> {
     let dim = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
     let metric = std::env::var("HS_METRIC").unwrap_or("l2".to_string());
@@ -263,18 +273,19 @@ async fn get_status(
 
     Json(serde_json::json!({
         "status": "ONLINE",
-        "version": "1.2.0",
+        "version": "1.6.0",
         "uptime": uptime_str,
         "config": {
             "dimension": dim,
             "metric": metric,
             "quantization": "ScalarI8"
-        }
+        },
+        "embedding": embedding.as_ref()
     }))
 }
 
 async fn get_metrics(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
 ) -> Json<serde_json::Value> {
     let cols = manager.list();
     let mut total_vecs = 0;
@@ -334,7 +345,7 @@ struct PeekParams {
 }
 
 async fn peek_collection(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
     Query(params): Query<PeekParams>,
 ) -> impl IntoResponse {
@@ -354,7 +365,7 @@ struct SearchReq {
 }
 
 async fn search_collection(
-    State((manager, _)): State<(Arc<CollectionManager>, Arc<Instant>)>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
     Json(payload): Json<SearchReq>,
 ) -> impl IntoResponse {

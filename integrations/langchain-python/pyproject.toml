@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "langchain-hyperspace"
-version = "1.5.0"
+version = "1.6.0"
 description = "LangChain integration for HyperspaceDB - Hyperbolic Vector Database with Edge-Cloud Federation"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -39,7 +39,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "black>=23.0.0",
-    "mypy>=1.5.0",
+    "mypy>=1.6.0",
     "ruff>=0.1.0",
     "grpcio-tools>=1.60.0",
 ]

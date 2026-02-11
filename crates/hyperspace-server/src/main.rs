@@ -8,14 +8,17 @@ mod manager;
 mod sync;
 use manager::CollectionManager;
 
+#[cfg(feature = "embed")]
+use hyperspace_embed::{ApiProvider, Metric, OnnxVectorizer, RemoteVectorizer, Vectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
-    CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest,
-    DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest, DigestResponse,
-    InsertRequest, InsertResponse, BatchInsertRequest, ListCollectionsResponse, MonitorRequest, SearchRequest,
-    SearchResponse, SearchResult, SystemStats,
+    BatchInsertRequest, CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate,
+    CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest,
+    DigestResponse, InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse,
+    MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats,
 };
 use hyperspace_proto::hyperspace::{Empty, ReplicationLog};
+
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -83,7 +86,9 @@ struct ClientAuthInterceptor {
 
 impl Interceptor for ClientAuthInterceptor {
     fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
-        let token = self.api_key.parse()
+        let token = self
+            .api_key
+            .parse()
             .map_err(|_| Status::invalid_argument("Invalid API Key format"))?;
         request.metadata_mut().insert("x-api-key", token);
         Ok(request)
@@ -94,6 +99,8 @@ pub struct HyperspaceService {
     manager: Arc<CollectionManager>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     role: String,
+    #[cfg(feature = "embed")]
+    vectorizer: Option<Arc<dyn Vectorizer>>,
 }
 
 #[tonic::async_trait]
@@ -221,20 +228,77 @@ impl Database for HyperspaceService {
 
         if let Some(col) = self.manager.get(&col_name) {
             // Convert protos to internal types
-            let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req.vectors.into_iter().map(|v| {
-                (v.vector, v.id, v.metadata.into_iter().collect())
-            }).collect();
+            let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req
+                .vectors
+                .into_iter()
+                .map(|v| (v.vector, v.id, v.metadata.into_iter().collect()))
+                .collect();
 
             // Tick clock
             let clock = self.manager.tick_cluster_clock().await;
 
             if let Err(e) = col.insert_batch(vectors, clock) {
-                 return Err(Status::internal(e));
+                return Err(Status::internal(e));
             }
             Ok(Response::new(InsertResponse { success: true }))
         } else {
-             Err(Status::not_found(format!("Collection '{}' not found", col_name)))
+            Err(Status::not_found(format!(
+                "Collection '{}' not found",
+                col_name
+            )))
         }
+    }
+
+    async fn insert_text(
+        &self,
+        request: Request<InsertTextRequest>,
+    ) -> Result<Response<InsertResponse>, Status> {
+        #[cfg(feature = "embed")]
+        {
+            if self.role == "follower" {
+                return Err(Status::permission_denied("Followers are read-only"));
+            }
+            let req = request.into_inner();
+
+            if let Some(vectorizer) = &self.vectorizer {
+                let vectors = vectorizer
+                    .vectorize(vec![req.text])
+                    .await
+                    .map_err(|e| Status::internal(format!("Embedding failed: {}", e)))?;
+
+                if vectors.is_empty() {
+                    return Err(Status::internal("Empty vector result"));
+                }
+                let vector = vectors[0].clone();
+
+                let col_name = if req.collection.is_empty() {
+                    "default".to_string()
+                } else {
+                    req.collection
+                };
+
+                if let Some(col) = self.manager.get(&col_name) {
+                    let meta: std::collections::HashMap<String, String> =
+                        req.metadata.into_iter().collect();
+                    let clock = self.manager.tick_cluster_clock().await;
+                    if let Err(e) = col.insert(&vector, req.id, meta, clock) {
+                        return Err(Status::internal(e));
+                    }
+                    return Ok(Response::new(InsertResponse { success: true }));
+                } else {
+                    return Err(Status::not_found(format!(
+                        "Collection '{}' not found",
+                        col_name
+                    )));
+                }
+            } else {
+                return Err(Status::unimplemented(
+                    "Server configured without embedding model",
+                ));
+            }
+        }
+        #[cfg(not(feature = "embed"))]
+        return Err(Status::unimplemented("Embedding feature not compiled"));
     }
 
     async fn delete(
@@ -307,7 +371,11 @@ impl Database for HyperspaceService {
                 Ok(res) => {
                     let output = res
                         .into_iter()
-                        .map(|(id, dist, meta)| SearchResult { id, distance: dist, metadata: meta })
+                        .map(|(id, dist, meta)| SearchResult {
+                            id,
+                            distance: dist,
+                            metadata: meta,
+                        })
                         .collect();
                     Ok(Response::new(SearchResponse { results: output }))
                 }
@@ -532,7 +600,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
             tokio::spawn(async move {
                 use hyperspace_proto::hyperspace::database_client::DatabaseClient;
                 use tonic::transport::Channel;
-                
+
                 loop {
                     println!("Connecting to leader {}...", leader);
                     match Channel::from_shared(leader.clone())
@@ -545,7 +613,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                 api_key: api_key_for_client.clone().unwrap_or_default(),
                             };
                             let mut client = DatabaseClient::with_interceptor(channel, interceptor);
-                            
+
                             println!("Connected! Requesting replication stream...");
                             match client.replicate(Empty {}).await {
                                 Ok(resp) => {
@@ -598,11 +666,128 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         println!("🚀 Starting as LEADER");
     }
 
-    // Start HTTP Dashboard
+    // 1. Initialize Vectorizer (Moved before HTTP Server)
+    #[cfg(feature = "embed")]
+    let vectorizer: Option<Arc<dyn Vectorizer>> = {
+        // 1. Check explicit enable/disable
+        let enabled = std::env::var("HYPERSPACE_EMBED")
+            .unwrap_or_else(|_| "true".to_string())
+            .to_lowercase()
+            == "true";
+
+        if !enabled {
+            println!("🛑 Embedding Service Disabled (HYPERSPACE_EMBED=false)");
+            None
+        } else {
+            let provider_str = std::env::var("HYPERSPACE_EMBED_PROVIDER")
+                .unwrap_or_else(|_| "local".to_string())
+                .to_lowercase();
+
+            let metric_str = std::env::var("HS_METRIC")
+                .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
+                .unwrap_or("poincare".to_string())
+                .to_lowercase();
+
+            let metric = match metric_str.as_str() {
+                "poincare" | "hyperbolic" => Metric::Poincare,
+                "cosine" | "l2" | "euclidean" => Metric::L2,
+                _ => Metric::None,
+            };
+
+            // 2. Validate Configuration
+            if provider_str == "local" && metric != Metric::Poincare {
+                eprintln!("⚠️ CRITICAL CONFIG CONFLICT:");
+                eprintln!("   Provider 'local' (Hyperbolic ONNX) requires HS_METRIC='poincare'.");
+                eprintln!("   Found HS_METRIC='{}'.", metric_str);
+                eprintln!("🛑 Embedding Service Disabled to prevent mathematical errors.");
+                None
+            } else {
+                if provider_str == "local" {
+                    let model_path = std::env::var("HYPERSPACE_MODEL_PATH").ok();
+                    let tok_path = std::env::var("HYPERSPACE_TOKENIZER_PATH").ok();
+
+                    if let (Some(m), Some(t)) = (model_path, tok_path) {
+                        println!("🧠 Loading Local Embedding Model: {}", m);
+                        let dim: usize = std::env::var("HYPERSPACE_EMBED_DIM")
+                            .unwrap_or("128".to_string())
+                            .parse()
+                            .unwrap_or(128);
+
+                        match OnnxVectorizer::new(&m, &t, dim, metric) {
+                            Ok(v) => Some(Arc::new(v)),
+                            Err(e) => {
+                                eprintln!("❌ Failed to load local vectorizer: {}", e);
+                                None
+                            }
+                        }
+                    } else {
+                        // If defaulting to local but no model path provided
+                        println!("⚠️ Embedding Service needs HYPERSPACE_MODEL_PATH for 'local' provider.");
+                        None
+                    }
+                } else {
+                    // Remote
+                    if let Some(provider) = ApiProvider::from_str(&provider_str) {
+                        let api_key = std::env::var("HYPERSPACE_API_KEY_EMBED")
+                            .or_else(|_| std::env::var("OPENAI_API_KEY"))
+                            .unwrap_or_default();
+
+                        let model = std::env::var("HYPERSPACE_EMBED_MODEL")
+                            .unwrap_or("text-embedding-3-small".to_string());
+
+                        let base_url = std::env::var("HYPERSPACE_API_BASE").ok();
+
+                        println!(
+                            "☁️ Using Remote Embeddings: {:?} | Model: {}",
+                            provider, model
+                        );
+                        Some(Arc::new(RemoteVectorizer::new(
+                            provider, api_key, model, base_url,
+                        )))
+                    } else {
+                        eprintln!("❌ Unknown embedding provider: {}", provider_str);
+                        None
+                    }
+                }
+            }
+        }
+    };
+
+    // 2. Prepare Embedding Info for Dashboard
+    let embedding_info = {
+        #[cfg(feature = "embed")]
+        {
+            if let Some(v) = &vectorizer {
+                let provider = std::env::var("HYPERSPACE_EMBED_PROVIDER").unwrap_or("local".to_string());
+                let model = std::env::var("HYPERSPACE_EMBED_MODEL").unwrap_or("default".to_string());
+                Some(http_server::EmbeddingInfo {
+                    enabled: true,
+                    provider,
+                    model,
+                    dimension: v.dimension(), // Requires Vectorizer trait to expose dimension()
+                })
+            } else {
+                 // Check if it was explicitly disabled or failed
+                 let enabled_flag = std::env::var("HYPERSPACE_EMBED")
+                    .unwrap_or("true".to_string())
+                    .to_lowercase() == "true";
+                 
+                 if !enabled_flag {
+                     Some(http_server::EmbeddingInfo { enabled: false, provider: "-".into(), model: "-".into(), dimension: 0 })
+                 } else {
+                     None // Failed to load
+                 }
+            }
+        }
+        #[cfg(not(feature = "embed"))]
+        None
+    };
+
+    // 3. Start HTTP Dashboard
     let http_mgr = manager.clone();
     let http_port = args.http_port;
     tokio::spawn(async move {
-        if let Err(e) = http_server::start_http_server(http_mgr, http_port).await {
+        if let Err(e) = http_server::start_http_server(http_mgr, http_port, embedding_info).await {
             eprintln!("HTTP Server panicked: {}", e);
         }
     });
@@ -611,6 +796,8 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         manager,
         replication_tx,
         role: args.role,
+        #[cfg(feature = "embed")]
+        vectorizer,
     };
 
     println!("HyperspaceDB listening on {}", addr);

@@ -106,18 +106,18 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     ) -> Result<Self, String> {
         use std::time::Instant;
         let start = Instant::now();
-        
+
         println!("📂 Loading snapshot: {}", path.display());
-        
+
         // 1. Memory-map the file instead of reading it all into memory
         let file = File::open(path).map_err(|e| format!("Failed to open snapshot: {}", e))?;
         let file_size = file.metadata().map_err(|e| e.to_string())?.len();
         println!("   File size: {:.2} MB", file_size as f64 / 1024.0 / 1024.0);
-        
-        let mmap = unsafe { 
+
+        let mmap = unsafe {
             memmap2::MmapOptions::new()
                 .map(&file)
-                .map_err(|e| format!("Failed to mmap snapshot: {}", e))? 
+                .map_err(|e| format!("Failed to mmap snapshot: {}", e))?
         };
         let mmap_time = start.elapsed();
         println!("   ✓ Memory-mapped in {:.3}s", mmap_time.as_secs_f64());
@@ -131,16 +131,23 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // 3. Deserialize
         let deserialized: SnapshotData = archived.deserialize(&mut rkyv::Infallible).unwrap();
         let deserialize_time = start.elapsed();
-        println!("   ✓ Deserialized in {:.3}s", deserialize_time.as_secs_f64());
+        println!(
+            "   ✓ Deserialized in {:.3}s",
+            deserialize_time.as_secs_f64()
+        );
 
         // 4. Reconstruct Graph with progress
         let total_nodes = deserialized.nodes.len();
         let mut nodes = Vec::with_capacity(total_nodes);
-        
+
         println!("   ⏳ Reconstructing HNSW graph: {} nodes...", total_nodes);
-        
-        let progress_interval = if total_nodes > 100_000 { 50_000 } else { 10_000 };
-        
+
+        let progress_interval = if total_nodes > 100_000 {
+            50_000
+        } else {
+            10_000
+        };
+
         for (i, s_node) in deserialized.nodes.into_iter().enumerate() {
             // Progress reporting
             if i > 0 && i % progress_interval == 0 {
@@ -148,10 +155,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let progress_pct = (i as f64 / total_nodes as f64) * 100.0;
                 let nodes_per_sec = i as f64 / elapsed;
                 let eta = (total_nodes - i) as f64 / nodes_per_sec;
-                println!("      Progress: {}/{} ({:.1}%) | {:.0} nodes/s | ETA: {:.1}s", 
-                    i, total_nodes, progress_pct, nodes_per_sec, eta);
+                println!(
+                    "      Progress: {}/{} ({:.1}%) | {:.0} nodes/s | ETA: {:.1}s",
+                    i, total_nodes, progress_pct, nodes_per_sec, eta
+                );
             }
-            
+
             // Reconstruct node
             let mut layers = Vec::with_capacity(s_node.layers.len());
             for s_layer in s_node.layers {
@@ -165,12 +174,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // Sync storage count
         storage.set_count(nodes.len());
-        
+
         let total_time = start.elapsed();
-        println!("   ✅ Loaded {} nodes in {:.3}s ({:.0} nodes/s)", 
-            total_nodes, 
+        println!(
+            "   ✅ Loaded {} nodes in {:.3}s ({:.0} nodes/s)",
+            total_nodes,
             total_time.as_secs_f64(),
-            total_nodes as f64 / total_time.as_secs_f64());
+            total_nodes as f64 / total_time.as_secs_f64()
+        );
 
         Ok(Self {
             nodes: RwLock::new(nodes),
@@ -208,7 +219,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let bytes = rkyv::to_bytes::<_, 1024>(&snapshot)
             .map_err(|e| format!("Serialization error: {}", e))?;
-        
+
         Ok(bytes.into_vec())
     }
 
@@ -220,7 +231,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     ) -> Result<Self, String> {
         let archived = unsafe { rkyv::archived_root::<SnapshotData>(data) };
 
-        let deserialized: SnapshotData = archived.deserialize(&mut rkyv::Infallible)
+        let deserialized: SnapshotData = archived
+            .deserialize(&mut rkyv::Infallible)
             .map_err(|e| format!("Deserialization error: {}", e))?;
 
         let mut nodes = Vec::with_capacity(deserialized.nodes.len());
@@ -247,8 +259,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             config,
             _marker: PhantomData,
         })
-    }    
-    
+    }
+
     pub fn get_storage(&self) -> Arc<VectorStore> {
         self.storage.clone()
     }
@@ -460,14 +472,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let q_vec = HyperVector::new_unchecked(aligned_query);
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);
-        
+
         let start_layer = {
             let guard = self.nodes.read();
             if guard.is_empty() {
                 return vec![];
             }
             if (entry_node as usize) >= guard.len() {
-                // Determine what to do: return empty or fallback? 
+                // Determine what to do: return empty or fallback?
                 // Using 0 as safe fallback if entry_node is somehow out of bounds (race?)
                 0
             } else {
@@ -477,7 +489,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // Safe check for current dist
         if (entry_node as usize) >= self.nodes.read().len() {
-             return vec![];
+            return vec![];
         }
 
         let mut curr_dist = self.dist(entry_node, &q_vec);
@@ -491,12 +503,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let mut changed = true;
                 while changed {
                     changed = false;
-                    
+
                     // Check bounds
                     if (curr_node as usize) >= nodes_guard.len() {
                         break;
                     }
-                    
+
                     // Safety check for empty/uninitialized layers (prevent panic)
                     let node = &nodes_guard[curr_node as usize];
                     if node.layers.len() <= level {
@@ -607,7 +619,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // Safety check start_node
         if (start_node as usize) >= nodes_guard.len() {
-             return vec![];
+            return vec![];
         }
 
         let d = self.dist(start_node, query);
@@ -702,7 +714,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return BinaryHeap::new();
         }
         if nodes_guard[start_node as usize].layers.len() <= level {
-             return BinaryHeap::new();
+            return BinaryHeap::new();
         }
 
         let mut candidates = BinaryHeap::new();
@@ -953,7 +965,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
             nodes[id as usize] = Node { id, layers };
         }
-        
+
         // Determine safe start layer for search
         let start_layer = {
             let guard = self.nodes.read();
@@ -968,18 +980,18 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let mut curr_obj = entry_point;
         // q_vec already loaded at start of function
-        
+
         // Need to check if entry_point is valid before dist calc
         let mut curr_dist = if (entry_point as usize) < self.nodes.read().len() {
-             self.dist(curr_obj, &q_vec)
+            self.dist(curr_obj, &q_vec)
         } else {
-             f64::MAX 
+            f64::MAX
         };
 
         // 2. Phase 1: Zoom in (Greedy Search) from top to new_level
         // Ensure we don't start higher than what entry point supports
         let search_limit = std::cmp::min(max_layer as usize, start_layer);
-        
+
         for level in (new_level + 1..=search_limit).rev() {
             let mut changed = true;
             while changed {

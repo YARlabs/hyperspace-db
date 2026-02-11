@@ -118,7 +118,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let cfg_worker = config.clone();
 
         // Limit concurrency to available logical cores
-        let concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+        let concurrency = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(8);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
 
         let indexer_handle = tokio::spawn(async move {
@@ -127,11 +129,11 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx = idx_worker.clone();
                 let cfg = cfg_worker.clone();
-                
+
                 // Spawn independent task for each vector update
                 tokio::spawn(async move {
                     let _permit = permit; // Hold permit until task completion
-                    
+
                     // CPU-intensive HNSW update in blocking thread
                     // HNSW implementation handles internal fine-grained locking
                     let _ = tokio::task::spawn_blocking(move || {
@@ -212,7 +214,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // Check if this user ID already exists (for upsert)
         let mut id_map = self.id_map.lock().unwrap();
         let existing_internal_id = id_map.get(&id).copied();
-        
+
         // If updating existing vector, remove old hash first
         if let Some(old_internal_id) = existing_internal_id {
             // Get old vector to compute old hash
@@ -245,7 +247,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             id_map.insert(id, new_id);
             new_id
         };
-        
+
         // Release lock early
         drop(id_map);
 
@@ -315,9 +317,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let mut internal_data = Vec::with_capacity(vectors.len());
 
         for (vector, id, metadata) in &vectors {
-             // Check if this user ID already exists (for upsert)
+            // Check if this user ID already exists (for upsert)
             let existing_internal_id = id_map.get(id).copied();
-            
+
             // If updating existing vector, bucket update
             if let Some(old_internal_id) = existing_internal_id {
                 let old_vector = self.index.get_vector(old_internal_id);
@@ -345,17 +347,16 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 id_map.insert(*id, new_id);
                 new_id
             };
-            
+
             internal_data.push((internal_id, vector.clone(), metadata.clone()));
         }
-        
+
         drop(id_map);
 
         // 3. WAL Batch
-        let wal_data: Vec<_> = internal_data.iter()
-            .map(|(internal_id, vector, metadata)| {
-                (vector.clone(), *internal_id, metadata.clone())
-            })
+        let wal_data: Vec<_> = internal_data
+            .iter()
+            .map(|(internal_id, vector, metadata)| (vector.clone(), *internal_id, metadata.clone()))
             .collect();
 
         {
@@ -366,21 +367,21 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // 4. Index Queue
         // TODO: config.inc_queue_by is not available, calling inc_queue in loop
         for _ in 0..internal_data.len() {
-             self.config.inc_queue();
+            self.config.inc_queue();
         }
 
         // Queue for indexing (unbounded send never blocks)
         for (id, _, meta) in &internal_data {
             let _ = self.index_tx.send((*id, meta.clone()));
         }
-        
+
         // 5. Replication
         if self.replication_tx.receiver_count() > 0 {
             for (vector, id, metadata) in vectors {
                 let log = ReplicationLog {
-                    id, 
-                    vector, 
-                    metadata, 
+                    id,
+                    vector,
+                    metadata,
                     collection: self.name.clone(),
                     origin_node_id: self.node_id.clone(),
                     logical_clock: clock,
