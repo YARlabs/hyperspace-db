@@ -54,9 +54,9 @@ export function OverviewPage() {
                             <ConfigRow label="Global Dimension" value={status?.config?.dimension} />
                             <ConfigRow label="Metric Space" value={
                                 status?.config?.metric === 'cosine' ? 'Cosine Similarity' :
-                                status?.config?.metric === 'l2' || status?.config?.metric === 'euclidean' ? 'Euclidean (L2)' :
-                                status?.config?.metric === 'poincare' ? 'Hyperbolic (Poincaré)' :
-                                status?.config?.metric || 'Unknown'
+                                    status?.config?.metric === 'l2' || status?.config?.metric === 'euclidean' ? 'Euclidean (L2)' :
+                                        status?.config?.metric === 'poincare' ? 'Hyperbolic (Poincaré)' :
+                                            status?.config?.metric || 'Unknown'
                             } />
                             <ConfigRow label="Quantization" value={status?.config?.quantization || "Scalar I8"} />
                             <ConfigRow label="Uptime" value={status?.uptime} />
@@ -160,5 +160,5 @@ function StatCard({ title, value, icon: Icon, desc }: any) {
 }
 
 function OverviewSkeleton() {
-    return <div className="space-y-6"><Skeleton className="h-10 w-48" /><div className="grid gap-4 md:grid-cols-4"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></div>
+    return <div className="space-y-6"><Skeleton className="h-10 w-48" /><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></div>
 }

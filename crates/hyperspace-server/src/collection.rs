@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 struct CollectionState {
     id_map: HashMap<u32, u32>,
+    reverse_id_map: HashMap<u32, u32>,
     buckets: Vec<u64>,
 }
 
@@ -29,6 +30,8 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     buckets: Arc<Vec<AtomicU64>>,
     // Mapping from user ID to internal ID for upsert support
     id_map: Arc<Mutex<HashMap<u32, u32>>>,
+    // Reverse mapping from internal ID to user ID for search results
+    reverse_id_map: Arc<Mutex<HashMap<u32, u32>>>,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
@@ -104,12 +107,14 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // Initialize state
         let state_path = data_dir.join("state.json");
         let mut id_map_data = HashMap::new();
+        let mut reverse_id_map_data = HashMap::new();
         let mut buckets_data = vec![0; crate::sync::SYNC_BUCKETS];
 
         if state_path.exists() {
             if let Ok(s) = std::fs::read_to_string(&state_path) {
                 if let Ok(state) = serde_json::from_str::<CollectionState>(&s) {
-                    id_map_data = state.id_map;
+                    id_map_data = state.id_map.clone();
+                    reverse_id_map_data = state.reverse_id_map;
                     if state.buckets.len() == buckets_data.len() {
                         buckets_data = state.buckets;
                     }
@@ -197,8 +202,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         
         let buckets: Arc<Vec<AtomicU64>> = Arc::new(buckets_data.into_iter().map(AtomicU64::new).collect());
         let id_map = Arc::new(Mutex::new(id_map_data));
+        let reverse_id_map = Arc::new(Mutex::new(reverse_id_map_data));
 
         let id_map_snap = id_map.clone();
+        let reverse_id_map_snap = reverse_id_map.clone();
         let buckets_snap = buckets.clone();
         let state_path_snap = data_dir.join("state.json");
 
@@ -219,10 +226,15 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     let guard = id_map_snap.lock().unwrap();
                     guard.clone() 
                 };
+                let reverse_map_data = {
+                    let guard = reverse_id_map_snap.lock().unwrap();
+                    guard.clone()
+                };
                 let buckets_data: Vec<u64> = buckets_snap.iter().map(|b| b.load(Ordering::Relaxed)).collect();
                 
                 let state = CollectionState {
                      id_map: map_data,
+                     reverse_id_map: reverse_map_data,
                      buckets: buckets_data,
                 };
                 
@@ -242,6 +254,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             config,
             _tasks: vec![indexer_handle, snapshot_handle],
             buckets,
+            reverse_id_map,
             id_map,
         })
     }
@@ -320,8 +333,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 .index
                 .insert_to_storage(vector)
                 .map_err(|e| e.clone())?;
-            // Store mapping
+            // Store bidirectional mapping
             id_map.insert(id, new_id);
+            
+            // Store reverse mapping for search results
+            let mut reverse_map = self.reverse_id_map.lock().unwrap();
+            reverse_map.insert(new_id, id);
+            drop(reverse_map);
+            
             new_id
         };
 
@@ -395,6 +414,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         // 2. Lock id_map once
         let mut id_map = self.id_map.lock().unwrap();
+        let mut reverse_map = self.reverse_id_map.lock().unwrap();
 
         // We need separate vectors for diff tasks
         // internal_entries stores (internal_id, user_id, vector_clone, metadata)
@@ -428,7 +448,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     .index
                     .insert_to_storage(vector)
                     .map_err(|e| e.clone())?;
+                // Store bidirectional mapping
                 id_map.insert(*id, new_id);
+                reverse_map.insert(new_id, *id);
                 new_id
             };
 
@@ -436,6 +458,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         drop(id_map);
+        drop(reverse_map);
 
         // 3. WAL Batch
         let wal_data: Vec<_> = internal_data
@@ -513,18 +536,23 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             params.hybrid_alpha,
         );
 
-        // Fetch metadata for results
+        // Fetch metadata for results and convert internal IDs to user IDs
+        let reverse_map = self.reverse_id_map.lock().unwrap();
         let results_with_meta = results
             .into_iter()
-            .map(|(id, dist)| {
+            .map(|(internal_id, dist)| {
                 let meta = self
                     .index
                     .metadata
                     .forward
-                    .get(&id)
+                    .get(&internal_id)
                     .map(|m| m.clone())
                     .unwrap_or_default();
-                (id, dist, meta)
+                
+                // Convert internal ID to user ID
+                let user_id = reverse_map.get(&internal_id).copied().unwrap_or(internal_id);
+                
+                (user_id, dist, meta)
             })
             .collect();
 
