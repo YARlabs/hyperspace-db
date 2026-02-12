@@ -9,7 +9,7 @@ pub enum CurrentTab {
 }
 
 impl CurrentTab {
-    pub fn next(&self) -> Self {
+    pub fn next(self) -> Self {
         match self {
             Self::Overview => Self::Collections,
             Self::Collections => Self::Storage,

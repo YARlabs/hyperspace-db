@@ -1,6 +1,7 @@
 use hyperspace_sdk::Client;
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧪 Comprehensive Leader-Follower Sync Test");
 

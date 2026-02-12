@@ -89,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vector: vec_a,
             top_k: 3,
             collection: COLLECTION_NAME.to_string(),
-            filter: Default::default(),
+            filter: std::collections::HashMap::default(),
             filters: vec![],
             hybrid_query: None,
             hybrid_alpha: None,

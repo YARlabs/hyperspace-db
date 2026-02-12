@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
 
     // 4. Run UI Loop
-    let res = run_app(&mut terminal, &mut app, &mut rx, client.clone()).await;
+    let res = run_app(&mut terminal, &mut app, &mut rx, &client);
 
     // 5. Restore Terminal
     disable_raw_mode()?;
@@ -65,11 +65,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn run_app<B: ratatui::backend::Backend>(
+fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     rx: &mut tokio::sync::mpsc::Receiver<SystemStats>,
-    client: DatabaseClient<Channel>,
+    client: &DatabaseClient<Channel>,
 ) -> io::Result<()> {
     // List Collections Thread
     let (tx_col, mut rx_col) = tokio::sync::mpsc::channel::<Vec<String>>(1);

@@ -31,6 +31,10 @@ pub struct HyperspaceDB {
 
 #[wasm_bindgen]
 impl HyperspaceDB {
+    /// Creates a new `HyperspaceDB` instance.
+    ///
+    /// # Errors
+    /// Returns an error if initialization fails.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<HyperspaceDB, JsValue> {
         console_error_panic_hook::set_once();
@@ -51,7 +55,11 @@ impl HyperspaceDB {
         })
     }
 
-    pub fn insert(&self, id: u32, vector: Vec<f64>) -> Result<(), JsValue> {
+    /// Inserts a vector.
+    ///
+    /// # Errors
+    /// Returns error on dimension mismatch or duplicate ID.
+    pub fn insert(&self, id: u32, vector: &[f64]) -> Result<(), JsValue> {
         if vector.len() != 1024 {
             return Err(JsValue::from_str("Dimension mismatch: expected 1024."));
         }
@@ -65,7 +73,7 @@ impl HyperspaceDB {
 
         let internal_id = self
             .index
-            .insert(&vector, HashMap::new())
+            .insert(vector, HashMap::new())
             .map_err(|e| JsValue::from_str(&e))?;
 
         id_map.insert(id, internal_id);
@@ -74,14 +82,18 @@ impl HyperspaceDB {
         Ok(())
     }
 
-    pub fn search(&self, vector: Vec<f64>, k: usize) -> Result<JsValue, JsValue> {
+    /// Searches for nearest neighbors.
+    ///
+    /// # Errors
+    /// Returns error on dimension mismatch.
+    pub fn search(&self, vector: &[f64], k: usize) -> Result<JsValue, JsValue> {
         if vector.len() != 1024 {
             return Err(JsValue::from_str("Dimension mismatch"));
         }
 
         let results = self
             .index
-            .search(&vector, k, 100, &HashMap::new(), &[], None, None);
+            .search(vector, k, 100, &HashMap::new(), &[], None, None);
 
         let rev_map = self.rev_map.read();
 
@@ -99,7 +111,10 @@ impl HyperspaceDB {
         Ok(serde_wasm_bindgen::to_value(&mapped)?)
     }
 
-    /// Persist current state to IndexedDB
+    /// Persist current state to `IndexedDB`.
+    ///
+    /// # Errors
+    /// Returns error if `IndexedDB` operations fail.
     pub async fn save(&self) -> Result<(), JsValue> {
         let rexie = Rexie::builder(DB_NAME)
             .version(1)
@@ -111,7 +126,7 @@ impl HyperspaceDB {
         let transaction = rexie
             .transaction(&[STORE_NAME], TransactionMode::ReadWrite)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let store_os = transaction
+        let db_store = transaction
             .store(STORE_NAME)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
@@ -119,7 +134,7 @@ impl HyperspaceDB {
         let vector_store = self.index.get_storage();
         let store_bytes = vector_store.as_ref().export();
         let store_js = serde_wasm_bindgen::to_value(&store_bytes)?;
-        store_os
+        db_store
             .put(&store_js, Some(&JsValue::from_str("vectors")))
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -130,15 +145,19 @@ impl HyperspaceDB {
             .save_to_bytes()
             .map_err(|e| JsValue::from_str(&e))?;
         let index_js = serde_wasm_bindgen::to_value(&index_bytes)?;
-        store_os
+        db_store
             .put(&index_js, Some(&JsValue::from_str("index")))
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         // 3. Export ID Maps
-        let id_map = self.id_map.read();
-        let map_js = serde_wasm_bindgen::to_value(&*id_map)?;
-        store_os
+        // Important: Serialize *before* awaiting to drop the lock!
+        let map_js = {
+            let id_map = self.id_map.read();
+            serde_wasm_bindgen::to_value(&*id_map)?
+        };
+        
+        db_store
             .put(&map_js, Some(&JsValue::from_str("id_map")))
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -152,7 +171,10 @@ impl HyperspaceDB {
         Ok(())
     }
 
-    /// Load state from IndexedDB
+    /// Load state from `IndexedDB`.
+    ///
+    /// # Errors
+    /// Returns error if `IndexedDB` operations fail.
     pub async fn load(&mut self) -> Result<bool, JsValue> {
         let rexie = Rexie::builder(DB_NAME)
             .version(1)
@@ -164,12 +186,12 @@ impl HyperspaceDB {
         let transaction = rexie
             .transaction(&[STORE_NAME], TransactionMode::ReadOnly)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let store_os = transaction
+        let db_store = transaction
             .store(STORE_NAME)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         // Retrieve Vectors
-        let vectors_js = store_os
+        let vectors_js = db_store
             .get(&JsValue::from_str("vectors"))
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -181,26 +203,20 @@ impl HyperspaceDB {
         let vectors_bytes: Vec<u8> = serde_wasm_bindgen::from_value(vectors_js)?;
 
         // Retrieve Index
-        let index_js = store_os
+        let index_js = db_store
             .get(&JsValue::from_str("index"))
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         let index_bytes: Vec<u8> = serde_wasm_bindgen::from_value(index_js)?;
 
         // Retrieve ID Map
-        let map_js = store_os
+        let map_js = db_store
             .get(&JsValue::from_str("id_map"))
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         let id_map_data: HashMap<u32, u32> = serde_wasm_bindgen::from_value(map_js)?;
 
         // Reconstruct
-        // 1. Restore Store
-        // Element size: for QuantizationMode::None (default in new), it is 1024 * 4 = 4096 bytes if f32.
-
-        // But HnswIndex insert stores f32 by default.
-        // I should fix the element_size in `new()` to be correct.
-        // 1024 * size_of::<f32>() = 4096.
         let element_size = 4096;
         let storage = Arc::new(VectorStore::from_bytes(
             std::path::Path::new("mem"),
@@ -220,7 +236,9 @@ impl HyperspaceDB {
         // Update Maps
         let mut id_map = self.id_map.write();
         let mut rev_map = self.rev_map.write();
-        *id_map = id_map_data.clone();
+        
+        id_map.clone_from(&id_map_data);
+        
         rev_map.clear();
         for (k, v) in id_map_data {
             rev_map.insert(v, k);

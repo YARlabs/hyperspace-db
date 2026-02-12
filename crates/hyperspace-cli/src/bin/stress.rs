@@ -3,6 +3,7 @@ use hyperspace_proto::hyperspace::{
     ConfigUpdate, CreateCollectionRequest, Empty, InsertRequest, SearchRequest,
 };
 use rand::Rng;
+use std::io::Write;
 use std::time::Instant;
 use tonic::transport::Channel;
 
@@ -11,6 +12,7 @@ const SEARCH_QUERIES: usize = 10_000;
 const COLLECTION_NAME: &str = "benchmark_8d";
 
 #[tokio::main]
+#[allow(clippy::cast_precision_loss)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Starting HyperspaceDB Stress Test");
     println!("Connecting to localhost:50051...");
@@ -63,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let req = InsertRequest {
             vector,
-            id: i as u32,
+            id: u32::try_from(i).unwrap(),
             metadata: std::collections::HashMap::new(),
             collection: COLLECTION_NAME.to_string(),
             origin_node_id: String::new(),
@@ -75,7 +77,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if (i + 1) % 1000 == 0 {
             print!(".");
-            use std::io::Write;
             std::io::stdout().flush()?;
         }
     }

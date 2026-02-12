@@ -1,7 +1,6 @@
 use hyperspace_store::wal::{Wal, WalEntry, WalSyncMode};
 use proptest::prelude::*;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tempfile::tempdir;
 
 const D: usize = 4;
@@ -58,14 +57,13 @@ proptest! {
         // 2. Replay & verify
         let mut replayed = Vec::new();
         Wal::replay(&wal_path, |entry| {
-            if let WalEntry::Insert { id, vector, metadata } = entry {
-                replayed.push(TestEntry { id, vector, metadata });
-            }
+            let WalEntry::Insert { id, vector, metadata } = entry;
+            replayed.push(TestEntry { id, vector, metadata });
         }).unwrap();
 
         assert_eq!(replayed.len(), entries.len());
-        for (original, replayed) in entries.iter().zip(replayed.iter()) {
-            assert_eq!(original.id, replayed.id);
+        for (i, (original, replayed)) in entries.iter().zip(replayed.iter()).enumerate() {
+            assert_eq!(original.id, replayed.id, "Mismatch at index {i}");
             assert_eq!(original.vector, replayed.vector);
             assert_eq!(original.metadata, replayed.metadata);
         }
@@ -98,20 +96,16 @@ proptest! {
         // 3. Try to Replay
         let mut replayed = Vec::new();
         let res = Wal::replay(&wal_path, |entry| {
-             if let WalEntry::Insert { id, vector, metadata } = entry {
-                replayed.push(TestEntry { id, vector, metadata });
-            }
+             let WalEntry::Insert { id, vector, metadata } = entry;
+             replayed.push(TestEntry { id, vector, metadata });
         });
 
         assert!(res.is_ok(), "Replay failed on corrupted WAL: {:?}", res.err());
         
         // Check content consistency (prefix match)
         let common_len = replayed.len();
-        // Since we cut the tail, we expect to lose at least partially the last entry if cut > 0 and it hits payload.
-        // Max entries lost depends on cut size.
-        // We verify prefix correctness first.
         for i in 0..common_len {
-            assert_eq!(entries[i].id, replayed[i].id, "Mismatch at index {}", i);
+            assert_eq!(entries[i].id, replayed[i].id, "Mismatch at index {i}");
             assert_eq!(entries[i].vector, replayed[i].vector);
             assert_eq!(entries[i].metadata, replayed[i].metadata);
         }

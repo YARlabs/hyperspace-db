@@ -165,6 +165,18 @@ graph LR
     style IDX_MEM fill:#9ff,stroke:#333,stroke-width:2px
 ```
 
+## Write-Ahead Log (WAL) v3
+
+The WAL ensures durability by appending operations to a log file.
+Format: `[Magic: u8][Length: u32][CRC32: u32][OpCode: u8][Data...]`.
+
+- **Integrity**: Each entry is checksummed with CRC32.
+- **Recovery**: On startup, the WAL is replayed. Corrupted entries at the tail are strictly truncated to the last valid entry.
+- **Durability Modes**:
+    1. **Strict**: Calls `fsync` after every write. Max safety.
+    2. **Batch**: Calls `fsync` in a background thread every N ms. Good compromise.
+    3. **Async**: Relies on OS page cache. Max speed.
+
 ## Component Details
 
 ### HNSW Index Structure

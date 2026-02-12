@@ -34,6 +34,10 @@ pub struct Client {
 }
 
 impl Client {
+    /// Connects to the `HyperspaceDB` server.
+    ///
+    /// # Errors
+    /// Returns error if connection fails.
     pub async fn connect(
         dst: String,
         api_key: Option<String>,
@@ -53,6 +57,10 @@ impl Client {
         self.embedder = Some(embedder);
     }
 
+    /// Creates a new collection.
+    ///
+    /// # Errors
+    /// Returns error if the collection already exists or if network fails.
     pub async fn create_collection(
         &mut self,
         name: String,
@@ -68,18 +76,30 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
+    /// Deletes a collection.
+    ///
+    /// # Errors
+    /// Returns error if the collection does not exist cancellation.
     pub async fn delete_collection(&mut self, name: String) -> Result<String, tonic::Status> {
         let req = hyperspace_proto::hyperspace::DeleteCollectionRequest { name };
         let resp = self.inner.delete_collection(req).await?;
         Ok(resp.into_inner().status)
     }
 
+    /// Lists all collections.
+    ///
+    /// # Errors
+    /// Returns error on network failure.
     pub async fn list_collections(&mut self) -> Result<Vec<String>, tonic::Status> {
         let req = hyperspace_proto::hyperspace::Empty {};
         let resp = self.inner.list_collections(req).await?;
         Ok(resp.into_inner().collections)
     }
 
+    /// Inserts a vector into the collection.
+    ///
+    /// # Errors
+    /// Returns error if insertion fails.
     pub async fn insert(
         &mut self,
         id: u32,
@@ -92,7 +112,7 @@ impl Client {
             vector,
             metadata,
             collection: collection.unwrap_or_default(),
-            origin_node_id: "".to_string(),
+            origin_node_id: String::new(),
             logical_clock: 0,
             durability: 0,
         };
@@ -100,6 +120,10 @@ impl Client {
         Ok(resp.into_inner().success)
     }
 
+    /// Searches for nearest neighbors.
+    ///
+    /// # Errors
+    /// Returns error if search fails.
     pub async fn search(
         &mut self,
         vector: Vec<f64>,
@@ -109,7 +133,7 @@ impl Client {
         let req = SearchRequest {
             vector,
             top_k,
-            filter: Default::default(),
+            filter: std::collections::HashMap::default(),
             filters: vec![],
             hybrid_query: None,
             hybrid_alpha: None,
@@ -119,6 +143,10 @@ impl Client {
         Ok(resp.into_inner().results)
     }
 
+    /// Advanced search with filters and hybrid query.
+    ///
+    /// # Errors
+    /// Returns error if search fails.
     pub async fn search_advanced(
         &mut self,
         vector: Vec<f64>,
@@ -135,7 +163,7 @@ impl Client {
         let req = SearchRequest {
             vector,
             top_k,
-            filter: Default::default(),
+            filter: std::collections::HashMap::default(),
             filters,
             hybrid_query,
             hybrid_alpha,
@@ -145,6 +173,10 @@ impl Client {
         Ok(resp.into_inner().results)
     }
 
+    /// Deletes a vector by ID.
+    ///
+    /// # Errors
+    /// Returns error if deletion fails.
     pub async fn delete(
         &mut self,
         id: u32,
@@ -158,6 +190,10 @@ impl Client {
         Ok(resp.into_inner().success)
     }
 
+    /// Configures collection parameters.
+    ///
+    /// # Errors
+    /// Returns error if configuration fails.
     pub async fn configure(
         &mut self,
         ef_search: Option<u32>,
@@ -173,6 +209,10 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
+    /// Gets collection digest (hash and count).
+    ///
+    /// # Errors
+    /// Returns error if retrieval fails.
     pub async fn get_digest(
         &mut self,
         collection: Option<String>,

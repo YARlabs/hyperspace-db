@@ -27,7 +27,7 @@ export function DashboardLayout() {
 
                 <div className="p-4 border-t border-border/50">
                     <div className="text-xs text-muted-foreground">
-                        <p>Version 1.2.0</p>
+                        <p>Version 1.6.0</p>
                         <p className="opacity-50">Local Control Plane</p>
                     </div>
                 </div>

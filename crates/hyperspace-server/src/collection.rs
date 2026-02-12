@@ -123,7 +123,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 .parse::<u64>()
                 .unwrap_or(100);
                 
-            println!("🔒 WAL Durability: BATCH (Background fsync every {}ms)", interval_ms);
+            println!("🔒 WAL Durability: BATCH (Background fsync every {interval_ms}ms)");
 
             let wal_worker = wal_arc.clone();
             tokio::spawn(async move {

@@ -1,8 +1,7 @@
-use hyperspace_store::wal::{Wal, WalSyncMode, WalEntry};
+use hyperspace_store::wal::{Wal, WalSyncMode};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::path::PathBuf;
+
 
 #[test]
 fn test_wal_partial_write_truncation() {

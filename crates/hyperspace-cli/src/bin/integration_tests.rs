@@ -1,13 +1,13 @@
-//! Comprehensive Integration Tests for HyperspaceDB
+//! Comprehensive Integration Tests for `HyperspaceDB`
 //!
-//! This test suite verifies end-to-end functionality including:
-//! - Leader-Follower replication
-//! - Merkle Tree synchronization
-//! - Collection operations
-//! - Network failure handling
-//! - Performance under load
+//! Includes:
+//! - Connection Tests
+//! - CRUD Operations (Create, Insert, Search, Delete)
+//! - Snapshot & Restore
+//! - Multi-Collection Isolation
+//! - Error Handling (Invalid Vectors, Missing Collections)
 //!
-//! Run with: cargo run --release --bin integration_tests
+//! Run with: cargo run --release --bin `integration_tests`
 
 use hyperspace_sdk::Client;
 use std::time::Duration;
@@ -144,7 +144,6 @@ async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Test Leader-Follower replication
-
 async fn test_leader_follower_sync() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to Leader
     let mut leader = Client::connect(
@@ -215,7 +214,6 @@ async fn test_leader_follower_sync() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Test Merkle Tree consistency
-
 async fn test_merkle_tree_consistency() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(
         "http://localhost:50051".to_string(),
@@ -271,7 +269,6 @@ async fn test_merkle_tree_consistency() -> Result<(), Box<dyn std::error::Error>
 }
 
 /// Test high-volume inserts
-
 async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(
         "http://localhost:50051".to_string(),
@@ -317,7 +314,6 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Test concurrent operations
-
 async fn test_concurrent_inserts() -> Result<(), Box<dyn std::error::Error>> {
     let collection = format!("test_concurrent_{}", chrono::Utc::now().timestamp());
 
@@ -373,7 +369,6 @@ async fn test_concurrent_inserts() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Test collection lifecycle
-
 async fn test_collection_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(
         "http://localhost:50051".to_string(),

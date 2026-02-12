@@ -31,17 +31,19 @@ pub enum ApiProvider {
     Generic,
 }
 
-impl ApiProvider {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for ApiProvider {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "openai" => Some(Self::OpenAI),
-            "cohere" => Some(Self::Cohere),
-            "voyage" => Some(Self::Voyage),
-            "mistral" => Some(Self::Mistral),
-            "gemini" => Some(Self::Gemini),
-            "openrouter" => Some(Self::OpenRouter),
-            "generic" => Some(Self::Generic),
-            _ => None,
+            "openai" => Ok(Self::OpenAI),
+            "cohere" => Ok(Self::Cohere),
+            "voyage" => Ok(Self::Voyage),
+            "mistral" => Ok(Self::Mistral),
+            "gemini" => Ok(Self::Gemini),
+            "openrouter" => Ok(Self::OpenRouter),
+            "generic" => Ok(Self::Generic),
+            _ => Err(()),
         }
     }
 }
@@ -64,6 +66,10 @@ pub struct OnnxVectorizer {
 }
 
 impl OnnxVectorizer {
+    /// Creates a new `OnnxVectorizer`.
+    ///
+    /// # Errors
+    /// Returns error if model loading or tokenizer loading fails.
     pub fn new(
         model_path: &str,
         tokenizer_path: &str,
@@ -71,7 +77,7 @@ impl OnnxVectorizer {
         metric: Metric,
     ) -> Result<Self> {
         let tokenizer = Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
         let session = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
@@ -86,10 +92,10 @@ impl OnnxVectorizer {
         })
     }
 
-    fn normalize(&self, vec: &mut Vec<f64>) {
+    fn normalize(&self, vec: &mut [f64]) {
+        const EPSILON: f64 = 1e-5;
         let norm_sq: f64 = vec.iter().map(|x| x * x).sum();
         let norm = norm_sq.sqrt();
-        const EPSILON: f64 = 1e-5;
 
         match self.metric {
             Metric::Poincare => {
@@ -111,11 +117,12 @@ impl OnnxVectorizer {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn mean_pooling(
         &self,
-        last_hidden_state: ArrayViewD<f32>,
-        attention_mask: ArrayViewD<i64>,
-    ) -> Result<Vec<Vec<f64>>> {
+        last_hidden_state: &ArrayViewD<f32>,
+        attention_mask: &ArrayViewD<i64>,
+    ) -> Vec<Vec<f64>> {
         let shape = last_hidden_state.shape();
         let batch_size = shape[0];
         let seq_len = shape[1];
@@ -127,20 +134,20 @@ impl OnnxVectorizer {
             let mut count = 0.0f64;
             for j in 0..seq_len {
                 if attention_mask[[i, j]] == 1 {
-                    for k in 0..hidden_dim {
-                        sum_vec[k] += last_hidden_state[[i, j, k]] as f64;
+                    for (k, item) in sum_vec.iter_mut().enumerate().take(hidden_dim) {
+                        *item += f64::from(last_hidden_state[[i, j, k]]);
                     }
                     count += 1.0;
                 }
             }
             if count > 0.0 {
-                for k in 0..hidden_dim {
-                    sum_vec[k] /= count;
+                for item in sum_vec.iter_mut().take(hidden_dim) {
+                    *item /= count;
                 }
             }
             output.push(sum_vec);
         }
-        Ok(output)
+        output
     }
 }
 
@@ -150,6 +157,7 @@ impl Vectorizer for OnnxVectorizer {
         self.dimension
     }
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     async fn vectorize(&self, texts: Vec<String>) -> Result<Vec<Vec<f64>>> {
         if texts.is_empty() {
             return Ok(vec![]);
@@ -158,7 +166,7 @@ impl Vectorizer for OnnxVectorizer {
         let encoding = self
             .tokenizer
             .encode_batch(texts.clone(), true)
-            .map_err(|e| anyhow::anyhow!("Tokenization failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Tokenization failed: {e}"))?;
 
         let batch_size = encoding.len();
         if batch_size == 0 {
@@ -170,8 +178,8 @@ impl Vectorizer for OnnxVectorizer {
         let mut attention_mask = Vec::with_capacity(batch_size * seq_len);
 
         for enc in &encoding {
-            input_ids.extend(enc.get_ids().iter().map(|&x| x as i64));
-            attention_mask.extend(enc.get_attention_mask().iter().map(|&x| x as i64));
+            input_ids.extend(enc.get_ids().iter().map(|&x| i64::from(x)));
+            attention_mask.extend(enc.get_attention_mask().iter().map(|&x| i64::from(x)));
         }
 
         let input_ids_arr = Array::from_shape_vec((batch_size, seq_len), input_ids)?;
@@ -197,20 +205,20 @@ impl Vectorizer for OnnxVectorizer {
         let (shape, data) = output_tensor.try_extract_tensor::<f32>()?;
         let shape_usize: Vec<usize> = shape.iter().map(|&x| x as usize).collect();
         let embeddings_tensor = ArrayViewD::from_shape(shape_usize, data)
-            .map_err(|e| anyhow::anyhow!("Failed to create view from tensor: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to create view from tensor: {e}"))?;
 
         let mut final_vectors = Vec::with_capacity(batch_size);
 
         if embeddings_tensor.ndim() == 3 {
             final_vectors = self.mean_pooling(
-                embeddings_tensor.view(),
-                attention_mask_clone.view().into_dyn(),
-            )?;
+                &embeddings_tensor.view(),
+                &attention_mask_clone.view().into_dyn(),
+            );
         } else if embeddings_tensor.ndim() == 2 {
             for i in 0..batch_size {
                 let mut vec = Vec::with_capacity(self.dimension);
                 for k in 0..embeddings_tensor.shape()[1] {
-                    vec.push(embeddings_tensor[[i, k]] as f64);
+                    vec.push(f64::from(embeddings_tensor[[i, k]]));
                 }
                 final_vectors.push(vec);
             }
@@ -240,6 +248,7 @@ pub struct RemoteVectorizer {
 }
 
 impl RemoteVectorizer {
+    #[must_use]
     pub fn new(
         provider: ApiProvider,
         api_key: String,

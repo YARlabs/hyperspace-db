@@ -8,19 +8,26 @@ use std::path::Path;
 
 const WAL_V3_MAGIC: u8 = 0xFF;
 
+/// Durability mode for Write-Ahead Log.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WalSyncMode {
-    Strict, // Fsync every write (Durability: Max, Speed: Low)
-    Async,  // Flush to OS cache (Durability: Medium, Speed: Max)
-    Batch,  // Background Fsync (Durability: High, Speed: High)
+    /// Fsync every write (Durability: Max, Speed: Low)
+    Strict,
+    /// Flush to OS cache (Durability: Medium, Speed: Max)
+    Async,
+    /// Background Fsync (Durability: High, Speed: High)
+    Batch,
 }
 
+/// Write-Ahead Log implementation for durability.
+/// Appends operations to a log file with CRC32 checksums.
 #[derive(Debug)]
 pub struct Wal {
     file: BufWriter<File>,
     mode: WalSyncMode,
 }
 
+/// Represents an operation stored in the WAL.
 #[derive(Debug)]
 pub enum WalEntry {
     Insert {

@@ -17,6 +17,8 @@ struct Segment {
     file: File,
 }
 
+/// Persistent vector storage using memory-mapped files.
+/// Data is split into 64K chunks (`chunk_N.hyp`).
 #[derive(Debug)]
 pub struct VectorStore {
     segments: RwLock<Vec<Arc<Segment>>>,
@@ -26,6 +28,7 @@ pub struct VectorStore {
 }
 
 impl VectorStore {
+    /// Creates or opens a `VectorStore` at the given path.
     pub fn new(base_path: &Path, element_size: usize) -> Self {
         if !base_path.exists() {
             std::fs::create_dir_all(base_path).expect("Failed to create data dir");
@@ -75,6 +78,7 @@ impl VectorStore {
         })
     }
 
+    /// Appends a vector to the end of the store. Returns the new ID.
     pub fn append(&self, vector_bytes: &[u8]) -> Result<u32, String> {
         if vector_bytes.len() != self.element_size {
             return Err(format!(
@@ -125,6 +129,7 @@ impl VectorStore {
         Ok(id as u32)
     }
 
+    /// Retrieves a vector by ID. Returns a view into the memory map.
     pub fn get(&self, id: u32) -> &[u8] {
         let id_val = id as usize;
         let segment_idx = id_val >> CHUNK_SHIFT;
@@ -142,6 +147,7 @@ impl VectorStore {
         unsafe { std::slice::from_raw_parts(ptr, self.element_size) }
     }
 
+    /// Updates an existing vector in place.
     pub fn update(&self, id: u32, vector_bytes: &[u8]) -> Result<(), String> {
         if vector_bytes.len() != self.element_size {
             return Err(format!(

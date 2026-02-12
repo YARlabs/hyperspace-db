@@ -15,6 +15,7 @@ pub struct HyperVector<const N: usize> {
 }
 
 impl<const N: usize> HyperVector<N> {
+    /// Creates a new `HyperVector`, validating it is strictly inside the unit ball.
     pub fn new(coords: [f64; N]) -> Result<Self, String> {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
         if sq_norm >= 1.0 - 1e-9 {
@@ -24,6 +25,7 @@ impl<const N: usize> HyperVector<N> {
         Ok(Self { coords, alpha })
     }
 
+    /// Creates a `HyperVector` without validation.
     pub fn new_unchecked(coords: [f64; N]) -> Self {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
         // Calculate alpha anyway, but handle >= 1.0 gracefully (though unused for L2)
@@ -35,6 +37,7 @@ impl<const N: usize> HyperVector<N> {
     }
 
     /// The hottest function in the entire project.
+    /// Calculates the squared Poincare distance using the Möbius addition formula optimizations.
     #[inline(always)]
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
         #[cfg(feature = "nightly-simd")]
@@ -86,6 +89,7 @@ impl<const N: usize> HyperVector<N> {
         }
     }
 
+    /// Returns the true Hyperbolic distance (acosh of the squared distance).
     pub fn true_distance(&self, other: &Self) -> f64 {
         self.poincare_distance_sq(other).acosh()
     }
@@ -255,6 +259,11 @@ impl<const N: usize> HyperVector<N> {
     pub fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
     }
+    /// Casts bytes to `HyperVector`.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
         assert_eq!(bytes.as_ptr().align_offset(std::mem::align_of::<Self>()), 0, "HyperVector: Misaligned bytes! Use aligned storage.");
@@ -267,8 +276,14 @@ impl<const N: usize> QuantizedHyperVector<N> {
     pub fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
     }
+    /// Casts bytes to `QuantizedHyperVector`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
+        assert_eq!(bytes.as_ptr().align_offset(std::mem::align_of::<Self>()), 0, "QuantizedHyperVector: Misaligned bytes!");
         unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
@@ -278,8 +293,14 @@ impl<const N: usize> BinaryHyperVector<N> {
     pub fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
     }
+    /// Casts bytes to `BinaryHyperVector`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
+        assert_eq!(bytes.as_ptr().align_offset(std::mem::align_of::<Self>()), 0, "BinaryHyperVector: Misaligned bytes!");
         unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
@@ -292,7 +313,7 @@ mod tests {
     fn test_hypervector_creation() {
         let coords = [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4];
         let v = HyperVector::<8>::new(coords).unwrap();
-        assert_eq!(v.coords[0], 0.1);
+        assert!((v.coords[0] - 0.1).abs() < f64::EPSILON);
         assert!(v.alpha > 0.0);
     }
     #[test]
@@ -312,8 +333,7 @@ mod tests {
 
         let duration = start.elapsed();
         println!(
-            "⏱️ 1M distances took: {:?} (Check sum: {})",
-            duration, black_box
+            "⏱️ 1M distances took: {duration:?} (Check sum: {black_box})"
         );
     }
 }

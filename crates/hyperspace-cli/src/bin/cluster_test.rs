@@ -11,8 +11,9 @@ struct Node {
 }
 
 impl Node {
-    fn spawn(grpc: u16, http: u16, role: &str, leader: Option<&str>) -> Self {
-        let mut cmd = Command::new("./target/release/hyperspace-server");
+    fn spawn(grpc: u16, http: u16, role: &str, leader: Option<&str>, clean: bool) -> Self {
+        let server_path = std::env::current_dir().unwrap().join("target/release/hyperspace-server");
+        let mut cmd = Command::new(server_path);
         cmd.arg("--port")
             .arg(grpc.to_string())
             .arg("--http-port")
@@ -25,9 +26,15 @@ impl Node {
         }
 
         // Use temp dirs for persistence to avoid conflicts
+
         let data_dir = format!("tmp_data_{grpc}");
-        let _ = std::fs::remove_dir_all(&data_dir); // Clean start
-        std::fs::create_dir_all(&data_dir).unwrap();
+        if clean {
+            let _ = std::fs::remove_dir_all(&data_dir); // Clean start
+            std::fs::create_dir_all(&data_dir).unwrap();
+        } else {
+            // Ensure dir exists if not cleaning (should exist, but safe to call)
+            std::fs::create_dir_all(&data_dir).unwrap();
+        }
         // Since server uses current dir for data/wal, we need to set CWD or pass dir arg (if supported).
         // Server doesn't support --data-dir yet? Check main.rs.
         // It uses "collections" dir in CWD.
@@ -35,11 +42,11 @@ impl Node {
         cmd.current_dir(&data_dir);
 
         // Pass API Key
-        cmd.env("HYPERSPACE_API_KEY", "test_key");
+        cmd.env("HYPERSPACE_API_KEY", "I_LOVE_HYPERSPACEDB");
 
         let process = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .spawn()
             .expect("Failed to spawn server");
 
@@ -74,36 +81,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Start Leader
     #[allow(unused)]
-    let leader = Node::spawn(50051, 50050, "leader", None);
+    let leader = Node::spawn(50051, 50050, "leader", None, true);
     println!("✅ Leader started on :50051");
     thread::sleep(Duration::from_secs(2));
 
     // 2. Start Followers
     #[allow(unused)]
-    let f1 = Node::spawn(50052, 50060, "follower", Some("http://0.0.0.0:50051"));
-    let f2 = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"));
+    let f1 = Node::spawn(50052, 50060, "follower", Some("http://0.0.0.0:50051"), true);
+    let f2 = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"), true);
     println!("✅ Followers started");
     thread::sleep(Duration::from_secs(3));
 
     // 3. Connect Client to Leader
     let mut client = Client::connect(
         "http://0.0.0.0:50051".to_string(),
-        Some("test_key".to_string()),
+        Some("I_LOVE_HYPERSPACEDB".to_string()),
     )
     .await?;
 
     // Create Collection
     client
-        .create_collection("test_sync".to_string(), 128, "l2".to_string())
+        .create_collection("test_sync".to_string(), 1024, "l2".to_string())
         .await?;
     println!("✅ Collection created on Leader");
+
+    // Also create on Followers because schema sync is not yet implemented
+    {
+        let mut cf1 = Client::connect("http://0.0.0.0:50052".to_string(), Some("I_LOVE_HYPERSPACEDB".to_string())).await?;
+        cf1.create_collection("test_sync".to_string(), 1024, "l2".to_string()).await?;
+        
+        let mut cf2 = Client::connect("http://0.0.0.0:50053".to_string(), Some("I_LOVE_HYPERSPACEDB".to_string())).await?;
+        cf2.create_collection("test_sync".to_string(), 1024, "l2".to_string()).await?;
+    }
 
     // 4. Insert Vectors
     println!("Please wait, inserting 100 vectors...");
     for i in 0..100 {
-        let vec = vec![0.1; 128];
+        let vec = vec![0.1; 1024];
         client
-            .insert(i, vec, Default::default(), Some("test_sync".to_string()))
+            .insert(i, vec, std::collections::HashMap::new(), Some("test_sync".to_string()))
             .await?;
     }
     println!("✅ Insertion complete");
@@ -118,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check F1
     let mut c1 = Client::connect(
         "http://0.0.0.0:50052".to_string(),
-        Some("test_key".to_string()),
+        Some("I_LOVE_HYPERSPACEDB".to_string()),
     )
     .await?;
     let d1 = c1.get_digest(Some("test_sync".to_string())).await?;
@@ -138,19 +154,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Insert new data to Leader
     println!("Inserting 50 more vectors...");
     for i in 100..150 {
-        let vec = vec![0.2; 128];
+        let vec = vec![0.2; 1024];
         client
-            .insert(i, vec, Default::default(), Some("test_sync".to_string()))
+            .insert(i, vec, std::collections::HashMap::new(), Some("test_sync".to_string()))
             .await?;
     }
 
     println!("♻️  Restarting Follower 2...");
-    let _f2_reborn = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"));
+    let _f2_reborn = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"), false);
     thread::sleep(Duration::from_secs(5)); // Give time to sync (currently full stream sync on connect)
 
     let mut c2: Client = Client::connect(
         "http://0.0.0.0:50053".to_string(),
-        Some("test_key".to_string()),
+        Some("I_LOVE_HYPERSPACEDB".to_string()),
     )
     .await?;
     let d2 = c2.get_digest(Some("test_sync".to_string())).await?;

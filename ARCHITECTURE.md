@@ -40,8 +40,11 @@ Vectors are stored in a segmented, append-only format using **Memory-Mapped File
 *   **Files**: `chunk_0.hyp`, `chunk_1.hyp`, etc.
 *   **Quantization**: Vectors are optionally quantized (e.g., `ScalarI8`), reducing size from 64-bit float to 8-bit integer per dimension (8x compression).
 
-### 2. Write-Ahead Log (`wal.log`)
-Writes are durable. Every insert is appended to `wal.log` before being acknowledged. Upon restart, the WAL helps recover data that wasn't yet persisted in the Index Snapshot.
+### 2. Write-Ahead Log (`wal.log`) v3
+Writes are durable. Every insert is appended to `wal.log`.
+- **Format**: Binary `[Magic][Len][CRC32][Op][Data]`.
+- **Durability**: Configurable (Async, Batch, Strict).
+- **Recovery**: Automatic truncation of corrupted tail.
 
 ---
 
