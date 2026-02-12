@@ -399,7 +399,7 @@ Configure these via `.env` file or environment variables:
 Optimized for standard embeddings from OpenAI, Cohere, Voyage, etc.
 * **Metric**: `cosine` (Cosine Similarity) - recommended for OpenAI/BGE embeddings
 * **Dimensions**: `1024`, `1536`, `2048`
-* **Note**: Use `cosine` for normalized embeddings (OpenAI, BGE). For unnormalized vectors, use `l2` with `HS_QUANTIZATION_LEVEL=none`.
+* **Note**: `cosine` mode automatically normalizes vectors on insert/search. For magnitude-sensitive workloads, use `l2` with `HS_QUANTIZATION_LEVEL=none`.
 
 **2. Scientific / Hyperbolic**
 Optimized for hierarchical data, graph embeddings, and low-dimensional efficiency.

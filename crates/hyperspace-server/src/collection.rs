@@ -35,6 +35,21 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
+    #[inline]
+    fn normalize_if_cosine(vector: &[f64]) -> Vec<f64> {
+        if M::name() != "cosine" {
+            return vector.to_vec();
+        }
+
+        let norm_sq: f64 = vector.iter().map(|x| x * x).sum();
+        if norm_sq <= 1e-18 {
+            return vector.to_vec();
+        }
+
+        let inv_norm = 1.0 / norm_sq.sqrt();
+        vector.iter().map(|x| x * inv_norm).collect()
+    }
+
     pub async fn new(
         name: String,
         node_id: String,
@@ -164,6 +179,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
                     // Update State
                     id_map_data.insert(id, internal_id);
+                        reverse_id_map_data.insert(internal_id, id);
                     
                     let hash = CollectionDigest::hash_entry(id, &vector);
                     let b_idx = CollectionDigest::get_bucket_index(id);
@@ -300,6 +316,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 vector.len()
             ));
         }
+        let processed_vector = Self::normalize_if_cosine(vector);
 
         // Check if this user ID already exists (for upsert)
         let mut id_map = self.id_map.lock().unwrap();
@@ -316,7 +333,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         // Update State Hash with new vector (XOR rolling hash)
-        let entry_hash = CollectionDigest::hash_entry(id, vector);
+        let entry_hash = CollectionDigest::hash_entry(id, &processed_vector);
         let bucket_idx = CollectionDigest::get_bucket_index(id);
         self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
@@ -324,14 +341,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let internal_id = if let Some(old_id) = existing_internal_id {
             // Update existing vector in storage
             self.index
-                .update_storage(old_id, vector)
+                .update_storage(old_id, &processed_vector)
                 .map_err(|e| e.clone())?;
             old_id
         } else {
             // Insert new vector
             let new_id = self
                 .index
-                .insert_to_storage(vector)
+                .insert_to_storage(&processed_vector)
                 .map_err(|e| e.clone())?;
             // Store bidirectional mapping
             id_map.insert(id, new_id);
@@ -350,7 +367,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // 2. Write to WAL (Persistence)
         {
             let mut wal = self.wal.lock().map_err(|_| "Failed to lock WAL")?;
-            wal.append(internal_id, vector, &metadata)
+            wal.append(internal_id, &processed_vector, &metadata)
                 .map_err(|e| format!("WAL Error: {e}"))?;
 
             if durability == hyperspace_core::Durability::Strict {
@@ -385,7 +402,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 collection: self.name.clone(),
                 operation: Some(replication_log::Operation::Insert(InsertOp {
                     id,
-                    vector: vector.to_vec(),
+                    vector: processed_vector,
                     metadata,
                 })),
             };
@@ -421,6 +438,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let mut internal_data = Vec::with_capacity(vectors.len());
 
         for (vector, id, metadata) in &vectors {
+            let processed_vector = Self::normalize_if_cosine(vector);
             // Check if this user ID already exists (for upsert)
             let existing_internal_id = id_map.get(id).copied();
 
@@ -433,20 +451,20 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
 
             // Update State Hash with new vector
-            let entry_hash = CollectionDigest::hash_entry(*id, vector);
+            let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
             let bucket_idx = CollectionDigest::get_bucket_index(*id);
             self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
             // Storage
             let internal_id = if let Some(old_id) = existing_internal_id {
                 self.index
-                    .update_storage(old_id, vector)
+                    .update_storage(old_id, &processed_vector)
                     .map_err(|e| e.clone())?;
                 old_id
             } else {
                 let new_id = self
                     .index
-                    .insert_to_storage(vector)
+                    .insert_to_storage(&processed_vector)
                     .map_err(|e| e.clone())?;
                 // Store bidirectional mapping
                 id_map.insert(*id, new_id);
@@ -454,7 +472,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 new_id
             };
 
-            internal_data.push((internal_id, vector.clone(), metadata.clone()));
+            internal_data.push((internal_id, processed_vector, metadata.clone()));
         }
 
         drop(id_map);
@@ -489,13 +507,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // 5. Replication
         if self.replication_tx.receiver_count() > 0 {
             for (vector, id, metadata) in vectors {
+                let processed_vector = Self::normalize_if_cosine(&vector);
                 let log = ReplicationLog {
                     logical_clock: clock,
                     origin_node_id: self.node_id.clone(),
                     collection: self.name.clone(),
                     operation: Some(replication_log::Operation::Insert(InsertOp {
                         id,
-                        vector,
+                        vector: processed_vector,
                         metadata,
                     })),
                 };
@@ -526,8 +545,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             ));
         }
 
+        let processed_query = Self::normalize_if_cosine(query);
         let results = self.index.search(
-            query,
+            &processed_query,
             params.top_k,
             params.ef_search,
             filters,
