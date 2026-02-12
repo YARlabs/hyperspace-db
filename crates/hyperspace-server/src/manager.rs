@@ -1,7 +1,7 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
 use hyperspace_core::{Collection, EuclideanMetric, PoincareMetric};
-use hyperspace_proto::hyperspace::ReplicationLog;
+use hyperspace_proto::hyperspace::{ReplicationLog, CreateCollectionOp, DeleteCollectionOp, replication_log};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -92,10 +92,8 @@ impl CollectionManager {
             let path = entry.path();
             if path.is_dir() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    // Try to load config.json to know dimension/metric?
-                    // For now, MVP assumes 1024 Poincare for everyone or uses a metadata file.
-                    // To properly support dynamic loading, we need to save metadata about each collection.
-                    // For this MVP, let's assume we store a "meta.json" in the collection dir.
+                    // Load metadata to determine dimension and metric
+
 
                     if let Ok(meta) = CollectionMetadata::load(&path) {
                         self.instantiate_collection(name, meta).await?;
@@ -178,6 +176,25 @@ impl CollectionManager {
         dimension: u32,
         metric: &str,
     ) -> Result<(), String> {
+        self.create_collection_internal(name, dimension, metric, true).await
+    }
+
+    pub async fn create_collection_from_replication(
+        &self,
+        name: &str,
+        dimension: u32,
+        metric: &str,
+    ) -> Result<(), String> {
+        self.create_collection_internal(name, dimension, metric, false).await
+    }
+
+    async fn create_collection_internal(
+        &self,
+        name: &str,
+        dimension: u32,
+        metric: &str,
+        replicate: bool,
+    ) -> Result<(), String> {
         if self.collections.contains_key(name) {
             return Err(format!("Collection '{name}' already exists"));
         }
@@ -199,6 +216,21 @@ impl CollectionManager {
             .await
             .map_err(|e| e.to_string())?;
 
+        if replicate {
+            // Broadcast replication event
+            let clock = self.tick_cluster_clock().await;
+            let log = ReplicationLog {
+                logical_clock: clock,
+                origin_node_id: self.cluster_state.read().await.node_id.clone(),
+                collection: name.to_string(),
+                operation: Some(replication_log::Operation::CreateCollection(CreateCollectionOp {
+                    dimension,
+                    metric: metric.to_string(),
+                })),
+            };
+            let _ = self.replication_tx.send(log);
+        }
+
         Ok(())
     }
 
@@ -216,12 +248,31 @@ impl CollectionManager {
         state.merge(remote_clock);
     }
 
-    pub fn delete_collection(&self, name: &str) -> Result<(), String> {
+    pub async fn delete_collection(&self, name: &str) -> Result<(), String> {
+        self.delete_collection_internal(name, true).await
+    }
+
+    pub async fn delete_collection_from_replication(&self, name: &str) -> Result<(), String> {
+        self.delete_collection_internal(name, false).await
+    }
+
+    async fn delete_collection_internal(&self, name: &str, replicate: bool) -> Result<(), String> {
         if let Some((_, _col)) = self.collections.remove(name) {
             // Cleanup files
             let col_dir = self.base_path.join(name);
             if col_dir.exists() {
                 fs::remove_dir_all(col_dir).map_err(|e| e.to_string())?;
+            }
+
+            if replicate {
+                 let clock = self.tick_cluster_clock().await;
+                 let log = ReplicationLog {
+                    logical_clock: clock,
+                    origin_node_id: self.cluster_state.read().await.node_id.clone(),
+                    collection: name.to_string(),
+                    operation: Some(replication_log::Operation::DeleteCollection(DeleteCollectionOp {})),
+                 };
+                 let _ = self.replication_tx.send(log);
             }
             Ok(())
         } else {

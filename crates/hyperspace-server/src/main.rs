@@ -31,7 +31,7 @@ use hyperspace_proto::hyperspace::{
     DigestResponse, InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse,
     MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats,
 };
-use hyperspace_proto::hyperspace::{Empty, ReplicationLog};
+use hyperspace_proto::hyperspace::{Empty, ReplicationLog, replication_log};
 
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -151,7 +151,7 @@ impl Database for HyperspaceService {
         request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
         let req = request.into_inner();
-        match self.manager.delete_collection(&req.name) {
+        match self.manager.delete_collection(&req.name).await {
             Ok(()) => Ok(Response::new(
                 hyperspace_proto::hyperspace::StatusResponse {
                     status: format!("Collection '{}' deleted.", req.name),
@@ -651,34 +651,43 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                     let mut stream = resp.into_inner();
                                     while let Ok(Some(log)) = stream.message().await {
                                         if let Some(mgr) = manager_weak.upgrade() {
-                                            // Log contains collection name
                                             let col_name = if log.collection.is_empty() {
                                                 "default"
                                             } else {
                                                 &log.collection
                                             };
-                                            if let Some(col) = mgr.get(col_name) {
-                                                let meta: std::collections::HashMap<
-                                                    String,
-                                                    String,
-                                                > = log.metadata.into_iter().collect();
-
-                                                // Merge clock from leader
-                                                mgr.merge_cluster_clock(log.logical_clock).await;
-
-                                                if let Err(e) = col.insert(
-                                                    &log.vector,
-                                                    log.id,
-                                                    meta,
-                                                    log.logical_clock,
-                                                    hyperspace_core::Durability::Default,
-                                                ) {
-                                                    eprintln!("Rep Error: {e}");
+                                            
+                                            // Merge clock
+                                            mgr.merge_cluster_clock(log.logical_clock).await;
+                                            
+                                            match log.operation {
+                                                Some(replication_log::Operation::Insert(op)) => {
+                                                    if let Some(col) = mgr.get(col_name) {
+                                                        if let Err(e) = col.insert(&op.vector, op.id, op.metadata.into_iter().collect(), log.logical_clock, hyperspace_core::Durability::Default) {
+                                                            eprintln!("Rep Error: {e}");
+                                                        }
+                                                    } else {
+                                                        eprintln!("Unknown collection for insert: {col_name}");
+                                                    }
                                                 }
-                                            } else {
-                                                // Create collection if missing?
-                                                // For now just error.
-                                                eprintln!("Replication received for unknown collection: {col_name}");
+                                                Some(replication_log::Operation::CreateCollection(op)) => {
+                                                    println!("Rep: Creating collection {col_name}");
+                                                    if let Err(e) = mgr.create_collection_from_replication(col_name, op.dimension, &op.metric).await {
+                                                        eprintln!("Rep Error (Create): {e}");
+                                                    }
+                                                }
+                                                Some(replication_log::Operation::DeleteCollection(_)) => {
+                                                    println!("Rep: Deleting collection {col_name}");
+                                                    if let Err(e) = mgr.delete_collection_from_replication(col_name).await {
+                                                        eprintln!("Rep Error (Delete): {e}");
+                                                    }
+                                                }
+                                                Some(replication_log::Operation::Delete(op)) => {
+                                                    if let Some(col) = mgr.get(col_name) {
+                                                        let _ = col.delete(op.id);
+                                                    }
+                                                }
+                                                None => {}
                                             }
                                         } else {
                                             break;

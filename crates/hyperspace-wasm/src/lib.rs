@@ -9,6 +9,7 @@ use hyperspace_store::VectorStore;
 use rexie::{ObjectStore, Rexie, TransactionMode};
 
 // Hardcoded dimension for MVP.
+// TODO: Refactor `HyperspaceDB` struct to hold `enum IndexWrapper` to support dynamic dimensions (e.g. 128, 256, 1024).
 type MyIndex = HnswIndex<1024, EuclideanMetric>;
 
 const DB_NAME: &str = "hyperspace_db";

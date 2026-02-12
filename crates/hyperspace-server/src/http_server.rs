@@ -213,7 +213,7 @@ async fn delete_collection(
     State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    match manager.delete_collection(&name) {
+    match manager.delete_collection(&name).await {
         Ok(()) => (StatusCode::OK, "Deleted").into_response(),
         Err(e) => (StatusCode::NOT_FOUND, e).into_response(),
     }
