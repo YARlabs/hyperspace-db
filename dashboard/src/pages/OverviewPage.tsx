@@ -52,7 +52,12 @@ export function OverviewPage() {
                         <div className="space-y-4">
                             <ConfigRow label="Version" value={status?.version} />
                             <ConfigRow label="Global Dimension" value={status?.config?.dimension} />
-                            <ConfigRow label="Metric Space" value={status?.config?.metric === 'l2' ? 'Euclidean (L2)' : 'Hyperbolic (Poincaré)'} />
+                            <ConfigRow label="Metric Space" value={
+                                status?.config?.metric === 'cosine' ? 'Cosine Similarity' :
+                                status?.config?.metric === 'l2' || status?.config?.metric === 'euclidean' ? 'Euclidean (L2)' :
+                                status?.config?.metric === 'poincare' ? 'Hyperbolic (Poincaré)' :
+                                status?.config?.metric || 'Unknown'
+                            } />
                             <ConfigRow label="Quantization" value={status?.config?.quantization || "Scalar I8"} />
                             <ConfigRow label="Uptime" value={status?.uptime} />
                             <ConfigRow label="Embedding" value={status?.embedding?.enabled ? "Enabled" : "Disabled"} />

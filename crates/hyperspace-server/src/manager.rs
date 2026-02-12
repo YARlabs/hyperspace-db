@@ -1,6 +1,6 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
-use hyperspace_core::{Collection, EuclideanMetric, PoincareMetric};
+use hyperspace_core::{Collection, EuclideanMetric, PoincareMetric, CosineMetric};
 use hyperspace_proto::hyperspace::{ReplicationLog, CreateCollectionOp, DeleteCollectionOp, replication_log};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -156,6 +156,17 @@ impl CollectionManager {
             (1024, "euclidean" | "l2") => inst!(1024, EuclideanMetric),
             (1536, "euclidean" | "l2") => inst!(1536, EuclideanMetric),
             (2048, "euclidean" | "l2") => inst!(2048, EuclideanMetric),
+
+            // Cosine Similarity
+            (8, "cosine") => inst!(8, CosineMetric),
+            (16, "cosine") => inst!(16, CosineMetric),
+            (32, "cosine") => inst!(32, CosineMetric),
+            (64, "cosine") => inst!(64, CosineMetric),
+            (128, "cosine") => inst!(128, CosineMetric),
+            (768, "cosine") => inst!(768, CosineMetric),
+            (1024, "cosine") => inst!(1024, CosineMetric),
+            (1536, "cosine") => inst!(1536, CosineMetric),
+            (2048, "cosine") => inst!(2048, CosineMetric),
 
             _ => {
                 return Err(format!(

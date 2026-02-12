@@ -390,16 +390,16 @@ Configure these via `.env` file or environment variables:
 | Variable | Description | Supported Values | Default |
 | :--- | :--- | :--- | :--- |
 | `HS_DIMENSION` | Vector dimensions | `16`, `32`, `64`, `128` (Hyperbolic) <br> `1024` (BGE), `1536` (OpenAI), `2048` (Voyage) | `1024` |
-| `HS_METRIC`    | Distance formula | `poincare` (Hyperbolic) <br> `l2`, `euclidean` (Squared L2) | `l2` |
-| `HS_QUANTIZATION_LEVEL` | Compression | `scalar` (i8), `binary` (1-bit), `none` (f32) | `scalar` |
+| `HS_METRIC`    | Distance formula | `poincare` (Hyperbolic) <br> `cosine` (Cosine Similarity) <br> `l2`, `euclidean` (Squared L2) | `cosine` |
+| `HS_QUANTIZATION_LEVEL` | Compression | `scalar` (i8), `binary` (1-bit), `none` (f64) | `none` |
 
 ### 🎯 Supported Presets
 
 **1. Classic RAG (Default)**
 Optimized for standard embeddings from OpenAI, Cohere, Voyage, etc.
-* **Metric**: `l2` (Euclidean)
+* **Metric**: `cosine` (Cosine Similarity) - recommended for OpenAI/BGE embeddings
 * **Dimensions**: `1024`, `1536`, `2048`
-* **Note**: `Scalar` quantization clamps values to `[-1, 1]`. Ensure your vectors are normalized (standard for OpenAI/BGE) or use `none`.
+* **Note**: Use `cosine` for normalized embeddings (OpenAI, BGE). For unnormalized vectors, use `l2` with `HS_QUANTIZATION_LEVEL=none`.
 
 **2. Scientific / Hyperbolic**
 Optimized for hierarchical data, graph embeddings, and low-dimensional efficiency.
