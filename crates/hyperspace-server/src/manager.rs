@@ -204,10 +204,14 @@ impl CollectionManager {
             fs::create_dir_all(&col_dir).map_err(|e| e.to_string())?;
         }
 
+        let quantization = std::env::var("HS_QUANTIZATION_LEVEL")
+            .unwrap_or("scalar".to_string())
+            .to_lowercase();
+
         let meta = CollectionMetadata {
             dimension,
             metric: metric.to_string(),
-            quantization: "scalar".to_string(), // Default to scalar
+            quantization,
         };
 
         meta.save(&col_dir).map_err(|e| e.to_string())?;
