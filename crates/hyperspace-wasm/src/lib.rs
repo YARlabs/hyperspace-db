@@ -197,7 +197,7 @@ impl HyperspaceDB {
         // Reconstruct
         // 1. Restore Store
         // Element size: for QuantizationMode::None (default in new), it is 1024 * 4 = 4096 bytes if f32.
-        // Wait, VectorStore::new call in `new()` used 1024*8.
+
         // But HnswIndex insert stores f32 by default.
         // I should fix the element_size in `new()` to be correct.
         // 1024 * size_of::<f32>() = 4096.

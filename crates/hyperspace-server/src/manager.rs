@@ -99,9 +99,9 @@ impl CollectionManager {
 
                     if let Ok(meta) = CollectionMetadata::load(&path) {
                         self.instantiate_collection(name, meta).await?;
-                        println!("Loaded collection: {}", name);
+                        println!("Loaded collection: {name}");
                     } else {
-                        eprintln!("Skipping unknown directory (no meta.json): {}", name);
+                        eprintln!("Skipping unknown directory (no meta.json): {name}");
                     }
                 }
             }
@@ -149,15 +149,15 @@ impl CollectionManager {
             (2048, "poincare") => inst!(2048, PoincareMetric),
 
             // Euclidean (L2)
-            (8, "euclidean") | (8, "l2") => inst!(8, EuclideanMetric),
-            (16, "euclidean") | (16, "l2") => inst!(16, EuclideanMetric),
-            (32, "euclidean") | (32, "l2") => inst!(32, EuclideanMetric),
-            (64, "euclidean") | (64, "l2") => inst!(64, EuclideanMetric),
-            (128, "euclidean") | (128, "l2") => inst!(128, EuclideanMetric),
-            (768, "euclidean") | (768, "l2") => inst!(768, EuclideanMetric),
-            (1024, "euclidean") | (1024, "l2") => inst!(1024, EuclideanMetric),
-            (1536, "euclidean") | (1536, "l2") => inst!(1536, EuclideanMetric),
-            (2048, "euclidean") | (2048, "l2") => inst!(2048, EuclideanMetric),
+            (8, "euclidean" | "l2") => inst!(8, EuclideanMetric),
+            (16, "euclidean" | "l2") => inst!(16, EuclideanMetric),
+            (32, "euclidean" | "l2") => inst!(32, EuclideanMetric),
+            (64, "euclidean" | "l2") => inst!(64, EuclideanMetric),
+            (128, "euclidean" | "l2") => inst!(128, EuclideanMetric),
+            (768, "euclidean" | "l2") => inst!(768, EuclideanMetric),
+            (1024, "euclidean" | "l2") => inst!(1024, EuclideanMetric),
+            (1536, "euclidean" | "l2") => inst!(1536, EuclideanMetric),
+            (2048, "euclidean" | "l2") => inst!(2048, EuclideanMetric),
 
             _ => {
                 return Err(format!(
@@ -179,7 +179,7 @@ impl CollectionManager {
         metric: &str,
     ) -> Result<(), String> {
         if self.collections.contains_key(name) {
-            return Err(format!("Collection '{}' already exists", name));
+            return Err(format!("Collection '{name}' already exists"));
         }
 
         let col_dir = self.base_path.join(name);
@@ -225,7 +225,7 @@ impl CollectionManager {
             }
             Ok(())
         } else {
-            Err(format!("Collection '{}' not found", name))
+            Err(format!("Collection '{name}' not found"))
         }
     }
 

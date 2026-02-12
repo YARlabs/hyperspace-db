@@ -1,3 +1,17 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::future_not_send)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::unused_async)]
+
 use clap::Parser;
 // Remove direct index usage, we go through manager
 // use hyperspace_index::HnswIndex;
@@ -123,7 +137,7 @@ impl Database for HyperspaceService {
             .create_collection(&req.name, req.dimension, &req.metric)
             .await
         {
-            Ok(_) => Ok(Response::new(
+            Ok(()) => Ok(Response::new(
                 hyperspace_proto::hyperspace::StatusResponse {
                     status: format!("Collection '{}' created.", req.name),
                 },
@@ -138,7 +152,7 @@ impl Database for HyperspaceService {
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
         let req = request.into_inner();
         match self.manager.delete_collection(&req.name) {
-            Ok(_) => Ok(Response::new(
+            Ok(()) => Ok(Response::new(
                 hyperspace_proto::hyperspace::StatusResponse {
                     status: format!("Collection '{}' deleted.", req.name),
                 },
@@ -198,15 +212,22 @@ impl Database for HyperspaceService {
             // Tick clock
             let clock = self.manager.tick_cluster_clock().await;
 
+            // Durability mapping
+            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability).ok() {
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => hyperspace_core::Durability::Strict,
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => hyperspace_core::Durability::Async,
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => hyperspace_core::Durability::Batch,
+                _ => hyperspace_core::Durability::Default,
+            };
+
             // id is u32 in proto.
-            if let Err(e) = col.insert(&req.vector, req.id, meta, clock) {
+            if let Err(e) = col.insert(&req.vector, req.id, meta, clock, durability) {
                 return Err(Status::internal(e));
             }
             Ok(Response::new(InsertResponse { success: true }))
         } else {
             Err(Status::not_found(format!(
-                "Collection '{}' not found",
-                col_name
+                "Collection '{col_name}' not found"
             )))
         }
     }
@@ -237,21 +258,28 @@ impl Database for HyperspaceService {
             // Tick clock
             let clock = self.manager.tick_cluster_clock().await;
 
-            if let Err(e) = col.insert_batch(vectors, clock) {
+            // Durability mapping
+            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability).ok() {
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => hyperspace_core::Durability::Strict,
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => hyperspace_core::Durability::Async,
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => hyperspace_core::Durability::Batch,
+                _ => hyperspace_core::Durability::Default,
+            };
+
+            if let Err(e) = col.insert_batch(vectors, clock, durability) {
                 return Err(Status::internal(e));
             }
             Ok(Response::new(InsertResponse { success: true }))
         } else {
             Err(Status::not_found(format!(
-                "Collection '{}' not found",
-                col_name
+                "Collection '{col_name}' not found"
             )))
         }
     }
 
     async fn insert_text(
         &self,
-        request: Request<InsertTextRequest>,
+        _request: Request<InsertTextRequest>,
     ) -> Result<Response<InsertResponse>, Status> {
         #[cfg(feature = "embed")]
         {
@@ -281,7 +309,16 @@ impl Database for HyperspaceService {
                     let meta: std::collections::HashMap<String, String> =
                         req.metadata.into_iter().collect();
                     let clock = self.manager.tick_cluster_clock().await;
-                    if let Err(e) = col.insert(&vector, req.id, meta, clock) {
+                    
+                    // Durability mapping
+                    let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability).ok() {
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => hyperspace_core::Durability::Strict,
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => hyperspace_core::Durability::Async,
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => hyperspace_core::Durability::Batch,
+                        _ => hyperspace_core::Durability::Default,
+                    };
+
+                    if let Err(e) = col.insert(&vector, req.id, meta, clock, durability) {
                         return Err(Status::internal(e));
                     }
                     return Ok(Response::new(InsertResponse { success: true }));
@@ -319,8 +356,7 @@ impl Database for HyperspaceService {
             Ok(Response::new(DeleteResponse { success: true }))
         } else {
             Err(Status::not_found(format!(
-                "Collection '{}' not found",
-                col_name
+                "Collection '{col_name}' not found"
             )))
         }
     }
@@ -383,8 +419,7 @@ impl Database for HyperspaceService {
             }
         } else {
             Err(Status::not_found(format!(
-                "Collection '{}' not found",
-                col_name
+                "Collection '{col_name}' not found"
             )))
         }
     }
@@ -422,7 +457,7 @@ impl Database for HyperspaceService {
                 if tx.send(Ok(stats)).await.is_err() {
                     break;
                 }
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }
         });
         Ok(Response::new(ReceiverStream::new(rx)))
@@ -466,16 +501,14 @@ impl Database for HyperspaceService {
 
         // Extract peer address
         let peer_addr = request
-            .remote_addr()
-            .map(|addr| addr.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+            .remote_addr().map_or_else(|| "unknown".to_string(), |addr| addr.to_string());
 
         // Register follower
         {
             let mut state = self.manager.cluster_state.write().await;
             if !state.downstream_peers.contains(&peer_addr) {
                 state.downstream_peers.push(peer_addr.clone());
-                println!("📡 Follower connected: {}", peer_addr);
+                println!("📡 Follower connected: {peer_addr}");
             }
         }
 
@@ -493,7 +526,7 @@ impl Database for HyperspaceService {
             // Unregister on disconnect
             let mut state = manager.cluster_state.write().await;
             state.downstream_peers.retain(|p| p != &peer_addr_clone);
-            println!("📡 Follower disconnected: {}", peer_addr_clone);
+            println!("📡 Follower disconnected: {peer_addr_clone}");
         });
 
         Ok(Response::new(ReceiverStream::new(out_rx)))
@@ -540,8 +573,7 @@ impl Database for HyperspaceService {
 
         if self.manager.get(&col_name).is_none() {
             return Err(Status::not_found(format!(
-                "Collection '{}' not found",
-                col_name
+                "Collection '{col_name}' not found"
             )));
         }
         // Not implemented on trait yet.
@@ -580,20 +612,19 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
             .to_lowercase();
 
         println!(
-            "🚀 Booting HyperspaceDB | Dim: {} | Metric: {}",
-            dim, metric_str
+            "🚀 Booting HyperspaceDB | Dim: {dim} | Metric: {metric_str}"
         );
 
         println!("Creating 'default' collection...");
         if let Err(e) = manager.create_collection("default", dim, &metric_str).await {
-            eprintln!("Failed to create default collection: {}", e);
+            eprintln!("Failed to create default collection: {e}");
         }
     }
 
     // Follower Logic
     if args.role == "follower" {
         if let Some(leader) = args.leader.clone() {
-            println!("🚀 Starting as FOLLOWER of: {}", leader);
+            println!("🚀 Starting as FOLLOWER of: {leader}");
             let manager_weak = Arc::downgrade(&manager);
             let api_key_for_client = std::env::var("HYPERSPACE_API_KEY").ok();
 
@@ -602,7 +633,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                 use tonic::transport::Channel;
 
                 loop {
-                    println!("Connecting to leader {}...", leader);
+                    println!("Connecting to leader {leader}...");
                     match Channel::from_shared(leader.clone())
                         .expect("Invalid leader URL")
                         .connect()
@@ -640,23 +671,24 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                                     log.id,
                                                     meta,
                                                     log.logical_clock,
+                                                    hyperspace_core::Durability::Default,
                                                 ) {
-                                                    eprintln!("Rep Error: {}", e);
+                                                    eprintln!("Rep Error: {e}");
                                                 }
                                             } else {
                                                 // Create collection if missing?
                                                 // For now just error.
-                                                eprintln!("Replication received for unknown collection: {}", col_name);
+                                                eprintln!("Replication received for unknown collection: {col_name}");
                                             }
                                         } else {
                                             break;
                                         }
                                     }
                                 }
-                                Err(e) => eprintln!("Failed: {}", e),
+                                Err(e) => eprintln!("Failed: {e}"),
                             }
                         }
-                        Err(e) => eprintln!("Conn failed: {}", e),
+                        Err(e) => eprintln!("Conn failed: {e}"),
                     }
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
@@ -788,7 +820,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let http_port = args.http_port;
     tokio::spawn(async move {
         if let Err(e) = http_server::start_http_server(http_mgr, http_port, embedding_info).await {
-            eprintln!("HTTP Server panicked: {}", e);
+            eprintln!("HTTP Server panicked: {e}");
         }
     });
 
@@ -800,7 +832,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         vectorizer,
     };
 
-    println!("HyperspaceDB listening on {}", addr);
+    println!("HyperspaceDB listening on {addr}");
 
     // Setup Auth
     let api_key = std::env::var("HYPERSPACE_API_KEY").ok();

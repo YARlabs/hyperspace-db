@@ -1,3 +1,9 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::missing_panics_doc)]
+
 #[cfg(feature = "mmap")]
 pub mod wal;
 

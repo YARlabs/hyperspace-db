@@ -1,3 +1,13 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::cast_possible_truncation)]
+
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use rand::Rng;
@@ -110,21 +120,21 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         println!("📂 Loading snapshot: {}", path.display());
 
         // 1. Memory-map the file instead of reading it all into memory
-        let file = File::open(path).map_err(|e| format!("Failed to open snapshot: {}", e))?;
+        let file = File::open(path).map_err(|e| format!("Failed to open snapshot: {e}"))?;
         let file_size = file.metadata().map_err(|e| e.to_string())?.len();
         println!("   File size: {:.2} MB", file_size as f64 / 1024.0 / 1024.0);
 
         let mmap = unsafe {
             memmap2::MmapOptions::new()
                 .map(&file)
-                .map_err(|e| format!("Failed to mmap snapshot: {}", e))?
+                .map_err(|e| format!("Failed to mmap snapshot: {e}"))?
         };
         let mmap_time = start.elapsed();
         println!("   ✓ Memory-mapped in {:.3}s", mmap_time.as_secs_f64());
 
         // 2. Validate archived data
         let archived = rkyv::check_archived_root::<SnapshotData>(&mmap)
-            .map_err(|e| format!("Snapshot corruption: {}", e))?;
+            .map_err(|e| format!("Snapshot corruption: {e}"))?;
         let validate_time = start.elapsed();
         println!("   ✓ Validated in {:.3}s", validate_time.as_secs_f64());
 
@@ -140,7 +150,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let total_nodes = deserialized.nodes.len();
         let mut nodes = Vec::with_capacity(total_nodes);
 
-        println!("   ⏳ Reconstructing HNSW graph: {} nodes...", total_nodes);
+        println!("   ⏳ Reconstructing HNSW graph: {total_nodes} nodes...");
 
         let progress_interval = if total_nodes > 100_000 {
             50_000
@@ -156,8 +166,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let nodes_per_sec = i as f64 / elapsed;
                 let eta = (total_nodes - i) as f64 / nodes_per_sec;
                 println!(
-                    "      Progress: {}/{} ({:.1}%) | {:.0} nodes/s | ETA: {:.1}s",
-                    i, total_nodes, progress_pct, nodes_per_sec, eta
+                    "      Progress: {i}/{total_nodes} ({progress_pct:.1}%) | {nodes_per_sec:.0} nodes/s | ETA: {eta:.1}s"
                 );
             }
 
@@ -218,7 +227,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         };
 
         let bytes = rkyv::to_bytes::<_, 1024>(&snapshot)
-            .map_err(|e| format!("Serialization error: {}", e))?;
+            .map_err(|e| format!("Serialization error: {e}"))?;
 
         Ok(bytes.into_vec())
     }
@@ -233,7 +242,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let deserialized: SnapshotData = archived
             .deserialize(&mut rkyv::Infallible)
-            .map_err(|e| format!("Deserialization error: {}", e))?;
+            .map_err(|e| format!("Deserialization error: {e}"))?;
 
         let mut nodes = Vec::with_capacity(deserialized.nodes.len());
         for s_node in deserialized.nodes {
@@ -397,7 +406,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             // 1. Legacy Tag Filters
             if !filter.is_empty() {
                 for (key, val) in filter {
-                    let tag = format!("{}:{}", key, val);
+                    let tag = format!("{key}:{val}");
                     if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
                         apply_mask(&tag_bitmap);
                     } else {
@@ -410,7 +419,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             for expr in complex_filters {
                 match expr {
                     FilterExpr::Match { key, value } => {
-                        let tag = format!("{}:{}", key, value);
+                        let tag = format!("{key}:{value}");
                         if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
                             apply_mask(&tag_bitmap);
                         } else {
@@ -459,13 +468,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // 1. Create HyperVector from query.
         let mut aligned_query = [0.0; N];
-        if query.len() != N {
-            panic!(
-                "Query dimension mismatch provided {}, expected {}",
-                query.len(),
-                N
-            );
-        }
+        assert!(query.len() == N, 
+            "Query dimension mismatch provided {}, expected {}",
+            query.len(),
+            N
+        );
         aligned_query.copy_from_slice(query);
 
         M::validate(&aligned_query).expect("Invalid Query Vector for this Metric");
@@ -516,7 +523,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     }
 
                     // Read lock on neighbors (granular)
-                    let neighbors = node.layers[level as usize].read();
+                    let neighbors = node.layers[level].read();
 
                     for &neighbor in neighbors.iter() {
                         let d = self.dist(neighbor, &q_vec);
@@ -596,7 +603,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let nodes_guard = self.nodes.read();
 
         let mut candidates = BinaryHeap::new();
-        let mut results = BinaryHeap::new();
+        let mut results = BinaryHeap::<std::cmp::Reverse<Candidate>>::new();
         let mut visited = HashSet::new();
 
         // Helper to check validity
@@ -630,13 +637,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         candidates.push(first);
         if is_valid(start_node) {
-            results.push(first);
+            results.push(std::cmp::Reverse(first));
         }
         visited.insert(start_node);
 
         while let Some(cand) = candidates.pop() {
             // Lower Bound Pruning:
-            if let Some(worst) = results.peek() {
+            if let Some(std::cmp::Reverse(worst)) = results.peek() {
                 if results.len() >= ef && cand.distance > worst.distance {
                     break;
                 }
@@ -664,7 +671,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     // We add to candidates if dist < worst_result OR results not full.
                     // This ensures we traverse "through" invalid nodes if they are promising (close to query).
                     let mut add_to_candidates = true;
-                    if let Some(worst) = results.peek() {
+                    if let Some(std::cmp::Reverse(worst)) = results.peek() {
                         if results.len() >= ef && dist > worst.distance {
                             add_to_candidates = false;
                         }
@@ -679,7 +686,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
                         // Add to Results (Only if Valid)
                         if is_valid(neighbor) {
-                            results.push(c);
+                            results.push(std::cmp::Reverse(c));
                             if results.len() > ef {
                                 results.pop();
                             }
@@ -690,7 +697,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         }
 
         let mut output = Vec::new();
-        while let Some(c) = results.pop() {
+        while let Some(std::cmp::Reverse(c)) = results.pop() {
             output.push((c.id, c.distance));
         }
         output.reverse();
@@ -793,7 +800,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
             for &existing_neighbor in &result {
                 let neighbor_vec = self.get_vector(existing_neighbor);
-                let dist_to_neighbor = cand_vec.poincare_distance_sq(&neighbor_vec);
+                let dist_to_neighbor = M::distance(&cand_vec.coords, &neighbor_vec.coords);
 
                 if dist_to_neighbor < cand.distance {
                     is_good = false;
@@ -816,11 +823,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let q = QuantizedHyperVector::<N>::from_bytes(bytes);
                 let mut coords = [0.0; N];
                 for (i, &c) in q.coords.iter().enumerate() {
-                    coords[i] = c as f64 / 127.0;
+                    coords[i] = f64::from(c) / 127.0;
                 }
                 HyperVector {
                     coords,
-                    alpha: q.alpha as f64,
+                    alpha: f64::from(q.alpha),
                 }
             }
             QuantizationMode::None => {
@@ -842,7 +849,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
                 HyperVector {
                     coords,
-                    alpha: b.alpha as f64,
+                    alpha: f64::from(b.alpha),
                 }
             }
         }
@@ -903,7 +910,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let b = BinaryHyperVector::from_float(&q_vec_full);
                 self.storage.update(id, b.as_bytes())?;
             }
-        };
+        }
         Ok(id)
     }
 
@@ -912,13 +919,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         id: NodeId,
         meta: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
-        // Store full metadata for lookup (Data Explorer)
-        self.metadata.forward.insert(id, meta.clone());
-
-        // 2. Index Metadata
+        // 1. Index Metadata
         for (key, val) in &meta {
             // A. Inverted Index (Text)
-            let tag = format!("{}:{}", key, val);
+            let tag = format!("{key}:{val}");
             self.metadata.inverted.entry(tag).or_default().insert(id);
 
             // B. Numeric Index (i64)
@@ -936,7 +940,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             // C. Full Text Tokenization (Simple)
             let tokens = Self::tokenize(val);
             for token in tokens {
-                let token_key = format!("_txt:{}", token);
+                let token_key = format!("_txt:{token}");
                 self.metadata
                     .inverted
                     .entry(token_key)
@@ -944,6 +948,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     .insert(id);
             }
         }
+
+        // Store full metadata for lookup (Data Explorer) - Move here to avoid clone
+        self.metadata.forward.insert(id, meta);
 
         let q_vec = self.get_vector(id); // Helper reads from storage
 
@@ -969,9 +976,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // Determine safe start layer for search
         let start_layer = {
             let guard = self.nodes.read();
-            if guard.is_empty() {
-                0
-            } else if (entry_point as usize) >= guard.len() {
+            if guard.is_empty() || (entry_point as usize) >= guard.len() {
                 0
             } else {
                 guard[entry_point as usize].layers.len().saturating_sub(1)
@@ -1022,8 +1027,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         }
 
         // 3. Phase 2: Insert links from new_level down to 0
-        let ef_construction = self.config.get_ef_construction();
+        {
         const M_MAX: usize = M;
+        let ef_construction = self.config.get_ef_construction();
+
 
         for level in (0..=std::cmp::min(new_level, max_layer as usize)).rev() {
             // a) Search candidates
@@ -1047,10 +1054,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
             }
 
-            // Move entry point for next layer to the best found candidate
             if !selected_neighbors.is_empty() {
                 curr_obj = selected_neighbors[0];
             }
+        }
         }
 
         // Update global entry point if needed
@@ -1105,9 +1112,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // 1. Get vectors
         let node_vec = self.get_vector(node_id);
         let mut candidates = Vec::new();
-        for &n in links_copy.iter() {
+        for &n in &links_copy {
             let n_vec = self.get_vector(n);
-            let d = node_vec.poincare_distance_sq(&n_vec);
+            let d = M::distance(&node_vec.coords, &n_vec.coords);
             candidates.push(Candidate { id: n, distance: d });
         }
 
@@ -1136,6 +1143,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         )
     }
 
+    #[allow(clippy::unused_self)]
     fn random_level(&self) -> usize {
         let mut rng = rand::thread_rng();
         let mut level = 0;
@@ -1147,7 +1155,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     fn tokenize(text: &str) -> Vec<String> {
         text.split_whitespace()
-            .map(|s| s.to_lowercase())
+            .map(str::to_lowercase)
             .map(|s| s.chars().filter(|c| c.is_alphanumeric()).collect())
             .filter(|s: &String| !s.is_empty())
             .collect()
@@ -1184,7 +1192,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             std::collections::HashMap::new();
 
         for token in tokens {
-            let key = format!("_txt:{}", token);
+            let key = format!("_txt:{token}");
             if let Some(bitmap) = self.metadata.inverted.get(&key) {
                 for id in bitmap.iter() {
                     *keyword_scores.entry(id).or_default() += 1.0;
@@ -1232,7 +1240,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         final_ranking
             .into_iter()
             .take(k)
-            .map(|(id, score)| (id, (10.0 - score) as f64))
+            .map(|(id, score)| (id, f64::from(10.0 - score)))
             .collect()
     }
 }

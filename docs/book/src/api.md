@@ -43,7 +43,16 @@ message InsertRequest {
   repeated double vector = 2; // Data point
   uint32 id = 3;              // External ID
   map<string, string> metadata = 4; // Metadata tags
+  DurabilityLevel durability = 7; // Durability override
 }
+
+enum DurabilityLevel {
+  DEFAULT_LEVEL = 0; // Use server config
+  ASYNC = 1;         // Flush OS cache (Fastest)
+  BATCH = 2;         // Background fsync (Balanced)
+  STRICT = 3;        // Fsync every write (High Safety)
+}
+
 ```
 
 #### `Search`

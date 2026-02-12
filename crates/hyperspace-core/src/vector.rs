@@ -1,6 +1,9 @@
-// Only import SIMD if the feature is enabled
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
+
 #[cfg(feature = "nightly-simd")]
 use std::simd::prelude::*;
+
 
 /// Aligned vector struct. N is the dimension.
 /// align(64) is critical for AVX-512 and cache lines.
@@ -151,16 +154,16 @@ impl<const N: usize> QuantizedHyperVector<N> {
         #[cfg(not(feature = "nightly-simd"))]
         {
             // Stable Rust implementation
-            let mut sum_sq_diff = 0.0;
             const SCALE_INV: f64 = 1.0 / 127.0;
+            let mut sum_sq_diff = 0.0;
 
             for (a_i8, b_f64) in self.coords.iter().zip(query.coords.iter()) {
-                let a_val = (*a_i8 as f64) * SCALE_INV;
+                let a_val = f64::from(*a_i8) * SCALE_INV;
                 let diff = a_val - b_f64;
                 sum_sq_diff += diff * diff;
             }
 
-            let delta = sum_sq_diff * (self.alpha as f64) * query.alpha;
+            let delta = sum_sq_diff * f64::from(self.alpha) * query.alpha;
             1.0 + 2.0 * delta
         }
     }
@@ -168,7 +171,7 @@ impl<const N: usize> QuantizedHyperVector<N> {
 
 /// Binary Quantized (1 bit per dimension)
 /// With Fixed Storage Buffer (512 bytes) to support up to 4096 dimensions
-/// safely without generic_const_exprs.
+/// safely without `generic_const_exprs`.
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct BinaryHyperVector<const N: usize> {
@@ -222,7 +225,7 @@ impl<const N: usize> BinaryHyperVector<N> {
             sum_sq_diff += diff * diff;
         }
 
-        let delta = sum_sq_diff * (self.alpha as f64) * query.alpha;
+        let delta = sum_sq_diff * f64::from(self.alpha) * query.alpha;
         1.0 + 2.0 * delta
     }
 
@@ -246,40 +249,38 @@ impl<const N: usize> BinaryHyperVector<N> {
     }
 }
 
-// ... inside QuantizedHyperVector impl ...
-// I need to use another block for QuantizedHyperVector since it is earlier in file.
-// I will target the existing method and add the new one below it.
-// Wait, REPLACE tool effectively replaces the block. I can't target two separate blocks easily if they are far apart.
-// Quantized is lines 89-158. Binary is 169-218.
-// I will start with Binary as it matches the snippet above.
 
 impl<const N: usize> HyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self as *const _ as *const u8, Self::SIZE) }
+        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
     }
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
-        unsafe { &*(bytes.as_ptr() as *const Self) }
+        assert_eq!(bytes.as_ptr().align_offset(std::mem::align_of::<Self>()), 0, "HyperVector: Misaligned bytes! Use aligned storage.");
+        unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
 
 impl<const N: usize> QuantizedHyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self as *const _ as *const u8, Self::SIZE) }
+        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
     }
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
-        unsafe { &*(bytes.as_ptr() as *const Self) }
+        unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
 
 impl<const N: usize> BinaryHyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self as *const _ as *const u8, Self::SIZE) }
+        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
     }
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
-        unsafe { &*(bytes.as_ptr() as *const Self) }
+        unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
 

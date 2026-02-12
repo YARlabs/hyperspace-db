@@ -94,6 +94,7 @@ impl Client {
             collection: collection.unwrap_or_default(),
             origin_node_id: "".to_string(),
             logical_clock: 0,
+            durability: 0,
         };
         let resp = self.inner.insert(req).await?;
         Ok(resp.into_inner().success)

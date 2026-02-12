@@ -227,6 +227,8 @@ export class InsertRequest extends jspb.Message {
     setOriginNodeId(value: string): InsertRequest;
     getLogicalClock(): number;
     setLogicalClock(value: number): InsertRequest;
+    getDurability(): DurabilityLevel;
+    setDurability(value: DurabilityLevel): InsertRequest;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): InsertRequest.AsObject;
@@ -247,6 +249,105 @@ export namespace InsertRequest {
         metadataMap: Array<[string, string]>,
         originNodeId: string,
         logicalClock: number,
+        durability: DurabilityLevel,
+    }
+}
+
+export class VectorData extends jspb.Message { 
+    clearVectorList(): void;
+    getVectorList(): Array<number>;
+    setVectorList(value: Array<number>): VectorData;
+    addVector(value: number, index?: number): number;
+    getId(): number;
+    setId(value: number): VectorData;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VectorData.AsObject;
+    static toObject(includeInstance: boolean, msg: VectorData): VectorData.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VectorData, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VectorData;
+    static deserializeBinaryFromReader(message: VectorData, reader: jspb.BinaryReader): VectorData;
+}
+
+export namespace VectorData {
+    export type AsObject = {
+        vectorList: Array<number>,
+        id: number,
+
+        metadataMap: Array<[string, string]>,
+    }
+}
+
+export class BatchInsertRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): BatchInsertRequest;
+    clearVectorsList(): void;
+    getVectorsList(): Array<VectorData>;
+    setVectorsList(value: Array<VectorData>): BatchInsertRequest;
+    addVectors(value?: VectorData, index?: number): VectorData;
+    getOriginNodeId(): string;
+    setOriginNodeId(value: string): BatchInsertRequest;
+    getLogicalClock(): number;
+    setLogicalClock(value: number): BatchInsertRequest;
+    getDurability(): DurabilityLevel;
+    setDurability(value: DurabilityLevel): BatchInsertRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): BatchInsertRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: BatchInsertRequest): BatchInsertRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: BatchInsertRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): BatchInsertRequest;
+    static deserializeBinaryFromReader(message: BatchInsertRequest, reader: jspb.BinaryReader): BatchInsertRequest;
+}
+
+export namespace BatchInsertRequest {
+    export type AsObject = {
+        collection: string,
+        vectorsList: Array<VectorData.AsObject>,
+        originNodeId: string,
+        logicalClock: number,
+        durability: DurabilityLevel,
+    }
+}
+
+export class InsertTextRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): InsertTextRequest;
+    getId(): number;
+    setId(value: number): InsertTextRequest;
+    getText(): string;
+    setText(value: string): InsertTextRequest;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+    getDurability(): DurabilityLevel;
+    setDurability(value: DurabilityLevel): InsertTextRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): InsertTextRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: InsertTextRequest): InsertTextRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: InsertTextRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): InsertTextRequest;
+    static deserializeBinaryFromReader(message: InsertTextRequest, reader: jspb.BinaryReader): InsertTextRequest;
+}
+
+export namespace InsertTextRequest {
+    export type AsObject = {
+        collection: string,
+        id: number,
+        text: string,
+
+        metadataMap: Array<[string, string]>,
+        durability: DurabilityLevel,
     }
 }
 
@@ -643,4 +744,11 @@ export namespace DigestResponse {
 export enum QuantizationMode {
     NONE = 0,
     SCALAR_I8 = 1,
+}
+
+export enum DurabilityLevel {
+    DEFAULT_LEVEL = 0,
+    ASYNC = 1,
+    BATCH = 2,
+    STRICT = 3,
 }

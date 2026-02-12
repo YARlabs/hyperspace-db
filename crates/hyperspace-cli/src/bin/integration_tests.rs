@@ -23,12 +23,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 1: Basic Operations
     print!("Test 1: Basic Operations... ");
     match test_basic_operations().await {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ PASSED");
             passed += 1;
         }
         Err(e) => {
-            println!("❌ FAILED: {}", e);
+            println!("❌ FAILED: {e}");
             failed += 1;
         }
     }
@@ -36,12 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 2: Leader-Follower Sync
     print!("Test 2: Leader-Follower Sync... ");
     match test_leader_follower_sync().await {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ PASSED");
             passed += 1;
         }
         Err(e) => {
-            println!("❌ FAILED: {}", e);
+            println!("❌ FAILED: {e}");
             failed += 1;
         }
     }
@@ -49,12 +49,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 3: Merkle Tree Consistency
     print!("Test 3: Merkle Tree Consistency... ");
     match test_merkle_tree_consistency().await {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ PASSED");
             passed += 1;
         }
         Err(e) => {
-            println!("❌ FAILED: {}", e);
+            println!("❌ FAILED: {e}");
             failed += 1;
         }
     }
@@ -62,12 +62,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 4: High Volume Inserts
     print!("Test 4: High Volume Inserts... ");
     match test_high_volume_inserts().await {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ PASSED");
             passed += 1;
         }
         Err(e) => {
-            println!("❌ FAILED: {}", e);
+            println!("❌ FAILED: {e}");
             failed += 1;
         }
     }
@@ -75,12 +75,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 5: Concurrent Inserts
     print!("Test 5: Concurrent Inserts... ");
     match test_concurrent_inserts().await {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ PASSED");
             passed += 1;
         }
         Err(e) => {
-            println!("❌ FAILED: {}", e);
+            println!("❌ FAILED: {e}");
             failed += 1;
         }
     }
@@ -88,19 +88,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 6: Collection Lifecycle
     print!("Test 6: Collection Lifecycle... ");
     match test_collection_lifecycle().await {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ PASSED");
             passed += 1;
         }
         Err(e) => {
-            println!("❌ FAILED: {}", e);
+            println!("❌ FAILED: {e}");
             failed += 1;
         }
     }
 
     println!("\n📊 Test Results:");
-    println!("   ✅ Passed: {}", passed);
-    println!("   ❌ Failed: {}", failed);
+    println!("   ✅ Passed: {passed}");
+    println!("   ❌ Failed: {failed}");
     println!("   📈 Total:  {}", passed + failed);
 
     if failed > 0 {
@@ -129,7 +129,7 @@ async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
         client
             .insert(
                 i,
-                vec![0.1 * i as f64; 128],
+                vec![0.1 * f64::from(i); 128],
                 [("index".to_string(), i.to_string())].into(),
                 Some(collection.clone()),
             )
@@ -207,8 +207,7 @@ async fn test_leader_follower_sync() -> Result<(), Box<dyn std::error::Error>> {
     {
         assert_eq!(
             l_bucket, f_bucket,
-            "Bucket {} should match: Leader={}, Follower={}",
-            i, l_bucket, f_bucket
+            "Bucket {i} should match: Leader={l_bucket}, Follower={f_bucket}"
         );
     }
 
@@ -293,7 +292,7 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
         client
             .insert(
                 i,
-                vec![0.1 * (i % 100) as f64; 128],
+                vec![0.1 * f64::from(i % 100); 128],
                 [("batch".to_string(), "test".to_string())].into(),
                 Some(collection.clone()),
             )
@@ -301,19 +300,18 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let duration = start.elapsed();
-    let qps = count as f64 / duration.as_secs_f64();
+    let qps = f64::from(count) / duration.as_secs_f64();
 
     println!(
-        "Inserted {} vectors in {:?} ({:.0} QPS)",
-        count, duration, qps
+        "Inserted {count} vectors in {duration:?} ({qps:.0} QPS)"
     );
 
     // Verify count
     let digest = client.get_digest(Some(collection.clone())).await?;
-    assert_eq!(digest.count, count as u64, "Should have {} vectors", count);
+    assert_eq!(digest.count, u64::from(count), "Should have {count} vectors");
 
     // Performance assertion: should achieve at least 100 QPS
-    assert!(qps > 100.0, "QPS should be > 100, got {:.0}", qps);
+    assert!(qps > 100.0, "QPS should be > 100, got {qps:.0}");
 
     Ok(())
 }
@@ -351,7 +349,7 @@ async fn test_concurrent_inserts() -> Result<(), Box<dyn std::error::Error>> {
                 client
                     .insert(
                         id,
-                        vec![0.1 * id as f64; 128],
+                        vec![0.1 * f64::from(id); 128],
                         [("task".to_string(), task_id.to_string())].into(),
                         Some(collection_clone.clone()),
                     )

@@ -74,8 +74,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 }
                 Err(e) => {
                     eprintln!(
-                        "Failed to load snapshot for {}: {}. Starting fresh.",
-                        name, e
+                        "Failed to load snapshot for {name}: {e}. Starting fresh."
                     );
                     // Cleanup?
                     let store = Arc::new(VectorStore::new(&data_dir, element_size));
@@ -96,8 +95,55 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         };
 
         // WAL
-        let wal = Wal::new(&wal_path)?;
+        // WAL Durability
+        let sync_mode_str = std::env::var("HYPERSPACE_WAL_SYNC_MODE")
+            .unwrap_or_else(|_| "async".to_string())
+            .to_lowercase();
+        
+        // Default to Async for performance unless Strict/Fsync/Batch requested
+        let sync_mode = match sync_mode_str.as_str() {
+            "strict" | "fsync" => hyperspace_store::wal::WalSyncMode::Strict,
+            "batch" => hyperspace_store::wal::WalSyncMode::Batch,
+            _ => hyperspace_store::wal::WalSyncMode::Async,
+        };
+
+        if sync_mode == hyperspace_store::wal::WalSyncMode::Strict {
+            println!("🔒 WAL Durability: STRICT (fsync on every write)");
+        } else if sync_mode == hyperspace_store::wal::WalSyncMode::Batch {
+            println!("🔒 WAL Durability: BATCH (Background fsync every 100ms)");
+        }
+
+        let wal = Wal::new(&wal_path, sync_mode)?;
         let wal_arc = Arc::new(Mutex::new(wal));
+
+        // Background Sync Task (Batch Mode)
+        if sync_mode == hyperspace_store::wal::WalSyncMode::Batch {
+            let interval_ms = std::env::var("HYPERSPACE_WAL_BATCH_INTERVAL")
+                .unwrap_or_else(|_| "100".to_string())
+                .parse::<u64>()
+                .unwrap_or(100);
+                
+            println!("🔒 WAL Durability: BATCH (Background fsync every {}ms)", interval_ms);
+
+            let wal_worker = wal_arc.clone();
+            tokio::spawn(async move {
+                let duration = tokio::time::Duration::from_millis(interval_ms);
+                loop {
+                    tokio::time::sleep(duration).await;
+                    // Attempt to lock and sync. If busy, skip this tick? Or block?
+                    // Blocking is fine, it just delays next tick.
+                    // Use blocking lock inside spawn_blocking? No, Mutex is std::sync::Mutex (blocking).
+                    // We shouldn't block tokio thread.
+                    // So we must use spawn_blocking.
+                    let worker = wal_worker.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Ok(mut w) = worker.lock() {
+                            let _ = w.sync();
+                        }
+                    }).await;
+                }
+            });
+        }
 
         // Replay
         let index_ref = index.clone();
@@ -119,8 +165,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         // Limit concurrency to available logical cores
         let concurrency = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(8);
+            .map_or(8, std::num::NonZero::get);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
 
         let indexer_handle = tokio::spawn(async move {
@@ -149,7 +194,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let snap_path_clone = snap_path.clone();
         let snapshot_handle = tokio::spawn(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                tokio::time::sleep(tokio::time::Duration::from_mins(1)).await;
                 let _ = idx_snap.save_snapshot(&snap_path_clone);
             }
         });
@@ -201,6 +246,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         id: u32,
         metadata: HashMap<String, String>,
         clock: u64,
+        durability: hyperspace_core::Durability,
     ) -> Result<(), String> {
         // Validation
         if vector.len() != N {
@@ -235,14 +281,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Update existing vector in storage
             self.index
                 .update_storage(old_id, vector)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| e.clone())?;
             old_id
         } else {
             // Insert new vector
             let new_id = self
                 .index
                 .insert_to_storage(vector)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| e.clone())?;
             // Store mapping
             id_map.insert(id, new_id);
             new_id
@@ -251,19 +297,23 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // Release lock early
         drop(id_map);
 
-        // 2. WAL
+        // 2. Write to WAL (Persistence)
         {
-            let mut wal = self.wal.lock().unwrap();
-            let _ = wal.append(internal_id, vector, &metadata);
-        }
+            let mut wal = self.wal.lock().map_err(|_| "Failed to lock WAL")?;
+            wal.append(internal_id, vector, &metadata)
+                .map_err(|e| format!("WAL Error: {e}"))?;
 
+            if durability == hyperspace_core::Durability::Strict {
+                wal.sync().map_err(|e| format!("WAL Sync Error: {e}"))?;
+            }
+        }
         // 3. Index Queue (unbounded send never blocks)
         self.config.inc_queue();
         let _ = self.index_tx.send((internal_id, metadata.clone()));
         // Note: blocking_send inside async function? Collection trait is sync methods?
         // Collection trait definition has: fn insert(...) -> Result
         // It is NOT async. This works for gRPC `insert` which is async but calls this?
-        // Wait, gRPC `insert` is async. If trait is synchronous, we block the executor thread.
+
         // We should make Collection trait async?
         // Or use `blocking_send` which blocks.
         // `index_tx` is `mpsc::Sender` (Tokio). `blocking_send` blocks thread.
@@ -297,6 +347,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         &self,
         vectors: Vec<(Vec<f64>, u32, HashMap<String, String>)>,
         clock: u64,
+        durability: hyperspace_core::Durability,
     ) -> Result<(), String> {
         // 1. Validation
         for (vec, _, _) in &vectors {
@@ -337,13 +388,13 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let internal_id = if let Some(old_id) = existing_internal_id {
                 self.index
                     .update_storage(old_id, vector)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.clone())?;
                 old_id
             } else {
                 let new_id = self
                     .index
                     .insert_to_storage(vector)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.clone())?;
                 id_map.insert(*id, new_id);
                 new_id
             };
@@ -360,8 +411,12 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .collect();
 
         {
-            let mut wal = self.wal.lock().unwrap();
+            let mut wal = self.wal.lock().map_err(|_| "Failed to lock WAL")?;
             wal.append_batch(&wal_data).map_err(|e| e.to_string())?;
+
+            if durability == hyperspace_core::Durability::Strict {
+                 wal.sync().map_err(|e| e.to_string())?;
+            }
         }
 
         // 4. Index Queue

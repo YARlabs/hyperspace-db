@@ -1,3 +1,4 @@
+#![allow(clippy::cast_possible_truncation)]
 use memmap2::{MmapMut, MmapOptions};
 use parking_lot::RwLock;
 use std::fs::{File, OpenOptions};
@@ -33,7 +34,7 @@ impl VectorStore {
         let mut segments = Vec::new();
         let mut i = 0;
         loop {
-            let path = base_path.join(format!("chunk_{}.hyp", i));
+            let path = base_path.join(format!("chunk_{i}.hyp"));
             if !path.exists() {
                 if i == 0 {
                     let seg = Self::create_segment(&path, element_size)
@@ -96,13 +97,13 @@ impl VectorStore {
             let mut segs = self.segments.write();
             if segment_idx >= segs.len() {
                 let new_chunk_id = segs.len();
-                let path = self.base_path.join(format!("chunk_{}.hyp", new_chunk_id));
+                let path = self.base_path.join(format!("chunk_{new_chunk_id}.hyp"));
                 match Self::create_segment(&path, self.element_size) {
                     Ok(seg) => {
                         segs.push(Arc::new(seg));
                         // println!("📦 Storage grew! Created segment {}", new_chunk_id);
                     }
-                    Err(e) => return Err(format!("Failed to grow storage: {}", e)),
+                    Err(e) => return Err(format!("Failed to grow storage: {e}")),
                 }
             }
         }
@@ -130,9 +131,7 @@ impl VectorStore {
         let local_idx = id_val & CHUNK_MASK;
 
         let segs = self.segments.read();
-        if segment_idx >= segs.len() {
-            panic!("VectorStore: Access out of bounds segment {}", segment_idx);
-        }
+        assert!(segment_idx < segs.len(), "VectorStore: Access out of bounds segment {segment_idx}");
         let segment = &segs[segment_idx];
 
         let start = local_idx * self.element_size;
@@ -158,7 +157,7 @@ impl VectorStore {
 
         let segs = self.segments.read();
         if segment_idx >= segs.len() {
-            return Err(format!("VectorStore: ID {} out of bounds", id));
+            return Err(format!("VectorStore: ID {id} out of bounds"));
         }
         let segment = &segs[segment_idx];
 
@@ -249,12 +248,12 @@ impl VectorStore {
                 let mut w_segs = store.segments.write();
                 if segment_idx >= w_segs.len() {
                     let new_chunk_id = w_segs.len();
-                    let seg_path = store.base_path.join(format!("chunk_{}.hyp", new_chunk_id));
+                    let seg_path = store.base_path.join(format!("chunk_{new_chunk_id}.hyp"));
                     match Self::create_segment(&seg_path, element_size) {
                         Ok(seg) => {
                             w_segs.push(Arc::new(seg));
                         }
-                        Err(e) => panic!("Failed to grow storage during from_bytes: {}", e),
+                        Err(e) => panic!("Failed to grow storage during from_bytes: {e}"),
                     }
                 }
                 continue;

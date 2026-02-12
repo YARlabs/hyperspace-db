@@ -4,10 +4,17 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "proto"))
 
 from .proto import hyperspace_pb2
 from .proto import hyperspace_pb2_grpc
 from .embedders import BaseEmbedder
+
+class Durability:
+    DEFAULT = 0
+    ASYNC = 1
+    BATCH = 2
+    STRICT = 3
 
 class HyperspaceClient:
     def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None):
@@ -15,6 +22,8 @@ class HyperspaceClient:
         self.stub = hyperspace_pb2_grpc.DatabaseStub(self.channel)
         self.metadata = (('x-api-key', api_key),) if api_key else None
         self.embedder = embedder
+
+    # ... (create/delete/list unchanged) ...
 
     def create_collection(self, name: str, dimension: int, metric: str) -> bool:
         req = hyperspace_pb2.CreateCollectionRequest(name=name, dimension=dimension, metric=metric)
@@ -43,7 +52,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return []
 
-    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, collection: str = "") -> bool:
+    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if metadata is None:
             metadata = {}
             
@@ -61,7 +70,8 @@ class HyperspaceClient:
             metadata=metadata,
             collection=collection,
             origin_node_id="",
-            logical_clock=0
+            logical_clock=0,
+            durability=durability
         )
         try:
             resp = self.stub.Insert(req, metadata=self.metadata)
@@ -70,7 +80,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, collection: str = "") -> bool:
+    def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if metadatas is None:
             metadatas = [{} for _ in range(len(vectors))]
         
@@ -79,6 +89,7 @@ class HyperspaceClient:
         
         proto_vectors = []
         for v, i, m in zip(vectors, ids, metadatas):
+            # VectorData in proto doesn't have durability, request has.
             proto_vectors.append(hyperspace_pb2.VectorData(
                 vector=v,
                 id=i,
@@ -89,7 +100,8 @@ class HyperspaceClient:
             collection=collection,
             vectors=proto_vectors,
             origin_node_id="",
-            logical_clock=0
+            logical_clock=0,
+            durability=durability
         )
         try:
             resp = self.stub.BatchInsert(req, metadata=self.metadata)

@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .as_secs()
     );
 
-    println!("📦 Creating test collection: {}...", collection_name);
+    println!("📦 Creating test collection: {collection_name}...");
     leader
         .create_collection(collection_name.clone(), 128, "l2".to_string())
         .await?;
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         leader
             .insert(
                 i,
-                vec![0.1 * i as f64; 128],
+                vec![0.1 * f64::from(i); 128],
                 [("index".to_string(), i.to_string())].into(),
                 Some(collection_name.clone()),
             )
@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         leader
             .insert(
                 i,
-                vec![0.2 * i as f64; 128],
+                vec![0.2 * f64::from(i); 128],
                 [("index".to_string(), i.to_string())].into(),
                 Some(collection_name.clone()),
             )
@@ -128,13 +128,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             matching_buckets += 1;
         } else {
             println!(
-                "   ⚠️  Bucket {} mismatch: Leader={}, Follower={}",
-                i, l_bucket, f_bucket
+                "   ⚠️  Bucket {i} mismatch: Leader={l_bucket}, Follower={f_bucket}"
             );
         }
     }
 
-    println!("   Matching buckets: {}/256", matching_buckets);
+    println!("   Matching buckets: {matching_buckets}/256");
     assert_eq!(matching_buckets, 256, "All buckets should match");
     println!("   ✅ Test 3 PASSED");
 

@@ -11,6 +11,7 @@ Cargo.lock
 **/*.log
 **/*.bin
 **/*.tar.gz
+**/TODO*.md
 # Directories
 venv/
 data/

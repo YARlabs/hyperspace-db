@@ -1,13 +1,13 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-/// Global runtime configuration for HyperspaceDB
+/// Global runtime configuration for `HyperspaceDB`
 /// Thread-safe via atomics, can be changed on-the-fly
 #[derive(Debug)]
 pub struct GlobalConfig {
-    /// ef_search: Search depth (higher = more accurate, slower)
+    /// `ef_search`: Search depth (higher = more accurate, slower)
     pub ef_search: AtomicUsize,
 
-    /// ef_construction: Build quality (higher = better graph, slower indexing)
+    /// `ef_construction`: Build quality (higher = better graph, slower indexing)
     pub ef_construction: AtomicUsize,
 
     /// Queue size tracking for monitoring

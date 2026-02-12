@@ -98,7 +98,7 @@ pub async fn start_http_server(
         .with_state((manager, start_time, embedding_state));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-    println!("HTTP Dashboard listening on http://{}", addr);
+    println!("HTTP Dashboard listening on http://{addr}");
     if api_key_hash.is_some() {
         println!("🔒 Dashboard API Key Auth Enabled");
     } else {
@@ -204,7 +204,7 @@ async fn create_collection(
         .create_collection(&payload.name, payload.dimension, &payload.metric)
         .await
     {
-        Ok(_) => (StatusCode::CREATED, "Created").into_response(),
+        Ok(()) => (StatusCode::CREATED, "Created").into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
     }
 }
@@ -214,7 +214,7 @@ async fn delete_collection(
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     match manager.delete_collection(&name) {
-        Ok(_) => (StatusCode::OK, "Deleted").into_response(),
+        Ok(()) => (StatusCode::OK, "Deleted").into_response(),
         Err(e) => (StatusCode::NOT_FOUND, e).into_response(),
     }
 }
@@ -264,7 +264,7 @@ async fn get_status(
 
     let uptime_secs = start_time.elapsed().as_secs();
     let uptime_str = if uptime_secs < 60 {
-        format!("{}s", uptime_secs)
+        format!("{uptime_secs}s")
     } else if uptime_secs < 3600 {
         format!("{}m {}s", uptime_secs / 60, uptime_secs % 60)
     } else {

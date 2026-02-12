@@ -4,6 +4,17 @@
 var grpc = require('@grpc/grpc-js');
 var hyperspace_pb = require('./hyperspace_pb.js');
 
+function serialize_hyperspace_BatchInsertRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.BatchInsertRequest)) {
+    throw new Error('Expected argument of type hyperspace.BatchInsertRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_BatchInsertRequest(buffer_arg) {
+  return hyperspace_pb.BatchInsertRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_CollectionStatsRequest(arg) {
   if (!(arg instanceof hyperspace_pb.CollectionStatsRequest)) {
     throw new Error('Expected argument of type hyperspace.CollectionStatsRequest');
@@ -134,6 +145,17 @@ function serialize_hyperspace_InsertResponse(arg) {
 
 function deserialize_hyperspace_InsertResponse(buffer_arg) {
   return hyperspace_pb.InsertResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_InsertTextRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.InsertTextRequest)) {
+    throw new Error('Expected argument of type hyperspace.InsertTextRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_InsertTextRequest(buffer_arg) {
+  return hyperspace_pb.InsertTextRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_ListCollectionsResponse(arg) {
@@ -269,6 +291,28 @@ insert: {
     responseType: hyperspace_pb.InsertResponse,
     requestSerialize: serialize_hyperspace_InsertRequest,
     requestDeserialize: deserialize_hyperspace_InsertRequest,
+    responseSerialize: serialize_hyperspace_InsertResponse,
+    responseDeserialize: deserialize_hyperspace_InsertResponse,
+  },
+  batchInsert: {
+    path: '/hyperspace.Database/BatchInsert',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.BatchInsertRequest,
+    responseType: hyperspace_pb.InsertResponse,
+    requestSerialize: serialize_hyperspace_BatchInsertRequest,
+    requestDeserialize: deserialize_hyperspace_BatchInsertRequest,
+    responseSerialize: serialize_hyperspace_InsertResponse,
+    responseDeserialize: deserialize_hyperspace_InsertResponse,
+  },
+  insertText: {
+    path: '/hyperspace.Database/InsertText',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.InsertTextRequest,
+    responseType: hyperspace_pb.InsertResponse,
+    requestSerialize: serialize_hyperspace_InsertTextRequest,
+    requestDeserialize: deserialize_hyperspace_InsertTextRequest,
     responseSerialize: serialize_hyperspace_InsertResponse,
     responseDeserialize: deserialize_hyperspace_InsertResponse,
   },

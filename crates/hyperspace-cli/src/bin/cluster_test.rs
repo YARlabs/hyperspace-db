@@ -25,7 +25,7 @@ impl Node {
         }
 
         // Use temp dirs for persistence to avoid conflicts
-        let data_dir = format!("tmp_data_{}", grpc);
+        let data_dir = format!("tmp_data_{grpc}");
         let _ = std::fs::remove_dir_all(&data_dir); // Clean start
         std::fs::create_dir_all(&data_dir).unwrap();
         // Since server uses current dir for data/wal, we need to set CWD or pass dir arg (if supported).
@@ -66,11 +66,9 @@ impl Drop for Node {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🏗️  Building server...");
     let status = Command::new("cargo")
-        .args(&["build", "--release", "-p", "hyperspace-server"])
+        .args(["build", "--release", "-p", "hyperspace-server"])
         .status()?;
-    if !status.success() {
-        panic!("Build failed");
-    }
+    assert!(status.success(), "Build failed");
 
     println!("🧪 Starting Cluster Test (Leader + 2 Followers)");
 
@@ -134,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 6. Test Data Drift (Kill F2, Insert, Restart F2)
     println!("💀 Killing Follower 2...");
-    drop(f2); // Kills bucket 2 (wait, I need to keep variable to avoid drop? No, drop kills)
+    drop(f2); // Kills bucket 2
               // Actually `f2` drop kills it.
 
     // Insert new data to Leader

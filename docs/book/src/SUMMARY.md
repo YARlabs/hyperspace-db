@@ -20,6 +20,7 @@
     - [Hybrid Search](hybrid.md)
     - [Binary Quantization](quantization.md)
     - [Security & Auth](security.md)
+    - [Data Safety & Durability](durability.md)
 
 # Architecture & Internals
 - [System Overview](architecture.md)

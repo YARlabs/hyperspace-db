@@ -1,4 +1,11 @@
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
+#![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::inline_always)]
+#![allow(clippy::similar_names)]
+
 
 pub mod config;
 pub mod vector;
@@ -43,6 +50,14 @@ pub struct SearchParams {
 
 pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Durability {
+    Default,
+    Async,
+    Batch,
+    Strict,
+}
+
 pub trait Collection: Send + Sync {
     fn name(&self) -> &str;
     fn insert(
@@ -51,15 +66,17 @@ pub trait Collection: Send + Sync {
         id: u32,
         metadata: std::collections::HashMap<String, String>,
         clock: u64,
+        durability: Durability,
     ) -> Result<(), String>;
     fn insert_batch(
         &self,
         vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)>,
         clock: u64,
+        durability: Durability,
     ) -> Result<(), String> {
         // Default implementation calls insert one by one (inefficient)
         for (vec, id, meta) in vectors {
-            self.insert(&vec, id, meta, clock)?;
+            self.insert(&vec, id, meta, clock, durability)?;
         }
         Ok(())
     }
@@ -141,11 +158,11 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
     // validate uses default
 
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
-        let mut sum_sq_diff = 0.0;
         const SCALE_INV: f64 = 1.0 / 127.0;
+        let mut sum_sq_diff = 0.0;
 
         for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
-            let a_val = (*a_i8 as f64) * SCALE_INV;
+            let a_val = f64::from(*a_i8) * SCALE_INV;
             let diff = a_val - b_f64;
             sum_sq_diff += diff * diff;
         }

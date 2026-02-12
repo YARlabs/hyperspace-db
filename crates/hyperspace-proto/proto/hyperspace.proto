@@ -80,6 +80,14 @@ message ConfigUpdate {
   optional uint32 ef_construction = 3;
 }
 
+
+enum DurabilityLevel {
+  DEFAULT_LEVEL = 0;
+  ASYNC = 1;
+  BATCH = 2;
+  STRICT = 3;
+}
+
 message InsertRequest {
   string collection = 1;
   repeated double vector = 2;
@@ -89,6 +97,8 @@ message InsertRequest {
   // Replication fields
   string origin_node_id = 5;
   uint64 logical_clock = 6;
+
+  DurabilityLevel durability = 7;
 }
 
 message VectorData {
@@ -102,6 +112,7 @@ message BatchInsertRequest {
   repeated VectorData vectors = 2;
   string origin_node_id = 3;
   uint64 logical_clock = 4;
+  DurabilityLevel durability = 5;
 }
 
 message InsertTextRequest {
@@ -109,6 +120,7 @@ message InsertTextRequest {
   uint32 id = 2;
   string text = 3;
   map<string, string> metadata = 4;
+  DurabilityLevel durability = 5;
 }
 
 

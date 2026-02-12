@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = DatabaseClient::with_interceptor(channel, AuthInterceptor);
 
     // 1. Create Collection
-    println!("✨ Creating collection '{}'...", COLLECTION_NAME);
+    println!("✨ Creating collection '{COLLECTION_NAME}'...");
     let _ = client
         .create_collection(CreateCollectionRequest {
             name: COLLECTION_NAME.to_string(),
@@ -46,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             collection: COLLECTION_NAME.to_string(),
             origin_node_id: String::new(),
             logical_clock: 0,
+            durability: 0,
         })
         .await?;
 
@@ -60,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             collection: COLLECTION_NAME.to_string(),
             origin_node_id: String::new(),
             logical_clock: 0,
+            durability: 0,
         })
         .await?;
 
@@ -74,6 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             collection: COLLECTION_NAME.to_string(),
             origin_node_id: String::new(),
             logical_clock: 0,
+            durability: 0,
         })
         .await?;
 
@@ -94,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let results = response.into_inner().results;
-    println!("Results: {:?}", results);
+    println!("Results: {results:?}");
 
     // Validate (Note: Server uses internal auto-increment IDs starting at 0)
 

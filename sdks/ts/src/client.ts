@@ -2,8 +2,11 @@ import * as grpc from '@grpc/grpc-js';
 import { DatabaseClient } from './proto/hyperspace_grpc_pb';
 import {
     InsertRequest, SearchRequest,
-    CreateCollectionRequest, DeleteCollectionRequest, Empty
+    CreateCollectionRequest, DeleteCollectionRequest, Empty,
+    DurabilityLevel
 } from './proto/hyperspace_pb';
+
+export { DurabilityLevel };
 
 export class HyperspaceClient {
     private client: DatabaseClient;
@@ -16,6 +19,8 @@ export class HyperspaceClient {
             this.metadata.add('x-api-key', apiKey);
         }
     }
+
+    // ... (create/delete unchanged) ...
 
     public createCollection(name: string, dimension: number, metric: string): Promise<boolean> {
         return new Promise((resolve, reject) => {
@@ -43,7 +48,7 @@ export class HyperspaceClient {
         });
     }
 
-    public insert(id: number, vector: number[], meta?: { [key: string]: string }, collection: string = ''): Promise<boolean> {
+    public insert(id: number, vector: number[], meta?: { [key: string]: string }, collection: string = '', durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new InsertRequest();
             req.setId(id);
@@ -55,6 +60,7 @@ export class HyperspaceClient {
             req.setCollection(collection);
             req.setOriginNodeId('');
             req.setLogicalClock(0);
+            req.setDurability(durability);
 
             this.client.insert(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);

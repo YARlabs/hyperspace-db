@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import hyperspace_pb2 as hyperspace__pb2
+import hyperspace_pb2 as hyperspace__pb2
 
 GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
@@ -62,6 +62,11 @@ class DatabaseStub(object):
         self.BatchInsert = channel.unary_unary(
                 '/hyperspace.Database/BatchInsert',
                 request_serializer=hyperspace__pb2.BatchInsertRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.InsertResponse.FromString,
+                _registered_method=True)
+        self.InsertText = channel.unary_unary(
+                '/hyperspace.Database/InsertText',
+                request_serializer=hyperspace__pb2.InsertTextRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.InsertResponse.FromString,
                 _registered_method=True)
         self.Delete = channel.unary_unary(
@@ -142,6 +147,12 @@ class DatabaseServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def BatchInsert(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def InsertText(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -232,6 +243,11 @@ def add_DatabaseServicer_to_server(servicer, server):
             'BatchInsert': grpc.unary_unary_rpc_method_handler(
                     servicer.BatchInsert,
                     request_deserializer=hyperspace__pb2.BatchInsertRequest.FromString,
+                    response_serializer=hyperspace__pb2.InsertResponse.SerializeToString,
+            ),
+            'InsertText': grpc.unary_unary_rpc_method_handler(
+                    servicer.InsertText,
+                    request_deserializer=hyperspace__pb2.InsertTextRequest.FromString,
                     response_serializer=hyperspace__pb2.InsertResponse.SerializeToString,
             ),
             'Delete': grpc.unary_unary_rpc_method_handler(
@@ -436,6 +452,33 @@ class Database(object):
             target,
             '/hyperspace.Database/BatchInsert',
             hyperspace__pb2.BatchInsertRequest.SerializeToString,
+            hyperspace__pb2.InsertResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InsertText(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/InsertText',
+            hyperspace__pb2.InsertTextRequest.SerializeToString,
             hyperspace__pb2.InsertResponse.FromString,
             options,
             channel_credentials,

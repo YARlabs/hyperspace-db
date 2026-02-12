@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = DatabaseClient::new(channel);
 
     // 0. Create Collection
-    println!("✨ Creating collection '{}'...", COLLECTION_NAME);
+    println!("✨ Creating collection '{COLLECTION_NAME}'...");
     let _ = client
         .create_collection(CreateCollectionRequest {
             name: COLLECTION_NAME.to_string(),
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // 2. Insert Vectors
-    println!("📦 Inserting {} vectors...", TOTAL_VECTORS);
+    println!("📦 Inserting {TOTAL_VECTORS} vectors...");
     let mut rng = rand::thread_rng();
 
     let start_insert = Instant::now();
@@ -68,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             collection: COLLECTION_NAME.to_string(),
             origin_node_id: String::new(),
             logical_clock: 0,
+            durability: 0,
         };
 
         client.insert(req).await?;
@@ -79,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let duration_insert = start_insert.elapsed();
-    println!("\n✅ Insert done in {:.2?}.", duration_insert);
+    println!("\n✅ Insert done in {duration_insert:.2?}.");
     println!(
         "   Throughput: {:.2} vectors/sec",
         TOTAL_VECTORS as f64 / duration_insert.as_secs_f64()
@@ -90,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = client.trigger_snapshot(Empty {}).await?;
 
     // 4. Search Benchmark
-    println!("🔍 Running {} Search Queries (top_k=10)...", SEARCH_QUERIES);
+    println!("🔍 Running {SEARCH_QUERIES} Search Queries (top_k=10)...");
     // Configure for accuracy (optional)
     let _ = client
         .configure(ConfigUpdate {
@@ -126,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let duration_search = start_search.elapsed();
 
-    println!("✅ Search done in {:.2?}.", duration_search);
+    println!("✅ Search done in {duration_search:.2?}.");
     println!(
         "   QPS: {:.2} queries/sec",
         SEARCH_QUERIES as f64 / duration_search.as_secs_f64()

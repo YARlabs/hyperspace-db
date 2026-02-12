@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .as_secs()
     );
 
-    println!("📦 Creating test collection: {}...", collection_name);
+    println!("📦 Creating test collection: {collection_name}...");
     leader
         .create_collection(collection_name.clone(), 128, "l2".to_string())
         .await?;

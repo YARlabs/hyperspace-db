@@ -19,3 +19,8 @@ memmap2 = { workspace = true, optional = true }
 [features]
 default = ["persistence"]
 persistence = ["hyperspace-store/mmap", "dep:memmap2"]
+
+[dev-dependencies]
+proptest = "1.0"
+tempfile = "3.8"
+
