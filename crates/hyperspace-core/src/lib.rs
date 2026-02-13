@@ -151,8 +151,13 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
 
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // Squared L2 distance for optimization (sqrt is monotonic)
-        a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum()
+        // Raw loop helps LLVM auto-vectorize hot path.
+        let mut sum = 0.0;
+        for i in 0..N {
+            let diff = a[i] - b[i];
+            sum += diff * diff;
+        }
+        sum
     }
 
     // validate uses default
@@ -175,8 +180,8 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
     }
 }
 
-/// Cosine Similarity Metric (converted to distance: 1 - cosine_similarity)
-/// Assumes vectors are pre-normalized to unit length.
+/// Cosine metric for normalized vectors.
+/// Uses squared L2 distance to preserve graph geometry for HNSW.
 #[derive(Debug, Clone, Copy)]
 pub struct CosineMetric;
 
@@ -187,27 +192,30 @@ impl<const N: usize> Metric<N> for CosineMetric {
 
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // For normalized vectors: cosine_distance = 1 - dot(a, b)
-        let dot_product: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let cosine_sim = dot_product;
-        let cosine_sim = cosine_sim.max(-1.0).min(1.0);
-        1.0 - cosine_sim
+        // HNSW-friendly metric:
+        // for normalized vectors ||a-b||^2 = 2 * (1 - cos(theta))
+        // ranking is preserved and triangle inequality holds.
+        let mut sum = 0.0;
+        for i in 0..N {
+            let diff = a[i] - b[i];
+            sum += diff * diff;
+        }
+        sum
     }
 
     // validate uses default
 
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
         const SCALE_INV: f64 = 1.0 / 127.0;
-        let mut dot_product = 0.0;
+        let mut sum_sq_diff = 0.0;
 
         for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
             let a_val = f64::from(*a_i8) * SCALE_INV;
-            dot_product += a_val * b_f64;
+            let diff = a_val - b_f64;
+            sum_sq_diff += diff * diff;
         }
 
-        let cosine_sim = dot_product;
-        let cosine_sim = cosine_sim.max(-1.0).min(1.0);
-        1.0 - cosine_sim
+        sum_sq_diff
     }
 
     fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {

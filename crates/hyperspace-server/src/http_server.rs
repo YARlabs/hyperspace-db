@@ -371,9 +371,14 @@ async fn search_collection(
 ) -> impl IntoResponse {
     let k = payload.top_k.unwrap_or(10);
     if let Some(col) = manager.get(&name) {
+        let default_ef = std::env::var("HS_HNSW_EF_SEARCH")
+            .unwrap_or_else(|_| "100".to_string())
+            .parse()
+            .unwrap_or(100);
+
         let dummy_params = SearchParams {
             top_k: k,
-            ef_search: 100,
+            ef_search: default_ef,
             hybrid_query: None,
             hybrid_alpha: None,
         };

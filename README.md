@@ -399,7 +399,7 @@ Configure these via `.env` file or environment variables:
 Optimized for standard embeddings from OpenAI, Cohere, Voyage, etc.
 * **Metric**: `cosine` (Cosine Similarity) - recommended for OpenAI/BGE embeddings
 * **Dimensions**: `1024`, `1536`, `2048`
-* **Note**: `cosine` mode automatically normalizes vectors on insert/search. For magnitude-sensitive workloads, use `l2` with `HS_QUANTIZATION_LEVEL=none`.
+* **Note**: `cosine` mode automatically normalizes vectors on insert/search (with zero-copy fast path for already normalized vectors) and uses HNSW-friendly squared L2 ranking internally. For magnitude-sensitive workloads, use `l2` with `HS_QUANTIZATION_LEVEL=none`.
 
 **2. Scientific / Hyperbolic**
 Optimized for hierarchical data, graph embeddings, and low-dimensional efficiency.
@@ -413,6 +413,8 @@ Optimized for hierarchical data, graph embeddings, and low-dimensional efficienc
 ## 📊 Best Practices
 
 HyperspaceDB follows the microservices philosophy: One Index per Instance. To manage multiple datasets, we recommend deploying separate Docker containers or using Metadata Filtering for logical separation within a single index.
+
+For high-concurrency search workloads, ID lookup paths use concurrent maps (`DashMap`) to avoid global lock contention during result remapping.
 
 ### 1. Vector Dimensionality
 

@@ -1,8 +1,10 @@
 use crate::sync::CollectionDigest;
+use dashmap::DashMap;
 use hyperspace_core::{Collection, FilterExpr, GlobalConfig, Metric, SearchParams};
 use hyperspace_index::HnswIndex;
 use hyperspace_proto::hyperspace::{ReplicationLog, InsertOp, replication_log};
 use hyperspace_store::{wal::Wal, VectorStore};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -29,25 +31,29 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     // Buckets for Merkle Tree
     buckets: Arc<Vec<AtomicU64>>,
     // Mapping from user ID to internal ID for upsert support
-    id_map: Arc<Mutex<HashMap<u32, u32>>>,
+    id_map: Arc<DashMap<u32, u32>>,
     // Reverse mapping from internal ID to user ID for search results
-    reverse_id_map: Arc<Mutex<HashMap<u32, u32>>>,
+    reverse_id_map: Arc<DashMap<u32, u32>>,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
     #[inline]
-    fn normalize_if_cosine(vector: &[f64]) -> Vec<f64> {
+    fn normalize_if_cosine<'a>(vector: &'a [f64]) -> Cow<'a, [f64]> {
         if M::name() != "cosine" {
-            return vector.to_vec();
+            return Cow::Borrowed(vector);
         }
 
         let norm_sq: f64 = vector.iter().map(|x| x * x).sum();
+        if (norm_sq - 1.0).abs() < 1e-6 {
+            return Cow::Borrowed(vector);
+        }
+
         if norm_sq <= 1e-18 {
-            return vector.to_vec();
+            return Cow::Borrowed(vector);
         }
 
         let inv_norm = 1.0 / norm_sq.sqrt();
-        vector.iter().map(|x| x * inv_norm).collect()
+        Cow::Owned(vector.iter().map(|x| x * inv_norm).collect())
     }
 
     pub async fn new(
@@ -217,8 +223,12 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let snap_path_clone = snap_path.clone();
         
         let buckets: Arc<Vec<AtomicU64>> = Arc::new(buckets_data.into_iter().map(AtomicU64::new).collect());
-        let id_map = Arc::new(Mutex::new(id_map_data));
-        let reverse_id_map = Arc::new(Mutex::new(reverse_id_map_data));
+        let id_map = Arc::new(id_map_data.into_iter().collect::<DashMap<u32, u32>>());
+        let reverse_id_map = Arc::new(
+            reverse_id_map_data
+                .into_iter()
+                .collect::<DashMap<u32, u32>>(),
+        );
 
         let id_map_snap = id_map.clone();
         let reverse_id_map_snap = reverse_id_map.clone();
@@ -238,14 +248,14 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 }
                 
                 // Save State
-                let map_data = {
-                    let guard = id_map_snap.lock().unwrap();
-                    guard.clone() 
-                };
-                let reverse_map_data = {
-                    let guard = reverse_id_map_snap.lock().unwrap();
-                    guard.clone()
-                };
+                let map_data: HashMap<u32, u32> = id_map_snap
+                    .iter()
+                    .map(|entry| (*entry.key(), *entry.value()))
+                    .collect();
+                let reverse_map_data: HashMap<u32, u32> = reverse_id_map_snap
+                    .iter()
+                    .map(|entry| (*entry.key(), *entry.value()))
+                    .collect();
                 let buckets_data: Vec<u64> = buckets_snap.iter().map(|b| b.load(Ordering::Relaxed)).collect();
                 
                 let state = CollectionState {
@@ -319,8 +329,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let processed_vector = Self::normalize_if_cosine(vector);
 
         // Check if this user ID already exists (for upsert)
-        let mut id_map = self.id_map.lock().unwrap();
-        let existing_internal_id = id_map.get(&id).copied();
+        let existing_internal_id = self.id_map.get(&id).map(|v| *v);
 
         // If updating existing vector, remove old hash first
         if let Some(old_internal_id) = existing_internal_id {
@@ -333,7 +342,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         // Update State Hash with new vector (XOR rolling hash)
-        let entry_hash = CollectionDigest::hash_entry(id, &processed_vector);
+        let entry_hash = CollectionDigest::hash_entry(id, processed_vector.as_ref());
         let bucket_idx = CollectionDigest::get_bucket_index(id);
         self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
@@ -341,33 +350,26 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let internal_id = if let Some(old_id) = existing_internal_id {
             // Update existing vector in storage
             self.index
-                .update_storage(old_id, &processed_vector)
+                .update_storage(old_id, processed_vector.as_ref())
                 .map_err(|e| e.clone())?;
             old_id
         } else {
             // Insert new vector
             let new_id = self
                 .index
-                .insert_to_storage(&processed_vector)
+                .insert_to_storage(processed_vector.as_ref())
                 .map_err(|e| e.clone())?;
             // Store bidirectional mapping
-            id_map.insert(id, new_id);
-            
-            // Store reverse mapping for search results
-            let mut reverse_map = self.reverse_id_map.lock().unwrap();
-            reverse_map.insert(new_id, id);
-            drop(reverse_map);
-            
+            self.id_map.insert(id, new_id);
+            self.reverse_id_map.insert(new_id, id);
+
             new_id
         };
-
-        // Release lock early
-        drop(id_map);
 
         // 2. Write to WAL (Persistence)
         {
             let mut wal = self.wal.lock().map_err(|_| "Failed to lock WAL")?;
-            wal.append(internal_id, &processed_vector, &metadata)
+            wal.append(internal_id, processed_vector.as_ref(), &metadata)
                 .map_err(|e| format!("WAL Error: {e}"))?;
 
             if durability == hyperspace_core::Durability::Strict {
@@ -402,7 +404,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 collection: self.name.clone(),
                 operation: Some(replication_log::Operation::Insert(InsertOp {
                     id,
-                    vector: processed_vector,
+                    vector: processed_vector.into_owned(),
                     metadata,
                 })),
             };
@@ -430,9 +432,6 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         // 2. Lock id_map once
-        let mut id_map = self.id_map.lock().unwrap();
-        let mut reverse_map = self.reverse_id_map.lock().unwrap();
-
         // We need separate vectors for diff tasks
         // internal_entries stores (internal_id, user_id, vector_clone, metadata)
         let mut internal_data = Vec::with_capacity(vectors.len());
@@ -440,7 +439,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         for (vector, id, metadata) in &vectors {
             let processed_vector = Self::normalize_if_cosine(vector);
             // Check if this user ID already exists (for upsert)
-            let existing_internal_id = id_map.get(id).copied();
+            let existing_internal_id = self.id_map.get(id).map(|v| *v);
 
             // If updating existing vector, bucket update
             if let Some(old_internal_id) = existing_internal_id {
@@ -451,32 +450,29 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
 
             // Update State Hash with new vector
-            let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
+            let entry_hash = CollectionDigest::hash_entry(*id, processed_vector.as_ref());
             let bucket_idx = CollectionDigest::get_bucket_index(*id);
             self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
             // Storage
             let internal_id = if let Some(old_id) = existing_internal_id {
                 self.index
-                    .update_storage(old_id, &processed_vector)
+                    .update_storage(old_id, processed_vector.as_ref())
                     .map_err(|e| e.clone())?;
                 old_id
             } else {
                 let new_id = self
                     .index
-                    .insert_to_storage(&processed_vector)
+                    .insert_to_storage(processed_vector.as_ref())
                     .map_err(|e| e.clone())?;
                 // Store bidirectional mapping
-                id_map.insert(*id, new_id);
-                reverse_map.insert(new_id, *id);
+                self.id_map.insert(*id, new_id);
+                self.reverse_id_map.insert(new_id, *id);
                 new_id
             };
 
-            internal_data.push((internal_id, processed_vector, metadata.clone()));
+            internal_data.push((internal_id, processed_vector.into_owned(), metadata.clone()));
         }
-
-        drop(id_map);
-        drop(reverse_map);
 
         // 3. WAL Batch
         let wal_data: Vec<_> = internal_data
@@ -514,7 +510,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     collection: self.name.clone(),
                     operation: Some(replication_log::Operation::Insert(InsertOp {
                         id,
-                        vector: processed_vector,
+                        vector: processed_vector.into_owned(),
                         metadata,
                     })),
                 };
@@ -526,7 +522,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn delete(&self, id: u32) -> Result<(), String> {
-        self.index.delete(id);
+        if let Some((_, internal_id)) = self.id_map.remove(&id) {
+            self.reverse_id_map.remove(&internal_id);
+            self.index.delete(internal_id);
+        } else {
+            // fallback for legacy data where user/internal IDs were equal
+            self.index.delete(id);
+            self.reverse_id_map.remove(&id);
+        }
         Ok(())
     }
 
@@ -547,7 +550,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         let processed_query = Self::normalize_if_cosine(query);
         let results = self.index.search(
-            &processed_query,
+            processed_query.as_ref(),
             params.top_k,
             params.ef_search,
             filters,
@@ -557,7 +560,6 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         );
 
         // Fetch metadata for results and convert internal IDs to user IDs
-        let reverse_map = self.reverse_id_map.lock().unwrap();
         let results_with_meta = results
             .into_iter()
             .map(|(internal_id, dist)| {
@@ -570,7 +572,11 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     .unwrap_or_default();
                 
                 // Convert internal ID to user ID
-                let user_id = reverse_map.get(&internal_id).copied().unwrap_or(internal_id);
+                let user_id = self
+                    .reverse_id_map
+                    .get(&internal_id)
+                    .map(|v| *v)
+                    .unwrap_or(internal_id);
                 
                 (user_id, dist, meta)
             })

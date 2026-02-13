@@ -395,10 +395,15 @@ impl Database for HyperspaceService {
                 }
             }
 
+            let default_ef = std::env::var("HS_HNSW_EF_SEARCH")
+                .unwrap_or_else(|_| "100".to_string())
+                .parse()
+                .unwrap_or(100);
+
             // Search Params
             let params = hyperspace_core::SearchParams {
                 top_k: req.top_k as usize,
-                ef_search: 100, // TODO: Load from config/request?
+                ef_search: default_ef,
                 hybrid_query: req.hybrid_query,
                 hybrid_alpha: req.hybrid_alpha,
             };
