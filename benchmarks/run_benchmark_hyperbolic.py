@@ -63,6 +63,8 @@ class Result:
     metric: str
     insert_qps: float
     total_time: float
+    search_time: float
+    search_qps: float
     p50: float
     p95: float
     p99: float
@@ -178,7 +180,7 @@ def get_local_disk(path: str) -> str:
     except: return "N/A"
 
 def detect_hyperspace_metric(host: str) -> Optional[str]:
-    url = f"http://{host}:50051/api/status"
+    url = f"http://{host}:50050/api/status"
     try:
         with urllib.request.urlopen(url, timeout=3) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
@@ -189,14 +191,30 @@ def log_batch(i, total, batch_start, last_batch_qps, size=1000):
     dur = time.time() - batch_start
     qps = size / dur if dur > 0 else 0
     diff = f"({'+' if (qps-last_batch_qps)>=0 else ''}{((qps-last_batch_qps)/last_batch_qps*100):.1f}%)" if last_batch_qps > 0 else ""
-    print(f"   [Batch] {i+size:7,}/{total:,} | QPS: {qps:6.0f} {diff:8} | Time: {dur:4.3f}s", end='\r')
+    per_vec_ms = (dur / size) * 1000 if size > 0 else 0.0
+    print(f"   [Batch] {min(i+size, total):7,}/{total:,} | QPS: {qps:6.0f} {diff:8} | Batch: {dur:4.3f}s | Vec: {per_vec_ms:5.3f}ms", end='\r')
     return qps
+
+def extract_ids(res_obj):
+    """
+    Normalize search responses across SDKs:
+    - list[dict(id=...)]  (Hyperspace python SDK)
+    - list[obj.id]        (other SDK wrappers)
+    """
+    ids = []
+    for hit in res_obj:
+        if isinstance(hit, dict):
+            if "id" in hit:
+                ids.append(hit["id"])
+        elif hasattr(hit, "id"):
+            ids.append(hit.id)
+    return ids
 
 # --- Benchmark Runs ---
 
 def run_milvus(cfg: Config, data: TreeGenerator) -> Result:
     print(f"\n🟣 Milvus ({cfg.milvus_dim}d Euclidean)")
-    if not MILVUS_AVAILABLE: return Result("Milvus", cfg.milvus_dim, "Euclidean", "L2", 0,0,0,0,0,0,0, "N/A", "Skipped")
+    if not MILVUS_AVAILABLE: return Result("Milvus", cfg.milvus_dim, "Euclidean", "L2", 0,0,0,0,0,0,0,0,0, "N/A", "Skipped")
     try:
         connections.connect(host=cfg.host, port="19530", timeout=10)
         name = "bench_hyper_suite"
@@ -228,19 +246,22 @@ def run_milvus(cfg: Config, data: TreeGenerator) -> Result:
         print(f"   -> Measuring Latency ({cfg.search_queries} queries)...")
         lats = []
         q_one = [data.query_vecs_euc[0].tolist()]
+        search_t0 = time.time()
         for _ in range(cfg.search_queries):
             ts = time.time()
             col.search(q_one, "vec", {"metric_type":"L2", "params":{"nprobe": 10}}, limit=cfg.top_k)
             lats.append((time.time() - ts) * 1000)
+        search_dur = time.time() - search_t0
+        search_qps = cfg.search_queries / search_dur if search_dur > 0 else 0.0
             
         disk = get_docker_disk("milvus")
         utility.drop_collection(name)
-        return Result("Milvus", cfg.milvus_dim, "Euclidean", "L2", data.count/dur, dur, np.percentile(lats, 50), np.percentile(lats, 95), np.percentile(lats, 99), recall, mrr, disk, "Success")
-    except Exception as e: return Result("Milvus", cfg.milvus_dim, "Euclidean", "L2", 0,0,0,0,0,0,0, "0", f"Fail: {str(e)[:50]}")
+        return Result("Milvus", cfg.milvus_dim, "Euclidean", "L2", data.count/dur, dur, search_dur, search_qps, np.percentile(lats, 50), np.percentile(lats, 95), np.percentile(lats, 99), recall, mrr, disk, "Success")
+    except Exception as e: return Result("Milvus", cfg.milvus_dim, "Euclidean", "L2", 0,0,0,0,0,0,0,0,0, "0", f"Fail: {str(e)[:50]}")
 
 def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
     print(f"\n🔷 Qdrant ({cfg.milvus_dim}d Euclidean)")
-    if not QDRANT_AVAILABLE: return Result("Qdrant", cfg.milvus_dim, "Euclidean", "Cosine", 0,0,0,0,0,0,0, "N/A", "Skipped")
+    if not QDRANT_AVAILABLE: return Result("Qdrant", cfg.milvus_dim, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0, "N/A", "Skipped")
     try:
         client = QdrantClient(host=cfg.host, port=6333)
         name = "bench_hyper_suite"
@@ -252,7 +273,7 @@ def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
         for i in range(0, data.count, cfg.batch_size):
             bs = time.time()
             batch = data.vecs_euc[i : i + cfg.batch_size]
-            client.upsert(name, [PointStruct(id=i+j, vector=v.tolist()) for j, v in enumerate(batch)], wait=True)
+            client.upsert(collection_name=name, points=[PointStruct(id=i+j, vector=v.tolist()) for j, v in enumerate(batch)], wait=True)
             last_qps = log_batch(i, data.count, bs, last_qps, cfg.batch_size)
         dur = time.time() - t0
         
@@ -260,7 +281,7 @@ def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
         print(f"\n   -> Verifying Accuracy ({cfg.test_queries} queries)...")
         results = []
         for q_vec in data.query_vecs_euc:
-            res = client.query_points(name, q_vec.tolist(), limit=cfg.top_k)
+            res = client.query_points(collection_name=name, query=q_vec.tolist(), limit=cfg.top_k)
             results.append([hit.id for hit in res.points])
         recall, mrr = calculate_accuracy(results, data.gt_euc, cfg.top_k)
         
@@ -268,15 +289,18 @@ def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
         print(f"   -> Measuring Latency ({cfg.search_queries} queries)...")
         lats = []
         q_one = data.query_vecs_euc[0].tolist()
+        search_t0 = time.time()
         for _ in range(cfg.search_queries):
             ts = time.time()
-            client.query_points(name, q_one, limit=cfg.top_k)
+            client.query_points(collection_name=name, query=q_one, limit=cfg.top_k)
             lats.append((time.time() - ts) * 1000)
+        search_dur = time.time() - search_t0
+        search_qps = cfg.search_queries / search_dur if search_dur > 0 else 0.0
             
         disk = get_docker_disk("qdrant")
         client.delete_collection(name)
-        return Result("Qdrant", cfg.milvus_dim, "Euclidean", "Cosine", data.count/dur, dur, np.percentile(lats, 50), np.percentile(lats, 95), np.percentile(lats, 99), recall, mrr, disk, "Success")
-    except Exception as e: return Result("Qdrant", cfg.milvus_dim, "Euclidean", "Cosine", 0,0,0,0,0,0,0, "0", f"Fail: {str(e)[:50]}")
+        return Result("Qdrant", cfg.milvus_dim, "Euclidean", "Cosine", data.count/dur, dur, search_dur, search_qps, np.percentile(lats, 50), np.percentile(lats, 95), np.percentile(lats, 99), recall, mrr, disk, "Success")
+    except Exception as e: return Result("Qdrant", cfg.milvus_dim, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0, "0", f"Fail: {str(e)[:50]}")
 
 def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
     dim = cfg.hyper_dim if use_hyper else cfg.milvus_dim
@@ -284,16 +308,17 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
     geom = "Poincaré" if use_hyper else "Euclidean"
     label = f"HyperspaceDB ({geom} {dim}d)"
     print(f"\n🚀 {label}")
-    if not HYPERSPACE_AVAILABLE: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0, "N/A", "Skipped")
+    if not HYPERSPACE_AVAILABLE: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "N/A", "Skipped")
     try:
         client = HyperspaceClient(f"{cfg.host}:50051", api_key="I_LOVE_HYPERSPACEDB")
         server_metric = detect_hyperspace_metric(cfg.host)
-        if server_metric in ("poincare", "hyperbolic") and not use_hyper: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0, "N/A", f"Skipped: server={server_metric}")
-        if server_metric in ("cosine", "l2", "euclidean") and use_hyper: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0, "N/A", f"Skipped: server={server_metric}")
+        if server_metric in ("poincare", "hyperbolic") and not use_hyper: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "N/A", f"Skipped: server={server_metric}")
+        if server_metric in ("cosine", "l2", "euclidean") and use_hyper: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "N/A", f"Skipped: server={server_metric}")
 
         name = "bench_suite_hyper" if use_hyper else "bench_suite_euc"
         client.delete_collection(name)
-        client.create_collection(name, dimension=dim, metric=metric)
+        if not client.create_collection(name, dimension=dim, metric=metric):
+            return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "0", f"Fail: create_collection({name})")
         
         vecs = data.vecs_hyper if use_hyper else data.vecs_euc
         q_vecs = data.query_vecs_hyper if use_hyper else data.query_vecs_euc
@@ -305,7 +330,9 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
             bs = time.time()
             batch = vecs[i : i + h_batch]
             ids = list(range(i, i + len(batch)))
-            client.batch_insert(batch.tolist(), ids, [{"i": str(k)} for k in ids], collection=name)
+            ok = client.batch_insert(batch.tolist(), ids, [{"i": str(k)} for k in ids], collection=name)
+            if not ok:
+                return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "0", f"Fail: batch_insert({name})")
             last_qps = log_batch(i, data.count, bs, last_qps, h_batch)
         dur = time.time() - t0
         
@@ -314,32 +341,39 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
         results = []
         for q_vec in q_vecs:
             res = client.search(q_vec.tolist(), top_k=cfg.top_k, collection=name)
-            results.append([hit.id for hit in res])
+            if not res:
+                return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "0", f"Fail: empty search({name})")
+            results.append(extract_ids(res))
         recall, mrr = calculate_accuracy(results, gt, cfg.top_k)
         
         # Latency
         print(f"   -> Measuring Latency ({cfg.search_queries} queries)...")
         lats = []
         q_one = q_vecs[0].tolist()
+        search_t0 = time.time()
         for _ in range(cfg.search_queries):
             ts = time.time()
-            client.search(q_one, top_k=cfg.top_k, collection=name)
+            res = client.search(q_one, top_k=cfg.top_k, collection=name)
+            if not res:
+                return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "0", f"Fail: empty search({name})")
             lats.append((time.time() - ts) * 1000)
+        search_dur = time.time() - search_t0
+        search_qps = cfg.search_queries / search_dur if search_dur > 0 else 0.0
             
         disk = get_local_disk("../data")
         client.delete_collection(name)
-        return Result("HyperspaceDB", dim, geom, metric, data.count/dur, dur, np.percentile(lats, 50), np.percentile(lats, 95), np.percentile(lats, 99), recall, mrr, disk, "Success")
-    except Exception as e: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0, "0", f"Fail: {str(e)[:100]}")
+        return Result("HyperspaceDB", dim, geom, metric, data.count/dur, dur, search_dur, search_qps, np.percentile(lats, 50), np.percentile(lats, 95), np.percentile(lats, 99), recall, mrr, disk, "Success")
+    except Exception as e: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0, "0", f"Fail: {str(e)[:100]}")
 
 def print_table(results: List[Result]):
-    header = f"{'Database':<15} | {'Dim':<5} | {'Metric':<8} | {'QPS':<8} | {'P99 Lat':<10} | {'Recall':<7} | {'MRR':<5} | {'Disk':<8} | {'Status'}"
+    header = f"{'Database':<15} | {'Dim':<5} | {'Metric':<8} | {'Ins QPS':<8} | {'Srch QPS':<8} | {'P99 Lat':<10} | {'Recall':<7} | {'MRR':<5} | {'Disk':<8} | {'Status'}"
     print("\n" + "="*len(header))
     print(header)
     print("-" * len(header))
     # Sort by P99 for readability
     results.sort(key=lambda x: x.p99 if x.p99 > 0 else 999999)
     for r in results:
-        print(f"{r.database:<15} | {r.dimension:<5} | {r.metric:<8} | {r.insert_qps:8.0f} | {r.p99:8.2f} ms | {r.recall:6.1%} | {r.mrr:4.2f} | {r.disk_usage:8} | {r.status}")
+        print(f"{r.database:<15} | {r.dimension:<5} | {r.metric:<8} | {r.insert_qps:8.0f} | {r.search_qps:8.0f} | {r.p99:8.2f} ms | {r.recall:6.1%} | {r.mrr:4.2f} | {r.disk_usage:8} | {r.status}")
     print("=" * len(header) + "\n")
 
 if __name__ == "__main__":
@@ -371,20 +405,3 @@ if __name__ == "__main__":
     
     # 4. Reporting
     print_table(res)
-    
-    with open("BENCHMARK_STORY.md", "w") as f:
-        f.write("# 📐 The Hyperbolic Advantage: Full Accuracy Suite\n\n")
-        f.write(f"Testing with **{cfg.num_nodes:,}** nodes. Accuracy based on **{cfg.test_queries}** query vectors.\n")
-        f.write(f"HyperspaceDB Mode: **{'Poincaré 64d' if is_hyper_server else 'Euclidean 1024d'}**\n\n")
-        f.write("| Database | Dim | Geometry | Metric | QPS | P99 | Recall@10 | MRR | Disk |\n")
-        f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
-        for r in res:
-            if r.status == "Success":
-                f.write(f"| **{r.database}** | {r.dimension} | {r.geometry} | {r.metric} | {r.insert_qps:,.0f} | {r.p99:.2f}ms | {r.recall:.1%} | {r.mrr:.2f} | {r.disk_usage} |\n")
-        
-        f.write("\n## 💡 Accuracy Analysis\n")
-        h_hyp = next((r for r in res if r.database == "HyperspaceDB" and r.geometry == "Poincaré"), None)
-        if h_hyp:
-            f.write(f"HyperspaceDB Poincaré ({h_hyp.recall:.1%} recall) demonstrates that accuracy remains high despite a **{(1024/64):.0f}x reduction** in dimensions.\n")
-        elif is_hyper_server == False:
-            f.write("HyperspaceDB is currently tested in Euclidean mode. Point the server to Poincaré to see the Hyperbolic Advantage.\n")
