@@ -12,6 +12,9 @@
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::unused_async)]
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use clap::Parser;
 // Remove direct index usage, we go through manager
 // use hyperspace_index::HnswIndex;

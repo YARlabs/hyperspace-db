@@ -414,8 +414,6 @@ Optimized for hierarchical data, graph embeddings, and low-dimensional efficienc
 
 HyperspaceDB follows the microservices philosophy: One Index per Instance. To manage multiple datasets, we recommend deploying separate Docker containers or using Metadata Filtering for logical separation within a single index.
 
-For high-concurrency search workloads, ID lookup paths use concurrent maps (`DashMap`) to avoid global lock contention during result remapping.
-
 ### 1. Vector Dimensionality
 
 * **Recommendation**: Choose dimensions matching your embedding model.
