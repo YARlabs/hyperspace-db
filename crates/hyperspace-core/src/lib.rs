@@ -93,6 +93,11 @@ pub trait Collection: Send + Sync {
     fn metric_name(&self) -> &'static str;
     fn state_hash(&self) -> u64;
     fn buckets(&self) -> Vec<u64>; // New method
+    fn queue_size(&self) -> u64; // Indexing queue size for eventual consistency
+    fn optimize(&self) -> Result<(), String> {
+        // Default: no-op for collections that don't support optimization
+        Ok(())
+    }
     fn peek(&self, limit: usize)
         -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
 }

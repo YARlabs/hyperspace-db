@@ -187,9 +187,24 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let idx_worker = index.clone();
         let cfg_worker = config.clone();
 
-        let concurrency = std::thread::available_parallelism()
-            .map_or(8, std::num::NonZero::get);
+
+        // Indexer Concurrency Configuration
+        // Default: 1 (Serial) for maximum graph quality
+        // Set to 0 to use all CPU cores (faster but lower recall due to race conditions)
+        let concurrency_env = std::env::var("HS_INDEXER_CONCURRENCY")
+            .unwrap_or_else(|_| "1".to_string())
+            .parse::<usize>()
+            .unwrap_or(1);
+            
+        let concurrency = if concurrency_env == 0 { 
+            std::thread::available_parallelism().map_or(8, std::num::NonZero::get) 
+        } else { 
+            concurrency_env 
+        };
+        
+        println!("⚙️  Indexer Concurrency: {} thread(s)", concurrency);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
+
 
         let indexer_handle = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
@@ -385,6 +400,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         clock: u64,
         durability: hyperspace_core::Durability,
     ) -> Result<(), String> {
+        // 1. Validation
         for (vec, _, _) in &vectors {
             if vec.len() != N {
                 return Err(format!(
@@ -395,36 +411,40 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
         }
 
-        // Use a structure to hold processed data to avoid re-cloning/re-normalizing
-        struct BatchEntry {
+        // OPTIMIZATION: Use lifetime to hold reference to input vectors.
+        // This avoids allocation #1 if normalization is not needed (Poincare).
+        struct BatchEntry<'a> {
             id: u32,
-            vector: Vec<f64>,
-            metadata: HashMap<String, String>,
+            vector: Cow<'a, [f64]>,        // <--- CHANGED: Cow instead of Vec<f64>
+            metadata: &'a HashMap<String, String>, // <--- CHANGED: Reference instead of Clone
             internal_id: u32,
         }
 
         let mut entries = Vec::with_capacity(vectors.len());
 
-        // 1. Process Logic (Locks id_map implicitly via DashMap calls)
-        for (vector, id, metadata) in vectors {
-            let processed_vector = Self::normalize_if_cosine(&vector).into_owned();
+        // 2. Process Logic (Zero-Copy Path)
+        // Note: We iterate by reference (&vectors) to keep the original data alive
+        for (vector, id, metadata) in &vectors {
+            // Returns Borrowed for Poincare (No Allocation)
+            let processed_vector = Self::normalize_if_cosine(vector);
             
             // Check existing
-            let existing_internal_id = self.id_map.get(&id).map(|v| *v);
+            let existing_internal_id = self.id_map.get(id).map(|v| *v);
 
-            // Bucket updates
+            // Bucket updates (Read-only access to vector)
             if let Some(old_internal_id) = existing_internal_id {
                 let old_vector = self.index.get_vector(old_internal_id);
-                let old_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
-                let bucket_idx = CollectionDigest::get_bucket_index(id);
+                let old_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
+                let bucket_idx = CollectionDigest::get_bucket_index(*id);
                 self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
             }
 
-            let entry_hash = CollectionDigest::hash_entry(id, &processed_vector);
-            let bucket_idx = CollectionDigest::get_bucket_index(id);
+            let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
+            let bucket_idx = CollectionDigest::get_bucket_index(*id);
             self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
             // Storage
+            // insert_to_storage writes bytes to Mmap. It copies bytes, but doesn't heap allocate vector objects.
             let internal_id = if let Some(old_id) = existing_internal_id {
                 self.index
                     .update_storage(old_id, &processed_vector)
@@ -435,27 +455,26 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     .index
                     .insert_to_storage(&processed_vector)
                     .map_err(|e| e.clone())?;
-                self.id_map.insert(id, new_id);
-                self.reverse_id_map.insert(new_id, id);
+                
+                self.id_map.insert(*id, new_id);
+                self.reverse_id_map.insert(new_id, *id);
                 new_id
             };
 
             entries.push(BatchEntry {
-                id,
-                vector: processed_vector,
-                metadata,
+                id: *id,
+                vector: processed_vector, // Moves the Cow (cheap pointer copy), not data
+                metadata,                 // Reference
                 internal_id,
             });
         }
 
-        // 2. WAL Batch
-        // Prepare data for WAL without cloning vector if possible, but WAL takes slice usually?
-        // WAL append_batch takes &[ (Vec<f64>, u32, Meta) ]. It owns the data in the vector.
-        // We have Cow. 
-        // We need to create the Vec structure expected by WAL.
+        // 3. WAL Batch
+        // Only NOW we allocate. WAL requires owned data.
+        // This is the FIRST and ONLY allocation of the vector in the pipeline for Poincare.
         let wal_data: Vec<_> = entries
             .iter()
-            .map(|e| (e.vector.clone(), e.internal_id, e.metadata.clone()))
+            .map(|e| (e.vector.to_vec(), e.internal_id, e.metadata.clone()))
             .collect();
 
         {
@@ -467,29 +486,31 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
         }
 
-        // 3. Index Queue
-        // Ideally we would use fetch_add to increment by N at once
-        // self.config.queue_size.fetch_add(entries.len() as u64, Ordering::Relaxed);
-        // But since we only have inc_queue exposed:
+        // 4. Index Queue
         for _ in 0..entries.len() {
             self.config.inc_queue();
         }
 
-        // 4. Indexing & Replication
-        let should_replicate = self.replication_tx.receiver_count() > 0;
-
-        for entry in entries {
+        // Queue for indexing (Send only lightweight metadata clone + internal_id)
+        for entry in &entries {
             let _ = self.index_tx.send((entry.internal_id, entry.metadata.clone()));
+        }
 
-            if should_replicate {
+        // 5. Replication
+        if self.replication_tx.receiver_count() > 0 {
+            for entry in entries {
                 let log = ReplicationLog {
                     logical_clock: clock,
                     origin_node_id: self.node_id.clone(),
                     collection: self.name.clone(),
                     operation: Some(replication_log::Operation::Insert(InsertOp {
                         id: entry.id,
-                        vector: entry.vector,
-                        metadata: entry.metadata,
+                        // Convert Cow to Owned. If we already cloned for WAL, this is unfortunate 
+                        // but necessary as channels need ownership. 
+                        // Since WAL path above didn't consume `entries`, we still have the Cows.
+                        // .into_owned() performs a clone if it was borrowed.
+                        vector: entry.vector.into_owned(), 
+                        metadata: entry.metadata.clone(),
                     })),
                 };
                 let _ = self.replication_tx.send(log);
@@ -570,6 +591,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
     fn dimension(&self) -> usize {
         N
+    }
+
+    fn queue_size(&self) -> u64 {
+        self.config.get_queue_size()
     }
 
     fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
