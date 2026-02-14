@@ -10,8 +10,11 @@ pub struct GlobalConfig {
     /// `ef_construction`: Build quality (higher = better graph, slower indexing)
     pub ef_construction: AtomicUsize,
 
-    /// Queue size tracking for monitoring
+    /// Queue size tracking for monitoring (tasks in channel)
     pub queue_size: AtomicU64,
+    
+    /// Active indexing tasks (being processed right now)
+    pub active_indexing: AtomicU64,
 }
 
 impl GlobalConfig {
@@ -20,6 +23,7 @@ impl GlobalConfig {
             ef_search: AtomicUsize::new(100),       // Default
             ef_construction: AtomicUsize::new(100), // Default
             queue_size: AtomicU64::new(0),
+            active_indexing: AtomicU64::new(0),
         }
     }
 
@@ -48,7 +52,16 @@ impl GlobalConfig {
     }
 
     pub fn get_queue_size(&self) -> u64 {
-        self.queue_size.load(Ordering::Relaxed)
+        // Return total pending work: queued + actively processing
+        self.queue_size.load(Ordering::Relaxed) + self.active_indexing.load(Ordering::Relaxed)
+    }
+    
+    pub fn inc_active(&self) {
+        self.active_indexing.fetch_add(1, Ordering::Relaxed);
+    }
+    
+    pub fn dec_active(&self) {
+        self.active_indexing.fetch_sub(1, Ordering::Relaxed);
     }
 }
 

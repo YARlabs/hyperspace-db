@@ -570,6 +570,22 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         result
     }
 
+    pub fn peek_all(&self) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)> {
+        let max_len = self.nodes.read().len();
+        let mut result = Vec::with_capacity(max_len);
+
+        for id in 0..max_len {
+            let id = id as u32;
+            if self.metadata.deleted.read().contains(id) {
+                continue;
+            }
+            let vec = self.get_vector(id).coords.to_vec();
+            let meta = self.metadata.forward.get(&id).map(|m| m.clone()).unwrap_or_default();
+            result.push((id, vec, meta));
+        }
+        result
+    }
+
     // Distance calculation helper
     // Distance calculation helper
     #[inline]

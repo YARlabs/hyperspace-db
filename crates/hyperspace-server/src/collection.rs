@@ -7,6 +7,7 @@ use hyperspace_store::{wal::Wal, VectorStore};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
@@ -34,6 +35,8 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     id_map: Arc<DashMap<u32, u32>>,
     // Reverse mapping from internal ID to user ID for search results
     reverse_id_map: Arc<DashMap<u32, u32>>,
+    // Data directory for optimization
+    data_dir: PathBuf,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
@@ -211,11 +214,16 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx = idx_worker.clone();
                 let cfg = cfg_worker.clone();
+                
+                // Mark as active when we start processing
+                cfg.inc_active();
+                
                 tokio::spawn(async move {
                     let _permit = permit;
                     let _ = tokio::task::spawn_blocking(move || {
                         let _ = idx.index_node(id, meta);
                         cfg.dec_queue();
+                        cfg.dec_active(); // Mark as complete
                     })
                     .await;
                 });
@@ -285,6 +293,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             buckets,
             reverse_id_map,
             id_map,
+            data_dir,
         })
     }
 }
@@ -599,5 +608,54 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
     fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
         self.index.peek(limit)
+    }
+
+    fn optimize(&self) -> Result<(), String> {
+        println!("🧹 Starting graph optimization for '{}'...", self.name);
+        let start = std::time::Instant::now();
+        
+        // Get all vectors from current index
+        let all_data = self.index.peek_all();
+        let count = all_data.len();
+        
+        if count == 0 {
+            println!("⚠️ No data to optimize");
+            return Ok(());
+        }
+        
+        println!("   Rebuilding graph with {} vectors sequentially...", count);
+        
+        // Create temporary index path
+        let temp_path = self.data_dir.join("index.optimize.tmp");
+        if temp_path.exists() {
+            std::fs::remove_dir_all(&temp_path).map_err(|e| e.to_string())?;
+        }
+        std::fs::create_dir_all(&temp_path).map_err(|e| e.to_string())?;
+        
+        // Create new index with same config
+        let element_size = hyperspace_core::vector::HyperVector::<N>::SIZE;
+        let temp_store = Arc::new(hyperspace_store::VectorStore::new(&temp_path, element_size));
+        let new_index = HnswIndex::<N, M>::new(temp_store, self.index.mode, self.config.clone());
+        
+        // Re-insert all vectors sequentially (single-threaded for quality)
+        for (i, (_internal_id, vec, meta)) in all_data.iter().enumerate() {
+            let _ = new_index.insert(&vec, meta.clone());
+            
+            if i % 10000 == 0 && i > 0 {
+                println!("   Progress: {}/{} ({:.1}%)", i, count, (i as f64 / count as f64) * 100.0);
+            }
+        }
+        
+        // Save optimized index
+        let final_path = self.data_dir.join("index.optimized");
+        if final_path.exists() {
+            std::fs::remove_dir_all(&final_path).ok();
+        }
+        std::fs::rename(&temp_path, &final_path).map_err(|e| e.to_string())?;
+        
+        println!("✨ Optimization complete in {:?}. Optimized index saved to index.optimized/", start.elapsed());
+        println!("   To use optimized index, restart server after moving index.optimized/ to index/");
+        
+        Ok(())
     }
 }

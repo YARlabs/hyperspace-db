@@ -246,11 +246,18 @@ def extract_ids(res_obj):
     """
     ids = []
     for hit in res_obj:
+        val = None
         if isinstance(hit, dict):
-            if "id" in hit:
-                ids.append(hit["id"])
+            val = hit.get("id")
         elif hasattr(hit, "id"):
-            ids.append(hit.id)
+            val = hit.id
+            
+        if val is not None:
+            # Convert to int for comparison if it looks like a number
+            try:
+                ids.append(int(val))
+            except (ValueError, TypeError):
+                ids.append(val)
     return ids
 
 def run_concurrency_profile(query_fn, workers_list=(1, 10, 30), queries=1000):
@@ -271,6 +278,43 @@ def run_concurrency_profile(query_fn, workers_list=(1, 10, 30), queries=1000):
         print(f"QPS: {qps:.0f}, P99: {p99:.2f}ms")
         result[workers] = qps
     return result
+
+def wait_for_indexing(host="localhost", port=50050, collection="bench_semantic", timeout=600):
+    """Wait for HyperspaceDB background indexing and optimize graph"""
+    import requests
+    headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}
+    
+    # 1. Trigger explicit optimization if possible
+    try:
+        requests.post(f"http://{host}:{port}/api/collections/{collection}/optimize", headers=headers, timeout=5)
+    except:
+        pass
+
+    print(f"⏳ Monitoring indexing for '{collection}'...")
+    url = f"http://{host}:{port}/api/collections/{collection}/stats"
+    
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > timeout:
+            print(f"\n⚠️ Timeout after {timeout}s. Proceeding...")
+            break
+            
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                queue = data.get("indexing_queue", 0)
+                count = data.get("count", 0)
+                
+                print(f"\r   [Indexing] Remaining: {queue:,} | Total Indexed: {count:,}          ", end="", flush=True)
+                
+                if queue == 0 and count > 0:
+                    print(f"\n✅ Indexing queue empty. Stabilizing graph structure...")
+                    time.sleep(5) # Critical grace period for HNSW linking
+                    break
+            time.sleep(1)
+        except Exception:
+            time.sleep(2)
 
 # --- Benchmark Runs ---
 
@@ -326,8 +370,9 @@ def run_milvus(cfg: Config, data: TreeGenerator) -> Result:
         search_qps = cfg.search_queries / search_dur if search_dur > 0 else 0.0
 
         # Concurrency profile
+        q_list = [data.query_vecs_euc[0].tolist()]
         def milvus_query():
-            col.search(q_one, "vec", {"metric_type":"COSINE", "params":{"nprobe": 10}}, limit=cfg.top_k)
+            col.search(q_list, "vec", {"metric_type":"COSINE", "params":{"nprobe": 10}}, limit=cfg.top_k)
         conc = run_concurrency_profile(milvus_query, queries=min(3000, cfg.search_queries))
             
         disk = get_docker_disk("milvus")
@@ -422,8 +467,9 @@ def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
         search_qps = cfg.search_queries / search_dur if search_dur > 0 else 0.0
 
         # Concurrency profile
+        q_list = data.query_vecs_euc[0].tolist()
         def qdrant_query():
-            client.query_points(collection_name=name, query=q_one, limit=cfg.top_k)
+            client.query_points(collection_name=name, query=q_list, limit=cfg.top_k)
         conc = run_concurrency_profile(qdrant_query, queries=min(3000, cfg.search_queries))
             
         disk = get_docker_disk("qdrant")
@@ -504,7 +550,8 @@ def run_chroma(cfg: Config, data: TreeGenerator) -> Result:
 
         # Concurrency
         print(f"   -> Measuring Concurrency...")
-        def chroma_query(): col.query(query_embeddings=[q_one], n_results=cfg.top_k)
+        q_list = data.query_vecs_euc[0].tolist()
+        def chroma_query(): col.query(query_embeddings=[q_list], n_results=cfg.top_k)
         conc = run_concurrency_profile(chroma_query, queries=min(2000, cfg.search_queries))
             
         disk = get_docker_disk("chroma")
@@ -565,6 +612,11 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
                 return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: batch_insert({name})")
             last_qps = log_batch(i, data.count, bs, last_qps, h_batch)
         dur = time.time() - t0
+        print(f"\n   Ingestion complete. Time: {dur:.2f}s")
+        
+        # Wait for background indexing to complete
+        stage = "wait_indexing"
+        wait_for_indexing(collection=name)
         
         # Accuracy
         print(f"\n   -> Verifying Accuracy ({cfg.test_queries} queries)...")
@@ -593,8 +645,9 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
         search_qps = cfg.search_queries / search_dur if search_dur > 0 else 0.0
 
         # Concurrency profile
+        q_list = q_vecs[0].tolist()
         def hyperspace_query():
-            client.search(q_one, top_k=cfg.top_k, collection=name)
+            client.search(q_list, top_k=cfg.top_k, collection=name)
         conc = run_concurrency_profile(hyperspace_query, queries=min(3000, cfg.search_queries))
             
         disk = get_local_disk("../data")

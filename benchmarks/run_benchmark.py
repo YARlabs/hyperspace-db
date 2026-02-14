@@ -152,16 +152,33 @@ def get_docker_disk_usage(container: str, path: str) -> float:
 #                         break
 #                 time.sleep(0.1)
 # 
-#     def get_disk_usage(self, path: str) -> float:
-#         try:
-#              total_size = 0
-#              for dirpath, dirnames, filenames in os.walk(path):
-#                  for f in filenames:
-#                      fp = os.path.join(dirpath, f)
-#                      total_size += os.path.getsize(fp)
-#              return total_size / 1024 / 1024
-#         except:
-#             return 0.0
+# def ResourceMonitor... (omitted)
+
+def wait_for_indexing(host="localhost", port=50050, collection="benchmark", timeout=600):
+    """Wait for HyperspaceDB background indexing to complete"""
+    import requests
+    print(f"⏳ Monitoring indexing for '{collection}'...")
+    url = f"http://{host}:{port}/api/collections/{collection}/stats"
+    headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}
+    
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > timeout:
+            print(f"\n⚠️ Timeout after {timeout}s. Proceeding...")
+            break
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                queue = data.get("indexing_queue", 0)
+                count = data.get("count", 0)
+                print(f"\r   [Indexing] Remaining: {queue:,} | Total Indexed: {count:,}          ", end="", flush=True)
+                if queue == 0 and count > 0:
+                    print(f"\n✅ Indexing complete! Docs ready: {count:,}")
+                    break
+            time.sleep(1)
+        except Exception:
+            time.sleep(2)
 
 
 class VectorDBBenchmark:
@@ -493,15 +510,14 @@ class VectorDBBenchmark:
 
             # Insert benchmark
             start = time.time()
-            hs_batch_size = 500 # Reduced due to gRPC 4MB limit
+            # Dynamic batch size to avoid gRPC 4MB limit for high dimensions
+            hs_batch_size = 400 if self.config.dimensions > 128 else 1000
+            
             for i in range(0, len(self.vectors), hs_batch_size):
                 batch = self.vectors[i:i+hs_batch_size]
                 ids = list(range(i, i+len(batch)))
                 metadatas = [{"idx": str(j)} for j in ids]
                 
-                if i == 0:
-                     print(f"DEBUG: Starting batch insert loop. Batch size: {hs_batch_size}, Has batch_insert: {hasattr(client, 'batch_insert')}", flush=True)
-
                 if hasattr(client, 'batch_insert'):
                     success = client.batch_insert(batch.tolist(), ids, metadatas, collection="benchmark")
                     if not success:
@@ -517,6 +533,10 @@ class VectorDBBenchmark:
             
             insert_time = time.time() - start
             insert_qps = len(self.vectors) / insert_time
+            print(f"\n  Ingestion complete in {insert_time:.2f}s. Waiting for indexing...")
+            
+            # Wait for background indexing to complete
+            wait_for_indexing(collection="benchmark")
 
             # Stop monitoring
             # avg_cpu, max_mem = monitor.stop()
