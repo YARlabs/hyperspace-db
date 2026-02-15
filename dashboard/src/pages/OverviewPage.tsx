@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Database, HardDrive, Server, Zap, FolderOpen } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -72,6 +73,29 @@ export function OverviewPage() {
                 </Card>
 
                 <IngestionStatusCard metrics={metrics} />
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Maintenance</CardTitle>
+                        <CardDescription>System-level operations</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">Memory Management</span>
+                                <Button variant="outline" size="sm" onClick={() => {
+                                    if (confirm("Trigger manual memory vacuum? This may cause temporary latency.")) {
+                                        api.post("/admin/vacuum")
+                                            .then(() => alert("Memory cleanup triggered!"))
+                                            .catch(e => alert("Failed: " + e.message))
+                                    }
+                                }}>
+                                    Reset Memory
+                                </Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         </div>
     )

@@ -82,3 +82,13 @@ Parameters `ef_search` (search depth) and `ef_construction` (build quality) are 
     - Drain indexing queue.
     - Save final snapshot.
     - Close file handles.
+
+## Memory Management & Stability
+
+### Cold Storage Architecture
+HyperspaceDB implements a "Cold Storage" mechanism to handle large numbers of collections efficiently:
+1.  **Lazy Loading**: Collections are not loaded into RAM at startup. Instead, only metadata is scanned. The actual collection (vector index, storage) is instantiated from disk only upon the first `get()` request.
+2.  **Idle Eviction (Reaper)**: A background task runs every 60 seconds to scan for idle collections. Any collection not accessed for a configurable period (default: 1 hour) is automatically unloaded from memory to free up RAM.
+3.  **Graceful Shutdown**: When a collection is evicted or deleted, its `Drop` implementation ensures that all associated background tasks (indexing, snapshotting) are immediately aborted, preventing resource leaks and panicked threads.
+
+This architecture allows HyperspaceDB to support thousands of collections while keeping the active memory footprint low, scaling based on actual usage rather than total data.

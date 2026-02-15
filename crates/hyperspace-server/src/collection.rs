@@ -28,8 +28,8 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     index_tx: mpsc::UnboundedSender<(u32, HashMap<String, String>)>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     config: Arc<GlobalConfig>,
-    _tasks: Vec<JoinHandle<()>>,
-    // Buckets for Merkle Tree
+    bg_tasks: Vec<JoinHandle<()>>,
+    // Buckets for Merkle Tree synchronization
     buckets: Arc<Vec<AtomicU64>>,
     // Mapping from user ID to internal ID for upsert support
     id_map: Arc<DashMap<u32, u32>>,
@@ -37,6 +37,13 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     reverse_id_map: Arc<DashMap<u32, u32>>,
     // Data directory for optimization
     data_dir: PathBuf,
+}
+
+struct BatchEntry<'a> {
+    id: u32,
+    vector: Cow<'a, [f64]>,
+    metadata: &'a HashMap<String, String>,
+    internal_id: u32,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
@@ -102,6 +109,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             match HnswIndex::<N, M>::load_snapshot(&snap_path, store.clone(), mode, config.clone())
             {
                 Ok(idx) => {
+
                     let count = idx.count_nodes();
                     (store, Arc::new(idx), count)
                 }
@@ -135,7 +143,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         if state_path.exists() {
             if let Ok(s) = std::fs::read_to_string(&state_path) {
                 if let Ok(state) = serde_json::from_str::<CollectionState>(&s) {
-                    id_map_data = state.id_map.clone();
+                    id_map_data.clone_from(&state.id_map);
                     reverse_id_map_data = state.reverse_id_map;
                     if state.buckets.len() == buckets_data.len() {
                         buckets_data = state.buckets;
@@ -205,11 +213,11 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             concurrency_env 
         };
         
-        println!("⚙️  Indexer Concurrency: {} thread(s)", concurrency);
+        println!("⚙️  Indexer Concurrency: {concurrency} thread(s)");
         let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
 
 
-        let indexer_handle = tokio::spawn(async move {
+        let indexer_task = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx = idx_worker.clone();
@@ -281,6 +289,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             }
         });
 
+
+
+
         Ok(Self {
             name,
             node_id,
@@ -289,7 +300,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             index_tx,
             replication_tx,
             config,
-            _tasks: vec![indexer_handle, snapshot_handle],
+            bg_tasks: vec![indexer_task, snapshot_handle],
             buckets,
             reverse_id_map,
             id_map,
@@ -420,19 +431,13 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
         }
 
-        // OPTIMIZATION: Use lifetime to hold reference to input vectors.
-        // This avoids allocation #1 if normalization is not needed (Poincare).
-        struct BatchEntry<'a> {
-            id: u32,
-            vector: Cow<'a, [f64]>,        // <--- CHANGED: Cow instead of Vec<f64>
-            metadata: &'a HashMap<String, String>, // <--- CHANGED: Reference instead of Clone
-            internal_id: u32,
-        }
+        // Optimization: Use lifetime to hold reference to input vectors to avoid allocation.
+
 
         let mut entries = Vec::with_capacity(vectors.len());
 
         // 2. Process Logic (Zero-Copy Path)
-        // Note: We iterate by reference (&vectors) to keep the original data alive
+        // Note: Iterate by reference to preserve original data lifetimes.
         for (vector, id, metadata) in &vectors {
             // Returns Borrowed for Poincare (No Allocation)
             let processed_vector = Self::normalize_if_cosine(vector);
@@ -479,8 +484,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         // 3. WAL Batch
-        // Only NOW we allocate. WAL requires owned data.
-        // This is the FIRST and ONLY allocation of the vector in the pipeline for Poincare.
+        // Allocate here as WAL requires owned data.
+        // This is the first allocation of the vector in the Poincaré pipeline.
         let wal_data: Vec<_> = entries
             .iter()
             .map(|e| (e.vector.to_vec(), e.internal_id, e.metadata.clone()))
@@ -514,10 +519,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     collection: self.name.clone(),
                     operation: Some(replication_log::Operation::Insert(InsertOp {
                         id: entry.id,
-                        // Convert Cow to Owned. If we already cloned for WAL, this is unfortunate 
-                        // but necessary as channels need ownership. 
-                        // Since WAL path above didn't consume `entries`, we still have the Cows.
-                        // .into_owned() performs a clone if it was borrowed.
+                        // Convert Cow to Owned for channel transmission.
                         vector: entry.vector.into_owned(), 
                         metadata: entry.metadata.clone(),
                     })),
@@ -584,8 +586,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 let user_id = self
                     .reverse_id_map
                     .get(&internal_id)
-                    .map(|v| *v)
-                    .unwrap_or(internal_id);
+                    .map_or(internal_id, |v| *v);
                 
                 (user_id, dist, meta)
             })
@@ -623,7 +624,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             return Ok(());
         }
         
-        println!("   Rebuilding graph with {} vectors sequentially...", count);
+        println!("   Rebuilding graph with {count} vectors sequentially...");
         
         // Create temporary index path
         let temp_path = self.data_dir.join("index.optimize.tmp");
@@ -639,7 +640,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         
         // Re-insert all vectors sequentially (single-threaded for quality)
         for (i, (_internal_id, vec, meta)) in all_data.iter().enumerate() {
-            let _ = new_index.insert(&vec, meta.clone());
+            let _ = new_index.insert(vec, meta.clone());
             
             if i % 10000 == 0 && i > 0 {
                 println!("   Progress: {}/{} ({:.1}%)", i, count, (i as f64 / count as f64) * 100.0);
@@ -657,5 +658,15 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         println!("   To use optimized index, restart server after moving index.optimized/ to index/");
         
         Ok(())
+    }
+}
+
+impl<const N: usize, M: Metric<N>> Drop for CollectionImpl<N, M> {
+    fn drop(&mut self) {
+        println!("🗑️ Dropping collection '{}'. Stopping background tasks...", self.name);
+        // Abort background tasks (indexer, snapshot)
+        for task in &self.bg_tasks {
+            task.abort();
+        }
     }
 }

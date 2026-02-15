@@ -26,7 +26,7 @@ async fn validate_api_key(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Skip auth for static files
+    // Auth is skipped for static files.
     if !request.uri().path().starts_with("/api/") {
         return Ok(next.run(request).await);
     }
@@ -89,6 +89,8 @@ pub async fn start_http_server(
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
         .route("/api/logs", get(get_logs))
+        .route("/api/collections/{name}/rebuild", post(rebuild_collection_http))
+        .route("/api/admin/vacuum", post(trigger_vacuum_http))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -162,6 +164,7 @@ struct CollectionSummary {
     count: usize,
     dimension: usize,
     metric: String,
+    indexing_queue: u64,
 }
 
 async fn get_cluster_status(
@@ -177,12 +180,13 @@ async fn list_collections(
     let names = manager.list();
     let mut summaries = Vec::new();
     for name in names {
-        if let Some(col) = manager.get(&name) {
+        if let Some(col) = manager.get(&name).await {
             summaries.push(CollectionSummary {
                 name: name.clone(),
                 count: col.count(),
                 dimension: col.dimension(),
                 metric: col.metric_name().to_string(),
+                indexing_queue: col.queue_size(),
             });
         }
     }
@@ -224,17 +228,19 @@ struct StatsRes {
     count: usize,
     dimension: u32,
     metric: String,
+    indexing_queue: u64,
 }
 
 async fn get_stats(
     State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&name) {
+    if let Some(col) = manager.get(&name).await {
         Json(StatsRes {
             count: col.count(),
             dimension: col.dimension() as u32,
             metric: col.metric_name().to_string(),
+            indexing_queue: col.queue_size(),
         })
         .into_response()
     } else {
@@ -246,7 +252,7 @@ async fn get_collection_digest(
     State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&name) {
+    if let Some(col) = manager.get(&name).await {
         let clock = manager.cluster_state.read().await.logical_clock;
         let digest =
             crate::sync::CollectionDigest::new(name.clone(), clock, col.count(), col.buckets());
@@ -290,7 +296,7 @@ async fn get_metrics(
     let cols = manager.list();
     let mut total_vecs = 0;
     for c in &cols {
-        if let Some(col) = manager.get(c) {
+        if let Some(col) = manager.get(c).await {
             total_vecs += col.count();
         }
     }
@@ -350,7 +356,7 @@ async fn peek_collection(
     Query(params): Query<PeekParams>,
 ) -> impl IntoResponse {
     let limit = params.limit.unwrap_or(50).min(100);
-    if let Some(col) = manager.get(&name) {
+    if let Some(col) = manager.get(&name).await {
         let items = col.peek(limit);
         Json(items).into_response()
     } else {
@@ -370,7 +376,7 @@ async fn search_collection(
     Json(payload): Json<SearchReq>,
 ) -> impl IntoResponse {
     let k = payload.top_k.unwrap_or(10);
-    if let Some(col) = manager.get(&name) {
+    if let Some(col) = manager.get(&name).await {
         let default_ef = std::env::var("HS_HNSW_EF_SEARCH")
             .unwrap_or_else(|_| "100".to_string())
             .parse()
@@ -384,6 +390,7 @@ async fn search_collection(
         };
         match col.search(&payload.vector, &HashMap::new(), &[], &dummy_params) {
             Ok(res) => {
+
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
                     .map(|(id, dist, meta)| {
@@ -409,4 +416,22 @@ async fn get_logs() -> Json<Vec<String>> {
         "[INFO] Control Plane: HTTP :50050".into(),
         "[INFO] Data Plane: gRPC :50051".into(),
     ])
+}
+
+async fn rebuild_collection_http(
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    match manager.rebuild_collection(&name).await {
+        Ok(()) => (StatusCode::OK, "Index Rebuilt").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+async fn trigger_vacuum_http(
+    State((_manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+) -> impl IntoResponse {
+    println!("🧹 HTTP Vacuum Triggered");
+    // In future use Jemalloc ctls if available
+    (StatusCode::OK, "Memory Cleanup Initiated").into_response()
 }

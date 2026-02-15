@@ -2,42 +2,72 @@
 
 ## Server Configuration
 
-HyperspaceDB is configured via gRPC commands at runtime, but defaults can be set via environment variables.
+HyperspaceDB is configured via environment variables or a `.env` file.
+
+### Core Settings
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `RUST_LOG` | `info` | Log level (debug, info, error) |
+| `RUST_LOG` | `info` | Log level (`debug`, `info`, `error`) |
 | `HS_PORT` | `50051` | gRPC listening port |
+| `HS_HTTP_PORT` | `50050` | HTTP Dashboard port |
 | `HS_DATA_DIR` | `./data` | Path to store segments and WAL |
-| `HS_DIMENSION` | `1024` | Vector dimensionality (8, 768, 1024, 1536) |
-| `HS_DISTANCE_METRIC` | `poincare` | Distance metric (poincare) |
-| `HS_QUANTIZATION_LEVEL` | `scalar` | Compression (none, scalar, binary) |
-| `HS_HNSW_EF_CONSTRUCT` | `100` | Index build quality (50-500) |
-| `HS_HNSW_EF_SEARCH` | `10` | Search beam width (10-500) |
+| `HS_DIMENSION` | `1024` | Default vector dimensionality (8, 64, 768, 1024, 1536) |
+| `HS_METRIC` | `cosine` | Distance metric (`cosine`, `poincare`, `l2`) |
+| `HS_QUANTIZATION_LEVEL` | `none` | Compression (`none`, `scalar` (i8), `binary` (1-bit)) |
 
-## Client-Side (WASM)
-For in-browser usage, see the [WASM Guide](wasm.md).
+### HNSW Index Tuning
 
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `HS_HNSW_M` | `64` | Max connections per layer |
+| `HS_HNSW_EF_CONSTRUCT` | `200` | Build quality (50-500). Higher = slower build, better recall. |
+| `HS_HNSW_EF_SEARCH` | `100` | Search beam width (10-500). Higher = slower search, better recall. |
+| `HS_INDEXER_CONCURRENCY` | `1` | Check README for threading strategies (0=Auto, 1=Serial) |
 
-## TUI Dashboard (Mission Control)
+### Persistence & Durability
 
-Launch the dashboard to monitor your instance:
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `HYPERSPACE_WAL_SYNC_MODE` | `batch` | WAL Sync strategy: `strict` (fsync), `batch` (100ms lag), `async` (OS cache) |
+| `HYPERSPACE_WAL_BATCH_INTERVAL` | `100` | Batch interval in milliseconds |
+
+### Memory Management (Jemalloc)
+
+HyperspaceDB uses **Jemalloc** for efficient memory allocation. Tune it via `MALLOC_CONF`:
+
+* **Low RAM (Aggressive)**: `MALLOC_CONF=background_thread:true,dirty_decay_ms:0,muzzy_decay_ms:0`
+* **Balanced (Default)**: `MALLOC_CONF=background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000`
+
+### Security
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `HYPERSPACE_API_KEY` | - | If set, requires `x-api-key` header for all requests |
+
+---
+
+## Web Dashboard
+
+HyperspaceDB includes a comprehensive Web Dashboard at `http://localhost:50050`.
+
+**Features:**
+* **Cluster Status**: View node role (Leader/Follower) and topology.
+* **Collections**: Create, delete, and inspect collection statistics.
+* **Explorer**: View inserted vectors and their metadata.
+* **Metrics**: Real-time RAM and CPU usage.
+
+## TUI Dashboard (Legacy)
+
+For terminal-based monitoring:
 
 ```bash
 ./hyperspace-cli
 ```
 
 ### Key Controls
+* **TAB**: Switch tabs.
+* **[S]**: Trigger snapshot.
+* **[V]**: Trigger vacuum.
+* **[Q]**: Quit.
 
-* **TAB**: Switch between Overview, Storage, and Admin tabs.
-* **[S]**: Trigger an immediate graph snapshot.
-* **[V]**: Trigger storage vacuum (compaction, experimental).
-* **[Q]**: Quit the dashboard.
-
-## Persistence & Recovery
-
-HyperspaceDB uses a **Write-Ahead Log (WAL)**.
-
-1. **Insert**: Data is appended to `wal.log` immediately.
-2. **Snapshot**: The in-memory graph is periodically serialized to `index.snap`.
-3. **Recovery**: On restart, the system loads `index.snap` (instant mmap) and replays any entries in `wal.log` that occurred after the snapshot.

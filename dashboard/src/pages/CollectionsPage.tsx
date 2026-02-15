@@ -44,6 +44,7 @@ export function CollectionsPage() {
                             <TableHead>Dimension</TableHead>
                             <TableHead>Metric</TableHead>
                             <TableHead>Vectors</TableHead>
+                            <TableHead>Queue</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -51,7 +52,7 @@ export function CollectionsPage() {
                         {isLoading ? (
                             <TableSkeleton />
                         ) : (!collections || collections.length === 0) ? (
-                            <TableRow><TableCell colSpan={5} className="text-center h-32 text-muted-foreground">No collections found. Create one to get started.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={6} className="text-center h-32 text-muted-foreground">No collections found. Create one to get started.</TableCell></TableRow>
                         ) : (
                             collections.map((col: any) => {
                                 const name = isStringList ? col : col.name
@@ -88,6 +89,7 @@ function CollectionRow({ collection, isString, onDelete }: any) {
             <TableCell><Badge variant="outline" className="font-mono">{dim}</Badge></TableCell>
             <TableCell className="capitalize">{metric}</TableCell>
             <TableCell className="font-mono">{count}</TableCell>
+            <TableCell className="font-mono">{collection.indexing_queue || 0}</TableCell>
             <TableCell className="text-right">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -98,6 +100,16 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                         </DropdownMenuItem>
                         <DropdownMenuItem disabled>
                             Export Snapshot
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => {
+                            if (confirm(`Are you sure you want to rebuild index for '${name}'? This is a heavy operation.`)) {
+                                api.post(`/collections/${name}/rebuild`)
+                                    .then(() => alert("Index rebuild started!"))
+                                    .catch(e => alert("Failed: " + e.message))
+                            }
+                        }}>
+                            <Database className="mr-2 h-4 w-4" /> Rebuild Index
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
@@ -174,6 +186,6 @@ function CreateCollectionDialog() {
 
 function TableSkeleton() {
     return Array(3).fill(0).map((_, i) => (
-        <TableRow key={i}><TableCell><Skeleton className="h-4 w-20" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-8" /></TableCell></TableRow>
+        <TableRow key={i}><TableCell><Skeleton className="h-4 w-20" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-8" /></TableCell></TableRow>
     ))
 }

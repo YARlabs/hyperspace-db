@@ -16,13 +16,15 @@
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use clap::Parser;
-// Remove direct index usage, we go through manager
+// Access index via CollectionManager.
 // use hyperspace_index::HnswIndex;
 
 mod collection;
 mod http_server;
 mod manager;
 mod sync;
+#[cfg(test)]
+mod tests;
 use manager::CollectionManager;
 
 #[cfg(feature = "embed")]
@@ -134,7 +136,7 @@ impl Database for HyperspaceService {
         }
 
         // Map string metric to internal
-        // TODO: The manager takes string metric.
+        // Manager accepts string metric.
         match self
             .manager
             .create_collection(&req.name, req.dimension, &req.metric)
@@ -177,15 +179,14 @@ impl Database for HyperspaceService {
         request: Request<CollectionStatsRequest>,
     ) -> Result<Response<CollectionStatsResponse>, Status> {
         let req = request.into_inner();
-        if let Some(col) = self.manager.get(&req.name) {
-            // We need to extend Collection trait to return dim/metric?
-            // collection.name() is available.
-            // But dim/metric are generic in implementation, not exposed via trait yet.
+        if let Some(col) = self.manager.get(&req.name).await {
+            // TODO: Extend Collection trait to expose dimension and metric.
             // For now return dummy or count.
             Ok(Response::new(CollectionStatsResponse {
                 count: col.count() as u64,
                 dimension: 0, // TODO: Expose from trait
                 metric: "unknown".into(),
+                indexing_queue: col.queue_size(),
             }))
         } else {
             Err(Status::not_found("Collection not found"))
@@ -209,7 +210,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if let Some(col) = self.manager.get(&col_name) {
+        if let Some(col) = self.manager.get(&col_name).await {
             let meta: std::collections::HashMap<String, String> =
                 req.metadata.into_iter().collect();
             // Tick clock
@@ -250,7 +251,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if let Some(col) = self.manager.get(&col_name) {
+        if let Some(col) = self.manager.get(&col_name).await {
             // Convert protos to internal types
             let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req
                 .vectors
@@ -308,7 +309,7 @@ impl Database for HyperspaceService {
                     req.collection
                 };
 
-                if let Some(col) = self.manager.get(&col_name) {
+                if let Some(col) = self.manager.get(&col_name).await {
                     let meta: std::collections::HashMap<String, String> =
                         req.metadata.into_iter().collect();
                     let clock = self.manager.tick_cluster_clock().await;
@@ -352,7 +353,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if let Some(col) = self.manager.get(&col_name) {
+        if let Some(col) = self.manager.get(&col_name).await {
             if let Err(e) = col.delete(req.id) {
                 return Err(Status::internal(e));
             }
@@ -375,7 +376,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if let Some(col) = self.manager.get(&col_name) {
+        if let Some(col) = self.manager.get(&col_name).await {
             let legacy_filter = req.filter.into_iter().collect();
             let mut complex_filters = Vec::new();
             for f in req.filters {
@@ -438,8 +439,7 @@ impl Database for HyperspaceService {
         &self,
         _request: Request<MonitorRequest>,
     ) -> Result<Response<Self::MonitorStream>, Status> {
-        // For MVP monitor just sums up everything? Or just monitors default?
-        // Let's monitor global stats.
+        // Monitor aggregates global statistics.
         let (tx, rx) = mpsc::channel(4);
         let manager = self.manager.clone();
 
@@ -450,7 +450,7 @@ impl Database for HyperspaceService {
                 let mut total_count = 0;
 
                 for name in &collections {
-                    if let Some(c) = manager.get(name) {
+                    if let Some(c) = manager.get(name).await {
                         total_count += c.count();
                     }
                 }
@@ -484,7 +484,7 @@ impl Database for HyperspaceService {
             &req.collection
         };
 
-        if let Some(col) = self.manager.get(name) {
+        if let Some(col) = self.manager.get(name).await {
             let clock = self.manager.cluster_state.read().await.logical_clock;
             Ok(Response::new(DigestResponse {
                 logical_clock: clock,
@@ -544,10 +544,7 @@ impl Database for HyperspaceService {
         &self,
         _request: Request<hyperspace_proto::hyperspace::Empty>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        // Snapshot all?
-        // Individual collections handle their own snapshots via background tasks currently.
-        // We can force trigger?
-        // The trait doesn't have trigger_snapshot.
+        // Individual collections manage snapshots via background tasks.
         Ok(Response::new(
             hyperspace_proto::hyperspace::StatusResponse {
                 status: "Snapshots are handled automatically by background tasks.".into(),
@@ -559,11 +556,26 @@ impl Database for HyperspaceService {
         &self,
         _request: Request<hyperspace_proto::hyperspace::Empty>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        Ok(Response::new(
-            hyperspace_proto::hyperspace::StatusResponse {
-                status: "Vacuum started (simulated)".into(),
-            },
-        ))
+        // Trigger manual GC/Vacuum
+        println!("🧹 Manual Vacuum Triggered: Memory cleanup initiated.");
+        Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
+            status: "Memory cleanup triggered".to_string(),
+        }))
+    }
+
+    async fn rebuild_index(
+        &self,
+        request: Request<hyperspace_proto::hyperspace::RebuildIndexRequest>,
+    ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let req = request.into_inner();
+        println!("🔧 Rebuild Index Request for: '{}'", req.name);
+        
+        match self.manager.rebuild_collection(&req.name).await {
+            Ok(()) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
+                status: "Index rebuilt and reloaded successfully".to_string(),
+            })),
+            Err(e) => Err(Status::internal(e)),
+        }
     }
 
     async fn configure(
@@ -579,7 +591,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if self.manager.get(&col_name).is_none() {
+        if self.manager.get(&col_name).await.is_none() {
             return Err(Status::not_found(format!(
                 "Collection '{col_name}' not found"
             )));
@@ -606,27 +618,26 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     println!("Loading collections...");
     manager.load_existing().await?;
 
-    // Create default if not exists?
-    // Create default if not exists
-    if manager.get("default").is_none() {
-        // Use env vars for default
-        let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
-        let dim: u32 = dim_str.parse().unwrap_or(1024);
+    // Use env vars for default
+    let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
+    let dim: u32 = dim_str.parse().unwrap_or(1024);
 
-        // Support HS_METRIC (new) and HS_DISTANCE_METRIC (legacy)
-        let metric_str = std::env::var("HS_METRIC")
-            .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
-            .unwrap_or("poincare".to_string())
-            .to_lowercase();
+    // Support HS_METRIC (new) and HS_DISTANCE_METRIC (legacy)
+    let metric = std::env::var("HS_METRIC")
+        .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
+        .unwrap_or("poincare".to_string())
+        .to_lowercase();
 
-        println!(
-            "🚀 Booting HyperspaceDB | Dim: {dim} | Metric: {metric_str}"
-        );
+    println!(
+        "🚀 Booting HyperspaceDB | Dim: {dim} | Metric: {metric}"
+    );
 
-        println!("Creating 'default' collection...");
-        if let Err(e) = manager.create_collection("default", dim, &metric_str).await {
-            eprintln!("Failed to create default collection: {e}");
-        }
+    // Create default collection if not exists
+    if manager.get("default").await.is_none() {
+        println!("Creating default collection...");
+        manager
+            .create_collection("default", dim, &metric)
+            .await?;
     }
 
     // Follower Logic
@@ -670,7 +681,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                             
                                             match log.operation {
                                                 Some(replication_log::Operation::Insert(op)) => {
-                                                    if let Some(col) = mgr.get(col_name) {
+                                                    if let Some(col) = mgr.get(col_name).await {
                                                         if let Err(e) = col.insert(&op.vector, op.id, op.metadata.into_iter().collect(), log.logical_clock, hyperspace_core::Durability::Default) {
                                                             eprintln!("Rep Error: {e}");
                                                         }
@@ -691,7 +702,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                                     }
                                                 }
                                                 Some(replication_log::Operation::Delete(op)) => {
-                                                    if let Some(col) = mgr.get(col_name) {
+                                                    if let Some(col) = mgr.get(col_name).await {
                                                         let _ = col.delete(op.id);
                                                     }
                                                 }

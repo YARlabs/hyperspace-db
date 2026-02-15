@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from . import hyperspace_pb2 as hyperspace__pb2
+import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.76.0'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -108,6 +108,11 @@ class DatabaseStub(object):
                 '/hyperspace.Database/GetDigest',
                 request_serializer=hyperspace__pb2.DigestRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.DigestResponse.FromString,
+                _registered_method=True)
+        self.RebuildIndex = channel.unary_unary(
+                '/hyperspace.Database/RebuildIndex',
+                request_serializer=hyperspace__pb2.RebuildIndexRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
                 _registered_method=True)
 
 
@@ -212,6 +217,12 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RebuildIndex(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -289,6 +300,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.GetDigest,
                     request_deserializer=hyperspace__pb2.DigestRequest.FromString,
                     response_serializer=hyperspace__pb2.DigestResponse.SerializeToString,
+            ),
+            'RebuildIndex': grpc.unary_unary_rpc_method_handler(
+                    servicer.RebuildIndex,
+                    request_deserializer=hyperspace__pb2.RebuildIndexRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -696,6 +712,33 @@ class Database(object):
             '/hyperspace.Database/GetDigest',
             hyperspace__pb2.DigestRequest.SerializeToString,
             hyperspace__pb2.DigestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RebuildIndex(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/RebuildIndex',
+            hyperspace__pb2.RebuildIndexRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

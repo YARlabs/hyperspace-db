@@ -174,11 +174,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // For MVP, we don't have historical replication (catch-up) yet.
     // So F2 will only have 100 vectors, while Leader has 150.
-    if leader_digest_new.state_hash != d2.state_hash {
+    if leader_digest_new.state_hash == d2.state_hash {
+        println!("✅ F2 caught up!");
+    } else {
         println!("⚠️  F2 did not catch up (Expected for MVP without Anti-Entropy)");
         println!("   F2 has 100 vectors (persisted), Leader has 150.");
-    } else {
-        println!("✅ F2 caught up!");
     }
 
     println!("🎉 CLUSTER TEST PASSED! GOLD MASTER READY.");

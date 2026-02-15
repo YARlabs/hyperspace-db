@@ -45,7 +45,7 @@ pub struct SnapshotNode {
     pub layers: Vec<Vec<u32>>,
 }
 
-// Consts removed here to use existing ones defined below in the file
+// Constants are defined later in the file.
 
 use hyperspace_core::FilterExpr;
 
@@ -119,7 +119,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         println!("📂 Loading snapshot: {}", path.display());
 
-        // 1. Memory-map the file instead of reading it all into memory
+        // Memory-map the snapshot file for zero-copy access.
         let file = File::open(path).map_err(|e| format!("Failed to open snapshot: {e}"))?;
         let file_size = file.metadata().map_err(|e| e.to_string())?.len();
         println!("   File size: {:.2} MB", file_size as f64 / 1024.0 / 1024.0);
@@ -388,8 +388,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             );
         }
 
-        // 1. Prepare Filter Bitmap
-        // Start with Logic: (Tag1 AND Tag2 ...) AND (Complex1 AND Complex2 ...) AND !Deleted
+        // 1. Prepare Filter Bitmap.
+        // Filter Logic: Intersection of Tag filters, Complex filters, and non-deleted items.
         let allowed_bitmap = {
             let deleted = self.metadata.deleted.read();
             let mut bitmap: Option<RoaringBitmap> = None;
@@ -486,8 +486,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 return vec![];
             }
             if (entry_node as usize) >= guard.len() {
-                // Determine what to do: return empty or fallback?
-                // Using 0 as safe fallback if entry_node is somehow out of bounds (race?)
+                // Fallback to layer 0 if entry_point is out of bounds (race condition safety).
                 0
             } else {
                 guard[entry_node as usize].layers.len().saturating_sub(1)
@@ -502,8 +501,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let mut curr_dist = self.dist(entry_node, &q_vec);
         let mut curr_node = entry_node;
 
-        // 1. Zoom-in phase: Greedy search from top to layer 1
-        // Optimization: Hold read lock for the entire zoom-in phase to avoid repeated acquisition
+        // 1. Zoom-in phase: Greedy search from top to layer 1.
+        // Optimization: Hold read lock for the entire zoom-in phase.
         {
             let nodes_guard = self.nodes.read();
             for level in (1..=start_layer).rev() {
@@ -622,10 +621,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let mut results = BinaryHeap::<std::cmp::Reverse<Candidate>>::new();
         let mut visited = HashSet::new();
 
-        // Helper to check validity
-        // Note: We need to access 'deleted' lock if 'allowed' is None?
-        // Or we assume 'allowed = None' means 'Check deleted manually'.
-        // For perf, let's capture 'deleted' if allowed is None.
+        // Helper to check validity.
+        // Capture 'deleted' lock if no explicit allow list is provided.
         let deleted_guard = if allowed.is_none() {
             Some(self.metadata.deleted.read())
         } else {
@@ -682,10 +679,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     visited.insert(neighbor);
                     let dist = self.dist(neighbor, query);
 
-                    // Add to Candidates (Navigation)
-                    // Logic: Keep expanding?
-                    // We add to candidates if dist < worst_result OR results not full.
-                    // This ensures we traverse "through" invalid nodes if they are promising (close to query).
+                    // Add to Candidates (Navigation).
+                    // Navigation heuristic: Traverse through invalid nodes if they are promising (closer to query).
                     let mut add_to_candidates = true;
                     if let Some(std::cmp::Reverse(worst)) = results.peek() {
                         if results.len() >= ef && dist > worst.distance {

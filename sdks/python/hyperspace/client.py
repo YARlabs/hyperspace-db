@@ -52,6 +52,20 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return []
 
+    def get_collection_stats(self, name: str) -> Dict:
+        req = hyperspace_pb2.CollectionStatsRequest(name=name)
+        try:
+            resp = self.stub.GetCollectionStats(req, metadata=self.metadata)
+            return {
+                "count": resp.count,
+                "dimension": resp.dimension,
+                "metric": resp.metric,
+                "indexing_queue": resp.indexing_queue
+            }
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return {}
+
     def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if metadata is None:
             metadata = {}
@@ -160,6 +174,23 @@ class HyperspaceClient:
         except grpc.RpcError as e:
             print(f"RPC Error: {e}")
             return []
+
+    def trigger_vacuum(self) -> bool:
+        try:
+            self.stub.TriggerVacuum(hyperspace_pb2.Empty(), metadata=self.metadata)
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
+    def rebuild_index(self, collection: str) -> bool:
+        req = hyperspace_pb2.RebuildIndexRequest(name=collection)
+        try:
+            self.stub.RebuildIndex(req, metadata=self.metadata)
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
 
     def trigger_snapshot(self) -> bool:
         try:

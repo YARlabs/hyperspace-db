@@ -9,12 +9,19 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+use std::time::{Duration, Instant};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ClusterRole {
     Leader,
     Follower,
     Standalone,
+}
+
+pub struct CollectionEntry {
+    pub collection: Arc<dyn Collection>,
+    pub last_accessed: Mutex<Instant>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +37,7 @@ impl ClusterState {
     pub fn new() -> Self {
         Self {
             node_id: Uuid::new_v4().to_string(),
-            role: ClusterRole::Leader, // Default to Leader for now as per plan
+            role: ClusterRole::Leader, // Defaults to Leader role.
             upstream_peer: None,
             downstream_peers: Vec::new(),
             logical_clock: 0,
@@ -52,7 +59,8 @@ impl ClusterState {
 
 pub struct CollectionManager {
     base_path: PathBuf,
-    collections: DashMap<String, Arc<dyn Collection>>,
+    // Stores entries with metadata (e.g., access time).
+    collections: Arc<DashMap<String, CollectionEntry>>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     pub cluster_state: Arc<RwLock<ClusterState>>,
 }
@@ -74,9 +82,39 @@ impl CollectionManager {
             s
         };
 
+        let collections = Arc::new(DashMap::<String, CollectionEntry>::new());
+        let mgr_map = collections.clone();
+
+        // Spawns background reaper for idle collection eviction.
+        tokio::spawn(async move {
+            let timeout = Duration::from_hours(1); // 1 hour idle timeout
+            loop {
+                tokio::time::sleep(Duration::from_mins(1)).await;
+                
+                let now = Instant::now();
+                let mut to_remove = Vec::new();
+                
+                for r in mgr_map.iter() {
+                    let key = r.key().clone();
+                    let entry = r.value();
+                    if let Ok(last) = entry.last_accessed.lock() {
+                        if now.duration_since(*last) > timeout {
+                            to_remove.push(key);
+                        }
+                    }
+                }
+                
+                for key in to_remove {
+                    if mgr_map.remove(&key).is_some() {
+                        println!("💤 Idling collection '{key}' unloaded from memory");
+                    }
+                }
+            }
+        });
+
         Self {
             base_path,
-            collections: DashMap::new(),
+            collections,
             replication_tx,
             cluster_state: Arc::new(RwLock::new(state)),
         }
@@ -177,7 +215,12 @@ impl CollectionManager {
             }
         };
 
-        self.collections.insert(name.to_string(), collection);
+        
+        let entry = CollectionEntry {
+            collection,
+            last_accessed: Mutex::new(Instant::now()),
+        };
+        self.collections.insert(name.to_string(), entry);
         Ok(())
     }
 
@@ -197,6 +240,51 @@ impl CollectionManager {
         metric: &str,
     ) -> Result<(), String> {
         self.create_collection_internal(name, dimension, metric, false).await
+    }
+
+    pub async fn rebuild_collection(&self, name: &str) -> Result<(), String> {
+        // 1. Trigger optimization (builds new index side-by-side)
+        if let Some(entry) = self.collections.get(name) {
+             entry.collection.optimize().map_err(|e| format!("Optimization failed: {e}"))?;
+        } else {
+             return Err("Collection not found".to_string());
+        }
+
+        // 2. Remove from memory (triggers Drop -> tasks abort)
+        self.collections.remove(name);
+        
+        // 3. Filesystem Swap
+        let col_dir = self.base_path.join(name);
+        let index_path = col_dir.join("index");
+        let opt_path = col_dir.join("index.optimized");
+        let backup_path = col_dir.join("index.backup");
+        
+        if opt_path.exists() {
+             println!("🔄 Swapping index for '{name}'...");
+             if index_path.exists() {
+                 std::fs::rename(&index_path, &backup_path).map_err(|e| e.to_string())?;
+             }
+             if let Err(e) = std::fs::rename(&opt_path, &index_path) {
+                 // Rollback
+                 println!("❌ Swap failed: {e}. Rolling back...");
+                 if backup_path.exists() {
+                    let _ = std::fs::rename(&backup_path, &index_path);
+                 }
+                 return Err(e.to_string());
+             }
+             // Cleanup backup
+             let _ = std::fs::remove_dir_all(&backup_path);
+        } else {
+            // If optimization didn't create file (e.g. empty collection), just reload
+            println!("⚠️ No optimized index found (maybe empty?). Reloading existing.");
+        }
+        
+        // 4. Reload
+        let meta = CollectionMetadata::load(&col_dir).map_err(|e| e.to_string())?;
+        self.instantiate_collection(name, meta).await.map_err(|e| e.to_string())?;
+        
+        println!("✅ Collection '{name}' rebuilt and reloaded successfully.");
+        Ok(())
     }
 
     async fn create_collection_internal(
@@ -249,8 +337,41 @@ impl CollectionManager {
         Ok(())
     }
 
-    pub fn get(&self, name: &str) -> Option<Arc<dyn Collection>> {
-        self.collections.get(name).map(|c| c.clone())
+    pub async fn get(&self, name: &str) -> Option<Arc<dyn Collection>> {
+        // 1. Fast path: Check memory
+        if let Some(entry) = self.collections.get(name) {
+            // Update LRU clock
+            if let Ok(mut t) = entry.last_accessed.lock() {
+                *t = Instant::now();
+            }
+            return Some(entry.collection.clone());
+        }
+
+        // 2. Slow path: Check disk (Lazy Loading) - Wake up cold collection
+        let col_dir = self.base_path.join(name);
+        if col_dir.exists() && col_dir.join("meta.json").exists() {
+            // Try to load metadata and revive collection
+            if let Ok(meta) = CollectionMetadata::load(&col_dir) {
+                println!("🧊 Waking up cold collection: '{name}'");
+                if let Ok(()) = self.instantiate_collection(name, meta).await {
+                    // Check map again after loading
+                    if let Some(entry) = self.collections.get(name) {
+                        return Some(entry.collection.clone());
+                    }
+                } else {
+                    eprintln!("Failed to revive cold collection '{name}'");
+                }
+            }
+        }
+        
+        None
+    }
+
+    pub fn list(&self) -> Vec<String> {
+        self.collections
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     pub async fn tick_cluster_clock(&self) -> u64 {
@@ -295,12 +416,7 @@ impl CollectionManager {
         }
     }
 
-    pub fn list(&self) -> Vec<String> {
-        self.collections
-            .iter()
-            .map(|entry| entry.key().clone())
-            .collect()
-    }
+
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

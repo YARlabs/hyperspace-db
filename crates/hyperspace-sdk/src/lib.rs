@@ -96,6 +96,39 @@ impl Client {
         Ok(resp.into_inner().collections)
     }
 
+    /// Gets statistics for a collection.
+    ///
+    /// # Errors
+    /// Returns error if the collection does not exist or network fails.
+    pub async fn get_collection_stats(
+        &mut self,
+        name: String,
+    ) -> Result<hyperspace_proto::hyperspace::CollectionStatsResponse, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::CollectionStatsRequest { name };
+        let resp = self.inner.get_collection_stats(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Rebuilds the index for a collection. This is a resource-intensive operation.
+    ///
+    /// # Errors
+    /// Returns error if the collection does not exist or operation fails.
+    pub async fn rebuild_index(&mut self, name: String) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::RebuildIndexRequest { name };
+        let resp = self.inner.rebuild_index(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
+    /// Triggers memory cleanup (Vacuum).
+    ///
+    /// # Errors
+    /// Returns error if the operation fails.
+    pub async fn trigger_vacuum(&mut self) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::Empty {};
+        let resp = self.inner.trigger_vacuum(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
     /// Inserts a vector into the collection.
     ///
     /// # Errors

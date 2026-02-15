@@ -30,6 +30,7 @@ service Database {
   // Replication (Leader -> Follower)
   rpc Replicate (Empty) returns (stream ReplicationLog);
   rpc GetDigest (DigestRequest) returns (DigestResponse);
+  rpc RebuildIndex (RebuildIndexRequest) returns (StatusResponse);
 }
 
 message ReplicationLog {
@@ -95,6 +96,11 @@ message CollectionStatsResponse {
   uint64 count = 1;
   uint32 dimension = 2;
   string metric = 3;
+  uint64 indexing_queue = 4;
+}
+
+message RebuildIndexRequest {
+  string name = 1;
 }
 
 message ConfigUpdate {

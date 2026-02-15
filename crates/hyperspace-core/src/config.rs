@@ -52,8 +52,9 @@ impl GlobalConfig {
     }
 
     pub fn get_queue_size(&self) -> u64 {
-        // Return total pending work: queued + actively processing
-        self.queue_size.load(Ordering::Relaxed) + self.active_indexing.load(Ordering::Relaxed)
+        // Return total pending work.
+        // Since we dec_queue only after processing, queue_size includes active items.
+        self.queue_size.load(Ordering::Relaxed)
     }
     
     pub fn inc_active(&self) {

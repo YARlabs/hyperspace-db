@@ -61,6 +61,10 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
     <td>Integrated <b>ScalarI8</b> and <b>Binary (1-bit)</b> quantization reduces memory footprint by up to <b>64x</b> with blazing speed.</td>
   </tr>
   <tr>
+    <td>❄️ <b>Cold Storage</b></td>
+    <td>Lazy loading and <b>Idle Eviction</b> ensure minimal RAM usage, scaling to thousands of collections on limited hardware.</td>
+  </tr>
+  <tr>
     <td>🧵 <b>Async Write Pipeline</b></td>
     <td>Decoupled ingestion with a WAL V2 ensures persistence of data and metadata without blocking reads.</td>
   </tr>
@@ -234,6 +238,36 @@ graph TD
 👉 *For deep dive, read [ARCHITECTURE.md*](ARCHITECTURE.md)
 
 ---
+ 
+ ## 🛠 Operations & Maintenance
+ 
+ ### Queue Monitoring
+ Check ingestion backlog via API or collections stats:
+ ```json
+ {
+   "count": 150000,
+   "indexing_queue": 45  // Items pending index insertion
+ }
+ ```
+ 
+ ### Rebuild Index (Defragmentation)
+ Trigger a graph rebuild to optimize layout and remove deleted nodes:
+ ```bash
+ curl -X POST http://localhost:50050/api/collections/my_col/rebuild
+ ```
+ 
+ ### Memory Management (Jemalloc)
+ HyperspaceDB uses **Jemalloc** for efficient memory allocation. You can tune its behavior via the `MALLOC_CONF` environment variable:
+
+ * **Low RAM (Aggressive Release)**: `MALLOC_CONF=background_thread:true,dirty_decay_ms:0,muzzy_decay_ms:0` - Releases unused memory immediately to OS. Increases CPU usage slightly.
+ * **Balanced (Default)**: `MALLOC_CONF=background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000` - Keeps some memory for reuse, balanced performance.
+
+ To create a manual memory vacuum request (e.g., after large deletions):
+ ```bash
+ curl -X POST http://localhost:50050/api/admin/vacuum
+ ```
+ 
+ ---
 
 ## 💻 System Requirements
 

@@ -13,6 +13,9 @@ pub mod vector;
 pub use config::GlobalConfig;
 use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 
+#[cfg(test)]
+mod tests;
+
 pub type HyperFloat = f64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +77,7 @@ pub trait Collection: Send + Sync {
         clock: u64,
         durability: Durability,
     ) -> Result<(), String> {
-        // Default implementation calls insert one by one (inefficient)
+        // Default implementation calls insert individually. Override for optimized batch processing.
         for (vec, id, meta) in vectors {
             self.insert(&vec, id, meta, clock, durability)?;
         }
@@ -95,7 +98,7 @@ pub trait Collection: Send + Sync {
     fn buckets(&self) -> Vec<u64>; // New method
     fn queue_size(&self) -> u64; // Indexing queue size for eventual consistency
     fn optimize(&self) -> Result<(), String> {
-        // Default: no-op for collections that don't support optimization
+        // Default: No-op for collections lacking optimization support.
         Ok(())
     }
     fn peek(&self, limit: usize)
@@ -156,7 +159,7 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
 
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // Raw loop helps LLVM auto-vectorize hot path.
+        // Explicit loop assists LLVM auto-vectorization.
         let mut sum = 0.0;
         for i in 0..N {
             let diff = a[i] - b[i];
@@ -197,9 +200,8 @@ impl<const N: usize> Metric<N> for CosineMetric {
 
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // HNSW-friendly metric:
-        // for normalized vectors ||a-b||^2 = 2 * (1 - cos(theta))
-        // ranking is preserved and triangle inequality holds.
+        // Cosine distance implementation: equivalent to squared Euclidean distance on normalized vectors.
+        // Ranking is preserved and triangle inequality holds.
         let mut sum = 0.0;
         for i in 0..N {
             let diff = a[i] - b[i];
@@ -224,8 +226,7 @@ impl<const N: usize> Metric<N> for CosineMetric {
     }
 
     fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
-        // For binary vectors, use Hamming distance as approximation
-        // This is a simplified implementation
+        // Approximates Hamming distance for binary vectors.
         a.l2_distance_sq_to_float(b)
     }
 }

@@ -29,15 +29,14 @@ impl<const N: usize> HyperVector<N> {
     pub fn new_unchecked(coords: [f64; N]) -> Self {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
         // Calculate alpha anyway, but handle >= 1.0 gracefully (though unused for L2)
-        // If sq_norm >= 1.0, alpha is negative or inf.
-        // We just store it as is, or 1.0.
-        // Let's store as is for now, assuming Metric will ignore it.
+        // If sq_norm >= 1.0, alpha becomes negative or infinite.
+        // We store it as-is; usage must handle these cases.
         let alpha = 1.0 / (1.0 - sq_norm);
         Self { coords, alpha }
     }
 
-    /// The hottest function in the entire project.
-    /// Calculates the squared Poincare distance using the Möbius addition formula optimizations.
+    /// Calculates the squared Poincaré distance. Critical performance path.
+    /// Uses the Möbius addition formula optimizations.
     #[inline(always)]
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
         #[cfg(feature = "nightly-simd")]
@@ -60,7 +59,7 @@ impl<const N: usize> HyperVector<N> {
             let l2_sq = sum_sq_diff.reduce_sum();
 
             // Fallback for tail elements if N is not multiple of 8 (basic scalar loop for tail)
-            // Ideally should be handled, but for keeping structure similar to your SIMD logic:
+            // Handle tail elements for non-multiple-of-8 dimensions.
             let mut tail_sq = 0.0;
             let remainder = N % LANES;
             if remainder != 0 {
@@ -324,7 +323,7 @@ mod tests {
         let start = std::time::Instant::now();
         let iterations = 1_000_000;
 
-        // "Warming up" the CPU cache
+        // Warm up the CPU cache
         let mut black_box = 0.0;
 
         for _ in 0..iterations {

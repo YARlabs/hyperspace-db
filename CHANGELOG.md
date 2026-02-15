@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-15
+
+### Added
+*   **Cold Storage Architecture**: Implemented lazy loading mechanism where collections are loads from disk only upon first access, optimizing startup time and resource usage.
+*   **Idle Eviction**: Introduced a background monitor (Reaper) that automatically unloads collections inactive for more than 1 hour, freeing up RAM.
+*   **Graceful Shutdown**: Implemented `Drop` trait for Collections to ensure immediate cancellation of background tasks (indexing, snapshots) upon deletion or eviction, preventing memory leaks and panics.
+*   **Manual Vacuum**: Enhanced `trigger_vacuum` endpoint to explicitly trigger memory cleanup routines.
+*   **Index Rebuild**: Added `rebuild_index` API to defragment and optimize collections live without downtime.
+*   **Queue Monitoring**: Exposed `indexing_queue` size in collection stats for real-time visibility into ingestion backlog.
+
+### Changed
+*   **Async Access**: Refactored `CollectionManager` to use asynchronous retrieval (`get().await`), enabling non-blocking disk I/O for cold collections.
+*   **Stability**: Fixed "Snapshot Error" panics caused by orphaned background tasks.
+
+
 ## [1.5.0] - 2026-02-09
 
 ### Added

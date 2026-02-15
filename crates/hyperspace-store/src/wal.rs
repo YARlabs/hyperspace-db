@@ -48,8 +48,7 @@ impl Wal {
 
     fn serialize_entry(id: u32, vector: &[f64], metadata: &HashMap<String, String>) -> io::Result<Vec<u8>> {
         let mut buf = Vec::new();
-        // Internal Format (V2-compatible logic inside payload)
-        // OpCode 2 = Insert V2
+        // Internal Format: OpCode 2 (Insert V2 wrapper)
         buf.write_u8(2)?;
         buf.write_u32::<LittleEndian>(id)?;
 
@@ -184,9 +183,7 @@ impl Wal {
                 // Magic byte is actually OpCode (1 or 2)
                 let opcode = magic;
                 
-                // We need to parse based on opcode, but legacy format doesn't have length prefix for the whole entry,
-                // only fields. If we fail here, we can't recover easily because we don't know where next entry starts.
-                // We'll try to parse strict.
+                // Parse based on opcode. Legacy format lacks length prefix, making recovery difficult on failure.
                 
                 if let Ok((entry, bytes_read)) = Self::parse_legacy_entry(opcode, &mut reader) {
                     callback(entry);
