@@ -12,11 +12,14 @@ export class HyperspaceClient {
     private client: DatabaseClient;
     private metadata: grpc.Metadata;
 
-    constructor(host: string = 'localhost:50051', apiKey?: string) {
+    constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string) {
         this.client = new DatabaseClient(host, grpc.credentials.createInsecure());
         this.metadata = new grpc.Metadata();
         if (apiKey) {
             this.metadata.add('x-api-key', apiKey);
+        }
+        if (userId) {
+            this.metadata.add('x-hyperspace-user-id', userId);
         }
     }
 

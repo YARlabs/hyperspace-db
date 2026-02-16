@@ -10,8 +10,17 @@ HyperspaceDB uses a custom segmented file format designed for:
 Data is split into "Chunks" of fixed size ($2^{16} = 65,536$ vectors). This avoids allocating one giant file and allows easier lifecycle management.
 
 *   `data/chunk_0.hyp`
-*   `data/chunk_1.hyp`
 *   ...
+
+## Directory Structure (Multi-Tenancy)
+
+When Multi-Tenancy is active, collections are stored in subdirectories named with the format: `userid_collectionname`.
+Example:
+*   `data/user1_mycollection/meta.json`
+*   `data/user1_mycollection/index`
+*   `data/default_admin_public_data/index`
+
+This ensures complete physical isolation of collection data on disk.
 
 ## File Layout
 

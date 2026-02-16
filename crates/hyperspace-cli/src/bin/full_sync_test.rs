@@ -9,6 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut leader = Client::connect(
         "http://localhost:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -30,6 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut follower = Client::connect(
         "http://localhost:50052".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -128,9 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if l_bucket == f_bucket {
             matching_buckets += 1;
         } else {
-            println!(
-                "   ⚠️  Bucket {i} mismatch: Leader={l_bucket}, Follower={f_bucket}"
-            );
+            println!("   ⚠️  Bucket {i} mismatch: Leader={l_bucket}, Follower={f_bucket}");
         }
     }
 

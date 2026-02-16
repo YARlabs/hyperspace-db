@@ -115,6 +115,7 @@ async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(
         "http://localhost:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -149,6 +150,7 @@ async fn test_leader_follower_sync() -> Result<(), Box<dyn std::error::Error>> {
     let mut leader = Client::connect(
         "http://localhost:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -156,6 +158,7 @@ async fn test_leader_follower_sync() -> Result<(), Box<dyn std::error::Error>> {
     let mut follower = Client::connect(
         "http://localhost:50052".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -218,6 +221,7 @@ async fn test_merkle_tree_consistency() -> Result<(), Box<dyn std::error::Error>
     let mut client = Client::connect(
         "http://localhost:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -273,6 +277,7 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(
         "http://localhost:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -299,13 +304,15 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
     let duration = start.elapsed();
     let qps = f64::from(count) / duration.as_secs_f64();
 
-    println!(
-        "Inserted {count} vectors in {duration:?} ({qps:.0} QPS)"
-    );
+    println!("Inserted {count} vectors in {duration:?} ({qps:.0} QPS)");
 
     // Verify count
     let digest = client.get_digest(Some(collection.clone())).await?;
-    assert_eq!(digest.count, u64::from(count), "Should have {count} vectors");
+    assert_eq!(
+        digest.count,
+        u64::from(count),
+        "Should have {count} vectors"
+    );
 
     // Performance assertion: should achieve at least 100 QPS
     assert!(qps > 100.0, "QPS should be > 100, got {qps:.0}");
@@ -321,6 +328,7 @@ async fn test_concurrent_inserts() -> Result<(), Box<dyn std::error::Error>> {
     let mut setup_client = Client::connect(
         "http://localhost:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
     setup_client
@@ -335,6 +343,7 @@ async fn test_concurrent_inserts() -> Result<(), Box<dyn std::error::Error>> {
             let mut client = Client::connect(
                 "http://localhost:50051".to_string(),
                 Some("I_LOVE_HYPERSPACEDB".to_string()),
+                None,
             )
             .await
             .unwrap();
@@ -373,6 +382,7 @@ async fn test_collection_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(
         "http://localhost:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 

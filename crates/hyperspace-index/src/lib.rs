@@ -468,7 +468,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // 1. Create HyperVector from query.
         let mut aligned_query = [0.0; N];
-        assert!(query.len() == N, 
+        assert!(
+            query.len() == N,
             "Query dimension mismatch provided {}, expected {}",
             query.len(),
             N
@@ -579,7 +580,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 continue;
             }
             let vec = self.get_vector(id).coords.to_vec();
-            let meta = self.metadata.forward.get(&id).map(|m| m.clone()).unwrap_or_default();
+            let meta = self
+                .metadata
+                .forward
+                .get(&id)
+                .map(|m| m.clone())
+                .unwrap_or_default();
             result.push((id, vec, meta));
         }
         result
@@ -1039,36 +1045,35 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // 3. Phase 2: Insert links from new_level down to 0
         {
-        const M_MAX: usize = M;
-        let ef_construction = self.config.get_ef_construction();
+            const M_MAX: usize = M;
+            let ef_construction = self.config.get_ef_construction();
 
+            for level in (0..=std::cmp::min(new_level, max_layer as usize)).rev() {
+                // a) Search candidates
+                let candidates_heap =
+                    self.search_layer_candidates(curr_obj, &q_vec, level, ef_construction);
 
-        for level in (0..=std::cmp::min(new_level, max_layer as usize)).rev() {
-            // a) Search candidates
-            let candidates_heap =
-                self.search_layer_candidates(curr_obj, &q_vec, level, ef_construction);
+                // b) Select neighbors with heuristic
+                let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, M);
 
-            // b) Select neighbors with heuristic
-            let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, M);
+                // c) Bidirectional connect
+                for &neighbor_id in &selected_neighbors {
+                    self.add_link(id, neighbor_id, level);
+                    self.add_link(neighbor_id, id, level);
 
-            // c) Bidirectional connect
-            for &neighbor_id in &selected_neighbors {
-                self.add_link(id, neighbor_id, level);
-                self.add_link(neighbor_id, id, level);
+                    // d) Pruning
+                    let neighbors_len = self.nodes.read()[neighbor_id as usize].layers[level]
+                        .read()
+                        .len();
+                    if neighbors_len > M_MAX {
+                        self.prune_connections(neighbor_id, level, M_MAX);
+                    }
+                }
 
-                // d) Pruning
-                let neighbors_len = self.nodes.read()[neighbor_id as usize].layers[level]
-                    .read()
-                    .len();
-                if neighbors_len > M_MAX {
-                    self.prune_connections(neighbor_id, level, M_MAX);
+                if !selected_neighbors.is_empty() {
+                    curr_obj = selected_neighbors[0];
                 }
             }
-
-            if !selected_neighbors.is_empty() {
-                curr_obj = selected_neighbors[0];
-            }
-        }
         }
 
         // Update global entry point if needed

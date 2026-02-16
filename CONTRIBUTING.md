@@ -52,6 +52,7 @@ We follow standard Rust formatting:
 ```bash
 cargo fmt --all
 cargo clippy --all-features -- -D warnings
+cargo clippy --tests --workspace -- -W clippy::pedantic
 ```
 
 ## 📐 Adding New Metrics
@@ -75,11 +76,12 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v1.4**: ✅ **WASM Core ("Edge Memory")**. Compiling `hyperspace-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls. *Core implementation ready.*
 
 ### Phase 2: Scale & Structure (v2.x)
-*The goal: True Enterprise Scale and Graph Capabilities.*
+*The goal: Serverless Economy and Cloud-Native Architecture.*
 
-* **v2.0**: **Distributed Consensus**. Implementation of Raft for horizontal scaling/sharding.
-* **v2.1**: **Hyperbolic Graph Traversal API**. Exposing the HNSW graph structure to allow queries like "Get parent concepts" or "Find semantic clusters" without embedding generation. *Beats GNNs in speed.*
-* **v2.2**: **Storage Tiering (S3/Blob)**. Automatic offloading of cold segments to object storage.
+* **v2.0**: ✅ **Serverless Core**. Idle Unloading, Cold Start, Multi-tenancy, and Jemalloc tuning. *Completed.*
+* **v2.1**: **Storage Tiering (S3/Blob)**. Automatic backup of idle collections to object storage.
+* **v2.2**: **Distributed Consensus**. Raft implementation for horizontal scaling (Cluster Mode).
+* **v2.3**: **Hyperbolic Graph Traversal API**. Exposing the HNSW graph structure to allow queries like "Get parent concepts" or "Find semantic clusters" without embedding generation. *Beats GNNs in speed.*
 
 ### Phase 3: Collective Intelligence (v3.x)
 *The goal: Beyond storage. The "Digital Thalamus" realization.*

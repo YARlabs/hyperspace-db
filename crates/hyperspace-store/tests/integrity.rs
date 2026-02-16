@@ -2,7 +2,6 @@ use hyperspace_store::wal::{Wal, WalSyncMode};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 
-
 #[test]
 fn test_wal_partial_write_truncation() {
     let dir = tempfile::tempdir().unwrap();
@@ -24,13 +23,13 @@ fn test_wal_partial_write_truncation() {
             wal.append(i, &vec, &HashMap::new()).unwrap();
         }
     }
-    
+
     // File size should be ~306 bytes.
     let full_len = fs::metadata(&path).unwrap().len();
     assert!(full_len > 300);
 
     // Corrupt the file by truncating mid-way through the 3rd record
-    let truncated_len = full_len - 50; 
+    let truncated_len = full_len - 50;
     let file = OpenOptions::new().write(true).open(&path).unwrap();
     file.set_len(truncated_len).unwrap();
     drop(file);
@@ -40,14 +39,18 @@ fn test_wal_partial_write_truncation() {
     let mut count = 0;
     Wal::replay(&path, |_| {
         count += 1;
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(count, 2, "Should recover exactly 2 records");
-    
+
     // Verify file size was corrected (truncated to end of 2nd record)
     // 2 records * ~102 bytes = ~204 bytes.
     let new_len = fs::metadata(&path).unwrap().len();
-    assert!(new_len < truncated_len, "File should be truncated to valid length");
+    assert!(
+        new_len < truncated_len,
+        "File should be truncated to valid length"
+    );
     assert!(new_len > 0);
 }
 
@@ -75,12 +78,16 @@ fn test_wal_crc_corruption() {
     let mut count = 0;
     Wal::replay(&path, |_| {
         count += 1;
-    }).unwrap();
+    })
+    .unwrap();
 
     // Since 2nd record is corrupted, we should only get 1st record.
     // And file should be truncated to end of 1st record.
-    assert_eq!(count, 1, "Should recover only 1 record due to CRC failure in 2nd");
-    
+    assert_eq!(
+        count, 1,
+        "Should recover only 1 record due to CRC failure in 2nd"
+    );
+
     let recovered_len = fs::metadata(&path).unwrap().len();
     assert!(recovered_len < data.len() as u64);
 }

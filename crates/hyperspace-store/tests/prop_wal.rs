@@ -11,9 +11,9 @@ fn arb_vector() -> impl Strategy<Value = Vec<f64>> {
 
 fn arb_metadata() -> impl Strategy<Value = HashMap<String, String>> {
     proptest::collection::hash_map(
-        "[a-z]", // Single char keys for speed
+        "[a-z]",    // Single char keys for speed
         "[a-z0-9]", // Single char values
-        0..5
+        0..5,
     )
 }
 
@@ -31,7 +31,7 @@ fn arb_entries() -> impl Strategy<Value = Vec<TestEntry>> {
             vector,
             metadata,
         }),
-        1..50
+        1..50,
     )
 }
 
@@ -101,7 +101,7 @@ proptest! {
         });
 
         assert!(res.is_ok(), "Replay failed on corrupted WAL: {:?}", res.err());
-        
+
         // Check content consistency (prefix match)
         let common_len = replayed.len();
         for i in 0..common_len {

@@ -1,26 +1,38 @@
+version: "3.8"
+
 services:
   hyperspace:
-    # build: .
-    image: glukhota/hyperspace-db:latest
+    # Build from source using new optimized Dockerfile
+    build: .
     container_name: hyperspace-node-1
     ports:
-      - "50051:50051"
+      - "50051:50051" # gRPC
+      - "50050:50050" # HTTP Dashboard + Metrics
+    environment:
+      - RUST_LOG=info
+      - HS_DATA_DIR=/app/data
+      - MALLOC_CONF=background_thread:true,dirty_decay_ms:60000,muzzy_decay_ms:60000
+      - HS_IDLE_TIMEOUT_SEC=3600
     volumes:
       - ./data:/app/data
-      - ./wal.log:/app/wal.log
-      - ./index.snap:/app/index.snap
     restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 4G
 
-  # Optional: Client Tool Container to run stress tests inside docker network
-  client:
-    # build: .
-    image: glukhota/hyperspace-db:latest
-    command: tail -f /dev/null # Keep alive
-    depends_on:
-      - hyperspace
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: hyperspace-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: hyperspace-grafana
+    ports:
+      - "3000:3000"
     environment:
-      - HYPERSPACE_HOST=hyperspace:50051
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus

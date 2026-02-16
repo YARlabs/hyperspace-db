@@ -23,6 +23,10 @@ RUN rm -f rust-toolchain.toml
 # Build Release
 RUN cargo build --release --workspace
 
+# Strip binaries to reduce size
+RUN strip target/release/hyperspace-server
+RUN strip target/release/hyperspace-cli
+
 # === Stage 3: Runtime ===
 FROM debian:bookworm-slim
 

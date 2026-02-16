@@ -2,7 +2,7 @@ use crate::sync::CollectionDigest;
 use dashmap::DashMap;
 use hyperspace_core::{Collection, FilterExpr, GlobalConfig, Metric, SearchParams};
 use hyperspace_index::HnswIndex;
-use hyperspace_proto::hyperspace::{InsertOp, ReplicationLog, replication_log};
+use hyperspace_proto::hyperspace::{replication_log, InsertOp, ReplicationLog};
 use hyperspace_store::{wal::Wal, VectorStore};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -37,6 +37,8 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     reverse_id_map: Arc<DashMap<u32, u32>>,
     // Data directory for optimization
     data_dir: PathBuf,
+    // Quantization Mode
+    mode: hyperspace_core::QuantizationMode,
 }
 
 struct BatchEntry<'a> {
@@ -76,7 +78,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let snap_path = data_dir.join("index.snap");
         let config = Arc::new(GlobalConfig::new());
-        
+
         let ef_cons_env = std::env::var("HS_HNSW_EF_CONSTRUCT")
             .unwrap_or("100".to_string())
             .parse()
@@ -109,14 +111,11 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             match HnswIndex::<N, M>::load_snapshot(&snap_path, store.clone(), mode, config.clone())
             {
                 Ok(idx) => {
-
                     let count = idx.count_nodes();
                     (store, Arc::new(idx), count)
                 }
                 Err(e) => {
-                    eprintln!(
-                        "Failed to load snapshot for {name}: {e}. Starting fresh."
-                    );
+                    eprintln!("Failed to load snapshot for {name}: {e}. Starting fresh.");
                     let store = Arc::new(VectorStore::new(&data_dir, element_size));
                     (
                         store.clone(),
@@ -156,7 +155,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let sync_mode_str = std::env::var("HYPERSPACE_WAL_SYNC_MODE")
             .unwrap_or_else(|_| "async".to_string())
             .to_lowercase();
-        
+
         let sync_mode = match sync_mode_str.as_str() {
             "strict" | "fsync" => hyperspace_store::wal::WalSyncMode::Strict,
             "batch" => hyperspace_store::wal::WalSyncMode::Batch,
@@ -185,7 +184,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
                     id_map_data.insert(id, internal_id);
                     reverse_id_map_data.insert(internal_id, id);
-                    
+
                     let hash = CollectionDigest::hash_entry(id, &vector);
                     let b_idx = CollectionDigest::get_bucket_index(id);
                     buckets_data[b_idx] ^= hash;
@@ -198,7 +197,6 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let idx_worker = index.clone();
         let cfg_worker = config.clone();
 
-
         // Indexer Concurrency Configuration
         // Default: 1 (Serial) for maximum graph quality
         // Set to 0 to use all CPU cores (faster but lower recall due to race conditions)
@@ -206,26 +204,25 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             .unwrap_or_else(|_| "1".to_string())
             .parse::<usize>()
             .unwrap_or(1);
-            
-        let concurrency = if concurrency_env == 0 { 
-            std::thread::available_parallelism().map_or(8, std::num::NonZero::get) 
-        } else { 
-            concurrency_env 
+
+        let concurrency = if concurrency_env == 0 {
+            std::thread::available_parallelism().map_or(8, std::num::NonZero::get)
+        } else {
+            concurrency_env
         };
-        
+
         println!("⚙️  Indexer Concurrency: {concurrency} thread(s)");
         let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
-
 
         let indexer_task = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx = idx_worker.clone();
                 let cfg = cfg_worker.clone();
-                
+
                 // Mark as active when we start processing
                 cfg.inc_active();
-                
+
                 tokio::spawn(async move {
                     let _permit = permit;
                     let _ = tokio::task::spawn_blocking(move || {
@@ -240,8 +237,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         let idx_snap = index.clone();
         let snap_path_clone = snap_path.clone();
-        
-        let buckets: Arc<Vec<AtomicU64>> = Arc::new(buckets_data.into_iter().map(AtomicU64::new).collect());
+
+        let buckets: Arc<Vec<AtomicU64>> =
+            Arc::new(buckets_data.into_iter().map(AtomicU64::new).collect());
         let id_map = Arc::new(id_map_data.into_iter().collect::<DashMap<u32, u32>>());
         let reverse_id_map = Arc::new(
             reverse_id_map_data
@@ -255,9 +253,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let state_path_snap = data_dir.join("state.json");
 
         let snap_interval = std::env::var("HYPERSPACE_SNAPSHOT_INTERVAL_SEC")
-             .unwrap_or("60".to_string())
-             .parse::<u64>()
-             .unwrap_or(60);
+            .unwrap_or("60".to_string())
+            .parse::<u64>()
+            .unwrap_or(60);
 
         let snapshot_handle = tokio::spawn(async move {
             loop {
@@ -265,7 +263,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 if let Err(e) = idx_snap.save_snapshot(&snap_path_clone) {
                     eprintln!("Snapshot error: {e}");
                 }
-                
+
                 // Save State (DashMap iteration)
                 let map_data: HashMap<u32, u32> = id_map_snap
                     .iter()
@@ -275,22 +273,22 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     .iter()
                     .map(|entry| (*entry.key(), *entry.value()))
                     .collect();
-                let buckets_data: Vec<u64> = buckets_snap.iter().map(|b| b.load(Ordering::Relaxed)).collect();
-                
+                let buckets_data: Vec<u64> = buckets_snap
+                    .iter()
+                    .map(|b| b.load(Ordering::Relaxed))
+                    .collect();
+
                 let state = CollectionState {
-                     id_map: map_data,
-                     reverse_id_map: reverse_map_data,
-                     buckets: buckets_data,
+                    id_map: map_data,
+                    reverse_id_map: reverse_map_data,
+                    buckets: buckets_data,
                 };
-                
+
                 if let Ok(s) = serde_json::to_string(&state) {
-                     let _ = std::fs::write(&state_path_snap, s);
+                    let _ = std::fs::write(&state_path_snap, s);
                 }
             }
         });
-
-
-
 
         Ok(Self {
             name,
@@ -305,6 +303,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             reverse_id_map,
             id_map,
             data_dir,
+            mode,
         })
     }
 }
@@ -348,7 +347,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 vector.len()
             ));
         }
-        
+
         let processed_vector_cow = Self::normalize_if_cosine(vector);
         // We need a slice for ops, and maybe an owned vec for storage if new
         let processed_vector = &processed_vector_cow;
@@ -391,7 +390,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 wal.sync().map_err(|e| format!("WAL Sync Error: {e}"))?;
             }
         }
-        
+
         self.config.inc_queue();
         let _ = self.index_tx.send((internal_id, metadata.clone()));
 
@@ -433,7 +432,6 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         // Optimization: Use lifetime to hold reference to input vectors to avoid allocation.
 
-
         let mut entries = Vec::with_capacity(vectors.len());
 
         // 2. Process Logic (Zero-Copy Path)
@@ -441,7 +439,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         for (vector, id, metadata) in &vectors {
             // Returns Borrowed for Poincare (No Allocation)
             let processed_vector = Self::normalize_if_cosine(vector);
-            
+
             // Check existing
             let existing_internal_id = self.id_map.get(id).map(|v| *v);
 
@@ -469,7 +467,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     .index
                     .insert_to_storage(&processed_vector)
                     .map_err(|e| e.clone())?;
-                
+
                 self.id_map.insert(*id, new_id);
                 self.reverse_id_map.insert(new_id, *id);
                 new_id
@@ -496,7 +494,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             wal.append_batch(&wal_data).map_err(|e| e.to_string())?;
 
             if durability == hyperspace_core::Durability::Strict {
-                 wal.sync().map_err(|e| e.to_string())?;
+                wal.sync().map_err(|e| e.to_string())?;
             }
         }
 
@@ -507,7 +505,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         // Queue for indexing (Send only lightweight metadata clone + internal_id)
         for entry in &entries {
-            let _ = self.index_tx.send((entry.internal_id, entry.metadata.clone()));
+            let _ = self
+                .index_tx
+                .send((entry.internal_id, entry.metadata.clone()));
         }
 
         // 5. Replication
@@ -520,7 +520,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     operation: Some(replication_log::Operation::Insert(InsertOp {
                         id: entry.id,
                         // Convert Cow to Owned for channel transmission.
-                        vector: entry.vector.into_owned(), 
+                        vector: entry.vector.into_owned(),
                         metadata: entry.metadata.clone(),
                     })),
                 };
@@ -559,7 +559,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         // Zero-copy normalization if possible
         let processed_query = Self::normalize_if_cosine(query);
-        
+
         let results = self.index.search(
             &processed_query,
             params.top_k,
@@ -582,12 +582,12 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     .get(&internal_id)
                     .map(|m| m.clone())
                     .unwrap_or_default();
-                
+
                 let user_id = self
                     .reverse_id_map
                     .get(&internal_id)
                     .map_or(internal_id, |v| *v);
-                
+
                 (user_id, dist, meta)
             })
             .collect();
@@ -611,59 +611,76 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         self.index.peek(limit)
     }
 
+    fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
+        self.mode
+    }
+
     fn optimize(&self) -> Result<(), String> {
         println!("🧹 Starting graph optimization for '{}'...", self.name);
         let start = std::time::Instant::now();
-        
+
         // Get all vectors from current index
         let all_data = self.index.peek_all();
         let count = all_data.len();
-        
+
         if count == 0 {
             println!("⚠️ No data to optimize");
             return Ok(());
         }
-        
+
         println!("   Rebuilding graph with {count} vectors sequentially...");
-        
+
         // Create temporary index path
         let temp_path = self.data_dir.join("index.optimize.tmp");
         if temp_path.exists() {
             std::fs::remove_dir_all(&temp_path).map_err(|e| e.to_string())?;
         }
         std::fs::create_dir_all(&temp_path).map_err(|e| e.to_string())?;
-        
+
         // Create new index with same config
         let element_size = hyperspace_core::vector::HyperVector::<N>::SIZE;
         let temp_store = Arc::new(hyperspace_store::VectorStore::new(&temp_path, element_size));
         let new_index = HnswIndex::<N, M>::new(temp_store, self.index.mode, self.config.clone());
-        
+
         // Re-insert all vectors sequentially (single-threaded for quality)
         for (i, (_internal_id, vec, meta)) in all_data.iter().enumerate() {
             let _ = new_index.insert(vec, meta.clone());
-            
+
             if i % 10000 == 0 && i > 0 {
-                println!("   Progress: {}/{} ({:.1}%)", i, count, (i as f64 / count as f64) * 100.0);
+                println!(
+                    "   Progress: {}/{} ({:.1}%)",
+                    i,
+                    count,
+                    (i as f64 / count as f64) * 100.0
+                );
             }
         }
-        
+
         // Save optimized index
         let final_path = self.data_dir.join("index.optimized");
         if final_path.exists() {
             std::fs::remove_dir_all(&final_path).ok();
         }
         std::fs::rename(&temp_path, &final_path).map_err(|e| e.to_string())?;
-        
-        println!("✨ Optimization complete in {:?}. Optimized index saved to index.optimized/", start.elapsed());
-        println!("   To use optimized index, restart server after moving index.optimized/ to index/");
-        
+
+        println!(
+            "✨ Optimization complete in {:?}. Optimized index saved to index.optimized/",
+            start.elapsed()
+        );
+        println!(
+            "   To use optimized index, restart server after moving index.optimized/ to index/"
+        );
+
         Ok(())
     }
 }
 
 impl<const N: usize, M: Metric<N>> Drop for CollectionImpl<N, M> {
     fn drop(&mut self) {
-        println!("🗑️ Dropping collection '{}'. Stopping background tasks...", self.name);
+        println!(
+            "🗑️ Dropping collection '{}'. Stopping background tasks...",
+            self.name
+        );
         // Abort background tasks (indexer, snapshot)
         for task in &self.bg_tasks {
             task.abort();

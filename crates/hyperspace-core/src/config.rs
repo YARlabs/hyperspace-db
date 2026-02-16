@@ -12,7 +12,7 @@ pub struct GlobalConfig {
 
     /// Queue size tracking for monitoring (tasks in channel)
     pub queue_size: AtomicU64,
-    
+
     /// Active indexing tasks (being processed right now)
     pub active_indexing: AtomicU64,
 }
@@ -56,11 +56,11 @@ impl GlobalConfig {
         // Since we dec_queue only after processing, queue_size includes active items.
         self.queue_size.load(Ordering::Relaxed)
     }
-    
+
     pub fn inc_active(&self) {
         self.active_indexing.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     pub fn dec_active(&self) {
         self.active_indexing.fetch_sub(1, Ordering::Relaxed);
     }

@@ -136,7 +136,10 @@ impl VectorStore {
         let local_idx = id_val & CHUNK_MASK;
 
         let segs = self.segments.read();
-        assert!(segment_idx < segs.len(), "VectorStore: Access out of bounds segment {segment_idx}");
+        assert!(
+            segment_idx < segs.len(),
+            "VectorStore: Access out of bounds segment {segment_idx}"
+        );
         let segment = &segs[segment_idx];
 
         let start = local_idx * self.element_size;

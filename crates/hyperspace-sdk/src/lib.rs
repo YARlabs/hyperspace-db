@@ -13,6 +13,7 @@ pub use embedder::*;
 #[derive(Clone)]
 pub struct AuthInterceptor {
     api_key: Option<String>,
+    user_id: Option<String>,
 }
 
 impl Interceptor for AuthInterceptor {
@@ -22,6 +23,12 @@ impl Interceptor for AuthInterceptor {
                 .parse()
                 .map_err(|_| Status::invalid_argument("Invalid API Key format"))?;
             request.metadata_mut().insert("x-api-key", token);
+        }
+        if let Some(uid) = &self.user_id {
+            let token = uid
+                .parse()
+                .map_err(|_| Status::invalid_argument("Invalid User ID format"))?;
+            request.metadata_mut().insert("x-hyperspace-user-id", token);
         }
         Ok(request)
     }
@@ -41,9 +48,10 @@ impl Client {
     pub async fn connect(
         dst: String,
         api_key: Option<String>,
+        user_id: Option<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let channel = Channel::from_shared(dst)?.connect().await?;
-        let interceptor = AuthInterceptor { api_key };
+        let interceptor = AuthInterceptor { api_key, user_id };
         let client = DatabaseClient::with_interceptor(channel, interceptor);
         Ok(Self {
             inner: client,

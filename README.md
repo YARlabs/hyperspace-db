@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v1.6.0** | **The Fastest Hyperbolic Vector Database written in Rust.**
+**v2.0.0** | **The Serverless Hyperbolic Vector Database.**
 
 [Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks) • [License](#-license) • [Contributing](#-contributing) • [Roadmap](#-roadmap) • [DockerHub](https://hub.docker.com/r/glukhota/hyperspace-db)
 
@@ -17,13 +17,23 @@
 
 ## 💡 What is HyperspaceDB?
 
-**HyperspaceDB** is a specialized vector database designed for high-performance embedding search in the **Poincaré ball model**. Unlike traditional Euclidean databases, HyperspaceDB is mathematically optimized for hierarchical and taxonomical data, preserving structural relationships with higher precision at lower dimensions.
+**HyperspaceDB** is a **Cloud-Native, Serverless Vector Database** designed for high-performance AI memory. It combines **Hyperbolic Geometry** (Poincaré ball) with an advanced **Idle-Unloading Architecture**, allowing you to host thousands of active collections on a single node with minimal resource usage.
+
+Unlike traditional vector databases that keep everything in RAM, HyperspaceDB dynamically manages memory, unloading inactive collections to disk and waking them up instantly upon request. It is the **Neon** of vector search.
 
 Built on a **Persistence-First, Index-Second** architecture, it guarantees zero data loss and non-blocking search availability, powered by SIMD intrinsics and memory-mapped storage.
 
 ## 🚀 Key Features
 
 <table>
+  <tr>
+    <td>🧠 <b>Infinite Context</b></td>
+    <td>Store millions of vectors across thousands of collections. Pay only for what you use.</td>
+  </tr>
+  <tr>
+    <td>💤 <b>Serverless Core</b></td>
+    <td>Automatic <b>Idle Eviction</b> and <b>Instant Wake-up</b> (Cold Start in ms).</td>
+  </tr>
   <tr>
     <td>⚡️ <b>Extreme Performance</b></td>
     <td>Built with <b>Nightly Rust</b> and `std::simd` intrinsics for maximum throughput on AVX2/Neon CPUs.</td>

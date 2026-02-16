@@ -30,15 +30,17 @@ use manager::CollectionManager;
 #[cfg(feature = "embed")]
 use hyperspace_embed::{ApiProvider, Metric, OnnxVectorizer, RemoteVectorizer, Vectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
+use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use hyperspace_proto::hyperspace::{
     BatchInsertRequest, CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate,
     CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest,
     DigestResponse, InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse,
     MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats,
 };
-use hyperspace_proto::hyperspace::{Empty, ReplicationLog, replication_log};
 
 use sha2::{Digest, Sha256};
+#[cfg(feature = "embed")]
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -114,6 +116,16 @@ impl Interceptor for ClientAuthInterceptor {
     }
 }
 
+fn get_user_id<T>(req: &Request<T>) -> String {
+    req.metadata()
+        .get("x-hyperspace-user-id")
+        .and_then(|v| v.to_str().ok())
+        .map_or_else(
+            || "default_admin".to_string(),
+            std::string::ToString::to_string,
+        )
+}
+
 pub struct HyperspaceService {
     manager: Arc<CollectionManager>,
     replication_tx: broadcast::Sender<ReplicationLog>,
@@ -130,6 +142,7 @@ impl Database for HyperspaceService {
         &self,
         request: Request<CreateCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
         if req.name.is_empty() {
             return Err(Status::invalid_argument("Collection name cannot be empty"));
@@ -139,7 +152,7 @@ impl Database for HyperspaceService {
         // Manager accepts string metric.
         match self
             .manager
-            .create_collection(&req.name, req.dimension, &req.metric)
+            .create_collection(&user_id, &req.name, req.dimension, &req.metric)
             .await
         {
             Ok(()) => Ok(Response::new(
@@ -155,8 +168,9 @@ impl Database for HyperspaceService {
         &self,
         request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
-        match self.manager.delete_collection(&req.name).await {
+        match self.manager.delete_collection(&user_id, &req.name).await {
             Ok(()) => Ok(Response::new(
                 hyperspace_proto::hyperspace::StatusResponse {
                     status: format!("Collection '{}' deleted.", req.name),
@@ -170,7 +184,8 @@ impl Database for HyperspaceService {
         &self,
         _request: Request<Empty>,
     ) -> Result<Response<ListCollectionsResponse>, Status> {
-        let list = self.manager.list();
+        let user_id = get_user_id(&_request);
+        let list = self.manager.list(&user_id);
         Ok(Response::new(ListCollectionsResponse { collections: list }))
     }
 
@@ -178,8 +193,9 @@ impl Database for HyperspaceService {
         &self,
         request: Request<CollectionStatsRequest>,
     ) -> Result<Response<CollectionStatsResponse>, Status> {
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
-        if let Some(col) = self.manager.get(&req.name).await {
+        if let Some(col) = self.manager.get(&user_id, &req.name).await {
             // TODO: Extend Collection trait to expose dimension and metric.
             // For now return dummy or count.
             Ok(Response::new(CollectionStatsResponse {
@@ -202,6 +218,7 @@ impl Database for HyperspaceService {
         if self.role == "follower" {
             return Err(Status::permission_denied("Followers are read-only"));
         }
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
 
         let col_name = if req.collection.is_empty() {
@@ -209,18 +226,27 @@ impl Database for HyperspaceService {
         } else {
             req.collection
         };
-
-        if let Some(col) = self.manager.get(&col_name).await {
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
             let meta: std::collections::HashMap<String, String> =
                 req.metadata.into_iter().collect();
             // Tick clock
             let clock = self.manager.tick_cluster_clock().await;
 
             // Durability mapping
-            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability).ok() {
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => hyperspace_core::Durability::Strict,
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => hyperspace_core::Durability::Async,
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => hyperspace_core::Durability::Batch,
+            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
+                req.durability,
+            )
+            .ok()
+            {
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
+                    hyperspace_core::Durability::Strict
+                }
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
+                    hyperspace_core::Durability::Async
+                }
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
+                    hyperspace_core::Durability::Batch
+                }
                 _ => hyperspace_core::Durability::Default,
             };
 
@@ -243,6 +269,7 @@ impl Database for HyperspaceService {
         if self.role == "follower" {
             return Err(Status::permission_denied("Followers are read-only"));
         }
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
 
         let col_name = if req.collection.is_empty() {
@@ -251,7 +278,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if let Some(col) = self.manager.get(&col_name).await {
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
             // Convert protos to internal types
             let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req
                 .vectors
@@ -263,10 +290,20 @@ impl Database for HyperspaceService {
             let clock = self.manager.tick_cluster_clock().await;
 
             // Durability mapping
-            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability).ok() {
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => hyperspace_core::Durability::Strict,
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => hyperspace_core::Durability::Async,
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => hyperspace_core::Durability::Batch,
+            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
+                req.durability,
+            )
+            .ok()
+            {
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
+                    hyperspace_core::Durability::Strict
+                }
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
+                    hyperspace_core::Durability::Async
+                }
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
+                    hyperspace_core::Durability::Batch
+                }
                 _ => hyperspace_core::Durability::Default,
             };
 
@@ -281,22 +318,24 @@ impl Database for HyperspaceService {
         }
     }
 
+    #[allow(unused_variables)]
     async fn insert_text(
         &self,
-        _request: Request<InsertTextRequest>,
+        request: Request<InsertTextRequest>,
     ) -> Result<Response<InsertResponse>, Status> {
         #[cfg(feature = "embed")]
         {
             if self.role == "follower" {
                 return Err(Status::permission_denied("Followers are read-only"));
             }
+            let user_id = get_user_id(&request);
             let req = request.into_inner();
 
             if let Some(vectorizer) = &self.vectorizer {
                 let vectors = vectorizer
                     .vectorize(vec![req.text])
                     .await
-                    .map_err(|e| Status::internal(format!("Embedding failed: {}", e)))?;
+                    .map_err(|e| Status::internal(format!("Embedding failed: {e}")))?;
 
                 if vectors.is_empty() {
                     return Err(Status::internal("Empty vector result"));
@@ -309,16 +348,26 @@ impl Database for HyperspaceService {
                     req.collection
                 };
 
-                if let Some(col) = self.manager.get(&col_name).await {
+                if let Some(col) = self.manager.get(&user_id, &col_name).await {
                     let meta: std::collections::HashMap<String, String> =
                         req.metadata.into_iter().collect();
                     let clock = self.manager.tick_cluster_clock().await;
-                    
+
                     // Durability mapping
-                    let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability).ok() {
-                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => hyperspace_core::Durability::Strict,
-                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => hyperspace_core::Durability::Async,
-                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => hyperspace_core::Durability::Batch,
+                    let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
+                        req.durability,
+                    )
+                    .ok()
+                    {
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
+                            hyperspace_core::Durability::Strict
+                        }
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
+                            hyperspace_core::Durability::Async
+                        }
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
+                            hyperspace_core::Durability::Batch
+                        }
                         _ => hyperspace_core::Durability::Default,
                     };
 
@@ -326,17 +375,16 @@ impl Database for HyperspaceService {
                         return Err(Status::internal(e));
                     }
                     return Ok(Response::new(InsertResponse { success: true }));
-                } else {
-                    return Err(Status::not_found(format!(
-                        "Collection '{}' not found",
-                        col_name
-                    )));
                 }
-            } else {
-                return Err(Status::unimplemented(
-                    "Server configured without embedding model",
-                ));
+
+                return Err(Status::not_found(format!(
+                    "Collection '{col_name}' not found"
+                )));
             }
+
+            return Err(Status::unimplemented(
+                "Server configured without embedding model",
+            ));
         }
         #[cfg(not(feature = "embed"))]
         return Err(Status::unimplemented("Embedding feature not compiled"));
@@ -346,6 +394,7 @@ impl Database for HyperspaceService {
         &self,
         request: Request<DeleteRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
         let col_name = if req.collection.is_empty() {
             "default".to_string()
@@ -353,7 +402,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if let Some(col) = self.manager.get(&col_name).await {
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
             if let Err(e) = col.delete(req.id) {
                 return Err(Status::internal(e));
             }
@@ -369,6 +418,7 @@ impl Database for HyperspaceService {
         &self,
         request: Request<SearchRequest>,
     ) -> Result<Response<SearchResponse>, Status> {
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
         let col_name = if req.collection.is_empty() {
             "default".to_string()
@@ -376,7 +426,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if let Some(col) = self.manager.get(&col_name).await {
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
             let legacy_filter = req.filter.into_iter().collect();
             let mut complex_filters = Vec::new();
             for f in req.filters {
@@ -446,11 +496,12 @@ impl Database for HyperspaceService {
         tokio::spawn(async move {
             loop {
                 // Aggregate stats
-                let collections = manager.list();
+                // Use list_all for global stats
+                let collections = manager.list_all();
                 let mut total_count = 0;
 
                 for name in &collections {
-                    if let Some(c) = manager.get(name).await {
+                    if let Some(c) = manager.get_internal(name).await {
                         total_count += c.count();
                     }
                 }
@@ -477,6 +528,7 @@ impl Database for HyperspaceService {
         &self,
         request: Request<DigestRequest>,
     ) -> Result<Response<DigestResponse>, Status> {
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
         let name = if req.collection.is_empty() {
             "default"
@@ -484,7 +536,7 @@ impl Database for HyperspaceService {
             &req.collection
         };
 
-        if let Some(col) = self.manager.get(name).await {
+        if let Some(col) = self.manager.get(&user_id, name).await {
             let clock = self.manager.cluster_state.read().await.logical_clock;
             Ok(Response::new(DigestResponse {
                 logical_clock: clock,
@@ -509,7 +561,8 @@ impl Database for HyperspaceService {
 
         // Extract peer address
         let peer_addr = request
-            .remote_addr().map_or_else(|| "unknown".to_string(), |addr| addr.to_string());
+            .remote_addr()
+            .map_or_else(|| "unknown".to_string(), |addr| addr.to_string());
 
         // Register follower
         {
@@ -558,22 +611,27 @@ impl Database for HyperspaceService {
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
         // Trigger manual GC/Vacuum
         println!("🧹 Manual Vacuum Triggered: Memory cleanup initiated.");
-        Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-            status: "Memory cleanup triggered".to_string(),
-        }))
+        Ok(Response::new(
+            hyperspace_proto::hyperspace::StatusResponse {
+                status: "Memory cleanup triggered".to_string(),
+            },
+        ))
     }
 
     async fn rebuild_index(
         &self,
         request: Request<hyperspace_proto::hyperspace::RebuildIndexRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
         println!("🔧 Rebuild Index Request for: '{}'", req.name);
-        
-        match self.manager.rebuild_collection(&req.name).await {
-            Ok(()) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-                status: "Index rebuilt and reloaded successfully".to_string(),
-            })),
+
+        match self.manager.rebuild_collection(&user_id, &req.name).await {
+            Ok(()) => Ok(Response::new(
+                hyperspace_proto::hyperspace::StatusResponse {
+                    status: "Index rebuilt and reloaded successfully".to_string(),
+                },
+            )),
             Err(e) => Err(Status::internal(e)),
         }
     }
@@ -584,6 +642,7 @@ impl Database for HyperspaceService {
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
         // TODO: Update config for specific collection
         // ConfigUpdate now has `collection` field.
+        let user_id = get_user_id(&request);
         let req = request.into_inner();
         let col_name = if req.collection.is_empty() {
             "default".to_string()
@@ -591,7 +650,7 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if self.manager.get(&col_name).await.is_none() {
+        if self.manager.get(&user_id, &col_name).await.is_none() {
             return Err(Status::not_found(format!(
                 "Collection '{col_name}' not found"
             )));
@@ -628,15 +687,13 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         .unwrap_or("poincare".to_string())
         .to_lowercase();
 
-    println!(
-        "🚀 Booting HyperspaceDB | Dim: {dim} | Metric: {metric}"
-    );
+    println!("🚀 Booting HyperspaceDB | Dim: {dim} | Metric: {metric}");
 
     // Create default collection if not exists
-    if manager.get("default").await.is_none() {
+    if manager.get("default_admin", "default").await.is_none() {
         println!("Creating default collection...");
         manager
-            .create_collection("default", dim, &metric)
+            .create_collection("default_admin", "default", dim, &metric)
             .await?;
     }
 
@@ -675,34 +732,63 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                             } else {
                                                 &log.collection
                                             };
-                                            
+
                                             // Merge clock
                                             mgr.merge_cluster_clock(log.logical_clock).await;
-                                            
+
                                             match log.operation {
                                                 Some(replication_log::Operation::Insert(op)) => {
-                                                    if let Some(col) = mgr.get(col_name).await {
-                                                        if let Err(e) = col.insert(&op.vector, op.id, op.metadata.into_iter().collect(), log.logical_clock, hyperspace_core::Durability::Default) {
+                                                    // Use get_internal for replication
+                                                    if let Some(col) =
+                                                        mgr.get_internal(col_name).await
+                                                    {
+                                                        if let Err(e) = col.insert(
+                                                            &op.vector,
+                                                            op.id,
+                                                            op.metadata.into_iter().collect(),
+                                                            log.logical_clock,
+                                                            hyperspace_core::Durability::Default,
+                                                        ) {
                                                             eprintln!("Rep Error: {e}");
                                                         }
                                                     } else {
                                                         eprintln!("Unknown collection for insert: {col_name}");
                                                     }
                                                 }
-                                                Some(replication_log::Operation::CreateCollection(op)) => {
+                                                Some(
+                                                    replication_log::Operation::CreateCollection(
+                                                        op,
+                                                    ),
+                                                ) => {
                                                     println!("Rep: Creating collection {col_name}");
-                                                    if let Err(e) = mgr.create_collection_from_replication(col_name, op.dimension, &op.metric).await {
+                                                    if let Err(e) = mgr
+                                                        .create_collection_from_replication(
+                                                            col_name,
+                                                            op.dimension,
+                                                            &op.metric,
+                                                        )
+                                                        .await
+                                                    {
                                                         eprintln!("Rep Error (Create): {e}");
                                                     }
                                                 }
-                                                Some(replication_log::Operation::DeleteCollection(_)) => {
+                                                Some(
+                                                    replication_log::Operation::DeleteCollection(_),
+                                                ) => {
                                                     println!("Rep: Deleting collection {col_name}");
-                                                    if let Err(e) = mgr.delete_collection_from_replication(col_name).await {
+                                                    if let Err(e) = mgr
+                                                        .delete_collection_from_replication(
+                                                            col_name,
+                                                        )
+                                                        .await
+                                                    {
                                                         eprintln!("Rep Error (Delete): {e}");
                                                     }
                                                 }
                                                 Some(replication_log::Operation::Delete(op)) => {
-                                                    if let Some(col) = mgr.get(col_name).await {
+                                                    if let Some(col) =
+                                                        mgr.get_internal(col_name).await
+                                                    {
                                                         let _ = col.delete(op.id);
                                                     }
                                                 }
@@ -735,10 +821,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
             .to_lowercase()
             == "true";
 
-        if !enabled {
-            println!("🛑 Embedding Service Disabled (HYPERSPACE_EMBED=false)");
-            None
-        } else {
+        if enabled {
             let provider_str = std::env::var("HYPERSPACE_EMBED_PROVIDER")
                 .unwrap_or_else(|_| "local".to_string())
                 .to_lowercase();
@@ -758,58 +841,58 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
             if provider_str == "local" && metric != Metric::Poincare {
                 eprintln!("⚠️ CRITICAL CONFIG CONFLICT:");
                 eprintln!("   Provider 'local' (Hyperbolic ONNX) requires HS_METRIC='poincare'.");
-                eprintln!("   Found HS_METRIC='{}'.", metric_str);
+                eprintln!("   Found HS_METRIC='{metric_str}'.");
                 eprintln!("🛑 Embedding Service Disabled to prevent mathematical errors.");
                 None
-            } else {
-                if provider_str == "local" {
-                    let model_path = std::env::var("HYPERSPACE_MODEL_PATH").ok();
-                    let tok_path = std::env::var("HYPERSPACE_TOKENIZER_PATH").ok();
+            } else if provider_str == "local" {
+                let model_path = std::env::var("HYPERSPACE_MODEL_PATH").ok();
+                let tok_path = std::env::var("HYPERSPACE_TOKENIZER_PATH").ok();
 
-                    if let (Some(m), Some(t)) = (model_path, tok_path) {
-                        println!("🧠 Loading Local Embedding Model: {}", m);
-                        let dim: usize = std::env::var("HYPERSPACE_EMBED_DIM")
-                            .unwrap_or("128".to_string())
-                            .parse()
-                            .unwrap_or(128);
+                if let (Some(m), Some(t)) = (model_path, tok_path) {
+                    println!("🧠 Loading Local Embedding Model: {m}");
+                    let dim: usize = std::env::var("HYPERSPACE_EMBED_DIM")
+                        .unwrap_or("128".to_string())
+                        .parse()
+                        .unwrap_or(128);
 
-                        match OnnxVectorizer::new(&m, &t, dim, metric) {
-                            Ok(v) => Some(Arc::new(v)),
-                            Err(e) => {
-                                eprintln!("❌ Failed to load local vectorizer: {}", e);
-                                None
-                            }
+                    match OnnxVectorizer::new(&m, &t, dim, metric) {
+                        Ok(v) => Some(Arc::new(v)),
+                        Err(e) => {
+                            eprintln!("❌ Failed to load local vectorizer: {e}");
+                            None
                         }
-                    } else {
-                        // If defaulting to local but no model path provided
-                        println!("⚠️ Embedding Service needs HYPERSPACE_MODEL_PATH for 'local' provider.");
-                        None
                     }
                 } else {
-                    // Remote
-                    if let Some(provider) = ApiProvider::from_str(&provider_str) {
-                        let api_key = std::env::var("HYPERSPACE_API_KEY_EMBED")
-                            .or_else(|_| std::env::var("OPENAI_API_KEY"))
-                            .unwrap_or_default();
+                    // If defaulting to local but no model path provided
+                    println!(
+                        "⚠️ Embedding Service needs HYPERSPACE_MODEL_PATH for 'local' provider."
+                    );
+                    None
+                }
+            } else {
+                // Remote
+                if let Ok(provider) = ApiProvider::from_str(&provider_str) {
+                    let api_key = std::env::var("HYPERSPACE_API_KEY_EMBED")
+                        .or_else(|_| std::env::var("OPENAI_API_KEY"))
+                        .unwrap_or_default();
 
-                        let model = std::env::var("HYPERSPACE_EMBED_MODEL")
-                            .unwrap_or("text-embedding-3-small".to_string());
+                    let model = std::env::var("HYPERSPACE_EMBED_MODEL")
+                        .unwrap_or("text-embedding-3-small".to_string());
 
-                        let base_url = std::env::var("HYPERSPACE_API_BASE").ok();
+                    let base_url = std::env::var("HYPERSPACE_API_BASE").ok();
 
-                        println!(
-                            "☁️ Using Remote Embeddings: {:?} | Model: {}",
-                            provider, model
-                        );
-                        Some(Arc::new(RemoteVectorizer::new(
-                            provider, api_key, model, base_url,
-                        )))
-                    } else {
-                        eprintln!("❌ Unknown embedding provider: {}", provider_str);
-                        None
-                    }
+                    println!("☁️ Using Remote Embeddings: {provider:?} | Model: {model}");
+                    Some(Arc::new(RemoteVectorizer::new(
+                        provider, api_key, model, base_url,
+                    )))
+                } else {
+                    eprintln!("❌ Unknown embedding provider: {provider_str}");
+                    None
                 }
             }
+        } else {
+            println!("🛑 Embedding Service Disabled (HYPERSPACE_EMBED=false)");
+            None
         }
     };
 
@@ -818,8 +901,10 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         #[cfg(feature = "embed")]
         {
             if let Some(v) = &vectorizer {
-                let provider = std::env::var("HYPERSPACE_EMBED_PROVIDER").unwrap_or("local".to_string());
-                let model = std::env::var("HYPERSPACE_EMBED_MODEL").unwrap_or("default".to_string());
+                let provider =
+                    std::env::var("HYPERSPACE_EMBED_PROVIDER").unwrap_or("local".to_string());
+                let model =
+                    std::env::var("HYPERSPACE_EMBED_MODEL").unwrap_or("default".to_string());
                 Some(http_server::EmbeddingInfo {
                     enabled: true,
                     provider,
@@ -827,16 +912,22 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                     dimension: v.dimension(), // Requires Vectorizer trait to expose dimension()
                 })
             } else {
-                 // Check if it was explicitly disabled or failed
-                 let enabled_flag = std::env::var("HYPERSPACE_EMBED")
+                // Check if it was explicitly disabled or failed
+                let enabled_flag = std::env::var("HYPERSPACE_EMBED")
                     .unwrap_or("true".to_string())
-                    .to_lowercase() == "true";
-                 
-                 if !enabled_flag {
-                     Some(http_server::EmbeddingInfo { enabled: false, provider: "-".into(), model: "-".into(), dimension: 0 })
-                 } else {
-                     None // Failed to load
-                 }
+                    .to_lowercase()
+                    == "true";
+
+                if enabled_flag {
+                    None // Failed to load
+                } else {
+                    Some(http_server::EmbeddingInfo {
+                        enabled: false,
+                        provider: "-".into(),
+                        model: "-".into(),
+                        dimension: 0,
+                    })
+                }
             }
         }
         #[cfg(not(feature = "embed"))]

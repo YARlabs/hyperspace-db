@@ -46,12 +46,25 @@ def api_search():
     with request(f"/api/collections/{COLLECTION_NAME}/search", method="POST", data={"vector": [0.1]*8, "top_k": 1}) as response:
         log("Search executed successfully.")
 
+def verify_metrics():
+    log("Verifying /metrics endpoint...")
+    try:
+        with request("/metrics") as res:
+            body = res.read().decode()
+            if "hyperspace_active_collections" in body:
+                print("✅ PASS: Prometheus metrics found.")
+            else:
+                print(f"❌ FAIL: Prometheus metrics missing keys. Body: {body[:200]}...")
+    except Exception as e:
+        print(f"❌ FAIL: Metrics endpoint error: {e}")
+
 def run_test():
     # Remove old data if exists to start fresh? No, assume server handles unique names or create error is fine.
     
     # 1. Start Server
     env = os.environ.copy()
     env["MALLOC_CONF"] = "background_thread:true,dirty_decay_ms:0,muzzy_decay_ms:0"
+    env["HS_IDLE_TIMEOUT_SEC"] = "5" # Optimize for testing
     
     log("Starting server...")
     # Use different data dir to avoid messing with real data
@@ -77,6 +90,9 @@ def run_test():
         api_create()
         api_search()
         log("Collection is HOT.")
+        
+        # Verify Prometheus Metrics
+        verify_metrics()
 
         # 3. Idle Wait
         log("Waiting 15 seconds for idle eviction (timeout=5s)...")

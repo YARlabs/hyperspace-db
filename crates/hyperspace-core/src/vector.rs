@@ -4,7 +4,6 @@
 #[cfg(feature = "nightly-simd")]
 use std::simd::prelude::*;
 
-
 /// Aligned vector struct. N is the dimension.
 /// align(64) is critical for AVX-512 and cache lines.
 #[repr(C, align(64))]
@@ -41,8 +40,8 @@ impl<const N: usize> HyperVector<N> {
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
         #[cfg(feature = "nightly-simd")]
         {
-            let mut sum_sq_diff = f64x8::splat(0.0);
             const LANES: usize = 8;
+            let mut sum_sq_diff = f64x8::splat(0.0);
 
             // Note: If N < 8, this logic needs care, but keeping original logic for consistency
             for i in (0..N).step_by(LANES) {
@@ -120,9 +119,9 @@ impl<const N: usize> QuantizedHyperVector<N> {
     pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
         #[cfg(feature = "nightly-simd")]
         {
-            let mut sum_sq_diff = f64x8::splat(0.0);
             const LANES: usize = 8;
             const SCALE_INV: f64 = 1.0 / 127.0;
+            let mut sum_sq_diff = f64x8::splat(0.0);
 
             for i in (0..N).step_by(LANES) {
                 if i + LANES <= N {
@@ -143,14 +142,14 @@ impl<const N: usize> QuantizedHyperVector<N> {
             if remainder != 0 {
                 let start = N - remainder;
                 for i in start..N {
-                    let a_val = (self.coords[i] as f64) * SCALE_INV;
+                    let a_val = f64::from(self.coords[i]) * SCALE_INV;
                     let diff = a_val - query.coords[i];
                     tail_sq += diff * diff;
                 }
             }
 
             let total_sq = l2_sq + tail_sq;
-            let delta = total_sq * (self.alpha as f64) * query.alpha;
+            let delta = total_sq * f64::from(self.alpha) * query.alpha;
             1.0 + 2.0 * delta
         }
 
@@ -252,20 +251,23 @@ impl<const N: usize> BinaryHyperVector<N> {
     }
 }
 
-
 impl<const N: usize> HyperVector<N> {
     pub const SIZE: usize = std::mem::size_of::<Self>();
     pub fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
     }
     /// Casts bytes to `HyperVector`.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert_eq!(bytes.as_ptr().align_offset(std::mem::align_of::<Self>()), 0, "HyperVector: Misaligned bytes! Use aligned storage.");
+        assert_eq!(
+            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
+            0,
+            "HyperVector: Misaligned bytes! Use aligned storage."
+        );
         unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
@@ -282,7 +284,11 @@ impl<const N: usize> QuantizedHyperVector<N> {
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert_eq!(bytes.as_ptr().align_offset(std::mem::align_of::<Self>()), 0, "QuantizedHyperVector: Misaligned bytes!");
+        assert_eq!(
+            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
+            0,
+            "QuantizedHyperVector: Misaligned bytes!"
+        );
         unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
@@ -299,7 +305,11 @@ impl<const N: usize> BinaryHyperVector<N> {
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert_eq!(bytes.as_ptr().align_offset(std::mem::align_of::<Self>()), 0, "BinaryHyperVector: Misaligned bytes!");
+        assert_eq!(
+            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
+            0,
+            "BinaryHyperVector: Misaligned bytes!"
+        );
         unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
@@ -331,8 +341,6 @@ mod tests {
         }
 
         let duration = start.elapsed();
-        println!(
-            "⏱️ 1M distances took: {duration:?} (Check sum: {black_box})"
-        );
+        println!("⏱️ 1M distances took: {duration:?} (Check sum: {black_box})");
     }
 }

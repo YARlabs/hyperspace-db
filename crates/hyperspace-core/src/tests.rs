@@ -18,11 +18,11 @@ fn test_cosine_distance() {
     let b = [0.0, 1.0];
     let dist = CosineMetric::distance(&a, &b);
     assert!((dist - 2.0).abs() < f64::EPSILON);
-    
+
     // a=[1,0], b=[1,0]. diff=[0,0]. sum=0.
     let dist_same = CosineMetric::distance(&a, &a);
     assert!(dist_same.abs() < f64::EPSILON);
-    
+
     // a=[1,0], b=[-1,0]. diff=[2,0]. sq=[4,0]. sum=4.
     // 2(1 - cos(180)) = 2(1 - (-1)) = 4. Correct.
     let c = [-1.0, 0.0];
@@ -34,10 +34,10 @@ fn test_cosine_distance() {
 fn test_poincare_validation() {
     let v_valid = [0.1, 0.2];
     assert!(PoincareMetric::validate(&v_valid).is_ok());
-    
+
     let v_invalid = [1.0, 0.0]; // Norm=1. Boundary.
     assert!(PoincareMetric::validate(&v_invalid).is_err());
-    
+
     let v_invalid2 = [0.8, 0.8]; // Norm sq = 0.64+0.64 = 1.28
     assert!(PoincareMetric::validate(&v_invalid2).is_err());
 }

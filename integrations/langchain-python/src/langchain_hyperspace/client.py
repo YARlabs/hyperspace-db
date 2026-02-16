@@ -20,6 +20,7 @@ class HyperspaceClient:
         host: str = "localhost",
         port: int = 50051,
         api_key: Optional[str] = None,
+        user_id: Optional[str] = None,
     ):
         """Initialize client.
         
@@ -27,10 +28,12 @@ class HyperspaceClient:
             host: Server host
             port: Server gRPC port
             api_key: Optional API key for authentication
+            user_id: Optional User ID for multi-tenancy
         """
         self.host = host
         self.port = port
         self.api_key = api_key
+        self.user_id = user_id
         
         # Create channel
         self._channel = grpc.insecure_channel(f"{host}:{port}")
@@ -41,9 +44,12 @@ class HyperspaceClient:
         
     def _get_metadata(self) -> List[Tuple[str, str]]:
         """Get gRPC metadata with API key."""
+        meta = []
         if self.api_key:
-            return [("x-api-key", self.api_key)]
-        return []
+            meta.append(("x-api-key", self.api_key))
+        if self.user_id:
+            meta.append(("x-hyperspace-user-id", self.user_id))
+        return meta
     
     def create_collection(
         self,

@@ -1,5 +1,5 @@
-use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
 use hyperspace_core::vector::HyperVector;
+use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
 use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore;
 use proptest::prelude::*;
@@ -24,7 +24,7 @@ proptest! {
         let dir = tempdir().unwrap();
         let store_path = dir.path().join("store.bin");
         let store = Arc::new(VectorStore::new(&store_path, std::mem::size_of::<HyperVector<D>>()));
-        
+
         let config = Arc::new(GlobalConfig {
             ef_construction: 200.into(),
             ef_search: 200.into(),
@@ -42,14 +42,14 @@ proptest! {
             // Convert to fixed size array
             let coords: [f64; D] = vec_data.clone().try_into().expect("Vec len must be D");
             let hv = HyperVector::new_unchecked(coords);
-            
+
             // Serialize struct to bytes
             let bytes = hv.as_bytes();
-            
+
             let id = store.append(bytes).unwrap();
             let expected_id = u32::try_from(i).unwrap();
             assert_eq!(id, expected_id, "ID mismatch at index {i}");
-            
+
             // Verify storage
             let stored_bytes = store.get(id);
             let stored_hv = HyperVector::<D>::from_bytes(stored_bytes);
@@ -64,7 +64,7 @@ proptest! {
             let empty_filter = HashMap::new();
             // Use ef=200 to ensure we find it if it's there
             let results = index.search(vec, 1, 200, &empty_filter, &[], None, None);
-            
+
             if let Some((_id, dist)) = results.first() {
                 assert!(*dist < 1e-4, "Search for inserted vector {i} failed. Dist: {dist}");
             } else {

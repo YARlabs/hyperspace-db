@@ -12,6 +12,7 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_PORT` | `50051` | gRPC listening port |
 | `HS_HTTP_PORT` | `50050` | HTTP Dashboard port |
 | `HS_DATA_DIR` | `./data` | Path to store segments and WAL |
+| `HS_IDLE_TIMEOUT_SEC` | `3600` | Inactivity time (seconds) before collection unloads to disk |
 | `HS_DIMENSION` | `1024` | Default vector dimensionality (8, 64, 768, 1024, 1536) |
 | `HS_METRIC` | `cosine` | Distance metric (`cosine`, `poincare`, `l2`) |
 | `HS_QUANTIZATION_LEVEL` | `none` | Compression (`none`, `scalar` (i8), `binary` (1-bit)) |
@@ -44,6 +45,15 @@ HyperspaceDB uses **Jemalloc** for efficient memory allocation. Tune it via `MAL
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `HYPERSPACE_API_KEY` | - | If set, requires `x-api-key` header for all requests |
+
+### Multi-Tenancy
+
+HyperspaceDB supports strict data isolation via the `x-hyperspace-user-id` header.
+
+*   **Isolation**: Every request with a `x-hyperspace-user-id` header operates within that user's private namespace.
+*   **Internal Naming**: Collections are stored internally as `userid_collectionname`.
+*   **Default Admin**: If `x-hyperspace-user-id` is omitted but a valid `x-api-key` is provided, the user is treated as `default_admin`.
+*   **SaaS Integration**: Gateways should inject this header after authenticating users.
 
 ---
 

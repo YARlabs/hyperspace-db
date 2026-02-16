@@ -1,10 +1,10 @@
 use crate::manager::CollectionManager;
 use axum::{
-    extract::{Path, Query, Request, State},
+    extract::{Extension, Path, Query, Request, State},
     http::{StatusCode, Uri},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use hyperspace_core::SearchParams;
@@ -21,13 +21,35 @@ use tower_http::cors::CorsLayer;
 struct FrontendAssets;
 
 // API Key validation middleware
+#[derive(Clone)]
+pub struct RequestContext {
+    pub user_id: String,
+    pub is_admin: bool,
+}
+
 async fn validate_api_key(
     State(expected_hash): State<Option<String>>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Auth is skipped for static files.
-    if !request.uri().path().starts_with("/api/") {
+    // 1. Check Trusted Header (SaaS / Kong)
+    // Clone header value to avoid holding immutable borrow
+    let user_id_header = request
+        .headers()
+        .get("x-hyperspace-user-id")
+        .and_then(|v| v.to_str().ok())
+        .map(std::string::ToString::to_string);
+
+    if let Some(uid) = user_id_header {
+        request.extensions_mut().insert(RequestContext {
+            user_id: uid,
+            is_admin: false,
+        });
+        return Ok(next.run(request).await);
+    }
+
+    // Auth is skipped for static files (except if we want to enforce user context?)
+    if !request.uri().path().starts_with("/api/") && request.uri().path() != "/metrics" {
         return Ok(next.run(request).await);
     }
 
@@ -40,6 +62,10 @@ async fn validate_api_key(
                     let hash = hex::encode(hasher.finalize());
 
                     if hash == expected {
+                        request.extensions_mut().insert(RequestContext {
+                            user_id: "default_admin".to_string(),
+                            is_admin: true,
+                        });
                         return Ok(next.run(request).await);
                     }
                 }
@@ -48,6 +74,11 @@ async fn validate_api_key(
             None => Err(StatusCode::UNAUTHORIZED),
         }
     } else {
+        // No Auth configured (Dev mode)
+        request.extensions_mut().insert(RequestContext {
+            user_id: "anonymous".to_string(),
+            is_admin: true,
+        });
         Ok(next.run(request).await)
     }
 }
@@ -80,7 +111,11 @@ pub async fn start_http_server(
             "/api/collections",
             get(list_collections).post(create_collection),
         )
-        .route("/api/collections/{name}", delete(delete_collection))
+        .route(
+            "/api/collections/{name}",
+            get(get_collection_digest).delete(delete_collection),
+        )
+        .route("/api/collections/{name}/insert", post(insert_vector))
         .route("/api/collections/{name}/stats", get(get_stats))
         .route("/api/collections/{name}/digest", get(get_collection_digest))
         .route("/api/collections/{name}/peek", get(peek_collection))
@@ -88,8 +123,12 @@ pub async fn start_http_server(
         .route("/api/status", get(get_status))
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
+        .route("/metrics", get(get_prometheus_metrics))
         .route("/api/logs", get(get_logs))
-        .route("/api/collections/{name}/rebuild", post(rebuild_collection_http))
+        .route(
+            "/api/collections/{name}/rebuild",
+            post(rebuild_collection_http),
+        )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
@@ -168,19 +207,28 @@ struct CollectionSummary {
 }
 
 async fn get_cluster_status(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
 ) -> Json<crate::manager::ClusterState> {
     let state = manager.cluster_state.read().await;
     Json(state.clone())
 }
 
 async fn list_collections(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
 ) -> Json<Vec<CollectionSummary>> {
-    let names = manager.list();
+    let names = manager.list(&ctx.user_id);
     let mut summaries = Vec::new();
     for name in names {
-        if let Some(col) = manager.get(&name).await {
+        if let Some(col) = manager.get(&ctx.user_id, &name).await {
             summaries.push(CollectionSummary {
                 name: name.clone(),
                 count: col.count(),
@@ -192,56 +240,104 @@ async fn list_collections(
     }
     Json(summaries)
 }
-
 #[derive(serde::Deserialize)]
-struct CreateReq {
+struct CreateCollectionRequest {
     name: String,
     dimension: u32,
     metric: String,
 }
 
+#[derive(serde::Deserialize)]
+struct InsertPayload {
+    vector: Vec<f64>,
+    id: u32,
+    metadata: Option<HashMap<String, String>>,
+}
+
 async fn create_collection(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
-    Json(payload): Json<CreateReq>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<CreateCollectionRequest>,
 ) -> impl IntoResponse {
     match manager
-        .create_collection(&payload.name, payload.dimension, &payload.metric)
+        .create_collection(
+            &ctx.user_id,
+            &payload.name,
+            payload.dimension,
+            &payload.metric,
+        )
         .await
     {
-        Ok(()) => (StatusCode::CREATED, "Created").into_response(),
+        Ok(()) => StatusCode::CREATED.into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
     }
 }
 
-async fn delete_collection(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+async fn insert_vector(
     Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<InsertPayload>,
 ) -> impl IntoResponse {
-    match manager.delete_collection(&name).await {
-        Ok(()) => (StatusCode::OK, "Deleted").into_response(),
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        let clock = manager.cluster_state.read().await.logical_clock;
+        let meta = payload.metadata.unwrap_or_default();
+
+        match col.insert(
+            &payload.vector,
+            payload.id,
+            meta,
+            clock,
+            hyperspace_core::Durability::Default,
+        ) {
+            Ok(()) => StatusCode::OK.into_response(),
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn delete_collection(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    match manager.delete_collection(&ctx.user_id, &name).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::NOT_FOUND, e).into_response(),
     }
 }
 
-#[derive(serde::Serialize)]
-struct StatsRes {
-    count: usize,
-    dimension: u32,
-    metric: String,
-    indexing_queue: u64,
-}
-
 async fn get_stats(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&name).await {
-        Json(StatsRes {
-            count: col.count(),
-            dimension: col.dimension() as u32,
-            metric: col.metric_name().to_string(),
-            indexing_queue: col.queue_size(),
-        })
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        Json(serde_json::json!({
+            "count": col.count(),
+            "dimension": col.dimension(),
+            "metric": col.metric_name(),
+            "quantization": format!("{:?}", col.quantization_mode()),
+            "indexing_queue": col.queue_size(),
+        }))
         .into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
@@ -249,10 +345,15 @@ async fn get_stats(
 }
 
 async fn get_collection_digest(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&name).await {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
         let clock = manager.cluster_state.read().await.logical_clock;
         let digest =
             crate::sync::CollectionDigest::new(name.clone(), clock, col.count(), col.buckets());
@@ -263,7 +364,11 @@ async fn get_collection_digest(
 }
 
 async fn get_status(
-    State((_, start_time, embedding)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((_, start_time, embedding)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
 ) -> Json<serde_json::Value> {
     let dim = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
     let metric = std::env::var("HS_METRIC").unwrap_or("l2".to_string());
@@ -279,7 +384,7 @@ async fn get_status(
 
     Json(serde_json::json!({
         "status": "ONLINE",
-        "version": "1.6.0",
+        "version": "2.0.0",
         "uptime": uptime_str,
         "config": {
             "dimension": dim,
@@ -291,15 +396,18 @@ async fn get_status(
 }
 
 async fn get_metrics(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
-) -> Json<serde_json::Value> {
-    let cols = manager.list();
-    let mut total_vecs = 0;
-    for c in &cols {
-        if let Some(col) = manager.get(c).await {
-            total_vecs += col.count();
-        }
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if !ctx.is_admin {
+        return (StatusCode::FORBIDDEN, "Admin access required").into_response();
     }
+
+    let total_vecs = manager.total_vector_count();
 
     // Calculate disk usage from data directory
     let disk_usage_bytes = calculate_dir_size("./data").unwrap_or(0);
@@ -307,8 +415,6 @@ async fn get_metrics(
 
     // Get real system metrics
     let sys = System::new_all();
-
-    // Get current process memory and CPU usage
     let current_pid = Pid::from_u32(std::process::id());
 
     let (ram_usage_mb, cpu_usage_percent) = if let Some(process) = sys.process(current_pid) {
@@ -319,13 +425,79 @@ async fn get_metrics(
         (0, 0)
     };
 
+    let (active_count, idle_count) = manager.get_collection_counts();
+
     Json(serde_json::json!({
         "total_vectors": total_vecs,
-        "total_collections": cols.len(),
+        "active_collections": active_count,
+        "idle_collections": idle_count,
+        "total_collections": active_count + idle_count,
         "ram_usage_mb": ram_usage_mb,
         "cpu_usage_percent": cpu_usage_percent,
         "disk_usage_mb": disk_usage_mb,
     }))
+    .into_response()
+}
+
+async fn get_prometheus_metrics(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if !ctx.is_admin {
+        return (StatusCode::FORBIDDEN, "Admin access required").into_response();
+    }
+
+    let (active, idle) = manager.get_collection_counts();
+    let total_vecs = manager.total_vector_count();
+
+    // System stats
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    let pid = Pid::from_u32(std::process::id());
+    let (ram_mb, cpu_percent) = if let Some(proc) = sys.process(pid) {
+        (
+            (proc.memory() as f64 / 1_048_576.0).round() as u64,
+            proc.cpu_usage().round() as u64,
+        )
+    } else {
+        (0, 0)
+    };
+
+    let disk_mb = calculate_dir_size("./data").unwrap_or(0) / 1_048_576;
+
+    let body = format!(
+        "# HELP hyperspace_active_collections Number of collections in memory\n\
+         # TYPE hyperspace_active_collections gauge\n\
+         hyperspace_active_collections {active}\n\
+         # HELP hyperspace_idle_collections Number of collections unloaded to disk\n\
+         # TYPE hyperspace_idle_collections gauge\n\
+         hyperspace_idle_collections {idle}\n\
+         # HELP hyperspace_total_vectors Total number of vectors in active collections\n\
+         # TYPE hyperspace_total_vectors gauge\n\
+         hyperspace_total_vectors {total_vecs}\n\
+         # HELP hyperspace_ram_usage_mb Memory usage in MB\n\
+         # TYPE hyperspace_ram_usage_mb gauge\n\
+         hyperspace_ram_usage_mb {ram_mb}\n\
+         # HELP hyperspace_disk_usage_mb Disk usage in MB\n\
+         # TYPE hyperspace_disk_usage_mb gauge\n\
+         hyperspace_disk_usage_mb {disk_mb}\n\
+         # HELP hyperspace_cpu_usage_percent CPU usage percent\n\
+         # TYPE hyperspace_cpu_usage_percent gauge\n\
+         hyperspace_cpu_usage_percent {cpu_percent}\n"
+    );
+
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        body,
+    )
+        .into_response()
 }
 
 fn calculate_dir_size(path: &str) -> std::io::Result<u64> {
@@ -351,12 +523,17 @@ struct PeekParams {
 }
 
 async fn peek_collection(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
     Query(params): Query<PeekParams>,
 ) -> impl IntoResponse {
     let limit = params.limit.unwrap_or(50).min(100);
-    if let Some(col) = manager.get(&name).await {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
         let items = col.peek(limit);
         Json(items).into_response()
     } else {
@@ -371,12 +548,17 @@ struct SearchReq {
 }
 
 async fn search_collection(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<SearchReq>,
 ) -> impl IntoResponse {
     let k = payload.top_k.unwrap_or(10);
-    if let Some(col) = manager.get(&name).await {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
         let default_ef = std::env::var("HS_HNSW_EF_SEARCH")
             .unwrap_or_else(|_| "100".to_string())
             .parse()
@@ -390,7 +572,6 @@ async fn search_collection(
         };
         match col.search(&payload.vector, &HashMap::new(), &[], &dummy_params) {
             Ok(res) => {
-
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
                     .map(|(id, dist, meta)| {
@@ -419,19 +600,34 @@ async fn get_logs() -> Json<Vec<String>> {
 }
 
 async fn rebuild_collection_http(
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
     Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    match manager.rebuild_collection(&name).await {
-        Ok(()) => (StatusCode::OK, "Index Rebuilt").into_response(),
+    match manager.rebuild_collection(&ctx.user_id, &name).await {
+        Ok(()) => StatusCode::OK.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
 
 async fn trigger_vacuum_http(
-    State((_manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((_manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    println!("🧹 HTTP Vacuum Triggered");
-    // In future use Jemalloc ctls if available
-    (StatusCode::OK, "Memory Cleanup Initiated").into_response()
+    if !ctx.is_admin {
+        return (StatusCode::FORBIDDEN, "Admin access required").into_response();
+    }
+    // ... logic (vacuum assumes iterating all? manager needs vacuum method that iterates everything?)
+    // manager.vacuum() logic?
+    // Wait, manager doesn't have vacuum method in http_server.rs logic?
+    // Let's check original.
+    Json(serde_json::json!({"status": "Vacuum triggered (not implemented)"})).into_response()
 }

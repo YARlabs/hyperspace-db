@@ -157,7 +157,7 @@ impl HyperspaceDB {
             let id_map = self.id_map.read();
             serde_wasm_bindgen::to_value(&*id_map)?
         };
-        
+
         db_store
             .put(&map_js, Some(&JsValue::from_str("id_map")))
             .await
@@ -237,9 +237,9 @@ impl HyperspaceDB {
         // Update Maps
         let mut id_map = self.id_map.write();
         let mut rev_map = self.rev_map.write();
-        
+
         id_map.clone_from(&id_map_data);
-        
+
         rev_map.clear();
         for (k, v) in id_map_data {
             rev_map.insert(v, k);

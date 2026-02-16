@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-embed"
-version = "1.6.0"
+version = "2.0.0"
 edition = "2021"
 description = "Universal Embedding Wrapper for HyperspaceDB (Local ONNX + Remote APIs)"
 

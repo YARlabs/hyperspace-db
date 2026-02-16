@@ -12,7 +12,9 @@ struct Node {
 
 impl Node {
     fn spawn(grpc: u16, http: u16, role: &str, leader: Option<&str>, clean: bool) -> Self {
-        let server_path = std::env::current_dir().unwrap().join("target/release/hyperspace-server");
+        let server_path = std::env::current_dir()
+            .unwrap()
+            .join("target/release/hyperspace-server");
         let mut cmd = Command::new(server_path);
         cmd.arg("--port")
             .arg(grpc.to_string())
@@ -98,6 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::connect(
         "http://0.0.0.0:50051".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
 
@@ -116,7 +119,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..100 {
         let vec = vec![0.1; 1024];
         client
-            .insert(i, vec, std::collections::HashMap::new(), Some("test_sync".to_string()))
+            .insert(
+                i,
+                vec,
+                std::collections::HashMap::new(),
+                Some("test_sync".to_string()),
+            )
             .await?;
     }
     println!("✅ Insertion complete");
@@ -132,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut c1 = Client::connect(
         "http://0.0.0.0:50052".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
     let d1 = c1.get_digest(Some("test_sync".to_string())).await?;
@@ -153,17 +162,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 100..150 {
         let vec = vec![0.2; 1024];
         client
-            .insert(i, vec, std::collections::HashMap::new(), Some("test_sync".to_string()))
+            .insert(
+                i,
+                vec,
+                std::collections::HashMap::new(),
+                Some("test_sync".to_string()),
+            )
             .await?;
     }
 
     println!("♻️  Restarting Follower 2...");
-    let _f2_reborn = Node::spawn(50053, 50070, "follower", Some("http://0.0.0.0:50051"), false);
+    let _f2_reborn = Node::spawn(
+        50053,
+        50070,
+        "follower",
+        Some("http://0.0.0.0:50051"),
+        false,
+    );
     thread::sleep(Duration::from_secs(5)); // Give time to sync (currently full stream sync on connect)
 
     let mut c2: Client = Client::connect(
         "http://0.0.0.0:50053".to_string(),
         Some("I_LOVE_HYPERSPACEDB".to_string()),
+        None,
     )
     .await?;
     let d2 = c2.get_digest(Some("test_sync".to_string())).await?;

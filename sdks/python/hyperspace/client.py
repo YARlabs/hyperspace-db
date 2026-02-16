@@ -17,10 +17,15 @@ class Durability:
     STRICT = 3
 
 class HyperspaceClient:
-    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None):
+    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None):
         self.channel = grpc.insecure_channel(host)
         self.stub = hyperspace_pb2_grpc.DatabaseStub(self.channel)
-        self.metadata = (('x-api-key', api_key),) if api_key else None
+        meta = []
+        if api_key:
+            meta.append(('x-api-key', api_key))
+        if user_id:
+            meta.append(('x-hyperspace-user-id', user_id))
+        self.metadata = tuple(meta) if meta else None
         self.embedder = embedder
 
     # ... (create/delete/list unchanged) ...

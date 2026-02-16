@@ -6,7 +6,6 @@
 #![allow(clippy::inline_always)]
 #![allow(clippy::similar_names)]
 
-
 pub mod config;
 pub mod vector;
 
@@ -103,6 +102,7 @@ pub trait Collection: Send + Sync {
     }
     fn peek(&self, limit: usize)
         -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
+    fn quantization_mode(&self) -> QuantizationMode;
 }
 
 pub trait Metric<const N: usize>: Send + Sync + 'static {

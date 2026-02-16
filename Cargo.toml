@@ -22,3 +22,9 @@ rkyv = "0.7"
 smallvec = "1.11"
 proptest = "1.0"
 
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
