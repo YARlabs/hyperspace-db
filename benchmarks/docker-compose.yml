@@ -2,24 +2,25 @@ version: "3.8"
 
 services:
   # HyperspaceDB (Pre-built)
-  # hyperspace:
-  #   image: glukhota/hyperspace-db:latest
-  #   pull_policy: always
-  #   ports:
-  #     - "50051:50051"
-  #   environment:
-  #     - RUST_LOG=info
-  #     - HS_PORT=50051
-  #     - HS_DIMENSION=1024
-  #   volumes:
-  #     - hyperspace_data:/data
-  #   networks:
-  #     - benchmark_net
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:50051/health"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 10
+  hyperspace:
+    image: glukhota/hyperspace-db:latest
+    pull_policy: always
+    ports:
+      - "50051:50051"
+      - "50050:50050"
+    environment:
+      - RUST_LOG=info
+      - HS_PORT=50051
+      - HS_DIMENSION=1024
+    # volumes:
+    #   - hyperspace_data:/data
+    networks:
+      - benchmark_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:50050/api/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # Qdrant
   qdrant:
@@ -38,27 +39,27 @@ services:
       retries: 10
 
   # Weaviate
-  # weaviate:
-  #   image: semitechnologies/weaviate:latest
-  #   ports:
-  #     - "8080:8080"
-  #     - "50052:50051" # Map internal 50051 to host 50052 to avoid conflict
-  #   environment:
-  #     - QUERY_DEFAULTS_LIMIT=25
-  #     - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
-  #     - PERSISTENCE_DATA_PATH=/var/lib/weaviate
-  #     - DEFAULT_VECTORIZER_MODULE=none
-  #     - CLUSTER_HOSTNAME=node1
-  #     - GRPC_PORT=50051 # Internal gRPC port
-  #   # volumes:
-  #   #   - weaviate_data:/var/lib/weaviate
-  #   networks:
-  #     - benchmark_net
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 10
+  weaviate:
+    image: semitechnologies/weaviate:latest
+    ports:
+      - "8080:8080"
+      - "50052:50051" # Map internal 50051 to host 50052 to avoid conflict
+    environment:
+      - QUERY_DEFAULTS_LIMIT=25
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - DEFAULT_VECTORIZER_MODULE=none
+      - CLUSTER_HOSTNAME=node1
+      - GRPC_PORT=50051 # Internal gRPC port
+    # volumes:
+    #   - weaviate_data:/var/lib/weaviate
+    networks:
+      - benchmark_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # Milvus (Standalone)
   milvus-etcd:
