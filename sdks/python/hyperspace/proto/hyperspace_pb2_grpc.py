@@ -5,7 +5,7 @@ import warnings
 
 from . import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.76.0'
+GRPC_GENERATED_VERSION = '1.71.2'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in hyperspace_pb2_grpc.py depends on'
+        + f' but the generated code in hyperspace_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -101,7 +101,7 @@ class DatabaseStub(object):
                 _registered_method=True)
         self.Replicate = channel.unary_stream(
                 '/hyperspace.Database/Replicate',
-                request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                request_serializer=hyperspace__pb2.ReplicationRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.ReplicationLog.FromString,
                 _registered_method=True)
         self.GetDigest = channel.unary_unary(
@@ -293,7 +293,7 @@ def add_DatabaseServicer_to_server(servicer, server):
             ),
             'Replicate': grpc.unary_stream_rpc_method_handler(
                     servicer.Replicate,
-                    request_deserializer=hyperspace__pb2.Empty.FromString,
+                    request_deserializer=hyperspace__pb2.ReplicationRequest.FromString,
                     response_serializer=hyperspace__pb2.ReplicationLog.SerializeToString,
             ),
             'GetDigest': grpc.unary_unary_rpc_method_handler(
@@ -683,7 +683,7 @@ class Database(object):
             request,
             target,
             '/hyperspace.Database/Replicate',
-            hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.ReplicationRequest.SerializeToString,
             hyperspace__pb2.ReplicationLog.FromString,
             options,
             channel_credentials,

@@ -35,8 +35,7 @@ class HyperspaceClient:
         try:
             resp = self.stub.CreateCollection(req, metadata=self.metadata)
             return True
-        except grpc.RpcError as e:
-            print(f"RPC Error: {e}")
+        except grpc.RpcError:
             return False
 
     def delete_collection(self, name: str) -> bool:
@@ -44,8 +43,7 @@ class HyperspaceClient:
         try:
             resp = self.stub.DeleteCollection(req, metadata=self.metadata)
             return True
-        except grpc.RpcError as e:
-            print(f"RPC Error: {e}")
+        except grpc.RpcError:
             return False
 
     def list_collections(self) -> List[str]:
@@ -67,8 +65,7 @@ class HyperspaceClient:
                 "metric": resp.metric,
                 "indexing_queue": resp.indexing_queue
             }
-        except grpc.RpcError as e:
-            print(f"RPC Error: {e}")
+        except grpc.RpcError:
             return {}
 
     def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:

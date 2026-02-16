@@ -459,29 +459,36 @@ impl CollectionManager {
     }
 
     async fn delete_collection_internal(&self, name: &str, replicate: bool) -> Result<(), String> {
-        if let Some((_, _col)) = self.collections.remove(name) {
-            // Cleanup files
-            let col_dir = self.base_path.join(name);
-            if col_dir.exists() {
-                fs::remove_dir_all(col_dir).map_err(|e| e.to_string())?;
-            }
+        let mut found = false;
 
-            if replicate {
-                let clock = self.tick_cluster_clock().await;
-                let log = ReplicationLog {
-                    logical_clock: clock,
-                    origin_node_id: self.cluster_state.read().await.node_id.clone(),
-                    collection: name.to_string(),
-                    operation: Some(replication_log::Operation::DeleteCollection(
-                        DeleteCollectionOp {},
-                    )),
-                };
-                let _ = self.replication_tx.send(log);
-            }
-            Ok(())
-        } else {
-            Err(format!("Collection '{name}' not found"))
+        // 1. Remove from in-memory map
+        if let Some((_, _col)) = self.collections.remove(name) {
+            found = true;
         }
+
+        // 2. Cleanup files (handles cold storage too)
+        let col_dir = self.base_path.join(name);
+        if col_dir.exists() {
+            fs::remove_dir_all(col_dir).map_err(|e| e.to_string())?;
+            found = true;
+        }
+
+        // 3. Replicate if it was found or if we want to ensure eventual consistency
+        if replicate && found {
+            let clock = self.tick_cluster_clock().await;
+            let log = ReplicationLog {
+                logical_clock: clock,
+                origin_node_id: self.cluster_state.read().await.node_id.clone(),
+                collection: name.to_string(),
+                operation: Some(replication_log::Operation::DeleteCollection(
+                    DeleteCollectionOp {},
+                )),
+            };
+            let _ = self.replication_tx.send(log);
+        }
+
+        // Idempotent: return success even if not found
+        Ok(())
     }
 
     pub fn get_usage_report(&self) -> std::collections::HashMap<String, UserUsage> {

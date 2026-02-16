@@ -1,28 +1,33 @@
 # HyperspaceDB Benchmarks
 
-This directory contains the tools and scripts used to benchmark HyperspaceDB against other popular vector databases (Milvus, Qdrant, Weaviate, Chroma).
-
 > **⚠️ ATTENTION:** Don't take anyone's word for it, verify all numbers yourself! We provide the exact scripts used to generate our results so you can reproduce them on your own hardware.
 
-## 🚀 One-Click Reproducibility
+## 1. Project Overview
 
-We provide a specialized script that automates the entire benchmarking process:
+This directory contains reproducible benchmark tooling for HyperspaceDB and other vector databases.
+The main goal is to measure throughput, latency, and retrieval quality on the same datasets and query sets.
 
-```bash
-./run_benchmark.sh
-```
+The project now includes:
+- a **modular plugin-based runner** (`run_benchmark.py`) for scalable adapter growth (add you DB or custom metrics, if you want);
 
-**What this script does:**
-1.  **Virtual Env**: Creates a clean Python `venv`.
-2.  **Dependencies**: Installs all required packages and the Hyperspace SDK.
-3.  **Infrastructure**: Deploys the full stack (HyperspaceDB + Competitors) using `docker-compose`.
-4.  **Execution**: Runs the `Performance1024D1M` benchmark case (1 million vectors, 1024 dimensions).
+## 2. Core Functionalities
 
-## 🛠 Manual Execution
+- Run benchmark against all supported databases at once.
+- Run benchmark for only one database adapter.
+- Add new database by creating one plugin file in `db_plugins/adapters/`.
+- Reuse the same data preparation and metric logic across adapters.
+- Compare legacy and modular reports to track metric parity.
+- Run durability benchmark (`run_durability_benchmark.py`) independently.
 
-If you prefer to run specific steps manually:
+## 3. Docs and Libraries
 
-### 1. Setup Environment
+### Main references
+- HuggingFace `datasets` for dataset loading.
+- `vectordb-bench` for standardized benchmark cases.
+- DB SDKs: `pymilvus`, `qdrant-client`, `chromadb`, Hyperspace Python SDK.
+- `torch`, `transformers`, `peft` for embedding generation.
+
+### Install
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -30,36 +35,49 @@ pip install -r requirements.txt
 pip install -e ../sdks/python
 ```
 
-### 2. Start Databases
+### Start DB stack
 ```bash
 docker-compose up -d
 ```
 
-### 3. Download Real-World Datasets
-Use the helper tool to download standard benchmark datasets (msmarco, glove, etc.):
-```bash
-python3 download_dataset.py
+## 4. Current File Structure (Snapshot)
+
+```text
+benchmarks/
+├── README.md
+├── requirements.txt
+├── docker-compose.yml
+├── download_dataset.py
+├── run_benchmark.py
+├── run_durability_benchmark.py
+├── plugin_runtime.py
+├── db_plugins/
+    ├── __init__.py
+    ├── base.py
+    ├── registry.py
+    └── adapters/
+        ├── __init__.py
+        ├── chroma_plugin.py
+        ├── hyperspace_plugin.py
+        ├── milvus_plugin.py
+        └── qdrant_plugin.py
+
 ```
 
-### 4. Run Benchmarks
-Run the main benchmarking suite:
+## 5. Run Commands
+
+### Benchmark runner
 ```bash
+python3 run_benchmark.py hyper --case=Performance1024D1M
 python3 run_benchmark.py --case=Performance1024D1M
-python3 run_benchmark.py --case=Performance768D1M
+python3 run_benchmark.py hyper
 ```
 
-## 🧪 Benchmark Scripts
+## 6. Benchmark Metrics
 
-- `run_benchmark.py`: The primary engine for performance comparison (QPS, Recall, Latency).
-- `run_durability_benchmark.py`: Tests ingestion speed under different WAL durability settings (Async vs. Strict).
-- `download_dataset.py`: Automation script for fetching VectorDBBench datasets from S3.
-
-## 📊 Evaluation Metrics
-
-- **Throughput (QPS)**: Number of queries processed per second.
-- **P99 Latency**: The response time for the 99th percentile of queries.
-- **Recall@K**: The accuracy of the search results compared to a ground-truth exact search.
-- **Indexing Speed**: Time taken to ingest and index large batches of vectors.
-
----
-*© 2026 YARlabs - High Performance Hyperbolic Systems*
+- Throughput (Insert/Search QPS)
+- Latency (P50/P95/P99)
+- Recall@10, MRR@10, NDCG@10
+- System Recall@10 (vs exact brute-force)
+- Concurrency profile (C1/C10/C30)
+- Disk usage

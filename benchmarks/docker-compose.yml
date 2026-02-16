@@ -1,26 +1,24 @@
-version: "3.8"
-
 services:
   # HyperspaceDB (Pre-built)
-  hyperspace:
-    image: glukhota/hyperspace-db:latest
-    pull_policy: always
-    ports:
-      - "50051:50051"
-      - "50050:50050"
-    environment:
-      - RUST_LOG=info
-      - HS_PORT=50051
-      - HS_DIMENSION=1024
-    # volumes:
-    #   - hyperspace_data:/data
-    networks:
-      - benchmark_net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:50050/api/metrics"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+  # hyperspace:
+  #   image: glukhota/hyperspace-db:latest
+  #   pull_policy: always
+  #   ports:
+  #     - "50051:50051"
+  #     - "50050:50050"
+  #   environment:
+  #     - RUST_LOG=info
+  #     - HS_PORT=50051
+  #     - HS_DIMENSION=1024
+  #   # volumes:
+  #   #   - hyperspace_data:/data
+  #   networks:
+  #     - benchmark_net
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:50050/api/metrics"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 10
 
   # Qdrant
   qdrant:
