@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use sysinfo::{Pid, System};
+use tikv_jemalloc_ctl::epoch;
 use tower_http::cors::CorsLayer;
 
 #[derive(RustEmbed)]
@@ -130,6 +131,7 @@ pub async fn start_http_server(
             post(rebuild_collection_http),
         )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
+        .route("/api/admin/usage", get(get_usage_report_http))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -291,13 +293,16 @@ async fn insert_vector(
         let clock = manager.cluster_state.read().await.logical_clock;
         let meta = payload.metadata.unwrap_or_default();
 
-        match col.insert(
-            &payload.vector,
-            payload.id,
-            meta,
-            clock,
-            hyperspace_core::Durability::Default,
-        ) {
+        match col
+            .insert(
+                &payload.vector,
+                payload.id,
+                meta,
+                clock,
+                hyperspace_core::Durability::Default,
+            )
+            .await
+        {
             Ok(()) => StatusCode::OK.into_response(),
             Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
         }
@@ -570,7 +575,10 @@ async fn search_collection(
             hybrid_query: None,
             hybrid_alpha: None,
         };
-        match col.search(&payload.vector, &HashMap::new(), &[], &dummy_params) {
+        match col
+            .search(&payload.vector, &HashMap::new(), &[], &dummy_params)
+            .await
+        {
             Ok(res) => {
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
@@ -625,9 +633,42 @@ async fn trigger_vacuum_http(
     if !ctx.is_admin {
         return (StatusCode::FORBIDDEN, "Admin access required").into_response();
     }
-    // ... logic (vacuum assumes iterating all? manager needs vacuum method that iterates everything?)
-    // manager.vacuum() logic?
-    // Wait, manager doesn't have vacuum method in http_server.rs logic?
-    // Let's check original.
-    Json(serde_json::json!({"status": "Vacuum triggered (not implemented)"})).into_response()
+
+    // 1. Refresh jemalloc statistics
+    if let Err(e) = epoch::advance() {
+        eprintln!("Failed to advance jemalloc epoch: {e}");
+    }
+
+    // 2. Perform global purge via mallctl
+    // In jemalloc 5.x, "arena.4096.purge" purges all arenas.
+    // SAFETY: Calling jemalloc purge is safe here as it only triggers memory return to OS.
+    if let Err(e) = unsafe { tikv_jemalloc_ctl::raw::update(b"arena.4096.purge\0", ()) } {
+        eprintln!("Failed to purge jemalloc arenas: {e}");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"status": "Error", "message": format!("Purge failed: {e}")})),
+        )
+            .into_response();
+    }
+
+    Json(serde_json::json!({
+        "status": "Success",
+        "message": "System memory purged and returned to OS"
+    }))
+    .into_response()
+}
+
+async fn get_usage_report_http(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if !ctx.is_admin {
+        return (StatusCode::FORBIDDEN, "Admin access required").into_response();
+    }
+    let report = manager.get_usage_report();
+    Json(report).into_response()
 }

@@ -8,7 +8,7 @@ parking_lot = "0.12"
 rand = "0.8"
 smallvec = { workspace = true }
 ordered-float = "4.0"
-hyperspace-core = { path = "../hyperspace-core" }
+hyperspace-core = { path = "../hyperspace-core", features = ["nightly-simd"] }
 hyperspace-store = { path = "../hyperspace-store", default-features = false }
 rkyv = { workspace = true, features = ["validation"] }
 roaring = "0.11.3"

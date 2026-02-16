@@ -12,6 +12,16 @@ pub mod vector;
 pub use config::GlobalConfig;
 use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 
+#[cfg(feature = "nightly-simd")]
+pub fn check_simd() {
+    println!("🚀 SIMD Acceleration: ENABLED (AVX/Neon)");
+}
+
+#[cfg(not(feature = "nightly-simd"))]
+pub fn check_simd() {
+    println!("🐢 SIMD Acceleration: DISABLED (Scalar Fallback)");
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -60,9 +70,10 @@ pub enum Durability {
     Strict,
 }
 
-pub trait Collection: Send + Sync {
+#[async_trait::async_trait]
+pub trait Collection: Send + Sync + 'static {
     fn name(&self) -> &str;
-    fn insert(
+    async fn insert(
         &self,
         vector: &[f64],
         id: u32,
@@ -70,22 +81,23 @@ pub trait Collection: Send + Sync {
         clock: u64,
         durability: Durability,
     ) -> Result<(), String>;
-    fn insert_batch(
+
+    async fn insert_batch(
         &self,
         vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)>,
         clock: u64,
         durability: Durability,
     ) -> Result<(), String> {
-        // Default implementation calls insert individually. Override for optimized batch processing.
+        // Default implementation using single insert (slow fallback)
         for (vec, id, meta) in vectors {
-            self.insert(&vec, id, meta, clock, durability)?;
+            self.insert(&vec, id, meta, clock, durability).await?;
         }
         Ok(())
     }
     fn delete(&self, id: u32) -> Result<(), String>;
-    fn search(
+    async fn search(
         &self,
-        query: &[f64],
+        vector: &[f64],
         filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
         params: &SearchParams,
@@ -96,7 +108,7 @@ pub trait Collection: Send + Sync {
     fn state_hash(&self) -> u64;
     fn buckets(&self) -> Vec<u64>; // New method
     fn queue_size(&self) -> u64; // Indexing queue size for eventual consistency
-    fn optimize(&self) -> Result<(), String> {
+    async fn optimize(&self) -> Result<(), String> {
         // Default: No-op for collections lacking optimization support.
         Ok(())
     }
@@ -170,10 +182,50 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
 
     // validate uses default
 
+    #[cfg(feature = "nightly-simd")]
+    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+        use std::simd::num::{SimdFloat, SimdInt};
+        use std::simd::{f64x8, i8x8}; // Import needed traits
+
+        const LANES: usize = 8;
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let scale_vec = f64x8::splat(SCALE_INV);
+
+        let mut sum = f64x8::splat(0.0);
+        let mut i = 0;
+
+        // SIMD Loop
+        while i + LANES <= N {
+            let a_chunk = i8x8::from_slice(&a.coords[i..i + LANES]);
+            let b_chunk = f64x8::from_slice(&b.coords[i..i + LANES]);
+
+            // Vectorized cast i8 -> f64
+            let a_f64: f64x8 = a_chunk.cast();
+
+            let a_scaled = a_f64 * scale_vec;
+            let diff = a_scaled - b_chunk;
+            sum += diff * diff;
+
+            i += LANES;
+        }
+
+        let mut total_sum = sum.reduce_sum();
+
+        // Scalar Tail
+        while i < N {
+            let a_val = f64::from(a.coords[i]) * SCALE_INV;
+            let diff = a_val - b.coords[i];
+            total_sum += diff * diff;
+            i += 1;
+        }
+
+        total_sum
+    }
+
+    #[cfg(not(feature = "nightly-simd"))]
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
         const SCALE_INV: f64 = 1.0 / 127.0;
         let mut sum_sq_diff = 0.0;
-
         for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
             let a_val = f64::from(*a_i8) * SCALE_INV;
             let diff = a_val - b_f64;
@@ -212,17 +264,15 @@ impl<const N: usize> Metric<N> for CosineMetric {
 
     // validate uses default
 
+    #[cfg(feature = "nightly-simd")]
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
-        const SCALE_INV: f64 = 1.0 / 127.0;
-        let mut sum_sq_diff = 0.0;
+        // Re-use Euclidean logic as Cosine is just L2 on normalized vectors
+        EuclideanMetric::distance_quantized(a, b)
+    }
 
-        for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
-            let a_val = f64::from(*a_i8) * SCALE_INV;
-            let diff = a_val - b_f64;
-            sum_sq_diff += diff * diff;
-        }
-
-        sum_sq_diff
+    #[cfg(not(feature = "nightly-simd"))]
+    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+        EuclideanMetric::distance_quantized(a, b)
     }
 
     fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {

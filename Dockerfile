@@ -21,6 +21,10 @@ COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 RUN rm -f rust-toolchain.toml
 
 # Build Release
+# WARNING: 'native' optimizes for the BUILD machine's CPU. 
+# If build & run machines differ significantly, this may cause crashes.
+# For public images, use '-C target-cpu=x86-64-v3' instead.
+ENV RUSTFLAGS="-C target-cpu=native"
 RUN cargo build --release --workspace
 
 # Strip binaries to reduce size

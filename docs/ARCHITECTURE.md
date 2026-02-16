@@ -355,3 +355,21 @@ HyperspaceDB implements a "Cold Storage" mechanism to handle large numbers of co
 3.  **Graceful Shutdown**: When a collection is evicted or deleted, its `Drop` implementation ensures that all associated background tasks (indexing, snapshotting) are immediately aborted, preventing resource leaks and panicked threads.
 
 This architecture allows HyperspaceDB to support thousands of collections while keeping the active memory footprint low, scaling based on actual usage rather than total data.
+
+## 🏙 Multi-Tenancy (v2.0)
+
+HyperspaceDB 2.0 introduces native SaaS multi-tenancy.
+
+- **Logical Isolation**: Collections are prefixed with `user_id` in the storage layer. The `CollectionManager` ensures that requests without the correctly matching `user_id` cannot access or even list other tenants' data.
+- **Usage Accounting**: The `UserUsage` report provides per-tenant metrics including total vector count and real disk usage (calculating the size of `mmap` segments and snapshots), facilitating integration with billing systems.
+
+## 🔁 Replication Anti-Entropy (v2.0)
+
+Beyond the Merkle-tree based delta sync, v2.0 implements a **WAL-based Catch-up** mechanism:
+
+1.  **State Reporting**: When a Follower connects via gRPC `Replicate()`, it sends a `ReplicationRequest` containing its `last_logical_clock`.
+2.  **Differential Replay**: The leader compares this clock with its own latest state. If the leader has missing entries in its WAL that the follower needs, it streams them sequentially.
+3.  **Conflict Resolution**: Lamport clocks ensure that concurrent operations across nodes can be ordered reliably during recovery.
+
+---
+*© 2026 YARlabs - Confidential & Proprietary*

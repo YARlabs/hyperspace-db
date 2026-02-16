@@ -19,6 +19,8 @@ HyperspaceDB natively supports both the **Poincaré ball model** (for hierarchie
 *   **🖥️ Mission Control TUI**: Real-time terminal dashboard for monitoring QPS, segments, and system health.
 *   **🕸️ Edge Ready**: WASM compilation target allows running the full DB in browser with **Local-First** privacy and **IndexedDB** persistence.
 *   **🛠️ Runtime Tuning**: Dynamically adjust `ef_search` and `ef_construction` parameters via gRPC on-the-fly.
+*   **🏙 Multi-Tenancy**: Native SaaS support with namespace isolation (`user_id`) and billing stats.
+*   **🔁 Replication**: Leader-Follower architecture with Anti-Entropy catch-up for high availability.
 
 ---
 

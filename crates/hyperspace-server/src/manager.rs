@@ -67,6 +67,13 @@ pub struct CollectionManager {
     pub cluster_state: Arc<RwLock<ClusterState>>,
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct UserUsage {
+    pub collection_count: usize,
+    pub vector_count: usize,
+    pub disk_usage_bytes: u64,
+}
+
 impl CollectionManager {
     fn get_internal_name(user_id: &str, collection_name: &str) -> String {
         format!("{user_id}_{collection_name}")
@@ -264,53 +271,17 @@ impl CollectionManager {
 
     pub async fn rebuild_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
         let internal_name = Self::get_internal_name(user_id, name);
-        // 1. Trigger optimization (builds new index side-by-side)
+        // Trigger optimization (Hot Vacuum)
         if let Some(entry) = self.collections.get(&internal_name) {
             entry
                 .collection
                 .optimize()
+                .await
                 .map_err(|e| format!("Optimization failed: {e}"))?;
+            Ok(())
         } else {
-            return Err("Collection not found".to_string());
+            Err("Collection not found".to_string())
         }
-
-        // 2. Remove from memory (triggers Drop -> tasks abort)
-        self.collections.remove(&internal_name);
-
-        // 3. Filesystem Swap
-        let col_dir = self.base_path.join(&internal_name);
-        let index_path = col_dir.join("index");
-        let opt_path = col_dir.join("index.optimized");
-        let backup_path = col_dir.join("index.backup");
-
-        if opt_path.exists() {
-            println!("🔄 Swapping index for '{internal_name}'...");
-            if index_path.exists() {
-                std::fs::rename(&index_path, &backup_path).map_err(|e| e.to_string())?;
-            }
-            if let Err(e) = std::fs::rename(&opt_path, &index_path) {
-                // Rollback
-                println!("❌ Swap failed: {e}. Rolling back...");
-                if backup_path.exists() {
-                    let _ = std::fs::rename(&backup_path, &index_path);
-                }
-                return Err(e.to_string());
-            }
-            // Cleanup backup
-            let _ = std::fs::remove_dir_all(&backup_path);
-        } else {
-            // If optimization didn't create file (e.g. empty collection), just reload
-            println!("⚠️ No optimized index found (maybe empty?). Reloading existing.");
-        }
-
-        // 4. Reload
-        let meta = CollectionMetadata::load(&col_dir).map_err(|e| e.to_string())?;
-        self.instantiate_collection(&internal_name, meta)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        println!("✅ Collection '{internal_name}' rebuilt and reloaded successfully.");
-        Ok(())
     }
 
     pub fn get_collection_counts(&self) -> (usize, usize) {
@@ -423,7 +394,8 @@ impl CollectionManager {
 
     pub fn list(&self, user_id: &str) -> Vec<String> {
         let prefix = format!("{user_id}_");
-        self.collections
+        let mut collections: std::collections::HashSet<String> = self
+            .collections
             .iter()
             .filter(|entry| entry.key().starts_with(&prefix))
             .map(|entry| {
@@ -433,7 +405,24 @@ impl CollectionManager {
                     .unwrap_or(entry.key())
                     .to_string()
             })
-            .collect()
+            .collect();
+
+        // Also check disk for cold collections
+        if let Ok(entries) = std::fs::read_dir(&self.base_path) {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.starts_with(&prefix) && entry.path().is_dir() {
+                        if let Some(stripped) = name.strip_prefix(&prefix) {
+                            collections.insert(stripped.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut list: Vec<String> = collections.into_iter().collect();
+        list.sort();
+        list
     }
 
     pub fn list_all(&self) -> Vec<String> {
@@ -494,6 +483,60 @@ impl CollectionManager {
             Err(format!("Collection '{name}' not found"))
         }
     }
+
+    pub fn get_usage_report(&self) -> std::collections::HashMap<String, UserUsage> {
+        let mut report = std::collections::HashMap::new();
+
+        // Scan data directory
+        if let Ok(entries) = std::fs::read_dir(&self.base_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        // Parse {user_id}_{collection_name}
+                        // We assume the first part before '_' is user_id.
+                        // If no underscore (e.g. legacy), treat as "default_admin" or skip?
+                        // Standard format: "{user_id}_{name}"
+
+                        let user_id = if let Some((u, _)) = name.split_once('_') {
+                            u
+                        } else {
+                            "unknown"
+                        };
+
+                        let size = calculate_dir_size(&path).unwrap_or(0);
+                        let usage = report
+                            .entry(user_id.to_string())
+                            .or_insert(UserUsage::default());
+                        usage.disk_usage_bytes += size;
+                        usage.collection_count += 1;
+
+                        // Vector count: only if active in memory
+                        if let Some(entry) = self.collections.get(name) {
+                            usage.vector_count += entry.collection.count();
+                        }
+                    }
+                }
+            }
+        }
+        report
+    }
+}
+
+fn calculate_dir_size(path: &Path) -> std::io::Result<u64> {
+    let mut total_size = 0u64;
+
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let metadata = entry.metadata()?;
+            if metadata.is_file() {
+                total_size += metadata.len();
+            } else if metadata.is_dir() {
+                total_size += calculate_dir_size(&entry.path())?;
+            }
+        }
+    }
+    Ok(total_size)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

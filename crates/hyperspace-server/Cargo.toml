@@ -8,7 +8,7 @@ tokio = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 hyperspace-proto = { workspace = true }
-hyperspace-core = { workspace = true }
+hyperspace-core = { workspace = true, features = ["nightly-simd"] }
 hyperspace-index = { workspace = true }
 hyperspace-store = { workspace = true }
 tokio-stream = "0.1"
@@ -27,8 +27,12 @@ tower-http = { version = "0.6.8", features = ["cors", "trace", "fs"] }
 sysinfo = "0.32"
 hyperspace-embed = { path = "../hyperspace-embed", optional = true }
 tikv-jemallocator = "0.6"
+tikv-jemalloc-ctl = "0.6"
 
 uuid = { version = "1.7", features = ["v4", "serde"] }
+parking_lot.workspace = true
+async-trait = "0.1.89"
+futures = "0.3.32"
 
 [features]
 embed = ["dep:hyperspace-embed"]

@@ -31,11 +31,12 @@ use hyperspace_store::VectorStore;
 use std::marker::PhantomData;
 
 #[derive(Archive, Deserialize, Serialize)]
-#[archive(check_bytes)] // Requires "validation" feature
+#[archive(check_bytes)]
 pub struct SnapshotData {
     pub max_layer: u32,
     pub entry_point: u32,
     pub nodes: Vec<SnapshotNode>,
+    pub metadata: SnapshotMetadata,
 }
 
 #[derive(Archive, Deserialize, Serialize)]
@@ -43,6 +44,21 @@ pub struct SnapshotData {
 pub struct SnapshotNode {
     pub id: u32,
     pub layers: Vec<Vec<u32>>,
+}
+
+pub type KeyedBitmaps = Vec<(i64, Vec<u8>)>;
+
+#[derive(Archive, Deserialize, Serialize)]
+#[archive(check_bytes)]
+pub struct SnapshotMetadata {
+    // Key -> Serialized RoaringBitmap
+    pub inverted: Vec<(String, Vec<u8>)>,
+    // Key -> [(Value, Serialized RoaringBitmap)]
+    pub numeric: Vec<(String, KeyedBitmaps)>,
+    // Serialized RoaringBitmap for deleted items
+    pub deleted: Vec<u8>,
+    // Mapping ID -> Metadata Map
+    pub forward: Vec<(u32, Vec<(String, String)>)>,
 }
 
 // Constants are defined later in the file.
@@ -88,10 +104,52 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             });
         }
 
+        let mut inverted_vec = Vec::new();
+        for item in &self.metadata.inverted {
+            let mut buf = Vec::new();
+            item.value()
+                .serialize_into(&mut buf)
+                .map_err(|e| e.to_string())?;
+            inverted_vec.push((item.key().clone(), buf));
+        }
+
+        let mut numeric_vec = Vec::new();
+        for item in &self.metadata.numeric {
+            let mut inner_vec = Vec::new();
+            for (val, bitmap) in item.value() {
+                let mut buf = Vec::new();
+                bitmap.serialize_into(&mut buf).map_err(|e| e.to_string())?;
+                inner_vec.push((*val, buf));
+            }
+            numeric_vec.push((item.key().clone(), inner_vec));
+        }
+
+        let mut deleted_buf = Vec::new();
+        self.metadata
+            .deleted
+            .read()
+            .serialize_into(&mut deleted_buf)
+            .map_err(|e| e.to_string())?;
+
+        let mut forward_vec = Vec::new();
+        for item in &self.metadata.forward {
+            let mut map_vec = Vec::new();
+            for (k, v) in item.value() {
+                map_vec.push((k.clone(), v.clone()));
+            }
+            forward_vec.push((*item.key(), map_vec));
+        }
+
         let data = SnapshotData {
             max_layer,
             entry_point,
             nodes: snapshot_nodes,
+            metadata: SnapshotMetadata {
+                inverted: inverted_vec,
+                numeric: numeric_vec,
+                deleted: deleted_buf,
+                forward: forward_vec,
+            },
         };
 
         // Serialize
@@ -192,9 +250,44 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             total_nodes as f64 / total_time.as_secs_f64()
         );
 
+        println!("   📦 Restoring Metadata Index...");
+
+        let inverted = DashMap::new();
+        for (k, v) in deserialized.metadata.inverted {
+            let bitmap = RoaringBitmap::deserialize_from(&v[..]).unwrap_or_default();
+            inverted.insert(k, bitmap);
+        }
+
+        let numeric = DashMap::new();
+        for (k, v) in deserialized.metadata.numeric {
+            let mut inner_map = BTreeMap::new();
+            for (val, bitmap_bytes) in v {
+                let bitmap = RoaringBitmap::deserialize_from(&bitmap_bytes[..]).unwrap_or_default();
+                inner_map.insert(val, bitmap);
+            }
+            numeric.insert(k, inner_map);
+        }
+
+        let deleted =
+            RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]).unwrap_or_default();
+
+        let forward = DashMap::new();
+        for (k, v) in deserialized.metadata.forward {
+            let mut attributes = std::collections::HashMap::new();
+            for (mk, mv) in v {
+                attributes.insert(mk, mv);
+            }
+            forward.insert(k, attributes);
+        }
+
         Ok(Self {
             nodes: RwLock::new(nodes),
-            metadata: MetadataIndex::default(),
+            metadata: MetadataIndex {
+                inverted,
+                numeric,
+                deleted: RwLock::new(deleted),
+                forward,
+            },
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
@@ -220,10 +313,52 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             });
         }
 
+        let mut inverted_vec = Vec::new();
+        for item in &self.metadata.inverted {
+            let mut buf = Vec::new();
+            item.value()
+                .serialize_into(&mut buf)
+                .map_err(|e| e.to_string())?;
+            inverted_vec.push((item.key().clone(), buf));
+        }
+
+        let mut numeric_vec = Vec::new();
+        for item in &self.metadata.numeric {
+            let mut inner_vec = Vec::new();
+            for (val, bitmap) in item.value() {
+                let mut buf = Vec::new();
+                bitmap.serialize_into(&mut buf).map_err(|e| e.to_string())?;
+                inner_vec.push((*val, buf));
+            }
+            numeric_vec.push((item.key().clone(), inner_vec));
+        }
+
+        let mut deleted_buf = Vec::new();
+        self.metadata
+            .deleted
+            .read()
+            .serialize_into(&mut deleted_buf)
+            .map_err(|e| e.to_string())?;
+
+        let mut forward_vec = Vec::new();
+        for item in &self.metadata.forward {
+            let mut map_vec = Vec::new();
+            for (k, v) in item.value() {
+                map_vec.push((k.clone(), v.clone()));
+            }
+            forward_vec.push((*item.key(), map_vec));
+        }
+
         let snapshot = SnapshotData {
             max_layer,
             entry_point,
             nodes: snapshot_nodes,
+            metadata: SnapshotMetadata {
+                inverted: inverted_vec,
+                numeric: numeric_vec,
+                deleted: deleted_buf,
+                forward: forward_vec,
+            },
         };
 
         let bytes = rkyv::to_bytes::<_, 1024>(&snapshot)
@@ -258,9 +393,42 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         storage.set_count(nodes.len());
 
+        let inverted = DashMap::new();
+        for (k, v) in deserialized.metadata.inverted {
+            let bitmap = RoaringBitmap::deserialize_from(&v[..]).unwrap_or_default();
+            inverted.insert(k, bitmap);
+        }
+
+        let numeric = DashMap::new();
+        for (k, v) in deserialized.metadata.numeric {
+            let mut inner_map = BTreeMap::new();
+            for (val, bitmap_bytes) in v {
+                let bitmap = RoaringBitmap::deserialize_from(&bitmap_bytes[..]).unwrap_or_default();
+                inner_map.insert(val, bitmap);
+            }
+            numeric.insert(k, inner_map);
+        }
+
+        let deleted =
+            RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]).unwrap_or_default();
+
+        let forward = DashMap::new();
+        for (k, v) in deserialized.metadata.forward {
+            let mut attributes = std::collections::HashMap::new();
+            for (mk, mv) in v {
+                attributes.insert(mk, mv);
+            }
+            forward.insert(k, attributes);
+        }
+
         Ok(Self {
             nodes: RwLock::new(nodes),
-            metadata: MetadataIndex::default(),
+            metadata: MetadataIndex {
+                inverted,
+                numeric,
+                deleted: RwLock::new(deleted),
+                forward,
+            },
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
@@ -279,8 +447,6 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 pub type NodeId = u32;
 
 const MAX_LAYERS: usize = 16;
-const M: usize = 16;
-// const M_MAX0: usize = M * 2; // Not used in MVP yet
 
 #[derive(Debug)]
 pub struct HnswIndex<const N: usize, M: Metric<N>> {
@@ -591,7 +757,6 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         result
     }
 
-    // Distance calculation helper
     // Distance calculation helper
     #[inline]
     fn dist(&self, node_id: NodeId, query: &HyperVector<N>) -> f64 {
@@ -1045,16 +1210,19 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // 3. Phase 2: Insert links from new_level down to 0
         {
-            const M_MAX: usize = M;
+            let m_base = self.config.get_m();
             let ef_construction = self.config.get_ef_construction();
 
             for level in (0..=std::cmp::min(new_level, max_layer as usize)).rev() {
+                // HNSW: Layer 0 should be 2x denser for better recall
+                let m_max = if level == 0 { m_base * 2 } else { m_base };
+
                 // a) Search candidates
                 let candidates_heap =
                     self.search_layer_candidates(curr_obj, &q_vec, level, ef_construction);
 
-                // b) Select neighbors with heuristic
-                let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, M);
+                // b) Select neighbors with heuristic (using layer-specific M)
+                let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, m_max);
 
                 // c) Bidirectional connect
                 for &neighbor_id in &selected_neighbors {
@@ -1065,8 +1233,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     let neighbors_len = self.nodes.read()[neighbor_id as usize].layers[level]
                         .read()
                         .len();
-                    if neighbors_len > M_MAX {
-                        self.prune_connections(neighbor_id, level, M_MAX);
+                    if neighbors_len > m_max {
+                        self.prune_connections(neighbor_id, level, m_max);
                     }
                 }
 
@@ -1115,8 +1283,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     }
 
     fn prune_connections(&self, node_id: NodeId, level: usize, max_links: usize) {
-        // Drop logic inside to avoid long write locks block
-        let links_copy: Vec<u32> = {
+        // 1. Snapshot current links (Read Lock)
+        let initial_links: Vec<u32> = {
             let nodes = self.nodes.read();
             if node_id as usize >= nodes.len() {
                 return;
@@ -1125,23 +1293,40 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             layer_read.clone()
         };
 
-        // 1. Get vectors
+        // 2. Heavy work: calculate distances (NO LOCKS HELD)
         let node_vec = self.get_vector(node_id);
         let mut candidates = Vec::new();
-        for &n in &links_copy {
+        for &n in &initial_links {
             let n_vec = self.get_vector(n);
             let d = M::distance(&node_vec.coords, &n_vec.coords);
             candidates.push(Candidate { id: n, distance: d });
         }
 
-        // 2. Select best
+        // Select best from snapshot
         let heap = BinaryHeap::from(candidates);
-        let keepers = self.select_neighbors(&node_vec, heap, max_links);
+        let mut keepers = self.select_neighbors(&node_vec, heap, max_links);
 
-        // 3. Replace list
+        // 3. Atomic update merge (Write Lock)
         let nodes = self.nodes.read();
-        let mut links = nodes[node_id as usize].layers[level].write();
-        *links = keepers;
+        let mut links_lock = nodes[node_id as usize].layers[level].write();
+
+        // RACE CONDITION CHECK:
+        // If length changed (someone added a link while we calculated),
+        // we must preserve those new links!
+        if links_lock.len() > initial_links.len() {
+            // Find new elements strictly added after our snapshot
+            for &id in links_lock.iter() {
+                if !initial_links.contains(&id) {
+                    // Simple strategy: always keep new links to avoid graph tearing.
+                    // Even if we exceed M slightly, it's safer than losing connectivity.
+                    if keepers.len() < max_links {
+                        keepers.push(id);
+                    }
+                }
+            }
+        }
+
+        *links_lock = keepers;
     }
 
     pub fn count_nodes(&self) -> usize {

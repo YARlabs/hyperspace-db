@@ -425,6 +425,27 @@ client.delete_collection("my_vectors")
 
 **Note**: If no collection is specified, operations default to the `"default"` collection.
 
+## 🏙️ SaaS & Multi-Tenancy (v2.0)
+
+HyperspaceDB is built for SaaS. Isolate thousands of users on a single node.
+
+### 1. User Isolation
+Data is logically separated by `user_id`. Each user sees only their own collections.
+
+**How to use:**
+Pass the `x-hyperspace-user-id` header in your requests.
+
+```bash
+curl -H "x-hyperspace-user-id: tenant_123" http://localhost:50050/api/collections
+```
+
+### 2. Billing API
+Admins can query usage statistics for all tenants:
+
+```bash
+curl -H "x-hyperspace-user-id: admin" http://localhost:50050/api/admin/usage
+```
+
 ## ⚙️ Configuration & Presets
 
 HyperspaceDB v1.2 introduces flexible configuration presets to support both **Scientific** (Hyperbolic) and **Classic** (Euclidean) use cases.
@@ -557,10 +578,10 @@ Official 1st-party drivers:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | `sdks/python` | ✅ v1.6.0 |
-| 🦀 **Rust** | `crates/hyperspace-sdk` | ✅ v1.6.0 |
-| 🦕 **TypeScript** | `sdks/ts` | ✅ v1.6.0 |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v1.6.0 |
+| 🐍 **Python** | `sdks/python` | ✅ v2.0.0 |
+| 🦀 **Rust** | `crates/hyperspace-sdk` | ✅ v2.0.0 |
+| 🦕 **TypeScript** | `sdks/ts` | ✅ v2.0.0 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v2.0.0 |
 | 🐹 **Go** | `sdks/go` | 🚧 Planned |
 
 ---

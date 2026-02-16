@@ -15,6 +15,9 @@ pub struct GlobalConfig {
 
     /// Active indexing tasks (being processed right now)
     pub active_indexing: AtomicU64,
+
+    /// `m`: Max connections per layer (dynamic)
+    pub m: AtomicUsize,
 }
 
 impl GlobalConfig {
@@ -24,6 +27,7 @@ impl GlobalConfig {
             ef_construction: AtomicUsize::new(100), // Default
             queue_size: AtomicU64::new(0),
             active_indexing: AtomicU64::new(0),
+            m: AtomicUsize::new(16),
         }
     }
 
@@ -41,6 +45,14 @@ impl GlobalConfig {
 
     pub fn set_ef_construction(&self, val: usize) {
         self.ef_construction.store(val, Ordering::Relaxed);
+    }
+
+    pub fn get_m(&self) -> usize {
+        self.m.load(Ordering::Relaxed)
+    }
+
+    pub fn set_m(&self, val: usize) {
+        self.m.store(val, Ordering::Relaxed);
     }
 
     pub fn inc_queue(&self) {

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-02-16
+
+### Added
+*   **Replication Anti-Entropy**: Implemented catch-up mechanism for follower nodes using logical clocks in the Write-Ahead Log (WAL).
+    *   Followers now report their last persisted clock state upon connection.
+    *   Leaders replay missing operations from WAL to ensure consistency.
+*   **Multi-Tenancy**: Native support for SaaS-style multi-tenancy.
+    *   **Namespace Isolation**: Collections are prefixed with `user_id` (e.g., `{user_id}_{collection_name}`).
+    *   **Context Propagation**: `x-hyperspace-user-id` header is propagated through HTTP and gRPC layers.
+    *   **Billing Foundations**: New `/api/admin/usage` endpoint provides disk and vector usage breakdown per user.
+*   **WASM Flexibility**: Completely refactored `hyperspace-wasm` to support dynamic configurations.
+    *   Supports multiple dimensions (384, 768, 1024, 1536) and metrics (Euclidean, Cosine).
+    *   Automatic index type selection based on initialization parameters.
+*   **Persistence Upgrades**:
+    *   **Metadata Persistence**: Filters and deleted items are now correctly saved and restored in snapshots.
+    *   **Logical Clocks**: WAL entries now include logical timestamps for precise state restoration.
+
+### Changed
+*   **Major Version Bump**: All crates updated to v2.0.0.
+*   **API Updates**:
+    *   `Replicate` gRPC method now accepts `ReplicationRequest` instead of `Empty`.
+    *   Collection listing now filters by `user_id` context.
+
+### Fixed
+*   **WAL Replay**: Fixed issue where legacy WAL entries (OpCode 2) could cause replay failures; implemented backward compatibility.
+*   **Docker Build**: Optimized Docker images with `strip` and LTO for smaller footprint.
+
 ## [1.6.0] - 2026-02-15
 
 ### Added

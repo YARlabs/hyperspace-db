@@ -11,6 +11,7 @@ services:
     environment:
       - RUST_LOG=info
       - HS_DATA_DIR=/app/data
+      - HYPERSPACE_API_KEY=I_LOVE_HYPERSPACEDB
       - MALLOC_CONF=background_thread:true,dirty_decay_ms:60000,muzzy_decay_ms:60000
       - HS_IDLE_TIMEOUT_SEC=3600
     volumes:

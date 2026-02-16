@@ -76,6 +76,31 @@ Parameters `ef_search` (search depth) and `ef_construction` (build quality) are 
 2.  **Zero-Copy Read**: Search uses `mmap` to read quantized vectors directly from OS cache without heap allocation.
 3.  **SIMD Acceleration**: Distance calculations use `std::simd` (Portable SIMD) for 4-8x speedup on supported CPUs (AVX2, Neon).
 
+3.  **SIMD Acceleration**: Distance calculations use `std::simd` (Portable SIMD) for 4-8x speedup on supported CPUs (AVX2, Neon).
+
+---
+
+## 🏙 Multi-Tenancy (Since v2.0)
+
+HyperspaceDB supports SaaS-style multi-tenancy natively.
+
+-   **Namespace Isolation**: Collections are logical entities namespaced by `user_id`.
+    -   Format: `{user_id}_{collection_name}`
+    -   Example: `cust_123_vectors`, `cust_456_vectors`.
+-   **Security**: API Requests require `x-hyperspace-user-id` header (injected by authenticating proxy or middleware).
+-   **Resource Accounting**: Disk usage and vector counts are tracked per-user for billing.
+
+## 🔁 Replication & Consistency (Since v2.0)
+
+HyperspaceDB uses a **Leader-Follower** replication model with **Async Anti-Entropy**.
+
+1.  **Leader**: Accepts writes, appends to local WAL, and broadcasts replication stream.
+2.  **Follower**: Connects to Leader, requests stream starting from its last persisted `logical_clock`.
+3.  **Consistency**:
+    -   **Logical Clocks**: Every WAL entry has a monotonic `logical_clock` ID.
+    -   **Anti-Entropy**: Followers catch up by replaying missing entries from the Leader's stream.
+    -   **Durability**: Followers persist their own WAL and snapshots entirely independently.
+
 ---
 
 ## 🔄 Lifecycle

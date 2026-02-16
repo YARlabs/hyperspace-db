@@ -80,7 +80,12 @@ message SearchRequest {
 ## 🌐 HTTP API (Control Plane)
 
 Served on port `50050` (default). All endpoints under `/api`.
-Authentication: `x-api-key` header required.
+
+### Authentication & Multi-Tenancy
+
+Every request should include:
+- `x-api-key`: API Key (optional if disabled, but recommended)
+- `x-hyperspace-user-id`: Tenant Identifier (e.g. `client_123`). If omitted, defaults to `default_admin`.
 
 ### Cluster Status
 `GET /api/cluster/status`
@@ -108,6 +113,24 @@ Real-time system resource usage.
     "disk_usage_mb": 1024,
     "total_collections": 5,
     "total_vectors": 1000000
+}
+```
+
+### Admin / Billing (Since v2.0)
+
+**Requires `user_id: admin`**
+
+`GET /api/admin/usage`
+
+Returns JSON map of `user_id -> usage_stats`:
+
+```json
+{
+  "tenant_A": {
+    "collection_count": 2,
+    "vector_count": 1500,
+    "disk_usage_bytes": 1048576
+  }
 }
 ```
 

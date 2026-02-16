@@ -84,8 +84,8 @@ impl Interceptor for AuthInterceptor {
                         let result = hasher.finalize();
                         let request_hash = hex::encode(result);
 
-                        // Constant-time comparison is better for security, but string eq is fine for MVP
-                        if request_hash == *expected {
+                        // Constant-time comparison to prevent timing attacks
+                        if constant_time_eq(request_hash.as_bytes(), expected.as_bytes()) {
                             return Ok(request);
                         }
                     }
@@ -97,6 +97,18 @@ impl Interceptor for AuthInterceptor {
             Ok(request)
         }
     }
+}
+
+/// Constant-time comparison for byte slices
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut res = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        res |= x ^ y;
+    }
+    res == 0
 }
 
 // Client-side interceptor (for Follower connecting to Leader)
@@ -251,7 +263,10 @@ impl Database for HyperspaceService {
             };
 
             // id is u32 in proto.
-            if let Err(e) = col.insert(&req.vector, req.id, meta, clock, durability) {
+            if let Err(e) = col
+                .insert(&req.vector, req.id, meta, clock, durability)
+                .await
+            {
                 return Err(Status::internal(e));
             }
             Ok(Response::new(InsertResponse { success: true }))
@@ -307,7 +322,7 @@ impl Database for HyperspaceService {
                 _ => hyperspace_core::Durability::Default,
             };
 
-            if let Err(e) = col.insert_batch(vectors, clock, durability) {
+            if let Err(e) = col.insert_batch(vectors, clock, durability).await {
                 return Err(Status::internal(e));
             }
             Ok(Response::new(InsertResponse { success: true }))
@@ -371,7 +386,7 @@ impl Database for HyperspaceService {
                         _ => hyperspace_core::Durability::Default,
                     };
 
-                    if let Err(e) = col.insert(&vector, req.id, meta, clock, durability) {
+                    if let Err(e) = col.insert(&vector, req.id, meta, clock, durability).await {
                         return Err(Status::internal(e));
                     }
                     return Ok(Response::new(InsertResponse { success: true }));
@@ -462,7 +477,10 @@ impl Database for HyperspaceService {
                 hybrid_alpha: req.hybrid_alpha,
             };
 
-            match col.search(&req.vector, &legacy_filter, &complex_filters, &params) {
+            match col
+                .search(&req.vector, &legacy_filter, &complex_filters, &params)
+                .await
+            {
                 Ok(res) => {
                     let output = res
                         .into_iter()
@@ -551,7 +569,7 @@ impl Database for HyperspaceService {
 
     async fn replicate(
         &self,
-        request: Request<Empty>,
+        request: Request<hyperspace_proto::hyperspace::ReplicationRequest>,
     ) -> Result<Response<Self::ReplicateStream>, Status> {
         if self.role == "follower" {
             return Err(Status::failed_precondition(
@@ -564,12 +582,17 @@ impl Database for HyperspaceService {
             .remote_addr()
             .map_or_else(|| "unknown".to_string(), |addr| addr.to_string());
 
+        let req = request.into_inner();
+        println!(
+            "📡 Follower connected: {peer_addr} (Last clock: {})",
+            req.last_logical_clock
+        );
+
         // Register follower
         {
             let mut state = self.manager.cluster_state.write().await;
             if !state.downstream_peers.contains(&peer_addr) {
                 state.downstream_peers.push(peer_addr.clone());
-                println!("📡 Follower connected: {peer_addr}");
             }
         }
 
@@ -722,7 +745,20 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                             let mut client = DatabaseClient::with_interceptor(channel, interceptor);
 
                             println!("Connected! Requesting replication stream...");
-                            match client.replicate(Empty {}).await {
+                            let current_clock = manager_weak
+                                .upgrade()
+                                .map(|m| {
+                                    futures::executor::block_on(async {
+                                        m.cluster_state.read().await.logical_clock
+                                    })
+                                })
+                                .unwrap_or(0);
+
+                            let req = hyperspace_proto::hyperspace::ReplicationRequest {
+                                last_logical_clock: current_clock,
+                            };
+
+                            match client.replicate(req).await {
                                 Ok(resp) => {
                                     let mut stream = resp.into_inner();
                                     while let Ok(Some(log)) = stream.message().await {
@@ -748,7 +784,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                                             op.metadata.into_iter().collect(),
                                                             log.logical_clock,
                                                             hyperspace_core::Durability::Default,
-                                                        ) {
+                                                        ).await {
                                                             eprintln!("Rep Error: {e}");
                                                         }
                                                     } else {
@@ -983,6 +1019,9 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("[H] HyperspaceDB Server v2.0.0");
+    hyperspace_core::check_simd();
+
     dotenv::dotenv().ok();
     let args = Args::parse();
     start_server(args).await

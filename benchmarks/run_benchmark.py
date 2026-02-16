@@ -107,7 +107,7 @@ class Config:
     
     # Ours (Hyperbolic)
     # ПУТЬ К ВАШЕЙ МОДЕЛИ!
-    model_path_hyp: str = "../cde-trainer/data/hyper_qwen_hydra_epoch_5.pth" 
+    model_path_hyp: str = "./data/v5_Embedding_v0.1a.pth" 
     dim_hyp: int = 64
     HYPER_MODE: str = "cosine" # "poincare" or "cosine"
     
@@ -510,13 +510,13 @@ def calculate_brute_force_gt(query_vecs: np.ndarray, doc_vecs: np.ndarray, doc_i
 def print_table(results: List[Result]):
     # Sort by Insert QPS
     results.sort(key=lambda x: x.insert_qps, reverse=True)
-    header = f"{'Database':<15} | {'Dim':<5} | {'Metric':<8} | {'Ins QPS':<8} | {'Srch QPS':<8} | {'P99 Lat':<10} | {'Recall(Sem)':<11} | {'Recall(Sys)':<11} | {'MRR':<5} | {'NDCG':<5} | {'C1':<6} | {'C10':<6} | {'C30':<6} | {'Disk':<8} | {'Status'}"
+    header = f"{'Database':<15} | {'Dim':<5} | {'Metric':<8} | {'Ins QPS':<10} | {'Srch QPS':<10} | {'P99 Lat':<10} | {'Recall(Sem)':<11} | {'Recall(Sys)':<11} | {'MRR':<5} | {'NDCG':<5} | {'C1':<8} | {'C10':<8} | {'C30':<8} | {'Disk':<8} | {'Status'}"
     print("\n" + "="*len(header))
     print(header)
     print("-" * len(header))
     for r in results:
         if r.status == "Success":
-            print(f"{r.database:<15} | {r.dimension:<5} | {r.metric:<8} | {r.insert_qps:8.0f} | {r.search_qps:8.0f} | {r.p99:8.2f} ms | {r.recall:10.1%} | {r.recall_sys:10.1%} | {r.mrr:4.2f} | {r.ndcg:4.2f} | {r.c1_qps:6.0f} | {r.c10_qps:6.0f} | {r.c30_qps:6.0f} | {r.disk_usage:8} | {r.status}")
+            print(f"{r.database:<15} | {r.dimension:<5} | {r.metric:<8} | {r.insert_qps:10,.0f} | {r.search_qps:10,.0f} | {r.p99:8.2f} ms | {r.recall:10.1%} | {r.recall_sys:10.1%} | {r.mrr:4.2f} | {r.ndcg:4.2f} | {r.c1_qps:8,.0f} | {r.c10_qps:8,.0f} | {r.c30_qps:8,.0f} | {r.disk_usage:8} | {r.status}")
         else:
             print(f"{r.database:<15} | {r.dimension:<5} | ERROR: {r.status}")
     print("=" * len(header) + "\n")
@@ -1402,12 +1402,12 @@ def run_benchmark():
     with open("BENCHMARK_STORY.md", "w") as f:
         f.write("# 📐 Semantic Hyperbolic Advantage: Comparison Report\n\n")
         f.write(f"Testing on **{cfg.dataset_name}**. Dataset subset: **{len(docs):,}** docs.\n")
-        f.write(f"Accuracy based on **{len(test_queries)}** semantic queries.\n\n")
+        f.write(f"Accuracy based on **{len(test_queries):,}** semantic queries.\n\n")
         f.write("| Database | Dim | Geometry | Metric | Ins QPS | Srch QPS | P99 Lat | Recall(Sem)@10 | Recall(Sys)@10 | MRR | NDCG@10 | C1 | C10 | C30 | Disk |\n")
         f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
         for r in final_results:
             if r.status == "Success":
-                f.write(f"| **{r.database}** | {r.dimension} | {r.geometry} | {r.metric} | {r.insert_qps:,.0f} | {r.search_qps:,.0f} | {r.p99:.2f}ms | {r.recall:.1%} | {r.recall_sys:.1%} | {r.mrr:.2f} | {r.ndcg:.2f} | {r.c1_qps:,.0f} | {r.c10_qps:,.0f} | {r.c30_qps:,.0f} | {r.disk_usage} |\n")
+                f.write(f"| **{r.database}** | {r.dimension:,} | {r.geometry} | {r.metric} | {r.insert_qps:,.0f} | {r.search_qps:,.0f} | {r.p99:.2f}ms | {r.recall:.1%} | {r.recall_sys:.1%} | {r.mrr:.2f} | {r.ndcg:.2f} | {r.c1_qps:,.0f} | {r.c10_qps:,.0f} | {r.c30_qps:,.0f} | {r.disk_usage} |\n")
         
         f.write("\n## 💡 Accuracy Analysis\n")
         hyp = next((r for r in final_results if r.database == "Hyperspace"), None)

@@ -6,7 +6,8 @@ Only the latest major version is currently supported with security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x     | :white_check_mark: |
+| 2.x     | :white_check_mark: |
+| 1.x     | :warning:          |
 | < 1.0   | :x:                |
 
 ## Reporting a Vulnerability
@@ -22,5 +23,6 @@ We will acknowledge your report within 48 hours and provide an estimated timefra
 
 *   **Memory Safety**: Built 100% in Rust to prevent buffer overflows and use-after-free errors.
 *   **Authentication**: Built-in API Key support (SHA-256 hashed storage, Constant-time comparison).
+*   **Multi-Tenancy**: Native namespace isolation between users ensuring data privacy in shared environments.
 *   **Role Based Access**: Strict Leader (Read/Write) and Follower (Read-Only) separation.
 *   **Dependency Audits**: We regularly audit our crate dependencies.

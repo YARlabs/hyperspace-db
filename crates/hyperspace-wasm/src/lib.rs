@@ -3,14 +3,21 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
+use hyperspace_core::{CosineMetric, EuclideanMetric, GlobalConfig, QuantizationMode};
 use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore;
 use rexie::{ObjectStore, Rexie, TransactionMode};
 
-// Hardcoded dimension for MVP.
-// TODO: Refactor `HyperspaceDB` struct to hold `enum IndexWrapper` to support dynamic dimensions (e.g. 128, 256, 1024).
-type MyIndex = HnswIndex<1024, EuclideanMetric>;
+enum IndexWrapper {
+    L2Dim384(Arc<HnswIndex<384, EuclideanMetric>>),
+    CosineDim384(Arc<HnswIndex<384, CosineMetric>>),
+    L2Dim768(Arc<HnswIndex<768, EuclideanMetric>>),
+    CosineDim768(Arc<HnswIndex<768, CosineMetric>>),
+    L2Dim1024(Arc<HnswIndex<1024, EuclideanMetric>>),
+    CosineDim1024(Arc<HnswIndex<1024, CosineMetric>>),
+    L2Dim1536(Arc<HnswIndex<1536, EuclideanMetric>>),
+    CosineDim1536(Arc<HnswIndex<1536, CosineMetric>>),
+}
 
 const DB_NAME: &str = "hyperspace_db";
 const STORE_NAME: &str = "storage"; // Object Store name
@@ -23,11 +30,12 @@ extern "C" {
 
 #[wasm_bindgen]
 pub struct HyperspaceDB {
-    index: Arc<MyIndex>,
+    index: IndexWrapper,
     // Mapping UserID -> InternalID
     id_map: RwLock<HashMap<u32, u32>>,
     // Reverse mapping InternalID -> UserID
     rev_map: RwLock<HashMap<u32, u32>>,
+    dimension: usize,
 }
 
 #[wasm_bindgen]
@@ -37,22 +45,35 @@ impl HyperspaceDB {
     /// # Errors
     /// Returns an error if initialization fails.
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Result<HyperspaceDB, JsValue> {
+    pub fn new(dimension: usize, metric: String) -> Result<HyperspaceDB, JsValue> {
         console_error_panic_hook::set_once();
 
-        // Use RAM implementation (via default-features = false in Cargo.toml deps)
-        // 1024 dims * 4 bytes (f32) = 4096 bytes per vector
-        let storage = Arc::new(VectorStore::new(std::path::Path::new("mem"), 1024 * 4));
-
-        // For MVP, simple RAM store setup.
+        // Use RAM implementation
+        // Element size depends on dimension (Scalar f32 = 4 bytes)
+        let element_size = dimension * 4;
+        let storage = Arc::new(VectorStore::new(std::path::Path::new("mem"), element_size));
         let config = Arc::new(GlobalConfig::default());
+        let mode = QuantizationMode::None;
+        let metric = metric.to_lowercase();
 
-        let index = MyIndex::new(storage, QuantizationMode::None, config);
+        let index = match (dimension, metric.as_str()) {
+             (384, "l2" | "euclidean") => IndexWrapper::L2Dim384(Arc::new(HnswIndex::new(storage, mode, config))),
+             (384, "cosine") => IndexWrapper::CosineDim384(Arc::new(HnswIndex::new(storage, mode, config))),
+             (768, "l2" | "euclidean") => IndexWrapper::L2Dim768(Arc::new(HnswIndex::new(storage, mode, config))),
+             (768, "cosine") => IndexWrapper::CosineDim768(Arc::new(HnswIndex::new(storage, mode, config))),
+             (1024, "l2" | "euclidean") => IndexWrapper::L2Dim1024(Arc::new(HnswIndex::new(storage, mode, config))),
+             (1024, "cosine") => IndexWrapper::CosineDim1024(Arc::new(HnswIndex::new(storage, mode, config))),
+             (1536, "l2" | "euclidean") => IndexWrapper::L2Dim1536(Arc::new(HnswIndex::new(storage, mode, config))),
+             (1536, "cosine") => IndexWrapper::CosineDim1536(Arc::new(HnswIndex::new(storage, mode, config))),
+
+             _ => return Err(JsValue::from_str(&format!("Unsupported config: dim={dimension}, metric={metric}. Supported dims: 384, 768, 1024, 1536"))),
+        };
 
         Ok(Self {
-            index: Arc::new(index),
+            index,
             id_map: RwLock::new(HashMap::new()),
             rev_map: RwLock::new(HashMap::new()),
+            dimension,
         })
     }
 
@@ -61,8 +82,11 @@ impl HyperspaceDB {
     /// # Errors
     /// Returns error on dimension mismatch or duplicate ID.
     pub fn insert(&self, id: u32, vector: &[f64]) -> Result<(), JsValue> {
-        if vector.len() != 1024 {
-            return Err(JsValue::from_str("Dimension mismatch: expected 1024."));
+        if vector.len() != self.dimension {
+            return Err(JsValue::from_str(&format!(
+                "Dimension mismatch: expected {}.",
+                self.dimension
+            )));
         }
 
         let mut id_map = self.id_map.write();
@@ -72,10 +96,23 @@ impl HyperspaceDB {
             return Err(JsValue::from_str("Duplicate ID not supported"));
         }
 
-        let internal_id = self
-            .index
-            .insert(vector, HashMap::new())
-            .map_err(|e| JsValue::from_str(&e))?;
+        macro_rules! insert_impl {
+            ($idx:expr) => {
+                $idx.insert(vector, HashMap::new())
+                    .map_err(|e| JsValue::from_str(&e))?
+            };
+        }
+
+        let internal_id = match &self.index {
+            IndexWrapper::L2Dim384(idx) => insert_impl!(idx),
+            IndexWrapper::CosineDim384(idx) => insert_impl!(idx),
+            IndexWrapper::L2Dim768(idx) => insert_impl!(idx),
+            IndexWrapper::CosineDim768(idx) => insert_impl!(idx),
+            IndexWrapper::L2Dim1024(idx) => insert_impl!(idx),
+            IndexWrapper::CosineDim1024(idx) => insert_impl!(idx),
+            IndexWrapper::L2Dim1536(idx) => insert_impl!(idx),
+            IndexWrapper::CosineDim1536(idx) => insert_impl!(idx),
+        };
 
         id_map.insert(id, internal_id);
         rev_map.insert(internal_id, id);
@@ -88,13 +125,26 @@ impl HyperspaceDB {
     /// # Errors
     /// Returns error on dimension mismatch.
     pub fn search(&self, vector: &[f64], k: usize) -> Result<JsValue, JsValue> {
-        if vector.len() != 1024 {
+        if vector.len() != self.dimension {
             return Err(JsValue::from_str("Dimension mismatch"));
         }
 
-        let results = self
-            .index
-            .search(vector, k, 100, &HashMap::new(), &[], None, None);
+        macro_rules! search_impl {
+            ($idx:expr) => {
+                $idx.search(vector, k, 100, &HashMap::new(), &[], None, None)
+            };
+        }
+
+        let results = match &self.index {
+            IndexWrapper::L2Dim384(idx) => search_impl!(idx),
+            IndexWrapper::CosineDim384(idx) => search_impl!(idx),
+            IndexWrapper::L2Dim768(idx) => search_impl!(idx),
+            IndexWrapper::CosineDim768(idx) => search_impl!(idx),
+            IndexWrapper::L2Dim1024(idx) => search_impl!(idx),
+            IndexWrapper::CosineDim1024(idx) => search_impl!(idx),
+            IndexWrapper::L2Dim1536(idx) => search_impl!(idx),
+            IndexWrapper::CosineDim1536(idx) => search_impl!(idx),
+        };
 
         let rev_map = self.rev_map.read();
 
@@ -132,7 +182,17 @@ impl HyperspaceDB {
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         // 1. Export Storage (Bytes)
-        let vector_store = self.index.get_storage();
+        let vector_store = match &self.index {
+            IndexWrapper::L2Dim384(idx) => idx.get_storage(),
+            IndexWrapper::CosineDim384(idx) => idx.get_storage(),
+            IndexWrapper::L2Dim768(idx) => idx.get_storage(),
+            IndexWrapper::CosineDim768(idx) => idx.get_storage(),
+            IndexWrapper::L2Dim1024(idx) => idx.get_storage(),
+            IndexWrapper::CosineDim1024(idx) => idx.get_storage(),
+            IndexWrapper::L2Dim1536(idx) => idx.get_storage(),
+            IndexWrapper::CosineDim1536(idx) => idx.get_storage(),
+        };
+
         let store_bytes = vector_store.as_ref().export();
         let store_js = serde_wasm_bindgen::to_value(&store_bytes)?;
         db_store
@@ -141,10 +201,22 @@ impl HyperspaceDB {
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         // 2. Export Index (Bytes)
-        let index_bytes = self
-            .index
-            .save_to_bytes()
-            .map_err(|e| JsValue::from_str(&e))?;
+        macro_rules! save_impl {
+            ($idx:expr) => {
+                $idx.save_to_bytes().map_err(|e| JsValue::from_str(&e))?
+            };
+        }
+
+        let index_bytes = match &self.index {
+            IndexWrapper::L2Dim384(idx) => save_impl!(idx),
+            IndexWrapper::CosineDim384(idx) => save_impl!(idx),
+            IndexWrapper::L2Dim768(idx) => save_impl!(idx),
+            IndexWrapper::CosineDim768(idx) => save_impl!(idx),
+            IndexWrapper::L2Dim1024(idx) => save_impl!(idx),
+            IndexWrapper::CosineDim1024(idx) => save_impl!(idx),
+            IndexWrapper::L2Dim1536(idx) => save_impl!(idx),
+            IndexWrapper::CosineDim1536(idx) => save_impl!(idx),
+        };
         let index_js = serde_wasm_bindgen::to_value(&index_bytes)?;
         db_store
             .put(&index_js, Some(&JsValue::from_str("index")))
@@ -218,7 +290,7 @@ impl HyperspaceDB {
         let id_map_data: HashMap<u32, u32> = serde_wasm_bindgen::from_value(map_js)?;
 
         // Reconstruct
-        let element_size = 4096;
+        let element_size = self.dimension * 4;
         let storage = Arc::new(VectorStore::from_bytes(
             std::path::Path::new("mem"),
             element_size,
@@ -226,13 +298,47 @@ impl HyperspaceDB {
         ));
 
         let config = Arc::new(GlobalConfig::default());
+        let mode = QuantizationMode::None;
 
         // 2. Restore Index
-        let index = MyIndex::load_from_bytes(&index_bytes, storage, QuantizationMode::None, config)
-            .map_err(|e| JsValue::from_str(&e))?;
+        // We match on self.index to determine which type to load into
+        let new_index_wrapper = match &self.index {
+            IndexWrapper::L2Dim384(_) => IndexWrapper::L2Dim384(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+            IndexWrapper::CosineDim384(_) => IndexWrapper::CosineDim384(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+            IndexWrapper::L2Dim768(_) => IndexWrapper::L2Dim768(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+            IndexWrapper::CosineDim768(_) => IndexWrapper::CosineDim768(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+            IndexWrapper::L2Dim1024(_) => IndexWrapper::L2Dim1024(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+            IndexWrapper::CosineDim1024(_) => IndexWrapper::CosineDim1024(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+            IndexWrapper::L2Dim1536(_) => IndexWrapper::L2Dim1536(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+            IndexWrapper::CosineDim1536(_) => IndexWrapper::CosineDim1536(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
+                    .map_err(|e| JsValue::from_str(&e))?,
+            )),
+        };
 
         // Update self
-        self.index = Arc::new(index);
+        self.index = new_index_wrapper;
 
         // Update Maps
         let mut id_map = self.id_map.write();

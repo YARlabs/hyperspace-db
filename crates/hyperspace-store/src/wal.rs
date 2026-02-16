@@ -34,6 +34,7 @@ pub enum WalEntry {
         id: u32,
         vector: Vec<f64>,
         metadata: HashMap<String, String>,
+        logical_clock: u64,
     },
 }
 
@@ -50,11 +51,13 @@ impl Wal {
         id: u32,
         vector: &[f64],
         metadata: &HashMap<String, String>,
+        logical_clock: u64,
     ) -> io::Result<Vec<u8>> {
         let mut buf = Vec::new();
-        // Internal Format: OpCode 2 (Insert V2 wrapper)
-        buf.write_u8(2)?;
+        // Internal Format: OpCode 3 (Insert V3 with clock)
+        buf.write_u8(3)?;
         buf.write_u32::<LittleEndian>(id)?;
+        buf.write_u64::<LittleEndian>(logical_clock)?;
 
         // Vector
         buf.write_u32::<LittleEndian>(vector.len() as u32)?;
@@ -106,17 +109,19 @@ impl Wal {
         id: u32,
         vector: &[f64],
         metadata: &HashMap<String, String>,
+        logical_clock: u64,
     ) -> io::Result<()> {
-        let payload = Self::serialize_entry(id, vector, metadata)?;
+        let payload = Self::serialize_entry(id, vector, metadata, logical_clock)?;
         self.write_packet(&payload)
     }
 
     pub fn append_batch(
         &mut self,
         entries: &[(Vec<f64>, u32, HashMap<String, String>)],
+        logical_clock: u64,
     ) -> io::Result<()> {
         for (vector, id, metadata) in entries {
-            let payload = Self::serialize_entry(*id, vector, metadata)?;
+            let payload = Self::serialize_entry(*id, vector, metadata, logical_clock)?;
             self.write_packet(&payload)?;
         }
         Ok(())
@@ -211,8 +216,9 @@ impl Wal {
     fn parse_entry(cursor: &mut Cursor<Vec<u8>>) -> io::Result<WalEntry> {
         let opcode = cursor.read_u8()?;
         match opcode {
-            2 => {
+            3 => {
                 let id = cursor.read_u32::<LittleEndian>()?;
+                let logical_clock = cursor.read_u64::<LittleEndian>()?;
                 let vec_len = cursor.read_u32::<LittleEndian>()?;
                 let mut vector = Vec::with_capacity(vec_len as usize);
                 for _ in 0..vec_len {
@@ -238,6 +244,38 @@ impl Wal {
                     id,
                     vector,
                     metadata,
+                    logical_clock,
+                })
+            }
+            2 => {
+                let id = cursor.read_u32::<LittleEndian>()?;
+                let vec_len = cursor.read_u32::<LittleEndian>()?;
+                let mut vector = Vec::with_capacity(vec_len as usize);
+                for _ in 0..vec_len {
+                    vector.push(cursor.read_f64::<LittleEndian>()?);
+                }
+                let meta_len = cursor.read_u32::<LittleEndian>()?;
+                let mut metadata = HashMap::with_capacity(meta_len as usize);
+                for _ in 0..meta_len {
+                    let k_len = cursor.read_u32::<LittleEndian>()?;
+                    let mut k_buf = vec![0u8; k_len as usize];
+                    cursor.read_exact(&mut k_buf)?;
+                    let key = String::from_utf8(k_buf)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+                    let v_len = cursor.read_u32::<LittleEndian>()?;
+                    let mut v_buf = vec![0u8; v_len as usize];
+                    cursor.read_exact(&mut v_buf)?;
+                    let val = String::from_utf8(v_buf)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    metadata.insert(key, val);
+                }
+                // Legacy V2 inside V3 container: default clock 0
+                Ok(WalEntry::Insert {
+                    id,
+                    vector,
+                    metadata,
+                    logical_clock: 0,
                 })
             }
             _ => Err(io::Error::new(
@@ -266,6 +304,7 @@ impl Wal {
                         id,
                         vector,
                         metadata: HashMap::new(),
+                        logical_clock: 0,
                     },
                     bytes_read,
                 ))
@@ -309,6 +348,7 @@ impl Wal {
                         id,
                         vector,
                         metadata,
+                        logical_clock: 0,
                     },
                     bytes_read,
                 ))

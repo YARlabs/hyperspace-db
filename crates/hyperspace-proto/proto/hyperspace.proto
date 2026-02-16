@@ -28,9 +28,13 @@ service Database {
   rpc Configure (ConfigUpdate) returns (StatusResponse);
   
   // Replication (Leader -> Follower)
-  rpc Replicate (Empty) returns (stream ReplicationLog);
+  rpc Replicate (ReplicationRequest) returns (stream ReplicationLog);
   rpc GetDigest (DigestRequest) returns (DigestResponse);
   rpc RebuildIndex (RebuildIndexRequest) returns (StatusResponse);
+}
+
+message ReplicationRequest {
+  uint64 last_logical_clock = 1;
 }
 
 message ReplicationLog {
