@@ -1,3 +1,4 @@
+
 import time
 
 import numpy as np
@@ -5,6 +6,8 @@ from tqdm import tqdm
 
 from db_plugins.base import DatabasePlugin
 from plugin_runtime import BenchmarkContext, Result
+
+
 class QdrantPlugin(DatabasePlugin):
     name = "qdrant"
 
@@ -20,7 +23,7 @@ class QdrantPlugin(DatabasePlugin):
         import run_benchmark_legacy as legacy
 
         if ctx.doc_vecs_euc is None or ctx.q_vecs_euc is None:
-            return Result("Qdrant", 0, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", "Error: missing vectors")
+            return Result("Qdrant", 0, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", "missing vectors")
 
         from qdrant_client import QdrantClient
         from qdrant_client.models import Distance, PointStruct, VectorParams
@@ -53,9 +56,22 @@ class QdrantPlugin(DatabasePlugin):
                 all_gt_ids.append(ctx.valid_qrels.get(q_id, []))
 
                 ts = time.time()
-                res = client.query_points(collection_name=name, query=q_vec.tolist(), limit=10)
+                # Use search for newer clients instead of query_points
+                if hasattr(client, "search"):
+                     res = client.search(collection_name=name, query_vector=q_vec.tolist(), limit=10)
+                else: 
+                     # Fallback for slightly older versions, though search is preferred in v1.7+
+                     res = client.query_points(collection_name=name, query=q_vec.tolist(), limit=10).points
+
                 lats.append((time.time() - ts) * 1000)
-                all_res_ids.append([hit.payload.get("doc_id") for hit in res.points])
+                
+                # Handling different response structures depending on method used
+                if hasattr(res, "points"): # unlikely if search() used properly, but safeguard
+                     hits = res.points
+                else:
+                     hits = res
+                     
+                all_res_ids.append([hit.payload.get("doc_id") for hit in hits])
 
             search_dur = time.time() - search_t0
             recall, mrr, ndcg = legacy.calculate_accuracy(all_res_ids, all_gt_ids, 10)
@@ -64,7 +80,10 @@ class QdrantPlugin(DatabasePlugin):
             q_list = ctx.q_vecs_euc[0].tolist()
 
             def qdrant_query() -> None:
-                client.query_points(collection_name=name, query=q_list, limit=10)
+                if hasattr(client, "search"):
+                    client.search(collection_name=name, query_vector=q_list, limit=10)
+                else:
+                    client.query_points(collection_name=name, query=q_list, limit=10)
 
             conc = legacy.run_concurrency_profile(qdrant_query)
             disk = legacy.format_size(legacy.get_docker_disk("qdrant"))

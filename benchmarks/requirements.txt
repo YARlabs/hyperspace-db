@@ -18,3 +18,5 @@ protobuf>=5.29.0
 h5py>=3.7.0
 pandas>=2.0.0
 pytest>=8.0.0
+psycopg2-binary>=2.9.9
+pgvector>=0.2.4

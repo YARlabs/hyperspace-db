@@ -1,3 +1,4 @@
+
 import os
 import shutil
 import time
@@ -7,6 +8,8 @@ from tqdm import tqdm
 
 from db_plugins.base import DatabasePlugin
 from plugin_runtime import BenchmarkContext, Result
+
+
 class ChromaPlugin(DatabasePlugin):
     name = "chroma"
 
@@ -22,7 +25,7 @@ class ChromaPlugin(DatabasePlugin):
         import run_benchmark_legacy as legacy
 
         if ctx.doc_vecs_euc is None or ctx.q_vecs_euc is None:
-            return Result("ChromaDB", 0, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", "Error: missing vectors")
+            return Result("ChromaDB", 0, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", "missing vectors")
 
         import chromadb
 
@@ -35,6 +38,30 @@ class ChromaPlugin(DatabasePlugin):
             os.environ["ANONYMIZED_TELEMETRY"] = "False"
             os.environ["CHROMA_TELEMETRY_IMPL"] = "chromadb.telemetry.product.noop.NoopTelemetry"
 
+            # MONKEY PATCH: Fix for "capture() takes 1 positional argument but 3 were given"
+            # The installed version of ChromaDB might have a mismatch in Telemetry interface vs implementation.
+            # We force a localized Noop that accepts any arguments.
+            class UniversalNoopTelemetry:
+                def __init__(self, *args, **kwargs):
+                    pass
+                def capture(self, *args, **kwargs):
+                    pass
+                def context(self, *args, **kwargs):
+                    pass
+
+            # Try patching known telemetry locations
+            try:
+                import chromadb.telemetry.product.posthog
+                chromadb.telemetry.product.posthog.Posthog = UniversalNoopTelemetry
+            except ImportError:
+                pass
+            
+            try:
+                import chromadb.telemetry.product.noop
+                chromadb.telemetry.product.noop.NoopTelemetry = UniversalNoopTelemetry
+            except ImportError:
+                pass
+
             if hasattr(chromadb, "HttpClient"):
                 try:
                     from chromadb.config import Settings
@@ -44,6 +71,10 @@ class ChromaPlugin(DatabasePlugin):
                         port=8000,
                         settings=Settings(anonymized_telemetry=False),
                     )
+                    # Double check if we can patch the client's telemetry directly if it's already instantiated
+                    if hasattr(client, "_telemetry"):
+                         client._telemetry = UniversalNoopTelemetry()
+
                     try:
                         client.delete_collection(name)
                     except Exception:
@@ -63,6 +94,8 @@ class ChromaPlugin(DatabasePlugin):
                         path=cleanup_local_dir,
                         settings=Settings(anonymized_telemetry=False),
                     )
+                    if hasattr(client, "_telemetry"):
+                         client._telemetry = UniversalNoopTelemetry()
                 else:
                     from chromadb.config import Settings
 
@@ -74,6 +107,8 @@ class ChromaPlugin(DatabasePlugin):
                             anonymized_telemetry=False,
                         )
                     )
+                    if hasattr(client, "_telemetry"):
+                         client._telemetry = UniversalNoopTelemetry()
                 try:
                     client.delete_collection(name)
                 except Exception:
@@ -82,6 +117,11 @@ class ChromaPlugin(DatabasePlugin):
 
             t0 = time.time()
             c_batch_size = max(10, int(3_000_000 / (ctx.cfg.dim_base * 8)))
+            # ChromaDB logging can be noisy.
+            # We can't easily suppress stdout from C++ bindings, but we can try setting logging level.
+            import logging
+            logging.getLogger("chromadb").setLevel(logging.ERROR)
+            
             for i in tqdm(range(0, len(ctx.doc_vecs_euc), c_batch_size), desc="Chroma Insert"):
                 batch_vecs = ctx.doc_vecs_euc[i : i + c_batch_size]
                 batch_ids = ctx.doc_ids[i : i + c_batch_size]
@@ -115,7 +155,9 @@ class ChromaPlugin(DatabasePlugin):
                 disk = legacy.get_local_disk(os.path.abspath(chroma_local_dir))
             else:
                 disk = legacy.format_size(legacy.get_docker_disk("chroma"))
-            client.delete_collection(name)
+            try:
+                client.delete_collection(name)
+            except: pass
 
             return Result(
                 database="ChromaDB",

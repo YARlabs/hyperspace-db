@@ -127,13 +127,22 @@ services:
       timeout: 3s
       retries: 10
 
-# volumes:
-#   hyperspace_data:
-#   qdrant_data:
-#   weaviate_data:
-#   milvus_etcd:
-#   milvus_minio:
-#   milvus_data:
+  # Pgvector (Postgres 16 + pgvector)
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: vectordb
+    networks:
+      - benchmark_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 networks:
   benchmark_net:
