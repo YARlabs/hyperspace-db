@@ -2,6 +2,11 @@
 name = "hyperspace-sdk"
 version = "2.0.0"
 edition = "2021"
+description = "Official Rust SDK for HyperspaceDB gRPC API"
+readme = "README.md"
+license = "AGPL-3.0-only"
+keywords = ["vector-database", "ann", "grpc", "hnsw", "hyperspace"]
+categories = ["database", "api-bindings"]
 
 [features]
 default = []

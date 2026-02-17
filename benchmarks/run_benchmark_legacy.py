@@ -4,6 +4,7 @@ import sys
 import os
 import shutil
 import torch
+import json
 import numpy as np
 import statistics
 import math
@@ -570,6 +571,175 @@ def print_table(results: List[Result]):
         else:
             print(f"{r.database:<15} | {r.dimension:<5} | ERROR: {r.status}")
     print("=" * len(header) + "\n")
+
+def parse_size_to_mb(size_str: str) -> float:
+    """Helper to convert formatted strings like '1.2G' or '450M' back to MB for charts"""
+    try:
+        if not size_str or size_str in ("N/A", "Err", "0"): return 0.0
+        # Extract number
+        num_part = ""
+        for char in size_str:
+            if char.isdigit() or char == '.':
+                num_part += char
+            else:
+                break
+        if not num_part: return 0.0
+        val = float(num_part)
+        unit = size_str.upper()
+        if 'G' in unit: return val * 1024
+        if 'K' in unit: return val / 1024
+        if 'B' in unit and 'MB' not in unit: return val / (1024*1024)
+        return val # Default to MB
+    except: return 0.0
+
+def generate_benchmark_html_report(results: List[Result], dataset_name: str = "Unknown", doc_count: int = 0, query_count: int = 0):
+    # Ensure we write to the benchmarks directory specifically
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    html_path = os.path.join(base_dir, "BENCHMARK_REPORT.html")
+    
+    print(f"   [Debug] Generating HTML report for {len(results)} results...")
+    
+    # Filter successful results (case-insensitive)
+    data = [r for r in results if str(r.status).lower() == "success"]
+    if not data:
+        print("   [Debug] No successful results to report in HTML.")
+        return
+
+    # Sort data: Hyperspace ALWAYS first, others by search_qps
+    data.sort(key=lambda x: (0 if "hyperspace" in x.database.lower() else 1, -x.search_qps))
+
+    dbs = [r.database for r in data]
+    colors = ["#22d3ee", "#fac05e", "#818cf8", "#f472b6", "#10b981", "#6366f1"]
+    
+    # Prepare datasets
+    search_qps = [r.search_qps for r in data]
+    insert_qps = [r.insert_qps for r in data]
+    recalls = [r.recall * 100 for r in data]
+    mrrs = [r.mrr * 100 for r in data]
+    latencies = [r.p99 for r in data]
+    disk_mb = [parse_size_to_mb(r.disk_usage) for r in data]
+    
+    # Concurrency Scaling Data
+    conc_labels = [1, 10, 30]
+    js_conc_datasets = []
+    for i, r in enumerate(data):
+        color = colors[i % len(colors)]
+        js_conc_datasets.append({
+            "label": r.database,
+            "data": [r.c1_qps, r.c10_qps, r.c30_qps],
+            "borderColor": color,
+            "backgroundColor": color,
+            "tension": 0.1,
+            "fill": False
+        })
+
+    with open(html_path, "w") as f:
+        f.write(f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HyperspaceDB Benchmark Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {{ --bg: #0f172a; --card-bg: #1e293b; --text: #f8fafc; --accent: #22d3ee; }}
+        body {{ font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; margin: 0; }}
+        .header {{ text-align: center; margin-bottom: 3rem; }}
+        .header h1 {{ color: var(--accent); font-size: 2.5rem; margin-bottom: 0.5rem; }}
+        .header p {{ color: #94a3b8; font-size: 1.1rem; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 2rem; }}
+        .card {{ background: var(--card-bg); padding: 1.5rem; border-radius: 1rem; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }}
+        .card h2 {{ color: #94a3b8; font-size: 1.2rem; margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 0.75rem; margin-bottom: 1.5rem; }}
+        .full-width {{ grid-column: 1 / -1; }}
+        canvas {{ max-height: 400px; width: 100% !important; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📐 Benchmark Comparison Report</h1>
+        <p>Testing on <b>{dataset_name}</b> with <b>{doc_count:,}</b> docs and <b>{query_count:,}</b> queries.</p>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h2>Search Performance (QPS) (Bigger is better) </h2>
+            <canvas id="searchChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>Ingestion Speed (Insert QPS) (Bigger is better)</h2>
+            <canvas id="insertChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>Accuracy (Recall@10 %) (Bigger is better)</h2>
+            <canvas id="recallChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>Tail Latency (P99 ms) (Smaller is better)</h2>
+            <canvas id="latencyChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>Disk Footprint (MB) (Smaller is better)</h2>
+            <canvas id="diskChart"></canvas>
+        </div>
+        <div class="card full-width">
+            <h2>Concurrency Scaling (Search QPS) (Bigger is better)</h2>
+            <canvas id="concChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const dbs = {json.dumps(dbs)};
+        const colors = {json.dumps(colors)};
+        const commonOptions = {{
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {{ legend: {{ labels: {{ color: '#fff' }} }} }},
+            scales: {{
+                y: {{ grid: {{ color: '#334155' }}, ticks: {{ color: '#94a3b8' }} }},
+                x: {{ grid: {{ color: '#334155' }}, ticks: {{ color: '#94a3b8' }} }}
+            }}
+        }};
+
+        function createBarChart(id, label, data, suffix = '') {{
+            new Chart(document.getElementById(id), {{
+                type: 'bar',
+                data: {{
+                    labels: dbs,
+                    datasets: [{{
+                        label: label,
+                        data: data,
+                        backgroundColor: colors.slice(0, dbs.length),
+                        borderRadius: 8
+                    }}]
+                }},
+                options: {{
+                    ...commonOptions,
+                    plugins: {{
+                        ...commonOptions.plugins,
+                        tooltip: {{ callbacks: {{ label: (ctx) => ctx.raw.toLocaleString() + suffix }} }}
+                    }}
+                }}
+            }});
+        }}
+
+        createBarChart('searchChart', 'Search QPS', {json.dumps(search_qps)});
+        createBarChart('insertChart', 'Insert QPS', {json.dumps(insert_qps)});
+        createBarChart('recallChart', 'Recall@10 %', {json.dumps(recalls)}, '%');
+        createBarChart('latencyChart', 'P99 Latency (ms)', {json.dumps(latencies)}, 'ms');
+        createBarChart('diskChart', 'Disk Usage (MB)', {json.dumps(disk_mb)}, ' MB');
+
+        new Chart(document.getElementById('concChart'), {{
+            type: 'line',
+            data: {{
+                labels: {json.dumps(conc_labels)},
+                datasets: {json.dumps(js_conc_datasets)}
+            }},
+            options: commonOptions
+        }});
+    </script>
+</body>
+</html>""")
+    print(f"\n✅ Visual report updated: {html_path}")
 
 def detect_hyperspace_metric(host="localhost"):
     """Detect if HyperspaceDB is in poincare or cosine mode via API"""
@@ -1699,6 +1869,7 @@ def run_benchmark():
     # FINAL REPORT
     # ==========================================
     print_table(final_results)
+    generate_benchmark_html_report(final_results, cfg.dataset_name, len(docs), len(test_queries))
     
     # Write to Markdown
     with open("BENCHMARK_STORY.md", "w") as f:

@@ -1,9 +1,10 @@
 # Modular Benchmark Report
 
-Testing on **Synthetic/Random** with **50,000** docs and **1,000** queries.
+Testing on **Synthetic/Random** with **1,000,000** docs and **1,000** queries.
 
 | Database | Dim | Geometry | Metric | Ins QPS | Srch QPS | P99 Lat | Recall(Sem)@10 | Recall(Sys)@10 | MRR | NDCG@10 | C1 | C10 | C30 | Disk |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Hyperspace** | 1,536 | Euclidean | Cosine | 14,681 | 881 | 1.45ms | 88.7% | 88.7% | 1.00 | 0.92 | 1,340 | 10,558 | 11,306 | 756.0M |
-| **Milvus** | 1,536 | Euclidean | Cosine | 11,241 | 428 | 3.93ms | 92.7% | 92.7% | 1.00 | 0.95 | 487 | 3,120 | 4,073 | 42.00G |
-| **Qdrant** | 1,536 | Euclidean | Cosine | 1,292 | 434 | 3.17ms | 99.8% | 99.8% | 1.00 | 1.00 | 472 | 1,989 | 2,202 | 366.0M |
+| **Hyperspace** | 1,024 | Euclidean | Cosine | 20,494 | 390 | 3.83ms | 87.6% | 87.6% | 1.00 | 0.91 | 554 | 4,332 | 4,367 | 9.20G |
+| **Milvus** | 1,024 | Euclidean | Cosine | 16,748 | 150 | 11.65ms | 88.7% | 88.7% | 1.00 | 0.92 | 155 | 282 | 373 | 47.00G |
+| **Qdrant** | 1,024 | Euclidean | Cosine | 1,887 | 409 | 3.29ms | 92.3% | 92.3% | 1.00 | 0.95 | 495 | 2,062 | 2,379 | 4.10G |
+| **Weaviate** | 1,024 | Euclidean | Cosine | 985 | 129 | 16.90ms | 89.9% | 89.9% | 0.99 | 0.93 | 154 | 874 | 1,014 | 4.90G |

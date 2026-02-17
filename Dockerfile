@@ -10,7 +10,7 @@ RUN npm run build
 FROM rustlang/rust:nightly AS builder
 
 # Install protobuf compiler
-RUN apt-get update && apt-get install -y protobuf-compiler cmake
+RUN apt-get update && apt-get install -y protobuf-compiler cmake clang build-essential pkg-config
 
 WORKDIR /app
 COPY . .

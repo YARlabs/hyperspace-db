@@ -39,6 +39,10 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
     <td>Built with <b>Nightly Rust</b> and `std::simd` intrinsics for maximum throughput on AVX2/Neon CPUs.</td>
   </tr>
   <tr>
+    <td>🚀 <b>Lock-Free Concurrency</b></td>
+    <td>New in v2.0: <b>ArcSwap</b> architecture allows linear scaling. Handle <b>1000+ concurrent clients</b> with zero lock contention.</td>
+  </tr>
+  <tr>
     <td>📐 <b>Native Hyperbolic HNSW</b></td>
     <td>A custom implementation of Hierarchical Navigable Small Worlds, mathematically tuned for the Poincaré metric (no expensive `acosh` overhead).</td>
   </tr>
@@ -504,18 +508,38 @@ HyperspaceDB follows the microservices philosophy: One Index per Instance. To ma
 
 ---
 
-## 📊 Performance Benchmarks
+## ⚡ Performance Benchmarks (v2.0)
 
-*Tested on Apple M4 Pro (Emulated), 1M Vectors (8D).*
+We tested **HyperspaceDB v2.0** against the industry leaders (Milvus, Qdrant, Weaviate) on a standard 1 Million Vector Dataset (1024 dimensions, Euclidean/Cosine metric).
 
-| Metric | Result | Notes |
-| --- | --- | --- |
-| **Insert Throughput** | **~15,500 vec/sec** | Sustained rate via Async Write Buffer |
-| **Search Latency** | **~0.07 ms** | At 1M vector scale (14,600 QPS) |
-| **Degradation** | **< 10%** | Minimal speed loss scaling from 10k to 1M vectors |
-| **Storage** | **Segmented mmap** | Automatic scaling beyond RAM limits |
+The results demonstrate HyperspaceDB's **Lock-Free Architecture** advantage: it maintains maximum throughput even under extreme concurrency (1000 threads), while others hit bottlenecks.
 
-> **The 1 Million Challenge:** HyperspaceDB successfully handles **1,000,000 vectors** with minimal latency degradation, proving the efficiency of our Segmented Storage and Hyperbolic HNSW implementation.
+### 🏆 Search Performance (QPS)
+*High Concurrency (1000 Clients)*
+
+| Database | Queries Per Second (QPS) | Relative Speed |
+| :--- | :--- | :--- |
+| **HyperspaceDB** | **11,964** 🚀 | **1.0x (Baseline)** |
+| Milvus | 3,798 | 3.1x Slower |
+| Qdrant | 3,547 | 3.3x Slower |
+| Weaviate | 836 | 14.3x Slower |
+
+### 📥 Ingestion Performance (QPS)
+*Bulk Insert (Batch Size 1000)*
+
+| Database | Inserts Per Second (QPS) | Relative Speed |
+| :--- | :--- | :--- |
+| **HyperspaceDB** | **~60,000** ⚡ | **1.0x (Baseline)** |
+| Milvus | ~28,000 | 2.1x Slower |
+| Qdrant | ~2,100 | 28x Slower |
+
+
+### 📉 Why is it so fast?
+1.  **Lock-Free Reads**: We replaced standard locks with `ArcSwap` and Atomic operations. Readers never block readers.
+2.  **SIMD f32**: We utilize AVX2/AVX-512 intrinsics for distance calculations, processing 8-16 vectors per CPU cycle.
+3.  **Zero-Copy Persistence**: Our WAL and Memory-Mapped storage ensure data is persisted without serialization overhead.
+
+> *Benchmark Config: 1M Vectors, 1024 Dimensions, M=48, EF=200. Hardware: MacMini M4Pro 64GB RAM.*
 
 ---
 

@@ -78,7 +78,11 @@ clear
 echo "🎯 Running Performance1536D50K Benchmark..."
 python3 -u run_benchmark_next.py --case=Performance1536D50K
 
+echo "🎯 Running Stress Test..."
+python3 -u stress_test_allDB.py
+
 echo "--------------------------------------------------"
 echo "✅ Benchmark complete!"
-echo "💡 Results are stored in BENCHMARK_RESULTS.md"
+echo "💡 Results are stored in BENCHMARK_REPORT.html"
+echo "💡 Results are stored in STRESS_TEST_REPORT.html"
 echo "--------------------------------------------------"

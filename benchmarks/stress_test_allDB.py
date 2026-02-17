@@ -130,7 +130,7 @@ class StressTestRunner:
         js_search_datasets = []
         js_insert_datasets = []
         js_eff_datasets = []
-        colors = ["#38bdf8", "#fac05e", "#818cf8", "#f472b6", "#10b981", "#6366f1"]
+        colors = ["#22d3ee", "#fac05e", "#818cf8", "#f472b6", "#10b981", "#6366f1"]
         
         # Concurrencies for efficiency (adding empty 1 and 1100 as padding)
         eff_concs = [1] + self.concurrencies[1:] + [1100]
@@ -378,24 +378,24 @@ def run_stress_test():
         except Exception as e: print(f"Skipping Milvus: {e}")
 
     # --- CHROMA ---
-    # if not target_dbs or "chroma" in target_dbs:
-    #     try:
-    #         import chromadb
-    #         from chromadb.config import Settings
-    #         def chr_setup(c):
-    #             client = chromadb.HttpClient(host="localhost", port=8000, settings=Settings(anonymized_telemetry=False))
-    #             try: client.delete_collection(c)
-    #             except: pass
-    #             col = client.create_collection(c, metadata={"hnsw:space": "cosine"})
-    #             return col
-    #         def chr_ins(col, c, vecs, start_id):
-    #             ids = [str(start_id + i) for i in range(len(vecs))]
-    #             for k in range(0, len(vecs), 500):
-    #                 col.add(embeddings=vecs[k:k+500], ids=ids[k:k+500])
-    #         def chr_srch(col, c, v):
-    #             col.query(query_embeddings=[v], n_results=10)
-    #         runner.run_concurrency("Chroma", chr_setup, chr_ins, chr_srch, lambda col, c: None) # Cleanup can be added if needed
-    #     except Exception as e: print(f"Skipping Chroma: {e}")
+    if not target_dbs or "chroma" in target_dbs:
+        try:
+            import chromadb
+            from chromadb.config import Settings
+            def chr_setup(c):
+                client = chromadb.HttpClient(host="localhost", port=8000, settings=Settings(anonymized_telemetry=False))
+                try: client.delete_collection(c)
+                except: pass
+                col = client.create_collection(c, metadata={"hnsw:space": "cosine"})
+                return col
+            def chr_ins(col, c, vecs, start_id):
+                ids = [str(start_id + i) for i in range(len(vecs))]
+                for k in range(0, len(vecs), 500):
+                    col.add(embeddings=vecs[k:k+500], ids=ids[k:k+500])
+            def chr_srch(col, c, v):
+                col.query(query_embeddings=[v], n_results=10)
+            runner.run_concurrency("Chroma", chr_setup, chr_ins, chr_srch, lambda col, c: None) # Cleanup can be added if needed
+        except Exception as e: print(f"Skipping Chroma: {e}")
 
     # --- WEAVIATE ---
     if not target_dbs or "weaviate" in target_dbs:

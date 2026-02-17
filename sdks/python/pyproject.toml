@@ -4,8 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hyperspacedb"
-version = "1.6.0"
+version = "2.0.0"
 description = "Fastest Hyperbolic Vector DB Client"
+readme = "README.md"
 authors = [
     {name = "YARlabs"}
 ]
@@ -15,6 +16,7 @@ dependencies = [
     "numpy>=1.20.0"
 ]
 requires-python = ">=3.8"
+keywords = ["vector-database", "ann", "grpc", "embeddings", "hyperspace"]
 
 [project.optional-dependencies]
 openai = ["openai>=1.0.0"]

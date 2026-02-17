@@ -192,6 +192,7 @@ def main() -> None:
         final_results.append(plugin.run(ctx))
 
     legacy.print_table(final_results)
+    legacy.generate_benchmark_html_report(final_results, cfg.dataset_name, len(ctx.docs), len(ctx.test_queries))
     write_story(cfg, ctx.docs, ctx.test_queries, final_results)
 
 
