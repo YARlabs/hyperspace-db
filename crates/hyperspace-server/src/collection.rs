@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
 #[derive(Serialize, Deserialize)]
@@ -205,7 +205,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             if logical_clock > loaded_clock {
                 // If ID exists, delete old version from index to prevent leaks (Upsert)
                 if let Some(&old_internal_id) = id_map_data.get(&id) {
-                    let _ = index_ref.delete(old_internal_id);
+                    index_ref.delete(old_internal_id);
                     reverse_id_map_data.remove(&old_internal_id);
                 }
 
@@ -240,7 +240,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let concurrency = if concurrency_env == 0 {
             num_cpus
         } else if concurrency_env > num_cpus {
-             println!("⚠️  Clamping Indexer Concurrency from {} to {} (CPU limit) to avoid thrashing.", concurrency_env, num_cpus);
+             println!(
+                 "⚠️  Clamping Indexer Concurrency from {concurrency_env} to {num_cpus} (CPU limit) to avoid thrashing."
+             );
              num_cpus
         } else {
             concurrency_env
@@ -626,9 +628,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let filters = filters.clone();
         let complex_filters = complex_filters.to_vec();
 
-        let (tx, rx) = oneshot::channel();
-
-        rayon::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             let index = index_link.load();
             let results = index.search(
                 &processed_query,
@@ -640,8 +640,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 params.hybrid_alpha,
             );
 
-            // Fetch metadata and convert IDs inside the Rayon thread
-            let mapped_results: Vec<SearchResult> = results
+            // Fetch metadata and convert IDs inside blocking worker.
+            results
                 .into_iter()
                 .map(|(internal_id, dist)| {
                     let meta = index
@@ -655,12 +655,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
                     (user_id, dist, meta)
                 })
-                .collect();
-
-            let _ = tx.send(mapped_results);
-        });
-
-        rx.await.map_err(|e| format!("Search task failed: {}", e))
+                .collect::<Vec<SearchResult>>()
+        })
+        .await
+        .map_err(|e| format!("Search task failed: {e}"))
     }
 
     async fn optimize(&self) -> Result<(), String> {
@@ -696,10 +694,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             vacuum_config.set_ef_construction(vacuum_ef);
             vacuum_config.set_ef_search(original_config.get_ef_search());
 
-            println!(
-                "   Building Shadow Index (M={}, EF={})...",
-                vacuum_m, vacuum_ef
-            );
+            println!("   Building Shadow Index (M={vacuum_m}, EF={vacuum_ef})...");
 
             // 3. Create temp storage
             let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
@@ -724,7 +719,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
             // 4. Sequential Insertion
             // No yielding needed in blocking thread, OS handles scheduling.
-            for (_i, (_old_id, vec, meta)) in all_data.iter().enumerate() {
+            for (_old_id, vec, meta) in &all_data {
                 // Ensure insert handles internal logic
                 let _ = new_index.insert(vec, meta.clone());
             }
@@ -732,7 +727,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Save to disk
             let new_snap_path = data_dir.join("index.snap.new");
             if let Err(e) = new_index.save_snapshot(&new_snap_path) {
-                return Err(e.to_string());
+                return Err(e.clone());
             }
 
             Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path))
@@ -783,8 +778,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 let user_id = self
                     .reverse_id_map
                     .get(&internal_id)
-                    .map(|v| *v)
-                    .unwrap_or(internal_id);
+                    .map_or(internal_id, |v| *v);
                 (user_id, vec, meta)
             })
             .collect()

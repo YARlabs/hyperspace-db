@@ -833,45 +833,44 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
             }
 
-            // Using hoisted lock
-            let neighbors_ids = if (cand.id as usize) >= nodes_guard.len() {
-                Vec::new()
-            } else {
-                let node = &nodes_guard[cand.id as usize];
-                if node.layers.is_empty() {
-                    Vec::new()
-                } else {
-                    node.layers[0].read().clone()
+            if (cand.id as usize) >= nodes_guard.len() {
+                continue;
+            }
+
+            let node = &nodes_guard[cand.id as usize];
+            if node.layers.is_empty() {
+                continue;
+            }
+
+            let neighbors = node.layers[0].read();
+            for &neighbor in neighbors.iter() {
+                if !visited.insert(neighbor) {
+                    continue;
                 }
-            };
 
-            for neighbor in neighbors_ids {
-                if !visited.contains(&neighbor) {
-                    visited.insert(neighbor);
-                    let dist = self.dist(neighbor, query);
+                let dist = self.dist(neighbor, query);
 
-                    // Add to Candidates (Navigation).
-                    // Navigation heuristic: Traverse through invalid nodes if they are promising (closer to query).
-                    let mut add_to_candidates = true;
-                    if let Some(std::cmp::Reverse(worst)) = results.peek() {
-                        if results.len() >= ef && dist > worst.distance {
-                            add_to_candidates = false;
-                        }
+                // Add to Candidates (Navigation).
+                // Navigation heuristic: Traverse through invalid nodes if they are promising (closer to query).
+                let mut add_to_candidates = true;
+                if let Some(std::cmp::Reverse(worst)) = results.peek() {
+                    if results.len() >= ef && dist > worst.distance {
+                        add_to_candidates = false;
                     }
+                }
 
-                    if add_to_candidates {
-                        let c = Candidate {
-                            id: neighbor,
-                            distance: dist,
-                        };
-                        candidates.push(c);
+                if add_to_candidates {
+                    let c = Candidate {
+                        id: neighbor,
+                        distance: dist,
+                    };
+                    candidates.push(c);
 
-                        // Add to Results (Only if Valid)
-                        if is_valid(neighbor) {
-                            results.push(std::cmp::Reverse(c));
-                            if results.len() > ef {
-                                results.pop();
-                            }
+                    // Add to Results (Only if Valid)
+                    if is_valid(neighbor) {
+                        results.push(std::cmp::Reverse(c));
+                        if results.len() > ef {
+                            results.pop();
                         }
                     }
                 }
@@ -926,34 +925,33 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 break;
             }
 
-            // Using hoisted lock with bounds check
-            let neighbors_ids = if (cand.id as usize) >= nodes_guard.len() {
-                Vec::new()
-            } else {
-                let node = &nodes_guard[cand.id as usize];
-                if node.layers.len() <= level {
-                    Vec::new()
-                } else {
-                    node.layers[level].read().clone()
+            if (cand.id as usize) >= nodes_guard.len() {
+                continue;
+            }
+
+            let node = &nodes_guard[cand.id as usize];
+            if node.layers.len() <= level {
+                continue;
+            }
+
+            let neighbors = node.layers[level].read();
+            for &neighbor in neighbors.iter() {
+                if !visited.insert(neighbor) {
+                    continue;
                 }
-            };
 
-            for neighbor in neighbors_ids {
-                if !visited.contains(&neighbor) {
-                    visited.insert(neighbor);
-                    let dist = self.dist(neighbor, query);
+                let dist = self.dist(neighbor, query);
 
-                    if results.len() < ef || dist < curr_worst {
-                        let c = Candidate {
-                            id: neighbor,
-                            distance: dist,
-                        };
-                        candidates.push(c);
-                        results.push(c);
+                if results.len() < ef || dist < curr_worst {
+                    let c = Candidate {
+                        id: neighbor,
+                        distance: dist,
+                    };
+                    candidates.push(c);
+                    results.push(c);
 
-                        if results.len() > ef {
-                            results.pop();
-                        }
+                    if results.len() > ef {
+                        results.pop();
                     }
                 }
             }

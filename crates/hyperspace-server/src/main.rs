@@ -42,6 +42,7 @@ use sha2::{Digest, Sha256};
 #[cfg(feature = "embed")]
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -115,6 +116,16 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[derive(Clone)]
 struct ClientAuthInterceptor {
     api_key: String,
+}
+
+fn default_ef_search() -> usize {
+    static DEFAULT_EF_SEARCH: OnceLock<usize> = OnceLock::new();
+    *DEFAULT_EF_SEARCH.get_or_init(|| {
+        std::env::var("HS_HNSW_EF_SEARCH")
+            .unwrap_or_else(|_| "100".to_string())
+            .parse()
+            .unwrap_or(100)
+    })
 }
 
 impl Interceptor for ClientAuthInterceptor {
@@ -464,15 +475,10 @@ impl Database for HyperspaceService {
                 }
             }
 
-            let default_ef = std::env::var("HS_HNSW_EF_SEARCH")
-                .unwrap_or_else(|_| "100".to_string())
-                .parse()
-                .unwrap_or(100);
-
             // Search Params
             let params = hyperspace_core::SearchParams {
                 top_k: req.top_k as usize,
-                ef_search: default_ef,
+                ef_search: default_ef_search(),
                 hybrid_query: req.hybrid_query,
                 hybrid_alpha: req.hybrid_alpha,
             };
@@ -745,14 +751,11 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                             let mut client = DatabaseClient::with_interceptor(channel, interceptor);
 
                             println!("Connected! Requesting replication stream...");
-                            let current_clock = manager_weak
-                                .upgrade()
-                                .map(|m| {
-                                    futures::executor::block_on(async {
-                                        m.cluster_state.read().await.logical_clock
-                                    })
+                            let current_clock = manager_weak.upgrade().map_or(0, |m| {
+                                futures::executor::block_on(async {
+                                    m.cluster_state.read().await.logical_clock
                                 })
-                                .unwrap_or(0);
+                            });
 
                             let req = hyperspace_proto::hyperspace::ReplicationRequest {
                                 last_logical_clock: current_clock,

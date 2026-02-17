@@ -5,6 +5,10 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::inline_always)]
 #![allow(clippy::similar_names)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_lossless)]
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::needless_range_loop)]
 
 pub mod config;
 pub mod vector;
@@ -207,13 +211,14 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
     #[cfg(not(feature = "nightly-simd"))]
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // Explicit loop assists LLVM auto-vectorization.
-        let mut sum = 0.0;
+        // Euclidean path uses f32 math by design.
+        // Hyperbolic workloads remain on f64 in `PoincareMetric`.
+        let mut sum = 0.0f32;
         for i in 0..N {
-            let diff = a[i] - b[i];
+            let diff = (a[i] as f32) - (b[i] as f32);
             sum += diff * diff;
         }
-        sum
+        f64::from(sum)
     }
 
     // validate uses default

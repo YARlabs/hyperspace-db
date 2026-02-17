@@ -1372,6 +1372,7 @@ dependencies = [
 name = "hyperspace-store"
 version = "2.0.0"
 dependencies = [
+ "arc-swap",
  "byteorder",
  "crc32fast",
  "hyperspace-core",

@@ -1,5 +1,6 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_lossless)]
 
 #[cfg(feature = "nightly-simd")]
 use std::simd::prelude::*;

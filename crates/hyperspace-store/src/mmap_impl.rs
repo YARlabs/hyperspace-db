@@ -1,6 +1,7 @@
 #![allow(clippy::cast_possible_truncation)]
-use memmap2::{MmapMut, MmapOptions};
-use parking_lot::RwLock;
+use arc_swap::ArcSwap;
+use memmap2::{Mmap, MmapMut, MmapOptions};
+use parking_lot::Mutex;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -12,7 +13,8 @@ const CHUNK_MASK: usize = 0xFFFF;
 
 #[derive(Debug)]
 struct Segment {
-    mmap: RwLock<MmapMut>,
+    read_mmap: Mmap,
+    write_mmap: Mutex<MmapMut>,
     #[allow(dead_code)]
     file: File,
 }
@@ -21,7 +23,8 @@ struct Segment {
 /// Data is split into 64K chunks (`chunk_N.hyp`).
 #[derive(Debug)]
 pub struct VectorStore {
-    segments: RwLock<Vec<Arc<Segment>>>,
+    segments: ArcSwap<Vec<Arc<Segment>>>,
+    growth_lock: Mutex<()>,
     count: AtomicUsize,
     element_size: usize,
     base_path: PathBuf,
@@ -52,7 +55,8 @@ impl VectorStore {
         }
 
         Self {
-            segments: RwLock::new(segments),
+            segments: ArcSwap::from_pointee(segments),
+            growth_lock: Mutex::new(()),
             count: AtomicUsize::new(0),
             element_size,
             base_path: base_path.to_path_buf(),
@@ -71,9 +75,11 @@ impl VectorStore {
         file.set_len(size)?;
 
         let mmap = unsafe { MmapOptions::new().map_mut(&file)? };
+        let read_mmap = unsafe { MmapOptions::new().map(&file)? };
 
         Ok(Segment {
-            mmap: RwLock::new(mmap),
+            read_mmap,
+            write_mmap: Mutex::new(mmap),
             file,
         })
     }
@@ -92,33 +98,14 @@ impl VectorStore {
         let segment_idx = id >> CHUNK_SHIFT;
         let local_idx = id & CHUNK_MASK;
 
-        let has_segment = {
-            let segs = self.segments.read();
-            segment_idx < segs.len()
-        };
-
-        if !has_segment {
-            let mut segs = self.segments.write();
-            if segment_idx >= segs.len() {
-                let new_chunk_id = segs.len();
-                let path = self.base_path.join(format!("chunk_{new_chunk_id}.hyp"));
-                match Self::create_segment(&path, self.element_size) {
-                    Ok(seg) => {
-                        segs.push(Arc::new(seg));
-                        // println!("📦 Storage grew! Created segment {}", new_chunk_id);
-                    }
-                    Err(e) => return Err(format!("Failed to grow storage: {e}")),
-                }
-            }
-        }
+        self.ensure_segment(segment_idx)?;
 
         {
-            let segs = self.segments.read();
+            let segs = self.segments.load();
             let segment = &segs[segment_idx];
-
             let start = local_idx * self.element_size;
 
-            let mut guard = segment.mmap.write();
+            let mut guard = segment.write_mmap.lock();
             let ptr = unsafe { guard.as_mut_ptr().add(start) };
 
             unsafe {
@@ -135,7 +122,7 @@ impl VectorStore {
         let segment_idx = id_val >> CHUNK_SHIFT;
         let local_idx = id_val & CHUNK_MASK;
 
-        let segs = self.segments.read();
+        let segs = self.segments.load();
         assert!(
             segment_idx < segs.len(),
             "VectorStore: Access out of bounds segment {segment_idx}"
@@ -144,8 +131,7 @@ impl VectorStore {
 
         let start = local_idx * self.element_size;
 
-        let guard = segment.mmap.read();
-        let ptr = unsafe { guard.as_ptr().add(start) };
+        let ptr = unsafe { segment.read_mmap.as_ptr().add(start) };
 
         unsafe { std::slice::from_raw_parts(ptr, self.element_size) }
     }
@@ -164,7 +150,7 @@ impl VectorStore {
         let segment_idx = id_val >> CHUNK_SHIFT;
         let local_idx = id_val & CHUNK_MASK;
 
-        let segs = self.segments.read();
+        let segs = self.segments.load();
         if segment_idx >= segs.len() {
             return Err(format!("VectorStore: ID {id} out of bounds"));
         }
@@ -172,7 +158,7 @@ impl VectorStore {
 
         let start = local_idx * self.element_size;
 
-        let mut guard = segment.mmap.write();
+        let mut guard = segment.write_mmap.lock();
         let ptr = unsafe { guard.as_mut_ptr().add(start) };
 
         unsafe {
@@ -183,11 +169,11 @@ impl VectorStore {
     }
 
     pub fn segment_count(&self) -> usize {
-        self.segments.read().len()
+        self.segments.load().len()
     }
 
     pub fn total_size_bytes(&self) -> usize {
-        let segs = self.segments.read();
+        let segs = self.segments.load();
         if segs.is_empty() {
             return 0;
         }
@@ -210,11 +196,11 @@ impl VectorStore {
         let total_bytes = count * self.element_size;
         let mut result = Vec::with_capacity(total_bytes);
 
-        let segs = self.segments.read();
+        let segs = self.segments.load();
         let mut bytes_read = 0;
 
         for segment in segs.iter() {
-            let data_guard = segment.mmap.read();
+            let data_guard = &segment.read_mmap;
             let remaining = total_bytes - bytes_read;
             if remaining == 0 {
                 break;
@@ -249,27 +235,13 @@ impl VectorStore {
         let mut segment_idx = 0;
 
         while offset < data.len() {
-            let segs = store.segments.read();
+            store
+                .ensure_segment(segment_idx)
+                .unwrap_or_else(|e| panic!("Failed to grow storage during from_bytes: {e}"));
 
-            if segment_idx >= segs.len() {
-                drop(segs);
-                // Need to grow - create new segment
-                let mut w_segs = store.segments.write();
-                if segment_idx >= w_segs.len() {
-                    let new_chunk_id = w_segs.len();
-                    let seg_path = store.base_path.join(format!("chunk_{new_chunk_id}.hyp"));
-                    match Self::create_segment(&seg_path, element_size) {
-                        Ok(seg) => {
-                            w_segs.push(Arc::new(seg));
-                        }
-                        Err(e) => panic!("Failed to grow storage during from_bytes: {e}"),
-                    }
-                }
-                continue;
-            }
-
+            let segs = store.segments.load();
             let segment = &segs[segment_idx];
-            let mut mmap_guard = segment.mmap.write();
+            let mut mmap_guard = segment.write_mmap.lock();
 
             let seg_capacity = element_size * CHUNK_SIZE;
             let remaining_data = data.len() - offset;
@@ -285,5 +257,30 @@ impl VectorStore {
         }
 
         store
+    }
+
+    fn ensure_segment(&self, segment_idx: usize) -> Result<(), String> {
+        if segment_idx < self.segments.load().len() {
+            return Ok(());
+        }
+
+        let _growth_guard = self.growth_lock.lock();
+
+        let current = self.segments.load();
+        if segment_idx < current.len() {
+            return Ok(());
+        }
+
+        let mut next = (**current).clone();
+        while segment_idx >= next.len() {
+            let new_chunk_id = next.len();
+            let path = self.base_path.join(format!("chunk_{new_chunk_id}.hyp"));
+            let seg = Self::create_segment(&path, self.element_size)
+                .map_err(|e| format!("Failed to grow storage: {e}"))?;
+            next.push(Arc::new(seg));
+        }
+
+        self.segments.store(Arc::new(next));
+        Ok(())
     }
 }

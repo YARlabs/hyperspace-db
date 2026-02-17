@@ -12,6 +12,7 @@ use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Instant;
 use sysinfo::{Pid, System};
 use tikv_jemalloc_ctl::epoch;
@@ -552,6 +553,16 @@ struct SearchReq {
     top_k: Option<usize>,
 }
 
+fn default_ef_search() -> usize {
+    static DEFAULT_EF_SEARCH: OnceLock<usize> = OnceLock::new();
+    *DEFAULT_EF_SEARCH.get_or_init(|| {
+        std::env::var("HS_HNSW_EF_SEARCH")
+            .unwrap_or_else(|_| "100".to_string())
+            .parse()
+            .unwrap_or(100)
+    })
+}
+
 async fn search_collection(
     Path(name): Path<String>,
     State((manager, _, _)): State<(
@@ -564,14 +575,9 @@ async fn search_collection(
 ) -> impl IntoResponse {
     let k = payload.top_k.unwrap_or(10);
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
-        let default_ef = std::env::var("HS_HNSW_EF_SEARCH")
-            .unwrap_or_else(|_| "100".to_string())
-            .parse()
-            .unwrap_or(100);
-
         let dummy_params = SearchParams {
             top_k: k,
-            ef_search: default_ef,
+            ef_search: default_ef_search(),
             hybrid_query: None,
             hybrid_alpha: None,
         };
