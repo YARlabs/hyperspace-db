@@ -191,15 +191,28 @@
 <h3 id="client-usage"><a class="header" href="#client-usage">Client Usage</a></h3>
 <p>Clients must pass the key in the <code>x-api-key</code> metadata header.</p>
 <p><strong>Python:</strong></p>
-<pre><code class="language-python">client = HyperspaceClient(host=&quot;localhost:50051&quot;, api_key=&quot;my-secret-key-123&quot;)
+<pre><code class="language-python">client = HyperspaceClient(
+    host=&quot;localhost:50051&quot;, 
+    api_key=&quot;my-secret-key-123&quot;,
+    user_id=&quot;tenant_name&quot;  # Optional: For multi-tenancy
+)
 </code></pre>
 <p><strong>Rust:</strong></p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Internally configured via Tonic Interceptor if you implement it or pass metadata manually.
-// The SDK handles this if extended in future. 
-// Current Rust SDK v0.1 does not explicit expose auth arg yet, planned for v0.2.
+</span>// Use the updated connect function
+let client = Client::connect(
+    &quot;http://0.0.0.0:50051&quot;.to_string(),
+    Some(&quot;my-secret-key-123&quot;.to_string()),
+    Some(&quot;tenant_name&quot;.to_string())
+).await?;
 <span class="boring">}</span></code></pre></pre>
+<h2 id="multi-tenancy-isolation"><a class="header" href="#multi-tenancy-isolation">Multi-Tenancy Isolation</a></h2>
+<p>Use <code>x-hyperspace-user-id</code> header to isolate data per user.</p>
+<ul>
+<li><strong>Gateway Responsibility</strong>: Ensure your API Gateway validates user tokens and injects this header securely.</li>
+<li><strong>Internal Scope</strong>: Data created with a <code>user_id</code> is invisible to other users and the default admin scope.</li>
+</ul>
 <h2 id="security-implementation"><a class="header" href="#security-implementation">Security Implementation</a></h2>
 <ul>
 <li><strong>SHA-256 Hashing</strong>: The server computes <code>SHA256(env_key)</code> at startup and stores only the hash.</li>

@@ -257,6 +257,15 @@ $$ d(u, v) = \text{acosh}\left(1 + 2 \frac{||u-v||^2}{(1-||u||^2)(1-||v||^2)}\ri
 </ul>
 </li>
 </ol>
+<h2 id="memory-management--stability"><a class="header" href="#memory-management--stability">Memory Management &amp; Stability</a></h2>
+<h3 id="cold-storage-architecture"><a class="header" href="#cold-storage-architecture">Cold Storage Architecture</a></h3>
+<p>HyperspaceDB implements a &quot;Cold Storage&quot; mechanism to handle large numbers of collections efficiently:</p>
+<ol>
+<li><strong>Lazy Loading</strong>: Collections are not loaded into RAM at startup. Instead, only metadata is scanned. The actual collection (vector index, storage) is instantiated from disk only upon the first <code>get()</code> request.</li>
+<li><strong>Idle Eviction (Reaper)</strong>: A background task runs every 60 seconds to scan for idle collections. Any collection not accessed for a configurable period (default: 1 hour) is automatically unloaded from memory to free up RAM.</li>
+<li><strong>Graceful Shutdown</strong>: When a collection is evicted or deleted, its <code>Drop</code> implementation ensures that all associated background tasks (indexing, snapshotting) are immediately aborted, preventing resource leaks and panicked threads.</li>
+</ol>
+<p>This architecture allows HyperspaceDB to support thousands of collections while keeping the active memory footprint low, scaling based on actual usage rather than total data.</p>
 
                     </main>
 

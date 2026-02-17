@@ -239,10 +239,28 @@ message SearchRequest {
   optional float hybrid_alpha = 7;
 }
 </code></pre>
+<h4 id="searchbatch"><a class="header" href="#searchbatch"><code>SearchBatch</code></a></h4>
+<p>Finds nearest neighbors for multiple queries in a single RPC call.</p>
+<pre><code class="language-protobuf">rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
+
+message BatchSearchRequest {
+  repeated SearchRequest searches = 1;
+}
+
+message BatchSearchResponse {
+  repeated SearchResponse responses = 1;
+}
+</code></pre>
+<p>Recommended for high-concurrency clients and benchmarks to reduce per-request gRPC overhead.</p>
 <hr />
 <h2 id="-http-api-control-plane"><a class="header" href="#-http-api-control-plane">🌐 HTTP API (Control Plane)</a></h2>
-<p>Served on port <code>50050</code> (default). All endpoints under <code>/api</code>.
-Authentication: <code>x-api-key</code> header required.</p>
+<p>Served on port <code>50050</code> (default). All endpoints under <code>/api</code>.</p>
+<h3 id="authentication--multi-tenancy"><a class="header" href="#authentication--multi-tenancy">Authentication &amp; Multi-Tenancy</a></h3>
+<p>Every request should include:</p>
+<ul>
+<li><code>x-api-key</code>: API Key (optional if disabled, but recommended)</li>
+<li><code>x-hyperspace-user-id</code>: Tenant Identifier (e.g. <code>client_123</code>). If omitted, defaults to <code>default_admin</code>.</li>
+</ul>
 <h3 id="cluster-status"><a class="header" href="#cluster-status">Cluster Status</a></h3>
 <p><code>GET /api/cluster/status</code></p>
 <p>Returns the node's identity and topology role.</p>
@@ -253,6 +271,9 @@ Authentication: <code>x-api-key</code> header required.</p>
   &quot;downstream_peers&quot;: []
 }
 </code></pre>
+<h3 id="node-status-compatibility"><a class="header" href="#node-status-compatibility">Node Status (Compatibility)</a></h3>
+<p><code>GET /api/status</code></p>
+<p>Returns runtime status and node configuration. Dashboard uses this endpoint first, with fallback to <code>/api/cluster/status</code>.</p>
 <h3 id="system-metrics"><a class="header" href="#system-metrics">System Metrics</a></h3>
 <p><code>GET /api/metrics</code></p>
 <p>Real-time system resource usage.</p>
@@ -262,6 +283,18 @@ Authentication: <code>x-api-key</code> header required.</p>
     &quot;disk_usage_mb&quot;: 1024,
     &quot;total_collections&quot;: 5,
     &quot;total_vectors&quot;: 1000000
+}
+</code></pre>
+<h3 id="admin--billing-since-v20"><a class="header" href="#admin--billing-since-v20">Admin / Billing (Since v2.0)</a></h3>
+<p><strong>Requires <code>user_id: admin</code></strong></p>
+<p><code>GET /api/admin/usage</code></p>
+<p>Returns JSON map of <code>user_id -&gt; usage_stats</code>:</p>
+<pre><code class="language-json">{
+  &quot;tenant_A&quot;: {
+    &quot;collection_count&quot;: 2,
+    &quot;vector_count&quot;: 1500,
+    &quot;disk_usage_bytes&quot;: 1048576
+  }
 }
 </code></pre>
 <h3 id="list-collections"><a class="header" href="#list-collections">List Collections</a></h3>
@@ -275,6 +308,14 @@ Authentication: <code>x-api-key</code> header required.</p>
     &quot;metric&quot;: &quot;l2&quot;
   }
 ]
+</code></pre>
+<h3 id="collection-search-http-playground"><a class="header" href="#collection-search-http-playground">Collection Search (HTTP Playground)</a></h3>
+<p><code>POST /api/collections/{name}/search</code></p>
+<p>Convenience endpoint for dashboard/manual testing.</p>
+<pre><code class="language-json">{
+  &quot;vector&quot;: [0.1, 0.2, 0.3],
+  &quot;top_k&quot;: 5
+}
 </code></pre>
 
                     </main>

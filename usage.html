@@ -180,38 +180,73 @@
                     <main>
                         <h1 id="user-guide"><a class="header" href="#user-guide">User Guide</a></h1>
 <h2 id="server-configuration"><a class="header" href="#server-configuration">Server Configuration</a></h2>
-<p>HyperspaceDB is configured via gRPC commands at runtime, but defaults can be set via environment variables.</p>
+<p>HyperspaceDB is configured via environment variables or a <code>.env</code> file.</p>
+<h3 id="core-settings"><a class="header" href="#core-settings">Core Settings</a></h3>
 <div class="table-wrapper"><table><thead><tr><th style="text-align: left">Variable</th><th style="text-align: left">Default</th><th style="text-align: left">Description</th></tr></thead><tbody>
-<tr><td style="text-align: left"><code>RUST_LOG</code></td><td style="text-align: left"><code>info</code></td><td style="text-align: left">Log level (debug, info, error)</td></tr>
+<tr><td style="text-align: left"><code>RUST_LOG</code></td><td style="text-align: left"><code>info</code></td><td style="text-align: left">Log level (<code>debug</code>, <code>info</code>, <code>error</code>)</td></tr>
 <tr><td style="text-align: left"><code>HS_PORT</code></td><td style="text-align: left"><code>50051</code></td><td style="text-align: left">gRPC listening port</td></tr>
+<tr><td style="text-align: left"><code>HS_HTTP_PORT</code></td><td style="text-align: left"><code>50050</code></td><td style="text-align: left">HTTP Dashboard port</td></tr>
 <tr><td style="text-align: left"><code>HS_DATA_DIR</code></td><td style="text-align: left"><code>./data</code></td><td style="text-align: left">Path to store segments and WAL</td></tr>
-<tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Vector dimensionality (8, 768, 1024, 1536)</td></tr>
-<tr><td style="text-align: left"><code>HS_DISTANCE_METRIC</code></td><td style="text-align: left"><code>poincare</code></td><td style="text-align: left">Distance metric (poincare)</td></tr>
-<tr><td style="text-align: left"><code>HS_QUANTIZATION_LEVEL</code></td><td style="text-align: left"><code>scalar</code></td><td style="text-align: left">Compression (none, scalar, binary)</td></tr>
-<tr><td style="text-align: left"><code>HS_HNSW_EF_CONSTRUCT</code></td><td style="text-align: left"><code>100</code></td><td style="text-align: left">Index build quality (50-500)</td></tr>
-<tr><td style="text-align: left"><code>HS_HNSW_EF_SEARCH</code></td><td style="text-align: left"><code>10</code></td><td style="text-align: left">Search beam width (10-500)</td></tr>
+<tr><td style="text-align: left"><code>HS_IDLE_TIMEOUT_SEC</code></td><td style="text-align: left"><code>3600</code></td><td style="text-align: left">Inactivity time (seconds) before collection unloads to disk</td></tr>
+<tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Default vector dimensionality (8, 64, 768, 1024, 1536)</td></tr>
+<tr><td style="text-align: left"><code>HS_METRIC</code></td><td style="text-align: left"><code>cosine</code></td><td style="text-align: left">Distance metric (<code>cosine</code>, <code>poincare</code>, <code>l2</code>)</td></tr>
+<tr><td style="text-align: left"><code>HS_QUANTIZATION_LEVEL</code></td><td style="text-align: left"><code>none</code></td><td style="text-align: left">Compression (<code>none</code>, <code>scalar</code> (i8), <code>binary</code> (1-bit))</td></tr>
 </tbody></table>
 </div>
-<h2 id="client-side-wasm"><a class="header" href="#client-side-wasm">Client-Side (WASM)</a></h2>
-<p>For in-browser usage, see the <a href="wasm.html">WASM Guide</a>.</p>
-<h2 id="tui-dashboard-mission-control"><a class="header" href="#tui-dashboard-mission-control">TUI Dashboard (Mission Control)</a></h2>
-<p>Launch the dashboard to monitor your instance:</p>
+<h3 id="hnsw-index-tuning"><a class="header" href="#hnsw-index-tuning">HNSW Index Tuning</a></h3>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Variable</th><th style="text-align: left">Default</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>HS_HNSW_M</code></td><td style="text-align: left"><code>64</code></td><td style="text-align: left">Max connections per layer</td></tr>
+<tr><td style="text-align: left"><code>HS_HNSW_EF_CONSTRUCT</code></td><td style="text-align: left"><code>200</code></td><td style="text-align: left">Build quality (50-500). Higher = slower build, better recall.</td></tr>
+<tr><td style="text-align: left"><code>HS_HNSW_EF_SEARCH</code></td><td style="text-align: left"><code>100</code></td><td style="text-align: left">Search beam width (10-500). Higher = slower search, better recall.</td></tr>
+<tr><td style="text-align: left"><code>HS_INDEXER_CONCURRENCY</code></td><td style="text-align: left"><code>1</code></td><td style="text-align: left">Check README for threading strategies (0=Auto, 1=Serial)</td></tr>
+</tbody></table>
+</div>
+<h3 id="persistence--durability"><a class="header" href="#persistence--durability">Persistence &amp; Durability</a></h3>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Variable</th><th style="text-align: left">Default</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>HYPERSPACE_WAL_SYNC_MODE</code></td><td style="text-align: left"><code>batch</code></td><td style="text-align: left">WAL Sync strategy: <code>strict</code> (fsync), <code>batch</code> (100ms lag), <code>async</code> (OS cache)</td></tr>
+<tr><td style="text-align: left"><code>HYPERSPACE_WAL_BATCH_INTERVAL</code></td><td style="text-align: left"><code>100</code></td><td style="text-align: left">Batch interval in milliseconds</td></tr>
+</tbody></table>
+</div>
+<h3 id="memory-management-jemalloc"><a class="header" href="#memory-management-jemalloc">Memory Management (Jemalloc)</a></h3>
+<p>HyperspaceDB uses <strong>Jemalloc</strong> for efficient memory allocation. Tune it via <code>MALLOC_CONF</code>:</p>
+<ul>
+<li><strong>Low RAM (Aggressive)</strong>: <code>MALLOC_CONF=background_thread:true,dirty_decay_ms:0,muzzy_decay_ms:0</code></li>
+<li><strong>Balanced (Default)</strong>: <code>MALLOC_CONF=background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000</code></li>
+</ul>
+<h3 id="security"><a class="header" href="#security">Security</a></h3>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Variable</th><th style="text-align: left">Default</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>HYPERSPACE_API_KEY</code></td><td style="text-align: left">-</td><td style="text-align: left">If set, requires <code>x-api-key</code> header for all requests</td></tr>
+</tbody></table>
+</div>
+<h3 id="multi-tenancy"><a class="header" href="#multi-tenancy">Multi-Tenancy</a></h3>
+<p>HyperspaceDB supports strict data isolation via the <code>x-hyperspace-user-id</code> header.</p>
+<ul>
+<li><strong>Isolation</strong>: Every request with a <code>x-hyperspace-user-id</code> header operates within that user's private namespace.</li>
+<li><strong>Internal Naming</strong>: Collections are stored internally as <code>userid_collectionname</code>.</li>
+<li><strong>Default Admin</strong>: If <code>x-hyperspace-user-id</code> is omitted but a valid <code>x-api-key</code> is provided, the user is treated as <code>default_admin</code>.</li>
+<li><strong>SaaS Integration</strong>: Gateways should inject this header after authenticating users.</li>
+</ul>
+<hr />
+<h2 id="web-dashboard"><a class="header" href="#web-dashboard">Web Dashboard</a></h2>
+<p>HyperspaceDB includes a comprehensive Web Dashboard at <code>http://localhost:50050</code>.</p>
+<p><strong>Features:</strong></p>
+<ul>
+<li><strong>Cluster Status</strong>: View node role (Leader/Follower) and topology.</li>
+<li><strong>Collections</strong>: Create, delete, and inspect collection statistics.</li>
+<li><strong>Explorer</strong>: View inserted vectors and their metadata.</li>
+<li><strong>Metrics</strong>: Real-time RAM and CPU usage.</li>
+</ul>
+<h2 id="tui-dashboard-legacy"><a class="header" href="#tui-dashboard-legacy">TUI Dashboard (Legacy)</a></h2>
+<p>For terminal-based monitoring:</p>
 <pre><code class="language-bash">./hyperspace-cli
 </code></pre>
 <h3 id="key-controls"><a class="header" href="#key-controls">Key Controls</a></h3>
 <ul>
-<li><strong>TAB</strong>: Switch between Overview, Storage, and Admin tabs.</li>
-<li><strong>[S]</strong>: Trigger an immediate graph snapshot.</li>
-<li><strong>[V]</strong>: Trigger storage vacuum (compaction, experimental).</li>
-<li><strong>[Q]</strong>: Quit the dashboard.</li>
+<li><strong>TAB</strong>: Switch tabs.</li>
+<li><strong>[S]</strong>: Trigger snapshot.</li>
+<li><strong>[V]</strong>: Trigger vacuum.</li>
+<li><strong>[Q]</strong>: Quit.</li>
 </ul>
-<h2 id="persistence--recovery"><a class="header" href="#persistence--recovery">Persistence &amp; Recovery</a></h2>
-<p>HyperspaceDB uses a <strong>Write-Ahead Log (WAL)</strong>.</p>
-<ol>
-<li><strong>Insert</strong>: Data is appended to <code>wal.log</code> immediately.</li>
-<li><strong>Snapshot</strong>: The in-memory graph is periodically serialized to <code>index.snap</code>.</li>
-<li><strong>Recovery</strong>: On restart, the system loads <code>index.snap</code> (instant mmap) and replays any entries in <code>wal.log</code> that occurred after the snapshot.</li>
-</ol>
 
                     </main>
 

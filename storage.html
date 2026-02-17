@@ -189,9 +189,17 @@
 <p>Data is split into &quot;Chunks&quot; of fixed size ($2^{16} = 65,536$ vectors). This avoids allocating one giant file and allows easier lifecycle management.</p>
 <ul>
 <li><code>data/chunk_0.hyp</code></li>
-<li><code>data/chunk_1.hyp</code></li>
 <li>...</li>
 </ul>
+<h2 id="directory-structure-multi-tenancy"><a class="header" href="#directory-structure-multi-tenancy">Directory Structure (Multi-Tenancy)</a></h2>
+<p>When Multi-Tenancy is active, collections are stored in subdirectories named with the format: <code>userid_collectionname</code>.
+Example:</p>
+<ul>
+<li><code>data/user1_mycollection/meta.json</code></li>
+<li><code>data/user1_mycollection/index</code></li>
+<li><code>data/default_admin_public_data/index</code></li>
+</ul>
+<p>This ensures complete physical isolation of collection data on disk.</p>
 <h2 id="file-layout"><a class="header" href="#file-layout">File Layout</a></h2>
 <p>Each <code>.hyp</code> file is a flat array of fixed-size records. No headers, no metadata. Metadata is stored in the Index Snapshot or recovered from layout.</p>
 <h3 id="record-structure-scalari8"><a class="header" href="#record-structure-scalari8">Record Structure (<code>ScalarI8</code>)</a></h3>
