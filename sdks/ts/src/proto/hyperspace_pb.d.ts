@@ -6,22 +6,55 @@
 
 import * as jspb from "google-protobuf";
 
-export class ReplicationLog extends jspb.Message { 
-    getId(): number;
-    setId(value: number): ReplicationLog;
-    clearVectorList(): void;
-    getVectorList(): Array<number>;
-    setVectorList(value: Array<number>): ReplicationLog;
-    addVector(value: number, index?: number): number;
+export class ReplicationRequest extends jspb.Message { 
+    getLastLogicalClock(): number;
+    setLastLogicalClock(value: number): ReplicationRequest;
 
-    getMetadataMap(): jspb.Map<string, string>;
-    clearMetadataMap(): void;
-    getCollection(): string;
-    setCollection(value: string): ReplicationLog;
-    getOriginNodeId(): string;
-    setOriginNodeId(value: string): ReplicationLog;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ReplicationRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: ReplicationRequest): ReplicationRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ReplicationRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ReplicationRequest;
+    static deserializeBinaryFromReader(message: ReplicationRequest, reader: jspb.BinaryReader): ReplicationRequest;
+}
+
+export namespace ReplicationRequest {
+    export type AsObject = {
+        lastLogicalClock: number,
+    }
+}
+
+export class ReplicationLog extends jspb.Message { 
     getLogicalClock(): number;
     setLogicalClock(value: number): ReplicationLog;
+    getOriginNodeId(): string;
+    setOriginNodeId(value: string): ReplicationLog;
+    getCollection(): string;
+    setCollection(value: string): ReplicationLog;
+
+    hasInsert(): boolean;
+    clearInsert(): void;
+    getInsert(): InsertOp | undefined;
+    setInsert(value?: InsertOp): ReplicationLog;
+
+    hasCreateCollection(): boolean;
+    clearCreateCollection(): void;
+    getCreateCollection(): CreateCollectionOp | undefined;
+    setCreateCollection(value?: CreateCollectionOp): ReplicationLog;
+
+    hasDeleteCollection(): boolean;
+    clearDeleteCollection(): void;
+    getDeleteCollection(): DeleteCollectionOp | undefined;
+    setDeleteCollection(value?: DeleteCollectionOp): ReplicationLog;
+
+    hasDelete(): boolean;
+    clearDelete(): void;
+    getDelete(): DeleteOp | undefined;
+    setDelete(value?: DeleteOp): ReplicationLog;
+
+    getOperationCase(): ReplicationLog.OperationCase;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): ReplicationLog.AsObject;
@@ -35,13 +68,112 @@ export class ReplicationLog extends jspb.Message {
 
 export namespace ReplicationLog {
     export type AsObject = {
+        logicalClock: number,
+        originNodeId: string,
+        collection: string,
+        insert?: InsertOp.AsObject,
+        createCollection?: CreateCollectionOp.AsObject,
+        deleteCollection?: DeleteCollectionOp.AsObject,
+        pb_delete?: DeleteOp.AsObject,
+    }
+
+    export enum OperationCase {
+        OPERATION_NOT_SET = 0,
+        INSERT = 4,
+        CREATE_COLLECTION = 5,
+        DELETE_COLLECTION = 6,
+        DELETE = 7,
+    }
+
+}
+
+export class InsertOp extends jspb.Message { 
+    getId(): number;
+    setId(value: number): InsertOp;
+    clearVectorList(): void;
+    getVectorList(): Array<number>;
+    setVectorList(value: Array<number>): InsertOp;
+    addVector(value: number, index?: number): number;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): InsertOp.AsObject;
+    static toObject(includeInstance: boolean, msg: InsertOp): InsertOp.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: InsertOp, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): InsertOp;
+    static deserializeBinaryFromReader(message: InsertOp, reader: jspb.BinaryReader): InsertOp;
+}
+
+export namespace InsertOp {
+    export type AsObject = {
         id: number,
         vectorList: Array<number>,
 
         metadataMap: Array<[string, string]>,
-        collection: string,
-        originNodeId: string,
-        logicalClock: number,
+    }
+}
+
+export class CreateCollectionOp extends jspb.Message { 
+    getDimension(): number;
+    setDimension(value: number): CreateCollectionOp;
+    getMetric(): string;
+    setMetric(value: string): CreateCollectionOp;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): CreateCollectionOp.AsObject;
+    static toObject(includeInstance: boolean, msg: CreateCollectionOp): CreateCollectionOp.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: CreateCollectionOp, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): CreateCollectionOp;
+    static deserializeBinaryFromReader(message: CreateCollectionOp, reader: jspb.BinaryReader): CreateCollectionOp;
+}
+
+export namespace CreateCollectionOp {
+    export type AsObject = {
+        dimension: number,
+        metric: string,
+    }
+}
+
+export class DeleteCollectionOp extends jspb.Message { 
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): DeleteCollectionOp.AsObject;
+    static toObject(includeInstance: boolean, msg: DeleteCollectionOp): DeleteCollectionOp.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: DeleteCollectionOp, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): DeleteCollectionOp;
+    static deserializeBinaryFromReader(message: DeleteCollectionOp, reader: jspb.BinaryReader): DeleteCollectionOp;
+}
+
+export namespace DeleteCollectionOp {
+    export type AsObject = {
+    }
+}
+
+export class DeleteOp extends jspb.Message { 
+    getId(): number;
+    setId(value: number): DeleteOp;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): DeleteOp.AsObject;
+    static toObject(includeInstance: boolean, msg: DeleteOp): DeleteOp.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: DeleteOp, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): DeleteOp;
+    static deserializeBinaryFromReader(message: DeleteOp, reader: jspb.BinaryReader): DeleteOp;
+}
+
+export namespace DeleteOp {
+    export type AsObject = {
+        id: number,
     }
 }
 
@@ -160,6 +292,8 @@ export class CollectionStatsResponse extends jspb.Message {
     setDimension(value: number): CollectionStatsResponse;
     getMetric(): string;
     setMetric(value: string): CollectionStatsResponse;
+    getIndexingQueue(): number;
+    setIndexingQueue(value: number): CollectionStatsResponse;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CollectionStatsResponse.AsObject;
@@ -176,6 +310,27 @@ export namespace CollectionStatsResponse {
         count: number,
         dimension: number,
         metric: string,
+        indexingQueue: number,
+    }
+}
+
+export class RebuildIndexRequest extends jspb.Message { 
+    getName(): string;
+    setName(value: string): RebuildIndexRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): RebuildIndexRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: RebuildIndexRequest): RebuildIndexRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: RebuildIndexRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): RebuildIndexRequest;
+    static deserializeBinaryFromReader(message: RebuildIndexRequest, reader: jspb.BinaryReader): RebuildIndexRequest;
+}
+
+export namespace RebuildIndexRequest {
+    export type AsObject = {
+        name: string,
     }
 }
 
@@ -576,6 +731,50 @@ export class SearchResponse extends jspb.Message {
 export namespace SearchResponse {
     export type AsObject = {
         resultsList: Array<SearchResult.AsObject>,
+    }
+}
+
+export class BatchSearchRequest extends jspb.Message { 
+    clearSearchesList(): void;
+    getSearchesList(): Array<SearchRequest>;
+    setSearchesList(value: Array<SearchRequest>): BatchSearchRequest;
+    addSearches(value?: SearchRequest, index?: number): SearchRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): BatchSearchRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: BatchSearchRequest): BatchSearchRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: BatchSearchRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): BatchSearchRequest;
+    static deserializeBinaryFromReader(message: BatchSearchRequest, reader: jspb.BinaryReader): BatchSearchRequest;
+}
+
+export namespace BatchSearchRequest {
+    export type AsObject = {
+        searchesList: Array<SearchRequest.AsObject>,
+    }
+}
+
+export class BatchSearchResponse extends jspb.Message { 
+    clearResponsesList(): void;
+    getResponsesList(): Array<SearchResponse>;
+    setResponsesList(value: Array<SearchResponse>): BatchSearchResponse;
+    addResponses(value?: SearchResponse, index?: number): SearchResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): BatchSearchResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: BatchSearchResponse): BatchSearchResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: BatchSearchResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): BatchSearchResponse;
+    static deserializeBinaryFromReader(message: BatchSearchResponse, reader: jspb.BinaryReader): BatchSearchResponse;
+}
+
+export namespace BatchSearchResponse {
+    export type AsObject = {
+        responsesList: Array<SearchResponse.AsObject>,
     }
 }
 

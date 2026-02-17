@@ -39,6 +39,15 @@ class HyperspaceClient:
         self.metadata = tuple(meta) if meta else None
         self.embedder = embedder
 
+    @staticmethod
+    def _normalize_vector(vector: Union[List[float], tuple]) -> List[float]:
+        # Fast path: already Python list (protobuf will consume directly).
+        if isinstance(vector, list):
+            return vector
+        # Common path for tuples/numpy arrays/iterables.
+        # Keep explicit list conversion once per request.
+        return list(vector)
+
     # ... (create/delete/list unchanged) ...
 
     def create_collection(self, name: str, dimension: int, metric: str) -> bool:
@@ -80,9 +89,6 @@ class HyperspaceClient:
             return {}
 
     def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
-        if metadata is None:
-            metadata = {}
-            
         if vector is None and document is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -90,16 +96,18 @@ class HyperspaceClient:
         
         if vector is None:
              raise ValueError("Either 'vector' or 'document' must be provided.")
+        vector = self._normalize_vector(vector)
 
         req = hyperspace_pb2.InsertRequest(
             id=id,
             vector=vector,
-            metadata=metadata,
             collection=collection,
             origin_node_id="",
             logical_clock=0,
             durability=durability
         )
+        if metadata:
+            req.metadata.update(metadata)
         try:
             resp = self.stub.Insert(req, metadata=self.metadata)
             return resp.success
@@ -108,20 +116,29 @@ class HyperspaceClient:
             return False
 
     def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
-        if metadatas is None:
-            metadatas = [{} for _ in range(len(vectors))]
-        
         if len(vectors) != len(ids):
              raise ValueError("Vectors and IDs length mismatch")
         
         proto_vectors = []
-        for v, i, m in zip(vectors, ids, metadatas):
-            # VectorData in proto doesn't have durability, request has.
-            proto_vectors.append(hyperspace_pb2.VectorData(
-                vector=v,
-                id=i,
-                metadata=m
-            ))
+        if metadatas is None:
+            for v, i in zip(vectors, ids):
+                proto_vectors.append(hyperspace_pb2.VectorData(
+                    vector=self._normalize_vector(v),
+                    id=i
+                ))
+        else:
+            for v, i, m in zip(vectors, ids, metadatas):
+                if m:
+                    proto_vectors.append(hyperspace_pb2.VectorData(
+                        vector=self._normalize_vector(v),
+                        id=i,
+                        metadata=m
+                    ))
+                else:
+                    proto_vectors.append(hyperspace_pb2.VectorData(
+                        vector=self._normalize_vector(v),
+                        id=i
+                    ))
 
         req = hyperspace_pb2.BatchInsertRequest(
             collection=collection,
@@ -138,9 +155,6 @@ class HyperspaceClient:
             return False
 
     def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, collection: str = "") -> List[Dict]:
-        if filter is None:
-            filter = {}
-            
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -153,6 +167,7 @@ class HyperspaceClient:
         
         if vector is None:
              raise ValueError("Either 'vector' or 'query_text' must be provided.")
+        vector = self._normalize_vector(vector)
 
         proto_filters = []
         if filters:
@@ -172,18 +187,61 @@ class HyperspaceClient:
         req = hyperspace_pb2.SearchRequest(
             vector=vector,
             top_k=top_k,
-            filter=filter,
-            filters=proto_filters,
-            hybrid_query=hybrid_query,
-            hybrid_alpha=hybrid_alpha,
             collection=collection
         )
+        if filter:
+            req.filter.update(filter)
+        if proto_filters:
+            req.filters.extend(proto_filters)
+        if hybrid_query is not None:
+            req.hybrid_query = hybrid_query
+        if hybrid_alpha is not None:
+            req.hybrid_alpha = hybrid_alpha
         try:
             resp = self.stub.Search(req, metadata=self.metadata)
             return [
-                {"id": r.id, "distance": r.distance, "metadata": dict(r.metadata)}
+                {
+                    "id": r.id,
+                    "distance": r.distance,
+                    "metadata": (dict(r.metadata) if r.metadata else {})
+                }
                 for r in resp.results
             ]
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
+
+    def search_batch(
+        self,
+        vectors: List[List[float]],
+        top_k: int = 10,
+        collection: str = "",
+    ) -> List[List[Dict]]:
+        searches = []
+        for vector in vectors:
+            searches.append(
+                hyperspace_pb2.SearchRequest(
+                    vector=self._normalize_vector(vector),
+                    top_k=top_k,
+                    collection=collection,
+                )
+            )
+        req = hyperspace_pb2.BatchSearchRequest(searches=searches)
+        try:
+            resp = self.stub.SearchBatch(req, metadata=self.metadata)
+            batch = []
+            for search_resp in resp.responses:
+                batch.append(
+                    [
+                        {
+                            "id": r.id,
+                            "distance": r.distance,
+                            "metadata": (dict(r.metadata) if r.metadata else {}),
+                        }
+                        for r in search_resp.results
+                    ]
+                )
+            return batch
         except grpc.RpcError as e:
             print(f"RPC Error: {e}")
             return []

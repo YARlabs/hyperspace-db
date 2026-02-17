@@ -432,14 +432,15 @@ def get_hyperspace_disk_api(host="localhost"):
             continue
     return None
 
-def run_concurrency_profile(query_fn, workers_list=(1, 10, 30), queries=500):
+def run_concurrency_profile(query_fn, workers_list=(1, 10, 30), queries=500, queries_per_call=1):
     result = {}
     for workers in workers_list:
         start = time.time()
         with ThreadPoolExecutor(max_workers=workers) as ex:
             list(ex.map(lambda _: query_fn(), range(queries)))
         elapsed = time.time() - start
-        qps = queries / elapsed if elapsed > 0 else 0.0
+        total_queries = queries * max(1, queries_per_call)
+        qps = total_queries / elapsed if elapsed > 0 else 0.0
         result[workers] = qps
     return result
 
@@ -602,6 +603,31 @@ def extract_ids(res_obj):
         elif isinstance(hit, str):
             ids.append(hit)
     return ids
+
+
+def hyperspace_search_many(client, vectors, top_k, collection, batch_size=64):
+    supports_batch = callable(getattr(client, "search_batch", None))
+    all_ids = []
+    latencies = []
+    normalized = [v.tolist() if hasattr(v, "tolist") else v for v in vectors]
+    if supports_batch:
+        for i in range(0, len(normalized), batch_size):
+            batch = normalized[i : i + batch_size]
+            ts = time.time()
+            batch_res = client.search_batch(batch, top_k=top_k, collection=collection)
+            elapsed_ms = (time.time() - ts) * 1000
+            per_query_ms = elapsed_ms / max(1, len(batch))
+            for one in batch_res:
+                all_ids.append(extract_ids(one))
+                latencies.append(per_query_ms)
+        return all_ids, latencies
+
+    for vec in normalized:
+        ts = time.time()
+        res = client.search(vec, top_k=top_k, collection=collection)
+        latencies.append((time.time() - ts) * 1000)
+        all_ids.append(extract_ids(res))
+    return all_ids, latencies
 
 def wait_for_indexing(host="localhost", port=50050, collection="bench_semantic", timeout=None):
     """Wait for HyperspaceDB background indexing to complete with progress display"""
@@ -1598,16 +1624,22 @@ def run_benchmark():
             
             print("   Searching Hyperspace...")
             search_t0 = time.time()
-            for i, q_vec in enumerate(tqdm(target_q_vecs)):
-                q_id = test_query_ids[i]
-                all_gt_ids.append(valid_qrels.get(q_id, []))
-                
-                ts = time.time()
-                res = client.search(q_vec.tolist(), top_k=10, collection=coll_name)
-                lats.append((time.time() - ts) * 1000)
-                
-                # Extract IDs
-                all_res_ids.append(extract_ids(res))
+            query_batch_size = 64
+            for i in tqdm(range(0, len(target_q_vecs), query_batch_size)):
+                batch_vecs = target_q_vecs[i : i + query_batch_size]
+                for j in range(len(batch_vecs)):
+                    q_id = test_query_ids[i + j]
+                    all_gt_ids.append(valid_qrels.get(q_id, []))
+
+                batch_ids, batch_lats = hyperspace_search_many(
+                    client=client,
+                    vectors=batch_vecs,
+                    top_k=10,
+                    collection=coll_name,
+                    batch_size=query_batch_size,
+                )
+                all_res_ids.extend(batch_ids)
+                lats.extend(batch_lats)
             
             search_dur = time.time() - search_t0
             recall, mrr, ndcg = calculate_accuracy(all_res_ids, all_gt_ids, 10)
@@ -1617,9 +1649,16 @@ def run_benchmark():
             # Concurrency
             print("   Testing Hyperspace Concurrency...")
             q_list = target_q_vecs[0].tolist()
+            conc_batch_size = 32
             def hyperspace_query():
+                if callable(getattr(client, "search_batch", None)):
+                    client.search_batch([q_list] * conc_batch_size, top_k=10, collection=coll_name)
+                    return
                 client.search(q_list, top_k=10, collection=coll_name)
-            conc = run_concurrency_profile(hyperspace_query)
+            conc = run_concurrency_profile(
+                hyperspace_query,
+                queries_per_call=conc_batch_size if callable(getattr(client, "search_batch", None)) else 1,
+            )
             
             # Get disk usage - prefer API, fallback to local path sensing
             disk = get_hyperspace_disk_api()

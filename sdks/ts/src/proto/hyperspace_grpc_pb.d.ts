@@ -17,12 +17,14 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     insertText: IDatabaseService_IInsertText;
     delete: IDatabaseService_IDelete;
     search: IDatabaseService_ISearch;
+    searchBatch: IDatabaseService_ISearchBatch;
     monitor: IDatabaseService_IMonitor;
     triggerSnapshot: IDatabaseService_ITriggerSnapshot;
     triggerVacuum: IDatabaseService_ITriggerVacuum;
     configure: IDatabaseService_IConfigure;
     replicate: IDatabaseService_IReplicate;
     getDigest: IDatabaseService_IGetDigest;
+    rebuildIndex: IDatabaseService_IRebuildIndex;
 }
 
 interface IDatabaseService_ICreateCollection extends grpc.MethodDefinition<hyperspace_pb.CreateCollectionRequest, hyperspace_pb.StatusResponse> {
@@ -106,6 +108,15 @@ interface IDatabaseService_ISearch extends grpc.MethodDefinition<hyperspace_pb.S
     responseSerialize: grpc.serialize<hyperspace_pb.SearchResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.SearchResponse>;
 }
+interface IDatabaseService_ISearchBatch extends grpc.MethodDefinition<hyperspace_pb.BatchSearchRequest, hyperspace_pb.BatchSearchResponse> {
+    path: "/hyperspace.Database/SearchBatch";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.BatchSearchRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.BatchSearchRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.BatchSearchResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.BatchSearchResponse>;
+}
 interface IDatabaseService_IMonitor extends grpc.MethodDefinition<hyperspace_pb.MonitorRequest, hyperspace_pb.SystemStats> {
     path: "/hyperspace.Database/Monitor";
     requestStream: false;
@@ -142,12 +153,12 @@ interface IDatabaseService_IConfigure extends grpc.MethodDefinition<hyperspace_p
     responseSerialize: grpc.serialize<hyperspace_pb.StatusResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.StatusResponse>;
 }
-interface IDatabaseService_IReplicate extends grpc.MethodDefinition<hyperspace_pb.Empty, hyperspace_pb.ReplicationLog> {
+interface IDatabaseService_IReplicate extends grpc.MethodDefinition<hyperspace_pb.ReplicationRequest, hyperspace_pb.ReplicationLog> {
     path: "/hyperspace.Database/Replicate";
     requestStream: false;
     responseStream: true;
-    requestSerialize: grpc.serialize<hyperspace_pb.Empty>;
-    requestDeserialize: grpc.deserialize<hyperspace_pb.Empty>;
+    requestSerialize: grpc.serialize<hyperspace_pb.ReplicationRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.ReplicationRequest>;
     responseSerialize: grpc.serialize<hyperspace_pb.ReplicationLog>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.ReplicationLog>;
 }
@@ -159,6 +170,15 @@ interface IDatabaseService_IGetDigest extends grpc.MethodDefinition<hyperspace_p
     requestDeserialize: grpc.deserialize<hyperspace_pb.DigestRequest>;
     responseSerialize: grpc.serialize<hyperspace_pb.DigestResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.DigestResponse>;
+}
+interface IDatabaseService_IRebuildIndex extends grpc.MethodDefinition<hyperspace_pb.RebuildIndexRequest, hyperspace_pb.StatusResponse> {
+    path: "/hyperspace.Database/RebuildIndex";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.RebuildIndexRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.RebuildIndexRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.StatusResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.StatusResponse>;
 }
 
 export const DatabaseService: IDatabaseService;
@@ -173,12 +193,14 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     insertText: grpc.handleUnaryCall<hyperspace_pb.InsertTextRequest, hyperspace_pb.InsertResponse>;
     delete: grpc.handleUnaryCall<hyperspace_pb.DeleteRequest, hyperspace_pb.DeleteResponse>;
     search: grpc.handleUnaryCall<hyperspace_pb.SearchRequest, hyperspace_pb.SearchResponse>;
+    searchBatch: grpc.handleUnaryCall<hyperspace_pb.BatchSearchRequest, hyperspace_pb.BatchSearchResponse>;
     monitor: grpc.handleServerStreamingCall<hyperspace_pb.MonitorRequest, hyperspace_pb.SystemStats>;
     triggerSnapshot: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
     triggerVacuum: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
     configure: grpc.handleUnaryCall<hyperspace_pb.ConfigUpdate, hyperspace_pb.StatusResponse>;
-    replicate: grpc.handleServerStreamingCall<hyperspace_pb.Empty, hyperspace_pb.ReplicationLog>;
+    replicate: grpc.handleServerStreamingCall<hyperspace_pb.ReplicationRequest, hyperspace_pb.ReplicationLog>;
     getDigest: grpc.handleUnaryCall<hyperspace_pb.DigestRequest, hyperspace_pb.DigestResponse>;
+    rebuildIndex: grpc.handleUnaryCall<hyperspace_pb.RebuildIndexRequest, hyperspace_pb.StatusResponse>;
 }
 
 export interface IDatabaseClient {
@@ -209,6 +231,9 @@ export interface IDatabaseClient {
     search(request: hyperspace_pb.SearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
     search(request: hyperspace_pb.SearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
     search(request: hyperspace_pb.SearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
+    searchBatch(request: hyperspace_pb.BatchSearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     monitor(request: hyperspace_pb.MonitorRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     monitor(request: hyperspace_pb.MonitorRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     triggerSnapshot(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
@@ -220,11 +245,14 @@ export interface IDatabaseClient {
     configure(request: hyperspace_pb.ConfigUpdate, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
-    replicate(request: hyperspace_pb.Empty, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
-    replicate(request: hyperspace_pb.Empty, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
+    replicate(request: hyperspace_pb.ReplicationRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
+    replicate(request: hyperspace_pb.ReplicationRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
     getDigest(request: hyperspace_pb.DigestRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
+    rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
 }
 
 export class DatabaseClient extends grpc.Client implements IDatabaseClient {
@@ -256,6 +284,9 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public search(request: hyperspace_pb.SearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
     public search(request: hyperspace_pb.SearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
     public search(request: hyperspace_pb.SearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
+    public searchBatch(request: hyperspace_pb.BatchSearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    public searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    public searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     public monitor(request: hyperspace_pb.MonitorRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     public monitor(request: hyperspace_pb.MonitorRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     public triggerSnapshot(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
@@ -267,9 +298,12 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public configure(request: hyperspace_pb.ConfigUpdate, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
-    public replicate(request: hyperspace_pb.Empty, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
-    public replicate(request: hyperspace_pb.Empty, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
+    public replicate(request: hyperspace_pb.ReplicationRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
+    public replicate(request: hyperspace_pb.ReplicationRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
     public getDigest(request: hyperspace_pb.DigestRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     public getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     public getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
+    public rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
 }

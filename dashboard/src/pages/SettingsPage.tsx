@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api, fetchStatus } from "@/lib/api"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Copy, Download, Archive } from "lucide-react"
 
 export function SettingsPage() {
-    const { data: status } = useQuery({ queryKey: ['status'], queryFn: () => api.get("/status").then(r => r.data) })
+    const { data: status } = useQuery({ queryKey: ['status'], queryFn: fetchStatus })
     const apiKey = localStorage.getItem("hyperspace_api_key") || "YOUR_KEY"
 
     return (
@@ -66,8 +66,18 @@ requests.post(f"{API_URL}/collections", json={
 # 2. Insert Vector (Not exposed in HTTP yet, use gRPC for high Perf)
 # ...`
 
-    const snippet_curl = `curl -X GET http://localhost:50050/api/status \\
+    const snippet_curl = `curl -X GET http://localhost:50050/api/cluster/status \\
   -H "x-api-key: ${apiKey}"`
+
+    const snippet_js = `import axios from "axios";
+
+const client = axios.create({
+  baseURL: "http://localhost:50050/api",
+  headers: { "x-api-key": "${apiKey}" },
+});
+
+const status = await client.get("/cluster/status");
+console.log(status.data);`
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -88,7 +98,7 @@ requests.post(f"{API_URL}/collections", json={
                     <CodeBlock code={snippet_curl} language="bash" onCopy={() => copyToClipboard(snippet_curl)} />
                 </TabsContent>
                 <TabsContent value="js">
-                    <CodeBlock code="// Use axios or fetch" language="javascript" onCopy={() => { }} />
+                    <CodeBlock code={snippet_js} language="javascript" onCopy={() => copyToClipboard(snippet_js)} />
                 </TabsContent>
             </div>
         </Tabs>

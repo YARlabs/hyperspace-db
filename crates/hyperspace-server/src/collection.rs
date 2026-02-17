@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
+use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::task::JoinHandle;
 
 #[derive(Serialize, Deserialize)]
@@ -44,7 +44,14 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     mode: hyperspace_core::QuantizationMode,
     // Tracking latest clock for persistence/dedup
     last_clock: Arc<AtomicU64>,
+    // True while user IDs are guaranteed to match internal IDs.
+    ids_are_identity: AtomicBool,
+    // Limit CPU-bound search tasks to avoid scheduler thrashing.
+    search_limiter: Arc<Semaphore>,
 }
+
+static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
+static EMPTY_COMPLEX_FILTERS: LazyLock<Vec<FilterExpr>> = LazyLock::new(Vec::new);
 
 struct BatchEntry<'a> {
     id: u32,
@@ -251,6 +258,20 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         println!("⚙️  Indexer Concurrency: {concurrency} thread(s)");
         let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
 
+        let search_concurrency_env = std::env::var("HS_SEARCH_CONCURRENCY")
+            .unwrap_or_else(|_| "0".to_string())
+            .parse::<usize>()
+            .unwrap_or(0);
+        let search_concurrency = if search_concurrency_env == 0 {
+            num_cpus
+        } else if search_concurrency_env > num_cpus * 4 {
+            num_cpus * 4
+        } else {
+            search_concurrency_env
+        };
+        println!("⚙️  Search Concurrency Limit: {search_concurrency} task(s)");
+        let search_limiter = Arc::new(Semaphore::new(search_concurrency));
+
         let indexer_task = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
                 // ... (rest of task)
@@ -283,6 +304,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let buckets: Arc<Vec<AtomicU64>> =
             Arc::new(buckets_data.into_iter().map(AtomicU64::new).collect());
         let id_map = Arc::new(id_map_data.into_iter().collect::<DashMap<u32, u32>>());
+        let ids_are_identity = id_map.iter().all(|entry| *entry.key() == *entry.value());
         let reverse_id_map = Arc::new(
             reverse_id_map_data
                 .into_iter()
@@ -350,6 +372,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             data_dir,
             mode,
             last_clock,
+            ids_are_identity: AtomicBool::new(ids_are_identity),
+            search_limiter,
         })
     }
 }
@@ -414,6 +438,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
 
         let internal_id = if let Some(old_id) = existing_internal_id {
+            if old_id != id {
+                self.ids_are_identity.store(false, Ordering::Release);
+            }
             self.index_link
                 .load()
                 .update_storage(old_id, processed_vector)
@@ -427,6 +454,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 .map_err(|e| e.clone())?;
             self.id_map.insert(id, new_id);
             self.reverse_id_map.insert(new_id, id);
+            if new_id != id {
+                self.ids_are_identity.store(false, Ordering::Release);
+            }
             new_id
         };
 
@@ -515,6 +545,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Storage
             // insert_to_storage writes bytes to Mmap. It copies bytes, but doesn't heap allocate vector objects.
             let internal_id = if let Some(old_id) = existing_internal_id {
+                if old_id != *id {
+                    self.ids_are_identity.store(false, Ordering::Release);
+                }
                 index_reader
                     .update_storage(old_id, &processed_vector)
                     .map_err(|e| e.clone())?;
@@ -526,6 +559,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
                 self.id_map.insert(*id, new_id);
                 self.reverse_id_map.insert(new_id, *id);
+                if new_id != *id {
+                    self.ids_are_identity.store(false, Ordering::Release);
+                }
                 new_id
             };
 
@@ -622,36 +658,60 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         
         let index_link = self.index_link.clone();
         let reverse_id_map = self.reverse_id_map.clone();
+        let ids_are_identity = self.ids_are_identity.load(Ordering::Acquire);
         
-        // Clone arguments for move
-        let params = params.clone();
-        let filters = filters.clone();
-        let complex_filters = complex_filters.to_vec();
+        // Move only the required fields to avoid cloning whole params struct.
+        let top_k = params.top_k;
+        let ef_search = params.ef_search;
+        let hybrid_query = params.hybrid_query.clone();
+        let hybrid_alpha = params.hybrid_alpha;
+        let filters_owned = (!filters.is_empty()).then(|| filters.clone());
+        let complex_filters_owned = (!complex_filters.is_empty()).then(|| complex_filters.to_vec());
+        let permit = self
+            .search_limiter
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| format!("Search limiter failed: {e}"))?;
 
         tokio::task::spawn_blocking(move || {
+            let _permit = permit;
             let index = index_link.load();
+            let include_metadata = index.has_nonempty_metadata();
+            let filters_ref = filters_owned.as_ref().unwrap_or(&EMPTY_LEGACY_FILTERS);
+            let complex_filters_ref = complex_filters_owned
+                .as_ref()
+                .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
             let results = index.search(
                 &processed_query,
-                params.top_k,
-                params.ef_search,
-                &filters,
-                &complex_filters,
-                params.hybrid_query.as_deref(),
-                params.hybrid_alpha,
+                top_k,
+                ef_search,
+                filters_ref,
+                complex_filters_ref,
+                hybrid_query.as_deref(),
+                hybrid_alpha,
             );
 
             // Fetch metadata and convert IDs inside blocking worker.
             results
                 .into_iter()
                 .map(|(internal_id, dist)| {
-                    let meta = index
-                        .metadata
-                        .forward
-                        .get(&internal_id)
-                        .map(|m| m.clone())
-                        .unwrap_or_default();
+                    let meta = if include_metadata {
+                        index
+                            .metadata
+                            .forward
+                            .get(&internal_id)
+                            .map(|m| m.clone())
+                            .unwrap_or_default()
+                    } else {
+                        HashMap::new()
+                    };
 
-                    let user_id = reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v);
+                    let user_id = if ids_are_identity {
+                        internal_id
+                    } else {
+                        reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v)
+                    };
 
                     (user_id, dist, meta)
                 })

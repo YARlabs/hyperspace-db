@@ -75,6 +75,23 @@ message SearchRequest {
 }
 ```
 
+#### `SearchBatch`
+Finds nearest neighbors for multiple queries in a single RPC call.
+
+```protobuf
+rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
+
+message BatchSearchRequest {
+  repeated SearchRequest searches = 1;
+}
+
+message BatchSearchResponse {
+  repeated SearchResponse responses = 1;
+}
+```
+
+Recommended for high-concurrency clients and benchmarks to reduce per-request gRPC overhead.
+
 ---
 
 ## 🌐 HTTP API (Control Plane)
@@ -100,6 +117,11 @@ Returns the node's identity and topology role.
   "downstream_peers": []
 }
 ```
+
+### Node Status (Compatibility)
+`GET /api/status`
+
+Returns runtime status and node configuration. Dashboard uses this endpoint first, with fallback to `/api/cluster/status`.
 
 ### System Metrics
 `GET /api/metrics`
@@ -148,4 +170,16 @@ Returns summary of all active collections.
     "metric": "l2"
   }
 ]
+```
+
+### Collection Search (HTTP Playground)
+`POST /api/collections/{name}/search`
+
+Convenience endpoint for dashboard/manual testing.
+
+```json
+{
+  "vector": [0.1, 0.2, 0.3],
+  "top_k": 5
+}
 ```

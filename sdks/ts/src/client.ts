@@ -1,6 +1,7 @@
 import * as grpc from '@grpc/grpc-js';
 import { DatabaseClient } from './proto/hyperspace_grpc_pb';
 import {
+    BatchSearchRequest,
     InsertRequest, SearchRequest,
     CreateCollectionRequest, DeleteCollectionRequest, Empty,
     DurabilityLevel
@@ -11,6 +12,12 @@ export { DurabilityLevel };
 export class HyperspaceClient {
     private client: DatabaseClient;
     private metadata: grpc.Metadata;
+    private static toVectorList(vector: number[] | Float32Array | Float64Array): number[] {
+        if (Array.isArray(vector)) {
+            return vector;
+        }
+        return Array.from(vector);
+    }
 
     constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string) {
         const options = {
@@ -60,11 +67,11 @@ export class HyperspaceClient {
         });
     }
 
-    public insert(id: number, vector: number[], meta?: { [key: string]: string }, collection: string = '', durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL): Promise<boolean> {
+    public insert(id: number, vector: number[] | Float32Array | Float64Array, meta?: { [key: string]: string }, collection: string = '', durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new InsertRequest();
             req.setId(id);
-            req.setVectorList(vector);
+            req.setVectorList(HyperspaceClient.toVectorList(vector));
             if (meta) {
                 const map = req.getMetadataMap();
                 for (const k in meta) map.set(k, meta[k]);
@@ -81,10 +88,10 @@ export class HyperspaceClient {
         });
     }
 
-    public search(vector: number[], topK: number, collection: string = ''): Promise<{ id: number, distance: number, metadata: { [key: string]: string } }[]> {
+    public search(vector: number[] | Float32Array | Float64Array, topK: number, collection: string = ''): Promise<{ id: number, distance: number, metadata: { [key: string]: string } }[]> {
         return new Promise((resolve, reject) => {
             const req = new SearchRequest();
-            req.setVectorList(vector);
+            req.setVectorList(HyperspaceClient.toVectorList(vector));
             req.setTopK(topK);
             req.setCollection(collection);
 
@@ -93,9 +100,11 @@ export class HyperspaceClient {
                 const results = resp.getResultsList().map(r => {
                     const metaMap = r.getMetadataMap();
                     const meta: { [key: string]: string } = {};
-                    metaMap.forEach((entry: any, key: any) => {
-                        meta[key as string] = entry as string;
-                    });
+                    if (metaMap.getLength() > 0) {
+                        metaMap.forEach((entry: string, key: string) => {
+                            meta[key] = entry;
+                        });
+                    }
                     return {
                         id: r.getId(),
                         distance: r.getDistance(),
@@ -103,6 +112,42 @@ export class HyperspaceClient {
                     };
                 });
                 resolve(results);
+            });
+        });
+    }
+
+    public searchBatch(vectors: Array<number[] | Float32Array | Float64Array>, topK: number, collection: string = ''): Promise<{ id: number, distance: number, metadata: { [key: string]: string } }[][]> {
+        return new Promise((resolve, reject) => {
+            const req = new BatchSearchRequest();
+            req.setSearchesList(
+                vectors.map((vector) => {
+                    const s = new SearchRequest();
+                    s.setVectorList(HyperspaceClient.toVectorList(vector));
+                    s.setTopK(topK);
+                    s.setCollection(collection);
+                    return s;
+                })
+            );
+
+            this.client.searchBatch(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const batch = resp.getResponsesList().map((searchResp) =>
+                    searchResp.getResultsList().map((r) => {
+                        const metaMap = r.getMetadataMap();
+                        const meta: { [key: string]: string } = {};
+                        if (metaMap.getLength() > 0) {
+                            metaMap.forEach((entry: string, key: string) => {
+                                meta[key] = entry;
+                            });
+                        }
+                        return {
+                            id: r.getId(),
+                            distance: r.getDistance(),
+                            metadata: meta
+                        };
+                    })
+                );
+                resolve(batch);
             });
         });
     }

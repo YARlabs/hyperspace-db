@@ -15,6 +15,28 @@ function deserialize_hyperspace_BatchInsertRequest(buffer_arg) {
   return hyperspace_pb.BatchInsertRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_BatchSearchRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.BatchSearchRequest)) {
+    throw new Error('Expected argument of type hyperspace.BatchSearchRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_BatchSearchRequest(buffer_arg) {
+  return hyperspace_pb.BatchSearchRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_BatchSearchResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.BatchSearchResponse)) {
+    throw new Error('Expected argument of type hyperspace.BatchSearchResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_BatchSearchResponse(buffer_arg) {
+  return hyperspace_pb.BatchSearchResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_CollectionStatsRequest(arg) {
   if (!(arg instanceof hyperspace_pb.CollectionStatsRequest)) {
     throw new Error('Expected argument of type hyperspace.CollectionStatsRequest');
@@ -180,6 +202,17 @@ function deserialize_hyperspace_MonitorRequest(buffer_arg) {
   return hyperspace_pb.MonitorRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_RebuildIndexRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.RebuildIndexRequest)) {
+    throw new Error('Expected argument of type hyperspace.RebuildIndexRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_RebuildIndexRequest(buffer_arg) {
+  return hyperspace_pb.RebuildIndexRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_ReplicationLog(arg) {
   if (!(arg instanceof hyperspace_pb.ReplicationLog)) {
     throw new Error('Expected argument of type hyperspace.ReplicationLog');
@@ -189,6 +222,17 @@ function serialize_hyperspace_ReplicationLog(arg) {
 
 function deserialize_hyperspace_ReplicationLog(buffer_arg) {
   return hyperspace_pb.ReplicationLog.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_ReplicationRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.ReplicationRequest)) {
+    throw new Error('Expected argument of type hyperspace.ReplicationRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_ReplicationRequest(buffer_arg) {
+  return hyperspace_pb.ReplicationRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_SearchRequest(arg) {
@@ -340,6 +384,18 @@ search: {
     responseSerialize: serialize_hyperspace_SearchResponse,
     responseDeserialize: deserialize_hyperspace_SearchResponse,
   },
+  // Batch Search (ANN)
+searchBatch: {
+    path: '/hyperspace.Database/SearchBatch',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.BatchSearchRequest,
+    responseType: hyperspace_pb.BatchSearchResponse,
+    requestSerialize: serialize_hyperspace_BatchSearchRequest,
+    requestDeserialize: deserialize_hyperspace_BatchSearchRequest,
+    responseSerialize: serialize_hyperspace_BatchSearchResponse,
+    responseDeserialize: deserialize_hyperspace_BatchSearchResponse,
+  },
   // Stream statistics for TUI (Global or Collection tailored)
 monitor: {
     path: '/hyperspace.Database/Monitor',
@@ -392,10 +448,10 @@ replicate: {
     path: '/hyperspace.Database/Replicate',
     requestStream: false,
     responseStream: true,
-    requestType: hyperspace_pb.Empty,
+    requestType: hyperspace_pb.ReplicationRequest,
     responseType: hyperspace_pb.ReplicationLog,
-    requestSerialize: serialize_hyperspace_Empty,
-    requestDeserialize: deserialize_hyperspace_Empty,
+    requestSerialize: serialize_hyperspace_ReplicationRequest,
+    requestDeserialize: deserialize_hyperspace_ReplicationRequest,
     responseSerialize: serialize_hyperspace_ReplicationLog,
     responseDeserialize: deserialize_hyperspace_ReplicationLog,
   },
@@ -409,6 +465,17 @@ replicate: {
     requestDeserialize: deserialize_hyperspace_DigestRequest,
     responseSerialize: serialize_hyperspace_DigestResponse,
     responseDeserialize: deserialize_hyperspace_DigestResponse,
+  },
+  rebuildIndex: {
+    path: '/hyperspace.Database/RebuildIndex',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.RebuildIndexRequest,
+    responseType: hyperspace_pb.StatusResponse,
+    requestSerialize: serialize_hyperspace_RebuildIndexRequest,
+    requestDeserialize: deserialize_hyperspace_RebuildIndexRequest,
+    responseSerialize: serialize_hyperspace_StatusResponse,
+    responseDeserialize: deserialize_hyperspace_StatusResponse,
   },
 };
 

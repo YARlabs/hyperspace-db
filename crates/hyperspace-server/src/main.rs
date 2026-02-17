@@ -32,7 +32,8 @@ use hyperspace_embed::{ApiProvider, Metric, OnnxVectorizer, RemoteVectorizer, Ve
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use hyperspace_proto::hyperspace::{
-    BatchInsertRequest, CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate,
+    BatchInsertRequest, BatchSearchRequest, BatchSearchResponse, CollectionStatsRequest,
+    CollectionStatsResponse, ConfigUpdate,
     CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest,
     DigestResponse, InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse,
     MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats,
@@ -126,6 +127,53 @@ fn default_ef_search() -> usize {
             .parse()
             .unwrap_or(100)
     })
+}
+
+fn build_filters(
+    req: SearchRequest,
+) -> (
+    String,
+    Vec<f64>,
+    std::collections::HashMap<String, String>,
+    Vec<hyperspace_core::FilterExpr>,
+    hyperspace_core::SearchParams,
+) {
+    let col_name = if req.collection.is_empty() {
+        "default".to_string()
+    } else {
+        req.collection
+    };
+
+    let legacy_filter = req.filter.into_iter().collect();
+    let mut complex_filters = Vec::new();
+    for f in req.filters {
+        if let Some(cond) = f.condition {
+            match cond {
+                hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::Match {
+                        key: m.key,
+                        value: m.value,
+                    });
+                }
+                hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::Range {
+                        key: r.key,
+                        gte: r.gte,
+                        lte: r.lte,
+                    });
+                }
+            }
+        }
+    }
+
+    let params = hyperspace_core::SearchParams {
+        top_k: req.top_k as usize,
+        ef_search: default_ef_search(),
+        hybrid_query: req.hybrid_query,
+        hybrid_alpha: req.hybrid_alpha,
+    };
+
+    (col_name, req.vector, legacy_filter, complex_filters, params)
 }
 
 impl Interceptor for ClientAuthInterceptor {
@@ -445,46 +493,12 @@ impl Database for HyperspaceService {
         request: Request<SearchRequest>,
     ) -> Result<Response<SearchResponse>, Status> {
         let user_id = get_user_id(&request);
-        let req = request.into_inner();
-        let col_name = if req.collection.is_empty() {
-            "default".to_string()
-        } else {
-            req.collection
-        };
+        let (col_name, vector, legacy_filter, complex_filters, params) =
+            build_filters(request.into_inner());
 
         if let Some(col) = self.manager.get(&user_id, &col_name).await {
-            let legacy_filter = req.filter.into_iter().collect();
-            let mut complex_filters = Vec::new();
-            for f in req.filters {
-                if let Some(cond) = f.condition {
-                    match cond {
-                        hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
-                            complex_filters.push(hyperspace_core::FilterExpr::Match {
-                                key: m.key,
-                                value: m.value,
-                            });
-                        }
-                        hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
-                            complex_filters.push(hyperspace_core::FilterExpr::Range {
-                                key: r.key,
-                                gte: r.gte,
-                                lte: r.lte,
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Search Params
-            let params = hyperspace_core::SearchParams {
-                top_k: req.top_k as usize,
-                ef_search: default_ef_search(),
-                hybrid_query: req.hybrid_query,
-                hybrid_alpha: req.hybrid_alpha,
-            };
-
             match col
-                .search(&req.vector, &legacy_filter, &complex_filters, &params)
+                .search(&vector, &legacy_filter, &complex_filters, &params)
                 .await
             {
                 Ok(res) => {
@@ -505,6 +519,39 @@ impl Database for HyperspaceService {
                 "Collection '{col_name}' not found"
             )))
         }
+    }
+
+    async fn search_batch(
+        &self,
+        request: Request<BatchSearchRequest>,
+    ) -> Result<Response<BatchSearchResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+
+        let mut responses = Vec::with_capacity(req.searches.len());
+        for search_req in req.searches {
+            let (col_name, vector, legacy_filter, complex_filters, params) = build_filters(search_req);
+            let col = self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
+                Status::not_found(format!("Collection '{col_name}' not found"))
+            })?;
+
+            let res = col
+                .search(&vector, &legacy_filter, &complex_filters, &params)
+                .await
+                .map_err(Status::internal)?;
+
+            let results = res
+                .into_iter()
+                .map(|(id, dist, meta)| SearchResult {
+                    id,
+                    distance: dist,
+                    metadata: meta,
+                })
+                .collect();
+            responses.push(SearchResponse { results });
+        }
+
+        Ok(Response::new(BatchSearchResponse { responses }))
     }
 
     type MonitorStream = ReceiverStream<Result<SystemStats, Status>>;

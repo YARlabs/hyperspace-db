@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api, fetchStatus } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Database, HardDrive, Server, Zap, FolderOpen } from "lucide-react"
@@ -10,7 +10,7 @@ import { useState } from "react"
 export function OverviewPage() {
     const { data: status, isLoading: sLoading } = useQuery({
         queryKey: ['status'],
-        queryFn: () => api.get("/status").then(r => r.data),
+        queryFn: fetchStatus,
         refetchInterval: 5000
     })
     const { data: metrics } = useQuery({

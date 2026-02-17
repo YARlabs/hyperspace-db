@@ -125,11 +125,22 @@ def run_benchmark_scenario(metric, dim, env_mode, api_durability):
 
         # Search
         latencies = []
-        q = vecs[0].tolist()
-        for _ in range(50):
-            s = time.time()
-            client.search(q, top_k=10, collection="bench")
-            latencies.append((time.time()-s)*1000)
+        queries = [vecs[i].tolist() for i in range(min(50, len(vecs)))]
+        supports_batch = callable(getattr(client, "search_batch", None))
+        if supports_batch:
+            batch_size = 10
+            for i in range(0, len(queries), batch_size):
+                batch = queries[i : i + batch_size]
+                s = time.time()
+                client.search_batch(batch, top_k=10, collection="bench")
+                elapsed_ms = (time.time() - s) * 1000
+                per_query_ms = elapsed_ms / max(1, len(batch))
+                latencies.extend([per_query_ms] * len(batch))
+        else:
+            for q in queries:
+                s = time.time()
+                client.search(q, top_k=10, collection="bench")
+                latencies.append((time.time()-s)*1000)
         p95 = np.percentile(latencies, 95)
         
         return {"metric": metric, "dim": dim, "mode": mode_name, "qps": qps, "p95": p95}

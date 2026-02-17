@@ -1,5 +1,7 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
-pub use hyperspace_proto::hyperspace::{InsertRequest, SearchRequest, SearchResult};
+pub use hyperspace_proto::hyperspace::{
+    BatchSearchRequest, InsertRequest, SearchRequest, SearchResponse, SearchResult,
+};
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
 use tonic::transport::Channel;
@@ -41,6 +43,11 @@ pub struct Client {
 }
 
 impl Client {
+    #[inline]
+    fn vec_f32_to_f64(vector: &[f32]) -> Vec<f64> {
+        vector.iter().map(|&x| f64::from(x)).collect()
+    }
+
     /// Connects to the `HyperspaceDB` server.
     ///
     /// # Errors
@@ -171,6 +178,21 @@ impl Client {
         Ok(resp.into_inner().success)
     }
 
+    /// Inserts a vector from f32 input (client-side conversion to protocol f64).
+    ///
+    /// # Errors
+    /// Returns error if insertion fails.
+    pub async fn insert_f32(
+        &mut self,
+        id: u32,
+        vector: &[f32],
+        metadata: std::collections::HashMap<String, String>,
+        collection: Option<String>,
+    ) -> Result<bool, tonic::Status> {
+        self.insert(id, Self::vec_f32_to_f64(vector), metadata, collection)
+            .await
+    }
+
     /// Searches for nearest neighbors.
     ///
     /// # Errors
@@ -192,6 +214,71 @@ impl Client {
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
+    }
+
+    /// Searches using f32 query vector (converted to protocol f64 once).
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_f32(
+        &mut self,
+        vector: &[f32],
+        top_k: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
+        self.search(Self::vec_f32_to_f64(vector), top_k, collection)
+            .await
+    }
+
+    /// Batch search for multiple vectors in a single RPC.
+    ///
+    /// # Errors
+    /// Returns error if the batch search fails.
+    pub async fn search_batch(
+        &mut self,
+        vectors: Vec<Vec<f64>>,
+        top_k: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
+        let collection_name = collection.unwrap_or_default();
+        let searches = vectors
+            .into_iter()
+            .map(|vector| SearchRequest {
+                vector,
+                top_k,
+                filter: std::collections::HashMap::default(),
+                filters: vec![],
+                hybrid_query: None,
+                hybrid_alpha: None,
+                collection: collection_name.clone(),
+            })
+            .collect();
+
+        let req = BatchSearchRequest { searches };
+        let resp = self.inner.search_batch(req).await?;
+        Ok(resp
+            .into_inner()
+            .responses
+            .into_iter()
+            .map(|SearchResponse { results }| results)
+            .collect())
+    }
+
+    /// Batch search from f32 vectors (converted to protocol f64 once).
+    ///
+    /// # Errors
+    /// Returns error if the batch search fails.
+    pub async fn search_batch_f32(
+        &mut self,
+        vectors: &[Vec<f32>],
+        top_k: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
+        let vectors_f64 = vectors
+            .iter()
+            .map(|v| Self::vec_f32_to_f64(v))
+            .collect::<Vec<_>>();
+        self.search_batch(vectors_f64, top_k, collection).await
     }
 
     /// Advanced search with filters and hybrid query.

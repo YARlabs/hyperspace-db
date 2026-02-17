@@ -17,6 +17,8 @@ service Database {
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   // Search (ANN)
   rpc Search (SearchRequest) returns (SearchResponse);
+  // Batch Search (ANN)
+  rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
   // Stream statistics for TUI (Global or Collection tailored)
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
   
@@ -200,6 +202,14 @@ message Range {
 
 message SearchResponse {
   repeated SearchResult results = 1;
+}
+
+message BatchSearchRequest {
+  repeated SearchRequest searches = 1;
+}
+
+message BatchSearchResponse {
+  repeated SearchResponse responses = 1;
 }
 
 message SearchResult {

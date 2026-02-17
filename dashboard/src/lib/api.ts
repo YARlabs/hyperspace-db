@@ -25,3 +25,13 @@ api.interceptors.response.use(
 const token = localStorage.getItem("hyperspace_api_key")
 if (token) setAuthToken(token)
 
+export const fetchStatus = async () => {
+    try {
+        const res = await api.get("/status")
+        return res.data
+    } catch {
+        const res = await api.get("/cluster/status")
+        return res.data
+    }
+}
+

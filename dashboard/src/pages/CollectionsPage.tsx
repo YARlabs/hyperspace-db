@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api, fetchStatus } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Plus, Trash2, MoreHorizontal, Database, Search } from "lucide-react"
@@ -128,7 +128,7 @@ function CreateCollectionDialog() {
     const queryClient = useQueryClient()
 
     // Get global config to show locked values
-    const { data: status } = useQuery({ queryKey: ['status'], queryFn: () => api.get("/status").then(r => r.data) })
+    const { data: status } = useQuery({ queryKey: ['status'], queryFn: fetchStatus })
 
     const mutation = useMutation({
         mutationFn: (data: any) => api.post("/collections", data),

@@ -5,7 +5,7 @@ import warnings
 
 from . import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.71.2'
+GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in hyperspace_pb2_grpc.py depends on'
+        + ' but the generated code in hyperspace_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -78,6 +78,11 @@ class DatabaseStub(object):
                 '/hyperspace.Database/Search',
                 request_serializer=hyperspace__pb2.SearchRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.SearchResponse.FromString,
+                _registered_method=True)
+        self.SearchBatch = channel.unary_unary(
+                '/hyperspace.Database/SearchBatch',
+                request_serializer=hyperspace__pb2.BatchSearchRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.BatchSearchResponse.FromString,
                 _registered_method=True)
         self.Monitor = channel.unary_stream(
                 '/hyperspace.Database/Monitor',
@@ -177,6 +182,13 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SearchBatch(self, request, context):
+        """Batch Search (ANN)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Monitor(self, request, context):
         """Stream statistics for TUI (Global or Collection tailored)
         """
@@ -270,6 +282,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.Search,
                     request_deserializer=hyperspace__pb2.SearchRequest.FromString,
                     response_serializer=hyperspace__pb2.SearchResponse.SerializeToString,
+            ),
+            'SearchBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.SearchBatch,
+                    request_deserializer=hyperspace__pb2.BatchSearchRequest.FromString,
+                    response_serializer=hyperspace__pb2.BatchSearchResponse.SerializeToString,
             ),
             'Monitor': grpc.unary_stream_rpc_method_handler(
                     servicer.Monitor,
@@ -550,6 +567,33 @@ class Database(object):
             '/hyperspace.Database/Search',
             hyperspace__pb2.SearchRequest.SerializeToString,
             hyperspace__pb2.SearchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SearchBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/SearchBatch',
+            hyperspace__pb2.BatchSearchRequest.SerializeToString,
+            hyperspace__pb2.BatchSearchResponse.FromString,
             options,
             channel_credentials,
             insecure,

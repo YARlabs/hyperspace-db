@@ -136,7 +136,12 @@ function SearchPlayground({ collection }: { collection: string }) {
 
     const searchMutation = useMutation({
         mutationFn: (vec: number[]) => api.post(`/collections/${collection}/search`, { vector: vec, top_k: 5 }),
-        onSuccess: (data) => { setRes(data.data); setError("") },
+        onSuccess: (data) => {
+            const payload = data.data
+            const normalized = Array.isArray(payload) ? payload : (payload?.results || [])
+            setRes(normalized)
+            setError("")
+        },
         onError: (err: any) => { setError(err.message || "Search Failed"); setRes(null) }
     })
 

@@ -92,7 +92,7 @@ def _load_case_data(cfg: legacy.Config, case_name: str) -> Tuple[List[str], List
     return docs, doc_ids, test_queries, test_query_ids, valid_qrels, doc_vecs_euc, q_vecs_euc, math_gt_euc
 
 
-def prepare_context(cfg: legacy.Config) -> BenchmarkContext:
+def prepare_context(cfg: legacy.Config, target_db: str | None = None) -> BenchmarkContext:
     docs: List[str] = []
     doc_ids: List[str] = []
     test_queries: List[str] = []
@@ -110,7 +110,10 @@ def prepare_context(cfg: legacy.Config) -> BenchmarkContext:
             raise RuntimeError("Data loading failed")
 
     ds_slug = cfg.dataset_name.replace("/", "_")
-    need_euc = True
+    target_db_norm = (target_db or "").lower()
+    run_hyperspace_only = target_db_norm in {"hyper", "hyperspace"}
+
+    need_euc = not (run_hyperspace_only and cfg.HYPER_MODE.lower() == "poincare")
     if need_euc and doc_vecs_euc is None:
         cache_file = f"cache_{ds_slug}_euclidean_1024d_{cfg.doc_limit}.npz"
         if pathlib.Path(cache_file).exists():
@@ -128,7 +131,7 @@ def prepare_context(cfg: legacy.Config) -> BenchmarkContext:
             q_vecs_euc = model_base.encode(test_queries, batch_size=cfg.batch_size)
             np.save(q_cache_file, q_vecs_euc)
 
-    need_hyp = cfg.HYPER_MODE.lower() == "poincare"
+    need_hyp = cfg.HYPER_MODE.lower() == "poincare" and (not target_db_norm or run_hyperspace_only)
     if need_hyp:
         cache_file = f"cache_{ds_slug}_hyperbolic_64d_{cfg.doc_limit}.npz"
         if pathlib.Path(cache_file).exists():
@@ -179,7 +182,7 @@ def main() -> None:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     target_db = args[0].lower() if args else None
 
-    ctx = prepare_context(cfg)
+    ctx = prepare_context(cfg, target_db=target_db)
     plugins = load_plugins()
     selected = select_plugins(plugins, target_db)
     final_results: List[Result] = []

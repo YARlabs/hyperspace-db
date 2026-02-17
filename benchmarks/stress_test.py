@@ -93,9 +93,21 @@ def run_concurrent_inserts(client, concurrency, total_count, dim, metric, collec
 def run_concurrent_searches(client, concurrency, total_count, dim, metric, collection):
     query_vectors = [generate_vector(dim, metric) for _ in range(total_count)]
     start = time.time()
-    
+
+    supports_batch = callable(getattr(client, "search_batch", None))
+
     def search_task(vecs):
-        for v in vecs:
+        vectors = [v.tolist() if hasattr(v, "tolist") else v for v in vecs]
+        if supports_batch:
+            batch_size = 64
+            for i in range(0, len(vectors), batch_size):
+                client.search_batch(
+                    vectors[i : i + batch_size],
+                    top_k=10,
+                    collection=collection,
+                )
+            return
+        for v in vectors:
             client.search(vector=v, top_k=10, collection=collection)
 
     batches = np.array_split(query_vectors, concurrency)

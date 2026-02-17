@@ -82,13 +82,22 @@ class HyperspacePlugin(DatabasePlugin):
             all_gt_ids = []
             lats = []
             search_t0 = time.time()
-            for i, q_vec in enumerate(tqdm(target_q_vecs, desc="Hyperspace Search")):
-                q_id = ctx.test_query_ids[i]
-                all_gt_ids.append(ctx.valid_qrels.get(q_id, []))
-                ts = time.time()
-                res = client.search(q_vec.tolist(), top_k=10, collection=coll_name)
-                lats.append((time.time() - ts) * 1000)
-                all_res_ids.append(legacy.extract_ids(res))
+            query_batch_size = 64
+            for i in tqdm(range(0, len(target_q_vecs), query_batch_size), desc="Hyperspace Search"):
+                batch_vecs = target_q_vecs[i : i + query_batch_size]
+                for j in range(len(batch_vecs)):
+                    q_id = ctx.test_query_ids[i + j]
+                    all_gt_ids.append(ctx.valid_qrels.get(q_id, []))
+
+                batch_ids, batch_lats = legacy.hyperspace_search_many(
+                    client=client,
+                    vectors=batch_vecs,
+                    top_k=10,
+                    collection=coll_name,
+                    batch_size=query_batch_size,
+                )
+                all_res_ids.extend(batch_ids)
+                lats.extend(batch_lats)
 
             search_dur = time.time() - search_t0
             recall, mrr, ndcg = legacy.calculate_accuracy(all_res_ids, all_gt_ids, 10)
@@ -97,10 +106,18 @@ class HyperspacePlugin(DatabasePlugin):
 
             q_list = target_q_vecs[0].tolist()
 
+            conc_batch_size = 32
+
             def hyperspace_query() -> None:
+                if callable(getattr(client, "search_batch", None)):
+                    client.search_batch([q_list] * conc_batch_size, top_k=10, collection=coll_name)
+                    return
                 client.search(q_list, top_k=10, collection=coll_name)
 
-            conc = legacy.run_concurrency_profile(hyperspace_query)
+            conc = legacy.run_concurrency_profile(
+                hyperspace_query,
+                queries_per_call=conc_batch_size if callable(getattr(client, "search_batch", None)) else 1,
+            )
             disk = legacy.get_hyperspace_disk_api() or legacy.get_local_disk("../data")
             disk = legacy.format_size(disk)
             client.delete_collection(coll_name)

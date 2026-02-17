@@ -14,13 +14,14 @@ use rand::Rng;
 use rkyv::ser::Serializer;
 use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
+use std::cell::RefCell;
 use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BTreeMap, BinaryHeap, HashSet};
+use std::collections::{BTreeMap, BinaryHeap};
 #[cfg(feature = "persistence")]
 use std::fs::File;
 #[cfg(feature = "persistence")]
 use std::io::Write;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 // Imports
@@ -272,10 +273,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]).unwrap_or_default();
 
         let forward = DashMap::new();
+        let mut has_nonempty_metadata = false;
         for (k, v) in deserialized.metadata.forward {
             let mut attributes = std::collections::HashMap::new();
             for (mk, mv) in v {
                 attributes.insert(mk, mv);
+            }
+            if !attributes.is_empty() {
+                has_nonempty_metadata = true;
             }
             forward.insert(k, attributes);
         }
@@ -293,6 +298,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             storage,
             mode,
             config,
+            has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
             _marker: PhantomData,
         })
     }
@@ -413,10 +419,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]).unwrap_or_default();
 
         let forward = DashMap::new();
+        let mut has_nonempty_metadata = false;
         for (k, v) in deserialized.metadata.forward {
             let mut attributes = std::collections::HashMap::new();
             for (mk, mv) in v {
                 attributes.insert(mk, mv);
+            }
+            if !attributes.is_empty() {
+                has_nonempty_metadata = true;
             }
             forward.insert(k, attributes);
         }
@@ -434,6 +444,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             storage,
             mode,
             config,
+            has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
             _marker: PhantomData,
         })
     }
@@ -470,6 +481,7 @@ pub struct HnswIndex<const N: usize, M: Metric<N>> {
 
     // Runtime configuration
     pub config: Arc<GlobalConfig>,
+    has_nonempty_metadata: AtomicBool,
 
     _marker: PhantomData<M>,
 }
@@ -480,6 +492,46 @@ struct Node {
     // Neighbor lists by layer.
     // layers[0] - detailed layer.
     layers: Vec<RwLock<Vec<NodeId>>>,
+}
+
+#[derive(Default)]
+struct VisitedScratch {
+    marks: Vec<u32>,
+    generation: u32,
+    candidates_l0: BinaryHeap<Candidate>,
+    results_l0: BinaryHeap<std::cmp::Reverse<Candidate>>,
+    candidates_layer: BinaryHeap<Candidate>,
+    results_layer: BinaryHeap<Candidate>,
+}
+
+impl VisitedScratch {
+    fn prepare(&mut self, len: usize) -> u32 {
+        if self.marks.len() < len {
+            self.marks.resize(len, 0);
+        }
+        self.generation = self.generation.wrapping_add(1);
+        if self.generation == 0 {
+            self.marks.fill(0);
+            self.generation = 1;
+        }
+        self.generation
+    }
+}
+
+#[inline]
+fn mark_visited(marks: &mut [u32], generation: u32, id: u32) -> bool {
+    let idx = id as usize;
+    let slot = &mut marks[idx];
+    if *slot == generation {
+        false
+    } else {
+        *slot = generation;
+        true
+    }
+}
+
+thread_local! {
+    static VISITED_SCRATCH: RefCell<VisitedScratch> = RefCell::new(VisitedScratch::default());
 }
 
 /// Nearest Neighbor Candidate
@@ -520,8 +572,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             storage,
             mode,
             config,
+            has_nonempty_metadata: AtomicBool::new(false),
             _marker: PhantomData,
         }
+    }
+
+    #[inline]
+    pub fn has_nonempty_metadata(&self) -> bool {
+        self.has_nonempty_metadata.load(Ordering::Relaxed)
     }
 
     // Support Soft Delete
@@ -788,10 +846,6 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // Optimization: Hold read lock for entire search_layer0 duration
         let nodes_guard = self.nodes.read();
 
-        let mut candidates = BinaryHeap::new();
-        let mut results = BinaryHeap::<std::cmp::Reverse<Candidate>>::new();
-        let mut visited = HashSet::new();
-
         // Helper to check validity.
         // Capture 'deleted' lock if no explicit allow list is provided.
         let deleted_guard = if allowed.is_none() {
@@ -813,77 +867,101 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return vec![];
         }
 
-        let d = self.dist(start_node, query);
-        let first = Candidate {
-            id: start_node,
-            distance: d,
-        };
+        VISITED_SCRATCH.with(|scratch_cell| {
+            let mut scratch = scratch_cell.borrow_mut();
+            let generation = scratch.prepare(nodes_guard.len());
 
-        candidates.push(first);
-        if is_valid(start_node) {
-            results.push(std::cmp::Reverse(first));
-        }
-        visited.insert(start_node);
+            let ef_capacity = ef.max(k).max(16);
+            let mut candidates = std::mem::take(&mut scratch.candidates_l0);
+            let mut results = std::mem::take(&mut scratch.results_l0);
 
-        while let Some(cand) = candidates.pop() {
-            // Lower Bound Pruning:
-            if let Some(std::cmp::Reverse(worst)) = results.peek() {
-                if results.len() >= ef && cand.distance > worst.distance {
-                    break;
-                }
+            candidates.clear();
+            results.clear();
+            if candidates.capacity() < ef_capacity {
+                candidates.reserve(ef_capacity - candidates.capacity());
+            }
+            if results.capacity() < ef_capacity {
+                results.reserve(ef_capacity - results.capacity());
             }
 
-            if (cand.id as usize) >= nodes_guard.len() {
-                continue;
+            let d = self.dist(start_node, query);
+            let first = Candidate {
+                id: start_node,
+                distance: d,
+            };
+
+            candidates.push(first);
+            if is_valid(start_node) {
+                results.push(std::cmp::Reverse(first));
             }
+            let _ = mark_visited(&mut scratch.marks, generation, start_node);
 
-            let node = &nodes_guard[cand.id as usize];
-            if node.layers.is_empty() {
-                continue;
-            }
-
-            let neighbors = node.layers[0].read();
-            for &neighbor in neighbors.iter() {
-                if !visited.insert(neighbor) {
-                    continue;
-                }
-
-                let dist = self.dist(neighbor, query);
-
-                // Add to Candidates (Navigation).
-                // Navigation heuristic: Traverse through invalid nodes if they are promising (closer to query).
-                let mut add_to_candidates = true;
+            while let Some(cand) = candidates.pop() {
+                // Lower Bound Pruning:
                 if let Some(std::cmp::Reverse(worst)) = results.peek() {
-                    if results.len() >= ef && dist > worst.distance {
-                        add_to_candidates = false;
+                    if results.len() >= ef && cand.distance > worst.distance {
+                        break;
                     }
                 }
 
-                if add_to_candidates {
-                    let c = Candidate {
-                        id: neighbor,
-                        distance: dist,
-                    };
-                    candidates.push(c);
+                if (cand.id as usize) >= nodes_guard.len() {
+                    continue;
+                }
 
-                    // Add to Results (Only if Valid)
-                    if is_valid(neighbor) {
-                        results.push(std::cmp::Reverse(c));
-                        if results.len() > ef {
-                            results.pop();
+                let node = &nodes_guard[cand.id as usize];
+                if node.layers.is_empty() {
+                    continue;
+                }
+
+                let neighbors = node.layers[0].read();
+                for &neighbor in neighbors.iter() {
+                    if !mark_visited(&mut scratch.marks, generation, neighbor) {
+                        continue;
+                    }
+
+                    let dist = self.dist(neighbor, query);
+
+                    // Add to Candidates (Navigation).
+                    // Navigation heuristic: Traverse through invalid nodes if they are promising (closer to query).
+                    let mut add_to_candidates = true;
+                    if let Some(std::cmp::Reverse(worst)) = results.peek() {
+                        if results.len() >= ef && dist > worst.distance {
+                            add_to_candidates = false;
+                        }
+                    }
+
+                    if add_to_candidates {
+                        let c = Candidate {
+                            id: neighbor,
+                            distance: dist,
+                        };
+                        candidates.push(c);
+
+                        // Add to Results (Only if Valid)
+                        if is_valid(neighbor) {
+                            results.push(std::cmp::Reverse(c));
+                            if results.len() > ef {
+                                results.pop();
+                            }
                         }
                     }
                 }
             }
-        }
 
-        let mut output = Vec::new();
-        while let Some(std::cmp::Reverse(c)) = results.pop() {
-            output.push((c.id, c.distance));
-        }
-        output.reverse();
-        output.truncate(k);
-        output
+            let mut output = Vec::with_capacity(k.min(results.len()));
+            while let Some(std::cmp::Reverse(c)) = results.pop() {
+                output.push((c.id, c.distance));
+            }
+            output.reverse();
+            output.truncate(k);
+
+            // Keep allocated capacity for the next query on the same thread.
+            candidates.clear();
+            results.clear();
+            scratch.candidates_l0 = candidates;
+            scratch.results_l0 = results;
+            output
+        })
     }
 
     // Search candidates on a layer (returns Heap instead of sorted vec)
@@ -905,58 +983,78 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return BinaryHeap::new();
         }
 
-        let mut candidates = BinaryHeap::new();
-        let mut results = BinaryHeap::new();
-        let mut visited = HashSet::new();
+        VISITED_SCRATCH.with(|scratch_cell| {
+            let mut scratch = scratch_cell.borrow_mut();
+            let generation = scratch.prepare(nodes_guard.len());
 
-        let d = self.dist(start_node, query);
-        let first = Candidate {
-            id: start_node,
-            distance: d,
-        };
+            let ef_capacity = ef.max(16);
+            let mut candidates = std::mem::take(&mut scratch.candidates_layer);
+            let mut results = std::mem::take(&mut scratch.results_layer);
 
-        candidates.push(first);
-        results.push(first);
-        visited.insert(start_node);
-
-        while let Some(cand) = candidates.pop() {
-            let curr_worst = results.peek().unwrap().distance;
-            if cand.distance > curr_worst && results.len() >= ef {
-                break;
+            candidates.clear();
+            results.clear();
+            if candidates.capacity() < ef_capacity {
+                candidates.reserve(ef_capacity - candidates.capacity());
+            }
+            if results.capacity() < ef_capacity {
+                results.reserve(ef_capacity - results.capacity());
             }
 
-            if (cand.id as usize) >= nodes_guard.len() {
-                continue;
-            }
+            let d = self.dist(start_node, query);
+            let first = Candidate {
+                id: start_node,
+                distance: d,
+            };
 
-            let node = &nodes_guard[cand.id as usize];
-            if node.layers.len() <= level {
-                continue;
-            }
+            candidates.push(first);
+            results.push(first);
+            let _ = mark_visited(&mut scratch.marks, generation, start_node);
 
-            let neighbors = node.layers[level].read();
-            for &neighbor in neighbors.iter() {
-                if !visited.insert(neighbor) {
+            while let Some(cand) = candidates.pop() {
+                let curr_worst = results.peek().unwrap().distance;
+                if cand.distance > curr_worst && results.len() >= ef {
+                    break;
+                }
+
+                if (cand.id as usize) >= nodes_guard.len() {
                     continue;
                 }
 
-                let dist = self.dist(neighbor, query);
+                let node = &nodes_guard[cand.id as usize];
+                if node.layers.len() <= level {
+                    continue;
+                }
 
-                if results.len() < ef || dist < curr_worst {
-                    let c = Candidate {
-                        id: neighbor,
-                        distance: dist,
-                    };
-                    candidates.push(c);
-                    results.push(c);
+                let neighbors = node.layers[level].read();
+                for &neighbor in neighbors.iter() {
+                    if !mark_visited(&mut scratch.marks, generation, neighbor) {
+                        continue;
+                    }
 
-                    if results.len() > ef {
-                        results.pop();
+                    let dist = self.dist(neighbor, query);
+
+                    if results.len() < ef || dist < curr_worst {
+                        let c = Candidate {
+                            id: neighbor,
+                            distance: dist,
+                        };
+                        candidates.push(c);
+                        results.push(c);
+
+                        if results.len() > ef {
+                            results.pop();
+                        }
                     }
                 }
             }
-        }
-        results
+            // Keep allocated capacity for subsequent calls on this thread.
+            candidates.clear();
+            scratch.candidates_layer = candidates;
+            let out = std::mem::take(&mut results);
+            results.clear();
+            scratch.results_layer = results;
+            out
+        })
     }
 
     /// HNSW Heuristic for neighbor selection
@@ -1099,6 +1197,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         id: NodeId,
         meta: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
+        if !meta.is_empty() {
+            self.has_nonempty_metadata.store(true, Ordering::Relaxed);
+        }
+
         // 1. Index Metadata
         for (key, val) in &meta {
             // A. Inverted Index (Text)

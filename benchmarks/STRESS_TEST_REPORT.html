@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Stress Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --bg: #0f172a; --card-bg: #1e293b; --text: #f8fafc; --accent: #38bdf8; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding: 2rem; margin: 0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+        .card { background: var(--card-bg); padding: 1.5rem; border-radius: 1rem; border: 1px solid #334155; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        canvas { max-height: 450px; width: 100% !important; }
+        h1 { text-align: center; color: var(--accent); margin-bottom: 2rem; }
+        h2 { font-size: 1.1rem; color: #94a3b8; margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+    <h1>Vector DB Stress Test Metrics</h1>
+    <div class="grid">
+        <div class="card"><h2>Search Throughput (Total QPS)</h2><canvas id="sChart"></canvas></div>
+        <div class="card"><h2>Insert Throughput (Total QPS)</h2><canvas id="iChart"></canvas></div>
+    </div>
+    <div class="card">
+        <h2>Scalability Efficiency (%) - Search</h2>
+        <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1rem;">(Percentage of linear speedup. Higher is better. Labels show % of core utilization and diff from leader)</p>
+        <canvas id="eChart"></canvas>
+    </div>
+    <script>
+        const concs = [1, 10, 50, 100, 500, 1000];
+        const effConcs = [1, 10, 50, 100, 500, 1000, 1100];
+        const commonOptions = { 
+            responsive: true, 
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#f1f5f9', font: { family: 'Inter' } } } },
+            scales: { 
+                y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, 
+                x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } } 
+            } 
+        };
+
+        // Data Labels Plugin
+        const topLabelsPlugin = {
+            id: 'topLabels',
+            afterDatasetsDraw(chart) {
+                if (chart.canvas.id !== 'eChart') return;
+                const { ctx, data } = chart;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                
+                data.datasets.forEach((dataset, i) => {
+                    const meta = chart.getDatasetMeta(i);
+                    meta.data.forEach((bar, index) => {
+                        const val = dataset.data[index];
+                        if (val <= 0) return;
+
+                        // Find leader for this concurrency point
+                        let leaderVal = 0;
+                        data.datasets.forEach(ds => { leaderVal = Math.max(leaderVal, ds.data[index]); });
+                        
+                        // Value label
+                        ctx.font = 'bold 11px Inter';
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(val.toFixed(1) + '%', bar.x, bar.y - 18);
+                        
+                        // Comparison label
+                        if (leaderVal > 0) {
+                            const isLeader = val === leaderVal;
+                            const diff = isLeader ? 'Leader' : '-' + ((leaderVal - val) / leaderVal * 100).toFixed(0) + '%';
+                            ctx.font = '9px Inter';
+                            ctx.fillStyle = isLeader ? '#10b981' : '#f87171';
+                            ctx.fillText(diff, bar.x, bar.y - 6);
+                        }
+                    });
+                });
+                ctx.restore();
+            }
+        };
+
+        new Chart(document.getElementById('sChart'), { 
+            type: 'line', 
+            data: { labels: concs, datasets: [{"label": "Hyperspace", "data": [1091.7584587903418, 7245.700228722265, 8181.190282761157, 8388.44861947623, 7807.314405908111, 8118.489613577064], "borderColor": "#38bdf8", "tension": 0.1}, {"label": "Qdrant", "data": [891.1095847250158, 3880.6701766576193, 4196.6814200244435, 4407.675146149974, 4730.224212616851, 3457.269466132095], "borderColor": "#fac05e", "tension": 0.1}, {"label": "Milvus", "data": [742.6535261578265, 4193.796550617375, 5086.406248768358, 4907.6018437859975, 4329.847717884516, 3757.9782932901117], "borderColor": "#818cf8", "tension": 0.1}, {"label": "Weaviate", "data": [115.82640388258197, 795.808287854529, 1003.7768134549951, 973.1726376867549, 898.0574224772363, 936.1013201553628], "borderColor": "#f472b6", "tension": 0.1}] }, 
+            options: commonOptions 
+        });
+        new Chart(document.getElementById('iChart'), { 
+            type: 'line', 
+            data: { labels: concs, datasets: [{"label": "Hyperspace", "data": [29486.51901510635, 42262.54483898271, 48951.18541047624, 52175.74762402348, 29207.919688917114, 19169.351735308446], "borderColor": "#38bdf8", "tension": 0.1}, {"label": "Qdrant", "data": [1586.552817372107, 1670.189379934372, 1800.752156667306, 1902.958595774604, 1870.7750321463188, 1842.6277956906722], "borderColor": "#fac05e", "tension": 0.1}, {"label": "Milvus", "data": [17128.591934953638, 26530.34322487928, 27335.176401429093, 27653.25047189746, 23044.98060768627, 17020.693618067737], "borderColor": "#818cf8", "tension": 0.1}, {"label": "Weaviate", "data": [1149.7453720620501, 663.5462635647922, 673.4899711862244, 637.8251501563334, 511.42568244347285, 540.1364612393961], "borderColor": "#f472b6", "tension": 0.1}] }, 
+            options: commonOptions 
+        });
+        new Chart(document.getElementById('eChart'), { 
+            type: 'bar', 
+            data: { labels: effConcs, datasets: [{"label": "Hyperspace", "data": [0, 66.36724607337078, 14.98718002483047, 7.683429014848718, 1.4302274176210263, 0.7436159113960312, 0], "backgroundColor": "#38bdf8", "hoverBackgroundColor": "#fff"}, {"label": "Qdrant", "data": [0, 43.548742412585995, 9.41900186455627, 4.9462773397394475, 1.0616481505081183, 0.38797354729373285, 0], "backgroundColor": "#fac05e", "hoverBackgroundColor": "#fff"}, {"label": "Milvus", "data": [0, 56.47043207771859, 13.697925262896849, 6.608198400640259, 1.1660478447561695, 0.5060203932151637, 0], "backgroundColor": "#818cf8", "hoverBackgroundColor": "#fff"}, {"label": "Weaviate", "data": [0, 68.70698400178883, 17.332435089197197, 8.401993026333619, 1.550695510477273, 0.8081933728205251, 0], "backgroundColor": "#f472b6", "hoverBackgroundColor": "#fff"}] }, 
+            options: {
+                ...commonOptions,
+                plugins: { ...commonOptions.plugins },
+                barPercentage: 0.8,
+                categoryPercentage: 0.8
+            },
+            plugins: [topLabelsPlugin]
+        });
+    </script>
+</body>
+</html>

@@ -64,8 +64,13 @@ class StressTestRunner:
                 q_vecs = self.gen_vecs(self.count_srch)
                 t0 = time.time()
                 with ThreadPoolExecutor(max_workers=c) as ex:
-                    for v in q_vecs:
-                        ex.submit(search_fn, db_context, coll, v)
+                    if name.lower() == "hyperspace":
+                        batch_size = 64
+                        for i in range(0, len(q_vecs), batch_size):
+                            ex.submit(search_fn, db_context, coll, q_vecs[i:i + batch_size])
+                    else:
+                        for v in q_vecs:
+                            ex.submit(search_fn, db_context, coll, v)
                 srch_qps = self.count_srch / (time.time() - t0)
                 if c == 1: base_srch = srch_qps
                 print(f" Done. QPS: {srch_qps:8.0f}")
@@ -127,12 +132,38 @@ class StressTestRunner:
         js_eff_datasets = []
         colors = ["#38bdf8", "#fac05e", "#818cf8", "#f472b6", "#10b981", "#6366f1"]
         
+        # Concurrencies for efficiency (adding empty 1 and 1100 as padding)
+        eff_concs = [1] + self.concurrencies[1:] + [1100]
+        
         for i, db in enumerate(dbs):
             color = colors[i % len(colors)]
             db_res = [r for r in self.results if r.db_name == db]
-            js_search_datasets.append({"label": db, "data": [next((r.srch_qps for r in db_res if r.concurrency == c), 0) for c in self.concurrencies], "borderColor": color, "tension": 0.1})
-            js_insert_datasets.append({"label": db, "data": [next((r.ins_qps for r in db_res if r.concurrency == c), 0) for c in self.concurrencies], "borderColor": color, "tension": 0.1})
-            js_eff_datasets.append({"label": db, "data": [next((r.srch_eff for r in db_res if r.concurrency == c), 0) for c in self.concurrencies], "backgroundColor": color})
+            
+            # Throughput data (all C)
+            js_search_datasets.append({
+                "label": db, 
+                "data": [next((r.srch_qps for r in db_res if r.concurrency == c), 0) for c in self.concurrencies], 
+                "borderColor": color, 
+                "tension": 0.1
+            })
+            js_insert_datasets.append({
+                "label": db, 
+                "data": [next((r.ins_qps for r in db_res if r.concurrency == c), 0) for c in self.concurrencies], 
+                "borderColor": color, 
+                "tension": 0.1
+            })
+            
+            # Efficiency data: force 1 and 1100 to be empty (0)
+            eff_data = [0] # Empty placeholder for C=1
+            eff_data.extend([next((r.srch_eff for r in db_res if r.concurrency == c), 0) for c in self.concurrencies[1:]])
+            eff_data.append(0) # Empty placeholder for C=1100
+            
+            js_eff_datasets.append({
+                "label": db, 
+                "data": eff_data, 
+                "backgroundColor": color,
+                "hoverBackgroundColor": "#fff"
+            })
 
         import json
         with open(html_path, "w") as f:
@@ -145,11 +176,12 @@ class StressTestRunner:
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {{ --bg: #0f172a; --card-bg: #1e293b; --text: #f8fafc; --accent: #38bdf8; }}
-        body {{ font-family: sans-serif; background: var(--bg); color: var(--text); padding: 2rem; }}
+        body {{ font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding: 2rem; margin: 0; }}
         .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }}
-        .card {{ background: var(--card-bg); padding: 1.5rem; border-radius: 1rem; border: 1px solid #334155; margin-bottom: 2rem; }}
-        canvas {{ max-height: 400px; }}
-        h1 {{ text-align: center; color: var(--accent); }}
+        .card {{ background: var(--card-bg); padding: 1.5rem; border-radius: 1rem; border: 1px solid #334155; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }}
+        canvas {{ max-height: 450px; width: 100% !important; }}
+        h1 {{ text-align: center; color: var(--accent); margin-bottom: 2rem; }}
+        h2 {{ font-size: 1.1rem; color: #94a3b8; margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; }}
     </style>
 </head>
 <body>
@@ -158,17 +190,88 @@ class StressTestRunner:
         <div class="card"><h2>Search Throughput (Total QPS)</h2><canvas id="sChart"></canvas></div>
         <div class="card"><h2>Insert Throughput (Total QPS)</h2><canvas id="iChart"></canvas></div>
     </div>
-    <div class="card"><h2>Scalability Efficiency (%)</h2><canvas id="eChart"></canvas></div>
+    <div class="card">
+        <h2>Scalability Efficiency (%) - Search</h2>
+        <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1rem;">(Percentage of linear speedup. Higher is better. Labels show % of core utilization and diff from leader)</p>
+        <canvas id="eChart"></canvas>
+    </div>
     <script>
-        const labels = {json.dumps(self.concurrencies)};
-        const common = {{ responsive: true, plugins: {{ legend: {{ labels: {{ color: '#fff' }} }} }}, scales: {{ y: {{ ticks: {{ color: '#94a3b8' }} }}, x: {{ ticks: {{ color: '#94a3b8' }} }} }} }};
-        new Chart(document.getElementById('sChart'), {{ type: 'line', data: {{ labels, datasets: {json.dumps(js_search_datasets)} }}, options: common }});
-        new Chart(document.getElementById('iChart'), {{ type: 'line', data: {{ labels, datasets: {json.dumps(js_insert_datasets)} }}, options: common }});
-        new Chart(document.getElementById('eChart'), {{ type: 'bar', data: {{ labels, datasets: {json.dumps(js_eff_datasets)} }}, options: common }});
+        const concs = {json.dumps(self.concurrencies)};
+        const effConcs = {json.dumps(eff_concs)};
+        const commonOptions = {{ 
+            responsive: true, 
+            maintainAspectRatio: false,
+            plugins: {{ legend: {{ labels: {{ color: '#f1f5f9', font: {{ family: 'Inter' }} }} }} }},
+            scales: {{ 
+                y: {{ grid: {{ color: '#334155' }}, ticks: {{ color: '#94a3b8' }} }}, 
+                x: {{ grid: {{ color: '#334155' }}, ticks: {{ color: '#94a3b8' }} }} 
+            }} 
+        }};
+
+        // Data Labels Plugin
+        const topLabelsPlugin = {{
+            id: 'topLabels',
+            afterDatasetsDraw(chart) {{
+                if (chart.canvas.id !== 'eChart') return;
+                const {{ ctx, data }} = chart;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                
+                data.datasets.forEach((dataset, i) => {{
+                    const meta = chart.getDatasetMeta(i);
+                    meta.data.forEach((bar, index) => {{
+                        const val = dataset.data[index];
+                        if (val <= 0) return;
+
+                        // Find leader for this concurrency point
+                        let leaderVal = 0;
+                        data.datasets.forEach(ds => {{ leaderVal = Math.max(leaderVal, ds.data[index]); }});
+                        
+                        // Value label
+                        ctx.font = 'bold 11px Inter';
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(val.toFixed(1) + '%', bar.x, bar.y - 18);
+                        
+                        // Comparison label
+                        if (leaderVal > 0) {{
+                            const isLeader = val === leaderVal;
+                            const diff = isLeader ? 'Leader' : '-' + ((leaderVal - val) / leaderVal * 100).toFixed(0) + '%';
+                            ctx.font = '9px Inter';
+                            ctx.fillStyle = isLeader ? '#10b981' : '#f87171';
+                            ctx.fillText(diff, bar.x, bar.y - 6);
+                        }}
+                    }});
+                }});
+                ctx.restore();
+            }}
+        }};
+
+        new Chart(document.getElementById('sChart'), {{ 
+            type: 'line', 
+            data: {{ labels: concs, datasets: {json.dumps(js_search_datasets)} }}, 
+            options: commonOptions 
+        }});
+        new Chart(document.getElementById('iChart'), {{ 
+            type: 'line', 
+            data: {{ labels: concs, datasets: {json.dumps(js_insert_datasets)} }}, 
+            options: commonOptions 
+        }});
+        new Chart(document.getElementById('eChart'), {{ 
+            type: 'bar', 
+            data: {{ labels: effConcs, datasets: {json.dumps(js_eff_datasets)} }}, 
+            options: {{
+                ...commonOptions,
+                plugins: {{ ...commonOptions.plugins }},
+                barPercentage: 0.8,
+                categoryPercentage: 0.8
+            }},
+            plugins: [topLabelsPlugin]
+        }});
     </script>
 </body>
 </html>""")
-        print(f"\n✅ Visual report updated: {html_path}")
+        print(f"\n✅ Visual report updated: {{html_path}}")
 
 def run_stress_test():
     parser = argparse.ArgumentParser(description="Multi-DB Stress Test Runner")
@@ -211,7 +314,13 @@ def run_stress_test():
                     chunk = vecs[i:i+chunk_size]
                     ids = list(range(start_id + i, start_id + i + len(chunk)))
                     client.batch_insert(chunk, ids, collection=c)
-            def hs_srch(client, c, v): client.search(v, top_k=10, collection=c)
+            def hs_srch(client, c, vectors):
+                if callable(getattr(client, "search_batch", None)):
+                    payload = [v.tolist() if hasattr(v, "tolist") else v for v in vectors]
+                    client.search_batch(payload, top_k=10, collection=c)
+                    return
+                for v in vectors:
+                    client.search(v, top_k=10, collection=c)
             def hs_wait(client, coll):
                 url = f"http://localhost:50050/api/collections/{coll}/stats"
                 headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}
@@ -289,22 +398,22 @@ def run_stress_test():
     #     except Exception as e: print(f"Skipping Chroma: {e}")
 
     # --- WEAVIATE ---
-    # if not target_dbs or "weaviate" in target_dbs:
-    #     try:
-    #         import weaviate
-    #         def weav_setup(c):
-    #             client = weaviate.Client(url="http://localhost:8080")
-    #             if client.schema.exists(c): client.schema.delete_class(c)
-    #             client.schema.create_class({"class": c, "vectorizer": "none", "vectorIndexConfig": {"distance": "cosine"}})
-    #             return client
-    #         def weav_ins(client, c, vecs, start_id):
-    #             client.batch.configure(batch_size=min(len(vecs), 1000))
-    #             with client.batch as b:
-    #                 for v in vecs: b.add_data_object({}, c, vector=v)
-    #         def weav_srch(client, c, v):
-    #             client.query.get(c, ["_additional { id }"]).with_near_vector({"vector": v}).with_limit(10).do()
-    #         runner.run_concurrency("Weaviate", weav_setup, weav_ins, weav_srch, lambda cl, c: cl.schema.delete_class(c))
-    #     except Exception as e: print(f"Skipping Weaviate: {e}")
+    if not target_dbs or "weaviate" in target_dbs:
+        try:
+            import weaviate
+            def weav_setup(c):
+                client = weaviate.Client(url="http://localhost:8080")
+                if client.schema.exists(c): client.schema.delete_class(c)
+                client.schema.create_class({"class": c, "vectorizer": "none", "vectorIndexConfig": {"distance": "cosine"}})
+                return client
+            def weav_ins(client, c, vecs, start_id):
+                client.batch.configure(batch_size=min(len(vecs), 1000))
+                with client.batch as b:
+                    for v in vecs: b.add_data_object({}, c, vector=v)
+            def weav_srch(client, c, v):
+                client.query.get(c, ["_additional { id }"]).with_near_vector({"vector": v}).with_limit(10).do()
+            runner.run_concurrency("Weaviate", weav_setup, weav_ins, weav_srch, lambda cl, c: cl.schema.delete_class(c))
+        except Exception as e: print(f"Skipping Weaviate: {e}")
 
     runner.print_final_report()
 
