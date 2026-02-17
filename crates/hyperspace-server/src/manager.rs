@@ -7,12 +7,19 @@ use hyperspace_proto::hyperspace::{
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+fn current_time_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ClusterRole {
@@ -23,7 +30,7 @@ pub enum ClusterRole {
 
 pub struct CollectionEntry {
     pub collection: Arc<dyn Collection>,
-    pub last_accessed: Mutex<Instant>,
+    pub last_accessed: AtomicU64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,16 +123,14 @@ impl CollectionManager {
             loop {
                 tokio::time::sleep(check_interval).await;
 
-                let now = Instant::now();
+                let now_secs = current_time_secs();
                 let mut to_remove = Vec::new();
-
                 for r in mgr_map.iter() {
                     let key = r.key().clone();
                     let entry = r.value();
-                    if let Ok(last) = entry.last_accessed.lock() {
-                        if now.duration_since(*last) > timeout {
-                            to_remove.push(key);
-                        }
+                    let last_secs = entry.last_accessed.load(Ordering::Relaxed);
+                    if now_secs.saturating_sub(last_secs) > timeout.as_secs() {
+                        to_remove.push(key);
                     }
                 }
 
@@ -241,7 +246,7 @@ impl CollectionManager {
 
         let entry = CollectionEntry {
             collection,
-            last_accessed: Mutex::new(Instant::now()),
+            last_accessed: AtomicU64::new(current_time_secs()),
         };
         self.collections.insert(name.to_string(), entry);
         Ok(())
@@ -365,9 +370,7 @@ impl CollectionManager {
         // 1. Fast path: Check memory
         if let Some(entry) = self.collections.get(&internal_name) {
             // Update LRU clock
-            if let Ok(mut t) = entry.last_accessed.lock() {
-                *t = Instant::now();
-            }
+            entry.last_accessed.store(current_time_secs(), Ordering::Relaxed);
             return Some(entry.collection.clone());
         }
 

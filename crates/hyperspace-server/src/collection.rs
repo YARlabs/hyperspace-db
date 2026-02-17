@@ -1,3 +1,4 @@
+use arc_swap::ArcSwap;
 use crate::sync::CollectionDigest;
 use dashmap::DashMap;
 use hyperspace_core::{Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult};
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 #[derive(Serialize, Deserialize)]
@@ -25,7 +26,7 @@ struct CollectionState {
 pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     name: String,
     node_id: String,
-    index_link: Arc<parking_lot::RwLock<Arc<HnswIndex<N, M>>>>,
+    index_link: Arc<ArcSwap<HnswIndex<N, M>>>,
     wal: Arc<tokio::sync::Mutex<Wal>>,
     index_tx: mpsc::UnboundedSender<(u32, HashMap<String, String>)>,
     replication_tx: broadcast::Sender<ReplicationLog>,
@@ -144,8 +145,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             )
         };
 
-        // Wrap index in RwLock for Hot Swap
-        let index_link = Arc::new(parking_lot::RwLock::new(index.clone()));
+        // Wrap index in ArcSwap for Lock-Free Hot Swap
+        let index_link = Arc::new(ArcSwap::new(index.clone()));
 
         // Initialize state
         let state_path = data_dir.join("state.json");
@@ -259,7 +260,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 tokio::spawn(async move {
                     let _permit = permit;
                     let _ = tokio::task::spawn_blocking(move || {
-                        let idx = idx_link.read().clone();
+                        let idx = idx_link.load().clone();
                         let _ = idx.index_node(id, meta);
                         cfg.dec_queue();
                         cfg.dec_active();
@@ -300,7 +301,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let snapshot_handle = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(snap_interval)).await;
-                let idx = idx_link_snap.read().clone();
+                let idx = idx_link_snap.load().clone();
                 if let Err(e) = idx.save_snapshot(&snap_path_clone) {
                     eprintln!("Snapshot error: {e}");
                 }
@@ -400,7 +401,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let existing_internal_id = self.id_map.get(&id).map(|v| *v);
 
         if let Some(old_internal_id) = existing_internal_id {
-            let old_vector = self.index_link.read().get_vector(old_internal_id);
+            let old_vector = self.index_link.load().get_vector(old_internal_id);
             let old_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
             let bucket_idx = CollectionDigest::get_bucket_index(id);
             self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
@@ -412,14 +413,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         let internal_id = if let Some(old_id) = existing_internal_id {
             self.index_link
-                .read()
+                .load()
                 .update_storage(old_id, processed_vector)
                 .map_err(|e| e.clone())?;
             old_id
         } else {
             let new_id = self
                 .index_link
-                .read()
+                .load()
                 .insert_to_storage(processed_vector)
                 .map_err(|e| e.clone())?;
             self.id_map.insert(id, new_id);
@@ -486,9 +487,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // 2. Process Logic (Zero-Copy Path)
         // Note: Iterate by reference to preserve original data lifetimes.
         
-        // HOISTED LOCK: Clone the Arc to avoid taking the RwLock for every item.
-        // This allows concurrent readers/writers to not contend on the global lock metadata.
-        let index_reader = self.index_link.read().clone();
+        // HOISTED LOCK: Load the index pointer to avoid taking the RwLock for every item.
+        // ArcSwap provides zero-contention access to the index.
+        let index_reader = self.index_link.load();
 
         for (vector, id, metadata) in &vectors {
             // Returns Borrowed for Poincare (No Allocation)
@@ -590,9 +591,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     fn delete(&self, id: u32) -> Result<(), String> {
         if let Some((_, internal_id)) = self.id_map.remove(&id) {
             self.reverse_id_map.remove(&internal_id);
-            self.index_link.read().delete(internal_id);
+            self.index_link.load().delete(internal_id);
         } else {
-            self.index_link.read().delete(id);
+            self.index_link.load().delete(id);
             self.reverse_id_map.remove(&id);
         }
         Ok(())
@@ -625,8 +626,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let filters = filters.clone();
         let complex_filters = complex_filters.to_vec();
 
-        let results = tokio::task::spawn_blocking(move || {
-            let index = index_link.read();
+        let (tx, rx) = oneshot::channel();
+
+        rayon::spawn(move || {
+            let index = index_link.load();
             let results = index.search(
                 &processed_query,
                 params.top_k,
@@ -637,11 +640,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 params.hybrid_alpha,
             );
 
-            // Fetch metadata and convert IDs inside the blocking thread to avoid context switch
-            results
+            // Fetch metadata and convert IDs inside the Rayon thread
+            let mapped_results: Vec<SearchResult> = results
                 .into_iter()
                 .map(|(internal_id, dist)| {
-                    // Use index.metadata directly as we have the read guard
                     let meta = index
                         .metadata
                         .forward
@@ -649,18 +651,16 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                         .map(|m| m.clone())
                         .unwrap_or_default();
 
-                    let user_id = reverse_id_map
-                        .get(&internal_id)
-                        .map_or(internal_id, |v| *v);
+                    let user_id = reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v);
 
                     (user_id, dist, meta)
                 })
-                .collect::<Vec<SearchResult>>()
-        })
-        .await
-        .map_err(|e| format!("Task join error: {e}"))?;
+                .collect();
 
-        Ok(results)
+            let _ = tx.send(mapped_results);
+        });
+
+        rx.await.map_err(|e| format!("Search task failed: {}", e))
     }
 
     async fn optimize(&self) -> Result<(), String> {
@@ -679,7 +679,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             use std::path::PathBuf;
 
             // 1. Get current data
-            let current_index = index_link.read().clone();
+            let current_index = index_link.load().clone();
             let all_data = current_index.peek_all();
             let count = all_data.len();
 
@@ -744,8 +744,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // 5. Hot Swap
             {
                 println!("🔄 Swapping indexes in memory...");
-                let mut writer = self.index_link.write();
-                *writer = new_index;
+                self.index_link.store(new_index);
             }
 
             // 6. Finalize on disk
@@ -764,7 +763,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn count(&self) -> usize {
-        self.index_link.read().count_nodes()
+        self.index_link.load().count_nodes()
     }
 
     fn dimension(&self) -> usize {
@@ -777,7 +776,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
     // Updated peek to use index_link
     fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
-        let items = self.index_link.read().peek(limit);
+        let items = self.index_link.load().peek(limit);
         items
             .into_iter()
             .map(|(internal_id, vec, meta)| {

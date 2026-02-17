@@ -20,6 +20,8 @@ dotenv = "0.15.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0.149"
 dashmap = "6.1.0"
+rayon = "1.10"
+arc-swap = "1.7"
 axum = "0.8.8"
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
