@@ -50,9 +50,19 @@ impl Client {
         api_key: Option<String>,
         user_id: Option<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let channel = Channel::from_shared(dst)?.connect().await?;
+        let channel = Channel::from_shared(dst)?
+            .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
+            .tcp_nodelay(true)
+            .keep_alive_while_idle(true)
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .connect()
+            .await?;
+
         let interceptor = AuthInterceptor { api_key, user_id };
-        let client = DatabaseClient::with_interceptor(channel, interceptor);
+        let client = DatabaseClient::with_interceptor(channel, interceptor)
+            .max_decoding_message_size(64 * 1024 * 1024) // 64MB
+            .max_encoding_message_size(64 * 1024 * 1024); // 64MB
+
         Ok(Self {
             inner: client,
             #[cfg(feature = "embedders")]

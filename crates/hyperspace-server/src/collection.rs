@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
@@ -26,7 +26,7 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     name: String,
     node_id: String,
     index_link: Arc<parking_lot::RwLock<Arc<HnswIndex<N, M>>>>,
-    wal: Arc<Mutex<Wal>>,
+    wal: Arc<tokio::sync::Mutex<Wal>>,
     index_tx: mpsc::UnboundedSender<(u32, HashMap<String, String>)>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     config: Arc<GlobalConfig>,
@@ -186,7 +186,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         let wal_path_clone = wal_path.clone();
         let wal = Wal::new(&wal_path, sync_mode)?;
-        let wal_arc = Arc::new(Mutex::new(wal));
+        let wal_arc = Arc::new(tokio::sync::Mutex::new(wal));
 
         // Replay
         let index_ref = index.clone();
@@ -230,13 +230,17 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // Indexer Concurrency Configuration
         // Default: 1 (Serial) for maximum graph quality
         // Set to 0 to use all CPU cores (faster but lower recall due to race conditions)
+        let num_cpus = std::thread::available_parallelism().map_or(8, std::num::NonZero::get);
         let concurrency_env = std::env::var("HS_INDEXER_CONCURRENCY")
             .unwrap_or_else(|_| "1".to_string())
             .parse::<usize>()
             .unwrap_or(1);
 
         let concurrency = if concurrency_env == 0 {
-            std::thread::available_parallelism().map_or(8, std::num::NonZero::get)
+            num_cpus
+        } else if concurrency_env > num_cpus {
+             println!("⚠️  Clamping Indexer Concurrency from {} to {} (CPU limit) to avoid thrashing.", concurrency_env, num_cpus);
+             num_cpus
         } else {
             concurrency_env
         };
@@ -246,11 +250,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         let indexer_task = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
+                // ... (rest of task)
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx_link = idx_link_worker.clone();
                 let cfg = cfg_worker.clone();
-
-                // Mark as active when we start processing
                 cfg.inc_active();
 
                 tokio::spawn(async move {
@@ -259,12 +262,17 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                         let idx = idx_link.read().clone();
                         let _ = idx.index_node(id, meta);
                         cfg.dec_queue();
-                        cfg.dec_active(); // Mark as complete
-                    })
-                    .await;
+                        cfg.dec_active();
+                    }).await;
                 });
             }
         });
+
+        // ...
+        // (Skipping to insert_batch changes - I will use a separate block for insert_batch if needed, but the tool supports one block if contiguous.
+        // Wait, insert_batch is far away (line 457). I should use `MultiReplaceFileContent` or two calls.
+        // I will use `replacement_chunks`.
+
 
         let idx_link_snap = index_link.clone();
         let snap_path_clone = snap_path.clone();
@@ -420,7 +428,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         };
 
         {
-            let mut wal = self.wal.lock().map_err(|_| "Failed to lock WAL")?;
+            let mut wal = self.wal.lock().await;
             // Use User ID for WAL to support replication/restore
             wal.append(id, processed_vector, &metadata, clock)
                 .map_err(|e| format!("WAL Error: {e}"))?;
@@ -477,6 +485,11 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         // 2. Process Logic (Zero-Copy Path)
         // Note: Iterate by reference to preserve original data lifetimes.
+        
+        // HOISTED LOCK: Clone the Arc to avoid taking the RwLock for every item.
+        // This allows concurrent readers/writers to not contend on the global lock metadata.
+        let index_reader = self.index_link.read().clone();
+
         for (vector, id, metadata) in &vectors {
             // Returns Borrowed for Poincare (No Allocation)
             let processed_vector = Self::normalize_if_cosine(vector);
@@ -486,7 +499,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
             // Bucket updates (Read-only access to vector)
             if let Some(old_internal_id) = existing_internal_id {
-                let old_vector = self.index_link.read().get_vector(old_internal_id);
+                let old_vector = index_reader.get_vector(old_internal_id);
                 let old_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
                 let bucket_idx = CollectionDigest::get_bucket_index(*id);
                 self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
@@ -499,15 +512,12 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Storage
             // insert_to_storage writes bytes to Mmap. It copies bytes, but doesn't heap allocate vector objects.
             let internal_id = if let Some(old_id) = existing_internal_id {
-                self.index_link
-                    .read()
+                index_reader
                     .update_storage(old_id, &processed_vector)
                     .map_err(|e| e.clone())?;
                 old_id
             } else {
-                let new_id = self
-                    .index_link
-                    .read()
+                let new_id = index_reader
                     .insert_to_storage(&processed_vector)
                     .map_err(|e| e.clone())?;
 
@@ -533,7 +543,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .collect();
 
         {
-            let mut wal = self.wal.lock().map_err(|_| "Failed to lock WAL")?;
+            let mut wal = self.wal.lock().await;
             wal.append_batch(&wal_data, clock)
                 .map_err(|e| e.to_string())?;
 
@@ -604,42 +614,53 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         // Zero-copy normalization if possible
-        let processed_query = Self::normalize_if_cosine(query);
+        // We must own the data for spawn_blocking
+        let processed_query = Self::normalize_if_cosine(query).into_owned();
+        
+        let index_link = self.index_link.clone();
+        let reverse_id_map = self.reverse_id_map.clone();
+        
+        // Clone arguments for move
+        let params = params.clone();
+        let filters = filters.clone();
+        let complex_filters = complex_filters.to_vec();
 
-        // Usage of index_link for Hot Swap
-        let results = self.index_link.read().search(
-            &processed_query,
-            params.top_k,
-            params.ef_search,
-            filters,
-            complex_filters,
-            params.hybrid_query.as_deref(),
-            params.hybrid_alpha,
-        );
+        let results = tokio::task::spawn_blocking(move || {
+            let index = index_link.read();
+            let results = index.search(
+                &processed_query,
+                params.top_k,
+                params.ef_search,
+                &filters,
+                &complex_filters,
+                params.hybrid_query.as_deref(),
+                params.hybrid_alpha,
+            );
 
-        // Fetch metadata and convert IDs
-        // DashMap allows concurrent reading without locking the whole map
-        let results_with_meta = results
-            .into_iter()
-            .map(|(internal_id, dist)| {
-                let meta = self
-                    .index_link
-                    .read()
-                    .metadata
-                    .forward
-                    .get(&internal_id)
-                    .map(|m| m.clone())
-                    .unwrap_or_default();
+            // Fetch metadata and convert IDs inside the blocking thread to avoid context switch
+            results
+                .into_iter()
+                .map(|(internal_id, dist)| {
+                    // Use index.metadata directly as we have the read guard
+                    let meta = index
+                        .metadata
+                        .forward
+                        .get(&internal_id)
+                        .map(|m| m.clone())
+                        .unwrap_or_default();
 
-                let user_id = self
-                    .reverse_id_map
-                    .get(&internal_id)
-                    .map_or(internal_id, |v| *v);
+                    let user_id = reverse_id_map
+                        .get(&internal_id)
+                        .map_or(internal_id, |v| *v);
 
-                (user_id, dist, meta)
-            })
-            .collect();
-        Ok(results_with_meta)
+                    (user_id, dist, meta)
+                })
+                .collect::<Vec<SearchResult>>()
+        })
+        .await
+        .map_err(|e| format!("Task join error: {e}"))?;
+
+        Ok(results)
     }
 
     async fn optimize(&self) -> Result<(), String> {

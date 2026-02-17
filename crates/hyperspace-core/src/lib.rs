@@ -169,6 +169,36 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
         "l2"
     }
 
+    #[cfg(feature = "nightly-simd")]
+    #[inline(always)]
+    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
+        use std::simd::f64x8;
+        use std::simd::num::SimdFloat; // for reduce_sum
+
+        let mut sum = f64x8::splat(0.0);
+        let mut i = 0;
+        const LANES: usize = 8;
+
+        while i + LANES <= N {
+            let va = f64x8::from_slice(&a[i..i + LANES]);
+            let vb = f64x8::from_slice(&b[i..i + LANES]);
+            let diff = va - vb;
+            sum += diff * diff;
+            i += LANES;
+        }
+
+        let mut total = sum.reduce_sum();
+
+        // Scalar Tail
+        while i < N {
+            let diff = a[i] - b[i];
+            total += diff * diff;
+            i += 1;
+        }
+        total
+    }
+
+    #[cfg(not(feature = "nightly-simd"))]
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
         // Explicit loop assists LLVM auto-vectorization.
@@ -254,12 +284,7 @@ impl<const N: usize> Metric<N> for CosineMetric {
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
         // Cosine distance implementation: equivalent to squared Euclidean distance on normalized vectors.
         // Ranking is preserved and triangle inequality holds.
-        let mut sum = 0.0;
-        for i in 0..N {
-            let diff = a[i] - b[i];
-            sum += diff * diff;
-        }
-        sum
+        <EuclideanMetric as Metric<N>>::distance(a, b)
     }
 
     // validate uses default

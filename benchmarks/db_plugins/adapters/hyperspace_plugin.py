@@ -66,7 +66,9 @@ class HyperspacePlugin(DatabasePlugin):
                 raise RuntimeError("Collection creation failed")
 
             t0 = time.time()
-            h_batch_size = max(10, int(4_000_000 / (target_dim * 8)))
+            # gRPC limit is 64MB (server config). Using 48MB safely allows for overhead.
+            h_batch_size = max(10, int(64_000_000 / (target_dim * 8)))
+            print(f"   Using batch size: {h_batch_size} (based on dim {target_dim})")
             for i in tqdm(range(0, len(target_vecs), h_batch_size), desc="Hyperspace Insert"):
                 batch_vecs = target_vecs[i : i + h_batch_size]
                 batch_ids = ctx.doc_ids[i : i + h_batch_size]

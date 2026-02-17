@@ -48,6 +48,12 @@ class ChromaPlugin(DatabasePlugin):
                     pass
                 def context(self, *args, **kwargs):
                     pass
+                def dependencies(self):
+                    return set()
+                def start(self):
+                    pass
+                def stop(self):
+                    pass
 
             # Try patching known telemetry locations
             try:

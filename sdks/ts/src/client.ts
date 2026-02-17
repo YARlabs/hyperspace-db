@@ -13,7 +13,16 @@ export class HyperspaceClient {
     private metadata: grpc.Metadata;
 
     constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string) {
-        this.client = new DatabaseClient(host, grpc.credentials.createInsecure());
+        const options = {
+            'grpc.max_send_message_length': 64 * 1024 * 1024,
+            'grpc.max_receive_message_length': 64 * 1024 * 1024,
+            'grpc.keepalive_time_ms': 10000,
+            'grpc.keepalive_timeout_ms': 5000,
+            'grpc.keepalive_permit_without_calls': 1,
+            'grpc.http2.min_time_between_pings_ms': 10000,
+            'grpc.http2.min_ping_interval_without_data_ms': 5000,
+        };
+        this.client = new DatabaseClient(host, grpc.credentials.createInsecure(), options);
         this.metadata = new grpc.Metadata();
         if (apiKey) {
             this.metadata.add('x-api-key', apiKey);

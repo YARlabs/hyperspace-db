@@ -25,7 +25,7 @@ RUN rm -f rust-toolchain.toml
 # If build & run machines differ significantly, this may cause crashes.
 # For public images, use '-C target-cpu=x86-64-v3' instead.
 ENV RUSTFLAGS="-C target-cpu=native"
-RUN cargo build --release --workspace
+RUN cargo build --release --workspace --features nightly-simd
 
 # Strip binaries to reduce size
 RUN strip target/release/hyperspace-server

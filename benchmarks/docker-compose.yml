@@ -1,24 +1,24 @@
 services:
   # HyperspaceDB (Pre-built)
-  # hyperspace:
-  #   image: glukhota/hyperspace-db:latest
-  #   pull_policy: always
-  #   ports:
-  #     - "50051:50051"
-  #     - "50050:50050"
-  #   environment:
-  #     - RUST_LOG=info
-  #     - HS_PORT=50051
-  #     - HS_DIMENSION=1024
-  #   # volumes:
-  #   #   - hyperspace_data:/data
-  #   networks:
-  #     - benchmark_net
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:50050/api/metrics"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 10
+  hyperspace:
+    image: glukhota/hyperspace-db:latest
+    pull_policy: always
+    ports:
+      - "50051:50051"
+      - "50050:50050"
+    environment:
+      - RUST_LOG=info
+      - HS_PORT=50051
+      - HS_DIMENSION=1024
+    # volumes:
+    #   - hyperspace_data:/data
+    networks:
+      - benchmark_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:50050/api/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # Qdrant
   qdrant:
@@ -128,21 +128,21 @@ services:
       retries: 10
 
   # Pgvector (Postgres 16 + pgvector)
-  postgres:
-    image: pgvector/pgvector:pg16
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: vectordb
-    networks:
-      - benchmark_net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+  # postgres:
+  #   image: pgvector/pgvector:pg16
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: password
+  #     POSTGRES_DB: vectordb
+  #   networks:
+  #     - benchmark_net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
 
 networks:
   benchmark_net:

@@ -48,6 +48,13 @@ except ImportError:
     CHROMA_AVAILABLE = False
     print("⚠️ ChromaDB SDK not found. Skipping Chroma.")
 
+try:
+    import weaviate
+    WEAVIATE_AVAILABLE = True
+except ImportError:
+    WEAVIATE_AVAILABLE = False
+    print("⚠️ Weaviate SDK not found. Skipping Weaviate.")
+
 # --- VectorDB Bench Data Support ---
 try:
     from vectordb_bench.backend.data_source import DatasetSource
@@ -1154,10 +1161,10 @@ def run_benchmark():
                 all_gt_ids.append(valid_qrels.get(q_id, []))
                 
                 ts = time.time()
-                res = client.query_points(collection_name=name, query=q_vec.tolist(), limit=10)
+                res = client.search(collection_name=name, query_vector=q_vec.tolist(), limit=10)
                 lats.append((time.time() - ts) * 1000)
                 
-                all_res_ids.append([hit.payload.get("doc_id") for hit in res.points])
+                all_res_ids.append([hit.payload.get("doc_id") for hit in res])
             
             search_dur = time.time() - search_t0
             recall, mrr, ndcg = calculate_accuracy(all_res_ids, all_gt_ids, 10)
@@ -1167,7 +1174,7 @@ def run_benchmark():
             print("   Testing Qdrant Concurrency...")
             q_list = q_vecs_euc[0].tolist()
             def qdrant_query():
-                client.query_points(collection_name=name, query=q_list, limit=10)
+                client.search(collection_name=name, query_vector=q_list, limit=10)
             conc = run_concurrency_profile(qdrant_query)
             
             disk = format_size(get_docker_disk("qdrant"))
@@ -1202,6 +1209,27 @@ def run_benchmark():
     # ==========================================
     if CHROMA_AVAILABLE and (not target_db or "chroma" in target_db):
         print("\n🟡 PHASE 1.2: ChromaDB (1024d Euclidean)")
+        
+        # MONKEYPATCH: Fix "capture() takes 1 positional argument but 3 were given"
+        class UniversalNoopTelemetry:
+            def __init__(self, *args, **kwargs): pass
+            def capture(self, *args, **kwargs): pass
+            def context(self, *args, **kwargs): pass
+            def dependencies(self): return set()
+            def start(self): pass
+            def stop(self): pass
+            
+        try:
+            import chromadb.telemetry.product.posthog
+            chromadb.telemetry.product.posthog.Posthog = UniversalNoopTelemetry
+        except ImportError: pass
+        
+        try:
+            import chromadb.telemetry.product.noop
+            chromadb.telemetry.product.noop.NoopTelemetry = UniversalNoopTelemetry
+        except ImportError: pass
+        # END MONKEYPATCH
+
         cleanup_local_dir = None
         try:
             name = "bench_semantic"
@@ -1325,8 +1353,168 @@ def run_benchmark():
                 shutil.rmtree(cleanup_local_dir, ignore_errors=True)
 
     # ==========================================
-    # PHASE 2: Hyperspace (Universal Mode)
+    # PHASE 1.3: Weaviate (1024d Euclidean)
     # ==========================================
+    if WEAVIATE_AVAILABLE and (not target_db or "weaviate" in target_db):
+        print("\n🟢 PHASE 1.3: Weaviate (1024d Euclidean)")
+        try:
+            # Connect
+            if hasattr(weaviate, "connect_to_local"):
+                 # client v4
+                 client = weaviate.connect_to_local(port=8080, grpc_port=50051)
+            else:
+                 # client v3
+                 client = weaviate.Client("http://localhost:8080")
+            
+            class_name = "BenchSemantic"
+            
+            # Helper to handle v3/v4 diffs
+            def delete_class_safe():
+                if hasattr(client, "collections"): # v4
+                    client.collections.delete(class_name)
+                else: # v3
+                    if client.schema.exists(class_name):
+                        client.schema.delete_class(class_name)
+
+            delete_class_safe()
+
+            # Create Schema
+            if hasattr(client, "collections"): # v4
+                import weaviate.classes.config as wvc
+                client.collections.create(
+                    name=class_name,
+                    vectorizer_config=wvc.Configure.Vectorizer.none(),
+                    properties=[
+                        wvc.Property(name="doc_id", data_type=wvc.DataType.TEXT)
+                    ],
+                    vector_index_config=wvc.Configure.VectorIndex.hnsw(
+                        distance_metric=wvc.VectorDistances.COSINE,
+                        ef_construction=128,
+                        max_connections=64
+                    )
+                )
+                col = client.collections.get(class_name)
+            else: # v3
+                client.schema.create_class({
+                    "class": class_name,
+                    "vectorizer": "none",
+                    "properties": [{"name": "doc_id", "dataType": ["text"]}],
+                    "vectorIndexConfig": {
+                        "distance": "cosine",
+                        "efConstruction": 128,
+                        "maxConnections": 64
+                    }
+                })
+
+            # Insert
+            print("   Inserting into Weaviate...")
+            t0 = time.time()
+            w_batch_size = 100 # Weaviate likes smaller batches or careful handling
+            
+            if hasattr(client, "collections"): # v4
+                with col.batch.dynamic() as batch:
+                    for i, vec in enumerate(tqdm(doc_vecs_euc)):
+                        batch.add_object(
+                            properties={"doc_id": doc_ids[i]},
+                            vector=vec.tolist()
+                        )
+            else: # v3
+                with client.batch as batch:
+                    batch_size = 100
+                    batch.batch_size = batch_size
+                    for i, vec in enumerate(tqdm(doc_vecs_euc)):
+                         batch.add_data_object(
+                             {"doc_id": doc_ids[i]},
+                             class_name,
+                             vector=vec.tolist()
+                         )
+            
+            v_dur = time.time() - t0
+            
+            # Search
+            all_res_ids = []
+            all_gt_ids = []
+            lats = []
+            
+            print("   Searching Weaviate...")
+            search_t0 = time.time()
+            
+            if hasattr(client, "collections"): # v4
+                 for i, q_vec in enumerate(tqdm(q_vecs_euc)):
+                    q_id = test_query_ids[i]
+                    all_gt_ids.append(valid_qrels.get(q_id, []))
+                    
+                    ts = time.time()
+                    res = col.query.near_vector(
+                        near_vector=q_vec.tolist(),
+                        limit=10,
+                        return_properties=["doc_id"]
+                    )
+                    lats.append((time.time() - ts) * 1000)
+                    all_res_ids.append([o.properties["doc_id"] for o in res.objects])
+            else: # v3
+                for i, q_vec in enumerate(tqdm(q_vecs_euc)):
+                    q_id = test_query_ids[i]
+                    all_gt_ids.append(valid_qrels.get(q_id, []))
+                    
+                    ts = time.time()
+                    res = (
+                        client.query.get(class_name, ["doc_id"])
+                        .with_near_vector({"vector": q_vec.tolist()})
+                        .with_limit(10)
+                        .do()
+                    )
+                    lats.append((time.time() - ts) * 1000)
+                    
+                    ids = []
+                    if "data" in res and "Get" in res["data"] and class_name in res["data"]["Get"]:
+                         ids = [x["doc_id"] for x in res["data"]["Get"][class_name]]
+                    all_res_ids.append(ids)
+
+            search_dur = time.time() - search_t0
+            recall, mrr, ndcg = calculate_accuracy(all_res_ids, all_gt_ids, 10)
+            recall_sys = calculate_system_recall(all_res_ids, math_gt_euc, 10)
+            
+            # Concurrency
+            print("   Testing Weaviate Concurrency...")
+            q_list = q_vecs_euc[0].tolist()
+            def weaviate_query():
+                 if hasattr(client, "collections"):
+                      col.query.near_vector(near_vector=q_list, limit=10)
+                 else:
+                      client.query.get(class_name, ["doc_id"]).with_near_vector({"vector": q_list}).with_limit(10).do()
+            
+            conc = run_concurrency_profile(weaviate_query)
+            disk = format_size(get_docker_disk("weaviate"))
+            
+            final_results.append(Result(
+                database="Weaviate",
+                dimension=cfg.dim_base,
+                geometry="Euclidean",
+                metric="Cosine",
+                insert_qps=len(docs) / v_dur,
+                search_qps=len(test_queries) / search_dur,
+                p50=np.percentile(lats, 50),
+                p95=np.percentile(lats, 95),
+                p99=np.percentile(lats, 99),
+                recall=recall,
+                recall_sys=recall_sys,
+                mrr=mrr,
+                ndcg=ndcg,
+                c1_qps=conc.get(1, 0.0),
+                c10_qps=conc.get(10, 0.0),
+                c30_qps=conc.get(30, 0.0),
+                disk_usage=disk,
+                status="Success"
+            ))
+            
+            delete_class_safe()
+            if hasattr(client, "close"): client.close()
+
+        except Exception as e:
+            print(f"   ⚠️ Weaviate error: {e}")
+            final_results.append(Result("Weaviate", cfg.dim_base, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Error: {e}"))
+
     if HYPERSPACE_AVAILABLE and (not target_db or "hyper" in target_db):
         mode = cfg.HYPER_MODE.lower()
         use_hyp = (mode == "poincare")
@@ -1360,10 +1548,9 @@ def run_benchmark():
             print("   Inserting into Hyperspace...")
             t0 = time.time()
             
-            # gRPC limit is 4MB. 1536D * 8 bytes (safe float64) = ~12KB per vector.
-            # 4MB / 12KB = 333 vectors max. We use 250 for safety.
-            # For 128D, 4MB / (128*8) = 4000 vectors max. We use 2000.
-            h_batch_size = max(10, int(4_000_000 / (target_dim * 8)))
+            # gRPC limit is 64MB (server config).
+            # 48MB safely fits.
+            h_batch_size = max(10, int(64_000_000 / (target_dim * 8)))
             print(f"   Using batch size: {h_batch_size} (based on dim {target_dim})")
             
             failed_inserts = 0

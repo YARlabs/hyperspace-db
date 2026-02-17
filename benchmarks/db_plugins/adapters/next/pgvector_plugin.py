@@ -1,4 +1,13 @@
 
+
+"""
+⚠️ WARNING: PGVECTOR is currently one of the slowest database extensions for vector search.
+Testing this plugin on large datasets (e.g., 1M vectors) can take several hours or even days.
+It is strongly recommended to test PGVECTOR on smaller datasets (e.g., 10k-100k) for evaluation.
+
+USAGE: To enable this plugin, copy this file from 'next/' into the 'db_plugins/adapters/' folder.
+"""
+
 import time
 import numpy as np
 from tqdm import tqdm

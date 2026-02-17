@@ -372,7 +372,6 @@ impl CollectionManager {
         }
 
         // 2. Slow path: Check disk (Lazy Loading) - Wake up cold collection
-        // 2. Slow path: Check disk (Lazy Loading) - Wake up cold collection
         let col_dir = self.base_path.join(&internal_name);
         if col_dir.exists() && col_dir.join("meta.json").exists() {
             // Try to load metadata and revive collection

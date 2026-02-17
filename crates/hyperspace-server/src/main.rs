@@ -1006,8 +1006,17 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         }
     };
 
+    // Limit GRPC message size
+    let max_msg_size = 64 * 1024 * 1024; // 64 MB
+
+    let db_service = DatabaseServer::new(service)
+        .max_decoding_message_size(max_msg_size)
+        .max_encoding_message_size(max_msg_size);
+
+    let service_with_auth = tonic::service::interceptor::InterceptedService::new(db_service, interceptor);
+
     Server::builder()
-        .add_service(DatabaseServer::with_interceptor(service, interceptor))
+        .add_service(service_with_auth)
         .serve_with_shutdown(addr, async {
             tokio::signal::ctrl_c().await.ok();
             println!("\n🛑 Received Ctrl+C. Initiating graceful shutdown...");

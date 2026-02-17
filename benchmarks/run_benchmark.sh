@@ -75,8 +75,8 @@ echo -e "\n✅ Infrastructure is ready!"
 clear
 
 # 4. Run Benchmark
-echo "🎯 Running Performance1024D1M Benchmark..."
-python3 -u run_benchmark.py --case=Performance1024D1M
+echo "🎯 Running Performance1536D50K Benchmark..."
+python3 -u run_benchmark_next.py --case=Performance1536D50K
 
 echo "--------------------------------------------------"
 echo "✅ Benchmark complete!"
