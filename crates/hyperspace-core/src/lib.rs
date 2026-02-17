@@ -172,27 +172,33 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
     #[cfg(feature = "nightly-simd")]
     #[inline(always)]
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        use std::simd::f64x8;
-        use std::simd::num::SimdFloat; // for reduce_sum
+        use std::simd::f32x8;
+        use std::simd::num::SimdFloat;
 
-        let mut sum = f64x8::splat(0.0);
+        let mut sum = f32x8::splat(0.0);
         let mut i = 0;
         const LANES: usize = 8;
 
         while i + LANES <= N {
-            let va = f64x8::from_slice(&a[i..i + LANES]);
-            let vb = f64x8::from_slice(&b[i..i + LANES]);
+            let mut a_buf = [0.0f32; LANES];
+            let mut b_buf = [0.0f32; LANES];
+            for k in 0..LANES {
+                a_buf[k] = a[i + k] as f32;
+                b_buf[k] = b[i + k] as f32;
+            }
+            let va = f32x8::from_slice(&a_buf);
+            let vb = f32x8::from_slice(&b_buf);
             let diff = va - vb;
             sum += diff * diff;
             i += LANES;
         }
 
-        let mut total = sum.reduce_sum();
+        let mut total = sum.reduce_sum() as f64;
 
         // Scalar Tail
         while i < N {
-            let diff = a[i] - b[i];
-            total += diff * diff;
+            let diff = (a[i] as f32) - (b[i] as f32);
+            total += (diff * diff) as f64;
             i += 1;
         }
         total
@@ -215,37 +221,45 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
     #[cfg(feature = "nightly-simd")]
     fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
         use std::simd::num::{SimdFloat, SimdInt};
-        use std::simd::{f64x8, i8x8}; // Import needed traits
+        use std::simd::{f32x8, i8x8};
 
         const LANES: usize = 8;
-        const SCALE_INV: f64 = 1.0 / 127.0;
-        let scale_vec = f64x8::splat(SCALE_INV);
+        const SCALE_INV: f32 = 1.0 / 127.0;
+        let scale_vec = f32x8::splat(SCALE_INV);
 
-        let mut sum = f64x8::splat(0.0);
+        let mut sum = f32x8::splat(0.0);
         let mut i = 0;
 
         // SIMD Loop
         while i + LANES <= N {
+            // 1. Load quantized vector (i8)
             let a_chunk = i8x8::from_slice(&a.coords[i..i + LANES]);
-            let b_chunk = f64x8::from_slice(&b.coords[i..i + LANES]);
+            
+            // 2. Load Query (f64) and convert to f32
+            let mut query_buf = [0.0f32; LANES];
+            for k in 0..LANES {
+                query_buf[k] = b.coords[i + k] as f32; 
+            }
+            let b_chunk = f32x8::from_slice(&query_buf);
 
-            // Vectorized cast i8 -> f64
-            let a_f64: f64x8 = a_chunk.cast();
+            // 3. Vectorized cast i8 -> f32
+            let a_f32: f32x8 = a_chunk.cast();
 
-            let a_scaled = a_f64 * scale_vec;
+            // 4. Math in f32 (AVX2/AVX512 friendly)
+            let a_scaled = a_f32 * scale_vec;
             let diff = a_scaled - b_chunk;
             sum += diff * diff;
 
             i += LANES;
         }
 
-        let mut total_sum = sum.reduce_sum();
+        let mut total_sum = sum.reduce_sum() as f64;
 
         // Scalar Tail
         while i < N {
-            let a_val = f64::from(a.coords[i]) * SCALE_INV;
-            let diff = a_val - b.coords[i];
-            total_sum += diff * diff;
+            let a_val = f32::from(a.coords[i]) * SCALE_INV;
+            let diff = a_val - (b.coords[i] as f32);
+            total_sum += (diff * diff) as f64;
             i += 1;
         }
 

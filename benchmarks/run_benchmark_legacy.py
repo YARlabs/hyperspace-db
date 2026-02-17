@@ -92,9 +92,29 @@ try:
         PerformanceCustomDataset,
     )
     VB_AVAILABLE = True
-except ImportError:
+except Exception as e:
     VB_AVAILABLE = False
-    print("⚠️ vectordb_bench not found. Case support specific to Zilliz bench will be limited to Synthetic data if requested.")
+    print(f"⚠️ vectordb_bench found but failed to load (likely Pydantic compatibility issue): {e}")
+    print("   Case support specific to Zilliz bench will be limited to Synthetic data if requested.")
+
+    # Stub classes to prevent crashes in run_benchmark_next.py or other wrappers
+    class CaseStub: 
+        def __init__(self): 
+            self.dataset = type('DatasetStub', (), {
+                'data_dir': './data', 
+                'prepare': lambda **kwargs: None,
+                'data': type('DataStub', (), {'name': 'Stub', 'size': '50k', 'dim': 1536})()
+            })()
+    
+    # Define common case names as stubs
+    Performance1536D50K = Performance1536D500K = Performance1536D5M = CaseStub
+    Performance1536D500K1P = Performance1536D500K99P = Performance1536D5M1P = Performance1536D5M99P = CaseStub
+    Performance768D1M = Performance768D1M1P = Performance768D1M99P = Performance768D10M = CaseStub
+    Performance768D10M1P = Performance768D10M99P = Performance768D100M = CaseStub
+    Performance1024D1M = Performance1024D10M = CaseStub
+    PerformanceCase = PerformanceCustomDataset = CaseStub
+    CapacityDim128 = CapacityDim960 = CapacityCase = CaseStub
+    DatasetSource = type('DSS', (), {'S3': 's3'})()
 
 from transformers import AutoModel, AutoTokenizer
 
@@ -124,24 +144,24 @@ class Config:
     
     def apply_case(self, case_name: str):
         """Apply Zilliz Bench Case parameters"""
-        case_name = case_name.lower()
+        case_name_l = case_name.lower()
+        self.target_case = case_name
         self.dataset_name = "Synthetic/Random"
-        self.doc_limit = 0
         
         # Dimensions & Counts
-        if "1536d" in case_name: self.dim_base = 1536
-        elif "1024d" in case_name: self.dim_base = 1024
-        elif "768d" in case_name: self.dim_base = 768
-        elif "960d" in case_name: self.dim_base = 960
-        elif "128d" in case_name: self.dim_base = 128
+        if "1536d" in case_name_l: self.dim_base = 1536
+        elif "1024d" in case_name_l: self.dim_base = 1024
+        elif "768d" in case_name_l: self.dim_base = 768
+        elif "960d" in case_name_l: self.dim_base = 960
+        elif "128d" in case_name_l: self.dim_base = 128
         
-        if "500k" in case_name: self.doc_limit = 500_000
-        elif "50k" in case_name: self.doc_limit = 50_000
-        elif "5m" in case_name: self.doc_limit = 5_000_000
-        elif "10m" in case_name: self.doc_limit = 10_000_000
-        elif "100m" in case_name: self.doc_limit = 100_000_000
-        elif "1m" in case_name: self.doc_limit = 1_000_000
-        elif "capacity" in case_name: self.doc_limit = 1_000_000 # Default for simple capacity check
+        if "500k" in case_name_l: self.doc_limit = 500_000
+        elif "50k" in case_name_l: self.doc_limit = 50_000
+        elif "5m" in case_name_l: self.doc_limit = 5_000_000
+        elif "10m" in case_name_l: self.doc_limit = 10_000_000
+        elif "100m" in case_name_l: self.doc_limit = 100_000_000
+        elif "1m" in case_name_l: self.doc_limit = 1_000_000
+        elif "capacity" in case_name_l: self.doc_limit = 1_000_000 # Default for simple capacity check
 
 # --- MODEL WRAPPER ---
 # --- HYPERBOLIC GEOMETRY ---
@@ -1548,26 +1568,22 @@ def run_benchmark():
             print("   Inserting into Hyperspace...")
             t0 = time.time()
             
-            # gRPC limit is 64MB (server config).
-            # 48MB safely fits.
-            h_batch_size = max(10, int(64_000_000 / (target_dim * 8)))
-            print(f"   Using batch size: {h_batch_size} (based on dim {target_dim})")
+            # Optimized chunk size for gRPC performance
+            h_chunk_size = 4000
+            failed_batches = 0
             
-            failed_inserts = 0
-            total_batches = 0
-            
-            for i in tqdm(range(0, len(target_vecs), h_batch_size), desc="Inserting"):
-                batch_vecs = target_vecs[i : i + h_batch_size]
-                batch_ids = doc_ids[i : i + h_batch_size]
+            for i in tqdm(range(0, len(target_vecs), h_chunk_size), desc="Ingesting"):
+                batch_vecs = target_vecs[i : i + h_chunk_size]
+                batch_ids = doc_ids[i : i + h_chunk_size]
+                # Use sequential integer IDs as internal keys (consistent with stress tests)
                 int_ids = list(range(i, i + len(batch_ids)))
                 metas = [{"doc_id": did} for did in batch_ids]
                 
                 if not client.batch_insert(batch_vecs.tolist(), int_ids, metas, collection=coll_name):
-                    failed_inserts += 1
-                total_batches += 1
+                    failed_batches += 1
             
-            if failed_inserts > 0:
-                print(f"⚠️ Warning: {failed_inserts}/{total_batches} batches failed insertion!")
+            if failed_batches > 0:
+                print(f"⚠️ Warning: {failed_batches} batches failed insertion!")
                 
             v_dur = time.time() - t0
             print(f"   Ingestion finished. Time: {v_dur:.2f}s")

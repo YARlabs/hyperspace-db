@@ -120,21 +120,27 @@ impl<const N: usize> QuantizedHyperVector<N> {
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
-            const SCALE_INV: f64 = 1.0 / 127.0;
-            let mut sum_sq_diff = f64x8::splat(0.0);
+            const SCALE_INV: f32 = 1.0 / 127.0;
+            let mut sum_sq_diff = Simd::<f32, LANES>::splat(0.0);
 
             for i in (0..N).step_by(LANES) {
                 if i + LANES <= N {
                     let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
-                    let a_f64: Simd<f64, LANES> = a_i8.cast();
-                    let a_scaled = a_f64 * Simd::splat(SCALE_INV);
-                    let b = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
-                    let diff = a_scaled - b;
+                    let a_f32: Simd<f32, LANES> = a_i8.cast();
+                    let a_scaled = a_f32 * Simd::splat(SCALE_INV);
+                    
+                    // Optimization: Load 8 f64s, cast to 8 f32s.
+                    // This uses YMM registers (256-bit) instead of ZMM (512-bit) for f32,
+                    // but allows f32 ALU usage which is often higher throughput.
+                    let b_f64 = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
+                    let b_f32: Simd<f32, LANES> = b_f64.cast();
+                    
+                    let diff = a_scaled - b_f32;
                     sum_sq_diff += diff * diff;
                 }
             }
 
-            let l2_sq = sum_sq_diff.reduce_sum();
+            let l2_sq = sum_sq_diff.reduce_sum() as f64;
 
             // Tail handling
             let mut tail_sq = 0.0;
@@ -142,9 +148,10 @@ impl<const N: usize> QuantizedHyperVector<N> {
             if remainder != 0 {
                 let start = N - remainder;
                 for i in start..N {
-                    let a_val = f64::from(self.coords[i]) * SCALE_INV;
-                    let diff = a_val - query.coords[i];
-                    tail_sq += diff * diff;
+                    let a_val = f32::from(self.coords[i]) * SCALE_INV;
+                    // Cast query to f32 match SIMD path
+                    let diff = a_val - (query.coords[i] as f32);
+                    tail_sq += (diff * diff) as f64;
                 }
             }
 
