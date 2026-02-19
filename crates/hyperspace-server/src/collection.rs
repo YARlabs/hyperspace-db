@@ -1,5 +1,5 @@
-use arc_swap::ArcSwap;
 use crate::sync::CollectionDigest;
+use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use hyperspace_core::{Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult};
 use hyperspace_index::HnswIndex;
@@ -247,10 +247,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let concurrency = if concurrency_env == 0 {
             num_cpus
         } else if concurrency_env > num_cpus {
-             println!(
+            println!(
                  "⚠️  Clamping Indexer Concurrency from {concurrency_env} to {num_cpus} (CPU limit) to avoid thrashing."
              );
-             num_cpus
+            num_cpus
         } else {
             concurrency_env
         };
@@ -287,7 +287,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                         let _ = idx.index_node(id, meta);
                         cfg.dec_queue();
                         cfg.dec_active();
-                    }).await;
+                    })
+                    .await;
                 });
             }
         });
@@ -296,7 +297,6 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // (Skipping to insert_batch changes - I will use a separate block for insert_batch if needed, but the tool supports one block if contiguous.
         // Wait, insert_batch is far away (line 457). I should use `MultiReplaceFileContent` or two calls.
         // I will use `replacement_chunks`.
-
 
         let idx_link_snap = index_link.clone();
         let snap_path_clone = snap_path.clone();
@@ -518,7 +518,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         // 2. Process Logic (Zero-Copy Path)
         // Note: Iterate by reference to preserve original data lifetimes.
-        
+
         // HOISTED LOCK: Load the index pointer to avoid taking the RwLock for every item.
         // ArcSwap provides zero-contention access to the index.
         let index_reader = self.index_link.load();
@@ -655,11 +655,11 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // Zero-copy normalization if possible
         // We must own the data for spawn_blocking
         let processed_query = Self::normalize_if_cosine(query).into_owned();
-        
+
         let index_link = self.index_link.clone();
         let reverse_id_map = self.reverse_id_map.clone();
         let ids_are_identity = self.ids_are_identity.load(Ordering::Acquire);
-        
+
         // Move only the required fields to avoid cloning whole params struct.
         let top_k = params.top_k;
         let ef_search = params.ef_search;

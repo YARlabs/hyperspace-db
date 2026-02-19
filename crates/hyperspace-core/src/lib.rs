@@ -289,11 +289,11 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
         while i + LANES <= N {
             // 1. Load quantized vector (i8)
             let a_chunk = i8x8::from_slice(&a.coords[i..i + LANES]);
-            
+
             // 2. Load Query (f64) and convert to f32
             let mut query_buf = [0.0f32; LANES];
             for k in 0..LANES {
-                query_buf[k] = b.coords[i + k] as f32; 
+                query_buf[k] = b.coords[i + k] as f32;
             }
             let b_chunk = f32x8::from_slice(&query_buf);
 

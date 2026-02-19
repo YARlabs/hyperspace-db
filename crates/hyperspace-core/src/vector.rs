@@ -129,13 +129,13 @@ impl<const N: usize> QuantizedHyperVector<N> {
                     let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
                     let a_f32: Simd<f32, LANES> = a_i8.cast();
                     let a_scaled = a_f32 * Simd::splat(SCALE_INV);
-                    
+
                     // Optimization: Load 8 f64s, cast to 8 f32s.
                     // This uses YMM registers (256-bit) instead of ZMM (512-bit) for f32,
                     // but allows f32 ALU usage which is often higher throughput.
                     let b_f64 = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
                     let b_f32: Simd<f32, LANES> = b_f64.cast();
-                    
+
                     let diff = a_scaled - b_f32;
                     sum_sq_diff += diff * diff;
                 }

@@ -33,10 +33,10 @@ use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use hyperspace_proto::hyperspace::{
     BatchInsertRequest, BatchSearchRequest, BatchSearchResponse, CollectionStatsRequest,
-    CollectionStatsResponse, ConfigUpdate,
-    CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest,
-    DigestResponse, InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse,
-    MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats,
+    CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest, DeleteCollectionRequest,
+    DeleteRequest, DeleteResponse, DigestRequest, DigestResponse, InsertRequest, InsertResponse,
+    InsertTextRequest, ListCollectionsResponse, MonitorRequest, SearchRequest, SearchResponse,
+    SearchResult, SystemStats,
 };
 
 use sha2::{Digest, Sha256};
@@ -530,10 +530,12 @@ impl Database for HyperspaceService {
 
         let mut responses = Vec::with_capacity(req.searches.len());
         for search_req in req.searches {
-            let (col_name, vector, legacy_filter, complex_filters, params) = build_filters(search_req);
-            let col = self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
-                Status::not_found(format!("Collection '{col_name}' not found"))
-            })?;
+            let (col_name, vector, legacy_filter, complex_filters, params) =
+                build_filters(search_req);
+            let col =
+                self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{col_name}' not found"))
+                })?;
 
             let res = col
                 .search(&vector, &legacy_filter, &complex_filters, &params)
@@ -1063,7 +1065,8 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         .max_decoding_message_size(max_msg_size)
         .max_encoding_message_size(max_msg_size);
 
-    let service_with_auth = tonic::service::interceptor::InterceptedService::new(db_service, interceptor);
+    let service_with_auth =
+        tonic::service::interceptor::InterceptedService::new(db_service, interceptor);
 
     Server::builder()
         .add_service(service_with_auth)

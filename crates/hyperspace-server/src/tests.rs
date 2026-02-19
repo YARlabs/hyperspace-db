@@ -77,10 +77,8 @@ async fn test_rebuild_and_queue() {
     }
 
     // Verify optimized file exists
-    // Path structure changed to user_id/col_name/index? Or still flat?
-    // Storage says `userid_collectionname`.
     let folder_name = format!("default_admin_{col_name}");
-    let index_path = tmp_dir.join(folder_name).join("index");
+    let index_path = tmp_dir.join(folder_name).join("index.snap");
     assert!(index_path.exists());
 
     println!("Rebuild successful. Cleaning up.");

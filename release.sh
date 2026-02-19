@@ -10,9 +10,13 @@ ARCHIVE_NAME="hyperspace-db-v$VERSION-$OS-$ARCH.tar.gz"
 echo "🚀 Publishing HyperspaceDB v$VERSION..."
 echo "ℹ️  Host: $OS-$ARCH"
 
-# 1. Run Tests (Fast check)
-echo "🧪 Running Tests (Hyperspace Core)..."
-cargo test -p hyperspace-core --release
+# 1. Run Quality Checks (Sync with CI)
+echo "🧪 Running Quality Checks..."
+cargo fmt --all -- --check || { echo "❌ Formatting errors found! Run 'cargo fmt --all' to fix."; exit 1; }
+cargo clippy --all-targets --all-features -- -D warnings || { echo "❌ Clippy warnings found!"; exit 1; }
+cargo clippy --tests --workspace -- -W clippy::pedantic || { echo "❌ Clippy pedantic warnings found!"; exit 1; }
+cargo test --workspace --release || { echo "❌ Tests failed!"; exit 1; }
+
 
 # 2. Build Release Binaries
 echo "🔨 Building Release Binaries..."

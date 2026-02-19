@@ -4,6 +4,7 @@ use hyperspace_core::{Collection, CosineMetric, EuclideanMetric, LorentzMetric, 
 use hyperspace_proto::hyperspace::{
     replication_log, CreateCollectionOp, DeleteCollectionOp, ReplicationLog,
 };
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,7 +12,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sysinfo::System;
-use parking_lot::Mutex;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use uuid::Uuid;
