@@ -189,7 +189,7 @@
 <tr><td style="text-align: left"><code>HS_DATA_DIR</code></td><td style="text-align: left"><code>./data</code></td><td style="text-align: left">Path to store segments and WAL</td></tr>
 <tr><td style="text-align: left"><code>HS_IDLE_TIMEOUT_SEC</code></td><td style="text-align: left"><code>3600</code></td><td style="text-align: left">Inactivity time (seconds) before collection unloads to disk</td></tr>
 <tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Default vector dimensionality (8, 64, 768, 1024, 1536)</td></tr>
-<tr><td style="text-align: left"><code>HS_METRIC</code></td><td style="text-align: left"><code>cosine</code></td><td style="text-align: left">Distance metric (<code>cosine</code>, <code>poincare</code>, <code>l2</code>)</td></tr>
+<tr><td style="text-align: left"><code>HS_METRIC</code></td><td style="text-align: left"><code>cosine</code></td><td style="text-align: left">Distance metric (<code>cosine</code>, <code>poincare</code>, <code>l2</code>, <code>euclidean</code>, <code>lorentz</code>)</td></tr>
 <tr><td style="text-align: left"><code>HS_QUANTIZATION_LEVEL</code></td><td style="text-align: left"><code>none</code></td><td style="text-align: left">Compression (<code>none</code>, <code>scalar</code> (i8), <code>binary</code> (1-bit))</td></tr>
 </tbody></table>
 </div>
@@ -225,6 +225,12 @@
 <li><strong>Internal Naming</strong>: Collections are stored internally as <code>userid_collectionname</code>.</li>
 <li><strong>Default Admin</strong>: If <code>x-hyperspace-user-id</code> is omitted but a valid <code>x-api-key</code> is provided, the user is treated as <code>default_admin</code>.</li>
 <li><strong>SaaS Integration</strong>: Gateways should inject this header after authenticating users.</li>
+</ul>
+<h3 id="lorentz-metric-notes"><a class="header" href="#lorentz-metric-notes">Lorentz metric notes</a></h3>
+<p>When <code>HS_METRIC=lorentz</code>, vectors must satisfy hyperboloid constraints:</p>
+<ul>
+<li><code>t &gt; 0</code> (upper sheet)</li>
+<li><code>-t^2 + x_1^2 + ... + x_n^2 = -1</code></li>
 </ul>
 <hr />
 <h2 id="web-dashboard"><a class="header" href="#web-dashboard">Web Dashboard</a></h2>

@@ -245,8 +245,8 @@ results = client.search(vector=[0.11]*8, top_k=5)
 <h2 id="test-environment"><a class="header" href="#test-environment">Test Environment</a></h2>
 <ul>
 <li><strong>Hardware</strong>: Apple M4 Pro (Emulated Environment) / Linux AVX2</li>
-<li><strong>Dataset</strong>: 1,000,000 vectors, 8 Dimensions, Random Distribution in Unit Ball.</li>
-<li><strong>Config</strong>: <code>ef_construction=100</code>, <code>ef_search=100</code></li>
+<li><strong>Dataset</strong>: 1,000,000 vectors, 1024 Dimensions, Random Distribution in Unit Ball.</li>
+<li><strong>Config</strong>: <code>ef_construction=400</code>, <code>ef_search=400</code></li>
 </ul>
 <h2 id="results"><a class="header" href="#results">Results</a></h2>
 <h3 id="-ingestion-speed"><a class="header" href="#-ingestion-speed">🚀 Ingestion Speed</a></h3>
@@ -317,41 +317,48 @@ cargo build --release
 </li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
-<p>Once the server is running on <code>localhost:50051</code>, you can interact with it using the CLI dashboard or an SDK.</p>
-<h2 id="using-the-cli-dashboard-tui"><a class="header" href="#using-the-cli-dashboard-tui">Using the CLI Dashboard (TUI)</a></h2>
-<p>HyperspaceDB comes with a beautiful terminal interface for monitoring and basic administration.</p>
-<pre><code class="language-bash"># Assuming you built from source
-./target/release/hyperspace-cli
+<p>Once the server is running on <code>localhost:50051</code>, you can use any official SDK.</p>
+<h2 id="1-start-server"><a class="header" href="#1-start-server">1) Start server</a></h2>
+<pre><code class="language-bash">cargo build --release
+./target/release/hyperspace-server
 </code></pre>
-<ul>
-<li><strong>Metric 1: Compression</strong>: Shows how much RAM you are saving with <code>ScalarI8</code>.</li>
-<li><strong>Metric 2: Index Queue</strong>: Shows if the background worker is keeping up with writes.</li>
-<li><strong>Controls</strong>: Press <code>s</code> to force a snapshot save.</li>
-</ul>
-<h2 id="first-interaction-python"><a class="header" href="#first-interaction-python">First Interaction (Python)</a></h2>
+<h2 id="2-open-dashboard"><a class="header" href="#2-open-dashboard">2) Open dashboard</a></h2>
+<pre><code class="language-text">http://localhost:50050
+</code></pre>
+<h2 id="3-first-interaction-python"><a class="header" href="#3-first-interaction-python">3) First interaction (Python)</a></h2>
 <pre><code class="language-python">from hyperspace import HyperspaceClient
 
-# 1. Connect
-client = HyperspaceClient(&quot;localhost:50051&quot;)
+client = HyperspaceClient(&quot;localhost:50051&quot;, api_key=&quot;I_LOVE_HYPERSPACEDB&quot;)
+collection = &quot;quickstart&quot;
 
-# 2. Insert (ID must be uint32)
-# Vectors must be inside the Poincaré ball (norm &lt; 1.0)
-client.insert(id=101, vector=[0.1, 0.5, -0.2, 0.1, 0.0, 0.0, 0.0, 0.1], metadata={&quot;label&quot;: &quot;demo&quot;})
+client.delete_collection(collection)
+client.create_collection(collection, dimension=3, metric=&quot;cosine&quot;)
 
-# 3. Search
-results = client.search(vector=[0.1, 0.5, -0.2, 0.1, 0.0, 0.0, 0.0, 0.0], top_k=1)
+client.insert(id=1, vector=[0.1, 0.2, 0.3], collection=collection)
+client.insert(id=2, vector=[0.2, 0.1, 0.4], collection=collection)
 
-print(f&quot;Found ID: {results[0]['id']} with distance {results[0]['distance']}&quot;)
+print(client.search(vector=[0.1, 0.2, 0.3], top_k=2, collection=collection))
+
+# Batch search (recommended for throughput)
+batch = client.search_batch(
+    vectors=[[0.1, 0.2, 0.3], [0.2, 0.1, 0.4]],
+    top_k=2,
+    collection=collection,
+)
+print(batch)
 </code></pre>
+<h2 id="4-metric-notes"><a class="header" href="#4-metric-notes">4) Metric notes</a></h2>
+<ul>
+<li><code>cosine</code>, <code>l2</code>, <code>euclidean</code>: general embeddings.</li>
+<li><code>poincare</code>: vectors must satisfy <code>||x|| &lt; 1</code>.</li>
+<li><code>lorentz</code>: vectors must be on upper hyperboloid sheet.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="python-sdk"><a class="header" href="#python-sdk">Python SDK</a></h1>
 <p>The official Python client provides an ergonomic wrapper around the gRPC interface.</p>
 <h2 id="installation-1"><a class="header" href="#installation-1">Installation</a></h2>
-<p>Currently, install directly from the source:</p>
-<pre><code class="language-bash">git clone https://github.com/yarlabs/hyperspace-db
-cd hyperspace-db/sdks/python
-pip install .
+<p>Install from PyPI:</p>
+<pre><code class="language-bash">pip install hyperspacedb
 </code></pre>
-<p>(Coming soon to PyPI as <code>hyperspacedb</code>)</p>
 <h2 id="client-side-vectorization-fat-client"><a class="header" href="#client-side-vectorization-fat-client">Client-Side Vectorization (Fat Client)</a></h2>
 <p>The SDK supports built-in embedding generation using popular providers (OpenAI, Cohere, etc.). This allows you to insert and search using raw text.</p>
 <h3 id="installation-with-extras"><a class="header" href="#installation-with-extras">Installation with Extras</a></h3>
@@ -403,12 +410,14 @@ results = client.search(query_text=&quot;non-euclidean geometry&quot;, top_k=5)
 <li><code>vector</code> (List[float]): Query vector.</li>
 <li><code>query_text</code> (str): Raw text query.</li>
 </ul>
+<h4 id="search_batchvectors-top_k10-collection---listlistdict"><a class="header" href="#search_batchvectors-top_k10-collection---listlistdict"><code>search_batch(vectors, top_k=10, collection=&quot;&quot;) -&gt; List[List[dict]]</code></a></h4>
+<p>Batch search API that sends multiple <code>SearchRequest</code> objects in one gRPC call.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="rust-sdk"><a class="header" href="#rust-sdk">Rust SDK</a></h1>
 <p>For low-latency applications, connect directly using the Rust SDK.</p>
 <h2 id="installation-2"><a class="header" href="#installation-2">Installation</a></h2>
 <p>Add to your <code>Cargo.toml</code>:</p>
 <pre><code class="language-toml">[dependencies]
-hyperspace-sdk = { git = &quot;https://github.com/yarlabs/hyperspace-db&quot; }
+hyperspace-sdk = &quot;2.0.0&quot;
 tokio = { version = &quot;1&quot;, features = [&quot;full&quot;] }
 </code></pre>
 <h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
@@ -419,7 +428,11 @@ use std::collections::HashMap;
 async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
     // 1. Connect (with optional API Key)
     let api_key = std::env::var(&quot;HYPERSPACE_API_KEY&quot;).ok();
-    let mut client = Client::connect(&quot;http://127.0.0.1:50051&quot;.into(), api_key).await?;
+    let mut client = Client::connect(
+        &quot;http://127.0.0.1:50051&quot;.into(),
+        api_key,
+        None
+    ).await?;
 
     // --- Optional: Configure Embedder (Feature: &quot;embedders&quot;) ---
     #[cfg(feature = &quot;embedders&quot;)]
@@ -451,15 +464,15 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
     let mut meta = HashMap::new();
     meta.insert(&quot;name&quot;.to_string(), &quot;item-42&quot;.to_string());
     
-    client.insert(42, vec.clone(), meta).await?;
+    client.insert(42, vec.clone(), meta, None).await?;
 
     // 3. Basic Search
-    let results = client.search(vec.clone(), 5).await?;
+    let results = client.search(vec.clone(), 5, None).await?;
     
     // 4. Advanced / Hybrid Search
     // e.g. Find semantically similar items that also mention &quot;item&quot;
     let hybrid = Some((&quot;item&quot;.to_string(), 0.5)); 
-    let results = client.search_advanced(vec, 5, vec![], hybrid).await?;
+    let results = client.search_advanced(vec, 5, vec![], hybrid, None).await?;
     
     for res in results {
         println!(&quot;Match: {} (dist: {})&quot;, res.id, res.distance);
@@ -471,6 +484,8 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 <ul>
 <li><code>embedders</code>: Enables <code>set_embedder</code>, <code>insert_document</code>, and <code>search_document</code>. Requires <code>reqwest</code> and <code>serde</code>.</li>
 </ul>
+<h2 id="batch-search"><a class="header" href="#batch-search">Batch Search</a></h2>
+<p>Use <code>search_batch</code> or <code>search_batch_f32</code> to reduce per-request overhead in high-concurrency workloads.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="webassembly-wasm"><a class="header" href="#webassembly-wasm">WebAssembly (WASM)</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="integrations-langchain"><a class="header" href="#integrations-langchain">Integrations (LangChain)</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h1>
@@ -489,7 +504,7 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 message CreateCollectionRequest {
   string name = 1;
   uint32 dimension = 2; // e.g. 1536, 1024, 64
-  string metric = 3;    // &quot;l2&quot;, &quot;cosine&quot;, &quot;poincare&quot;
+  string metric = 3;    // &quot;l2&quot;, &quot;euclidean&quot;, &quot;cosine&quot;, &quot;poincare&quot;, &quot;lorentz&quot;
 }
 </code></pre>
 <h4 id="deletecollection"><a class="header" href="#deletecollection"><code>DeleteCollection</code></a></h4>
@@ -623,7 +638,7 @@ message BatchSearchResponse {
 <tr><td style="text-align: left"><code>HS_DATA_DIR</code></td><td style="text-align: left"><code>./data</code></td><td style="text-align: left">Path to store segments and WAL</td></tr>
 <tr><td style="text-align: left"><code>HS_IDLE_TIMEOUT_SEC</code></td><td style="text-align: left"><code>3600</code></td><td style="text-align: left">Inactivity time (seconds) before collection unloads to disk</td></tr>
 <tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Default vector dimensionality (8, 64, 768, 1024, 1536)</td></tr>
-<tr><td style="text-align: left"><code>HS_METRIC</code></td><td style="text-align: left"><code>cosine</code></td><td style="text-align: left">Distance metric (<code>cosine</code>, <code>poincare</code>, <code>l2</code>)</td></tr>
+<tr><td style="text-align: left"><code>HS_METRIC</code></td><td style="text-align: left"><code>cosine</code></td><td style="text-align: left">Distance metric (<code>cosine</code>, <code>poincare</code>, <code>l2</code>, <code>euclidean</code>, <code>lorentz</code>)</td></tr>
 <tr><td style="text-align: left"><code>HS_QUANTIZATION_LEVEL</code></td><td style="text-align: left"><code>none</code></td><td style="text-align: left">Compression (<code>none</code>, <code>scalar</code> (i8), <code>binary</code> (1-bit))</td></tr>
 </tbody></table>
 </div>
@@ -659,6 +674,12 @@ message BatchSearchResponse {
 <li><strong>Internal Naming</strong>: Collections are stored internally as <code>userid_collectionname</code>.</li>
 <li><strong>Default Admin</strong>: If <code>x-hyperspace-user-id</code> is omitted but a valid <code>x-api-key</code> is provided, the user is treated as <code>default_admin</code>.</li>
 <li><strong>SaaS Integration</strong>: Gateways should inject this header after authenticating users.</li>
+</ul>
+<h3 id="lorentz-metric-notes"><a class="header" href="#lorentz-metric-notes">Lorentz metric notes</a></h3>
+<p>When <code>HS_METRIC=lorentz</code>, vectors must satisfy hyperboloid constraints:</p>
+<ul>
+<li><code>t &gt; 0</code> (upper sheet)</li>
+<li><code>-t^2 + x_1^2 + ... + x_n^2 = -1</code></li>
 </ul>
 <hr />
 <h2 id="web-dashboard"><a class="header" href="#web-dashboard">Web Dashboard</a></h2>
@@ -985,7 +1006,12 @@ Format:</p>
 <li><strong>Pre-allocation</strong>: Creating a DB instance pre-allocates the first chunk (64k * VectorSize bytes) to avoid frequent allocation calls during inserts.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="the-hyperbolic-geometry"><a class="header" href="#the-hyperbolic-geometry">The Hyperbolic Geometry</a></h1>
-<p>HyperspaceDB operates in the <strong>Poincaré Ball Model</strong> of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of &quot;space&quot; available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.</p>
+<p>HyperspaceDB supports two hyperbolic formulations:</p>
+<ul>
+<li><strong>Poincaré ball</strong></li>
+<li><strong>Lorentz (hyperboloid)</strong></li>
+</ul>
+<p>Both are suited for hierarchical data where volume grows exponentially with radius.</p>
 <h2 id="the-distance-formula"><a class="header" href="#the-distance-formula">The Distance Formula</a></h2>
 <p>The distance $d(u, v)$ between two vectors $u, v$ in the Poincaré ball ($\mathbb{D}^n$) is defined as:</p>
 <p>$$
@@ -1009,7 +1035,21 @@ $$</p>
 \delta(u, v) = |u - v|^2 \cdot \alpha_u \cdot \alpha_v
 $$</p>
 <p>If $\delta(A) &lt; \delta(B)$, then $d(A) &lt; d(B)$.</p>
-<p>HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy <code>arccosh</code> only once: when returning the final top-K results to the client.</p>
+<p>HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy <code>arccosh</code> only when required by final ranking/output.</p>
+<h2 id="lorentz-model-hyperboloid"><a class="header" href="#lorentz-model-hyperboloid">Lorentz Model (Hyperboloid)</a></h2>
+<p>For Lorentz vectors <code>x = (t, x1, ..., xn)</code> and <code>y = (s, y1, ..., yn)</code>:</p>
+<p>$$
+\langle x, y \rangle_L = -ts + \sum_i x_i y_i
+$$</p>
+<p>Distance:</p>
+<p>$$
+d(x, y) = \operatorname{arcosh}\left(-\langle x, y \rangle_L\right)
+$$</p>
+<p>Validation constraints:</p>
+<ul>
+<li>upper sheet: <code>t &gt; 0</code></li>
+<li>unit hyperboloid: <code>-t^2 + x_1^2 + ... + x_n^2 = -1</code></li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="zero-copy-hyperbolic-hnsw"><a class="header" href="#zero-copy-hyperbolic-hnsw">Zero-Copy Hyperbolic HNSW</a></h1>
 <p>Our implementation of <a href="https://arxiv.org/abs/1603.09320">Hierarchical Navigable Small Worlds</a> is unique in two ways:</p>
 <ol>

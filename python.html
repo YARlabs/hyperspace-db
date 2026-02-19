@@ -181,12 +181,9 @@
                         <h1 id="python-sdk"><a class="header" href="#python-sdk">Python SDK</a></h1>
 <p>The official Python client provides an ergonomic wrapper around the gRPC interface.</p>
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
-<p>Currently, install directly from the source:</p>
-<pre><code class="language-bash">git clone https://github.com/yarlabs/hyperspace-db
-cd hyperspace-db/sdks/python
-pip install .
+<p>Install from PyPI:</p>
+<pre><code class="language-bash">pip install hyperspacedb
 </code></pre>
-<p>(Coming soon to PyPI as <code>hyperspacedb</code>)</p>
 <h2 id="client-side-vectorization-fat-client"><a class="header" href="#client-side-vectorization-fat-client">Client-Side Vectorization (Fat Client)</a></h2>
 <p>The SDK supports built-in embedding generation using popular providers (OpenAI, Cohere, etc.). This allows you to insert and search using raw text.</p>
 <h3 id="installation-with-extras"><a class="header" href="#installation-with-extras">Installation with Extras</a></h3>
@@ -238,6 +235,8 @@ results = client.search(query_text=&quot;non-euclidean geometry&quot;, top_k=5)
 <li><code>vector</code> (List[float]): Query vector.</li>
 <li><code>query_text</code> (str): Raw text query.</li>
 </ul>
+<h4 id="search_batchvectors-top_k10-collection---listlistdict"><a class="header" href="#search_batchvectors-top_k10-collection---listlistdict"><code>search_batch(vectors, top_k=10, collection=&quot;&quot;) -&gt; List[List[dict]]</code></a></h4>
+<p>Batch search API that sends multiple <code>SearchRequest</code> objects in one gRPC call.</p>
 
                     </main>
 

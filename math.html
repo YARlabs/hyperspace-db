@@ -179,7 +179,12 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="the-hyperbolic-geometry"><a class="header" href="#the-hyperbolic-geometry">The Hyperbolic Geometry</a></h1>
-<p>HyperspaceDB operates in the <strong>Poincaré Ball Model</strong> of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of &quot;space&quot; available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.</p>
+<p>HyperspaceDB supports two hyperbolic formulations:</p>
+<ul>
+<li><strong>Poincaré ball</strong></li>
+<li><strong>Lorentz (hyperboloid)</strong></li>
+</ul>
+<p>Both are suited for hierarchical data where volume grows exponentially with radius.</p>
 <h2 id="the-distance-formula"><a class="header" href="#the-distance-formula">The Distance Formula</a></h2>
 <p>The distance $d(u, v)$ between two vectors $u, v$ in the Poincaré ball ($\mathbb{D}^n$) is defined as:</p>
 <p>$$
@@ -203,7 +208,21 @@ $$</p>
 \delta(u, v) = |u - v|^2 \cdot \alpha_u \cdot \alpha_v
 $$</p>
 <p>If $\delta(A) &lt; \delta(B)$, then $d(A) &lt; d(B)$.</p>
-<p>HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy <code>arccosh</code> only once: when returning the final top-K results to the client.</p>
+<p>HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy <code>arccosh</code> only when required by final ranking/output.</p>
+<h2 id="lorentz-model-hyperboloid"><a class="header" href="#lorentz-model-hyperboloid">Lorentz Model (Hyperboloid)</a></h2>
+<p>For Lorentz vectors <code>x = (t, x1, ..., xn)</code> and <code>y = (s, y1, ..., yn)</code>:</p>
+<p>$$
+\langle x, y \rangle_L = -ts + \sum_i x_i y_i
+$$</p>
+<p>Distance:</p>
+<p>$$
+d(x, y) = \operatorname{arcosh}\left(-\langle x, y \rangle_L\right)
+$$</p>
+<p>Validation constraints:</p>
+<ul>
+<li>upper sheet: <code>t &gt; 0</code></li>
+<li>unit hyperboloid: <code>-t^2 + x_1^2 + ... + x_n^2 = -1</code></li>
+</ul>
 
                     </main>
 

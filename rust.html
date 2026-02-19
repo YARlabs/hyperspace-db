@@ -183,7 +183,7 @@
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
 <p>Add to your <code>Cargo.toml</code>:</p>
 <pre><code class="language-toml">[dependencies]
-hyperspace-sdk = { git = &quot;https://github.com/yarlabs/hyperspace-db&quot; }
+hyperspace-sdk = &quot;2.0.0&quot;
 tokio = { version = &quot;1&quot;, features = [&quot;full&quot;] }
 </code></pre>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
@@ -194,7 +194,11 @@ use std::collections::HashMap;
 async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
     // 1. Connect (with optional API Key)
     let api_key = std::env::var(&quot;HYPERSPACE_API_KEY&quot;).ok();
-    let mut client = Client::connect(&quot;http://127.0.0.1:50051&quot;.into(), api_key).await?;
+    let mut client = Client::connect(
+        &quot;http://127.0.0.1:50051&quot;.into(),
+        api_key,
+        None
+    ).await?;
 
     // --- Optional: Configure Embedder (Feature: &quot;embedders&quot;) ---
     #[cfg(feature = &quot;embedders&quot;)]
@@ -226,15 +230,15 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
     let mut meta = HashMap::new();
     meta.insert(&quot;name&quot;.to_string(), &quot;item-42&quot;.to_string());
     
-    client.insert(42, vec.clone(), meta).await?;
+    client.insert(42, vec.clone(), meta, None).await?;
 
     // 3. Basic Search
-    let results = client.search(vec.clone(), 5).await?;
+    let results = client.search(vec.clone(), 5, None).await?;
     
     // 4. Advanced / Hybrid Search
     // e.g. Find semantically similar items that also mention &quot;item&quot;
     let hybrid = Some((&quot;item&quot;.to_string(), 0.5)); 
-    let results = client.search_advanced(vec, 5, vec![], hybrid).await?;
+    let results = client.search_advanced(vec, 5, vec![], hybrid, None).await?;
     
     for res in results {
         println!(&quot;Match: {} (dist: {})&quot;, res.id, res.distance);
@@ -246,6 +250,8 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 <ul>
 <li><code>embedders</code>: Enables <code>set_embedder</code>, <code>insert_document</code>, and <code>search_document</code>. Requires <code>reqwest</code> and <code>serde</code>.</li>
 </ul>
+<h2 id="batch-search"><a class="header" href="#batch-search">Batch Search</a></h2>
+<p>Use <code>search_batch</code> or <code>search_batch_f32</code> to reduce per-request overhead in high-concurrency workloads.</p>
 
                     </main>
 

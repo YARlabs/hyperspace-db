@@ -179,32 +179,42 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
-<p>Once the server is running on <code>localhost:50051</code>, you can interact with it using the CLI dashboard or an SDK.</p>
-<h2 id="using-the-cli-dashboard-tui"><a class="header" href="#using-the-cli-dashboard-tui">Using the CLI Dashboard (TUI)</a></h2>
-<p>HyperspaceDB comes with a beautiful terminal interface for monitoring and basic administration.</p>
-<pre><code class="language-bash"># Assuming you built from source
-./target/release/hyperspace-cli
+<p>Once the server is running on <code>localhost:50051</code>, you can use any official SDK.</p>
+<h2 id="1-start-server"><a class="header" href="#1-start-server">1) Start server</a></h2>
+<pre><code class="language-bash">cargo build --release
+./target/release/hyperspace-server
 </code></pre>
-<ul>
-<li><strong>Metric 1: Compression</strong>: Shows how much RAM you are saving with <code>ScalarI8</code>.</li>
-<li><strong>Metric 2: Index Queue</strong>: Shows if the background worker is keeping up with writes.</li>
-<li><strong>Controls</strong>: Press <code>s</code> to force a snapshot save.</li>
-</ul>
-<h2 id="first-interaction-python"><a class="header" href="#first-interaction-python">First Interaction (Python)</a></h2>
+<h2 id="2-open-dashboard"><a class="header" href="#2-open-dashboard">2) Open dashboard</a></h2>
+<pre><code class="language-text">http://localhost:50050
+</code></pre>
+<h2 id="3-first-interaction-python"><a class="header" href="#3-first-interaction-python">3) First interaction (Python)</a></h2>
 <pre><code class="language-python">from hyperspace import HyperspaceClient
 
-# 1. Connect
-client = HyperspaceClient(&quot;localhost:50051&quot;)
+client = HyperspaceClient(&quot;localhost:50051&quot;, api_key=&quot;I_LOVE_HYPERSPACEDB&quot;)
+collection = &quot;quickstart&quot;
 
-# 2. Insert (ID must be uint32)
-# Vectors must be inside the Poincaré ball (norm &lt; 1.0)
-client.insert(id=101, vector=[0.1, 0.5, -0.2, 0.1, 0.0, 0.0, 0.0, 0.1], metadata={&quot;label&quot;: &quot;demo&quot;})
+client.delete_collection(collection)
+client.create_collection(collection, dimension=3, metric=&quot;cosine&quot;)
 
-# 3. Search
-results = client.search(vector=[0.1, 0.5, -0.2, 0.1, 0.0, 0.0, 0.0, 0.0], top_k=1)
+client.insert(id=1, vector=[0.1, 0.2, 0.3], collection=collection)
+client.insert(id=2, vector=[0.2, 0.1, 0.4], collection=collection)
 
-print(f&quot;Found ID: {results[0]['id']} with distance {results[0]['distance']}&quot;)
+print(client.search(vector=[0.1, 0.2, 0.3], top_k=2, collection=collection))
+
+# Batch search (recommended for throughput)
+batch = client.search_batch(
+    vectors=[[0.1, 0.2, 0.3], [0.2, 0.1, 0.4]],
+    top_k=2,
+    collection=collection,
+)
+print(batch)
 </code></pre>
+<h2 id="4-metric-notes"><a class="header" href="#4-metric-notes">4) Metric notes</a></h2>
+<ul>
+<li><code>cosine</code>, <code>l2</code>, <code>euclidean</code>: general embeddings.</li>
+<li><code>poincare</code>: vectors must satisfy <code>||x|| &lt; 1</code>.</li>
+<li><code>lorentz</code>: vectors must be on upper hyperboloid sheet.</li>
+</ul>
 
                     </main>
 
