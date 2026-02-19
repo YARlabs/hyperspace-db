@@ -603,7 +603,7 @@ Official 1st-party drivers:
 | Language | Path | Status |
 | --- | --- | --- |
 | 🐍 **Python** | [pip install hyperspacedb==2.0.0](https://pypi.org/project/hyperspacedb/2.0.0/) | ✅ v2.0.0 |
-| 🦀 **Rust** | [cargo install hyperspacedb==2.0.0](https://crates.io/crates/hyperspacedb/2.0.0) | ✅ v2.0.0 |
+| 🦀 **Rust** | [cargo install hyperspacedb==2.0.0](https://crates.io/crates/hyperspace-sdk) | ✅ v2.0.0 |
 | 🦕 **TypeScript** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v2.0.0 |
 | 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v2.0.0 |
 | 🐹 **Go** | `sdks/go` | 🚧 Planned |
