@@ -10,6 +10,7 @@ Cargo.lock
 **/*.snap
 **/*.log
 **/*.bin
+**/*.sh
 **/*.tar.gz
 **/TODO*.md
 # Directories

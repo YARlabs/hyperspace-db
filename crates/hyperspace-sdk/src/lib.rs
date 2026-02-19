@@ -1,6 +1,7 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
-    BatchSearchRequest, InsertRequest, SearchRequest, SearchResponse, SearchResult,
+    BatchInsertRequest, BatchSearchRequest, DurabilityLevel, InsertRequest, SearchRequest,
+    SearchResponse, SearchResult, VectorData,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -191,6 +192,52 @@ impl Client {
     ) -> Result<bool, tonic::Status> {
         self.insert(id, Self::vec_f32_to_f64(vector), metadata, collection)
             .await
+    }
+
+    /// Batch inserts multiple vectors.
+    ///
+    /// # Errors
+    /// Returns error if insertion fails.
+    pub async fn batch_insert(
+        &mut self,
+        items: Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>,
+        collection: Option<String>,
+        durability: DurabilityLevel,
+    ) -> Result<bool, tonic::Status> {
+        let vectors = items
+            .into_iter()
+            .map(|(id, vector, metadata)| VectorData {
+                id,
+                vector,
+                metadata,
+            })
+            .collect();
+        let req = BatchInsertRequest {
+            collection: collection.unwrap_or_default(),
+            vectors,
+            origin_node_id: "".to_string(),
+            logical_clock: 0,
+            durability: durability as i32,
+        };
+        let resp = self.inner.batch_insert(req).await?;
+        Ok(resp.into_inner().success)
+    }
+
+    /// Batch inserts multiple vectors from f32 input.
+    ///
+    /// # Errors
+    /// Returns error if insertion fails.
+    pub async fn batch_insert_f32(
+        &mut self,
+        items: Vec<(u32, Vec<f32>, std::collections::HashMap<String, String>)>,
+        collection: Option<String>,
+        durability: DurabilityLevel,
+    ) -> Result<bool, tonic::Status> {
+        let items_f64 = items
+            .into_iter()
+            .map(|(id, v, m)| (id, Self::vec_f32_to_f64(&v), m))
+            .collect();
+        self.batch_insert(items_f64, collection, durability).await
     }
 
     /// Searches for nearest neighbors.

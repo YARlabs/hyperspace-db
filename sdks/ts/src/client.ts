@@ -4,10 +4,24 @@ import {
     BatchSearchRequest,
     InsertRequest, SearchRequest,
     CreateCollectionRequest, DeleteCollectionRequest, Empty,
-    DurabilityLevel
+    DurabilityLevel,
+    BatchInsertRequest, // New
+    VectorData // New
 } from './proto/hyperspace_pb';
+import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
 
 export { DurabilityLevel };
+
+export interface Filter {
+    match?: { key: string, value: string };
+    range?: { key: string, gte?: number, lte?: number };
+}
+
+export interface SearchResult {
+    id: number;
+    distance: number;
+    metadata: { [key: string]: string };
+}
 
 export class HyperspaceClient {
     private client: DatabaseClient;
@@ -88,12 +102,69 @@ export class HyperspaceClient {
         });
     }
 
-    public search(vector: number[] | Float32Array | Float64Array, topK: number, collection: string = ''): Promise<{ id: number, distance: number, metadata: { [key: string]: string } }[]> {
+    public batchInsert(items: { id: number, vector: number[] | Float32Array | Float64Array, metadata?: { [key: string]: string } }[], collection: string = '', durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            const req = new BatchInsertRequest();
+            req.setCollection(collection);
+            req.setDurability(durability);
+
+            const vectors = items.map(item => {
+                const v = new VectorData();
+                v.setId(item.id);
+                v.setVectorList(HyperspaceClient.toVectorList(item.vector));
+                if (item.metadata) {
+                    const map = v.getMetadataMap();
+                    for (const k in item.metadata) map.set(k, item.metadata[k]);
+                }
+                return v;
+            });
+            req.setVectorsList(vectors);
+
+            this.client.batchInsert(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getSuccess());
+            });
+        });
+    }
+
+    public search(
+        vector: number[] | Float32Array | Float64Array,
+        topK: number,
+        collection: string = '',
+        options?: {
+            filters?: Filter[],
+            hybridQuery?: string,
+            hybridAlpha?: number
+        }
+    ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
             const req = new SearchRequest();
             req.setVectorList(HyperspaceClient.toVectorList(vector));
             req.setTopK(topK);
             req.setCollection(collection);
+
+            if (options?.filters) {
+                const protoFilters = options.filters.map(f => {
+                    const pf = new hyperspace_pb.Filter();
+                    if (f.match) {
+                        const m = new hyperspace_pb.Match();
+                        m.setKey(f.match.key);
+                        m.setValue(f.match.value);
+                        pf.setMatch(m);
+                    } else if (f.range) {
+                        const r = new hyperspace_pb.Range();
+                        r.setKey(f.range.key);
+                        if (f.range.gte !== undefined) r.setGte(f.range.gte);
+                        if (f.range.lte !== undefined) r.setLte(f.range.lte);
+                        pf.setRange(r);
+                    }
+                    return pf;
+                });
+                req.setFiltersList(protoFilters);
+            }
+
+            if (options?.hybridQuery) req.setHybridQuery(options.hybridQuery);
+            if (options?.hybridAlpha !== undefined) req.setHybridAlpha(options.hybridAlpha);
 
             this.client.search(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
@@ -116,7 +187,7 @@ export class HyperspaceClient {
         });
     }
 
-    public searchBatch(vectors: Array<number[] | Float32Array | Float64Array>, topK: number, collection: string = ''): Promise<{ id: number, distance: number, metadata: { [key: string]: string } }[][]> {
+    public searchBatch(vectors: Array<number[] | Float32Array | Float64Array>, topK: number, collection: string = ''): Promise<SearchResult[][]> {
         return new Promise((resolve, reject) => {
             const req = new BatchSearchRequest();
             req.setSearchesList(
@@ -148,6 +219,22 @@ export class HyperspaceClient {
                     })
                 );
                 resolve(batch);
+            });
+        });
+    }
+
+    public getDigest(collection: string = ''): Promise<{ logicalClock: number, stateHash: number, count: number }> {
+        return new Promise((resolve, reject) => {
+            const req = new hyperspace_pb.DigestRequest();
+            req.setCollection(collection);
+
+            this.client.getDigest(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve({
+                    logicalClock: resp.getLogicalClock(),
+                    stateHash: resp.getStateHash(),
+                    count: resp.getCount()
+                });
             });
         });
     }

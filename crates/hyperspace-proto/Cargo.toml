@@ -2,10 +2,13 @@
 name = "hyperspace-proto"
 version = "2.0.0"
 edition = "2021"
+description = "Protobuf definitions and generated gRPC code for HyperspaceDB"
+license = "AGPL-3.0-only"
+repository = "https://github.com/yarlabs/hyperspacedb"
 
 [dependencies]
-tonic = { workspace = true }
-prost = { workspace = true }
+tonic = "0.10"
+prost = "0.12"
 
 [build-dependencies]
 tonic-build = "0.10"

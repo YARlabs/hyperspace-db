@@ -370,7 +370,9 @@ impl CollectionManager {
         // 1. Fast path: Check memory
         if let Some(entry) = self.collections.get(&internal_name) {
             // Update LRU clock
-            entry.last_accessed.store(current_time_secs(), Ordering::Relaxed);
+            entry
+                .last_accessed
+                .store(current_time_secs(), Ordering::Relaxed);
             return Some(entry.collection.clone());
         }
 

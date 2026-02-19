@@ -13,9 +13,9 @@ default = []
 embedders = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait"]
 
 [dependencies]
-hyperspace-proto = { workspace = true }
-tonic = { workspace = true }
-tokio = { workspace = true }
+hyperspace-proto = { version = "2.0.0", path = "../hyperspace-proto" }
+tonic = "0.10"
+tokio = { version = "1.35", features = ["full"] }
 
 # Embedder dependencies (Optional)
 reqwest = { version = "0.11", features = ["json", "rustls-tls"], optional = true }

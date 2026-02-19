@@ -285,6 +285,19 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
+    def get_digest(self, collection: str = "") -> Dict:
+        req = hyperspace_pb2.DigestRequest(collection=collection)
+        try:
+            resp = self.stub.GetDigest(req, metadata=self.metadata)
+            return {
+                "logical_clock": resp.logical_clock,
+                "state_hash": resp.state_hash,
+                "count": resp.count
+            }
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return {}
+
     def close(self):
         self.channel.close()
 

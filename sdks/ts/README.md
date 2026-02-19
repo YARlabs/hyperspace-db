@@ -6,6 +6,8 @@ Use this SDK for:
 - collection lifecycle management
 - vector insert and search
 - high-throughput batched search (`searchBatch`)
+- bulk insertion (`batchInsert`)
+- advanced filtering and hybrid search
 - multi-tenant authentication headers (`x-api-key`, `x-hyperspace-user-id`)
 
 ## Requirements
@@ -63,28 +65,41 @@ Delete collection and all its data.
 
 ### `insert(id, vector, meta?, collection?, durability?)`
 
-Insert one vector.
+Insert one vector. Accepts `number[]`, `Float32Array`, `Float64Array`.
 
-- accepts `number[]`, `Float32Array`, `Float64Array`
-- `durability` defaults to `DurabilityLevel.DEFAULT_LEVEL`
+### `batchInsert(items, collection?, durability?)`
 
-### `search(vector, topK, collection?)`
+Efficient bulk insertion.
+```ts
+await client.batchInsert([
+  { id: 10, vector: [0.1, 0.1, 0.1], metadata: { tag: "a" } },
+  { id: 11, vector: [0.2, 0.2, 0.2], metadata: { tag: "b" } }
+], "my_collection");
+```
 
-Run nearest-neighbor search and return:
+### `search(vector, topK, collection?, options?)`
+
+Run nearest-neighbor search. 
+Options include `filters`, `hybridQuery`, and `hybridAlpha`.
 
 ```ts
-{ id: number, distance: number, metadata: Record<string, string> }[]
+const results = await client.search(vector, 10, "coll", {
+  filters: [
+    { match: { key: "category", value: "electronics" } },
+    { range: { key: "price", gte: 100, lte: 500 } }
+  ],
+  hybridQuery: "latest smartphone",
+  hybridAlpha: 0.5
+});
 ```
 
 ### `searchBatch(vectors, topK, collection?)`
 
-Run multiple searches in one gRPC request:
+Run multiple searches in one gRPC request to reduce RPC overhead.
 
-```ts
-{ id: number, distance: number, metadata: Record<string, string> }[][]
-```
+### `getDigest(collection?)`
 
-Use `searchBatch` for concurrency-heavy workloads to reduce RPC overhead.
+Retrieve collection stats and logical clock.
 
 ### `close()`
 
@@ -92,27 +107,11 @@ Close underlying gRPC channel.
 
 ## Performance Notes
 
-- Prefer `searchBatch` for throughput benchmarks and high-QPS services.
+- Prefer `searchBatch` and `batchInsert` for throughput-heavy services.
 - Reuse one client instance per process or worker.
-- For large inserts, send vectors in chunks.
 
 ## Error Handling
 
-All methods reject on transport/protocol errors.
-
-Example:
-
-```ts
-try {
-  const res = await client.search([0.1, 0.2, 0.3], 10, "my_collection");
-  console.log(res);
-} catch (err) {
-  console.error("Hyperspace request failed:", err);
-}
-```
-
-## Notes for Package Consumers
-
-- This SDK targets gRPC data plane operations.
-- Control plane endpoints (`/api/*`) are HTTP and are not part of this package.
+All methods reject on transport/protocol errors. Targets gRPC data plane operations.
+For control plane endpoints (`/api/*`), use regular HTTP requests to the server's HTTP port.
 
