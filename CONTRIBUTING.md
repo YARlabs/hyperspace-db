@@ -43,7 +43,9 @@ can be included in both open-source and commercial releases.
 
 We value stability. Please ensure all tests pass before submitting a PR:
 ```bash
-cargo test --all-features
+cargo check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --lib
 ```
 
 ## 📜 Code Style
@@ -61,7 +63,7 @@ To implement a new metric:
 1.  Implement `Metric<N>` trait in `crates/hyperspace-core/src/lib.rs`.
 2.  Implement `distance`, `validate`, and quantized distance methods (`distance_quantized`, `distance_binary`).
 3.  Register alias and instantiation logic in `crates/hyperspace-server/src/manager.rs`.
-4.  Add integration tests in `tests/`.
+4.  Add unit/integration tests in `crates/hyperspace-core/src/tests.rs` and related crates.
 
 ## 🚀 Future Roadmap
 
@@ -78,10 +80,10 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 ### Phase 2: Scale & Structure (v2.x)
 *The goal: Serverless Economy and Cloud-Native Architecture.*
 
-* **v2.0**: ✅ **Serverless Core**. Idle Unloading, Cold Start, Multi-tenancy, and Jemalloc tuning. *Completed.*
-* **v2.1**: **Storage Tiering (S3/Blob)**. Automatic backup of idle collections to object storage.
-* **v2.2**: **Distributed Consensus**. Raft implementation for horizontal scaling (Cluster Mode).
-* **v2.3**: **Hyperbolic Graph Traversal API**. Exposing the HNSW graph structure to allow queries like "Get parent concepts" or "Find semantic clusters" without embedding generation. *Beats GNNs in speed.*
+* **v2.0**: ✅ **Serverless Core**. Idle unloading, cold start, multi-tenancy, and Jemalloc tuning. *Completed.*
+* **v2.1**: ✅ **Data-Plane Throughput Upgrade**. Batch search API, Lorentz metric integration, SDK/doc refresh. *Completed.*
+* **v2.2**: **Storage Tiering (S3/Blob)**. Automatic backup of idle collections to object storage.
+* **v2.3**: **Hyperbolic Graph Traversal API** (planned). Graph-native traversal endpoints and neighborhood/cluster primitives (not fully implemented yet).
 
 ### Phase 3: Collective Intelligence (v3.x)
 *The goal: Beyond storage. The "Digital Thalamus" realization.*

@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
-use sysinfo::{Pid, System};
+use sysinfo::Pid;
 use tikv_jemalloc_ctl::epoch;
 use tower_http::cors::CorsLayer;
 
@@ -419,8 +419,8 @@ async fn get_metrics(
     let disk_usage_bytes = calculate_dir_size("./data").unwrap_or(0);
     let disk_usage_mb = (disk_usage_bytes as f64 / 1_048_576.0).round() as u64;
 
-    // Get real system metrics
-    let sys = System::new_all();
+    // Get real system metrics from persistent manager state
+    let sys = manager.system.lock();
     let current_pid = Pid::from_u32(std::process::id());
 
     let (ram_usage_mb, cpu_usage_percent) = if let Some(process) = sys.process(current_pid) {
@@ -460,9 +460,8 @@ async fn get_prometheus_metrics(
     let (active, idle) = manager.get_collection_counts();
     let total_vecs = manager.total_vector_count();
 
-    // System stats
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    // System stats from persistent manager
+    let sys = manager.system.lock();
     let pid = Pid::from_u32(std::process::id());
     let (ram_mb, cpu_percent) = if let Some(proc) = sys.process(pid) {
         (

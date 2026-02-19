@@ -43,6 +43,8 @@ pub struct PoincareMetric;
 
 pub struct EuclideanMetric;
 
+pub struct LorentzMetric;
+
 #[derive(Debug, Clone)]
 pub enum FilterExpr {
     Match {
@@ -165,6 +167,54 @@ impl<const N: usize> Metric<N> for PoincareMetric {
 
     fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
         a.poincare_distance_sq_to_float(b)
+    }
+}
+
+impl<const N: usize> Metric<N> for LorentzMetric {
+    fn name() -> &'static str {
+        "lorentz"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
+        debug_assert!(N >= 2, "Lorentz metric requires at least 2 dimensions");
+        let mut inner_prod = -a[0] * b[0];
+        for i in 1..N {
+            inner_prod += a[i] * b[i];
+        }
+        // Hyperboloid distance: d(x, y) = arcosh(-<x, y>_L), where <.,.>_L uses signature (-, +, ... ,+).
+        let arg = (-inner_prod).max(1.0 + 1e-12);
+        arg.acosh()
+    }
+
+    fn validate(vector: &[f64; N]) -> Result<(), String> {
+        if !vector.iter().all(|v| v.is_finite()) {
+            return Err("Lorentz vector contains non-finite values".to_string());
+        }
+        if vector[0] <= 0.0 {
+            return Err("Lorentz vector must be on the upper sheet (t > 0)".to_string());
+        }
+
+        // Point must satisfy: -t^2 + x1^2 + ... + xn^2 = -1
+        let mut spatial_sq = 0.0_f64;
+        for i in 1..N {
+            spatial_sq += vector[i] * vector[i];
+        }
+        let minkowski_norm = -vector[0] * vector[0] + spatial_sq;
+        if (minkowski_norm + 1.0).abs() > 1e-6 {
+            return Err(format!(
+                "Lorentz vector is not on unit hyperboloid: -t^2+|x|^2={minkowski_norm}, expected -1"
+            ));
+        }
+        Ok(())
+    }
+
+    fn distance_quantized(_a: &QuantizedHyperVector<N>, _b: &HyperVector<N>) -> f64 {
+        panic!("Scalar quantization is not yet supported for the Lorentz model. Use HS_QUANTIZATION_LEVEL=none");
+    }
+
+    fn distance_binary(_a: &BinaryHyperVector<N>, _b: &HyperVector<N>) -> f64 {
+        panic!("Binary quantization is not supported for Lorentz.");
     }
 }
 

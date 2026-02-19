@@ -1,6 +1,11 @@
 # The Hyperbolic Geometry
 
-HyperspaceDB operates in the **Poincaré Ball Model** of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of "space" available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.
+HyperspaceDB supports two hyperbolic formulations:
+
+- **Poincaré ball**
+- **Lorentz (hyperboloid)**
+
+Both are suited for hierarchical data where volume grows exponentially with radius.
 
 ## The Distance Formula
 
@@ -36,4 +41,23 @@ $$
 
 If $\delta(A) < \delta(B)$, then $d(A) < d(B)$.
 
-HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy `arccosh` only once: when returning the final top-K results to the client.
+HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy `arccosh` only when required by final ranking/output.
+
+## Lorentz Model (Hyperboloid)
+
+For Lorentz vectors `x = (t, x1, ..., xn)` and `y = (s, y1, ..., yn)`:
+
+$$
+\langle x, y \rangle_L = -ts + \sum_i x_i y_i
+$$
+
+Distance:
+
+$$
+d(x, y) = \operatorname{arcosh}\left(-\langle x, y \rangle_L\right)
+$$
+
+Validation constraints:
+
+- upper sheet: `t > 0`
+- unit hyperboloid: `-t^2 + x_1^2 + ... + x_n^2 = -1`

@@ -1,0 +1,7 @@
+<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+    <g fill="none" fill-rule="evenodd">
+        <g stroke="currentColor" stroke-width="1" stroke-opacity="0.1">
+            <path d="M30 0v60M0 30h60" />
+        </g>
+    </g>
+</svg>

@@ -1,14 +1,13 @@
-use hyperspace_core::{EuclideanMetric, GlobalConfig, Metric, QuantizationMode};
+use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
 use hyperspace_index::{HnswIndex, SnapshotData, SnapshotMetadata, SnapshotNode};
 use hyperspace_store::VectorStore;
-use parking_lot::RwLock;
 use rkyv::Deserialize;
 use roaring::RoaringBitmap;
 use std::sync::Arc; // Correct import
 
 #[test]
 fn test_metadata_persistence() {
-    let mut metadata = SnapshotMetadata {
+    let metadata = SnapshotMetadata {
         inverted: vec![("tag1".to_string(), {
             let mut b = RoaringBitmap::new();
             b.insert(1);
@@ -89,7 +88,7 @@ fn test_index_save_load() {
     index.save_snapshot(&path).expect("Save failed");
 
     // Load
-    let layout_file = std::fs::File::open(&path).unwrap();
+    let _layout_file = std::fs::File::open(&path).unwrap();
     let loaded_index: HnswIndex<1, EuclideanMetric> =
         HnswIndex::load_snapshot(&path, storage, QuantizationMode::None, config)
             .expect("Load failed");

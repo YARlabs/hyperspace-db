@@ -11,12 +11,12 @@ export function OverviewPage() {
     const { data: status, isLoading: sLoading } = useQuery({
         queryKey: ['status'],
         queryFn: fetchStatus,
-        refetchInterval: 5000
+        refetchInterval: 60000
     })
     const { data: metrics } = useQuery({
         queryKey: ['metrics'],
         queryFn: () => api.get("/metrics").then(r => r.data),
-        refetchInterval: 2000
+        refetchInterval: 30000
     })
 
     if (sLoading && !status) return <OverviewSkeleton />
@@ -84,7 +84,7 @@ export function OverviewPage() {
                             <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">Memory Management</span>
                                 <Button variant="outline" size="sm" onClick={() => {
-                                    if (confirm("Trigger manual memory vacuum? This may cause temporary latency.")) {
+                                    if (window.confirm("Trigger manual memory vacuum? This may cause temporary latency.")) {
                                         api.post("/admin/vacuum")
                                             .then(() => alert("Memory cleanup triggered!"))
                                             .catch(e => alert("Failed: " + e.message))
@@ -111,7 +111,7 @@ function ConfigRow({ label, value }: any) {
 }
 
 function IngestionStatusCard({ metrics }: any) {
-    const [refreshInterval, setRefreshInterval] = useState("10")
+    const [refreshInterval, setRefreshInterval] = useState("30")
 
     const { data: liveMetrics } = useQuery({
         queryKey: ['live-metrics'],

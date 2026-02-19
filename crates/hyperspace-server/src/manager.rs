@@ -1,6 +1,6 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
-use hyperspace_core::{Collection, CosineMetric, EuclideanMetric, PoincareMetric};
+use hyperspace_core::{Collection, CosineMetric, EuclideanMetric, LorentzMetric, PoincareMetric};
 use hyperspace_proto::hyperspace::{
     replication_log, CreateCollectionOp, DeleteCollectionOp, ReplicationLog,
 };
@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use sysinfo::System;
+use parking_lot::Mutex;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -72,6 +74,7 @@ pub struct CollectionManager {
     collections: Arc<DashMap<String, CollectionEntry>>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     pub cluster_state: Arc<RwLock<ClusterState>>,
+    pub system: Arc<Mutex<System>>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -142,11 +145,26 @@ impl CollectionManager {
             }
         });
 
+        let system = Arc::new(Mutex::new(System::new_all()));
+        let sys_clone = system.clone();
+
+        // Spawn background task to refresh system metrics (CPU usage calculation requires history)
+        tokio::spawn(async move {
+            loop {
+                {
+                    let mut sys = sys_clone.lock();
+                    sys.refresh_all();
+                }
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        });
+
         Self {
             base_path,
             collections,
             replication_tx,
             cluster_state: Arc::new(RwLock::new(state)),
+            system,
         }
     }
 
@@ -234,6 +252,17 @@ impl CollectionManager {
             (1024, "cosine") => inst!(1024, CosineMetric),
             (1536, "cosine") => inst!(1536, CosineMetric),
             (2048, "cosine") => inst!(2048, CosineMetric),
+
+            // Lorentz Model
+            (8, "lorentz") => inst!(8, LorentzMetric),
+            (16, "lorentz") => inst!(16, LorentzMetric),
+            (32, "lorentz") => inst!(32, LorentzMetric),
+            (64, "lorentz") => inst!(64, LorentzMetric),
+            (128, "lorentz") => inst!(128, LorentzMetric),
+            (768, "lorentz") => inst!(768, LorentzMetric),
+            (1024, "lorentz") => inst!(1024, LorentzMetric),
+            (1536, "lorentz") => inst!(1536, LorentzMetric),
+            (2048, "lorentz") => inst!(2048, LorentzMetric),
 
             _ => {
                 return Err(format!(

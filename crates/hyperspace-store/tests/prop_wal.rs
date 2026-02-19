@@ -49,7 +49,8 @@ proptest! {
         {
             let mut wal = Wal::new(&wal_path, WalSyncMode::Async).unwrap();
             for entry in &entries {
-                wal.append(entry.id, &entry.vector, &entry.metadata).unwrap();
+                wal.append(entry.id, &entry.vector, &entry.metadata, 0)
+                    .unwrap();
             }
             wal.sync().unwrap();
         }
@@ -57,7 +58,12 @@ proptest! {
         // 2. Replay & verify
         let mut replayed = Vec::new();
         Wal::replay(&wal_path, |entry| {
-            let WalEntry::Insert { id, vector, metadata } = entry;
+            let WalEntry::Insert {
+                id,
+                vector,
+                metadata,
+                ..
+            } = entry;
             replayed.push(TestEntry { id, vector, metadata });
         }).unwrap();
 
@@ -81,7 +87,8 @@ proptest! {
         {
             let mut wal = Wal::new(&wal_path, WalSyncMode::Async).unwrap();
             for entry in &entries {
-                wal.append(entry.id, &entry.vector, &entry.metadata).unwrap();
+                wal.append(entry.id, &entry.vector, &entry.metadata, 0)
+                    .unwrap();
             }
             wal.sync().unwrap();
         }
@@ -96,7 +103,12 @@ proptest! {
         // 3. Try to Replay
         let mut replayed = Vec::new();
         let res = Wal::replay(&wal_path, |entry| {
-             let WalEntry::Insert { id, vector, metadata } = entry;
+             let WalEntry::Insert {
+                 id,
+                 vector,
+                 metadata,
+                 ..
+             } = entry;
              replayed.push(TestEntry { id, vector, metadata });
         });
 

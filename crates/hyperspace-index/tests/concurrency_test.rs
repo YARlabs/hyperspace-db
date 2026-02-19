@@ -1,10 +1,9 @@
-use hyperspace_core::{EuclideanMetric, GlobalConfig, Metric, QuantizationMode};
-use hyperspace_index::{HnswIndex, SnapshotData, SnapshotMetadata, SnapshotNode};
+use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
+use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore;
 use rand::Rng;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 #[test]
 fn test_concurrent_indexing_stress() {
@@ -27,7 +26,7 @@ fn test_concurrent_indexing_stress() {
         handles.push(thread::spawn(move || {
             let mut rng = rand::thread_rng();
             for j in 0..items_per_thread {
-                let id = (i * items_per_thread + j) as u32;
+                let _id = (i * items_per_thread + j) as u32;
                 let val = rng.gen_range(0.0..100.0);
                 let vec = vec![val];
                 // Insert with random metadata to test lock contention on metadata too

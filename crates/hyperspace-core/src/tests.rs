@@ -41,3 +41,21 @@ fn test_poincare_validation() {
     let v_invalid2 = [0.8, 0.8]; // Norm sq = 0.64+0.64 = 1.28
     assert!(PoincareMetric::validate(&v_invalid2).is_err());
 }
+
+#[test]
+fn test_lorentz_distance_and_validation() {
+    // x0 = (1, 0, 0) and x1 = (cosh(r), sinh(r), 0) on unit hyperboloid.
+    // Their Lorentz distance should be exactly r.
+    let r = 1.5_f64;
+    let x0 = [1.0, 0.0, 0.0];
+    let x1 = [r.cosh(), r.sinh(), 0.0];
+
+    assert!(LorentzMetric::validate(&x0).is_ok());
+    assert!(LorentzMetric::validate(&x1).is_ok());
+
+    let dist = LorentzMetric::distance(&x0, &x1);
+    assert!((dist - r).abs() < 1e-9);
+
+    let invalid = [-1.0, 0.0, 0.0]; // lower sheet
+    assert!(LorentzMetric::validate(&invalid).is_err());
+}

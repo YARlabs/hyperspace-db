@@ -34,6 +34,7 @@ async fn test_rebuild_and_queue() {
         let vec = vec![0.1; 128];
         for i in 0..100 {
             col.insert(&vec, i as u32, HashMap::new(), 0, Durability::Default)
+                .await
                 .expect("Insert failed");
         }
 

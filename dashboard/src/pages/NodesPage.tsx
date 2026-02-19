@@ -70,8 +70,14 @@ export function NodesPage() {
 
             {/* Main Topology Visualizer - Full Width/Height */}
             <Card className="flex-1 flex flex-col items-center justify-center min-h-[400px] bg-muted/5 relative overflow-hidden border-2 border-dashed">
-                {/* Background Grid */}
-                <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10 pointer-events-none"></div>
+                {/* Background Grid - CSS Only */}
+                <div
+                    className="absolute inset-0 opacity-10 pointer-events-none"
+                    style={{
+                        backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
+                        backgroundSize: '40px 40px'
+                    }}
+                ></div>
 
                 <div className="z-10 flex flex-col items-center gap-12 w-full px-8 py-12 h-full overflow-y-auto">
 

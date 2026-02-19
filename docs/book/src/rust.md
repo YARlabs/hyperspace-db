@@ -8,7 +8,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hyperspace-sdk = { git = "https://github.com/yarlabs/hyperspace-db" }
+hyperspace-sdk = "2.0.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -22,7 +22,11 @@ use std::collections::HashMap;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Connect (with optional API Key)
     let api_key = std::env::var("HYPERSPACE_API_KEY").ok();
-    let mut client = Client::connect("http://127.0.0.1:50051".into(), api_key).await?;
+    let mut client = Client::connect(
+        "http://127.0.0.1:50051".into(),
+        api_key,
+        None
+    ).await?;
 
     // --- Optional: Configure Embedder (Feature: "embedders") ---
     #[cfg(feature = "embedders")]
@@ -54,15 +58,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut meta = HashMap::new();
     meta.insert("name".to_string(), "item-42".to_string());
     
-    client.insert(42, vec.clone(), meta).await?;
+    client.insert(42, vec.clone(), meta, None).await?;
 
     // 3. Basic Search
-    let results = client.search(vec.clone(), 5).await?;
+    let results = client.search(vec.clone(), 5, None).await?;
     
     // 4. Advanced / Hybrid Search
     // e.g. Find semantically similar items that also mention "item"
     let hybrid = Some(("item".to_string(), 0.5)); 
-    let results = client.search_advanced(vec, 5, vec![], hybrid).await?;
+    let results = client.search_advanced(vec, 5, vec![], hybrid, None).await?;
     
     for res in results {
         println!("Match: {} (dist: {})", res.id, res.distance);
@@ -75,3 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Features
 
 *   `embedders`: Enables `set_embedder`, `insert_document`, and `search_document`. Requires `reqwest` and `serde`.
+
+## Batch Search
+
+Use `search_batch` or `search_batch_f32` to reduce per-request overhead in high-concurrency workloads.

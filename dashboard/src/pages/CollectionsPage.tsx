@@ -10,13 +10,17 @@ import { Label } from "@/components/ui/label"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useNavigate } from "react-router-dom"
+import { useEffect } from "react"
 
 export function CollectionsPage() {
     const queryClient = useQueryClient()
     const { data: collections, isLoading } = useQuery({
         queryKey: ['collections'],
-        queryFn: () => api.get("/collections").then(r => r.data)
+        queryFn: () => api.get("/collections").then(r => r.data),
+        refetchInterval: 60000,
+        refetchOnWindowFocus: false
     })
 
     const isStringList = collections && collections.length > 0 && typeof collections[0] === 'string'
@@ -103,7 +107,7 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => {
-                            if (confirm(`Are you sure you want to rebuild index for '${name}'? This is a heavy operation.`)) {
+                            if (window.confirm(`Are you sure you want to rebuild index for '${name}'? This is a heavy operation.`)) {
                                 api.post(`/collections/${name}/rebuild`)
                                     .then(() => alert("Index rebuild started!"))
                                     .catch(e => alert("Failed: " + e.message))
@@ -125,10 +129,23 @@ function CollectionRow({ collection, isString, onDelete }: any) {
 function CreateCollectionDialog() {
     const [name, setName] = useState("")
     const [open, setOpen] = useState(false)
+    const [dimension, setDimension] = useState<string>("1024")
+    const [metric, setMetric] = useState<string>("l2")
     const queryClient = useQueryClient()
 
-    // Get global config to show locked values
-    const { data: status } = useQuery({ queryKey: ['status'], queryFn: fetchStatus })
+    // Get global config to show default values
+    const { data: status } = useQuery({
+        queryKey: ['status'],
+        queryFn: fetchStatus
+    })
+
+    // Sync from global config once loaded
+    useEffect(() => {
+        if (status?.config) {
+            setDimension(status.config.dimension.toString())
+            setMetric(status.config.metric)
+        }
+    }, [status])
 
     const mutation = useMutation({
         mutationFn: (data: any) => api.post("/collections", data),
@@ -142,8 +159,8 @@ function CreateCollectionDialog() {
     const handleCreate = () => {
         mutation.mutate({
             name,
-            dimension: parseInt(status?.config?.dimension) || 1024,
-            metric: status?.config?.metric || "l2"
+            dimension: parseInt(dimension) || 1024,
+            metric: metric || "l2"
         })
     }
 
@@ -152,32 +169,56 @@ function CreateCollectionDialog() {
             <DialogTrigger asChild>
                 <Button><Plus className="mr-2 h-4 w-4" /> New Collection</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Create Collection</DialogTitle>
                     <DialogDescription>Add a new vector index to the system.</DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="name" className="text-right">Name</Label>
-                        <Input id="name" value={name} onChange={e => setName(e.target.value)} className="col-span-3" placeholder="my_vectors" />
+                <div className="grid gap-6 py-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="name">Collection Name</Label>
+                        <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. user_embeddings" />
                     </div>
-                    {status && (
-                        <>
-                            <div className="grid grid-cols-4 items-center gap-4 text-sm">
-                                <span className="text-right text-muted-foreground">Dimension</span>
-                                <span className="col-span-3 font-mono bg-muted px-2 py-1 rounded w-fit text-xs text-muted-foreground">{status.config.dimension} (Locked)</span>
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4 text-sm">
-                                <span className="text-right text-muted-foreground">Metric</span>
-                                <span className="col-span-3 font-mono bg-muted px-2 py-1 rounded w-fit text-xs text-muted-foreground">{status.config.metric} (Locked)</span>
-                            </div>
-                        </>
-                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="dimension">Dimension</Label>
+                            <Select value={dimension} onValueChange={setDimension}>
+                                <SelectTrigger id="dimension">
+                                    <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[8, 16, 32, 64, 128, 768, 1024, 1536, 2048].map(d => (
+                                        <SelectItem key={d} value={d.toString()}>{d}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="metric">Metric</Label>
+                            <Select value={metric} onValueChange={setMetric}>
+                                <SelectTrigger id="metric">
+                                    <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="l2">Euclidean (L2)</SelectItem>
+                                    <SelectItem value="cosine">Cosine</SelectItem>
+                                    <SelectItem value="poincare">Poincaré</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400">
+                        <p className="font-bold mb-1">Architecture Warning:</p>
+                        Current gRPC implementation requires dimensions and metrics to match pre-compiled templates for maximum performance.
+                    </div>
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                    <Button onClick={handleCreate} disabled={!name}>Create</Button>
+                    <Button onClick={handleCreate} disabled={!name || mutation.isPending}>
+                        {mutation.isPending ? "Creating..." : "Create Collection"}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

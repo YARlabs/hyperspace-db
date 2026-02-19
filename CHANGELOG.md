@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-02-17
+
+### Added
+* **gRPC Batch Search API**:
+    * Added `SearchBatch` RPC with `BatchSearchRequest` / `BatchSearchResponse`.
+    * Implemented server-side handling and SDK support (Python, TypeScript, Rust).
+* **Lorentz Metric Support**:
+    * Added `LorentzMetric` to core metric abstraction.
+    * Added collection instantiation support for `metric="lorentz"` across supported dimensions.
+    * Added validation for upper-sheet hyperboloid constraints.
+
+### Changed
+* **Benchmark suite alignment**:
+    * Updated benchmark scripts to use batch-search paths for Hyperspace where supported.
+    * Reduced benchmark-side RPC overhead to better reflect server concurrency behavior.
+* **Documentation and SDK publish readiness**:
+    * Refreshed SDK docs for PyPI/npm/crates publication quality.
+    * Updated API and architecture documentation for v2.1 behavior.
+
+### Fixed
+* **Lorentz integration stability**:
+    * Fixed manager-side metric import and compile failures.
+    * Improved numerical stability in Lorentz distance path.
+* **Repository-wide quality gates**:
+    * Resolved strict `clippy -D warnings` failures in test targets.
+    * Updated outdated tests for WAL API signature and metadata layout.
+
 ## [2.0.0] - 2026-02-16
 
 ### Added

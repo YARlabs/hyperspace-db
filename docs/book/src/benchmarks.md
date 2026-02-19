@@ -4,8 +4,8 @@ HyperspaceDB is optimized for two critical metrics: **Throughput** (Ingestion sp
 
 ## Test Environment
 *   **Hardware**: Apple M4 Pro (Emulated Environment) / Linux AVX2
-*   **Dataset**: 1,000,000 vectors, 8 Dimensions, Random Distribution in Unit Ball.
-*   **Config**: `ef_construction=100`, `ef_search=100`
+*   **Dataset**: 1,000,000 vectors, 1024 Dimensions, Random Distribution in Unit Ball.
+*   **Config**: `ef_construction=400`, `ef_search=400`
 
 ## Results
 

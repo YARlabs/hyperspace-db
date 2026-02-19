@@ -4,15 +4,11 @@ The official Python client provides an ergonomic wrapper around the gRPC interfa
 
 ## Installation
 
-Currently, install directly from the source:
+Install from PyPI:
 
 ```bash
-git clone https://github.com/yarlabs/hyperspace-db
-cd hyperspace-db/sdks/python
-pip install .
+pip install hyperspacedb
 ```
-
-(Coming soon to PyPI as `hyperspacedb`)
 
 ## Client-Side Vectorization (Fat Client)
 
@@ -74,4 +70,7 @@ class HyperspaceClient(host="localhost:50051", api_key=None, embedder=None)
 #### `search(vector=None, query_text=None, top_k=10, ...) -> List[dict]`
 *   `vector` (List[float]): Query vector.
 *   `query_text` (str): Raw text query.
+
+#### `search_batch(vectors, top_k=10, collection="") -> List[List[dict]]`
+Batch search API that sends multiple `SearchRequest` objects in one gRPC call.
 

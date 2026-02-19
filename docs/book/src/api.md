@@ -19,7 +19,7 @@ rpc CreateCollection (CreateCollectionRequest) returns (StatusResponse);
 message CreateCollectionRequest {
   string name = 1;
   uint32 dimension = 2; // e.g. 1536, 1024, 64
-  string metric = 3;    // "l2", "cosine", "poincare"
+  string metric = 3;    // "l2", "euclidean", "cosine", "poincare", "lorentz"
 }
 ```
 

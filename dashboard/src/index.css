@@ -20,9 +20,9 @@
     --border: 216 34% 17%;
     --input: 216 34% 17%;
 
-    --primary: 263.4 70% 50.4%;
-    /* Neon Purple */
-    --primary-foreground: 210 40% 98%;
+    --primary: 180 100% 50%;
+    /* Cyan hyperspaceDB color */
+    --primary-foreground: 224 71% 4%;
 
     --secondary: 222.2 47.4% 11.2%;
     --secondary-foreground: 210 40% 98%;
@@ -33,7 +33,7 @@
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
 
-    --ring: 263.4 70% 50.4%;
+    --ring: 180 100% 50%;
 
     --radius: 0.5rem;
   }

@@ -14,7 +14,7 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_DATA_DIR` | `./data` | Path to store segments and WAL |
 | `HS_IDLE_TIMEOUT_SEC` | `3600` | Inactivity time (seconds) before collection unloads to disk |
 | `HS_DIMENSION` | `1024` | Default vector dimensionality (8, 64, 768, 1024, 1536) |
-| `HS_METRIC` | `cosine` | Distance metric (`cosine`, `poincare`, `l2`) |
+| `HS_METRIC` | `cosine` | Distance metric (`cosine`, `poincare`, `l2`, `euclidean`, `lorentz`) |
 | `HS_QUANTIZATION_LEVEL` | `none` | Compression (`none`, `scalar` (i8), `binary` (1-bit)) |
 
 ### HNSW Index Tuning
@@ -54,6 +54,13 @@ HyperspaceDB supports strict data isolation via the `x-hyperspace-user-id` heade
 *   **Internal Naming**: Collections are stored internally as `userid_collectionname`.
 *   **Default Admin**: If `x-hyperspace-user-id` is omitted but a valid `x-api-key` is provided, the user is treated as `default_admin`.
 *   **SaaS Integration**: Gateways should inject this header after authenticating users.
+
+### Lorentz metric notes
+
+When `HS_METRIC=lorentz`, vectors must satisfy hyperboloid constraints:
+
+- `t > 0` (upper sheet)
+- `-t^2 + x_1^2 + ... + x_n^2 = -1`
 
 ---
 

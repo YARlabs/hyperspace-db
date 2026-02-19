@@ -20,7 +20,7 @@ fn test_wal_partial_write_truncation() {
         // Total Record = 102 bytes.
         for i in 0..3 {
             let vec = vec![0.5f64; 10];
-            wal.append(i, &vec, &HashMap::new()).unwrap();
+            wal.append(i, &vec, &HashMap::new(), 0).unwrap();
         }
     }
 
@@ -63,7 +63,7 @@ fn test_wal_crc_corruption() {
         let mut wal = Wal::new(&path, WalSyncMode::Async).unwrap();
         for i in 0..3 {
             let vec = vec![0.5f64; 10];
-            wal.append(i, &vec, &HashMap::new()).unwrap();
+            wal.append(i, &vec, &HashMap::new(), 0).unwrap();
         }
     }
 
