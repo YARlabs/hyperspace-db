@@ -11,6 +11,7 @@
 #![allow(clippy::needless_range_loop)]
 
 pub mod config;
+pub mod gpu;
 pub mod vector;
 
 pub use config::GlobalConfig;
@@ -251,12 +252,15 @@ impl<const N: usize> Metric<N> for LorentzMetric {
         Ok(())
     }
 
-    fn distance_quantized(_a: &QuantizedHyperVector<N>, _b: &HyperVector<N>) -> f64 {
-        panic!("Scalar quantization is not yet supported for the Lorentz model. Use HS_QUANTIZATION_LEVEL=none");
+    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+        a.lorentz_distance_to_float(b)
     }
 
     fn distance_binary(_a: &BinaryHyperVector<N>, _b: &HyperVector<N>) -> f64 {
-        panic!("Binary quantization is not supported for Lorentz.");
+        panic!(
+            "Binary quantization is not supported for the Lorentz model. \
+             sign(x) destroys hierarchical information encoded in the hyperboloid magnitude."
+        );
     }
 }
 

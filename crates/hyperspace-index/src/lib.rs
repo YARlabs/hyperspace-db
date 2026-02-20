@@ -1159,12 +1159,22 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             QuantizationMode::ScalarI8 => {
                 let q = QuantizedHyperVector::<N>::from_bytes(bytes);
                 let mut coords = [0.0; N];
-                for (i, &c) in q.coords.iter().enumerate() {
-                    coords[i] = f64::from(c) / 127.0;
-                }
-                HyperVector {
-                    coords,
-                    alpha: f64::from(q.alpha),
+                if M::name() == "lorentz" {
+                    // Lorentz: alpha stores the dynamic-range scale factor
+                    let scale = f64::from(q.alpha);
+                    for (i, &c) in q.coords.iter().enumerate() {
+                        coords[i] = f64::from(c) / 127.0 * scale;
+                    }
+                    HyperVector { coords, alpha: 0.0 }
+                } else {
+                    // Poincare / Euclidean / Cosine: alpha stores 1/(1-||x||^2)
+                    for (i, &c) in q.coords.iter().enumerate() {
+                        coords[i] = f64::from(c) / 127.0;
+                    }
+                    HyperVector {
+                        coords,
+                        alpha: f64::from(q.alpha),
+                    }
                 }
             }
             QuantizationMode::None => {
@@ -1213,7 +1223,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let new_id = match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::from_float(&q_vec_full);
+                let q = if M::name() == "lorentz" {
+                    QuantizedHyperVector::from_float_lorentz(&q_vec_full)
+                } else {
+                    QuantizedHyperVector::from_float(&q_vec_full)
+                };
                 self.storage.append(q.as_bytes())?
             }
             QuantizationMode::None if self.storage_f32 => {
@@ -1246,7 +1260,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // Update storage at existing ID
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::from_float(&q_vec_full);
+                let q = if M::name() == "lorentz" {
+                    QuantizedHyperVector::from_float_lorentz(&q_vec_full)
+                } else {
+                    QuantizedHyperVector::from_float(&q_vec_full)
+                };
                 self.storage.update(id, q.as_bytes())?;
             }
             QuantizationMode::None => {
