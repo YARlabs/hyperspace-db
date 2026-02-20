@@ -522,6 +522,7 @@ message InsertRequest {
   uint32 id = 3;              // External ID
   map&lt;string, string&gt; metadata = 4; // Metadata tags
   DurabilityLevel durability = 7; // Durability override
+  map&lt;string, MetadataValue&gt; typed_metadata = 8; // Typed metadata (int/float/bool/string)
 }
 
 enum DurabilityLevel {
@@ -532,6 +533,7 @@ enum DurabilityLevel {
 }
 
 </code></pre>
+<p><code>typed_metadata</code> is the preferred metadata path for new clients. Legacy <code>metadata</code> remains for compatibility.</p>
 <h4 id="search"><a class="header" href="#search"><code>Search</code></a></h4>
 <p>Finds nearest neighbors.</p>
 <pre><code class="language-protobuf">rpc Search (SearchRequest) returns (SearchResponse);
@@ -549,6 +551,7 @@ message SearchRequest {
   optional float hybrid_alpha = 7;
 }
 </code></pre>
+<p><code>SearchResult</code> now includes both <code>metadata</code> and <code>typed_metadata</code>.</p>
 <h4 id="searchbatch"><a class="header" href="#searchbatch"><code>SearchBatch</code></a></h4>
 <p>Finds nearest neighbors for multiple queries in a single RPC call.</p>
 <pre><code class="language-protobuf">rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
@@ -562,6 +565,58 @@ message BatchSearchResponse {
 }
 </code></pre>
 <p>Recommended for high-concurrency clients and benchmarks to reduce per-request gRPC overhead.</p>
+<h4 id="subscribetoevents"><a class="header" href="#subscribetoevents"><code>SubscribeToEvents</code></a></h4>
+<p>Streams CDC events for post-insert/delete hooks.</p>
+<pre><code class="language-protobuf">rpc SubscribeToEvents (EventSubscriptionRequest) returns (stream EventMessage);
+
+enum EventType {
+  EVENT_UNKNOWN = 0;
+  VECTOR_INSERTED = 1;
+  VECTOR_DELETED = 2;
+}
+
+message EventSubscriptionRequest {
+  repeated EventType types = 1;
+  optional string collection = 2;
+}
+
+message EventMessage {
+  EventType type = 1;
+  oneof payload {
+    VectorInsertedEvent vector_inserted = 2;
+    VectorDeletedEvent vector_deleted = 3;
+  }
+}
+</code></pre>
+<p>Use this stream to build external pipelines (audit, Elasticsearch sync, graph projections, Neo4j updaters).</p>
+<h4 id="metadatavalue-typed-metadata"><a class="header" href="#metadatavalue-typed-metadata"><code>MetadataValue</code> (Typed Metadata)</a></h4>
+<pre><code class="language-protobuf">message MetadataValue {
+  oneof kind {
+    string string_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+    bool bool_value = 4;
+  }
+}
+</code></pre>
+<h4 id="graph-traversal-api-v23"><a class="header" href="#graph-traversal-api-v23"><code>Graph Traversal API</code> (v2.3)</a></h4>
+<pre><code class="language-protobuf">rpc GetNode (GetNodeRequest) returns (GraphNode);
+rpc GetNeighbors (GetNeighborsRequest) returns (GetNeighborsResponse);
+rpc GetConceptParents (GetConceptParentsRequest) returns (GetConceptParentsResponse);
+rpc Traverse (TraverseRequest) returns (TraverseResponse);
+rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClustersResponse);
+</code></pre>
+<p>Key safety guards:</p>
+<ul>
+<li><code>GetNeighborsRequest.limit</code> and <code>offset</code> for bounded pagination.</li>
+<li><code>TraverseRequest.max_depth</code> and <code>max_nodes</code> to prevent unbounded graph walks.</li>
+<li><code>FindSemanticClustersRequest.max_clusters</code> and <code>max_nodes</code> for bounded connected-component scans.</li>
+</ul>
+<p><code>TraverseRequest</code> is filter-aware and supports both:</p>
+<ul>
+<li><code>filter</code> (<code>map&lt;string,string&gt;</code>)</li>
+<li><code>filters</code> (<code>Match</code> / <code>Range</code>)</li>
+</ul>
 <hr />
 <h2 id="-http-api-control-plane"><a class="header" href="#-http-api-control-plane">🌐 HTTP API (Control Plane)</a></h2>
 <p>Served on port <code>50050</code> (default). All endpoints under <code>/api</code>.</p>
@@ -1006,12 +1061,7 @@ Format:</p>
 <li><strong>Pre-allocation</strong>: Creating a DB instance pre-allocates the first chunk (64k * VectorSize bytes) to avoid frequent allocation calls during inserts.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="the-hyperbolic-geometry"><a class="header" href="#the-hyperbolic-geometry">The Hyperbolic Geometry</a></h1>
-<p>HyperspaceDB supports two hyperbolic formulations:</p>
-<ul>
-<li><strong>Poincaré ball</strong></li>
-<li><strong>Lorentz (hyperboloid)</strong></li>
-</ul>
-<p>Both are suited for hierarchical data where volume grows exponentially with radius.</p>
+<p>HyperspaceDB operates in the <strong>Poincaré Ball Model</strong> &amp; <strong>Lorentz (hyperboloid)</strong> of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of &quot;space&quot; available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.</p>
 <h2 id="the-distance-formula"><a class="header" href="#the-distance-formula">The Distance Formula</a></h2>
 <p>The distance $d(u, v)$ between two vectors $u, v$ in the Poincaré ball ($\mathbb{D}^n$) is defined as:</p>
 <p>$$
