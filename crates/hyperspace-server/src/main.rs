@@ -30,25 +30,25 @@ use manager::CollectionManager;
 #[cfg(feature = "embed")]
 use hyperspace_embed::{ApiProvider, Metric, OnnxVectorizer, RemoteVectorizer, Vectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
-use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use hyperspace_proto::hyperspace::{
     metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
     CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest,
     DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest, DigestResponse,
-    EventMessage, EventSubscriptionRequest, EventType, FindSemanticClustersRequest,
-    FindSemanticClustersResponse, Filter, GetConceptParentsRequest, GetConceptParentsResponse,
+    EventMessage, EventSubscriptionRequest, EventType, Filter, FindSemanticClustersRequest,
+    FindSemanticClustersResponse, GetConceptParentsRequest, GetConceptParentsResponse,
     GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GraphCluster, GraphNode,
     InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse, MetadataValue,
     MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats, TraverseRequest,
     TraverseResponse, VectorDeletedEvent, VectorInsertedEvent,
 };
+use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 #[cfg(feature = "embed")]
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use std::collections::HashSet;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -207,7 +207,9 @@ fn shadow_json_to_metadata_value(s: &str) -> Option<MetadataValue> {
     let value = json.get("v")?;
     let out = match kind {
         "s" => MetadataValue {
-            kind: Some(metadata_value::Kind::StringValue(value.as_str()?.to_string())),
+            kind: Some(metadata_value::Kind::StringValue(
+                value.as_str()?.to_string(),
+            )),
         },
         "i" => MetadataValue {
             kind: Some(metadata_value::Kind::IntValue(value.as_i64()?)),
@@ -282,7 +284,9 @@ fn build_graph_node(
     let metadata = col.metadata_by_id(id);
     let typed_metadata = extract_typed_metadata(&metadata);
     let plain_metadata = strip_internal_metadata(&metadata);
-    let neighbors = col.graph_neighbors(id, layer, usize::MAX).unwrap_or_default();
+    let neighbors = col
+        .graph_neighbors(id, layer, usize::MAX)
+        .unwrap_or_default();
     GraphNode {
         id,
         layer: layer as u32,
@@ -618,10 +622,8 @@ impl Database for HyperspaceService {
                 };
 
                 if let Some(col) = self.manager.get(&user_id, &col_name).await {
-                    let meta = merge_metadata(
-                        req.metadata.into_iter().collect(),
-                        req.typed_metadata.into_iter().collect(),
-                    );
+                    let meta: std::collections::HashMap<String, String> =
+                        req.metadata.into_iter().collect();
                     let clock = self.manager.tick_cluster_clock().await;
 
                     // Durability mapping
@@ -1125,14 +1127,16 @@ impl Database for HyperspaceService {
                         }
                         EventMessage {
                             r#type: ty,
-                            payload: Some(hyperspace_proto::hyperspace::event_message::Payload::VectorDeleted(
-                                VectorDeletedEvent {
-                                    id: op.id,
-                                    collection: log.collection.clone(),
-                                    logical_clock: log.logical_clock,
-                                    origin_node_id: log.origin_node_id.clone(),
-                                },
-                            )),
+                            payload: Some(
+                                hyperspace_proto::hyperspace::event_message::Payload::VectorDeleted(
+                                    VectorDeletedEvent {
+                                        id: op.id,
+                                        collection: log.collection.clone(),
+                                        logical_clock: log.logical_clock,
+                                        origin_node_id: log.origin_node_id.clone(),
+                                    },
+                                ),
+                            ),
                         }
                     }
                     _ => continue,

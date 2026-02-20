@@ -25,8 +25,7 @@ fn test_concurrent_indexing_stress() {
         let index_ref = index.clone();
         handles.push(thread::spawn(move || {
             let mut rng = rand::thread_rng();
-            for j in 0..items_per_thread {
-                let _id = (i * items_per_thread + j) as u32;
+            for _ in 0..items_per_thread {
                 let val = rng.gen_range(0.0..100.0);
                 let vec = vec![val];
                 // Insert with random metadata to test lock contention on metadata too

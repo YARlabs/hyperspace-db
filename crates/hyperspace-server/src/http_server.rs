@@ -125,10 +125,22 @@ pub async fn start_http_server(
         .route("/api/collections/{name}/peek", get(peek_collection))
         .route("/api/collections/{name}/search", post(search_collection))
         .route("/api/collections/{name}/graph/node", get(graph_get_node))
-        .route("/api/collections/{name}/graph/neighbors", get(graph_get_neighbors))
-        .route("/api/collections/{name}/graph/parents", get(graph_get_parents))
-        .route("/api/collections/{name}/graph/traverse", post(graph_traverse))
-        .route("/api/collections/{name}/graph/clusters", post(graph_clusters))
+        .route(
+            "/api/collections/{name}/graph/neighbors",
+            get(graph_get_neighbors),
+        )
+        .route(
+            "/api/collections/{name}/graph/parents",
+            get(graph_get_parents),
+        )
+        .route(
+            "/api/collections/{name}/graph/traverse",
+            post(graph_traverse),
+        )
+        .route(
+            "/api/collections/{name}/graph/clusters",
+            post(graph_clusters),
+        )
         .route("/api/status", get(get_status))
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
@@ -722,7 +734,12 @@ async fn search_collection(
             hybrid_alpha: None,
         };
         match col
-            .search(&payload.vector, &legacy_filter, &complex_filters, &dummy_params)
+            .search(
+                &payload.vector,
+                &legacy_filter,
+                &complex_filters,
+                &dummy_params,
+            )
             .await
         {
             Ok(res) => {
@@ -781,7 +798,11 @@ struct GraphClustersReq {
 
 async fn graph_get_node(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
     Extension(ctx): Extension<RequestContext>,
     Query(q): Query<GraphNodeQuery>,
 ) -> impl IntoResponse {
@@ -798,7 +819,11 @@ async fn graph_get_node(
 
 async fn graph_get_neighbors(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
     Extension(ctx): Extension<RequestContext>,
     Query(q): Query<GraphNeighborsQuery>,
 ) -> impl IntoResponse {
@@ -825,7 +850,11 @@ async fn graph_get_neighbors(
 
 async fn graph_get_parents(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
     Extension(ctx): Extension<RequestContext>,
     Query(q): Query<GraphNeighborsQuery>,
 ) -> impl IntoResponse {
@@ -852,7 +881,11 @@ async fn graph_get_parents(
 
 async fn graph_traverse(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<GraphTraverseReq>,
 ) -> impl IntoResponse {
@@ -889,7 +922,11 @@ async fn graph_traverse(
 
 async fn graph_clusters(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<GraphClustersReq>,
 ) -> impl IntoResponse {

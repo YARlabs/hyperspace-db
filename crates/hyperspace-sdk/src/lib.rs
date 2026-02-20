@@ -219,7 +219,7 @@ impl Client {
         let req = BatchInsertRequest {
             collection: collection.unwrap_or_default(),
             vectors,
-            origin_node_id: "".to_string(),
+            origin_node_id: String::new(),
             logical_clock: 0,
             durability: durability as i32,
         };

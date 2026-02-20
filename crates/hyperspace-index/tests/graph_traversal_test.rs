@@ -22,11 +22,16 @@ fn test_graph_traversal_api_basics() {
     for i in 0..128u32 {
         let mut vec = vec![0.0; 8];
         let base = if i < 64 { 0.1 } else { 0.9 };
-        for (j, item) in vec.iter_mut().enumerate().take(8) {
-            *item = base + (j as f64) * 0.001;
+        let mut offset = 0.0;
+        for item in vec.iter_mut().take(8) {
+            *item = base + offset;
+            offset += 0.001;
         }
         let mut meta = HashMap::new();
-        meta.insert("bucket".to_string(), if i < 64 { "a" } else { "b" }.to_string());
+        meta.insert(
+            "bucket".to_string(),
+            if i < 64 { "a" } else { "b" }.to_string(),
+        );
         let _ = index.insert(&vec, meta).expect("insert");
     }
 
@@ -35,7 +40,10 @@ fn test_graph_traversal_api_basics() {
     assert!(neighbors.len() <= 16);
 
     let traversed = index.graph_traverse(0, 0, 2, 64).expect("traverse");
-    assert!(!traversed.is_empty(), "traverse should return at least start node");
+    assert!(
+        !traversed.is_empty(),
+        "traverse should return at least start node"
+    );
     assert_eq!(traversed[0], 0);
     assert!(traversed.len() <= 64);
 

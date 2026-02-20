@@ -25,7 +25,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 // Imports
-use hyperspace_core::vector::{BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector};
+use hyperspace_core::vector::{
+    BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector,
+};
 use hyperspace_core::QuantizationMode;
 use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_store::VectorStore;
@@ -1520,7 +1522,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return Err(format!("Start node {start_id} not found"));
         };
         if start.layers.len() <= layer {
-            return Err(format!("Layer {layer} is out of bounds for node {start_id}"));
+            return Err(format!(
+                "Layer {layer} is out of bounds for node {start_id}"
+            ));
         }
         let deleted = self.metadata.deleted.read();
         if deleted.contains(start_id) {

@@ -13,6 +13,7 @@ const COLLECTION_NAME: &str = "benchmark_8d";
 
 #[tokio::main]
 #[allow(clippy::cast_precision_loss)]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Starting HyperspaceDB Stress Test");
     println!("Connecting to localhost:50051...");
@@ -67,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vector,
             id: u32::try_from(i).unwrap(),
             metadata: std::collections::HashMap::new(),
+            typed_metadata: std::collections::HashMap::new(),
             collection: COLLECTION_NAME.to_string(),
             origin_node_id: String::new(),
             logical_clock: 0,

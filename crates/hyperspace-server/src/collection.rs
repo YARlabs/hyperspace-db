@@ -68,7 +68,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
     #[inline]
     fn to_user_id(&self, internal_id: u32) -> u32 {
-        self.reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v)
+        self.reverse_id_map
+            .get(&internal_id)
+            .map_or(internal_id, |v| *v)
     }
 
     /// Normalizes vector if metric is Cosine.
@@ -151,8 +153,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 mode,
                 config.clone(),
                 storage_f32,
-            )
-            {
+            ) {
                 Ok(idx) => {
                     let count = idx.count_nodes();
                     (store, Arc::new(idx), count)
@@ -901,10 +902,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         max_nodes: usize,
     ) -> Result<Vec<u32>, String> {
         let internal_start = self.to_internal_id(start_id);
-        let traversed = self
-            .index_link
-            .load()
-            .graph_traverse(internal_start, layer, max_depth, max_nodes)?;
+        let traversed =
+            self.index_link
+                .load()
+                .graph_traverse(internal_start, layer, max_depth, max_nodes)?;
         Ok(traversed.into_iter().map(|n| self.to_user_id(n)).collect())
     }
 

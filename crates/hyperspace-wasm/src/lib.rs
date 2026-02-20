@@ -45,6 +45,7 @@ impl HyperspaceDB {
     /// # Errors
     /// Returns an error if initialization fails.
     #[wasm_bindgen(constructor)]
+    #[allow(clippy::needless_pass_by_value)]
     pub fn new(dimension: usize, metric: String) -> Result<HyperspaceDB, JsValue> {
         console_error_panic_hook::set_once();
 
