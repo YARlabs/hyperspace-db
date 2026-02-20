@@ -621,12 +621,15 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
         # Accuracy
         print(f"\n   -> Verifying Accuracy ({cfg.test_queries} queries)...")
         stage = "accuracy_queries"
-        results = []
-        for q_vec in q_vecs:
-            res = client.search(q_vec.tolist(), top_k=cfg.top_k, collection=name)
-            if not res:
-                return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: empty search({name})")
-            results.append(extract_ids(res))
+        results, _ = hyperspace_search_many(
+            client=client,
+            vectors=q_vecs,
+            top_k=cfg.top_k,
+            collection=name,
+            batch_size=64,
+        )
+        if not results:
+            return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: empty search({name})")
         recall, mrr, ndcg = calculate_accuracy(results, gt, cfg.top_k)
         
         # Latency

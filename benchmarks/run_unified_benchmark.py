@@ -547,11 +547,26 @@ class VectorDBBenchmark:
             latencies = []
             
             print(f"  Running {self.config.search_queries} search queries...")
-            for i in range(self.config.search_queries):
-                start = time.time()
-                results = client.search(vector=query, top_k=self.config.top_k, collection="benchmark")
-                latency = (time.time() - start) * 1000
-                latencies.append(latency)
+            supports_batch = callable(getattr(client, "search_batch", None))
+            if supports_batch:
+                batch_size = 32
+                for i in range(0, self.config.search_queries, batch_size):
+                    current = min(batch_size, self.config.search_queries - i)
+                    start = time.time()
+                    client.search_batch(
+                        vectors=[query] * current,
+                        top_k=self.config.top_k,
+                        collection="benchmark",
+                    )
+                    elapsed_ms = (time.time() - start) * 1000
+                    per_query_ms = elapsed_ms / max(1, current)
+                    latencies.extend([per_query_ms] * current)
+            else:
+                for i in range(self.config.search_queries):
+                    start = time.time()
+                    client.search(vector=query, top_k=self.config.top_k, collection="benchmark")
+                    latency = (time.time() - start) * 1000
+                    latencies.append(latency)
             
             latencies.sort()
             search_p50_ms = latencies[len(latencies)//2]
