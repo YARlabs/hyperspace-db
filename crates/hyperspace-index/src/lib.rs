@@ -88,6 +88,19 @@ impl Default for MetadataIndex {
 }
 
 impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
+    fn metadata_numeric_value(
+        meta: &std::collections::HashMap<String, String>,
+        key: &str,
+    ) -> Option<f64> {
+        if let Some(raw) = meta.get(key) {
+            return raw.parse::<f64>().ok();
+        }
+        let typed_key = format!("__hs_typed__{key}");
+        let raw_typed = meta.get(&typed_key)?;
+        let parsed = serde_json::from_str::<serde_json::Value>(raw_typed).ok()?;
+        parsed.get("v")?.as_f64()
+    }
+
     #[cfg(feature = "persistence")]
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
@@ -653,7 +666,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
             };
 
-            // 1. Legacy Tag Filters
+            // 1. Exact string-map filters
             if !filter.is_empty() {
                 for (key, val) in filter {
                     let tag = format!("{key}:{val}");
@@ -677,28 +690,42 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         }
                     }
                     FilterExpr::Range { key, gte, lte } => {
+                        let mut range_union = RoaringBitmap::new();
+
                         if let Some(tree) = self.metadata.numeric.get(key) {
-                            // Union all bitmaps in range
-                            let mut range_union = RoaringBitmap::new();
-
-                            // BTreeMap range
-                            let start = gte.unwrap_or(i64::MIN);
-                            let end = lte.unwrap_or(i64::MAX);
-
-                            // BTreeMap::range is (Bound, Bound).
-                            // We use Included.
-                            for (_, bm) in tree.range(start..=end) {
-                                range_union |= bm;
+                            let start = gte.map_or(i64::MIN, |x| x.ceil() as i64);
+                            let end = lte.map_or(i64::MAX, |x| x.floor() as i64);
+                            if start <= end {
+                                for (_, bm) in tree.range(start..=end) {
+                                    range_union |= bm;
+                                }
                             }
+                        }
 
-                            if range_union.is_empty() {
-                                return Vec::new();
+                        for item in &self.metadata.forward {
+                            if range_union.contains(*item.key()) {
+                                continue;
                             }
-                            apply_mask(&range_union);
-                        } else {
-                            // Key not found in numeric index
+                            let Some(num) = Self::metadata_numeric_value(item.value(), key) else {
+                                continue;
+                            };
+                            if let Some(min) = gte {
+                                if num < *min {
+                                    continue;
+                                }
+                            }
+                            if let Some(max) = lte {
+                                if num > *max {
+                                    continue;
+                                }
+                            }
+                            range_union.insert(*item.key());
+                        }
+
+                        if range_union.is_empty() {
                             return Vec::new();
                         }
+                        apply_mask(&range_union);
                     }
                 }
             }

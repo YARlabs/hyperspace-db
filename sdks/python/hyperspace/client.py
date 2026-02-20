@@ -1,5 +1,5 @@
 import grpc
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Iterator
 import sys
 import os
 
@@ -202,8 +202,18 @@ class HyperspaceClient:
                     ))
                 elif f.get("type") == "range":
                     kwargs = {"key": f["key"]}
-                    if "gte" in f: kwargs["gte"] = int(f["gte"])
-                    if "lte" in f: kwargs["lte"] = int(f["lte"])
+                    if "gte" in f:
+                        gte_val = f["gte"]
+                        if isinstance(gte_val, int):
+                            kwargs["gte"] = int(gte_val)
+                        else:
+                            kwargs["gte_f64"] = float(gte_val)
+                    if "lte" in f:
+                        lte_val = f["lte"]
+                        if isinstance(lte_val, int):
+                            kwargs["lte"] = int(lte_val)
+                        else:
+                            kwargs["lte_f64"] = float(lte_val)
                     proto_filters.append(hyperspace_pb2.Filter(
                         range=hyperspace_pb2.Range(**kwargs)
                     ))
@@ -272,6 +282,44 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return []
 
+    def subscribe_to_events(self, types: Optional[List[str]] = None, collection: Optional[str] = None) -> Iterator[Dict]:
+        req = hyperspace_pb2.EventSubscriptionRequest()
+        if collection:
+            req.collection = collection
+        if types:
+            for t in types:
+                if t == "insert":
+                    req.types.append(hyperspace_pb2.VECTOR_INSERTED)
+                elif t == "delete":
+                    req.types.append(hyperspace_pb2.VECTOR_DELETED)
+        try:
+            stream = self.stub.SubscribeToEvents(req, metadata=self.metadata)
+            for ev in stream:
+                payload = {}
+                if ev.HasField("vector_inserted"):
+                    payload = {
+                        "id": ev.vector_inserted.id,
+                        "collection": ev.vector_inserted.collection,
+                        "logical_clock": ev.vector_inserted.logical_clock,
+                        "origin_node_id": ev.vector_inserted.origin_node_id,
+                        "metadata": dict(ev.vector_inserted.metadata),
+                        "typed_metadata": dict(ev.vector_inserted.typed_metadata),
+                    }
+                elif ev.HasField("vector_deleted"):
+                    payload = {
+                        "id": ev.vector_deleted.id,
+                        "collection": ev.vector_deleted.collection,
+                        "logical_clock": ev.vector_deleted.logical_clock,
+                        "origin_node_id": ev.vector_deleted.origin_node_id,
+                    }
+                yield {
+                    "type": ev.type,
+                    "payload": payload,
+                }
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return
+
     def trigger_vacuum(self) -> bool:
         try:
             self.stub.TriggerVacuum(hyperspace_pb2.Empty(), metadata=self.metadata)
@@ -280,8 +328,15 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def rebuild_index(self, collection: str) -> bool:
+    def rebuild_index(self, collection: str, filter_query: Dict[str, object] = None) -> bool:
         req = hyperspace_pb2.RebuildIndexRequest(name=collection)
+        if filter_query:
+            fq = hyperspace_pb2.VacuumFilterQuery(
+                key=str(filter_query.get("key", "")),
+                op=str(filter_query.get("op", "")),
+                value=float(filter_query.get("value", 0.0)),
+            )
+            req.filter_query.CopyFrom(fq)
         try:
             self.stub.RebuildIndex(req, metadata=self.metadata)
             return True
@@ -400,9 +455,17 @@ class HyperspaceClient:
                 elif f.get("type") == "range":
                     kwargs = {"key": f["key"]}
                     if "gte" in f:
-                        kwargs["gte"] = int(f["gte"])
+                        gte_val = f["gte"]
+                        if isinstance(gte_val, int):
+                            kwargs["gte"] = int(gte_val)
+                        else:
+                            kwargs["gte_f64"] = float(gte_val)
                     if "lte" in f:
-                        kwargs["lte"] = int(f["lte"])
+                        lte_val = f["lte"]
+                        if isinstance(lte_val, int):
+                            kwargs["lte"] = int(lte_val)
+                        else:
+                            kwargs["lte_f64"] = float(lte_val)
                     req.filters.append(
                         hyperspace_pb2.Filter(range=hyperspace_pb2.Range(**kwargs))
                     )

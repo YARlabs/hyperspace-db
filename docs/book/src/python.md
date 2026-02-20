@@ -74,3 +74,34 @@ class HyperspaceClient(host="localhost:50051", api_key=None, embedder=None)
 #### `search_batch(vectors, top_k=10, collection="") -> List[List[dict]]`
 Batch search API that sends multiple `SearchRequest` objects in one gRPC call.
 
+#### `rebuild_index(collection, filter_query=None) -> bool`
+Supports metadata-aware pruning during rebuild:
+
+```python
+client.rebuild_index(
+    "docs_py",
+    filter_query={"key": "energy", "op": "lt", "value": 0.1},
+)
+```
+
+#### Graph traversal methods
+
+- `get_node(collection, id, layer=0)`
+- `get_neighbors(collection, id, layer=0, limit=64, offset=0)`
+- `get_concept_parents(collection, id, layer=0, limit=32)`
+- `traverse(collection, start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None)`
+- `find_semantic_clusters(collection, layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000)`
+
+#### Hyperbolic math utilities
+
+```python
+from hyperspace import (
+    mobius_add,
+    exp_map,
+    log_map,
+    parallel_transport,
+    riemannian_gradient,
+    frechet_mean,
+)
+```
+

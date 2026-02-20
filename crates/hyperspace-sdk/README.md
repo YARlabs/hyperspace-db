@@ -13,7 +13,7 @@ This crate provides:
 
 ```toml
 [dependencies]
-hyperspace-sdk = "2.0.0"
+hyperspace-sdk = "2.2.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -90,14 +90,37 @@ The crate converts to protocol `f64` once per call.
 - `delete`
 - `configure`
 - `get_collection_stats`, `get_digest`
-- `trigger_vacuum`, `rebuild_index`
+- `trigger_vacuum`, `rebuild_index`, `rebuild_index_with_filter`
+- `get_neighbors_with_weights` (graph edges with distances)
+- `subscribe_to_events` (CDC stream)
+
+### Rebuild with Pruning
+
+```rust
+client
+    .rebuild_index_with_filter(
+        "docs_rust".to_string(),
+        "energy".to_string(),
+        "lt".to_string(),
+        0.1,
+    )
+    .await?;
+```
+
+### Hyperbolic Math Utilities
+
+```rust
+use hyperspace_sdk::math::{
+    mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean
+};
+```
 
 ## Optional Feature: Embedders
 
 Enable with:
 
 ```toml
-hyperspace-sdk = { version = "2.0.0", features = ["embedders"] }
+hyperspace-sdk = { version = "2.2.1", features = ["embedders"] }
 ```
 
 ## Production Notes

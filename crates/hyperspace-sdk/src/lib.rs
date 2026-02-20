@@ -1,14 +1,17 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
-    BatchInsertRequest, BatchSearchRequest, DurabilityLevel, FindSemanticClustersRequest,
-    FindSemanticClustersResponse, GetConceptParentsRequest, GetConceptParentsResponse,
-    GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GraphNode, InsertRequest,
-    SearchRequest, SearchResponse, SearchResult, TraverseRequest, TraverseResponse, VectorData,
+    BatchInsertRequest, BatchSearchRequest, DurabilityLevel, EventMessage,
+    EventSubscriptionRequest, EventType, FindSemanticClustersRequest, FindSemanticClustersResponse,
+    GetConceptParentsRequest, GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse,
+    GetNodeRequest, GraphNode, InsertRequest, SearchRequest, SearchResponse, SearchResult,
+    TraverseRequest, TraverseResponse, VectorData,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
 use tonic::transport::Channel;
 use tonic::{Request, Status};
+
+pub mod math;
 
 #[cfg(feature = "embedders")]
 mod embedder;
@@ -142,7 +145,29 @@ impl Client {
     /// # Errors
     /// Returns error if the collection does not exist or operation fails.
     pub async fn rebuild_index(&mut self, name: String) -> Result<String, tonic::Status> {
-        let req = hyperspace_proto::hyperspace::RebuildIndexRequest { name };
+        let req = hyperspace_proto::hyperspace::RebuildIndexRequest {
+            name,
+            filter_query: None,
+        };
+        let resp = self.inner.rebuild_index(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
+    /// Rebuilds index with optional metadata-based pruning filter.
+    ///
+    /// # Errors
+    /// Returns error if operation fails.
+    pub async fn rebuild_index_with_filter(
+        &mut self,
+        name: String,
+        key: String,
+        op: String,
+        value: f64,
+    ) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::RebuildIndexRequest {
+            name,
+            filter_query: Some(hyperspace_proto::hyperspace::VacuumFilterQuery { key, op, value }),
+        };
         let resp = self.inner.rebuild_index(req).await?;
         Ok(resp.into_inner().status)
     }
@@ -421,6 +446,29 @@ impl Client {
         Ok(resp.into_inner())
     }
 
+    /// Returns neighbors with aligned edge weights (distance to source).
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn get_neighbors_with_weights(
+        &mut self,
+        id: u32,
+        layer: u32,
+        limit: u32,
+        offset: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<(GraphNode, f64)>, tonic::Status> {
+        let resp = self
+            .get_neighbors(id, layer, limit, offset, collection)
+            .await?;
+        let mut out = Vec::with_capacity(resp.neighbors.len());
+        for (idx, node) in resp.neighbors.into_iter().enumerate() {
+            let w = resp.edge_weights.get(idx).copied().unwrap_or_default();
+            out.push((node, w));
+        }
+        Ok(out)
+    }
+
     /// Traverses graph from a start node with depth and node guards.
     ///
     /// # Errors
@@ -463,6 +511,23 @@ impl Client {
             limit,
         };
         let resp = self.inner.get_concept_parents(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Subscribes to CDC event stream (`VectorInserted`/`VectorDeleted`).
+    ///
+    /// # Errors
+    /// Returns error if stream initialization fails.
+    pub async fn subscribe_to_events(
+        &mut self,
+        types: Vec<EventType>,
+        collection: Option<String>,
+    ) -> Result<tonic::Streaming<EventMessage>, tonic::Status> {
+        let req = EventSubscriptionRequest {
+            types: types.into_iter().map(|t| t as i32).collect(),
+            collection,
+        };
+        let resp = self.inner.subscribe_to_events(req).await?;
         Ok(resp.into_inner())
     }
 

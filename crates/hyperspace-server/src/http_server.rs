@@ -579,8 +579,8 @@ struct HttpFilter {
     filter_type: String,
     key: String,
     value: Option<String>,
-    gte: Option<i64>,
-    lte: Option<i64>,
+    gte: Option<f64>,
+    lte: Option<f64>,
 }
 
 #[derive(serde::Serialize)]
@@ -662,10 +662,20 @@ fn graph_node_from_collection(
 
 fn graph_match_filters(
     metadata: &HashMap<String, String>,
-    legacy_filter: &HashMap<String, String>,
+    exact_filter: &HashMap<String, String>,
     complex_filters: &[hyperspace_core::FilterExpr],
 ) -> bool {
-    for (k, v) in legacy_filter {
+    let meta_numeric = |key: &str| -> Option<f64> {
+        if let Some(raw) = metadata.get(key) {
+            return raw.parse::<f64>().ok();
+        }
+        let typed_key = format!("{TYPED_META_PREFIX}{key}");
+        let raw_typed = metadata.get(&typed_key)?;
+        let parsed = serde_json::from_str::<serde_json::Value>(raw_typed).ok()?;
+        parsed.get("v")?.as_f64()
+    };
+
+    for (k, v) in exact_filter {
         match metadata.get(k) {
             Some(actual) if actual == v => {}
             _ => return false,
@@ -678,10 +688,7 @@ fn graph_match_filters(
                 _ => return false,
             },
             hyperspace_core::FilterExpr::Range { key, gte, lte } => {
-                let Some(raw) = metadata.get(key) else {
-                    return false;
-                };
-                let Ok(val) = raw.parse::<i64>() else {
+                let Some(val) = meta_numeric(key) else {
                     return false;
                 };
                 if let Some(min) = gte {
@@ -721,7 +728,7 @@ async fn search_collection(
     Json(payload): Json<SearchReq>,
 ) -> impl IntoResponse {
     let k = payload.top_k.unwrap_or(10);
-    let legacy_filter = payload.filter.unwrap_or_default();
+    let exact_filter = payload.filter.unwrap_or_default();
     let complex_filters = payload
         .filters
         .as_ref()
@@ -736,7 +743,7 @@ async fn search_collection(
         match col
             .search(
                 &payload.vector,
-                &legacy_filter,
+                &exact_filter,
                 &complex_filters,
                 &dummy_params,
             )
@@ -892,7 +899,7 @@ async fn graph_traverse(
     let layer = payload.layer.unwrap_or(0);
     let max_depth = payload.max_depth.unwrap_or(2).min(8);
     let max_nodes = payload.max_nodes.unwrap_or(256).min(10_000);
-    let legacy_filter = payload.filter.unwrap_or_default();
+    let exact_filter = payload.filter.unwrap_or_default();
     let complex_filters = payload
         .filters
         .as_ref()
@@ -903,11 +910,11 @@ async fn graph_traverse(
                 let nodes: Vec<HttpGraphNode> = ids
                     .into_iter()
                     .filter(|id| {
-                        if legacy_filter.is_empty() && complex_filters.is_empty() {
+                        if exact_filter.is_empty() && complex_filters.is_empty() {
                             return true;
                         }
                         let meta = col.metadata_by_id(*id);
-                        graph_match_filters(&meta, &legacy_filter, &complex_filters)
+                        graph_match_filters(&meta, &exact_filter, &complex_filters)
                     })
                     .filter_map(|id| graph_node_from_collection(&col, id, layer, 64, 0).ok())
                     .collect();
@@ -960,11 +967,44 @@ async fn rebuild_collection_http(
         Arc<Option<EmbeddingInfo>>,
     )>,
     Extension(ctx): Extension<RequestContext>,
+    payload: Option<Json<RebuildPayload>>,
 ) -> impl IntoResponse {
-    match manager.rebuild_collection(&ctx.user_id, &name).await {
+    let filter = payload.and_then(|Json(p)| p.filter_query).and_then(|f| {
+        let op = match f.op.to_lowercase().as_str() {
+            "lt" => hyperspace_core::VacuumFilterOp::Lt,
+            "lte" => hyperspace_core::VacuumFilterOp::Lte,
+            "gt" => hyperspace_core::VacuumFilterOp::Gt,
+            "gte" => hyperspace_core::VacuumFilterOp::Gte,
+            "eq" => hyperspace_core::VacuumFilterOp::Eq,
+            "ne" => hyperspace_core::VacuumFilterOp::Ne,
+            _ => return None,
+        };
+        Some(hyperspace_core::VacuumFilterQuery {
+            key: f.key,
+            op,
+            value: f.value,
+        })
+    });
+
+    match manager
+        .rebuild_collection_with_filter(&ctx.user_id, &name, filter)
+        .await
+    {
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
+}
+
+#[derive(serde::Deserialize)]
+struct RebuildPayload {
+    filter_query: Option<RebuildFilterQuery>,
+}
+
+#[derive(serde::Deserialize)]
+struct RebuildFilterQuery {
+    key: String,
+    op: String,
+    value: f64,
 }
 
 async fn trigger_vacuum_http(

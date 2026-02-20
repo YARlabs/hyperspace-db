@@ -1268,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "async-trait",
  "criterion",
@@ -1306,13 +1306,14 @@ dependencies = [
  "rkyv",
  "roaring",
  "serde",
+ "serde_json",
  "smallvec",
  "tempfile",
 ]
 
 [[package]]
 name = "hyperspace-proto"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "prost",
  "tonic",
@@ -1321,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "async-trait",
  "hyperspace-proto",
@@ -1334,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "arc-swap",
  "async-trait",

@@ -1,5 +1,6 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
+use hyperspace_core::VacuumFilterQuery;
 use hyperspace_core::{Collection, CosineMetric, EuclideanMetric, LorentzMetric, PoincareMetric};
 use hyperspace_proto::hyperspace::{
     replication_log, CreateCollectionOp, DeleteCollectionOp, ReplicationLog,
@@ -316,12 +317,22 @@ impl CollectionManager {
     }
 
     pub async fn rebuild_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
+        self.rebuild_collection_with_filter(user_id, name, None)
+            .await
+    }
+
+    pub async fn rebuild_collection_with_filter(
+        &self,
+        user_id: &str,
+        name: &str,
+        filter: Option<VacuumFilterQuery>,
+    ) -> Result<(), String> {
         let internal_name = Self::get_internal_name(user_id, name);
         // Trigger optimization (Hot Vacuum)
         if let Some(entry) = self.collections.get(&internal_name) {
             entry
                 .collection
-                .optimize()
+                .optimize_with_filter(filter)
                 .await
                 .map_err(|e| format!("Optimization failed: {e}"))?;
             Ok(())
@@ -547,7 +558,7 @@ impl CollectionManager {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         // Parse {user_id}_{collection_name}
                         // We assume the first part before '_' is user_id.
-                        // If no underscore (e.g. legacy), treat as "default_admin" or skip?
+                        // If no underscore, treat as "default_admin" or skip.
                         // Standard format: "{user_id}_{name}"
 
                         let user_id = if let Some((u, _)) = name.split_once('_') {

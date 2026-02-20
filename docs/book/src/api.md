@@ -79,6 +79,30 @@ message SearchRequest {
 ```
 
 `SearchResult` now includes both `metadata` and `typed_metadata`.
+Range filters are evaluated with numeric semantics (`f64`) against typed metadata numeric values.
+For gRPC clients, decimal thresholds are supported via `Range.gte_f64` / `Range.lte_f64` (legacy `gte/lte` `int64` remains supported).
+
+gRPC `Range` examples:
+
+```protobuf
+// Integer threshold (legacy-compatible)
+Filter {
+  range: {
+    key: "depth",
+    gte: 2,
+    lte: 10
+  }
+}
+
+// Decimal threshold (recommended for typed numeric metadata)
+Filter {
+  range: {
+    key: "energy",
+    gte_f64: 0.8,
+    lte_f64: 1.0
+  }
+}
+```
 
 #### `SearchBatch`
 Finds nearest neighbors for multiple queries in a single RPC call.
@@ -124,6 +148,11 @@ message EventMessage {
 ```
 
 Use this stream to build external pipelines (audit, Elasticsearch sync, graph projections, Neo4j updaters).
+SDKs (Python/TypeScript/Rust) expose convenience subscription methods for this stream.
+
+Reliability note:
+- stream consumers may lag under burst load; server now handles lagged broadcast reads without dropping the whole stream task;
+- tune `HS_EVENT_STREAM_BUFFER` for higher event fan-out pressure.
 
 #### `MetadataValue` (Typed Metadata)
 ```protobuf
@@ -154,6 +183,24 @@ Key safety guards:
 `TraverseRequest` is filter-aware and supports both:
 - `filter` (`map<string,string>`)
 - `filters` (`Match` / `Range`)
+
+`GetNeighborsResponse` now includes `edge_weights`, where `edge_weights[i]` is the distance from source node to `neighbors[i]`.
+
+#### `RebuildIndex` with pruning filter (v2.2.1)
+```protobuf
+message RebuildIndexRequest {
+  string name = 1;
+  optional VacuumFilterQuery filter_query = 2;
+}
+
+message VacuumFilterQuery {
+  string key = 1;
+  string op = 2; // "lt" | "lte" | "gt" | "gte" | "eq" | "ne"
+  double value = 3;
+}
+```
+
+Use this API for sleep/reconsolidation cycles when you need to rebuild an index and prune low-value vectors in one server-side operation.
 
 ---
 
@@ -246,3 +293,11 @@ Convenience endpoint for dashboard/manual testing.
   "top_k": 5
 }
 ```
+
+### Graph HTTP Endpoints (Dashboard / tooling)
+
+- `GET /api/collections/{name}/graph/node?id={id}&layer={layer}`
+- `GET /api/collections/{name}/graph/neighbors?id={id}&layer={layer}&limit={limit}&offset={offset}`
+- `GET /api/collections/{name}/graph/parents?id={id}&layer={layer}&limit={limit}`
+- `POST /api/collections/{name}/graph/traverse`
+- `POST /api/collections/{name}/graph/clusters`

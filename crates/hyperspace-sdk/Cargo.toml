@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-sdk"
-version = "2.2.0"
+version = "2.2.1"
 edition = "2021"
 description = "Official Rust SDK for HyperspaceDB gRPC API"
 readme = "README.md"
@@ -13,7 +13,7 @@ default = []
 embedders = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait"]
 
 [dependencies]
-hyperspace-proto = { version = "2.0.0", path = "../hyperspace-proto" }
+hyperspace-proto = { version = "2.2.1", path = "../hyperspace-proto" }
 tonic = "0.10"
 tokio = { version = "1.35", features = ["full"] }
 

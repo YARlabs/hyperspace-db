@@ -56,3 +56,15 @@ Validation constraints:
 
 - upper sheet: `t > 0`
 - unit hyperboloid: `-t^2 + x_1^2 + ... + x_n^2 = -1`
+
+## SDK Hyperbolic Utilities (v2.2.1)
+
+To keep core DB focused and still support geometry-heavy clients, SDKs include helpers:
+
+- Python: `hyperspace.mobius_add`, `hyperspace.exp_map`, `hyperspace.log_map`
+- Rust: `hyperspace_sdk::math::{mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean}`
+- TypeScript: `HyperbolicMath.mobiusAdd/expMap/logMap/parallelTransport/riemannianGradient/frechetMean`
+
+Fréchet mean support is useful for reconsolidation workflows where multiple nearby hyperbolic embeddings should be merged into one robust centroid.
+
+These functions are useful for L-system growth, manifold transforms, and pre-insert vector shaping pipelines.

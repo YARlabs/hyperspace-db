@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: hyperspacedb
-Version: 2.0.0
+Version: 2.2.0
 Summary: Fastest Hyperbolic Vector DB Client
 Author: YARlabs
 Keywords: vector-database,ann,grpc,embeddings,hyperspace

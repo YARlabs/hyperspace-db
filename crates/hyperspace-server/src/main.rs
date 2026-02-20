@@ -134,6 +134,12 @@ fn default_ef_search() -> usize {
     })
 }
 
+fn range_bounds_f64(r: &hyperspace_proto::hyperspace::Range) -> (Option<f64>, Option<f64>) {
+    let gte = r.gte_f64.or(r.gte.map(|v| v as f64));
+    let lte = r.lte_f64.or(r.lte.map(|v| v as f64));
+    (gte, lte)
+}
+
 fn build_filters(
     req: SearchRequest,
 ) -> (
@@ -149,7 +155,7 @@ fn build_filters(
         req.collection
     };
 
-    let legacy_filter = req.filter.into_iter().collect();
+    let exact_filter = req.filter.into_iter().collect();
     let mut complex_filters = Vec::new();
     for f in req.filters {
         if let Some(cond) = f.condition {
@@ -161,10 +167,11 @@ fn build_filters(
                     });
                 }
                 hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                    let (gte, lte) = range_bounds_f64(&r);
                     complex_filters.push(hyperspace_core::FilterExpr::Range {
                         key: r.key,
-                        gte: r.gte,
-                        lte: r.lte,
+                        gte,
+                        lte,
                     });
                 }
             }
@@ -178,7 +185,7 @@ fn build_filters(
         hybrid_alpha: req.hybrid_alpha,
     };
 
-    (col_name, req.vector, legacy_filter, complex_filters, params)
+    (col_name, req.vector, exact_filter, complex_filters, params)
 }
 
 const TYPED_META_PREFIX: &str = "__hs_typed__";
@@ -226,30 +233,30 @@ fn shadow_json_to_metadata_value(s: &str) -> Option<MetadataValue> {
 }
 
 fn merge_metadata(
-    mut legacy: std::collections::HashMap<String, String>,
+    mut base: std::collections::HashMap<String, String>,
     typed: std::collections::HashMap<String, MetadataValue>,
 ) -> std::collections::HashMap<String, String> {
     for (key, value) in typed {
         if let Some(shadow) = metadata_value_to_shadow_json(&value) {
-            legacy.insert(format!("{TYPED_META_PREFIX}{key}"), shadow);
+            base.insert(format!("{TYPED_META_PREFIX}{key}"), shadow);
         }
         match value.kind {
             Some(metadata_value::Kind::StringValue(v)) => {
-                legacy.insert(key, v);
+                base.insert(key, v);
             }
             Some(metadata_value::Kind::IntValue(v)) => {
-                legacy.insert(key, v.to_string());
+                base.insert(key, v.to_string());
             }
             Some(metadata_value::Kind::DoubleValue(v)) => {
-                legacy.insert(key, v.to_string());
+                base.insert(key, v.to_string());
             }
             Some(metadata_value::Kind::BoolValue(v)) => {
-                legacy.insert(key, v.to_string());
+                base.insert(key, v.to_string());
             }
             None => {}
         }
     }
-    legacy
+    base
 }
 
 fn strip_internal_metadata(
@@ -298,10 +305,20 @@ fn build_graph_node(
 
 fn matches_filter_exprs(
     metadata: &std::collections::HashMap<String, String>,
-    legacy_filter: &std::collections::HashMap<String, String>,
+    exact_filter: &std::collections::HashMap<String, String>,
     complex_filters: &[hyperspace_core::FilterExpr],
 ) -> bool {
-    for (k, v) in legacy_filter {
+    let meta_numeric = |key: &str| -> Option<f64> {
+        if let Some(raw) = metadata.get(key) {
+            return raw.parse::<f64>().ok();
+        }
+        let typed_key = format!("{TYPED_META_PREFIX}{key}");
+        let raw_typed = metadata.get(&typed_key)?;
+        let parsed = serde_json::from_str::<serde_json::Value>(raw_typed).ok()?;
+        parsed.get("v")?.as_f64()
+    };
+
+    for (k, v) in exact_filter {
         match metadata.get(k) {
             Some(actual) if actual == v => {}
             _ => return false,
@@ -315,10 +332,7 @@ fn matches_filter_exprs(
                 _ => return false,
             },
             hyperspace_core::FilterExpr::Range { key, gte, lte } => {
-                let Some(raw) = metadata.get(key) else {
-                    return false;
-                };
-                let Ok(num) = raw.parse::<i64>() else {
+                let Some(num) = meta_numeric(key) else {
                     return false;
                 };
                 if let Some(min) = gte {
@@ -338,7 +352,7 @@ fn matches_filter_exprs(
 }
 
 fn parse_graph_filters(
-    legacy_filter: std::collections::HashMap<String, String>,
+    exact_filter: std::collections::HashMap<String, String>,
     filters: Vec<Filter>,
 ) -> (
     std::collections::HashMap<String, String>,
@@ -355,16 +369,44 @@ fn parse_graph_filters(
                     });
                 }
                 hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                    let (gte, lte) = range_bounds_f64(&r);
                     complex_filters.push(hyperspace_core::FilterExpr::Range {
                         key: r.key,
-                        gte: r.gte,
-                        lte: r.lte,
+                        gte,
+                        lte,
                     });
                 }
             }
         }
     }
-    (legacy_filter, complex_filters)
+    (exact_filter, complex_filters)
+}
+
+#[allow(clippy::result_large_err)]
+fn parse_vacuum_filter(
+    filter: Option<hyperspace_proto::hyperspace::VacuumFilterQuery>,
+) -> Result<Option<hyperspace_core::VacuumFilterQuery>, Status> {
+    let Some(filter) = filter else {
+        return Ok(None);
+    };
+    let op = match filter.op.to_lowercase().as_str() {
+        "lt" => hyperspace_core::VacuumFilterOp::Lt,
+        "lte" => hyperspace_core::VacuumFilterOp::Lte,
+        "gt" => hyperspace_core::VacuumFilterOp::Gt,
+        "gte" => hyperspace_core::VacuumFilterOp::Gte,
+        "eq" => hyperspace_core::VacuumFilterOp::Eq,
+        "ne" => hyperspace_core::VacuumFilterOp::Ne,
+        other => {
+            return Err(Status::invalid_argument(format!(
+                "Unsupported vacuum filter op '{other}', use lt/lte/gt/gte/eq/ne"
+            )))
+        }
+    };
+    Ok(Some(hyperspace_core::VacuumFilterQuery {
+        key: filter.key,
+        op,
+        value: filter.value,
+    }))
 }
 
 impl Interceptor for ClientAuthInterceptor {
@@ -704,12 +746,12 @@ impl Database for HyperspaceService {
         request: Request<SearchRequest>,
     ) -> Result<Response<SearchResponse>, Status> {
         let user_id = get_user_id(&request);
-        let (col_name, vector, legacy_filter, complex_filters, params) =
+        let (col_name, vector, exact_filter, complex_filters, params) =
             build_filters(request.into_inner());
 
         if let Some(col) = self.manager.get(&user_id, &col_name).await {
             match col
-                .search(&vector, &legacy_filter, &complex_filters, &params)
+                .search(&vector, &exact_filter, &complex_filters, &params)
                 .await
             {
                 Ok(res) => {
@@ -746,7 +788,7 @@ impl Database for HyperspaceService {
 
         let mut responses = Vec::with_capacity(req.searches.len());
         for search_req in req.searches {
-            let (col_name, vector, legacy_filter, complex_filters, params) =
+            let (col_name, vector, exact_filter, complex_filters, params) =
                 build_filters(search_req);
             let col =
                 self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
@@ -754,7 +796,7 @@ impl Database for HyperspaceService {
                 })?;
 
             let res = col
-                .search(&vector, &legacy_filter, &complex_filters, &params)
+                .search(&vector, &exact_filter, &complex_filters, &params)
                 .await
                 .map_err(Status::internal)?;
 
@@ -831,11 +873,17 @@ impl Database for HyperspaceService {
         if ids.len() > limit {
             ids.truncate(limit);
         }
+        let edge_weights = col
+            .graph_neighbor_distances(req.id, &ids)
+            .map_err(Status::internal)?;
         let neighbors = ids
             .into_iter()
             .map(|id| build_graph_node(&col, id, layer))
             .collect();
-        Ok(Response::new(GetNeighborsResponse { neighbors }))
+        Ok(Response::new(GetNeighborsResponse {
+            neighbors,
+            edge_weights,
+        }))
     }
 
     async fn get_concept_parents(
@@ -898,7 +946,7 @@ impl Database for HyperspaceService {
         } else {
             req.max_nodes as usize
         };
-        let (legacy_filter, complex_filters) =
+        let (exact_filter, complex_filters) =
             parse_graph_filters(req.filter.into_iter().collect(), req.filters);
         let Some(col) = self.manager.get(&user_id, &col_name).await else {
             return Err(Status::not_found(format!(
@@ -908,10 +956,10 @@ impl Database for HyperspaceService {
         let mut ids = col
             .graph_traverse(req.start_id, layer, max_depth, max_nodes)
             .map_err(Status::invalid_argument)?;
-        if !legacy_filter.is_empty() || !complex_filters.is_empty() {
+        if !exact_filter.is_empty() || !complex_filters.is_empty() {
             ids.retain(|id| {
                 let meta = col.metadata_by_id(*id);
-                matches_filter_exprs(&meta, &legacy_filter, &complex_filters)
+                matches_filter_exprs(&meta, &exact_filter, &complex_filters)
             });
         }
         let nodes = ids
@@ -1064,9 +1112,17 @@ impl Database for HyperspaceService {
         let peer_addr_clone = peer_addr.clone();
 
         tokio::spawn(async move {
-            while let Ok(log) = rx.recv().await {
-                if tx.send(Ok(log)).await.is_err() {
-                    break;
+            loop {
+                match rx.recv().await {
+                    Ok(log) => {
+                        if tx.send(Ok(log)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        eprintln!("⚠️ Replication stream lagged, skipped {skipped} messages");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
             // Unregister on disconnect
@@ -1089,7 +1145,16 @@ impl Database for HyperspaceService {
         let (tx, out_rx) = mpsc::channel(100);
 
         tokio::spawn(async move {
-            while let Ok(log) = rx.recv().await {
+            loop {
+                let log = match rx.recv().await {
+                    Ok(log) => log,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        eprintln!("⚠️ Event stream lagged, skipped {skipped} messages");
+                        continue;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                };
+
                 if !filter_collection.is_empty() && filter_collection != log.collection {
                     continue;
                 }
@@ -1183,8 +1248,17 @@ impl Database for HyperspaceService {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
         println!("🔧 Rebuild Index Request for: '{}'", req.name);
+        let vacuum_filter = parse_vacuum_filter(req.filter_query)?;
 
-        match self.manager.rebuild_collection(&user_id, &req.name).await {
+        let rebuild_res = if let Some(filter) = vacuum_filter {
+            self.manager
+                .rebuild_collection_with_filter(&user_id, &req.name, Some(filter))
+                .await
+        } else {
+            self.manager.rebuild_collection(&user_id, &req.name).await
+        };
+
+        match rebuild_res {
             Ok(()) => Ok(Response::new(
                 hyperspace_proto::hyperspace::StatusResponse {
                     status: "Index rebuilt and reloaded successfully".to_string(),
@@ -1227,7 +1301,13 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
     // Setup Manager
     let data_dir = std::path::PathBuf::from("data");
-    let (replication_tx, _) = broadcast::channel(1024);
+    let event_buffer = std::env::var("HS_EVENT_STREAM_BUFFER")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1024)
+        .max(64);
+    println!("⚙️ Event Stream Buffer: {event_buffer}");
+    let (replication_tx, _) = broadcast::channel(event_buffer);
 
     let manager = Arc::new(CollectionManager::new(data_dir, replication_tx.clone()));
 
@@ -1239,7 +1319,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
     let dim: u32 = dim_str.parse().unwrap_or(1024);
 
-    // Support HS_METRIC (new) and HS_DISTANCE_METRIC (legacy)
+    // Support HS_METRIC and HS_DISTANCE_METRIC (compatibility alias)
     let metric = std::env::var("HS_METRIC")
         .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
         .unwrap_or("poincare".to_string())

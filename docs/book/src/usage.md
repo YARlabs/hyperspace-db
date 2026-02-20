@@ -13,9 +13,12 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_HTTP_PORT` | `50050` | HTTP Dashboard port |
 | `HS_DATA_DIR` | `./data` | Path to store segments and WAL |
 | `HS_IDLE_TIMEOUT_SEC` | `3600` | Inactivity time (seconds) before collection unloads to disk |
-| `HS_DIMENSION` | `1024` | Default vector dimensionality (8, 64, 768, 1024, 1536) |
+| `HS_DIMENSION` | `1024` | Default vector dimensionality (8, 64, 768, 1024, 1536, 3072, 4096, 8192) |
 | `HS_METRIC` | `cosine` | Distance metric (`cosine`, `poincare`, `l2`, `euclidean`, `lorentz`) |
 | `HS_QUANTIZATION_LEVEL` | `none` | Compression (`none`, `scalar` (i8), `binary` (1-bit)) |
+| `HS_STORAGE_FLOAT32` | `false` | Store raw vectors as `f32` (`mode=none`) and promote to `f64` in distance kernels |
+| `HS_FAST_UPSERT_DELTA` | `0.0` | Fast upsert threshold (L2 delta). If small and metadata unchanged, skips graph relinking |
+| `HS_EVENT_STREAM_BUFFER` | `1024` | Broadcast ring size for CDC and replication streams |
 
 ### HNSW Index Tuning
 
@@ -71,7 +74,8 @@ HyperspaceDB includes a comprehensive Web Dashboard at `http://localhost:50050`.
 **Features:**
 * **Cluster Status**: View node role (Leader/Follower) and topology.
 * **Collections**: Create, delete, and inspect collection statistics.
-* **Explorer**: View inserted vectors and their metadata.
+* **Explorer**: Search playground with filters and typed metadata visibility.
+* **Graph Explorer**: Query neighbors and concept-parent graph views from HNSW layers.
 * **Metrics**: Real-time RAM and CPU usage.
 
 ## TUI Dashboard (Legacy)

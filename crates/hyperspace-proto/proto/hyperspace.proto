@@ -116,12 +116,19 @@ message CollectionStatsResponse {
 
 message RebuildIndexRequest {
   string name = 1;
+  optional VacuumFilterQuery filter_query = 2;
 }
 
 message ConfigUpdate {
   string collection = 1; 
   optional uint32 ef_search = 2;
   optional uint32 ef_construction = 3;
+}
+
+message VacuumFilterQuery {
+  string key = 1;
+  string op = 2; // "lt" | "lte" | "gt" | "gte" | "eq" | "ne"
+  double value = 3;
 }
 
 
@@ -209,6 +216,8 @@ message Range {
   string key = 1;
   optional int64 gte = 2;
   optional int64 lte = 3;
+  optional double gte_f64 = 4;
+  optional double lte_f64 = 5;
 }
 
 message SearchResponse {
@@ -254,6 +263,7 @@ message GetNeighborsRequest {
 
 message GetNeighborsResponse {
   repeated GraphNode neighbors = 1;
+  repeated double edge_weights = 2; // distance(source -> neighbors[i])
 }
 
 message TraverseRequest {

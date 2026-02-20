@@ -1,7 +1,10 @@
 use crate::sync::CollectionDigest;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
-use hyperspace_core::{Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult};
+use hyperspace_core::{
+    Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult, VacuumFilterOp,
+    VacuumFilterQuery,
+};
 use hyperspace_index::HnswIndex;
 use hyperspace_proto::hyperspace::{replication_log, InsertOp, ReplicationLog};
 use hyperspace_store::{wal::Wal, VectorStore};
@@ -48,6 +51,8 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     ids_are_identity: AtomicBool,
     // Limit CPU-bound search tasks to avoid scheduler thrashing.
     search_limiter: Arc<Semaphore>,
+    // If existing vector shift is <= threshold and metadata unchanged, skip graph relinking.
+    fast_upsert_delta: f64,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -58,9 +63,21 @@ struct BatchEntry<'a> {
     vector: Cow<'a, [f64]>,
     metadata: &'a HashMap<String, String>,
     internal_id: u32,
+    reindex_needed: bool,
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
+    #[inline]
+    fn shift_l2_sq(a: &[f64; N], b: &[f64]) -> f64 {
+        a.iter()
+            .zip(b.iter())
+            .map(|(x, y)| {
+                let d = x - y;
+                d * d
+            })
+            .sum()
+    }
+
     #[inline]
     fn to_internal_id(&self, user_id: u32) -> u32 {
         self.id_map.get(&user_id).map_or(user_id, |v| *v)
@@ -71,6 +88,30 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         self.reverse_id_map
             .get(&internal_id)
             .map_or(internal_id, |v| *v)
+    }
+
+    fn meta_numeric_value(meta: &HashMap<String, String>, key: &str) -> Option<f64> {
+        if let Some(raw) = meta.get(key) {
+            return raw.parse::<f64>().ok();
+        }
+        let typed_key = format!("__hs_typed__{key}");
+        let raw_typed = meta.get(&typed_key)?;
+        let parsed = serde_json::from_str::<serde_json::Value>(raw_typed).ok()?;
+        parsed.get("v")?.as_f64()
+    }
+
+    fn matches_vacuum_filter(meta: &HashMap<String, String>, filter: &VacuumFilterQuery) -> bool {
+        let Some(current) = Self::meta_numeric_value(meta, &filter.key) else {
+            return false;
+        };
+        match filter.op {
+            VacuumFilterOp::Lt => current < filter.value,
+            VacuumFilterOp::Lte => current <= filter.value,
+            VacuumFilterOp::Gt => current > filter.value,
+            VacuumFilterOp::Gte => current >= filter.value,
+            VacuumFilterOp::Eq => (current - filter.value).abs() <= 1e-12,
+            VacuumFilterOp::Ne => (current - filter.value).abs() > 1e-12,
+        }
     }
 
     /// Normalizes vector if metric is Cosine.
@@ -306,6 +347,11 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         };
         println!("⚙️  Search Concurrency Limit: {search_concurrency} task(s)");
         let search_limiter = Arc::new(Semaphore::new(search_concurrency));
+        let fast_upsert_delta = std::env::var("HS_FAST_UPSERT_DELTA")
+            .unwrap_or_else(|_| "0.0".to_string())
+            .parse::<f64>()
+            .unwrap_or(0.0)
+            .max(0.0);
 
         let indexer_task = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
@@ -409,6 +455,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             last_clock,
             ids_are_identity: AtomicBool::new(ids_are_identity),
             search_limiter,
+            fast_upsert_delta,
         })
     }
 }
@@ -461,11 +508,20 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // Check if this user ID already exists (for upsert)
         let existing_internal_id = self.id_map.get(&id).map(|v| *v);
 
+        let mut reindex_needed = true;
         if let Some(old_internal_id) = existing_internal_id {
             let old_vector = self.index_link.load().get_vector(old_internal_id);
             let old_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
             let bucket_idx = CollectionDigest::get_bucket_index(id);
             self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
+
+            if self.fast_upsert_delta > 0.0 {
+                let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
+                let old_meta = self.index_link.load().metadata_by_id(old_internal_id);
+                let metadata_changed = old_meta != metadata;
+                reindex_needed =
+                    metadata_changed || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+            }
         }
 
         let entry_hash = CollectionDigest::hash_entry(id, processed_vector);
@@ -508,8 +564,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
         }
 
-        self.config.inc_queue();
-        let _ = self.index_tx.send((internal_id, metadata.clone()));
+        if reindex_needed {
+            self.config.inc_queue();
+            let _ = self.index_tx.send((internal_id, metadata.clone()));
+        }
 
         if self.replication_tx.receiver_count() > 0 {
             // Need owned vector for replication
@@ -567,11 +625,20 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let existing_internal_id = self.id_map.get(id).map(|v| *v);
 
             // Bucket updates (Read-only access to vector)
+            let mut reindex_needed = true;
             if let Some(old_internal_id) = existing_internal_id {
                 let old_vector = index_reader.get_vector(old_internal_id);
                 let old_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
                 let bucket_idx = CollectionDigest::get_bucket_index(*id);
                 self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
+
+                if self.fast_upsert_delta > 0.0 {
+                    let shift_sq = Self::shift_l2_sq(&old_vector.coords, &processed_vector);
+                    let old_meta = index_reader.metadata_by_id(old_internal_id);
+                    let metadata_changed = old_meta != *metadata;
+                    reindex_needed = metadata_changed
+                        || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                }
             }
 
             let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
@@ -606,6 +673,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 vector: processed_vector, // Moves the Cow (cheap pointer copy), not data
                 metadata,                 // Reference
                 internal_id,
+                reindex_needed,
             });
         }
 
@@ -630,15 +698,17 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         // 4. Index Queue
-        for _ in 0..entries.len() {
+        for _ in 0..entries.iter().filter(|e| e.reindex_needed).count() {
             self.config.inc_queue();
         }
 
         // Queue for indexing (Send only lightweight metadata clone + internal_id)
         for entry in &entries {
-            let _ = self
-                .index_tx
-                .send((entry.internal_id, entry.metadata.clone()));
+            if entry.reindex_needed {
+                let _ = self
+                    .index_tx
+                    .send((entry.internal_id, entry.metadata.clone()));
+            }
         }
 
         // 5. Replication
@@ -759,6 +829,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     async fn optimize(&self) -> Result<(), String> {
+        self.optimize_with_filter(None).await
+    }
+
+    async fn optimize_with_filter(&self, filter: Option<VacuumFilterQuery>) -> Result<(), String> {
         println!("🧹 Starting Hot Vacuum for '{}'...", self.name);
         let start = std::time::Instant::now();
         // Removed unused name
@@ -766,6 +840,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let mode = self.mode;
         let original_config = self.config.clone();
         let index_link = self.index_link.clone();
+        let filter_for_vacuum = filter.clone();
 
         // Run heavy lifting in blocking thread
         let (new_index_arc, temp_dir, new_snap_path) = tokio::task::spawn_blocking(move || {
@@ -775,7 +850,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
             // 1. Get current data
             let current_index = index_link.load().clone();
-            let all_data = current_index.peek_all();
+            let mut all_data = current_index.peek_all();
+            if let Some(filter) = &filter_for_vacuum {
+                all_data.retain(|(_, _, meta)| !Self::matches_vacuum_filter(meta, filter));
+            }
             let count = all_data.len();
 
             if count == 0 {
@@ -892,6 +970,25 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .load()
             .graph_neighbors(internal_id, layer, limit)?;
         Ok(neighbors.into_iter().map(|n| self.to_user_id(n)).collect())
+    }
+
+    fn graph_neighbor_distances(
+        &self,
+        source_id: u32,
+        neighbor_ids: &[u32],
+    ) -> Result<Vec<f64>, String> {
+        let idx = self.index_link.load();
+        let source_internal_id = self.to_internal_id(source_id);
+        let source = idx.get_vector(source_internal_id);
+        let distances = neighbor_ids
+            .iter()
+            .map(|neighbor_id| {
+                let n_internal = self.to_internal_id(*neighbor_id);
+                let n_vec = idx.get_vector(n_internal);
+                M::distance(&source.coords, &n_vec.coords)
+            })
+            .collect();
+        Ok(distances)
     }
 
     fn graph_traverse(

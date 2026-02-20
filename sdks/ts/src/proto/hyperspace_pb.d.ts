@@ -323,6 +323,11 @@ export class RebuildIndexRequest extends jspb.Message {
     getName(): string;
     setName(value: string): RebuildIndexRequest;
 
+    hasFilterQuery(): boolean;
+    clearFilterQuery(): void;
+    getFilterQuery(): VacuumFilterQuery | undefined;
+    setFilterQuery(value?: VacuumFilterQuery): RebuildIndexRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): RebuildIndexRequest.AsObject;
     static toObject(includeInstance: boolean, msg: RebuildIndexRequest): RebuildIndexRequest.AsObject;
@@ -336,6 +341,7 @@ export class RebuildIndexRequest extends jspb.Message {
 export namespace RebuildIndexRequest {
     export type AsObject = {
         name: string,
+        filterQuery?: VacuumFilterQuery.AsObject,
     }
 }
 
@@ -368,6 +374,32 @@ export namespace ConfigUpdate {
         collection: string,
         efSearch?: number,
         efConstruction?: number,
+    }
+}
+
+export class VacuumFilterQuery extends jspb.Message { 
+    getKey(): string;
+    setKey(value: string): VacuumFilterQuery;
+    getOp(): string;
+    setOp(value: string): VacuumFilterQuery;
+    getValue(): number;
+    setValue(value: number): VacuumFilterQuery;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VacuumFilterQuery.AsObject;
+    static toObject(includeInstance: boolean, msg: VacuumFilterQuery): VacuumFilterQuery.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VacuumFilterQuery, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VacuumFilterQuery;
+    static deserializeBinaryFromReader(message: VacuumFilterQuery, reader: jspb.BinaryReader): VacuumFilterQuery;
+}
+
+export namespace VacuumFilterQuery {
+    export type AsObject = {
+        key: string,
+        op: string,
+        value: number,
     }
 }
 
@@ -709,6 +741,16 @@ export class Range extends jspb.Message {
     getLte(): number | undefined;
     setLte(value: number): Range;
 
+    hasGteF64(): boolean;
+    clearGteF64(): void;
+    getGteF64(): number | undefined;
+    setGteF64(value: number): Range;
+
+    hasLteF64(): boolean;
+    clearLteF64(): void;
+    getLteF64(): number | undefined;
+    setLteF64(value: number): Range;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): Range.AsObject;
     static toObject(includeInstance: boolean, msg: Range): Range.AsObject;
@@ -724,6 +766,8 @@ export namespace Range {
         key: string,
         gte?: number,
         lte?: number,
+        gteF64?: number,
+        lteF64?: number,
     }
 }
 
@@ -927,6 +971,10 @@ export class GetNeighborsResponse extends jspb.Message {
     getNeighborsList(): Array<GraphNode>;
     setNeighborsList(value: Array<GraphNode>): GetNeighborsResponse;
     addNeighbors(value?: GraphNode, index?: number): GraphNode;
+    clearEdgeWeightsList(): void;
+    getEdgeWeightsList(): Array<number>;
+    setEdgeWeightsList(value: Array<number>): GetNeighborsResponse;
+    addEdgeWeights(value: number, index?: number): number;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): GetNeighborsResponse.AsObject;
@@ -941,6 +989,7 @@ export class GetNeighborsResponse extends jspb.Message {
 export namespace GetNeighborsResponse {
     export type AsObject = {
         neighborsList: Array<GraphNode.AsObject>,
+        edgeWeightsList: Array<number>,
     }
 }
 

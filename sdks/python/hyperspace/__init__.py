@@ -8,6 +8,7 @@ from .embedders import (
     GoogleEmbedder,
     SentenceTransformerEmbedder
 )
+from .math import mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean
 
 __all__ = [
     "HyperspaceClient",
@@ -17,5 +18,11 @@ __all__ = [
     "CohereEmbedder",
     "VoyageEmbedder",
     "GoogleEmbedder",
-    "SentenceTransformerEmbedder"
+    "SentenceTransformerEmbedder",
+    "mobius_add",
+    "exp_map",
+    "log_map",
+    "parallel_transport",
+    "riemannian_gradient",
+    "frechet_mean",
 ]

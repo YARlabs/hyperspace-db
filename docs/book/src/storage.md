@@ -39,6 +39,15 @@ Total size per vector (for N=8): $8 + 4 = 12$ bytes.
 Without quantization (f64), it would be $8 \times 8 = 64$ bytes.
 **Savings: ~81%**.
 
+### Optional raw `f32` storage (v2.2.x)
+
+For `QuantizationMode::None`, you can enable:
+
+- `HS_STORAGE_FLOAT32=true`
+
+In this mode, raw vectors are stored as `f32` in mmap and promoted to `f64` in distance kernels.  
+This reduces raw-vector memory footprint by ~50% while preserving numerical behavior in hyperbolic math paths.
+
 ## Write-Ahead Log (WAL)
 
 Path: `wal.log`

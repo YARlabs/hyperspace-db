@@ -1,11 +1,12 @@
 # HyperspaceDB Python SDK
 
-Official Python client for HyperspaceDB gRPC API.
+Official Python client for HyperspaceDB gRPC API (v2.2.1).
 
 The SDK is designed for production services and benchmark tooling:
 - collection management
 - single and batch insert
 - single and batch vector search
+- graph traversal API methods
 - optional embedder integrations
 - multi-tenant metadata headers
 
@@ -88,12 +89,42 @@ batch_results = client.search_batch(
 - `search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, collection="") -> list[dict]`
 - `search_batch(vectors, top_k=10, collection="") -> list[list[dict]]`
 
+For `filters` with `type="range"`, decimal thresholds are supported (`gte_f64/lte_f64` in gRPC payload are set automatically for non-integer values).
+
 ### Maintenance Operations
 
-- `rebuild_index(collection) -> bool`
+- `rebuild_index(collection, filter_query=None) -> bool`
 - `trigger_vacuum() -> bool`
 - `trigger_snapshot() -> bool`
 - `configure(ef_search=None, ef_construction=None, collection="") -> bool`
+- `subscribe_to_events(types=None, collection=None) -> Iterator[dict]`
+
+`filter_query` example:
+```python
+client.rebuild_index(
+    "docs_py",
+    filter_query={"key": "energy", "op": "lt", "value": 0.1},
+)
+```
+
+CDC subscription example:
+```python
+for event in client.subscribe_to_events(types=["insert", "delete"], collection="docs_py"):
+    print(event)
+```
+
+### Hyperbolic Math Utilities
+
+```python
+from hyperspace import (
+    mobius_add,
+    exp_map,
+    log_map,
+    parallel_transport,
+    riemannian_gradient,
+    frechet_mean,
+)
+```
 
 ## Durability Levels
 

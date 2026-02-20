@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-02-17
+
+### Added
+* **Vacuum/Rebuild with pruning filter**:
+    * `RebuildIndexRequest` now supports optional `filter_query` for metadata-driven forgetting.
+    * Supported operators: `lt`, `lte`, `gt`, `gte`, `eq`, `ne`.
+* **SDK Hyperbolic Math Utilities**:
+    * Added `mobius_add`, `exp_map`, `log_map` in Python SDK.
+    * Added `math` module with `mobius_add`, `exp_map`, `log_map` in Rust SDK.
+* **Dashboard Graph Explorer activation**:
+    * Enabled `/graph` route with working controls for neighbors and concept parents.
+* **SDK math expansion**:
+    * Added `parallel_transport` and `riemannian_gradient` to Python SDK.
+    * Added `parallel_transport` and `riemannian_gradient` to Rust SDK.
+    * Added `parallelTransport` and `riemannianGradient` to TypeScript SDK.
+    * Added Fréchet mean utilities (`frechet_mean`/`frechetMean`) to Python, Rust, and TypeScript SDKs.
+* **CDC SDK coverage**:
+    * Added `subscribe_to_events` helpers to Python, TypeScript, and Rust SDKs.
+* **Typed numeric filtering upgrade**:
+    * Search `Range` filters now evaluate numeric values with `f64` semantics and support typed metadata numeric fields.
+    * HTTP filter payloads now support decimal `gte/lte` thresholds.
+    * gRPC `Range` extended with backward-compatible `gte_f64` / `lte_f64` fields for decimal thresholds.
+
+### Changed
+* **TS SDK upgrade**:
+    * Added `rebuildIndex` and `rebuildIndexWithFilter`.
+    * Added `HyperbolicMath` helpers in client package.
+    * Updated npm package version to `2.2.1`.
+* **SDK docs refresh**:
+    * Updated TypeScript, Python, and Rust SDK README files for new API surface.
+* **Fast upsert path**:
+    * For existing IDs, if vector perturbation is below `HS_FAST_UPSERT_DELTA` and metadata is unchanged, updates storage/WAL without full graph relink.
+* **CDC reliability**:
+    * Event streaming and replication loops now handle `broadcast::Lagged` gracefully instead of terminating stream tasks.
+    * Added tunable `HS_EVENT_STREAM_BUFFER` for higher event load.
+* **Graph API edge weights**:
+    * `GetNeighborsResponse` now returns `edge_weights` aligned with the returned neighbor order.
+
 ## [2.2.0] - 2026-02-17
 
 ### Added

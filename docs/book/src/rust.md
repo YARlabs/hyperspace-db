@@ -8,7 +8,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hyperspace-sdk = "2.0.0"
+hyperspace-sdk = "2.2.1"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -83,3 +83,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Batch Search
 
 Use `search_batch` or `search_batch_f32` to reduce per-request overhead in high-concurrency workloads.
+
+## Graph Traversal API
+
+Rust SDK exposes graph calls directly:
+
+- `get_node`
+- `get_neighbors`
+- `get_concept_parents`
+- `traverse`
+- `find_semantic_clusters`
+
+## Rebuild with Metadata Pruning
+
+Use `rebuild_index_with_filter` to run vacuum/rebuild and prune vectors in one request:
+
+```rust
+client
+    .rebuild_index_with_filter(
+        "docs_rust".to_string(),
+        "energy".to_string(),
+        "lt".to_string(),
+        0.1,
+    )
+    .await?;
+```
+
+## Hyperbolic Math Utilities
+
+```rust
+use hyperspace_sdk::math::{
+    mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean
+};
+```

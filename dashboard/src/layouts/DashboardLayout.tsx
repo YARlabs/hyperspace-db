@@ -21,13 +21,13 @@ export function DashboardLayout() {
                     <NavItem to="/collections" icon={Database} label="Collections" />
                     <NavItem to="/nodes" icon={Network} label="Cluster Nodes" />
                     <NavItem to="/explorer" icon={Search} label="Data Explorer" />
-                    <NavItem to="/graph" icon={Network} label="Graph Explorer" badge="Soon" disabled />
+                    <NavItem to="/graph" icon={Network} label="Graph Explorer" badge="v2.2" />
                     <NavItem to="/settings" icon={Settings} label="Settings" />
                 </nav>
 
                 <div className="p-4 border-t border-border/50">
                     <div className="text-xs text-muted-foreground">
-                        <p>Version 2.0.0</p>
+                        <p>Version 2.2.1</p>
                         <p className="opacity-50">Local Control Plane</p>
                     </div>
                 </div>

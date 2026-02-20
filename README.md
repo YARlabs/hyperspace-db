@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v2.0.0** | **The Serverless Hyperbolic Vector Database.**
+**v2.2.1** | **The Serverless Hyperbolic Vector Database.**
 
 [Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks) • [License](#-license) • [Contributing](#-contributing) • [Roadmap](#-roadmap) • [DockerHub](https://hub.docker.com/r/glukhota/hyperspace-db)
 
@@ -22,6 +22,15 @@
 Unlike traditional vector databases that keep everything in RAM, HyperspaceDB dynamically manages memory, unloading inactive collections to disk and waking them up instantly upon request. It is the **Neon** of vector search.
 
 Built on a **Persistence-First, Index-Second** architecture, it guarantees zero data loss and non-blocking search availability, powered by SIMD intrinsics and memory-mapped storage.
+
+## 🆕 v2.2.1 Improvements
+
+- **Fast Upsert**: Optional small-perturbation path (`HS_FAST_UPSERT_DELTA`) updates vector storage/WAL without full graph relink when metadata is unchanged.
+- **CDC Reliability**: Event/replication streams now survive lagged broadcast reads; tunable ring size via `HS_EVENT_STREAM_BUFFER`.
+- **CDC in SDKs**: Python/TypeScript/Rust clients now provide direct subscribe helpers for event stream consumption.
+- **Typed Range Filters**: Numeric range filters now support decimal comparisons and typed numeric metadata values.
+- **SDK Math Expansion**: Added `parallel transport`, `riemannian gradient`, and Fréchet mean utilities in Python/TypeScript/Rust SDKs.
+- **Graph Edge Weights**: `GetNeighbors` now returns distances (`edge_weights`) aligned with neighbor order.
 
 ## 🚀 Key Features
 

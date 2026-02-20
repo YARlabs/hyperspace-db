@@ -133,7 +133,7 @@ function RawDataView({ collection }: { collection: string }) {
 function SearchPlayground({ collection }: { collection: string }) {
     const [vectorInput, setVectorInput] = useState("[0.1, 0.2, 0.3]")
     const [topK, setTopK] = useState("5")
-    const [legacyFilterJson, setLegacyFilterJson] = useState("{}")
+    const [exactFilterJson, setExactFilterJson] = useState("{}")
     const [complexFiltersJson, setComplexFiltersJson] = useState("[]")
     const [res, setRes] = useState<any>(null)
     const [error, setError] = useState("")
@@ -169,10 +169,10 @@ function SearchPlayground({ collection }: { collection: string }) {
     const handleSearch = () => {
         try {
             const parsed = JSON.parse(vectorInput)
-            const parsedLegacy = JSON.parse(legacyFilterJson)
+            const parsedExact = JSON.parse(exactFilterJson)
             const parsedComplex = JSON.parse(complexFiltersJson)
             if (!Array.isArray(parsed)) throw new Error("Input must be an array")
-            if (typeof parsedLegacy !== "object" || parsedLegacy === null || Array.isArray(parsedLegacy)) {
+            if (typeof parsedExact !== "object" || parsedExact === null || Array.isArray(parsedExact)) {
                 throw new Error("Filter must be an object")
             }
             if (!Array.isArray(parsedComplex)) {
@@ -181,7 +181,7 @@ function SearchPlayground({ collection }: { collection: string }) {
             searchMutation.mutate({
                 vector: parsed,
                 top_k: Math.max(1, Number(topK) || 5),
-                filter: parsedLegacy,
+                filter: parsedExact,
                 filters: parsedComplex,
             })
         } catch (e: any) {
@@ -199,14 +199,14 @@ function SearchPlayground({ collection }: { collection: string }) {
             return
         }
         try {
-            const parsedLegacy = JSON.parse(legacyFilterJson)
+            const parsedExact = JSON.parse(exactFilterJson)
             const parsedComplex = JSON.parse(complexFiltersJson)
             traverseMutation.mutate({
                 start_id: sid,
                 layer: Math.max(0, layer),
                 max_depth: Math.max(0, depth),
                 max_nodes: Math.max(1, nodes),
-                filter: parsedLegacy,
+                filter: parsedExact,
                 filters: parsedComplex,
             })
         } catch (e: any) {
@@ -247,11 +247,11 @@ function SearchPlayground({ collection }: { collection: string }) {
                             />
                         </div>
                         <div className="grid w-full gap-2">
-                            <Label htmlFor="legacy-filter">Legacy Filter JSON (map)</Label>
+                            <Label htmlFor="exact-filter">Exact Filter JSON (map)</Label>
                             <textarea
                                 className="flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
-                                value={legacyFilterJson}
-                                onChange={(e) => setLegacyFilterJson(e.target.value)}
+                                value={exactFilterJson}
+                                onChange={(e) => setExactFilterJson(e.target.value)}
                             />
                         </div>
                         <div className="grid w-full gap-2">

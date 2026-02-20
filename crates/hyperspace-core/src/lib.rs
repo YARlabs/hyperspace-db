@@ -53,8 +53,8 @@ pub enum FilterExpr {
     },
     Range {
         key: String,
-        gte: Option<i64>,
-        lte: Option<i64>,
+        gte: Option<f64>,
+        lte: Option<f64>,
     },
 }
 
@@ -74,6 +74,23 @@ pub enum Durability {
     Async,
     Batch,
     Strict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VacuumFilterOp {
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    Eq,
+    Ne,
+}
+
+#[derive(Debug, Clone)]
+pub struct VacuumFilterQuery {
+    pub key: String,
+    pub op: VacuumFilterOp,
+    pub value: f64,
 }
 
 #[async_trait::async_trait]
@@ -118,9 +135,18 @@ pub trait Collection: Send + Sync + 'static {
         // Default: No-op for collections lacking optimization support.
         Ok(())
     }
+    async fn optimize_with_filter(&self, filter: Option<VacuumFilterQuery>) -> Result<(), String> {
+        let _ = filter;
+        self.optimize().await
+    }
     fn peek(&self, limit: usize)
         -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String>;
+    fn graph_neighbor_distances(
+        &self,
+        source_id: u32,
+        neighbor_ids: &[u32],
+    ) -> Result<Vec<f64>, String>;
     fn graph_traverse(
         &self,
         start_id: u32,
