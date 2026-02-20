@@ -3,6 +3,7 @@ pyproject.toml
 hyperspace/__init__.py
 hyperspace/client.py
 hyperspace/embedders.py
+hyperspace/math.py
 hyperspace/proto/__init__.py
 hyperspace/proto/hyperspace_pb2.py
 hyperspace/proto/hyperspace_pb2_grpc.py

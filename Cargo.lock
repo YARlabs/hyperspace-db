@@ -1258,7 +1258,7 @@ dependencies = [
  "chrono",
  "crossterm",
  "hyperspace-core",
- "hyperspace-proto",
+ "hyperspace-proto 2.2.1",
  "hyperspace-sdk",
  "rand 0.8.5",
  "ratatui",
@@ -1321,11 +1321,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperspace-proto"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1e6c438495c33e3ce49d94f9b7deb4178e5c8ae7f2ceffe9b882928a670d26c"
+dependencies = [
+ "prost",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
 name = "hyperspace-sdk"
 version = "2.2.1"
 dependencies = [
  "async-trait",
- "hyperspace-proto",
+ "hyperspace-proto 2.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest",
  "serde",
  "serde_json",
@@ -1348,7 +1359,7 @@ dependencies = [
  "hyperspace-core",
  "hyperspace-embed",
  "hyperspace-index",
- "hyperspace-proto",
+ "hyperspace-proto 2.2.1",
  "hyperspace-store",
  "mime_guess",
  "parking_lot",
