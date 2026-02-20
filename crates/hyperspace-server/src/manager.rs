@@ -230,6 +230,9 @@ impl CollectionManager {
             (1024, "poincare") => inst!(1024, PoincareMetric),
             (1536, "poincare") => inst!(1536, PoincareMetric),
             (2048, "poincare") => inst!(2048, PoincareMetric),
+            (3072, "poincare") => inst!(3072, PoincareMetric),
+            (4096, "poincare") => inst!(4096, PoincareMetric),
+            (8192, "poincare") => inst!(8192, PoincareMetric),
 
             // Euclidean (L2)
             (8, "euclidean" | "l2") => inst!(8, EuclideanMetric),
@@ -241,6 +244,9 @@ impl CollectionManager {
             (1024, "euclidean" | "l2") => inst!(1024, EuclideanMetric),
             (1536, "euclidean" | "l2") => inst!(1536, EuclideanMetric),
             (2048, "euclidean" | "l2") => inst!(2048, EuclideanMetric),
+            (3072, "euclidean" | "l2") => inst!(3072, EuclideanMetric),
+            (4096, "euclidean" | "l2") => inst!(4096, EuclideanMetric),
+            (8192, "euclidean" | "l2") => inst!(8192, EuclideanMetric),
 
             // Cosine Similarity
             (8, "cosine") => inst!(8, CosineMetric),
@@ -252,6 +258,9 @@ impl CollectionManager {
             (1024, "cosine") => inst!(1024, CosineMetric),
             (1536, "cosine") => inst!(1536, CosineMetric),
             (2048, "cosine") => inst!(2048, CosineMetric),
+            (3072, "cosine") => inst!(3072, CosineMetric),
+            (4096, "cosine") => inst!(4096, CosineMetric),
+            (8192, "cosine") => inst!(8192, CosineMetric),
 
             // Lorentz Model
             (8, "lorentz") => inst!(8, LorentzMetric),
@@ -263,6 +272,9 @@ impl CollectionManager {
             (1024, "lorentz") => inst!(1024, LorentzMetric),
             (1536, "lorentz") => inst!(1536, LorentzMetric),
             (2048, "lorentz") => inst!(2048, LorentzMetric),
+            (3072, "lorentz") => inst!(3072, LorentzMetric),
+            (4096, "lorentz") => inst!(4096, LorentzMetric),
+            (8192, "lorentz") => inst!(8192, LorentzMetric),
 
             _ => {
                 return Err(format!(
