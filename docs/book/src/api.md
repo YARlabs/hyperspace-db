@@ -44,6 +44,7 @@ message InsertRequest {
   uint32 id = 3;              // External ID
   map<string, string> metadata = 4; // Metadata tags
   DurabilityLevel durability = 7; // Durability override
+  map<string, MetadataValue> typed_metadata = 8; // Typed metadata (int/float/bool/string)
 }
 
 enum DurabilityLevel {
@@ -54,6 +55,8 @@ enum DurabilityLevel {
 }
 
 ```
+
+`typed_metadata` is the preferred metadata path for new clients. Legacy `metadata` remains for compatibility.
 
 #### `Search`
 Finds nearest neighbors.
@@ -75,6 +78,8 @@ message SearchRequest {
 }
 ```
 
+`SearchResult` now includes both `metadata` and `typed_metadata`.
+
 #### `SearchBatch`
 Finds nearest neighbors for multiple queries in a single RPC call.
 
@@ -91,6 +96,64 @@ message BatchSearchResponse {
 ```
 
 Recommended for high-concurrency clients and benchmarks to reduce per-request gRPC overhead.
+
+#### `SubscribeToEvents`
+Streams CDC events for post-insert/delete hooks.
+
+```protobuf
+rpc SubscribeToEvents (EventSubscriptionRequest) returns (stream EventMessage);
+
+enum EventType {
+  EVENT_UNKNOWN = 0;
+  VECTOR_INSERTED = 1;
+  VECTOR_DELETED = 2;
+}
+
+message EventSubscriptionRequest {
+  repeated EventType types = 1;
+  optional string collection = 2;
+}
+
+message EventMessage {
+  EventType type = 1;
+  oneof payload {
+    VectorInsertedEvent vector_inserted = 2;
+    VectorDeletedEvent vector_deleted = 3;
+  }
+}
+```
+
+Use this stream to build external pipelines (audit, Elasticsearch sync, graph projections, Neo4j updaters).
+
+#### `MetadataValue` (Typed Metadata)
+```protobuf
+message MetadataValue {
+  oneof kind {
+    string string_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+    bool bool_value = 4;
+  }
+}
+```
+
+#### `Graph Traversal API` (v2.3)
+```protobuf
+rpc GetNode (GetNodeRequest) returns (GraphNode);
+rpc GetNeighbors (GetNeighborsRequest) returns (GetNeighborsResponse);
+rpc GetConceptParents (GetConceptParentsRequest) returns (GetConceptParentsResponse);
+rpc Traverse (TraverseRequest) returns (TraverseResponse);
+rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClustersResponse);
+```
+
+Key safety guards:
+- `GetNeighborsRequest.limit` and `offset` for bounded pagination.
+- `TraverseRequest.max_depth` and `max_nodes` to prevent unbounded graph walks.
+- `FindSemanticClustersRequest.max_clusters` and `max_nodes` for bounded connected-component scans.
+
+`TraverseRequest` is filter-aware and supports both:
+- `filter` (`map<string,string>`)
+- `filters` (`Match` / `Range`)
 
 ---
 

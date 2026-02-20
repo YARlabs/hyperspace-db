@@ -18,11 +18,17 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     delete: IDatabaseService_IDelete;
     search: IDatabaseService_ISearch;
     searchBatch: IDatabaseService_ISearchBatch;
+    getNode: IDatabaseService_IGetNode;
+    getNeighbors: IDatabaseService_IGetNeighbors;
+    getConceptParents: IDatabaseService_IGetConceptParents;
+    traverse: IDatabaseService_ITraverse;
+    findSemanticClusters: IDatabaseService_IFindSemanticClusters;
     monitor: IDatabaseService_IMonitor;
     triggerSnapshot: IDatabaseService_ITriggerSnapshot;
     triggerVacuum: IDatabaseService_ITriggerVacuum;
     configure: IDatabaseService_IConfigure;
     replicate: IDatabaseService_IReplicate;
+    subscribeToEvents: IDatabaseService_ISubscribeToEvents;
     getDigest: IDatabaseService_IGetDigest;
     rebuildIndex: IDatabaseService_IRebuildIndex;
 }
@@ -117,6 +123,51 @@ interface IDatabaseService_ISearchBatch extends grpc.MethodDefinition<hyperspace
     responseSerialize: grpc.serialize<hyperspace_pb.BatchSearchResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.BatchSearchResponse>;
 }
+interface IDatabaseService_IGetNode extends grpc.MethodDefinition<hyperspace_pb.GetNodeRequest, hyperspace_pb.GraphNode> {
+    path: "/hyperspace.Database/GetNode";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.GetNodeRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.GetNodeRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.GraphNode>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.GraphNode>;
+}
+interface IDatabaseService_IGetNeighbors extends grpc.MethodDefinition<hyperspace_pb.GetNeighborsRequest, hyperspace_pb.GetNeighborsResponse> {
+    path: "/hyperspace.Database/GetNeighbors";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.GetNeighborsRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.GetNeighborsRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.GetNeighborsResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.GetNeighborsResponse>;
+}
+interface IDatabaseService_IGetConceptParents extends grpc.MethodDefinition<hyperspace_pb.GetConceptParentsRequest, hyperspace_pb.GetConceptParentsResponse> {
+    path: "/hyperspace.Database/GetConceptParents";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.GetConceptParentsRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.GetConceptParentsRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.GetConceptParentsResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.GetConceptParentsResponse>;
+}
+interface IDatabaseService_ITraverse extends grpc.MethodDefinition<hyperspace_pb.TraverseRequest, hyperspace_pb.TraverseResponse> {
+    path: "/hyperspace.Database/Traverse";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.TraverseRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.TraverseRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.TraverseResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.TraverseResponse>;
+}
+interface IDatabaseService_IFindSemanticClusters extends grpc.MethodDefinition<hyperspace_pb.FindSemanticClustersRequest, hyperspace_pb.FindSemanticClustersResponse> {
+    path: "/hyperspace.Database/FindSemanticClusters";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.FindSemanticClustersRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.FindSemanticClustersRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.FindSemanticClustersResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.FindSemanticClustersResponse>;
+}
 interface IDatabaseService_IMonitor extends grpc.MethodDefinition<hyperspace_pb.MonitorRequest, hyperspace_pb.SystemStats> {
     path: "/hyperspace.Database/Monitor";
     requestStream: false;
@@ -162,6 +213,15 @@ interface IDatabaseService_IReplicate extends grpc.MethodDefinition<hyperspace_p
     responseSerialize: grpc.serialize<hyperspace_pb.ReplicationLog>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.ReplicationLog>;
 }
+interface IDatabaseService_ISubscribeToEvents extends grpc.MethodDefinition<hyperspace_pb.EventSubscriptionRequest, hyperspace_pb.EventMessage> {
+    path: "/hyperspace.Database/SubscribeToEvents";
+    requestStream: false;
+    responseStream: true;
+    requestSerialize: grpc.serialize<hyperspace_pb.EventSubscriptionRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.EventSubscriptionRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.EventMessage>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.EventMessage>;
+}
 interface IDatabaseService_IGetDigest extends grpc.MethodDefinition<hyperspace_pb.DigestRequest, hyperspace_pb.DigestResponse> {
     path: "/hyperspace.Database/GetDigest";
     requestStream: false;
@@ -194,11 +254,17 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     delete: grpc.handleUnaryCall<hyperspace_pb.DeleteRequest, hyperspace_pb.DeleteResponse>;
     search: grpc.handleUnaryCall<hyperspace_pb.SearchRequest, hyperspace_pb.SearchResponse>;
     searchBatch: grpc.handleUnaryCall<hyperspace_pb.BatchSearchRequest, hyperspace_pb.BatchSearchResponse>;
+    getNode: grpc.handleUnaryCall<hyperspace_pb.GetNodeRequest, hyperspace_pb.GraphNode>;
+    getNeighbors: grpc.handleUnaryCall<hyperspace_pb.GetNeighborsRequest, hyperspace_pb.GetNeighborsResponse>;
+    getConceptParents: grpc.handleUnaryCall<hyperspace_pb.GetConceptParentsRequest, hyperspace_pb.GetConceptParentsResponse>;
+    traverse: grpc.handleUnaryCall<hyperspace_pb.TraverseRequest, hyperspace_pb.TraverseResponse>;
+    findSemanticClusters: grpc.handleUnaryCall<hyperspace_pb.FindSemanticClustersRequest, hyperspace_pb.FindSemanticClustersResponse>;
     monitor: grpc.handleServerStreamingCall<hyperspace_pb.MonitorRequest, hyperspace_pb.SystemStats>;
     triggerSnapshot: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
     triggerVacuum: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
     configure: grpc.handleUnaryCall<hyperspace_pb.ConfigUpdate, hyperspace_pb.StatusResponse>;
     replicate: grpc.handleServerStreamingCall<hyperspace_pb.ReplicationRequest, hyperspace_pb.ReplicationLog>;
+    subscribeToEvents: grpc.handleServerStreamingCall<hyperspace_pb.EventSubscriptionRequest, hyperspace_pb.EventMessage>;
     getDigest: grpc.handleUnaryCall<hyperspace_pb.DigestRequest, hyperspace_pb.DigestResponse>;
     rebuildIndex: grpc.handleUnaryCall<hyperspace_pb.RebuildIndexRequest, hyperspace_pb.StatusResponse>;
 }
@@ -234,6 +300,21 @@ export interface IDatabaseClient {
     searchBatch(request: hyperspace_pb.BatchSearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    getNode(request: hyperspace_pb.GetNodeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
+    getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
+    getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
+    getNeighbors(request: hyperspace_pb.GetNeighborsRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetNeighborsResponse) => void): grpc.ClientUnaryCall;
+    getNeighbors(request: hyperspace_pb.GetNeighborsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetNeighborsResponse) => void): grpc.ClientUnaryCall;
+    getNeighbors(request: hyperspace_pb.GetNeighborsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetNeighborsResponse) => void): grpc.ClientUnaryCall;
+    getConceptParents(request: hyperspace_pb.GetConceptParentsRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetConceptParentsResponse) => void): grpc.ClientUnaryCall;
+    getConceptParents(request: hyperspace_pb.GetConceptParentsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetConceptParentsResponse) => void): grpc.ClientUnaryCall;
+    getConceptParents(request: hyperspace_pb.GetConceptParentsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetConceptParentsResponse) => void): grpc.ClientUnaryCall;
+    traverse(request: hyperspace_pb.TraverseRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.TraverseResponse) => void): grpc.ClientUnaryCall;
+    traverse(request: hyperspace_pb.TraverseRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.TraverseResponse) => void): grpc.ClientUnaryCall;
+    traverse(request: hyperspace_pb.TraverseRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.TraverseResponse) => void): grpc.ClientUnaryCall;
+    findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
+    findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
+    findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
     monitor(request: hyperspace_pb.MonitorRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     monitor(request: hyperspace_pb.MonitorRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     triggerSnapshot(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
@@ -247,6 +328,8 @@ export interface IDatabaseClient {
     configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     replicate(request: hyperspace_pb.ReplicationRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
     replicate(request: hyperspace_pb.ReplicationRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
+    subscribeToEvents(request: hyperspace_pb.EventSubscriptionRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.EventMessage>;
+    subscribeToEvents(request: hyperspace_pb.EventSubscriptionRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.EventMessage>;
     getDigest(request: hyperspace_pb.DigestRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
@@ -287,6 +370,21 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public searchBatch(request: hyperspace_pb.BatchSearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     public searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     public searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    public getNode(request: hyperspace_pb.GetNodeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
+    public getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
+    public getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
+    public getNeighbors(request: hyperspace_pb.GetNeighborsRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetNeighborsResponse) => void): grpc.ClientUnaryCall;
+    public getNeighbors(request: hyperspace_pb.GetNeighborsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetNeighborsResponse) => void): grpc.ClientUnaryCall;
+    public getNeighbors(request: hyperspace_pb.GetNeighborsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetNeighborsResponse) => void): grpc.ClientUnaryCall;
+    public getConceptParents(request: hyperspace_pb.GetConceptParentsRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetConceptParentsResponse) => void): grpc.ClientUnaryCall;
+    public getConceptParents(request: hyperspace_pb.GetConceptParentsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetConceptParentsResponse) => void): grpc.ClientUnaryCall;
+    public getConceptParents(request: hyperspace_pb.GetConceptParentsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetConceptParentsResponse) => void): grpc.ClientUnaryCall;
+    public traverse(request: hyperspace_pb.TraverseRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.TraverseResponse) => void): grpc.ClientUnaryCall;
+    public traverse(request: hyperspace_pb.TraverseRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.TraverseResponse) => void): grpc.ClientUnaryCall;
+    public traverse(request: hyperspace_pb.TraverseRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.TraverseResponse) => void): grpc.ClientUnaryCall;
+    public findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
+    public findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
+    public findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
     public monitor(request: hyperspace_pb.MonitorRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     public monitor(request: hyperspace_pb.MonitorRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     public triggerSnapshot(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
@@ -300,6 +398,8 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public replicate(request: hyperspace_pb.ReplicationRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
     public replicate(request: hyperspace_pb.ReplicationRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.ReplicationLog>;
+    public subscribeToEvents(request: hyperspace_pb.EventSubscriptionRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.EventMessage>;
+    public subscribeToEvents(request: hyperspace_pb.EventSubscriptionRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.EventMessage>;
     public getDigest(request: hyperspace_pb.DigestRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     public getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;
     public getDigest(request: hyperspace_pb.DigestRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DigestResponse) => void): grpc.ClientUnaryCall;

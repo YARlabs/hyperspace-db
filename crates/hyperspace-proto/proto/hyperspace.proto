@@ -19,6 +19,12 @@ service Database {
   rpc Search (SearchRequest) returns (SearchResponse);
   // Batch Search (ANN)
   rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
+  // Graph Traversal API (v2.3)
+  rpc GetNode (GetNodeRequest) returns (GraphNode);
+  rpc GetNeighbors (GetNeighborsRequest) returns (GetNeighborsResponse);
+  rpc GetConceptParents (GetConceptParentsRequest) returns (GetConceptParentsResponse);
+  rpc Traverse (TraverseRequest) returns (TraverseResponse);
+  rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClustersResponse);
   // Stream statistics for TUI (Global or Collection tailored)
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
   
@@ -31,6 +37,8 @@ service Database {
   
   // Replication (Leader -> Follower)
   rpc Replicate (ReplicationRequest) returns (stream ReplicationLog);
+  // CDC/Event Stream (External subscribers)
+  rpc SubscribeToEvents (EventSubscriptionRequest) returns (stream EventMessage);
   rpc GetDigest (DigestRequest) returns (DigestResponse);
   rpc RebuildIndex (RebuildIndexRequest) returns (StatusResponse);
 }
@@ -56,6 +64,7 @@ message InsertOp {
   uint32 id = 1;
   repeated double vector = 2;
   map<string, string> metadata = 3;
+  map<string, MetadataValue> typed_metadata = 4;
 }
 
 message CreateCollectionOp {
@@ -134,12 +143,14 @@ message InsertRequest {
   uint64 logical_clock = 6;
 
   DurabilityLevel durability = 7;
+  map<string, MetadataValue> typed_metadata = 8;
 }
 
 message VectorData {
   repeated double vector = 1;
   uint32 id = 2;
   map<string, string> metadata = 3;
+  map<string, MetadataValue> typed_metadata = 4;
 }
 
 message BatchInsertRequest {
@@ -216,6 +227,118 @@ message SearchResult {
   uint32 id = 1;
   double distance = 2;
   map<string, string> metadata = 3;
+  map<string, MetadataValue> typed_metadata = 4;
+}
+
+message GetNodeRequest {
+  string collection = 1;
+  uint32 id = 2;
+  uint32 layer = 3;
+}
+
+message GraphNode {
+  uint32 id = 1;
+  uint32 layer = 2;
+  repeated uint32 neighbors = 3;
+  map<string, string> metadata = 4;
+  map<string, MetadataValue> typed_metadata = 5;
+}
+
+message GetNeighborsRequest {
+  string collection = 1;
+  uint32 id = 2;
+  uint32 layer = 3;
+  uint32 limit = 4;
+  uint32 offset = 5;
+}
+
+message GetNeighborsResponse {
+  repeated GraphNode neighbors = 1;
+}
+
+message TraverseRequest {
+  string collection = 1;
+  uint32 start_id = 2;
+  uint32 max_depth = 3;
+  uint32 max_nodes = 4;
+  uint32 layer = 5;
+  map<string, string> filter = 6;
+  repeated Filter filters = 7;
+}
+
+message TraverseResponse {
+  repeated GraphNode nodes = 1;
+}
+
+message FindSemanticClustersRequest {
+  string collection = 1;
+  uint32 layer = 2;
+  uint32 min_cluster_size = 3;
+  uint32 max_clusters = 4;
+  uint32 max_nodes = 5;
+}
+
+message GetConceptParentsRequest {
+  string collection = 1;
+  uint32 id = 2;
+  uint32 layer = 3;
+  uint32 limit = 4;
+}
+
+message GetConceptParentsResponse {
+  repeated GraphNode parents = 1;
+}
+
+message GraphCluster {
+  repeated uint32 node_ids = 1;
+}
+
+message FindSemanticClustersResponse {
+  repeated GraphCluster clusters = 1;
+}
+
+message MetadataValue {
+  oneof kind {
+    string string_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+    bool bool_value = 4;
+  }
+}
+
+enum EventType {
+  EVENT_UNKNOWN = 0;
+  VECTOR_INSERTED = 1;
+  VECTOR_DELETED = 2;
+}
+
+message EventSubscriptionRequest {
+  repeated EventType types = 1;
+  optional string collection = 2;
+}
+
+message VectorInsertedEvent {
+  uint32 id = 1;
+  string collection = 2;
+  uint64 logical_clock = 3;
+  string origin_node_id = 4;
+  map<string, string> metadata = 5;
+  map<string, MetadataValue> typed_metadata = 6;
+}
+
+message VectorDeletedEvent {
+  uint32 id = 1;
+  string collection = 2;
+  uint64 logical_clock = 3;
+  string origin_node_id = 4;
+}
+
+message EventMessage {
+  EventType type = 1;
+  oneof payload {
+    VectorInsertedEvent vector_inserted = 2;
+    VectorDeletedEvent vector_deleted = 3;
+  }
 }
 
 message Empty {}

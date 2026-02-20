@@ -1,7 +1,9 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
-    BatchInsertRequest, BatchSearchRequest, DurabilityLevel, InsertRequest, SearchRequest,
-    SearchResponse, SearchResult, VectorData,
+    BatchInsertRequest, BatchSearchRequest, DurabilityLevel, FindSemanticClustersRequest,
+    FindSemanticClustersResponse, GetConceptParentsRequest, GetConceptParentsResponse,
+    GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GraphNode, InsertRequest,
+    SearchRequest, SearchResponse, SearchResult, TraverseRequest, TraverseResponse, VectorData,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -170,6 +172,7 @@ impl Client {
             id,
             vector,
             metadata,
+            typed_metadata: std::collections::HashMap::new(),
             collection: collection.unwrap_or_default(),
             origin_node_id: String::new(),
             logical_clock: 0,
@@ -210,6 +213,7 @@ impl Client {
                 id,
                 vector,
                 metadata,
+                typed_metadata: std::collections::HashMap::new(),
             })
             .collect();
         let req = BatchInsertRequest {
@@ -373,6 +377,93 @@ impl Client {
         };
         let resp = self.inner.delete(req).await?;
         Ok(resp.into_inner().success)
+    }
+
+    /// Returns a graph node with adjacency on a specific layer.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn get_node(
+        &mut self,
+        id: u32,
+        layer: u32,
+        collection: Option<String>,
+    ) -> Result<GraphNode, tonic::Status> {
+        let req = GetNodeRequest {
+            collection: collection.unwrap_or_default(),
+            id,
+            layer,
+        };
+        let resp = self.inner.get_node(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Returns neighbors for a node with pagination.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn get_neighbors(
+        &mut self,
+        id: u32,
+        layer: u32,
+        limit: u32,
+        offset: u32,
+        collection: Option<String>,
+    ) -> Result<GetNeighborsResponse, tonic::Status> {
+        let req = GetNeighborsRequest {
+            collection: collection.unwrap_or_default(),
+            id,
+            layer,
+            limit,
+            offset,
+        };
+        let resp = self.inner.get_neighbors(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Traverses graph from a start node with depth and node guards.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn traverse(
+        &mut self,
+        req: TraverseRequest,
+    ) -> Result<TraverseResponse, tonic::Status> {
+        let resp = self.inner.traverse(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Finds connected components as semantic clusters.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn find_semantic_clusters(
+        &mut self,
+        req: FindSemanticClustersRequest,
+    ) -> Result<FindSemanticClustersResponse, tonic::Status> {
+        let resp = self.inner.find_semantic_clusters(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Returns parent-like neighbors for concept-style traversals.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn get_concept_parents(
+        &mut self,
+        id: u32,
+        layer: u32,
+        limit: u32,
+        collection: Option<String>,
+    ) -> Result<GetConceptParentsResponse, tonic::Status> {
+        let req = GetConceptParentsRequest {
+            collection: collection.unwrap_or_default(),
+            id,
+            layer,
+            limit,
+        };
+        let resp = self.inner.get_concept_parents(req).await?;
+        Ok(resp.into_inner())
     }
 
     /// Configures collection parameters.

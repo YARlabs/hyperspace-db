@@ -1,11 +1,6 @@
 # The Hyperbolic Geometry
 
-HyperspaceDB supports two hyperbolic formulations:
-
-- **Poincaré ball**
-- **Lorentz (hyperboloid)**
-
-Both are suited for hierarchical data where volume grows exponentially with radius.
+HyperspaceDB operates in the **Poincaré Ball Model** & **Lorentz (hyperboloid)** of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of "space" available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.
 
 ## The Distance Formula
 

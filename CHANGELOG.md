@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-02-17
+
+### Added
+* **Graph Traversal API (initial production-safe release)**:
+    * Added gRPC methods: `GetNode`, `GetNeighbors`, `GetConceptParents`, `Traverse`, `FindSemanticClusters`.
+    * Added graph payload models: `GraphNode`, `GraphCluster`, traversal/cluster request-response types.
+    * Implemented server-side graph access to HNSW layers with guards (`max_depth`, `max_nodes`, `max_clusters`).
+    * Added `offset` + `limit` pagination model for neighbor listing.
+* **CDC/Event Stream hardening**:
+    * Added `SubscribeToEvents` streaming endpoint.
+    * Streams `VectorInserted` and `VectorDeleted` events for external hooks/microservices.
+* **Typed Metadata API surface**:
+    * Added `MetadataValue` (string/int64/double/bool) in protobuf.
+    * Added `typed_metadata` to insert/search/replication event contracts.
+
+### Changed
+* **Storage optimization**:
+    * Added optional raw storage mode `HS_STORAGE_FLOAT32` (`mode=none` only).
+    * Raw vectors can be stored in `f32` and promoted to `f64` in the distance path.
+* **Dimension support expansion**:
+    * Added/confirmed large-dimension collection support in manager wiring: `3072`, `4096`, `8192`.
+* **Filter-aware traversal**:
+    * Added graph traversal filtering via `filter` and `filters` (`Match` / `Range`) in `TraverseRequest`.
+* **SDK coverage**:
+    * Added graph traversal methods to Python, TypeScript and Rust SDK clients.
+
+### Fixed
+* **Compatibility path**:
+    * Preserved legacy string metadata behavior while enabling typed metadata roundtrip.
+* **Validation and tooling**:
+    * Added graph correctness tests and traversal benchmark baseline script.
+
 ## [2.1.0] - 2026-02-17
 
 ### Added

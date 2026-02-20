@@ -120,6 +120,22 @@ pub trait Collection: Send + Sync + 'static {
     }
     fn peek(&self, limit: usize)
         -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
+    fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String>;
+    fn graph_traverse(
+        &self,
+        start_id: u32,
+        layer: usize,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<u32>, String>;
+    fn graph_clusters(
+        &self,
+        layer: usize,
+        min_cluster_size: usize,
+        max_clusters: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<Vec<u32>>, String>;
+    fn metadata_by_id(&self, id: u32) -> std::collections::HashMap<String, String>;
     fn quantization_mode(&self) -> QuantizationMode;
 }
 

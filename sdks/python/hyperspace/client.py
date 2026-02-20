@@ -48,6 +48,19 @@ class HyperspaceClient:
         # Keep explicit list conversion once per request.
         return list(vector)
 
+    @staticmethod
+    def _to_proto_metadata_value(value):
+        mv = hyperspace_pb2.MetadataValue()
+        if isinstance(value, bool):
+            mv.bool_value = value
+        elif isinstance(value, int) and not isinstance(value, bool):
+            mv.int_value = value
+        elif isinstance(value, float):
+            mv.double_value = value
+        else:
+            mv.string_value = str(value)
+        return mv
+
     # ... (create/delete/list unchanged) ...
 
     def create_collection(self, name: str, dimension: int, metric: str) -> bool:
@@ -88,7 +101,7 @@ class HyperspaceClient:
         except grpc.RpcError:
             return {}
 
-    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if vector is None and document is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -108,6 +121,9 @@ class HyperspaceClient:
         )
         if metadata:
             req.metadata.update(metadata)
+        if typed_metadata:
+            for k, v in typed_metadata.items():
+                req.typed_metadata[k].CopyFrom(self._to_proto_metadata_value(v))
         try:
             resp = self.stub.Insert(req, metadata=self.metadata)
             return resp.success
@@ -115,30 +131,38 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+    def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, typed_metadatas: List[Dict[str, object]] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if len(vectors) != len(ids):
              raise ValueError("Vectors and IDs length mismatch")
         
         proto_vectors = []
-        if metadatas is None:
+        if metadatas is None and typed_metadatas is None:
             for v, i in zip(vectors, ids):
                 proto_vectors.append(hyperspace_pb2.VectorData(
                     vector=self._normalize_vector(v),
                     id=i
                 ))
         else:
-            for v, i, m in zip(vectors, ids, metadatas):
+            if metadatas is None:
+                metadatas = [{} for _ in vectors]
+            if typed_metadatas is None:
+                typed_metadatas = [{} for _ in vectors]
+            for v, i, m, tm in zip(vectors, ids, metadatas, typed_metadatas):
                 if m:
-                    proto_vectors.append(hyperspace_pb2.VectorData(
+                    vd = hyperspace_pb2.VectorData(
                         vector=self._normalize_vector(v),
                         id=i,
                         metadata=m
-                    ))
+                    )
                 else:
-                    proto_vectors.append(hyperspace_pb2.VectorData(
+                    vd = hyperspace_pb2.VectorData(
                         vector=self._normalize_vector(v),
                         id=i
-                    ))
+                    )
+                if tm:
+                    for k, val in tm.items():
+                        vd.typed_metadata[k].CopyFrom(self._to_proto_metadata_value(val))
+                proto_vectors.append(vd)
 
         req = hyperspace_pb2.BatchInsertRequest(
             collection=collection,
@@ -203,7 +227,8 @@ class HyperspaceClient:
                 {
                     "id": r.id,
                     "distance": r.distance,
-                    "metadata": (dict(r.metadata) if r.metadata else {})
+                    "metadata": (dict(r.metadata) if r.metadata else {}),
+                    "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {}
                 }
                 for r in resp.results
             ]
@@ -237,6 +262,7 @@ class HyperspaceClient:
                             "id": r.id,
                             "distance": r.distance,
                             "metadata": (dict(r.metadata) if r.metadata else {}),
+                            "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {},
                         }
                         for r in search_resp.results
                     ]
@@ -297,6 +323,119 @@ class HyperspaceClient:
         except grpc.RpcError as e:
             print(f"RPC Error: {e}")
             return {}
+
+    def get_node(self, id: int, layer: int = 0, collection: str = "") -> Dict:
+        req = hyperspace_pb2.GetNodeRequest(collection=collection, id=id, layer=layer)
+        try:
+            resp = self.stub.GetNode(req, metadata=self.metadata)
+            return {
+                "id": resp.id,
+                "layer": resp.layer,
+                "neighbors": list(resp.neighbors),
+                "metadata": dict(resp.metadata),
+                "typed_metadata": dict(resp.typed_metadata),
+            }
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return {}
+
+    def get_neighbors(self, id: int, layer: int = 0, limit: int = 64, offset: int = 0, collection: str = "") -> List[Dict]:
+        req = hyperspace_pb2.GetNeighborsRequest(
+            collection=collection, id=id, layer=layer, limit=limit, offset=offset
+        )
+        try:
+            resp = self.stub.GetNeighbors(req, metadata=self.metadata)
+            return [
+                {
+                    "id": n.id,
+                    "layer": n.layer,
+                    "neighbors": list(n.neighbors),
+                    "metadata": dict(n.metadata),
+                    "typed_metadata": dict(n.typed_metadata),
+                }
+                for n in resp.neighbors
+            ]
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
+
+    def get_concept_parents(self, id: int, layer: int = 0, limit: int = 32, collection: str = "") -> List[Dict]:
+        req = hyperspace_pb2.GetConceptParentsRequest(
+            collection=collection, id=id, layer=layer, limit=limit
+        )
+        try:
+            resp = self.stub.GetConceptParents(req, metadata=self.metadata)
+            return [
+                {
+                    "id": n.id,
+                    "layer": n.layer,
+                    "neighbors": list(n.neighbors),
+                    "metadata": dict(n.metadata),
+                    "typed_metadata": dict(n.typed_metadata),
+                }
+                for n in resp.parents
+            ]
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
+
+    def traverse(self, start_id: int, max_depth: int = 2, max_nodes: int = 256, layer: int = 0, filter: Dict[str, str] = None, filters: List[Dict] = None, collection: str = "") -> List[Dict]:
+        req = hyperspace_pb2.TraverseRequest(
+            collection=collection,
+            start_id=start_id,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            layer=layer,
+        )
+        if filter:
+            req.filter.update(filter)
+        if filters:
+            for f in filters:
+                if f.get("type") == "match":
+                    req.filters.append(
+                        hyperspace_pb2.Filter(
+                            match=hyperspace_pb2.Match(key=f["key"], value=f["value"])
+                        )
+                    )
+                elif f.get("type") == "range":
+                    kwargs = {"key": f["key"]}
+                    if "gte" in f:
+                        kwargs["gte"] = int(f["gte"])
+                    if "lte" in f:
+                        kwargs["lte"] = int(f["lte"])
+                    req.filters.append(
+                        hyperspace_pb2.Filter(range=hyperspace_pb2.Range(**kwargs))
+                    )
+        try:
+            resp = self.stub.Traverse(req, metadata=self.metadata)
+            return [
+                {
+                    "id": n.id,
+                    "layer": n.layer,
+                    "neighbors": list(n.neighbors),
+                    "metadata": dict(n.metadata),
+                    "typed_metadata": dict(n.typed_metadata),
+                }
+                for n in resp.nodes
+            ]
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
+
+    def find_semantic_clusters(self, layer: int = 0, min_cluster_size: int = 3, max_clusters: int = 32, max_nodes: int = 10000, collection: str = "") -> List[List[int]]:
+        req = hyperspace_pb2.FindSemanticClustersRequest(
+            collection=collection,
+            layer=layer,
+            min_cluster_size=min_cluster_size,
+            max_clusters=max_clusters,
+            max_nodes=max_nodes,
+        )
+        try:
+            resp = self.stub.FindSemanticClusters(req, metadata=self.metadata)
+            return [list(cluster.node_ids) for cluster in resp.clusters]
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
 
     def close(self):
         self.channel.close()

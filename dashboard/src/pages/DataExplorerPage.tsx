@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSearchParams } from "react-router-dom"
 import { Code, Play, AlertCircle } from "lucide-react"
@@ -131,11 +132,19 @@ function RawDataView({ collection }: { collection: string }) {
 
 function SearchPlayground({ collection }: { collection: string }) {
     const [vectorInput, setVectorInput] = useState("[0.1, 0.2, 0.3]")
+    const [topK, setTopK] = useState("5")
+    const [legacyFilterJson, setLegacyFilterJson] = useState("{}")
+    const [complexFiltersJson, setComplexFiltersJson] = useState("[]")
     const [res, setRes] = useState<any>(null)
     const [error, setError] = useState("")
+    const [graphRes, setGraphRes] = useState<any>(null)
+    const [startId, setStartId] = useState("1")
+    const [graphLayer, setGraphLayer] = useState("0")
+    const [graphDepth, setGraphDepth] = useState("2")
+    const [graphNodes, setGraphNodes] = useState("128")
 
     const searchMutation = useMutation({
-        mutationFn: (vec: number[]) => api.post(`/collections/${collection}/search`, { vector: vec, top_k: 5 }),
+        mutationFn: (payload: any) => api.post(`/collections/${collection}/search`, payload),
         onSuccess: (data) => {
             const payload = data.data
             const normalized = Array.isArray(payload) ? payload : (payload?.results || [])
@@ -145,73 +154,234 @@ function SearchPlayground({ collection }: { collection: string }) {
         onError: (err: any) => { setError(err.message || "Search Failed"); setRes(null) }
     })
 
+    const traverseMutation = useMutation({
+        mutationFn: (payload: any) => api.post(`/collections/${collection}/graph/traverse`, payload),
+        onSuccess: (data) => {
+            setGraphRes(data.data)
+            setError("")
+        },
+        onError: (err: any) => {
+            setError(err.message || "Traverse failed")
+            setGraphRes(null)
+        }
+    })
+
     const handleSearch = () => {
         try {
             const parsed = JSON.parse(vectorInput)
+            const parsedLegacy = JSON.parse(legacyFilterJson)
+            const parsedComplex = JSON.parse(complexFiltersJson)
             if (!Array.isArray(parsed)) throw new Error("Input must be an array")
-            searchMutation.mutate(parsed)
+            if (typeof parsedLegacy !== "object" || parsedLegacy === null || Array.isArray(parsedLegacy)) {
+                throw new Error("Filter must be an object")
+            }
+            if (!Array.isArray(parsedComplex)) {
+                throw new Error("Filters must be an array")
+            }
+            searchMutation.mutate({
+                vector: parsed,
+                top_k: Math.max(1, Number(topK) || 5),
+                filter: parsedLegacy,
+                filters: parsedComplex,
+            })
         } catch (e: any) {
             setError("Invalid JSON format: " + e.message)
         }
     }
 
-    return (
-        <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Query Vector</CardTitle>
-                    <CardDescription>Enter a raw JSON vector array</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid w-full gap-2">
-                        <Label htmlFor="vector">Vector JSON</Label>
-                        <textarea
-                            className="flex min-h-[150px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 font-mono"
-                            value={vectorInput}
-                            onChange={(e) => setVectorInput(e.target.value)}
-                        />
-                    </div>
-                    {error && <div className="text-sm text-destructive flex gap-2 items-center"><AlertCircle className="h-4 w-4" /> {error}</div>}
-                    <Button onClick={handleSearch} disabled={searchMutation.isPending} className="w-full">
-                        {searchMutation.isPending ? "Searching..." : "Execute Search"}
-                        {!searchMutation.isPending && <Play className="ml-2 h-4 w-4" />}
-                    </Button>
-                </CardContent>
-            </Card>
+    const handleTraverse = () => {
+        const sid = Number(startId)
+        const layer = Number(graphLayer)
+        const depth = Number(graphDepth)
+        const nodes = Number(graphNodes)
+        if (Number.isNaN(sid) || Number.isNaN(layer) || Number.isNaN(depth) || Number.isNaN(nodes)) {
+            setError("Graph inputs must be valid numbers")
+            return
+        }
+        try {
+            const parsedLegacy = JSON.parse(legacyFilterJson)
+            const parsedComplex = JSON.parse(complexFiltersJson)
+            traverseMutation.mutate({
+                start_id: sid,
+                layer: Math.max(0, layer),
+                max_depth: Math.max(0, depth),
+                max_nodes: Math.max(1, nodes),
+                filter: parsedLegacy,
+                filters: parsedComplex,
+            })
+        } catch (e: any) {
+            setError("Invalid filter JSON format: " + e.message)
+        }
+    }
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Results</CardTitle>
-                    <CardDescription>Nearest neighbors (HNSW)</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {res ? (
-                        <div className="rounded-md border">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>ID</TableHead>
-                                        <TableHead>Distance</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {res.map((r: any) => (
-                                        <TableRow key={r.id}>
-                                            <TableCell className="font-mono">{r.id}</TableCell>
-                                            <TableCell className="font-mono text-green-400 font-bold">{r.distance.toFixed(6)}</TableCell>
+    return (
+        <Tabs defaultValue="vector-search" className="space-y-4">
+            <TabsList>
+                <TabsTrigger value="vector-search">Vector Search</TabsTrigger>
+                <TabsTrigger value="graph-traverse">Graph Traverse</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="vector-search" className="grid gap-6 md:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Query Vector</CardTitle>
+                        <CardDescription>Use filters and inspect typed metadata</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="grid gap-2">
+                                <Label htmlFor="topk">Top K</Label>
+                                <Input id="topk" value={topK} onChange={(e) => setTopK(e.target.value)} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="collection">Collection</Label>
+                                <Input id="collection" value={collection} disabled />
+                            </div>
+                        </div>
+                        <div className="grid w-full gap-2">
+                            <Label htmlFor="vector">Vector JSON</Label>
+                            <textarea
+                                className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+                                value={vectorInput}
+                                onChange={(e) => setVectorInput(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid w-full gap-2">
+                            <Label htmlFor="legacy-filter">Legacy Filter JSON (map)</Label>
+                            <textarea
+                                className="flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
+                                value={legacyFilterJson}
+                                onChange={(e) => setLegacyFilterJson(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid w-full gap-2">
+                            <Label htmlFor="complex-filters">Complex Filters JSON (array)</Label>
+                            <textarea
+                                className="flex min-h-[90px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
+                                value={complexFiltersJson}
+                                onChange={(e) => setComplexFiltersJson(e.target.value)}
+                            />
+                        </div>
+                        {error && <div className="text-sm text-destructive flex gap-2 items-center"><AlertCircle className="h-4 w-4" /> {error}</div>}
+                        <Button onClick={handleSearch} disabled={searchMutation.isPending} className="w-full">
+                            {searchMutation.isPending ? "Searching..." : "Execute Search"}
+                            {!searchMutation.isPending && <Play className="ml-2 h-4 w-4" />}
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Results</CardTitle>
+                        <CardDescription>Nearest neighbors (with metadata + typed metadata)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {res ? (
+                            <div className="rounded-md border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>ID</TableHead>
+                                            <TableHead>Distance</TableHead>
+                                            <TableHead>Metadata</TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {res.map((r: any) => (
+                                            <TableRow key={r.id}>
+                                                <TableCell className="font-mono">{r.id}</TableCell>
+                                                <TableCell className="font-mono text-green-400 font-bold">{Number(r.distance).toFixed(6)}</TableCell>
+                                                <TableCell className="align-top">
+                                                    <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap">
+{JSON.stringify({ metadata: r.metadata || {}, typed_metadata: r.typed_metadata || {} }, null, 2)}
+                                                    </pre>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ) : (
+                            <div className="flex h-[200px] items-center justify-center text-muted-foreground text-sm flex-col gap-2">
+                                <Code className="h-8 w-8 opacity-20" />
+                                Run a search to see k-NN results
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
+            <TabsContent value="graph-traverse" className="grid gap-6 md:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Graph Traverse</CardTitle>
+                        <CardDescription>Debug HNSW topology through traversal API</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="grid gap-2">
+                                <Label>Start ID</Label>
+                                <Input value={startId} onChange={(e) => setStartId(e.target.value)} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Layer</Label>
+                                <Input value={graphLayer} onChange={(e) => setGraphLayer(e.target.value)} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Max Depth</Label>
+                                <Input value={graphDepth} onChange={(e) => setGraphDepth(e.target.value)} />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Max Nodes</Label>
+                                <Input value={graphNodes} onChange={(e) => setGraphNodes(e.target.value)} />
+                            </div>
                         </div>
-                    ) : (
-                        <div className="flex h-[200px] items-center justify-center text-muted-foreground text-sm flex-col gap-2">
-                            <Code className="h-8 w-8 opacity-20" />
-                            Run a search to see k-NN results
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
+                        {error && <div className="text-sm text-destructive flex gap-2 items-center"><AlertCircle className="h-4 w-4" /> {error}</div>}
+                        <Button onClick={handleTraverse} disabled={traverseMutation.isPending} className="w-full">
+                            {traverseMutation.isPending ? "Traversing..." : "Run Traverse"}
+                            {!traverseMutation.isPending && <Play className="ml-2 h-4 w-4" />}
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Traverse Result</CardTitle>
+                        <CardDescription>Nodes reached with adjacency snapshot</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {graphRes ? (
+                            <div className="rounded-md border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>ID</TableHead>
+                                            <TableHead>Layer</TableHead>
+                                            <TableHead>Neighbors</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {graphRes.map((n: any) => (
+                                            <TableRow key={n.id}>
+                                                <TableCell className="font-mono">{n.id}</TableCell>
+                                                <TableCell className="font-mono">{n.layer}</TableCell>
+                                                <TableCell className="font-mono text-xs text-muted-foreground">
+                                                    [{(n.neighbors || []).slice(0, 12).join(", ")}{(n.neighbors || []).length > 12 ? ", ..." : ""}]
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ) : (
+                            <div className="flex h-[200px] items-center justify-center text-muted-foreground text-sm flex-col gap-2">
+                                <Code className="h-8 w-8 opacity-20" />
+                                Run traversal to inspect graph nodes
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </TabsContent>
+        </Tabs>
     )
 }

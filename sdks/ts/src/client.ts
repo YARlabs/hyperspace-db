@@ -6,7 +6,12 @@ import {
     CreateCollectionRequest, DeleteCollectionRequest, Empty,
     DurabilityLevel,
     BatchInsertRequest, // New
-    VectorData // New
+    VectorData,
+    GetNodeRequest,
+    GetNeighborsRequest,
+    TraverseRequest,
+    FindSemanticClustersRequest,
+    GetConceptParentsRequest
 } from './proto/hyperspace_pb';
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
 
@@ -20,6 +25,13 @@ export interface Filter {
 export interface SearchResult {
     id: number;
     distance: number;
+    metadata: { [key: string]: string };
+}
+
+export interface GraphNode {
+    id: number;
+    layer: number;
+    neighbors: number[];
     metadata: { [key: string]: string };
 }
 
@@ -235,6 +247,172 @@ export class HyperspaceClient {
                     stateHash: resp.getStateHash(),
                     count: resp.getCount()
                 });
+            });
+        });
+    }
+
+    public getNode(id: number, layer: number = 0, collection: string = ''): Promise<GraphNode> {
+        return new Promise((resolve, reject) => {
+            const req = new GetNodeRequest();
+            req.setCollection(collection);
+            req.setId(id);
+            req.setLayer(layer);
+
+            this.client.getNode(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const metaMap = resp.getMetadataMap();
+                const metadata: { [key: string]: string } = {};
+                if (metaMap.getLength() > 0) {
+                    metaMap.forEach((entry: string, key: string) => {
+                        metadata[key] = entry;
+                    });
+                }
+                resolve({
+                    id: resp.getId(),
+                    layer: resp.getLayer(),
+                    neighbors: resp.getNeighborsList(),
+                    metadata
+                });
+            });
+        });
+    }
+
+    public getNeighbors(id: number, layer: number = 0, limit: number = 64, offset: number = 0, collection: string = ''): Promise<GraphNode[]> {
+        return new Promise((resolve, reject) => {
+            const req = new GetNeighborsRequest();
+            req.setCollection(collection);
+            req.setId(id);
+            req.setLayer(layer);
+            req.setLimit(limit);
+            req.setOffset(offset);
+
+            this.client.getNeighbors(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const nodes = resp.getNeighborsList().map((n) => {
+                    const metaMap = n.getMetadataMap();
+                    const metadata: { [key: string]: string } = {};
+                    if (metaMap.getLength() > 0) {
+                        metaMap.forEach((entry: string, key: string) => {
+                            metadata[key] = entry;
+                        });
+                    }
+                    return {
+                        id: n.getId(),
+                        layer: n.getLayer(),
+                        neighbors: n.getNeighborsList(),
+                        metadata
+                    };
+                });
+                resolve(nodes);
+            });
+        });
+    }
+
+    public getConceptParents(id: number, layer: number = 0, limit: number = 32, collection: string = ''): Promise<GraphNode[]> {
+        return new Promise((resolve, reject) => {
+            const req = new GetConceptParentsRequest();
+            req.setCollection(collection);
+            req.setId(id);
+            req.setLayer(layer);
+            req.setLimit(limit);
+
+            this.client.getConceptParents(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const nodes = resp.getParentsList().map((n) => {
+                    const metaMap = n.getMetadataMap();
+                    const metadata: { [key: string]: string } = {};
+                    if (metaMap.getLength() > 0) {
+                        metaMap.forEach((entry: string, key: string) => {
+                            metadata[key] = entry;
+                        });
+                    }
+                    return {
+                        id: n.getId(),
+                        layer: n.getLayer(),
+                        neighbors: n.getNeighborsList(),
+                        metadata
+                    };
+                });
+                resolve(nodes);
+            });
+        });
+    }
+
+    public traverse(
+        startId: number,
+        layer: number = 0,
+        maxDepth: number = 2,
+        maxNodes: number = 256,
+        collection: string = '',
+        options?: { filter?: { [key: string]: string }, filters?: Filter[] }
+    ): Promise<GraphNode[]> {
+        return new Promise((resolve, reject) => {
+            const req = new TraverseRequest();
+            req.setCollection(collection);
+            req.setStartId(startId);
+            req.setLayer(layer);
+            req.setMaxDepth(maxDepth);
+            req.setMaxNodes(maxNodes);
+            if (options?.filter) {
+                const map = req.getFilterMap();
+                for (const k in options.filter) {
+                    map.set(k, options.filter[k]);
+                }
+            }
+            if (options?.filters) {
+                const protoFilters = options.filters.map(f => {
+                    const pf = new hyperspace_pb.Filter();
+                    if (f.match) {
+                        const m = new hyperspace_pb.Match();
+                        m.setKey(f.match.key);
+                        m.setValue(f.match.value);
+                        pf.setMatch(m);
+                    } else if (f.range) {
+                        const r = new hyperspace_pb.Range();
+                        r.setKey(f.range.key);
+                        if (f.range.gte !== undefined) r.setGte(f.range.gte);
+                        if (f.range.lte !== undefined) r.setLte(f.range.lte);
+                        pf.setRange(r);
+                    }
+                    return pf;
+                });
+                req.setFiltersList(protoFilters);
+            }
+
+            this.client.traverse(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const nodes = resp.getNodesList().map((n) => {
+                    const metaMap = n.getMetadataMap();
+                    const metadata: { [key: string]: string } = {};
+                    if (metaMap.getLength() > 0) {
+                        metaMap.forEach((entry: string, key: string) => {
+                            metadata[key] = entry;
+                        });
+                    }
+                    return {
+                        id: n.getId(),
+                        layer: n.getLayer(),
+                        neighbors: n.getNeighborsList(),
+                        metadata
+                    };
+                });
+                resolve(nodes);
+            });
+        });
+    }
+
+    public findSemanticClusters(layer: number = 0, minClusterSize: number = 3, maxClusters: number = 32, maxNodes: number = 10000, collection: string = ''): Promise<number[][]> {
+        return new Promise((resolve, reject) => {
+            const req = new FindSemanticClustersRequest();
+            req.setCollection(collection);
+            req.setLayer(layer);
+            req.setMinClusterSize(minClusterSize);
+            req.setMaxClusters(maxClusters);
+            req.setMaxNodes(maxNodes);
+
+            this.client.findSemanticClusters(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getClustersList().map((c) => c.getNodeIdsList()));
             });
         });
     }

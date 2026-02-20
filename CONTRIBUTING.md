@@ -82,8 +82,9 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 
 * **v2.0**: ✅ **Serverless Core**. Idle unloading, cold start, multi-tenancy, and Jemalloc tuning. *Completed.*
 * **v2.1**: ✅ **Data-Plane Throughput Upgrade**. Batch search API, Lorentz metric integration, SDK/doc refresh. *Completed.*
-* **v2.2**: **Storage Tiering (S3/Blob)**. Automatic backup of idle collections to object storage.
-* **v2.3**: **Hyperbolic Graph Traversal API** (planned). Graph-native traversal endpoints and neighborhood/cluster primitives (not fully implemented yet).
+* **v2.2**: ✅ **Hyperbolic Graph Traversal API** (planned). Graph-native traversal endpoints and neighborhood/cluster primitives (not fully implemented yet). *Completed.*
+* **v2.3**: **Storage Tiering (S3/Blob)**. Automatic backup of idle collections to object storage.
+
 
 ### Phase 3: Collective Intelligence (v3.x)
 *The goal: Beyond storage. The "Digital Thalamus" realization.*

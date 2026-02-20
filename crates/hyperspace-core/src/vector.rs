@@ -14,6 +14,15 @@ pub struct HyperVector<const N: usize> {
     pub alpha: f64, // Precomputed coefficient: 1 / (1 - ||x||^2)
 }
 
+/// Memory-optimized storage vector.
+/// Keeps coordinates in f32 and alpha in f32, and is promoted to f64 during distance evaluation.
+#[repr(C, align(64))]
+#[derive(Debug, Clone)]
+pub struct HyperVectorF32<const N: usize> {
+    pub coords: [f32; N],
+    pub alpha: f32,
+}
+
 impl<const N: usize> HyperVector<N> {
     /// Creates a new `HyperVector`, validating it is strictly inside the unit ball.
     pub fn new(coords: [f64; N]) -> Result<Self, String> {
@@ -91,6 +100,30 @@ impl<const N: usize> HyperVector<N> {
     /// Returns the true Hyperbolic distance (acosh of the squared distance).
     pub fn true_distance(&self, other: &Self) -> f64 {
         self.poincare_distance_sq(other).acosh()
+    }
+}
+
+impl<const N: usize> HyperVectorF32<N> {
+    pub fn from_float64(v: &HyperVector<N>) -> Self {
+        let mut coords = [0.0f32; N];
+        for (dst, src) in coords.iter_mut().zip(v.coords.iter()) {
+            *dst = *src as f32;
+        }
+        Self {
+            coords,
+            alpha: v.alpha as f32,
+        }
+    }
+
+    pub fn to_float64(&self) -> HyperVector<N> {
+        let mut coords = [0.0f64; N];
+        for (dst, src) in coords.iter_mut().zip(self.coords.iter()) {
+            *dst = f64::from(*src);
+        }
+        HyperVector {
+            coords,
+            alpha: f64::from(self.alpha),
+        }
     }
 }
 
@@ -176,6 +209,29 @@ impl<const N: usize> QuantizedHyperVector<N> {
             let delta = sum_sq_diff * f64::from(self.alpha) * query.alpha;
             1.0 + 2.0 * delta
         }
+    }
+}
+
+impl<const N: usize> HyperVectorF32<N> {
+    pub const SIZE: usize = std::mem::size_of::<Self>();
+    pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `self` is a valid POD-like struct with stable repr(C, align).
+        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
+    }
+    /// Casts bytes to `HyperVectorF32`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
+    #[allow(clippy::cast_ptr_alignment)]
+    pub fn from_bytes(bytes: &[u8]) -> &Self {
+        assert_eq!(
+            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
+            0,
+            "HyperVectorF32: Misaligned bytes! Use aligned storage."
+        );
+        // SAFETY: alignment and size are controlled by caller/storage element sizing.
+        unsafe { &*bytes.as_ptr().cast::<Self>() }
     }
 }
 

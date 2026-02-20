@@ -147,6 +147,116 @@ function deserialize_hyperspace_Empty(buffer_arg) {
   return hyperspace_pb.Empty.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_EventMessage(arg) {
+  if (!(arg instanceof hyperspace_pb.EventMessage)) {
+    throw new Error('Expected argument of type hyperspace.EventMessage');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_EventMessage(buffer_arg) {
+  return hyperspace_pb.EventMessage.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_EventSubscriptionRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.EventSubscriptionRequest)) {
+    throw new Error('Expected argument of type hyperspace.EventSubscriptionRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_EventSubscriptionRequest(buffer_arg) {
+  return hyperspace_pb.EventSubscriptionRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_FindSemanticClustersRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.FindSemanticClustersRequest)) {
+    throw new Error('Expected argument of type hyperspace.FindSemanticClustersRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_FindSemanticClustersRequest(buffer_arg) {
+  return hyperspace_pb.FindSemanticClustersRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_FindSemanticClustersResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.FindSemanticClustersResponse)) {
+    throw new Error('Expected argument of type hyperspace.FindSemanticClustersResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_FindSemanticClustersResponse(buffer_arg) {
+  return hyperspace_pb.FindSemanticClustersResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetConceptParentsRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.GetConceptParentsRequest)) {
+    throw new Error('Expected argument of type hyperspace.GetConceptParentsRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetConceptParentsRequest(buffer_arg) {
+  return hyperspace_pb.GetConceptParentsRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetConceptParentsResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.GetConceptParentsResponse)) {
+    throw new Error('Expected argument of type hyperspace.GetConceptParentsResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetConceptParentsResponse(buffer_arg) {
+  return hyperspace_pb.GetConceptParentsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetNeighborsRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.GetNeighborsRequest)) {
+    throw new Error('Expected argument of type hyperspace.GetNeighborsRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetNeighborsRequest(buffer_arg) {
+  return hyperspace_pb.GetNeighborsRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetNeighborsResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.GetNeighborsResponse)) {
+    throw new Error('Expected argument of type hyperspace.GetNeighborsResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetNeighborsResponse(buffer_arg) {
+  return hyperspace_pb.GetNeighborsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetNodeRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.GetNodeRequest)) {
+    throw new Error('Expected argument of type hyperspace.GetNodeRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetNodeRequest(buffer_arg) {
+  return hyperspace_pb.GetNodeRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GraphNode(arg) {
+  if (!(arg instanceof hyperspace_pb.GraphNode)) {
+    throw new Error('Expected argument of type hyperspace.GraphNode');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GraphNode(buffer_arg) {
+  return hyperspace_pb.GraphNode.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_InsertRequest(arg) {
   if (!(arg instanceof hyperspace_pb.InsertRequest)) {
     throw new Error('Expected argument of type hyperspace.InsertRequest');
@@ -279,6 +389,28 @@ function deserialize_hyperspace_SystemStats(buffer_arg) {
   return hyperspace_pb.SystemStats.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_TraverseRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.TraverseRequest)) {
+    throw new Error('Expected argument of type hyperspace.TraverseRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_TraverseRequest(buffer_arg) {
+  return hyperspace_pb.TraverseRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_TraverseResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.TraverseResponse)) {
+    throw new Error('Expected argument of type hyperspace.TraverseResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_TraverseResponse(buffer_arg) {
+  return hyperspace_pb.TraverseResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 
 var DatabaseService = exports.DatabaseService = {
   // Collection Management
@@ -396,6 +528,62 @@ searchBatch: {
     responseSerialize: serialize_hyperspace_BatchSearchResponse,
     responseDeserialize: deserialize_hyperspace_BatchSearchResponse,
   },
+  // Graph Traversal API (v2.3)
+getNode: {
+    path: '/hyperspace.Database/GetNode',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.GetNodeRequest,
+    responseType: hyperspace_pb.GraphNode,
+    requestSerialize: serialize_hyperspace_GetNodeRequest,
+    requestDeserialize: deserialize_hyperspace_GetNodeRequest,
+    responseSerialize: serialize_hyperspace_GraphNode,
+    responseDeserialize: deserialize_hyperspace_GraphNode,
+  },
+  getNeighbors: {
+    path: '/hyperspace.Database/GetNeighbors',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.GetNeighborsRequest,
+    responseType: hyperspace_pb.GetNeighborsResponse,
+    requestSerialize: serialize_hyperspace_GetNeighborsRequest,
+    requestDeserialize: deserialize_hyperspace_GetNeighborsRequest,
+    responseSerialize: serialize_hyperspace_GetNeighborsResponse,
+    responseDeserialize: deserialize_hyperspace_GetNeighborsResponse,
+  },
+  getConceptParents: {
+    path: '/hyperspace.Database/GetConceptParents',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.GetConceptParentsRequest,
+    responseType: hyperspace_pb.GetConceptParentsResponse,
+    requestSerialize: serialize_hyperspace_GetConceptParentsRequest,
+    requestDeserialize: deserialize_hyperspace_GetConceptParentsRequest,
+    responseSerialize: serialize_hyperspace_GetConceptParentsResponse,
+    responseDeserialize: deserialize_hyperspace_GetConceptParentsResponse,
+  },
+  traverse: {
+    path: '/hyperspace.Database/Traverse',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.TraverseRequest,
+    responseType: hyperspace_pb.TraverseResponse,
+    requestSerialize: serialize_hyperspace_TraverseRequest,
+    requestDeserialize: deserialize_hyperspace_TraverseRequest,
+    responseSerialize: serialize_hyperspace_TraverseResponse,
+    responseDeserialize: deserialize_hyperspace_TraverseResponse,
+  },
+  findSemanticClusters: {
+    path: '/hyperspace.Database/FindSemanticClusters',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.FindSemanticClustersRequest,
+    responseType: hyperspace_pb.FindSemanticClustersResponse,
+    requestSerialize: serialize_hyperspace_FindSemanticClustersRequest,
+    requestDeserialize: deserialize_hyperspace_FindSemanticClustersRequest,
+    responseSerialize: serialize_hyperspace_FindSemanticClustersResponse,
+    responseDeserialize: deserialize_hyperspace_FindSemanticClustersResponse,
+  },
   // Stream statistics for TUI (Global or Collection tailored)
 monitor: {
     path: '/hyperspace.Database/Monitor',
@@ -454,6 +642,18 @@ replicate: {
     requestDeserialize: deserialize_hyperspace_ReplicationRequest,
     responseSerialize: serialize_hyperspace_ReplicationLog,
     responseDeserialize: deserialize_hyperspace_ReplicationLog,
+  },
+  // CDC/Event Stream (External subscribers)
+subscribeToEvents: {
+    path: '/hyperspace.Database/SubscribeToEvents',
+    requestStream: false,
+    responseStream: true,
+    requestType: hyperspace_pb.EventSubscriptionRequest,
+    responseType: hyperspace_pb.EventMessage,
+    requestSerialize: serialize_hyperspace_EventSubscriptionRequest,
+    requestDeserialize: deserialize_hyperspace_EventSubscriptionRequest,
+    responseSerialize: serialize_hyperspace_EventMessage,
+    responseDeserialize: deserialize_hyperspace_EventMessage,
   },
   getDigest: {
     path: '/hyperspace.Database/GetDigest',

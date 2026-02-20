@@ -61,6 +61,16 @@ struct BatchEntry<'a> {
 }
 
 impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
+    #[inline]
+    fn to_internal_id(&self, user_id: u32) -> u32 {
+        self.id_map.get(&user_id).map_or(user_id, |v| *v)
+    }
+
+    #[inline]
+    fn to_user_id(&self, internal_id: u32) -> u32 {
+        self.reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v)
+    }
+
     /// Normalizes vector if metric is Cosine.
     /// Returns Cow to avoid allocation if normalization is not needed.
     #[inline]
@@ -109,6 +119,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         config.set_m(m_env);
         config.set_ef_search(ef_search_env);
 
+        let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+        let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
+
         let element_size = match mode {
             hyperspace_core::QuantizationMode::ScalarI8 => {
                 hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
@@ -117,7 +131,11 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
             }
             hyperspace_core::QuantizationMode::None => {
-                hyperspace_core::vector::HyperVector::<N>::SIZE
+                if storage_f32 {
+                    hyperspace_core::vector::HyperVectorF32::<N>::SIZE
+                } else {
+                    hyperspace_core::vector::HyperVector::<N>::SIZE
+                }
             }
         };
 
@@ -127,7 +145,13 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         let (_store, index, _recovered_count) = if snap_path.exists() {
             let store = Arc::new(VectorStore::new(&data_dir, element_size));
-            match HnswIndex::<N, M>::load_snapshot(&snap_path, store.clone(), mode, config.clone())
+            match HnswIndex::<N, M>::load_snapshot_with_storage_precision(
+                &snap_path,
+                store.clone(),
+                mode,
+                config.clone(),
+                storage_f32,
+            )
             {
                 Ok(idx) => {
                     let count = idx.count_nodes();
@@ -138,7 +162,12 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     let store = Arc::new(VectorStore::new(&data_dir, element_size));
                     (
                         store.clone(),
-                        Arc::new(HnswIndex::new(store, mode, config.clone())),
+                        Arc::new(HnswIndex::new_with_storage_precision(
+                            store,
+                            mode,
+                            config.clone(),
+                            storage_f32,
+                        )),
                         0,
                     )
                 }
@@ -147,7 +176,12 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             let store = Arc::new(VectorStore::new(&data_dir, element_size));
             (
                 store.clone(),
-                Arc::new(HnswIndex::new(store, mode, config.clone())),
+                Arc::new(HnswIndex::new_with_storage_precision(
+                    store,
+                    mode,
+                    config.clone(),
+                    storage_f32,
+                )),
                 0,
             )
         };
@@ -487,6 +521,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     id,
                     vector: vector_owned,
                     metadata,
+                    typed_metadata: HashMap::new(),
                 })),
             };
             let _ = self.replication_tx.send(log);
@@ -617,6 +652,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                         // Convert Cow to Owned for channel transmission.
                         vector: entry.vector.into_owned(),
                         metadata: entry.metadata.clone(),
+                        typed_metadata: HashMap::new(),
                     })),
                 };
                 let _ = self.replication_tx.send(log);
@@ -846,6 +882,54 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
     fn queue_size(&self) -> u64 {
         self.config.get_queue_size()
+    }
+
+    fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {
+        let internal_id = self.to_internal_id(id);
+        let neighbors = self
+            .index_link
+            .load()
+            .graph_neighbors(internal_id, layer, limit)?;
+        Ok(neighbors.into_iter().map(|n| self.to_user_id(n)).collect())
+    }
+
+    fn graph_traverse(
+        &self,
+        start_id: u32,
+        layer: usize,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<u32>, String> {
+        let internal_start = self.to_internal_id(start_id);
+        let traversed = self
+            .index_link
+            .load()
+            .graph_traverse(internal_start, layer, max_depth, max_nodes)?;
+        Ok(traversed.into_iter().map(|n| self.to_user_id(n)).collect())
+    }
+
+    fn graph_clusters(
+        &self,
+        layer: usize,
+        min_cluster_size: usize,
+        max_clusters: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<Vec<u32>>, String> {
+        let clusters = self.index_link.load().graph_connected_components(
+            layer,
+            min_cluster_size,
+            max_clusters,
+            max_nodes,
+        );
+        Ok(clusters
+            .into_iter()
+            .map(|c| c.into_iter().map(|n| self.to_user_id(n)).collect())
+            .collect())
+    }
+
+    fn metadata_by_id(&self, id: u32) -> HashMap<String, String> {
+        let internal_id = self.to_internal_id(id);
+        self.index_link.load().metadata_by_id(internal_id)
     }
 }
 

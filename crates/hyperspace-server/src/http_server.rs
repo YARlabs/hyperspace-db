@@ -18,6 +18,8 @@ use sysinfo::Pid;
 use tikv_jemalloc_ctl::epoch;
 use tower_http::cors::CorsLayer;
 
+const TYPED_META_PREFIX: &str = "__hs_typed__";
+
 #[derive(RustEmbed)]
 #[folder = "../../dashboard/dist"]
 struct FrontendAssets;
@@ -122,6 +124,11 @@ pub async fn start_http_server(
         .route("/api/collections/{name}/digest", get(get_collection_digest))
         .route("/api/collections/{name}/peek", get(peek_collection))
         .route("/api/collections/{name}/search", post(search_collection))
+        .route("/api/collections/{name}/graph/node", get(graph_get_node))
+        .route("/api/collections/{name}/graph/neighbors", get(graph_get_neighbors))
+        .route("/api/collections/{name}/graph/parents", get(graph_get_parents))
+        .route("/api/collections/{name}/graph/traverse", post(graph_traverse))
+        .route("/api/collections/{name}/graph/clusters", post(graph_clusters))
         .route("/api/status", get(get_status))
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
@@ -550,6 +557,135 @@ async fn peek_collection(
 struct SearchReq {
     vector: Vec<f64>,
     top_k: Option<usize>,
+    filter: Option<HashMap<String, String>>,
+    filters: Option<Vec<HttpFilter>>,
+}
+
+#[derive(serde::Deserialize)]
+struct HttpFilter {
+    #[serde(rename = "type")]
+    filter_type: String,
+    key: String,
+    value: Option<String>,
+    gte: Option<i64>,
+    lte: Option<i64>,
+}
+
+#[derive(serde::Serialize)]
+struct HttpGraphNode {
+    id: u32,
+    layer: usize,
+    neighbors: Vec<u32>,
+    metadata: HashMap<String, String>,
+    typed_metadata: HashMap<String, serde_json::Value>,
+}
+
+fn parse_typed_metadata(
+    metadata: &HashMap<String, String>,
+) -> (HashMap<String, String>, HashMap<String, serde_json::Value>) {
+    let mut plain = HashMap::new();
+    let mut typed = HashMap::new();
+    for (k, v) in metadata {
+        if let Some(raw_key) = k.strip_prefix(TYPED_META_PREFIX) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(v) {
+                if let Some(val) = json.get("v") {
+                    typed.insert(raw_key.to_string(), val.clone());
+                }
+            }
+            continue;
+        }
+        plain.insert(k.clone(), v.clone());
+    }
+    (plain, typed)
+}
+
+fn convert_filters(raw: &[HttpFilter]) -> Vec<hyperspace_core::FilterExpr> {
+    let mut filters = Vec::new();
+    for f in raw {
+        match f.filter_type.as_str() {
+            "match" => {
+                if let Some(value) = &f.value {
+                    filters.push(hyperspace_core::FilterExpr::Match {
+                        key: f.key.clone(),
+                        value: value.clone(),
+                    });
+                }
+            }
+            "range" => {
+                filters.push(hyperspace_core::FilterExpr::Range {
+                    key: f.key.clone(),
+                    gte: f.gte,
+                    lte: f.lte,
+                });
+            }
+            _ => {}
+        }
+    }
+    filters
+}
+
+fn graph_node_from_collection(
+    col: &Arc<dyn hyperspace_core::Collection>,
+    id: u32,
+    layer: usize,
+    limit: usize,
+    offset: usize,
+) -> Result<HttpGraphNode, String> {
+    let neighbors = col
+        .graph_neighbors(id, layer, limit.saturating_add(offset))?
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
+    let meta = col.metadata_by_id(id);
+    let (metadata, typed_metadata) = parse_typed_metadata(&meta);
+    Ok(HttpGraphNode {
+        id,
+        layer,
+        neighbors,
+        metadata,
+        typed_metadata,
+    })
+}
+
+fn graph_match_filters(
+    metadata: &HashMap<String, String>,
+    legacy_filter: &HashMap<String, String>,
+    complex_filters: &[hyperspace_core::FilterExpr],
+) -> bool {
+    for (k, v) in legacy_filter {
+        match metadata.get(k) {
+            Some(actual) if actual == v => {}
+            _ => return false,
+        }
+    }
+    for f in complex_filters {
+        match f {
+            hyperspace_core::FilterExpr::Match { key, value } => match metadata.get(key) {
+                Some(actual) if actual == value => {}
+                _ => return false,
+            },
+            hyperspace_core::FilterExpr::Range { key, gte, lte } => {
+                let Some(raw) = metadata.get(key) else {
+                    return false;
+                };
+                let Ok(val) = raw.parse::<i64>() else {
+                    return false;
+                };
+                if let Some(min) = gte {
+                    if val < *min {
+                        return false;
+                    }
+                }
+                if let Some(max) = lte {
+                    if val > *max {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
 }
 
 fn default_ef_search() -> usize {
@@ -573,6 +709,11 @@ async fn search_collection(
     Json(payload): Json<SearchReq>,
 ) -> impl IntoResponse {
     let k = payload.top_k.unwrap_or(10);
+    let legacy_filter = payload.filter.unwrap_or_default();
+    let complex_filters = payload
+        .filters
+        .as_ref()
+        .map_or_else(Vec::new, |f| convert_filters(f));
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
         let dummy_params = SearchParams {
             top_k: k,
@@ -581,23 +722,185 @@ async fn search_collection(
             hybrid_alpha: None,
         };
         match col
-            .search(&payload.vector, &HashMap::new(), &[], &dummy_params)
+            .search(&payload.vector, &legacy_filter, &complex_filters, &dummy_params)
             .await
         {
             Ok(res) => {
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
                     .map(|(id, dist, meta)| {
+                        let (metadata, typed_metadata) = parse_typed_metadata(meta);
                         serde_json::json!({
                             "id": id,
                             "distance": dist,
-                            "metadata": meta
+                            "metadata": metadata,
+                            "typed_metadata": typed_metadata
                         })
                     })
                     .collect();
                 Json(mapped).into_response()
             }
             Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GraphNodeQuery {
+    id: u32,
+    layer: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct GraphNeighborsQuery {
+    id: u32,
+    layer: Option<usize>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct GraphTraverseReq {
+    start_id: u32,
+    layer: Option<usize>,
+    max_depth: Option<usize>,
+    max_nodes: Option<usize>,
+    filter: Option<HashMap<String, String>>,
+    filters: Option<Vec<HttpFilter>>,
+}
+
+#[derive(serde::Deserialize)]
+struct GraphClustersReq {
+    layer: Option<usize>,
+    min_cluster_size: Option<usize>,
+    max_clusters: Option<usize>,
+    max_nodes: Option<usize>,
+}
+
+async fn graph_get_node(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    Extension(ctx): Extension<RequestContext>,
+    Query(q): Query<GraphNodeQuery>,
+) -> impl IntoResponse {
+    let layer = q.layer.unwrap_or(0);
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match graph_node_from_collection(&col, q.id, layer, 128, 0) {
+            Ok(node) => Json(node).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn graph_get_neighbors(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    Extension(ctx): Extension<RequestContext>,
+    Query(q): Query<GraphNeighborsQuery>,
+) -> impl IntoResponse {
+    let layer = q.layer.unwrap_or(0);
+    let limit = q.limit.unwrap_or(64).min(512);
+    let offset = q.offset.unwrap_or(0);
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.graph_neighbors(q.id, layer, limit.saturating_add(offset)) {
+            Ok(neighbors) => {
+                let nodes: Vec<HttpGraphNode> = neighbors
+                    .into_iter()
+                    .skip(offset)
+                    .take(limit)
+                    .filter_map(|id| graph_node_from_collection(&col, id, layer, 64, 0).ok())
+                    .collect();
+                Json(nodes).into_response()
+            }
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn graph_get_parents(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    Extension(ctx): Extension<RequestContext>,
+    Query(q): Query<GraphNeighborsQuery>,
+) -> impl IntoResponse {
+    let layer = q.layer.unwrap_or(0).saturating_add(1);
+    let limit = q.limit.unwrap_or(32).min(256);
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        let ids = col
+            .graph_neighbors(q.id, layer, limit)
+            .or_else(|_| col.graph_neighbors(q.id, 0, limit));
+        match ids {
+            Ok(ids) => {
+                let nodes: Vec<HttpGraphNode> = ids
+                    .into_iter()
+                    .filter_map(|id| graph_node_from_collection(&col, id, layer, 64, 0).ok())
+                    .collect();
+                Json(nodes).into_response()
+            }
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn graph_traverse(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<GraphTraverseReq>,
+) -> impl IntoResponse {
+    let layer = payload.layer.unwrap_or(0);
+    let max_depth = payload.max_depth.unwrap_or(2).min(8);
+    let max_nodes = payload.max_nodes.unwrap_or(256).min(10_000);
+    let legacy_filter = payload.filter.unwrap_or_default();
+    let complex_filters = payload
+        .filters
+        .as_ref()
+        .map_or_else(Vec::new, |f| convert_filters(f));
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.graph_traverse(payload.start_id, layer, max_depth, max_nodes) {
+            Ok(ids) => {
+                let nodes: Vec<HttpGraphNode> = ids
+                    .into_iter()
+                    .filter(|id| {
+                        if legacy_filter.is_empty() && complex_filters.is_empty() {
+                            return true;
+                        }
+                        let meta = col.metadata_by_id(*id);
+                        graph_match_filters(&meta, &legacy_filter, &complex_filters)
+                    })
+                    .filter_map(|id| graph_node_from_collection(&col, id, layer, 64, 0).ok())
+                    .collect();
+                Json(nodes).into_response()
+            }
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn graph_clusters(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(Arc<CollectionManager>, Arc<Instant>, Arc<Option<EmbeddingInfo>>)>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<GraphClustersReq>,
+) -> impl IntoResponse {
+    let layer = payload.layer.unwrap_or(0);
+    let min_cluster_size = payload.min_cluster_size.unwrap_or(3).max(1);
+    let max_clusters = payload.max_clusters.unwrap_or(32).min(256);
+    let max_nodes = payload.max_nodes.unwrap_or(10_000).min(200_000);
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.graph_clusters(layer, min_cluster_size, max_clusters, max_nodes) {
+            Ok(clusters) => Json(clusters).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
         }
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()

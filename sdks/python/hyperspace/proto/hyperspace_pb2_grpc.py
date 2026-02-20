@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from . import hyperspace_pb2 as hyperspace__pb2
+import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.76.0'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -84,6 +84,31 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.BatchSearchRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.BatchSearchResponse.FromString,
                 _registered_method=True)
+        self.GetNode = channel.unary_unary(
+                '/hyperspace.Database/GetNode',
+                request_serializer=hyperspace__pb2.GetNodeRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.GraphNode.FromString,
+                _registered_method=True)
+        self.GetNeighbors = channel.unary_unary(
+                '/hyperspace.Database/GetNeighbors',
+                request_serializer=hyperspace__pb2.GetNeighborsRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.GetNeighborsResponse.FromString,
+                _registered_method=True)
+        self.GetConceptParents = channel.unary_unary(
+                '/hyperspace.Database/GetConceptParents',
+                request_serializer=hyperspace__pb2.GetConceptParentsRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.GetConceptParentsResponse.FromString,
+                _registered_method=True)
+        self.Traverse = channel.unary_unary(
+                '/hyperspace.Database/Traverse',
+                request_serializer=hyperspace__pb2.TraverseRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.TraverseResponse.FromString,
+                _registered_method=True)
+        self.FindSemanticClusters = channel.unary_unary(
+                '/hyperspace.Database/FindSemanticClusters',
+                request_serializer=hyperspace__pb2.FindSemanticClustersRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.FindSemanticClustersResponse.FromString,
+                _registered_method=True)
         self.Monitor = channel.unary_stream(
                 '/hyperspace.Database/Monitor',
                 request_serializer=hyperspace__pb2.MonitorRequest.SerializeToString,
@@ -108,6 +133,11 @@ class DatabaseStub(object):
                 '/hyperspace.Database/Replicate',
                 request_serializer=hyperspace__pb2.ReplicationRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.ReplicationLog.FromString,
+                _registered_method=True)
+        self.SubscribeToEvents = channel.unary_stream(
+                '/hyperspace.Database/SubscribeToEvents',
+                request_serializer=hyperspace__pb2.EventSubscriptionRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.EventMessage.FromString,
                 _registered_method=True)
         self.GetDigest = channel.unary_unary(
                 '/hyperspace.Database/GetDigest',
@@ -189,6 +219,37 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetNode(self, request, context):
+        """Graph Traversal API (v2.3)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetNeighbors(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetConceptParents(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Traverse(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindSemanticClusters(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Monitor(self, request, context):
         """Stream statistics for TUI (Global or Collection tailored)
         """
@@ -218,6 +279,13 @@ class DatabaseServicer(object):
 
     def Replicate(self, request, context):
         """Replication (Leader -> Follower)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SubscribeToEvents(self, request, context):
+        """CDC/Event Stream (External subscribers)
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -288,6 +356,31 @@ def add_DatabaseServicer_to_server(servicer, server):
                     request_deserializer=hyperspace__pb2.BatchSearchRequest.FromString,
                     response_serializer=hyperspace__pb2.BatchSearchResponse.SerializeToString,
             ),
+            'GetNode': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetNode,
+                    request_deserializer=hyperspace__pb2.GetNodeRequest.FromString,
+                    response_serializer=hyperspace__pb2.GraphNode.SerializeToString,
+            ),
+            'GetNeighbors': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetNeighbors,
+                    request_deserializer=hyperspace__pb2.GetNeighborsRequest.FromString,
+                    response_serializer=hyperspace__pb2.GetNeighborsResponse.SerializeToString,
+            ),
+            'GetConceptParents': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetConceptParents,
+                    request_deserializer=hyperspace__pb2.GetConceptParentsRequest.FromString,
+                    response_serializer=hyperspace__pb2.GetConceptParentsResponse.SerializeToString,
+            ),
+            'Traverse': grpc.unary_unary_rpc_method_handler(
+                    servicer.Traverse,
+                    request_deserializer=hyperspace__pb2.TraverseRequest.FromString,
+                    response_serializer=hyperspace__pb2.TraverseResponse.SerializeToString,
+            ),
+            'FindSemanticClusters': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindSemanticClusters,
+                    request_deserializer=hyperspace__pb2.FindSemanticClustersRequest.FromString,
+                    response_serializer=hyperspace__pb2.FindSemanticClustersResponse.SerializeToString,
+            ),
             'Monitor': grpc.unary_stream_rpc_method_handler(
                     servicer.Monitor,
                     request_deserializer=hyperspace__pb2.MonitorRequest.FromString,
@@ -312,6 +405,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.Replicate,
                     request_deserializer=hyperspace__pb2.ReplicationRequest.FromString,
                     response_serializer=hyperspace__pb2.ReplicationLog.SerializeToString,
+            ),
+            'SubscribeToEvents': grpc.unary_stream_rpc_method_handler(
+                    servicer.SubscribeToEvents,
+                    request_deserializer=hyperspace__pb2.EventSubscriptionRequest.FromString,
+                    response_serializer=hyperspace__pb2.EventMessage.SerializeToString,
             ),
             'GetDigest': grpc.unary_unary_rpc_method_handler(
                     servicer.GetDigest,
@@ -605,6 +703,141 @@ class Database(object):
             _registered_method=True)
 
     @staticmethod
+    def GetNode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/GetNode',
+            hyperspace__pb2.GetNodeRequest.SerializeToString,
+            hyperspace__pb2.GraphNode.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetNeighbors(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/GetNeighbors',
+            hyperspace__pb2.GetNeighborsRequest.SerializeToString,
+            hyperspace__pb2.GetNeighborsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetConceptParents(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/GetConceptParents',
+            hyperspace__pb2.GetConceptParentsRequest.SerializeToString,
+            hyperspace__pb2.GetConceptParentsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Traverse(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Traverse',
+            hyperspace__pb2.TraverseRequest.SerializeToString,
+            hyperspace__pb2.TraverseResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindSemanticClusters(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/FindSemanticClusters',
+            hyperspace__pb2.FindSemanticClustersRequest.SerializeToString,
+            hyperspace__pb2.FindSemanticClustersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def Monitor(request,
             target,
             options=(),
@@ -729,6 +962,33 @@ class Database(object):
             '/hyperspace.Database/Replicate',
             hyperspace__pb2.ReplicationRequest.SerializeToString,
             hyperspace__pb2.ReplicationLog.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SubscribeToEvents(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/hyperspace.Database/SubscribeToEvents',
+            hyperspace__pb2.EventSubscriptionRequest.SerializeToString,
+            hyperspace__pb2.EventMessage.FromString,
             options,
             channel_credentials,
             insecure,

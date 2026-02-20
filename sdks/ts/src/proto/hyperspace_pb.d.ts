@@ -98,6 +98,9 @@ export class InsertOp extends jspb.Message {
     getMetadataMap(): jspb.Map<string, string>;
     clearMetadataMap(): void;
 
+    getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
+    clearTypedMetadataMap(): void;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): InsertOp.AsObject;
     static toObject(includeInstance: boolean, msg: InsertOp): InsertOp.AsObject;
@@ -114,6 +117,8 @@ export namespace InsertOp {
         vectorList: Array<number>,
 
         metadataMap: Array<[string, string]>,
+
+        typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
     }
 }
 
@@ -385,6 +390,9 @@ export class InsertRequest extends jspb.Message {
     getDurability(): DurabilityLevel;
     setDurability(value: DurabilityLevel): InsertRequest;
 
+    getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
+    clearTypedMetadataMap(): void;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): InsertRequest.AsObject;
     static toObject(includeInstance: boolean, msg: InsertRequest): InsertRequest.AsObject;
@@ -405,6 +413,8 @@ export namespace InsertRequest {
         originNodeId: string,
         logicalClock: number,
         durability: DurabilityLevel,
+
+        typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
     }
 }
 
@@ -418,6 +428,9 @@ export class VectorData extends jspb.Message {
 
     getMetadataMap(): jspb.Map<string, string>;
     clearMetadataMap(): void;
+
+    getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
+    clearTypedMetadataMap(): void;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): VectorData.AsObject;
@@ -435,6 +448,8 @@ export namespace VectorData {
         id: number,
 
         metadataMap: Array<[string, string]>,
+
+        typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
     }
 }
 
@@ -787,6 +802,9 @@ export class SearchResult extends jspb.Message {
     getMetadataMap(): jspb.Map<string, string>;
     clearMetadataMap(): void;
 
+    getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
+    clearTypedMetadataMap(): void;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchResult.AsObject;
     static toObject(includeInstance: boolean, msg: SearchResult): SearchResult.AsObject;
@@ -803,7 +821,507 @@ export namespace SearchResult {
         distance: number,
 
         metadataMap: Array<[string, string]>,
+
+        typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
     }
+}
+
+export class GetNodeRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): GetNodeRequest;
+    getId(): number;
+    setId(value: number): GetNodeRequest;
+    getLayer(): number;
+    setLayer(value: number): GetNodeRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetNodeRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: GetNodeRequest): GetNodeRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetNodeRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetNodeRequest;
+    static deserializeBinaryFromReader(message: GetNodeRequest, reader: jspb.BinaryReader): GetNodeRequest;
+}
+
+export namespace GetNodeRequest {
+    export type AsObject = {
+        collection: string,
+        id: number,
+        layer: number,
+    }
+}
+
+export class GraphNode extends jspb.Message { 
+    getId(): number;
+    setId(value: number): GraphNode;
+    getLayer(): number;
+    setLayer(value: number): GraphNode;
+    clearNeighborsList(): void;
+    getNeighborsList(): Array<number>;
+    setNeighborsList(value: Array<number>): GraphNode;
+    addNeighbors(value: number, index?: number): number;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+
+    getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
+    clearTypedMetadataMap(): void;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GraphNode.AsObject;
+    static toObject(includeInstance: boolean, msg: GraphNode): GraphNode.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GraphNode, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GraphNode;
+    static deserializeBinaryFromReader(message: GraphNode, reader: jspb.BinaryReader): GraphNode;
+}
+
+export namespace GraphNode {
+    export type AsObject = {
+        id: number,
+        layer: number,
+        neighborsList: Array<number>,
+
+        metadataMap: Array<[string, string]>,
+
+        typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
+    }
+}
+
+export class GetNeighborsRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): GetNeighborsRequest;
+    getId(): number;
+    setId(value: number): GetNeighborsRequest;
+    getLayer(): number;
+    setLayer(value: number): GetNeighborsRequest;
+    getLimit(): number;
+    setLimit(value: number): GetNeighborsRequest;
+    getOffset(): number;
+    setOffset(value: number): GetNeighborsRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetNeighborsRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: GetNeighborsRequest): GetNeighborsRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetNeighborsRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetNeighborsRequest;
+    static deserializeBinaryFromReader(message: GetNeighborsRequest, reader: jspb.BinaryReader): GetNeighborsRequest;
+}
+
+export namespace GetNeighborsRequest {
+    export type AsObject = {
+        collection: string,
+        id: number,
+        layer: number,
+        limit: number,
+        offset: number,
+    }
+}
+
+export class GetNeighborsResponse extends jspb.Message { 
+    clearNeighborsList(): void;
+    getNeighborsList(): Array<GraphNode>;
+    setNeighborsList(value: Array<GraphNode>): GetNeighborsResponse;
+    addNeighbors(value?: GraphNode, index?: number): GraphNode;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetNeighborsResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: GetNeighborsResponse): GetNeighborsResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetNeighborsResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetNeighborsResponse;
+    static deserializeBinaryFromReader(message: GetNeighborsResponse, reader: jspb.BinaryReader): GetNeighborsResponse;
+}
+
+export namespace GetNeighborsResponse {
+    export type AsObject = {
+        neighborsList: Array<GraphNode.AsObject>,
+    }
+}
+
+export class TraverseRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): TraverseRequest;
+    getStartId(): number;
+    setStartId(value: number): TraverseRequest;
+    getMaxDepth(): number;
+    setMaxDepth(value: number): TraverseRequest;
+    getMaxNodes(): number;
+    setMaxNodes(value: number): TraverseRequest;
+    getLayer(): number;
+    setLayer(value: number): TraverseRequest;
+
+    getFilterMap(): jspb.Map<string, string>;
+    clearFilterMap(): void;
+    clearFiltersList(): void;
+    getFiltersList(): Array<Filter>;
+    setFiltersList(value: Array<Filter>): TraverseRequest;
+    addFilters(value?: Filter, index?: number): Filter;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): TraverseRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: TraverseRequest): TraverseRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: TraverseRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): TraverseRequest;
+    static deserializeBinaryFromReader(message: TraverseRequest, reader: jspb.BinaryReader): TraverseRequest;
+}
+
+export namespace TraverseRequest {
+    export type AsObject = {
+        collection: string,
+        startId: number,
+        maxDepth: number,
+        maxNodes: number,
+        layer: number,
+
+        filterMap: Array<[string, string]>,
+        filtersList: Array<Filter.AsObject>,
+    }
+}
+
+export class TraverseResponse extends jspb.Message { 
+    clearNodesList(): void;
+    getNodesList(): Array<GraphNode>;
+    setNodesList(value: Array<GraphNode>): TraverseResponse;
+    addNodes(value?: GraphNode, index?: number): GraphNode;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): TraverseResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: TraverseResponse): TraverseResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: TraverseResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): TraverseResponse;
+    static deserializeBinaryFromReader(message: TraverseResponse, reader: jspb.BinaryReader): TraverseResponse;
+}
+
+export namespace TraverseResponse {
+    export type AsObject = {
+        nodesList: Array<GraphNode.AsObject>,
+    }
+}
+
+export class FindSemanticClustersRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): FindSemanticClustersRequest;
+    getLayer(): number;
+    setLayer(value: number): FindSemanticClustersRequest;
+    getMinClusterSize(): number;
+    setMinClusterSize(value: number): FindSemanticClustersRequest;
+    getMaxClusters(): number;
+    setMaxClusters(value: number): FindSemanticClustersRequest;
+    getMaxNodes(): number;
+    setMaxNodes(value: number): FindSemanticClustersRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): FindSemanticClustersRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: FindSemanticClustersRequest): FindSemanticClustersRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: FindSemanticClustersRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): FindSemanticClustersRequest;
+    static deserializeBinaryFromReader(message: FindSemanticClustersRequest, reader: jspb.BinaryReader): FindSemanticClustersRequest;
+}
+
+export namespace FindSemanticClustersRequest {
+    export type AsObject = {
+        collection: string,
+        layer: number,
+        minClusterSize: number,
+        maxClusters: number,
+        maxNodes: number,
+    }
+}
+
+export class GetConceptParentsRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): GetConceptParentsRequest;
+    getId(): number;
+    setId(value: number): GetConceptParentsRequest;
+    getLayer(): number;
+    setLayer(value: number): GetConceptParentsRequest;
+    getLimit(): number;
+    setLimit(value: number): GetConceptParentsRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetConceptParentsRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: GetConceptParentsRequest): GetConceptParentsRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetConceptParentsRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetConceptParentsRequest;
+    static deserializeBinaryFromReader(message: GetConceptParentsRequest, reader: jspb.BinaryReader): GetConceptParentsRequest;
+}
+
+export namespace GetConceptParentsRequest {
+    export type AsObject = {
+        collection: string,
+        id: number,
+        layer: number,
+        limit: number,
+    }
+}
+
+export class GetConceptParentsResponse extends jspb.Message { 
+    clearParentsList(): void;
+    getParentsList(): Array<GraphNode>;
+    setParentsList(value: Array<GraphNode>): GetConceptParentsResponse;
+    addParents(value?: GraphNode, index?: number): GraphNode;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetConceptParentsResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: GetConceptParentsResponse): GetConceptParentsResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetConceptParentsResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetConceptParentsResponse;
+    static deserializeBinaryFromReader(message: GetConceptParentsResponse, reader: jspb.BinaryReader): GetConceptParentsResponse;
+}
+
+export namespace GetConceptParentsResponse {
+    export type AsObject = {
+        parentsList: Array<GraphNode.AsObject>,
+    }
+}
+
+export class GraphCluster extends jspb.Message { 
+    clearNodeIdsList(): void;
+    getNodeIdsList(): Array<number>;
+    setNodeIdsList(value: Array<number>): GraphCluster;
+    addNodeIds(value: number, index?: number): number;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GraphCluster.AsObject;
+    static toObject(includeInstance: boolean, msg: GraphCluster): GraphCluster.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GraphCluster, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GraphCluster;
+    static deserializeBinaryFromReader(message: GraphCluster, reader: jspb.BinaryReader): GraphCluster;
+}
+
+export namespace GraphCluster {
+    export type AsObject = {
+        nodeIdsList: Array<number>,
+    }
+}
+
+export class FindSemanticClustersResponse extends jspb.Message { 
+    clearClustersList(): void;
+    getClustersList(): Array<GraphCluster>;
+    setClustersList(value: Array<GraphCluster>): FindSemanticClustersResponse;
+    addClusters(value?: GraphCluster, index?: number): GraphCluster;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): FindSemanticClustersResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: FindSemanticClustersResponse): FindSemanticClustersResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: FindSemanticClustersResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): FindSemanticClustersResponse;
+    static deserializeBinaryFromReader(message: FindSemanticClustersResponse, reader: jspb.BinaryReader): FindSemanticClustersResponse;
+}
+
+export namespace FindSemanticClustersResponse {
+    export type AsObject = {
+        clustersList: Array<GraphCluster.AsObject>,
+    }
+}
+
+export class MetadataValue extends jspb.Message { 
+
+    hasStringValue(): boolean;
+    clearStringValue(): void;
+    getStringValue(): string;
+    setStringValue(value: string): MetadataValue;
+
+    hasIntValue(): boolean;
+    clearIntValue(): void;
+    getIntValue(): number;
+    setIntValue(value: number): MetadataValue;
+
+    hasDoubleValue(): boolean;
+    clearDoubleValue(): void;
+    getDoubleValue(): number;
+    setDoubleValue(value: number): MetadataValue;
+
+    hasBoolValue(): boolean;
+    clearBoolValue(): void;
+    getBoolValue(): boolean;
+    setBoolValue(value: boolean): MetadataValue;
+
+    getKindCase(): MetadataValue.KindCase;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): MetadataValue.AsObject;
+    static toObject(includeInstance: boolean, msg: MetadataValue): MetadataValue.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: MetadataValue, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): MetadataValue;
+    static deserializeBinaryFromReader(message: MetadataValue, reader: jspb.BinaryReader): MetadataValue;
+}
+
+export namespace MetadataValue {
+    export type AsObject = {
+        stringValue: string,
+        intValue: number,
+        doubleValue: number,
+        boolValue: boolean,
+    }
+
+    export enum KindCase {
+        KIND_NOT_SET = 0,
+        STRING_VALUE = 1,
+        INT_VALUE = 2,
+        DOUBLE_VALUE = 3,
+        BOOL_VALUE = 4,
+    }
+
+}
+
+export class EventSubscriptionRequest extends jspb.Message { 
+    clearTypesList(): void;
+    getTypesList(): Array<EventType>;
+    setTypesList(value: Array<EventType>): EventSubscriptionRequest;
+    addTypes(value: EventType, index?: number): EventType;
+
+    hasCollection(): boolean;
+    clearCollection(): void;
+    getCollection(): string | undefined;
+    setCollection(value: string): EventSubscriptionRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): EventSubscriptionRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: EventSubscriptionRequest): EventSubscriptionRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: EventSubscriptionRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): EventSubscriptionRequest;
+    static deserializeBinaryFromReader(message: EventSubscriptionRequest, reader: jspb.BinaryReader): EventSubscriptionRequest;
+}
+
+export namespace EventSubscriptionRequest {
+    export type AsObject = {
+        typesList: Array<EventType>,
+        collection?: string,
+    }
+}
+
+export class VectorInsertedEvent extends jspb.Message { 
+    getId(): number;
+    setId(value: number): VectorInsertedEvent;
+    getCollection(): string;
+    setCollection(value: string): VectorInsertedEvent;
+    getLogicalClock(): number;
+    setLogicalClock(value: number): VectorInsertedEvent;
+    getOriginNodeId(): string;
+    setOriginNodeId(value: string): VectorInsertedEvent;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+
+    getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
+    clearTypedMetadataMap(): void;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VectorInsertedEvent.AsObject;
+    static toObject(includeInstance: boolean, msg: VectorInsertedEvent): VectorInsertedEvent.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VectorInsertedEvent, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VectorInsertedEvent;
+    static deserializeBinaryFromReader(message: VectorInsertedEvent, reader: jspb.BinaryReader): VectorInsertedEvent;
+}
+
+export namespace VectorInsertedEvent {
+    export type AsObject = {
+        id: number,
+        collection: string,
+        logicalClock: number,
+        originNodeId: string,
+
+        metadataMap: Array<[string, string]>,
+
+        typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
+    }
+}
+
+export class VectorDeletedEvent extends jspb.Message { 
+    getId(): number;
+    setId(value: number): VectorDeletedEvent;
+    getCollection(): string;
+    setCollection(value: string): VectorDeletedEvent;
+    getLogicalClock(): number;
+    setLogicalClock(value: number): VectorDeletedEvent;
+    getOriginNodeId(): string;
+    setOriginNodeId(value: string): VectorDeletedEvent;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VectorDeletedEvent.AsObject;
+    static toObject(includeInstance: boolean, msg: VectorDeletedEvent): VectorDeletedEvent.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VectorDeletedEvent, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VectorDeletedEvent;
+    static deserializeBinaryFromReader(message: VectorDeletedEvent, reader: jspb.BinaryReader): VectorDeletedEvent;
+}
+
+export namespace VectorDeletedEvent {
+    export type AsObject = {
+        id: number,
+        collection: string,
+        logicalClock: number,
+        originNodeId: string,
+    }
+}
+
+export class EventMessage extends jspb.Message { 
+    getType(): EventType;
+    setType(value: EventType): EventMessage;
+
+    hasVectorInserted(): boolean;
+    clearVectorInserted(): void;
+    getVectorInserted(): VectorInsertedEvent | undefined;
+    setVectorInserted(value?: VectorInsertedEvent): EventMessage;
+
+    hasVectorDeleted(): boolean;
+    clearVectorDeleted(): void;
+    getVectorDeleted(): VectorDeletedEvent | undefined;
+    setVectorDeleted(value?: VectorDeletedEvent): EventMessage;
+
+    getPayloadCase(): EventMessage.PayloadCase;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): EventMessage.AsObject;
+    static toObject(includeInstance: boolean, msg: EventMessage): EventMessage.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: EventMessage, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): EventMessage;
+    static deserializeBinaryFromReader(message: EventMessage, reader: jspb.BinaryReader): EventMessage;
+}
+
+export namespace EventMessage {
+    export type AsObject = {
+        type: EventType,
+        vectorInserted?: VectorInsertedEvent.AsObject,
+        vectorDeleted?: VectorDeletedEvent.AsObject,
+    }
+
+    export enum PayloadCase {
+        PAYLOAD_NOT_SET = 0,
+        VECTOR_INSERTED = 2,
+        VECTOR_DELETED = 3,
+    }
+
 }
 
 export class Empty extends jspb.Message { 
@@ -950,4 +1468,10 @@ export enum DurabilityLevel {
     ASYNC = 1,
     BATCH = 2,
     STRICT = 3,
+}
+
+export enum EventType {
+    EVENT_UNKNOWN = 0,
+    VECTOR_INSERTED = 1,
+    VECTOR_DELETED = 2,
 }
