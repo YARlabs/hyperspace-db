@@ -212,6 +212,13 @@ Example:</p>
 <p>Total size per vector (for N=8): $8 + 4 = 12$ bytes.
 Without quantization (f64), it would be $8 \times 8 = 64$ bytes.
 <strong>Savings: ~81%</strong>.</p>
+<h3 id="optional-raw-f32-storage-v22x"><a class="header" href="#optional-raw-f32-storage-v22x">Optional raw <code>f32</code> storage (v2.2.x)</a></h3>
+<p>For <code>QuantizationMode::None</code>, you can enable:</p>
+<ul>
+<li><code>HS_STORAGE_FLOAT32=true</code></li>
+</ul>
+<p>In this mode, raw vectors are stored as <code>f32</code> in mmap and promoted to <code>f64</code> in distance kernels.<br />
+This reduces raw-vector memory footprint by ~50% while preserving numerical behavior in hyperbolic math paths.</p>
 <h2 id="write-ahead-log-wal"><a class="header" href="#write-ahead-log-wal">Write-Ahead Log (WAL)</a></h2>
 <p>Path: <code>wal.log</code></p>
 <p>The WAL ensures durability.

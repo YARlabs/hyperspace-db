@@ -412,12 +412,37 @@ results = client.search(query_text=&quot;non-euclidean geometry&quot;, top_k=5)
 </ul>
 <h4 id="search_batchvectors-top_k10-collection---listlistdict"><a class="header" href="#search_batchvectors-top_k10-collection---listlistdict"><code>search_batch(vectors, top_k=10, collection=&quot;&quot;) -&gt; List[List[dict]]</code></a></h4>
 <p>Batch search API that sends multiple <code>SearchRequest</code> objects in one gRPC call.</p>
+<h4 id="rebuild_indexcollection-filter_querynone---bool"><a class="header" href="#rebuild_indexcollection-filter_querynone---bool"><code>rebuild_index(collection, filter_query=None) -&gt; bool</code></a></h4>
+<p>Supports metadata-aware pruning during rebuild:</p>
+<pre><code class="language-python">client.rebuild_index(
+    &quot;docs_py&quot;,
+    filter_query={&quot;key&quot;: &quot;energy&quot;, &quot;op&quot;: &quot;lt&quot;, &quot;value&quot;: 0.1},
+)
+</code></pre>
+<h4 id="graph-traversal-methods"><a class="header" href="#graph-traversal-methods">Graph traversal methods</a></h4>
+<ul>
+<li><code>get_node(collection, id, layer=0)</code></li>
+<li><code>get_neighbors(collection, id, layer=0, limit=64, offset=0)</code></li>
+<li><code>get_concept_parents(collection, id, layer=0, limit=32)</code></li>
+<li><code>traverse(collection, start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None)</code></li>
+<li><code>find_semantic_clusters(collection, layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000)</code></li>
+</ul>
+<h4 id="hyperbolic-math-utilities"><a class="header" href="#hyperbolic-math-utilities">Hyperbolic math utilities</a></h4>
+<pre><code class="language-python">from hyperspace import (
+    mobius_add,
+    exp_map,
+    log_map,
+    parallel_transport,
+    riemannian_gradient,
+    frechet_mean,
+)
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="rust-sdk"><a class="header" href="#rust-sdk">Rust SDK</a></h1>
 <p>For low-latency applications, connect directly using the Rust SDK.</p>
 <h2 id="installation-2"><a class="header" href="#installation-2">Installation</a></h2>
 <p>Add to your <code>Cargo.toml</code>:</p>
 <pre><code class="language-toml">[dependencies]
-hyperspace-sdk = &quot;2.0.0&quot;
+hyperspace-sdk = &quot;2.2.1&quot;
 tokio = { version = &quot;1&quot;, features = [&quot;full&quot;] }
 </code></pre>
 <h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
@@ -486,6 +511,35 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 </ul>
 <h2 id="batch-search"><a class="header" href="#batch-search">Batch Search</a></h2>
 <p>Use <code>search_batch</code> or <code>search_batch_f32</code> to reduce per-request overhead in high-concurrency workloads.</p>
+<h2 id="graph-traversal-api"><a class="header" href="#graph-traversal-api">Graph Traversal API</a></h2>
+<p>Rust SDK exposes graph calls directly:</p>
+<ul>
+<li><code>get_node</code></li>
+<li><code>get_neighbors</code></li>
+<li><code>get_concept_parents</code></li>
+<li><code>traverse</code></li>
+<li><code>find_semantic_clusters</code></li>
+</ul>
+<h2 id="rebuild-with-metadata-pruning"><a class="header" href="#rebuild-with-metadata-pruning">Rebuild with Metadata Pruning</a></h2>
+<p>Use <code>rebuild_index_with_filter</code> to run vacuum/rebuild and prune vectors in one request:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>client
+    .rebuild_index_with_filter(
+        &quot;docs_rust&quot;.to_string(),
+        &quot;energy&quot;.to_string(),
+        &quot;lt&quot;.to_string(),
+        0.1,
+    )
+    .await?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="hyperbolic-math-utilities-1"><a class="header" href="#hyperbolic-math-utilities-1">Hyperbolic Math Utilities</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use hyperspace_sdk::math::{
+    mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean
+};
+<span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="webassembly-wasm"><a class="header" href="#webassembly-wasm">WebAssembly (WASM)</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="integrations-langchain"><a class="header" href="#integrations-langchain">Integrations (LangChain)</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h1>
@@ -551,7 +605,28 @@ message SearchRequest {
   optional float hybrid_alpha = 7;
 }
 </code></pre>
-<p><code>SearchResult</code> now includes both <code>metadata</code> and <code>typed_metadata</code>.</p>
+<p><code>SearchResult</code> now includes both <code>metadata</code> and <code>typed_metadata</code>.
+Range filters are evaluated with numeric semantics (<code>f64</code>) against typed metadata numeric values.
+For gRPC clients, decimal thresholds are supported via <code>Range.gte_f64</code> / <code>Range.lte_f64</code> (legacy <code>gte/lte</code> <code>int64</code> remains supported).</p>
+<p>gRPC <code>Range</code> examples:</p>
+<pre><code class="language-protobuf">// Integer threshold (legacy-compatible)
+Filter {
+  range: {
+    key: &quot;depth&quot;,
+    gte: 2,
+    lte: 10
+  }
+}
+
+// Decimal threshold (recommended for typed numeric metadata)
+Filter {
+  range: {
+    key: &quot;energy&quot;,
+    gte_f64: 0.8,
+    lte_f64: 1.0
+  }
+}
+</code></pre>
 <h4 id="searchbatch"><a class="header" href="#searchbatch"><code>SearchBatch</code></a></h4>
 <p>Finds nearest neighbors for multiple queries in a single RPC call.</p>
 <pre><code class="language-protobuf">rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
@@ -588,7 +663,13 @@ message EventMessage {
   }
 }
 </code></pre>
-<p>Use this stream to build external pipelines (audit, Elasticsearch sync, graph projections, Neo4j updaters).</p>
+<p>Use this stream to build external pipelines (audit, Elasticsearch sync, graph projections, Neo4j updaters).
+SDKs (Python/TypeScript/Rust) expose convenience subscription methods for this stream.</p>
+<p>Reliability note:</p>
+<ul>
+<li>stream consumers may lag under burst load; server now handles lagged broadcast reads without dropping the whole stream task;</li>
+<li>tune <code>HS_EVENT_STREAM_BUFFER</code> for higher event fan-out pressure.</li>
+</ul>
 <h4 id="metadatavalue-typed-metadata"><a class="header" href="#metadatavalue-typed-metadata"><code>MetadataValue</code> (Typed Metadata)</a></h4>
 <pre><code class="language-protobuf">message MetadataValue {
   oneof kind {
@@ -617,6 +698,20 @@ rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClus
 <li><code>filter</code> (<code>map&lt;string,string&gt;</code>)</li>
 <li><code>filters</code> (<code>Match</code> / <code>Range</code>)</li>
 </ul>
+<p><code>GetNeighborsResponse</code> now includes <code>edge_weights</code>, where <code>edge_weights[i]</code> is the distance from source node to <code>neighbors[i]</code>.</p>
+<h4 id="rebuildindex-with-pruning-filter-v221"><a class="header" href="#rebuildindex-with-pruning-filter-v221"><code>RebuildIndex</code> with pruning filter (v2.2.1)</a></h4>
+<pre><code class="language-protobuf">message RebuildIndexRequest {
+  string name = 1;
+  optional VacuumFilterQuery filter_query = 2;
+}
+
+message VacuumFilterQuery {
+  string key = 1;
+  string op = 2; // &quot;lt&quot; | &quot;lte&quot; | &quot;gt&quot; | &quot;gte&quot; | &quot;eq&quot; | &quot;ne&quot;
+  double value = 3;
+}
+</code></pre>
+<p>Use this API for sleep/reconsolidation cycles when you need to rebuild an index and prune low-value vectors in one server-side operation.</p>
 <hr />
 <h2 id="-http-api-control-plane"><a class="header" href="#-http-api-control-plane">🌐 HTTP API (Control Plane)</a></h2>
 <p>Served on port <code>50050</code> (default). All endpoints under <code>/api</code>.</p>
@@ -682,6 +777,14 @@ rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClus
   &quot;top_k&quot;: 5
 }
 </code></pre>
+<h3 id="graph-http-endpoints-dashboard--tooling"><a class="header" href="#graph-http-endpoints-dashboard--tooling">Graph HTTP Endpoints (Dashboard / tooling)</a></h3>
+<ul>
+<li><code>GET /api/collections/{name}/graph/node?id={id}&amp;layer={layer}</code></li>
+<li><code>GET /api/collections/{name}/graph/neighbors?id={id}&amp;layer={layer}&amp;limit={limit}&amp;offset={offset}</code></li>
+<li><code>GET /api/collections/{name}/graph/parents?id={id}&amp;layer={layer}&amp;limit={limit}</code></li>
+<li><code>POST /api/collections/{name}/graph/traverse</code></li>
+<li><code>POST /api/collections/{name}/graph/clusters</code></li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="user-guide"><a class="header" href="#user-guide">User Guide</a></h1>
 <h2 id="server-configuration"><a class="header" href="#server-configuration">Server Configuration</a></h2>
 <p>HyperspaceDB is configured via environment variables or a <code>.env</code> file.</p>
@@ -692,9 +795,12 @@ rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClus
 <tr><td style="text-align: left"><code>HS_HTTP_PORT</code></td><td style="text-align: left"><code>50050</code></td><td style="text-align: left">HTTP Dashboard port</td></tr>
 <tr><td style="text-align: left"><code>HS_DATA_DIR</code></td><td style="text-align: left"><code>./data</code></td><td style="text-align: left">Path to store segments and WAL</td></tr>
 <tr><td style="text-align: left"><code>HS_IDLE_TIMEOUT_SEC</code></td><td style="text-align: left"><code>3600</code></td><td style="text-align: left">Inactivity time (seconds) before collection unloads to disk</td></tr>
-<tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Default vector dimensionality (8, 64, 768, 1024, 1536)</td></tr>
+<tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Default vector dimensionality (8, 64, 768, 1024, 1536, 3072, 4096, 8192)</td></tr>
 <tr><td style="text-align: left"><code>HS_METRIC</code></td><td style="text-align: left"><code>cosine</code></td><td style="text-align: left">Distance metric (<code>cosine</code>, <code>poincare</code>, <code>l2</code>, <code>euclidean</code>, <code>lorentz</code>)</td></tr>
 <tr><td style="text-align: left"><code>HS_QUANTIZATION_LEVEL</code></td><td style="text-align: left"><code>none</code></td><td style="text-align: left">Compression (<code>none</code>, <code>scalar</code> (i8), <code>binary</code> (1-bit))</td></tr>
+<tr><td style="text-align: left"><code>HS_STORAGE_FLOAT32</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Store raw vectors as <code>f32</code> (<code>mode=none</code>) and promote to <code>f64</code> in distance kernels</td></tr>
+<tr><td style="text-align: left"><code>HS_FAST_UPSERT_DELTA</code></td><td style="text-align: left"><code>0.0</code></td><td style="text-align: left">Fast upsert threshold (L2 delta). If small and metadata unchanged, skips graph relinking</td></tr>
+<tr><td style="text-align: left"><code>HS_EVENT_STREAM_BUFFER</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Broadcast ring size for CDC and replication streams</td></tr>
 </tbody></table>
 </div>
 <h3 id="hnsw-index-tuning"><a class="header" href="#hnsw-index-tuning">HNSW Index Tuning</a></h3>
@@ -743,7 +849,8 @@ rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClus
 <ul>
 <li><strong>Cluster Status</strong>: View node role (Leader/Follower) and topology.</li>
 <li><strong>Collections</strong>: Create, delete, and inspect collection statistics.</li>
-<li><strong>Explorer</strong>: View inserted vectors and their metadata.</li>
+<li><strong>Explorer</strong>: Search playground with filters and typed metadata visibility.</li>
+<li><strong>Graph Explorer</strong>: Query neighbors and concept-parent graph views from HNSW layers.</li>
 <li><strong>Metrics</strong>: Real-time RAM and CPU usage.</li>
 </ul>
 <h2 id="tui-dashboard-legacy"><a class="header" href="#tui-dashboard-legacy">TUI Dashboard (Legacy)</a></h2>
@@ -1043,6 +1150,13 @@ Example:</p>
 <p>Total size per vector (for N=8): $8 + 4 = 12$ bytes.
 Without quantization (f64), it would be $8 \times 8 = 64$ bytes.
 <strong>Savings: ~81%</strong>.</p>
+<h3 id="optional-raw-f32-storage-v22x"><a class="header" href="#optional-raw-f32-storage-v22x">Optional raw <code>f32</code> storage (v2.2.x)</a></h3>
+<p>For <code>QuantizationMode::None</code>, you can enable:</p>
+<ul>
+<li><code>HS_STORAGE_FLOAT32=true</code></li>
+</ul>
+<p>In this mode, raw vectors are stored as <code>f32</code> in mmap and promoted to <code>f64</code> in distance kernels.<br />
+This reduces raw-vector memory footprint by ~50% while preserving numerical behavior in hyperbolic math paths.</p>
 <h2 id="write-ahead-log-wal"><a class="header" href="#write-ahead-log-wal">Write-Ahead Log (WAL)</a></h2>
 <p>Path: <code>wal.log</code></p>
 <p>The WAL ensures durability.
@@ -1100,6 +1214,15 @@ $$</p>
 <li>upper sheet: <code>t &gt; 0</code></li>
 <li>unit hyperboloid: <code>-t^2 + x_1^2 + ... + x_n^2 = -1</code></li>
 </ul>
+<h2 id="sdk-hyperbolic-utilities-v221"><a class="header" href="#sdk-hyperbolic-utilities-v221">SDK Hyperbolic Utilities (v2.2.1)</a></h2>
+<p>To keep core DB focused and still support geometry-heavy clients, SDKs include helpers:</p>
+<ul>
+<li>Python: <code>hyperspace.mobius_add</code>, <code>hyperspace.exp_map</code>, <code>hyperspace.log_map</code></li>
+<li>Rust: <code>hyperspace_sdk::math::{mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean}</code></li>
+<li>TypeScript: <code>HyperbolicMath.mobiusAdd/expMap/logMap/parallelTransport/riemannianGradient/frechetMean</code></li>
+</ul>
+<p>Fréchet mean support is useful for reconsolidation workflows where multiple nearby hyperbolic embeddings should be merged into one robust centroid.</p>
+<p>These functions are useful for L-system growth, manifold transforms, and pre-insert vector shaping pipelines.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="zero-copy-hyperbolic-hnsw"><a class="header" href="#zero-copy-hyperbolic-hnsw">Zero-Copy Hyperbolic HNSW</a></h1>
 <p>Our implementation of <a href="https://arxiv.org/abs/1603.09320">Hierarchical Navigable Small Worlds</a> is unique in two ways:</p>
 <ol>

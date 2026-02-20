@@ -218,6 +218,15 @@ $$</p>
 <li>upper sheet: <code>t &gt; 0</code></li>
 <li>unit hyperboloid: <code>-t^2 + x_1^2 + ... + x_n^2 = -1</code></li>
 </ul>
+<h2 id="sdk-hyperbolic-utilities-v221"><a class="header" href="#sdk-hyperbolic-utilities-v221">SDK Hyperbolic Utilities (v2.2.1)</a></h2>
+<p>To keep core DB focused and still support geometry-heavy clients, SDKs include helpers:</p>
+<ul>
+<li>Python: <code>hyperspace.mobius_add</code>, <code>hyperspace.exp_map</code>, <code>hyperspace.log_map</code></li>
+<li>Rust: <code>hyperspace_sdk::math::{mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean}</code></li>
+<li>TypeScript: <code>HyperbolicMath.mobiusAdd/expMap/logMap/parallelTransport/riemannianGradient/frechetMean</code></li>
+</ul>
+<p>Fréchet mean support is useful for reconsolidation workflows where multiple nearby hyperbolic embeddings should be merged into one robust centroid.</p>
+<p>These functions are useful for L-system growth, manifold transforms, and pre-insert vector shaping pipelines.</p>
 
                     </main>
 

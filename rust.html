@@ -183,7 +183,7 @@
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
 <p>Add to your <code>Cargo.toml</code>:</p>
 <pre><code class="language-toml">[dependencies]
-hyperspace-sdk = &quot;2.0.0&quot;
+hyperspace-sdk = &quot;2.2.1&quot;
 tokio = { version = &quot;1&quot;, features = [&quot;full&quot;] }
 </code></pre>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
@@ -252,6 +252,35 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 </ul>
 <h2 id="batch-search"><a class="header" href="#batch-search">Batch Search</a></h2>
 <p>Use <code>search_batch</code> or <code>search_batch_f32</code> to reduce per-request overhead in high-concurrency workloads.</p>
+<h2 id="graph-traversal-api"><a class="header" href="#graph-traversal-api">Graph Traversal API</a></h2>
+<p>Rust SDK exposes graph calls directly:</p>
+<ul>
+<li><code>get_node</code></li>
+<li><code>get_neighbors</code></li>
+<li><code>get_concept_parents</code></li>
+<li><code>traverse</code></li>
+<li><code>find_semantic_clusters</code></li>
+</ul>
+<h2 id="rebuild-with-metadata-pruning"><a class="header" href="#rebuild-with-metadata-pruning">Rebuild with Metadata Pruning</a></h2>
+<p>Use <code>rebuild_index_with_filter</code> to run vacuum/rebuild and prune vectors in one request:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>client
+    .rebuild_index_with_filter(
+        &quot;docs_rust&quot;.to_string(),
+        &quot;energy&quot;.to_string(),
+        &quot;lt&quot;.to_string(),
+        0.1,
+    )
+    .await?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="hyperbolic-math-utilities"><a class="header" href="#hyperbolic-math-utilities">Hyperbolic Math Utilities</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use hyperspace_sdk::math::{
+    mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean
+};
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 

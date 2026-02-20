@@ -237,6 +237,31 @@ results = client.search(query_text=&quot;non-euclidean geometry&quot;, top_k=5)
 </ul>
 <h4 id="search_batchvectors-top_k10-collection---listlistdict"><a class="header" href="#search_batchvectors-top_k10-collection---listlistdict"><code>search_batch(vectors, top_k=10, collection=&quot;&quot;) -&gt; List[List[dict]]</code></a></h4>
 <p>Batch search API that sends multiple <code>SearchRequest</code> objects in one gRPC call.</p>
+<h4 id="rebuild_indexcollection-filter_querynone---bool"><a class="header" href="#rebuild_indexcollection-filter_querynone---bool"><code>rebuild_index(collection, filter_query=None) -&gt; bool</code></a></h4>
+<p>Supports metadata-aware pruning during rebuild:</p>
+<pre><code class="language-python">client.rebuild_index(
+    &quot;docs_py&quot;,
+    filter_query={&quot;key&quot;: &quot;energy&quot;, &quot;op&quot;: &quot;lt&quot;, &quot;value&quot;: 0.1},
+)
+</code></pre>
+<h4 id="graph-traversal-methods"><a class="header" href="#graph-traversal-methods">Graph traversal methods</a></h4>
+<ul>
+<li><code>get_node(collection, id, layer=0)</code></li>
+<li><code>get_neighbors(collection, id, layer=0, limit=64, offset=0)</code></li>
+<li><code>get_concept_parents(collection, id, layer=0, limit=32)</code></li>
+<li><code>traverse(collection, start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None)</code></li>
+<li><code>find_semantic_clusters(collection, layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000)</code></li>
+</ul>
+<h4 id="hyperbolic-math-utilities"><a class="header" href="#hyperbolic-math-utilities">Hyperbolic math utilities</a></h4>
+<pre><code class="language-python">from hyperspace import (
+    mobius_add,
+    exp_map,
+    log_map,
+    parallel_transport,
+    riemannian_gradient,
+    frechet_mean,
+)
+</code></pre>
 
                     </main>
 

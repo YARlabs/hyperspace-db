@@ -188,9 +188,12 @@
 <tr><td style="text-align: left"><code>HS_HTTP_PORT</code></td><td style="text-align: left"><code>50050</code></td><td style="text-align: left">HTTP Dashboard port</td></tr>
 <tr><td style="text-align: left"><code>HS_DATA_DIR</code></td><td style="text-align: left"><code>./data</code></td><td style="text-align: left">Path to store segments and WAL</td></tr>
 <tr><td style="text-align: left"><code>HS_IDLE_TIMEOUT_SEC</code></td><td style="text-align: left"><code>3600</code></td><td style="text-align: left">Inactivity time (seconds) before collection unloads to disk</td></tr>
-<tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Default vector dimensionality (8, 64, 768, 1024, 1536)</td></tr>
+<tr><td style="text-align: left"><code>HS_DIMENSION</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Default vector dimensionality (8, 64, 768, 1024, 1536, 3072, 4096, 8192)</td></tr>
 <tr><td style="text-align: left"><code>HS_METRIC</code></td><td style="text-align: left"><code>cosine</code></td><td style="text-align: left">Distance metric (<code>cosine</code>, <code>poincare</code>, <code>l2</code>, <code>euclidean</code>, <code>lorentz</code>)</td></tr>
 <tr><td style="text-align: left"><code>HS_QUANTIZATION_LEVEL</code></td><td style="text-align: left"><code>none</code></td><td style="text-align: left">Compression (<code>none</code>, <code>scalar</code> (i8), <code>binary</code> (1-bit))</td></tr>
+<tr><td style="text-align: left"><code>HS_STORAGE_FLOAT32</code></td><td style="text-align: left"><code>false</code></td><td style="text-align: left">Store raw vectors as <code>f32</code> (<code>mode=none</code>) and promote to <code>f64</code> in distance kernels</td></tr>
+<tr><td style="text-align: left"><code>HS_FAST_UPSERT_DELTA</code></td><td style="text-align: left"><code>0.0</code></td><td style="text-align: left">Fast upsert threshold (L2 delta). If small and metadata unchanged, skips graph relinking</td></tr>
+<tr><td style="text-align: left"><code>HS_EVENT_STREAM_BUFFER</code></td><td style="text-align: left"><code>1024</code></td><td style="text-align: left">Broadcast ring size for CDC and replication streams</td></tr>
 </tbody></table>
 </div>
 <h3 id="hnsw-index-tuning"><a class="header" href="#hnsw-index-tuning">HNSW Index Tuning</a></h3>
@@ -239,7 +242,8 @@
 <ul>
 <li><strong>Cluster Status</strong>: View node role (Leader/Follower) and topology.</li>
 <li><strong>Collections</strong>: Create, delete, and inspect collection statistics.</li>
-<li><strong>Explorer</strong>: View inserted vectors and their metadata.</li>
+<li><strong>Explorer</strong>: Search playground with filters and typed metadata visibility.</li>
+<li><strong>Graph Explorer</strong>: Query neighbors and concept-parent graph views from HNSW layers.</li>
 <li><strong>Metrics</strong>: Real-time RAM and CPU usage.</li>
 </ul>
 <h2 id="tui-dashboard-legacy"><a class="header" href="#tui-dashboard-legacy">TUI Dashboard (Legacy)</a></h2>

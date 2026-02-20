@@ -241,7 +241,28 @@ message SearchRequest {
   optional float hybrid_alpha = 7;
 }
 </code></pre>
-<p><code>SearchResult</code> now includes both <code>metadata</code> and <code>typed_metadata</code>.</p>
+<p><code>SearchResult</code> now includes both <code>metadata</code> and <code>typed_metadata</code>.
+Range filters are evaluated with numeric semantics (<code>f64</code>) against typed metadata numeric values.
+For gRPC clients, decimal thresholds are supported via <code>Range.gte_f64</code> / <code>Range.lte_f64</code> (legacy <code>gte/lte</code> <code>int64</code> remains supported).</p>
+<p>gRPC <code>Range</code> examples:</p>
+<pre><code class="language-protobuf">// Integer threshold (legacy-compatible)
+Filter {
+  range: {
+    key: &quot;depth&quot;,
+    gte: 2,
+    lte: 10
+  }
+}
+
+// Decimal threshold (recommended for typed numeric metadata)
+Filter {
+  range: {
+    key: &quot;energy&quot;,
+    gte_f64: 0.8,
+    lte_f64: 1.0
+  }
+}
+</code></pre>
 <h4 id="searchbatch"><a class="header" href="#searchbatch"><code>SearchBatch</code></a></h4>
 <p>Finds nearest neighbors for multiple queries in a single RPC call.</p>
 <pre><code class="language-protobuf">rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
@@ -278,7 +299,13 @@ message EventMessage {
   }
 }
 </code></pre>
-<p>Use this stream to build external pipelines (audit, Elasticsearch sync, graph projections, Neo4j updaters).</p>
+<p>Use this stream to build external pipelines (audit, Elasticsearch sync, graph projections, Neo4j updaters).
+SDKs (Python/TypeScript/Rust) expose convenience subscription methods for this stream.</p>
+<p>Reliability note:</p>
+<ul>
+<li>stream consumers may lag under burst load; server now handles lagged broadcast reads without dropping the whole stream task;</li>
+<li>tune <code>HS_EVENT_STREAM_BUFFER</code> for higher event fan-out pressure.</li>
+</ul>
 <h4 id="metadatavalue-typed-metadata"><a class="header" href="#metadatavalue-typed-metadata"><code>MetadataValue</code> (Typed Metadata)</a></h4>
 <pre><code class="language-protobuf">message MetadataValue {
   oneof kind {
@@ -307,6 +334,20 @@ rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClus
 <li><code>filter</code> (<code>map&lt;string,string&gt;</code>)</li>
 <li><code>filters</code> (<code>Match</code> / <code>Range</code>)</li>
 </ul>
+<p><code>GetNeighborsResponse</code> now includes <code>edge_weights</code>, where <code>edge_weights[i]</code> is the distance from source node to <code>neighbors[i]</code>.</p>
+<h4 id="rebuildindex-with-pruning-filter-v221"><a class="header" href="#rebuildindex-with-pruning-filter-v221"><code>RebuildIndex</code> with pruning filter (v2.2.1)</a></h4>
+<pre><code class="language-protobuf">message RebuildIndexRequest {
+  string name = 1;
+  optional VacuumFilterQuery filter_query = 2;
+}
+
+message VacuumFilterQuery {
+  string key = 1;
+  string op = 2; // &quot;lt&quot; | &quot;lte&quot; | &quot;gt&quot; | &quot;gte&quot; | &quot;eq&quot; | &quot;ne&quot;
+  double value = 3;
+}
+</code></pre>
+<p>Use this API for sleep/reconsolidation cycles when you need to rebuild an index and prune low-value vectors in one server-side operation.</p>
 <hr />
 <h2 id="-http-api-control-plane"><a class="header" href="#-http-api-control-plane">🌐 HTTP API (Control Plane)</a></h2>
 <p>Served on port <code>50050</code> (default). All endpoints under <code>/api</code>.</p>
@@ -372,6 +413,14 @@ rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClus
   &quot;top_k&quot;: 5
 }
 </code></pre>
+<h3 id="graph-http-endpoints-dashboard--tooling"><a class="header" href="#graph-http-endpoints-dashboard--tooling">Graph HTTP Endpoints (Dashboard / tooling)</a></h3>
+<ul>
+<li><code>GET /api/collections/{name}/graph/node?id={id}&amp;layer={layer}</code></li>
+<li><code>GET /api/collections/{name}/graph/neighbors?id={id}&amp;layer={layer}&amp;limit={limit}&amp;offset={offset}</code></li>
+<li><code>GET /api/collections/{name}/graph/parents?id={id}&amp;layer={layer}&amp;limit={limit}</code></li>
+<li><code>POST /api/collections/{name}/graph/traverse</code></li>
+<li><code>POST /api/collections/{name}/graph/clusters</code></li>
+</ul>
 
                     </main>
 
