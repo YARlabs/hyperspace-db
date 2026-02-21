@@ -12,7 +12,9 @@ HyperspaceDB supports multiple storage modes to balance **Performance vs Memory*
    - Compression: **64x** vs `f64`.
    - Performance: Blazing fast Hamming distance.
    - Recall: Moderate (Great for Re-ranking or large datasets).
-3. **None**: Full precision `f64` storage.
+3. **Lorentz SQ8** (8-bit + GPU): Optimized for Hyperboloid model.
+   - [Learn more about Lorentz Quantization & GPU Acceleration](lorentz_quantization.md).
+4. **None**: Full precision `f64` storage.
 
 ## Usage
 

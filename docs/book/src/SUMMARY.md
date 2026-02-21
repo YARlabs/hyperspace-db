@@ -19,6 +19,7 @@
     - [Distributed Replication](distributed.md)
     - [Hybrid Search](hybrid.md)
     - [Binary Quantization](quantization.md)
+    - [Lorentz SQ8 & GPU](lorentz_quantization.md)
     - [Security & Auth](security.md)
     - [Data Safety & Durability](durability.md)
 

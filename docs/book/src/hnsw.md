@@ -33,3 +33,6 @@ We do not use a global lock.
 *   **Writing**: Indexer acquires Write Locks only on the specific adjacency lists (layers) it is modifying.
 
 This allows `insert` and `search` to run in parallel with high throughput.
+
+### Batch Search Acceleration
+For high-throughput batch search operations, HNSW can offload Minkowski distance computations to the GPU using WGSL compute shaders. This is particularly effective when combined with [Lorentz SQ8 Quantization](lorentz_quantization.md).

@@ -57,6 +57,10 @@ Validation constraints:
 - upper sheet: `t > 0`
 - unit hyperboloid: `-t^2 + x_1^2 + ... + x_n^2 = -1`
 
+### Optimization: SQ8 Quantization
+For the Lorentz model, HyperspaceDB implements a specialized 8-bit scalar quantization (SQ8) with dynamic range scaling and GPU/SIMD acceleration. 
+See [Lorentz Quantization Details](lorentz_quantization.md).
+
 ## SDK Hyperbolic Utilities (v2.2.1)
 
 To keep core DB focused and still support geometry-heavy clients, SDKs include helpers:
