@@ -59,3 +59,176 @@ fn test_lorentz_distance_and_validation() {
     let invalid = [-1.0, 0.0, 0.0]; // lower sheet
     assert!(LorentzMetric::validate(&invalid).is_err());
 }
+
+// ── Lorentz Scalar Quantization (SQ8) Tests ─────────────────────────────────
+
+#[test]
+fn test_lorentz_quantization_roundtrip_origin() {
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+
+    // Origin on the hyperboloid: (1, 0, 0)
+    let origin = HyperVector::<3> {
+        coords: [1.0, 0.0, 0.0],
+        alpha: 0.0, // unused for Lorentz
+    };
+    let q = QuantizedHyperVector::from_float_lorentz(&origin);
+
+    // alpha stores the scale factor (max |coord| = 1.0)
+    assert!((f64::from(q.alpha) - 1.0).abs() < 1e-5);
+    // coords[0] should map to 127 (1.0 / 1.0 * 127 = 127)
+    assert_eq!(q.coords[0], 127);
+    assert_eq!(q.coords[1], 0);
+    assert_eq!(q.coords[2], 0);
+}
+
+#[test]
+fn test_lorentz_quantization_known_point() {
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+
+    // Point at geodesic distance r=1.0: (cosh(1), sinh(1), 0)
+    let r = 1.0_f64;
+    let v = HyperVector::<3> {
+        coords: [r.cosh(), r.sinh(), 0.0],
+        alpha: 0.0,
+    };
+    let q = QuantizedHyperVector::from_float_lorentz(&v);
+
+    // Scale should be cosh(1) ~ 1.5431 (the largest absolute coordinate)
+    let expected_scale = r.cosh();
+    assert!((f64::from(q.alpha) - expected_scale).abs() < 1e-3);
+
+    // coords[0] should be 127 (cosh(1)/cosh(1) * 127 = 127)
+    assert_eq!(q.coords[0], 127);
+    // coords[1] should be round(sinh(1)/cosh(1) * 127) = round(tanh(1) * 127) ~ round(96.5) = 97
+    let expected_q1 = (r.tanh() * 127.0).round() as i8;
+    assert_eq!(q.coords[1], expected_q1);
+}
+
+#[test]
+fn test_lorentz_quantized_distance_accuracy_near() {
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+
+    // Two points at small geodesic distance on H^2
+    let r = 0.5_f64;
+    let a_coords = [1.0, 0.0, 0.0];
+    let b_coords = [r.cosh(), r.sinh(), 0.0];
+
+    let a = HyperVector::<3> { coords: a_coords, alpha: 0.0 };
+    let b = HyperVector::<3> { coords: b_coords, alpha: 0.0 };
+
+    let exact = LorentzMetric::distance(&a_coords, &b_coords);
+    let q_a = QuantizedHyperVector::from_float_lorentz(&a);
+    let approx = LorentzMetric::distance_quantized(&q_a, &b);
+
+    // For nearby points, quantization error should be bounded
+    let relative_error = (approx - exact).abs() / exact;
+    assert!(
+        relative_error < 0.10,
+        "Near-distance relative error {relative_error:.4} exceeds 10% (exact={exact:.6}, approx={approx:.6})"
+    );
+}
+
+#[test]
+fn test_lorentz_quantized_distance_accuracy_far() {
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+
+    // Points at moderate geodesic distance
+    let r = 3.0_f64;
+    let a_coords = [1.0, 0.0, 0.0];
+    let b_coords = [r.cosh(), r.sinh(), 0.0];
+
+    let a = HyperVector::<3> { coords: a_coords, alpha: 0.0 };
+    let b = HyperVector::<3> { coords: b_coords, alpha: 0.0 };
+
+    let exact = LorentzMetric::distance(&a_coords, &b_coords);
+    let q_a = QuantizedHyperVector::from_float_lorentz(&a);
+    let approx = LorentzMetric::distance_quantized(&q_a, &b);
+
+    // For farther points the absolute error grows but ranking is preserved
+    let relative_error = (approx - exact).abs() / exact;
+    assert!(
+        relative_error < 0.15,
+        "Far-distance relative error {relative_error:.4} exceeds 15% (exact={exact:.6}, approx={approx:.6})"
+    );
+}
+
+#[test]
+fn test_lorentz_quantized_distance_preserves_ordering() {
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+
+    // Three points at increasing geodesic distances from origin
+    let origin = HyperVector::<3> { coords: [1.0, 0.0, 0.0], alpha: 0.0 };
+    let q_origin = QuantizedHyperVector::from_float_lorentz(&origin);
+
+    let r1 = 0.5_f64;
+    let p1 = HyperVector::<3> { coords: [r1.cosh(), r1.sinh(), 0.0], alpha: 0.0 };
+
+    let r2 = 1.5_f64;
+    let p2 = HyperVector::<3> { coords: [r2.cosh(), r2.sinh(), 0.0], alpha: 0.0 };
+
+    let r3 = 3.0_f64;
+    let p3 = HyperVector::<3> { coords: [r3.cosh(), r3.sinh(), 0.0], alpha: 0.0 };
+
+    let d1 = LorentzMetric::distance_quantized(&q_origin, &p1);
+    let d2 = LorentzMetric::distance_quantized(&q_origin, &p2);
+    let d3 = LorentzMetric::distance_quantized(&q_origin, &p3);
+
+    // Distance ordering must be preserved: d1 < d2 < d3
+    assert!(d1 < d2, "Ordering violated: d1={d1:.6} >= d2={d2:.6}");
+    assert!(d2 < d3, "Ordering violated: d2={d2:.6} >= d3={d3:.6}");
+}
+
+#[test]
+fn test_lorentz_quantized_self_distance_near_zero() {
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+
+    // Quantized self-distance should be near zero
+    let v = HyperVector::<3> { coords: [1.0, 0.0, 0.0], alpha: 0.0 };
+    let q = QuantizedHyperVector::from_float_lorentz(&v);
+
+    let self_dist = LorentzMetric::distance_quantized(&q, &v);
+    assert!(
+        self_dist < 0.05,
+        "Self-distance should be ~0, got {self_dist:.6}"
+    );
+}
+
+#[test]
+fn test_lorentz_quantized_high_dim() {
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+
+    // 8-dimensional hyperboloid point: t = cosh(r), spatial = sinh(r) * unit_direction
+    let r = 2.0_f64;
+    let spatial_norm = r.sinh();
+    let dim_spatial = 7;
+    let component = spatial_norm / (dim_spatial as f64).sqrt();
+
+    let mut a_coords = [0.0_f64; 8];
+    a_coords[0] = r.cosh();
+    for i in 1..8 { a_coords[i] = component; }
+
+    let mut b_coords = [0.0_f64; 8];
+    b_coords[0] = 1.0; // origin
+
+    let a = HyperVector::<8> { coords: a_coords, alpha: 0.0 };
+    let b = HyperVector::<8> { coords: b_coords, alpha: 0.0 };
+    let q_a = QuantizedHyperVector::from_float_lorentz(&a);
+
+    let exact = LorentzMetric::distance(&a_coords, &b_coords);
+    let approx = LorentzMetric::distance_quantized(&q_a, &b);
+
+    let relative_error = (approx - exact).abs() / exact;
+    assert!(
+        relative_error < 0.15,
+        "8D relative error {relative_error:.4} exceeds 15% (exact={exact:.6}, approx={approx:.6})"
+    );
+}
+
+#[test]
+#[should_panic(expected = "Binary quantization is not supported for the Lorentz model")]
+fn test_lorentz_binary_still_panics() {
+    use crate::vector::{BinaryHyperVector, HyperVector};
+    let v = HyperVector::<3> { coords: [1.0, 0.0, 0.0], alpha: 0.0 };
+    let b = BinaryHyperVector::from_float(&v);
+    let _ = LorentzMetric::distance_binary(&b, &v);
+}

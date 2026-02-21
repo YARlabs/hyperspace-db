@@ -210,6 +210,111 @@ impl<const N: usize> QuantizedHyperVector<N> {
             1.0 + 2.0 * delta
         }
     }
+
+    /// Quantizes a Lorentz (hyperboloid) vector using dynamic-range scalar quantization.
+    ///
+    /// Unlike Poincaré vectors (bounded in [-1, 1]), Lorentz coordinates are unbounded:
+    /// the time component x[0] = cosh(r) >= 1 and spatial components can be arbitrarily large.
+    /// We store `max(|x_i|)` as a scale factor in the `alpha` field, then map all coordinates
+    /// to the i8 range [-127, 127] via: `q_i = round(x_i / scale * 127)`.
+    ///
+    /// Dequantization: `x_i ~ (q_i / 127.0) * alpha`
+    ///
+    /// This preserves the Minkowski inner product structure at reduced precision while
+    /// keeping the struct layout identical (no storage format change).
+    pub fn from_float_lorentz(v: &HyperVector<N>) -> Self {
+        // Dynamic range: find the maximum absolute coordinate value
+        let scale = v.coords.iter()
+            .map(|&x| x.abs())
+            .fold(0.0_f64, f64::max)
+            .max(1e-12); // Guard against degenerate vectors
+
+        let inv_scale = 127.0 / scale;
+        let mut coords = [0i8; N];
+        for (dst, &src) in coords.iter_mut().zip(v.coords.iter()) {
+            *dst = (src * inv_scale).round().clamp(-127.0, 127.0) as i8;
+        }
+
+        Self {
+            coords,
+            alpha: scale as f32, // Store scale factor (not Poincare alpha)
+        }
+    }
+
+    /// Computes the approximate Lorentz distance from this quantized vector to a full-precision query.
+    ///
+    /// Dequantizes using the stored scale factor, then computes:
+    ///   d(a, b) = acosh(-<a, b>_L)
+    /// where <a, b>_L = -a[0]*b[0] + sum(a[i]*b[i], i=1..N) is the Minkowski inner product.
+    ///
+    /// The computation uses f64 to preserve numerical stability near the hyperboloid.
+    #[inline(always)]
+    pub fn lorentz_distance_to_float(&self, query: &HyperVector<N>) -> f64 {
+        #[cfg(feature = "nightly-simd")]
+        {
+            const LANES: usize = 8;
+            let scale = f64::from(self.alpha);
+            let scale_inv_127 = scale / 127.0;
+
+            // SIMD: accumulate full Euclidean dot product, then fix the Minkowski sign.
+            // <a,b>_L = -a0*b0 + sum(ai*bi) = euclidean_dot - 2*a0*b0
+            let scale_f32 = scale_inv_127 as f32;
+            let scale_vec = Simd::<f32, LANES>::splat(scale_f32);
+            let mut dot_sum = Simd::<f32, LANES>::splat(0.0);
+
+            for i in (0..N).step_by(LANES) {
+                if i + LANES <= N {
+                    let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
+                    let a_f32: Simd<f32, LANES> = a_i8.cast();
+                    let a_scaled = a_f32 * scale_vec;
+
+                    let b_f64 = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
+                    let b_f32: Simd<f32, LANES> = b_f64.cast();
+
+                    dot_sum += a_scaled * b_f32;
+                }
+            }
+
+            let mut euclidean_dot = dot_sum.reduce_sum() as f64;
+
+            // Tail handling
+            let remainder = N % LANES;
+            if remainder != 0 {
+                let start = N - remainder;
+                for i in start..N {
+                    let a_val = f64::from(self.coords[i]) * scale_inv_127;
+                    euclidean_dot += a_val * query.coords[i];
+                }
+            }
+
+            // Convert to Minkowski: <a,b>_L = euclidean_dot - 2*a[0]*b[0]
+            let a0 = f64::from(self.coords[0]) * scale_inv_127;
+            let minkowski_inner = euclidean_dot - 2.0 * a0 * query.coords[0];
+
+            let arg = (-minkowski_inner).max(1.0 + 1e-12);
+            arg.acosh()
+        }
+
+        #[cfg(not(feature = "nightly-simd"))]
+        {
+            let scale = f64::from(self.alpha);
+            let scale_inv_127 = scale / 127.0;
+
+            // Time-like component (negative sign in Minkowski signature)
+            let a0 = f64::from(self.coords[0]) * scale_inv_127;
+            let mut inner = -a0 * query.coords[0];
+
+            // Spatial components (positive sign)
+            for i in 1..N {
+                let a_val = f64::from(self.coords[i]) * scale_inv_127;
+                inner += a_val * query.coords[i];
+            }
+
+            // d(a,b) = acosh(-<a,b>_L)
+            let arg = (-inner).max(1.0 + 1e-12);
+            arg.acosh()
+        }
+    }
 }
 
 impl<const N: usize> HyperVectorF32<N> {
