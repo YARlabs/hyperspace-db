@@ -1489,7 +1489,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "2.2.0"
+version = "2.2.2"
 dependencies = [
  "dashmap",
  "hyperspace-core",

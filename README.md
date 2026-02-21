@@ -25,6 +25,8 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
 
 ## 🆕 v2.2.2 Improvements
 
+- **Filtered Search Fast Path**: Added exact brute-force fallback for small filtered subsets (`HS_FILTER_BRUTEFORCE_THRESHOLD`) to reduce cache-miss overhead from graph traversal.
+- **BM25 Hybrid Ranking**: Hybrid lexical branch now uses BM25 (global DF + document length normalization) before RRF fusion for stronger relevance quality.
 - **GPU Foundation Expansion**: Core WGSL kernels now cover L2/Cosine/Poincare batch distance with reusable re-rank primitives for exact top-K refinement.
 - **GPU Runtime Dispatch**: `batch_distance_auto` now executes `L2/Cosine/Poincare/Lorentz` kernels through `wgpu` (feature `gpu-runtime`) with deterministic CPU fallback.
 - **GPU Runtime Caching**: `wgpu` device/pipelines are initialized once and reused, removing per-request GPU bootstrap overhead.
@@ -33,6 +35,7 @@ Built on a **Persistence-First, Index-Second** architecture, it guarantees zero 
 - **GPU Offload Policy**: Tunable thresholds via `HS_GPU_MIN_BATCH`, `HS_GPU_MIN_DIM`, `HS_GPU_MIN_WORK` to avoid regressions on small rerank batches.
 - **Benchmark coverage**: Added `gpu_dispatch_bench` for CPU-reference vs auto-dispatch comparisons.
 - **Batch API throughput**: `SearchBatch` supports bounded internal fan-out with stable response ordering (`HS_SEARCH_BATCH_INNER_CONCURRENCY`).
+- **Search Worker Tuning**: Added explicit `HS_SEARCH_CONCURRENCY` guidance and clarified `HS_FAST_UPSERT_DELTA` value ranges for safe production tuning.
 - **Apple Silicon runtime fix**: corrected WGSL struct syntax for `wgpu` shader validation in GPU batch dispatch path.
 - **Batch Dispatch Contract**: Core now exposes runtime batch-distance dispatch (`batch_distance_auto`) with a stable backend model for upcoming native GPU execution.
 

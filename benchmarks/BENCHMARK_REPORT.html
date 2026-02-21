@@ -86,17 +86,17 @@
             });
         }
 
-        createBarChart('searchChart', 'Search QPS', [1213.9988173486786, 371.73745149106963, 332.4443693403249, 114.63300705379186]);
-        createBarChart('insertChart', 'Insert QPS', [13473.118964157355, 1282.8233466738718, 10776.830332774884, 769.4887597361801]);
-        createBarChart('recallChart', 'Recall@10 %', [90.59, 99.89000000000001, 92.26, 99.7], '%');
-        createBarChart('latencyChart', 'P99 Latency (ms)', [0.9039826691150665, 4.7563886642456055, 4.63106870651245, 11.364691257476807], 'ms');
-        createBarChart('diskChart', 'Disk Usage (MB)', [756.0, 336.0, 2252.8, 351.6], ' MB');
+        createBarChart('searchChart', 'Search QPS', [2377.285364091083, 376.4843417113429, 327.7430137153714, 94.40142658711024]);
+        createBarChart('insertChart', 'Insert QPS', [11855.139452293815, 1256.796509506395, 10817.89311809023, 749.367255781957]);
+        createBarChart('recallChart', 'Recall@10 %', [90.57000000000001, 99.92000000000002, 92.86000000000001, 99.69], '%');
+        createBarChart('latencyChart', 'P99 Latency (ms)', [0.5739517509937286, 4.039180278778074, 5.30851602554321, 16.29549741744994], 'ms');
+        createBarChart('diskChart', 'Disk Usage (MB)', [756.0, 336.0, 6144.0, 351.5], ' MB');
 
         new Chart(document.getElementById('concChart'), {
             type: 'line',
             data: {
                 labels: [1, 10, 30],
-                datasets: [{"label": "Hyperspace", "data": [1018.8934217162551, 1431.6266594089298, 1402.158889041785], "borderColor": "#22d3ee", "backgroundColor": "#22d3ee", "tension": 0.1, "fill": false}, {"label": "Qdrant", "data": [399.9031301545532, 1657.1320655124214, 1810.7994225203258], "borderColor": "#fac05e", "backgroundColor": "#fac05e", "tension": 0.1, "fill": false}, {"label": "Milvus", "data": [357.53208562485923, 2796.702344152155, 3774.442558659801], "borderColor": "#818cf8", "backgroundColor": "#818cf8", "tension": 0.1, "fill": false}, {"label": "Weaviate", "data": [117.86564773382482, 606.5724315601897, 792.9358581424489], "borderColor": "#f472b6", "backgroundColor": "#f472b6", "tension": 0.1, "fill": false}]
+                datasets: [{"label": "Hyperspace", "data": [2518.3820988073603, 3316.3131915743165, 3262.6162220355122], "borderColor": "#22d3ee", "backgroundColor": "#22d3ee", "tension": 0.1, "fill": false}, {"label": "Qdrant", "data": [413.32940991205214, 1737.2883532246854, 1917.2085565115], "borderColor": "#fac05e", "backgroundColor": "#fac05e", "tension": 0.1, "fill": false}, {"label": "Milvus", "data": [347.4126014994149, 2524.459724123154, 3442.6948584936636], "borderColor": "#818cf8", "backgroundColor": "#818cf8", "tension": 0.1, "fill": false}, {"label": "Weaviate", "data": [108.80358505953335, 594.4448239570262, 722.2147415488575], "borderColor": "#f472b6", "backgroundColor": "#f472b6", "tension": 0.1, "fill": false}]
             },
             options: commonOptions
         });

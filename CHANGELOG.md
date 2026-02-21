@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.2] - 2026-02-19
 
 ### Added
+* **Filtered search brute-force fallback**:
+    * Added `HS_FILTER_BRUTEFORCE_THRESHOLD` routing: if filtered candidate bitmap is small, layer-0 performs exact brute-force scan instead of HNSW traversal.
+    * Improves latency and recall stability on heavily filtered queries.
+* **Hybrid search BM25 upgrade**:
+    * Replaced token-overlap lexical scoring with BM25 (`idf`, document length normalization, per-document term frequency).
+    * Added global lexical statistics in metadata index: token DF, per-document token length, term frequencies, and aggregate token length.
+    * Hybrid lexical branch now respects the same filter constraints as vector search before RRF fusion.
 * **GPU roadmap bootstrap in core**:
     * Added WGSL kernels for `L2`, `Cosine`, and `Poincare` batch distance.
     * Added reusable exact re-rank primitive (`rerank_topk_exact`) and CPU reference kernels.

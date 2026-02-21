@@ -16,12 +16,12 @@ use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
 use std::cell::RefCell;
 use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::{BTreeMap, BinaryHeap, HashMap};
 #[cfg(feature = "persistence")]
 use std::fs::File;
 #[cfg(feature = "persistence")]
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 // Imports
@@ -74,6 +74,10 @@ pub struct MetadataIndex {
     pub numeric: DashMap<String, BTreeMap<i64, RoaringBitmap>>,
     pub deleted: RwLock<RoaringBitmap>,
     pub forward: DashMap<u32, std::collections::HashMap<String, String>>,
+    pub token_df: DashMap<String, u32>,
+    pub doc_token_len: DashMap<u32, u32>,
+    pub doc_term_freq: DashMap<u32, HashMap<String, u16>>,
+    pub total_token_len: AtomicU64,
 }
 
 impl Default for MetadataIndex {
@@ -83,6 +87,10 @@ impl Default for MetadataIndex {
             numeric: DashMap::new(),
             deleted: RwLock::new(RoaringBitmap::new()),
             forward: DashMap::new(),
+            token_df: DashMap::new(),
+            doc_token_len: DashMap::new(),
+            doc_term_freq: DashMap::new(),
+            total_token_len: AtomicU64::new(0),
         }
     }
 }
@@ -310,13 +318,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             forward.insert(k, attributes);
         }
 
-        Ok(Self {
+        let index = Self {
             nodes: RwLock::new(nodes),
             metadata: MetadataIndex {
                 inverted,
                 numeric,
                 deleted: RwLock::new(deleted),
                 forward,
+                token_df: DashMap::new(),
+                doc_token_len: DashMap::new(),
+                doc_term_freq: DashMap::new(),
+                total_token_len: AtomicU64::new(0),
             },
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
@@ -326,7 +338,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             config,
             has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
             _marker: PhantomData,
-        })
+        };
+        index.rebuild_lexical_stats();
+        Ok(index)
     }
     pub fn save_to_bytes(&self) -> Result<Vec<u8>, String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
@@ -457,13 +471,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             forward.insert(k, attributes);
         }
 
-        Ok(Self {
+        let index = Self {
             nodes: RwLock::new(nodes),
             metadata: MetadataIndex {
                 inverted,
                 numeric,
                 deleted: RwLock::new(deleted),
                 forward,
+                token_df: DashMap::new(),
+                doc_token_len: DashMap::new(),
+                doc_term_freq: DashMap::new(),
+                total_token_len: AtomicU64::new(0),
             },
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
@@ -473,7 +491,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             config,
             has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
             _marker: PhantomData,
-        })
+        };
+        index.rebuild_lexical_stats();
+        Ok(index)
     }
 
     pub fn get_storage(&self) -> Arc<VectorStore> {
@@ -621,6 +641,93 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         self.has_nonempty_metadata.load(Ordering::Relaxed)
     }
 
+    fn build_allowed_bitmap(
+        &self,
+        filter: &std::collections::HashMap<String, String>,
+        complex_filters: &[FilterExpr],
+    ) -> Option<RoaringBitmap> {
+        let deleted = self.metadata.deleted.read();
+        let mut bitmap: Option<RoaringBitmap> = None;
+
+        let mut apply_mask = |mask: &RoaringBitmap| {
+            if let Some(ref mut bm) = bitmap {
+                *bm &= mask;
+            } else {
+                bitmap = Some(mask.clone());
+            }
+        };
+
+        if !filter.is_empty() {
+            for (key, val) in filter {
+                let tag = format!("{key}:{val}");
+                if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
+                    apply_mask(&tag_bitmap);
+                } else {
+                    return Some(RoaringBitmap::new());
+                }
+            }
+        }
+
+        for expr in complex_filters {
+            match expr {
+                FilterExpr::Match { key, value } => {
+                    let tag = format!("{key}:{value}");
+                    if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
+                        apply_mask(&tag_bitmap);
+                    } else {
+                        return Some(RoaringBitmap::new());
+                    }
+                }
+                FilterExpr::Range { key, gte, lte } => {
+                    let mut range_union = RoaringBitmap::new();
+
+                    if let Some(tree) = self.metadata.numeric.get(key) {
+                        let start = gte.map_or(i64::MIN, |x| x.ceil() as i64);
+                        let end = lte.map_or(i64::MAX, |x| x.floor() as i64);
+                        if start <= end {
+                            for (_, bm) in tree.range(start..=end) {
+                                range_union |= bm;
+                            }
+                        }
+                    }
+
+                    for item in &self.metadata.forward {
+                        if range_union.contains(*item.key()) {
+                            continue;
+                        }
+                        let Some(num) = Self::metadata_numeric_value(item.value(), key) else {
+                            continue;
+                        };
+                        if let Some(min) = gte {
+                            if num < *min {
+                                continue;
+                            }
+                        }
+                        if let Some(max) = lte {
+                            if num > *max {
+                                continue;
+                            }
+                        }
+                        range_union.insert(*item.key());
+                    }
+
+                    if range_union.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
+                    apply_mask(&range_union);
+                }
+            }
+        }
+
+        match bitmap {
+            Some(mut bm) => {
+                bm -= &*deleted;
+                Some(bm)
+            }
+            None => None,
+        }
+    }
+
     // Support Soft Delete
     pub fn delete(&self, id: NodeId) {
         let mut del = self.metadata.deleted.write();
@@ -651,97 +758,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             );
         }
 
-        // 1. Prepare Filter Bitmap.
-        // Filter Logic: Intersection of Tag filters, Complex filters, and non-deleted items.
-        let allowed_bitmap = {
-            let deleted = self.metadata.deleted.read();
-            let mut bitmap: Option<RoaringBitmap> = None;
-
-            // Helper to intersect
-            let mut apply_mask = |mask: &RoaringBitmap| {
-                if let Some(ref mut bm) = bitmap {
-                    *bm &= mask;
-                } else {
-                    bitmap = Some(mask.clone());
-                }
-            };
-
-            // 1. Exact string-map filters
-            if !filter.is_empty() {
-                for (key, val) in filter {
-                    let tag = format!("{key}:{val}");
-                    if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
-                        apply_mask(&tag_bitmap);
-                    } else {
-                        return Vec::new(); // Short circuit
-                    }
-                }
-            }
-
-            // 2. Complex Filters (Range / Match)
-            for expr in complex_filters {
-                match expr {
-                    FilterExpr::Match { key, value } => {
-                        let tag = format!("{key}:{value}");
-                        if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
-                            apply_mask(&tag_bitmap);
-                        } else {
-                            return Vec::new();
-                        }
-                    }
-                    FilterExpr::Range { key, gte, lte } => {
-                        let mut range_union = RoaringBitmap::new();
-
-                        if let Some(tree) = self.metadata.numeric.get(key) {
-                            let start = gte.map_or(i64::MIN, |x| x.ceil() as i64);
-                            let end = lte.map_or(i64::MAX, |x| x.floor() as i64);
-                            if start <= end {
-                                for (_, bm) in tree.range(start..=end) {
-                                    range_union |= bm;
-                                }
-                            }
-                        }
-
-                        for item in &self.metadata.forward {
-                            if range_union.contains(*item.key()) {
-                                continue;
-                            }
-                            let Some(num) = Self::metadata_numeric_value(item.value(), key) else {
-                                continue;
-                            };
-                            if let Some(min) = gte {
-                                if num < *min {
-                                    continue;
-                                }
-                            }
-                            if let Some(max) = lte {
-                                if num > *max {
-                                    continue;
-                                }
-                            }
-                            range_union.insert(*item.key());
-                        }
-
-                        if range_union.is_empty() {
-                            return Vec::new();
-                        }
-                        apply_mask(&range_union);
-                    }
-                }
-            }
-
-            // Apply Deleted mask
-            match bitmap {
-                Some(mut bm) => {
-                    bm -= &*deleted;
-                    Some(bm)
-                }
-                None => {
-                    // No filters? Then ALL allowed except deleted.
-                    None
-                }
-            }
-        };
+        let allowed_bitmap = self.build_allowed_bitmap(filter, complex_filters);
+        if allowed_bitmap
+            .as_ref()
+            .is_some_and(roaring::RoaringBitmap::is_empty)
+        {
+            return Vec::new();
+        }
 
         // 1. Create HyperVector from query.
         let mut aligned_query = [0.0; N];
@@ -894,6 +917,35 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         }
     }
 
+    fn filtered_bruteforce_threshold() -> u64 {
+        std::env::var("HS_FILTER_BRUTEFORCE_THRESHOLD")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(50_000)
+    }
+
+    fn search_bruteforce_bitmap(
+        &self,
+        query: &HyperVector<N>,
+        k: usize,
+        allowed: &RoaringBitmap,
+    ) -> Vec<(NodeId, f64)> {
+        if k == 0 || allowed.is_empty() {
+            return Vec::new();
+        }
+        let nodes_len = self.nodes.read().len() as u32;
+        let mut out = Vec::with_capacity(allowed.len().min(k as u64) as usize);
+        for id in allowed {
+            if id >= nodes_len {
+                continue;
+            }
+            out.push((id, self.dist(id, query)));
+        }
+        out.sort_by(|a, b| a.1.total_cmp(&b.1));
+        out.truncate(k);
+        out
+    }
+
     fn search_layer0(
         &self,
         start_node: NodeId,
@@ -920,6 +972,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 !deleted_guard.as_ref().unwrap().contains(id)
             }
         };
+
+        if let Some(allowed_bitmap) = allowed {
+            if allowed_bitmap.len() <= Self::filtered_bruteforce_threshold() {
+                return self.search_bruteforce_bitmap(query, k, allowed_bitmap);
+            }
+        }
 
         // Safety check start_node
         if (start_node as usize) >= nodes_guard.len() {
@@ -1309,20 +1367,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     .or_default()
                     .insert(id);
             }
-
-            // C. Full Text Tokenization (Simple)
-            let tokens = Self::tokenize(val);
-            for token in tokens {
-                let token_key = format!("_txt:{token}");
-                self.metadata
-                    .inverted
-                    .entry(token_key)
-                    .or_default()
-                    .insert(id);
-            }
         }
 
-        // Store full metadata for lookup (Data Explorer) - Move here to avoid clone
+        // Store full metadata for lookup (Data Explorer)
+        self.upsert_doc_lexical_stats(id, &meta);
         self.metadata.forward.insert(id, meta);
 
         let q_vec = self.get_vector(id); // Helper reads from storage
@@ -1701,6 +1749,72 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             .collect()
     }
 
+    fn build_doc_term_stats(meta: &HashMap<String, String>) -> (HashMap<String, u16>, u32) {
+        let mut term_freq = HashMap::new();
+        let mut doc_len: u32 = 0;
+        for value in meta.values() {
+            for token in Self::tokenize(value) {
+                doc_len = doc_len.saturating_add(1);
+                let entry = term_freq.entry(token).or_insert(0_u16);
+                *entry = (*entry).saturating_add(1_u16);
+            }
+        }
+        (term_freq, doc_len)
+    }
+
+    fn remove_doc_lexical_stats(&self, id: NodeId) {
+        if let Some((_, old_len)) = self.metadata.doc_token_len.remove(&id) {
+            self.metadata
+                .total_token_len
+                .fetch_sub(u64::from(old_len), Ordering::Relaxed);
+        }
+        if let Some((_, old_tf)) = self.metadata.doc_term_freq.remove(&id) {
+            for token in old_tf.keys() {
+                let token_key = format!("_txt:{token}");
+                if let Some(mut bitmap) = self.metadata.inverted.get_mut(&token_key) {
+                    bitmap.remove(id);
+                }
+                if let Some(mut df_ref) = self.metadata.token_df.get_mut(token) {
+                    if *df_ref > 1 {
+                        *df_ref -= 1;
+                    } else {
+                        drop(df_ref);
+                        self.metadata.token_df.remove(token);
+                    }
+                }
+            }
+        }
+    }
+
+    fn upsert_doc_lexical_stats(&self, id: NodeId, meta: &HashMap<String, String>) {
+        self.remove_doc_lexical_stats(id);
+        let (term_freq, doc_len) = Self::build_doc_term_stats(meta);
+        self.metadata.doc_token_len.insert(id, doc_len);
+        self.metadata
+            .total_token_len
+            .fetch_add(u64::from(doc_len), Ordering::Relaxed);
+        for token in term_freq.keys() {
+            let token_key = format!("_txt:{token}");
+            self.metadata
+                .inverted
+                .entry(token_key)
+                .or_default()
+                .insert(id);
+            *self.metadata.token_df.entry(token.clone()).or_insert(0) += 1;
+        }
+        self.metadata.doc_term_freq.insert(id, term_freq);
+    }
+
+    fn rebuild_lexical_stats(&self) {
+        self.metadata.token_df.clear();
+        self.metadata.doc_token_len.clear();
+        self.metadata.doc_term_freq.clear();
+        self.metadata.total_token_len.store(0, Ordering::Relaxed);
+        for item in &self.metadata.forward {
+            self.upsert_doc_lexical_stats(*item.key(), item.value());
+        }
+    }
+
     // RRF Fusion Logic
     #[allow(clippy::too_many_arguments)]
     fn search_hybrid(
@@ -1719,32 +1833,91 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let vector_results =
             self.search(query, vec_k, ef_search, filter, complex_filters, None, None);
 
-        // 2. Get Keyword Search Results (Lexical) -> All matching or Top N
-        // Scan inverted index for tokens
+        // 2. BM25 lexical ranking over the same filtered space.
         let tokens = Self::tokenize(text);
         if tokens.is_empty() {
             return vector_results.into_iter().take(k).collect();
         }
-
-        // We calculate a score for each doc based on token overlap
-        // Map<NodeId, score>
-        let mut keyword_scores: std::collections::HashMap<u32, f32> =
-            std::collections::HashMap::new();
-
+        let mut uniq_tokens = std::collections::HashSet::new();
         for token in tokens {
+            uniq_tokens.insert(token);
+        }
+
+        let allowed_bitmap = self.build_allowed_bitmap(filter, complex_filters);
+        if allowed_bitmap
+            .as_ref()
+            .is_some_and(roaring::RoaringBitmap::is_empty)
+        {
+            return Vec::new();
+        }
+        let deleted = self.metadata.deleted.read();
+        let is_allowed = |id: u32| -> bool {
+            if deleted.contains(id) {
+                return false;
+            }
+            if let Some(bm) = &allowed_bitmap {
+                bm.contains(id)
+            } else {
+                true
+            }
+        };
+
+        let global_docs = self
+            .nodes
+            .read()
+            .len()
+            .saturating_sub(deleted.len() as usize);
+        let total_docs = global_docs.max(1) as f64;
+        let avgdl = if global_docs == 0 {
+            1.0
+        } else {
+            self.metadata.total_token_len.load(Ordering::Relaxed) as f64 / total_docs
+        }
+        .max(1.0);
+        let k1 = 1.2_f64;
+        let b = 0.75_f64;
+
+        let mut keyword_scores: HashMap<u32, f64> = HashMap::new();
+        for token in &uniq_tokens {
             let key = format!("_txt:{token}");
-            if let Some(bitmap) = self.metadata.inverted.get(&key) {
-                for id in bitmap.iter() {
-                    *keyword_scores.entry(id).or_default() += 1.0;
+            let Some(bitmap) = self.metadata.inverted.get(&key) else {
+                continue;
+            };
+            let df = self
+                .metadata
+                .token_df
+                .get(token)
+                .map_or_else(|| bitmap.len() as f64, |v| f64::from(*v))
+                .max(1.0);
+            let idf = (((total_docs - df + 0.5) / (df + 0.5)) + 1.0).ln();
+
+            for id in bitmap.iter() {
+                if !is_allowed(id) {
+                    continue;
                 }
+                let tf = self
+                    .metadata
+                    .doc_term_freq
+                    .get(&id)
+                    .and_then(|m| m.get(token).copied())
+                    .map_or(0.0, f64::from);
+                if tf <= 0.0 {
+                    continue;
+                }
+                let dl = self
+                    .metadata
+                    .doc_token_len
+                    .get(&id)
+                    .map_or(0.0, |v| f64::from(*v))
+                    .max(1.0);
+                let denom = tf + k1 * (1.0 - b + b * (dl / avgdl));
+                let score = idf * (tf * (k1 + 1.0) / denom);
+                *keyword_scores.entry(id).or_insert(0.0) += score;
             }
         }
 
-        // Sort keyword results
-        let mut keyword_ranking: Vec<(u32, f32)> = keyword_scores.into_iter().collect();
-        keyword_ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        // Take Top appropriate
-        let keyword_results = keyword_ranking;
+        let mut keyword_results: Vec<(u32, f64)> = keyword_scores.into_iter().collect();
+        keyword_results.sort_by(|a, b| b.1.total_cmp(&a.1));
 
         // 3. RRF Fusion
         // RRF_score = 1 / (alpha + rank_vec) + 1 / (alpha + rank_key)

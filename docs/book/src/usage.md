@@ -17,7 +17,7 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_METRIC` | `cosine` | Distance metric (`cosine`, `poincare`, `l2`, `euclidean`, `lorentz`) |
 | `HS_QUANTIZATION_LEVEL` | `none` | Compression (`none`, `scalar` (i8), `binary` (1-bit)) |
 | `HS_STORAGE_FLOAT32` | `false` | Store raw vectors as `f32` (`mode=none`) and promote to `f64` in distance kernels |
-| `HS_FAST_UPSERT_DELTA` | `0.0` | Fast upsert threshold (L2 delta). If small and metadata unchanged, skips graph relinking |
+| `HS_FAST_UPSERT_DELTA` | `0.0` | Fast upsert L2 threshold. `0.0` disables; typical `0.001..0.05` for iterative updates; too high can keep stale graph links |
 | `HS_EVENT_STREAM_BUFFER` | `1024` | Broadcast ring size for CDC and replication streams |
 | `HS_RERANK_ENABLED` | `false` | Enable exact top-K re-ranking after ANN candidate retrieval |
 | `HS_RERANK_OVERSAMPLE` | `4` | Candidate multiplier used before exact re-rank (`top_k * factor`) |
@@ -30,6 +30,7 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_GPU_POINCARE_ENABLED` | `true` | Enable GPU dispatch for Poincaré batch kernel (requires `gpu-runtime` feature) |
 | `HS_GPU_LORENTZ_ENABLED` | `true` | Enable GPU dispatch for Lorentz float batch kernel (runtime path) |
 | `HS_SEARCH_BATCH_INNER_CONCURRENCY` | `1` | Internal parallel fan-out in `SearchBatch` handler (bounded) |
+| `HS_SEARCH_CONCURRENCY` | `0` | Global concurrent search-task limit per collection (`0` = auto by CPU cores, max clamped to `CPU*4`) |
 
 ### HNSW Index Tuning
 
@@ -38,6 +39,7 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_HNSW_M` | `64` | Max connections per layer |
 | `HS_HNSW_EF_CONSTRUCT` | `200` | Build quality (50-500). Higher = slower build, better recall. |
 | `HS_HNSW_EF_SEARCH` | `100` | Search beam width (10-500). Higher = slower search, better recall. |
+| `HS_FILTER_BRUTEFORCE_THRESHOLD` | `50000` | If filtered candidate count is below threshold, layer-0 uses exact brute-force instead of graph traversal |
 | `HS_INDEXER_CONCURRENCY` | `1` | Check README for threading strategies (0=Auto, 1=Serial) |
 
 ### Persistence & Durability
