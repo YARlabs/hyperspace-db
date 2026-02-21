@@ -134,6 +134,18 @@ fn default_ef_search() -> usize {
     })
 }
 
+fn search_batch_inner_concurrency() -> usize {
+    static INNER_CONCURRENCY: OnceLock<usize> = OnceLock::new();
+    *INNER_CONCURRENCY.get_or_init(|| {
+        std::env::var("HS_SEARCH_BATCH_INNER_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|v| *v > 0)
+            .unwrap_or(1)
+            .min(128)
+    })
+}
+
 fn range_bounds_f64(r: &hyperspace_proto::hyperspace::Range) -> (Option<f64>, Option<f64>) {
     let gte = r.gte_f64.or(r.gte.map(|v| v as f64));
     let lte = r.lte_f64.or(r.lte.map(|v| v as f64));
@@ -785,35 +797,90 @@ impl Database for HyperspaceService {
     ) -> Result<Response<BatchSearchResponse>, Status> {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
+        let inner_concurrency = search_batch_inner_concurrency();
 
-        let mut responses = Vec::with_capacity(req.searches.len());
-        for search_req in req.searches {
+        if inner_concurrency <= 1 {
+            let mut responses = Vec::with_capacity(req.searches.len());
+            for search_req in req.searches {
+                let (col_name, vector, exact_filter, complex_filters, params) =
+                    build_filters(search_req);
+                let col = self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{col_name}' not found"))
+                })?;
+                let res = col
+                    .search(&vector, &exact_filter, &complex_filters, &params)
+                    .await
+                    .map_err(Status::internal)?;
+                let results = res
+                    .into_iter()
+                    .map(|(id, dist, meta)| {
+                        let typed_metadata = extract_typed_metadata(&meta);
+                        let metadata = strip_internal_metadata(&meta);
+                        SearchResult {
+                            id,
+                            distance: dist,
+                            metadata,
+                            typed_metadata,
+                        }
+                    })
+                    .collect();
+                responses.push(SearchResponse { results });
+            }
+            return Ok(Response::new(BatchSearchResponse { responses }));
+        }
+
+        let total = req.searches.len();
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(inner_concurrency));
+        let mut tasks = tokio::task::JoinSet::new();
+        for (idx, search_req) in req.searches.into_iter().enumerate() {
             let (col_name, vector, exact_filter, complex_filters, params) =
                 build_filters(search_req);
             let col =
                 self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
                     Status::not_found(format!("Collection '{col_name}' not found"))
                 })?;
-
-            let res = col
-                .search(&vector, &exact_filter, &complex_filters, &params)
+            let permit = semaphore
+                .clone()
+                .acquire_owned()
                 .await
-                .map_err(Status::internal)?;
+                .map_err(|e| Status::internal(format!("search_batch semaphore error: {e}")))?;
+            tasks.spawn(async move {
+                let _permit = permit;
+                let res = col
+                    .search(&vector, &exact_filter, &complex_filters, &params)
+                    .await
+                    .map_err(Status::internal)?;
 
-            let results = res
-                .into_iter()
-                .map(|(id, dist, meta)| {
-                    let typed_metadata = extract_typed_metadata(&meta);
-                    let metadata = strip_internal_metadata(&meta);
-                    SearchResult {
-                        id,
-                        distance: dist,
-                        metadata,
-                        typed_metadata,
-                    }
-                })
-                .collect();
-            responses.push(SearchResponse { results });
+                let results = res
+                    .into_iter()
+                    .map(|(id, dist, meta)| {
+                        let typed_metadata = extract_typed_metadata(&meta);
+                        let metadata = strip_internal_metadata(&meta);
+                        SearchResult {
+                            id,
+                            distance: dist,
+                            metadata,
+                            typed_metadata,
+                        }
+                    })
+                    .collect();
+                Ok::<(usize, SearchResponse), Status>((idx, SearchResponse { results }))
+            });
+        }
+
+        let mut ordered: Vec<Option<SearchResponse>> = vec![None; total];
+        while let Some(join_res) = tasks.join_next().await {
+            let task_res =
+                join_res.map_err(|e| Status::internal(format!("search_batch join error: {e}")))?;
+            let (idx, response) = task_res?;
+            ordered[idx] = Some(response);
+        }
+
+        let mut responses = Vec::with_capacity(total);
+        for item in ordered {
+            let response =
+                item.ok_or_else(|| Status::internal("search_batch internal ordering error"))?;
+            responses.push(response);
         }
 
         Ok(Response::new(BatchSearchResponse { responses }))
@@ -1645,7 +1712,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("[H] HyperspaceDB Server v2.0.0");
+    println!("[H] HyperspaceDB Server v2.2.2");
     hyperspace_core::check_simd();
 
     dotenv::dotenv().ok();

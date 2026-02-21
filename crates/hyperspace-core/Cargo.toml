@@ -1,12 +1,15 @@
 [package]
 name = "hyperspace-core"
-version = "2.2.1"
+version = "2.2.2"
 edition = "2021"
 
 [dependencies]
 thiserror = { workspace = true }
 rand = { workspace = true }
 async-trait = "0.1.89"
+wgpu = { version = "*", optional = true }
+pollster = { version = "*", optional = true }
+bytemuck = { version = "*", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -15,6 +18,11 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "metric_bench"
 harness = false
 
+[[bench]]
+name = "gpu_dispatch_bench"
+harness = false
+
 [features]
 default = []
 nightly-simd = []
+gpu-runtime = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]

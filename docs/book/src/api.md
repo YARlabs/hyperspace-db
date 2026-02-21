@@ -56,7 +56,7 @@ enum DurabilityLevel {
 
 ```
 
-`typed_metadata` is the preferred metadata path for new clients. Legacy `metadata` remains for compatibility.
+`typed_metadata` is the preferred metadata path for new clients. String `metadata` remains as a compatibility path.
 
 #### `Search`
 Finds nearest neighbors.
@@ -80,12 +80,12 @@ message SearchRequest {
 
 `SearchResult` now includes both `metadata` and `typed_metadata`.
 Range filters are evaluated with numeric semantics (`f64`) against typed metadata numeric values.
-For gRPC clients, decimal thresholds are supported via `Range.gte_f64` / `Range.lte_f64` (legacy `gte/lte` `int64` remains supported).
+For gRPC clients, decimal thresholds are supported via `Range.gte_f64` / `Range.lte_f64` (`gte/lte` `int64` remains as compatibility path).
 
 gRPC `Range` examples:
 
 ```protobuf
-// Integer threshold (legacy-compatible)
+// Integer threshold (compatibility path)
 Filter {
   range: {
     key: "depth",

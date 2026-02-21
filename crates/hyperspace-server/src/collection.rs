@@ -1,6 +1,7 @@
 use crate::sync::CollectionDigest;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
+use hyperspace_core::gpu::{rerank_topk_exact, GpuMetric};
 use hyperspace_core::{
     Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult, VacuumFilterOp,
     VacuumFilterQuery,
@@ -770,6 +771,13 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // Move only the required fields to avoid cloning whole params struct.
         let top_k = params.top_k;
         let ef_search = params.ef_search;
+        let rerank_enabled = std::env::var("HS_RERANK_ENABLED")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+        let rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(4)
+            .max(1);
         let hybrid_query = params.hybrid_query.clone();
         let hybrid_alpha = params.hybrid_alpha;
         let filters_owned = (!filters.is_empty()).then(|| filters.clone());
@@ -789,9 +797,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let complex_filters_ref = complex_filters_owned
                 .as_ref()
                 .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
+            let search_k = if rerank_enabled {
+                top_k.saturating_mul(rerank_oversample).max(top_k)
+            } else {
+                top_k
+            };
             let results = index.search(
                 &processed_query,
-                top_k,
+                search_k,
                 ef_search,
                 filters_ref,
                 complex_filters_ref,
@@ -799,9 +812,35 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 hybrid_alpha,
             );
 
+            let metric_tag = match M::name() {
+                "cosine" => GpuMetric::Cosine,
+                "poincare" => GpuMetric::Poincare,
+                "lorentz" => GpuMetric::Lorentz,
+                _ => GpuMetric::L2,
+            };
+
+            let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
+                let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
+                let candidate_vectors: Vec<Vec<f64>> = candidate_ids
+                    .iter()
+                    .map(|id| index.get_vector(*id).coords.to_vec())
+                    .collect();
+                let candidate_refs: Vec<&[f64]> =
+                    candidate_vectors.iter().map(Vec::as_slice).collect();
+                rerank_topk_exact(
+                    metric_tag,
+                    &processed_query,
+                    &candidate_ids,
+                    &candidate_refs,
+                )
+            } else {
+                results
+            };
+
             // Fetch metadata and convert IDs inside blocking worker.
-            results
+            reranked_internal
                 .into_iter()
+                .take(top_k)
                 .map(|(internal_id, dist)| {
                     let meta = if include_metadata {
                         index

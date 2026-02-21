@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-server"
-version = "2.2.1"
+version = "2.2.2"
 edition = "2021"
 
 [dependencies]
@@ -8,7 +8,7 @@ tokio = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 hyperspace-proto = { workspace = true }
-hyperspace-core = { workspace = true, features = ["nightly-simd"] }
+hyperspace-core = { workspace = true, features = ["nightly-simd", "gpu-runtime"] }
 hyperspace-index = { workspace = true }
 hyperspace-store = { workspace = true }
 tokio-stream = "0.1"

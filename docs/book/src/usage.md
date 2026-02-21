@@ -19,6 +19,17 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_STORAGE_FLOAT32` | `false` | Store raw vectors as `f32` (`mode=none`) and promote to `f64` in distance kernels |
 | `HS_FAST_UPSERT_DELTA` | `0.0` | Fast upsert threshold (L2 delta). If small and metadata unchanged, skips graph relinking |
 | `HS_EVENT_STREAM_BUFFER` | `1024` | Broadcast ring size for CDC and replication streams |
+| `HS_RERANK_ENABLED` | `false` | Enable exact top-K re-ranking after ANN candidate retrieval |
+| `HS_RERANK_OVERSAMPLE` | `4` | Candidate multiplier used before exact re-rank (`top_k * factor`) |
+| `HS_GPU_BATCH_ENABLED` | `false` | Enable runtime auto-dispatch policy for batch metric kernels |
+| `HS_GPU_MIN_BATCH` | `128` | Minimum batch size for GPU offload policy |
+| `HS_GPU_MIN_DIM` | `1024` | Minimum vector dimension for GPU offload policy |
+| `HS_GPU_MIN_WORK` | `262144` | Minimum workload (`batch * dim`) for GPU offload |
+| `HS_GPU_L2_ENABLED` | `true` | Enable GPU dispatch for L2 batch kernel (requires `gpu-runtime` feature) |
+| `HS_GPU_COSINE_ENABLED` | `true` | Enable GPU dispatch for cosine batch kernel (requires `gpu-runtime` feature) |
+| `HS_GPU_POINCARE_ENABLED` | `true` | Enable GPU dispatch for Poincaré batch kernel (requires `gpu-runtime` feature) |
+| `HS_GPU_LORENTZ_ENABLED` | `true` | Enable GPU dispatch for Lorentz float batch kernel (runtime path) |
+| `HS_SEARCH_BATCH_INNER_CONCURRENCY` | `1` | Internal parallel fan-out in `SearchBatch` handler (bounded) |
 
 ### HNSW Index Tuning
 

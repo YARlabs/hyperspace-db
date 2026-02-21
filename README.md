@@ -23,12 +23,26 @@ Unlike traditional vector databases that keep everything in RAM, HyperspaceDB dy
 
 Built on a **Persistence-First, Index-Second** architecture, it guarantees zero data loss and non-blocking search availability, powered by SIMD intrinsics and memory-mapped storage.
 
+## 🆕 v2.2.2 Improvements
+
+- **GPU Foundation Expansion**: Core WGSL kernels now cover L2/Cosine/Poincare batch distance with reusable re-rank primitives for exact top-K refinement.
+- **GPU Runtime Dispatch**: `batch_distance_auto` now executes `L2/Cosine/Poincare/Lorentz` kernels through `wgpu` (feature `gpu-runtime`) with deterministic CPU fallback.
+- **GPU Runtime Caching**: `wgpu` device/pipelines are initialized once and reused, removing per-request GPU bootstrap overhead.
+- **GPU Buffer Reuse**: Batch kernels reuse preallocated GPU buffers via a bounded scratch pool.
+- **Per-metric GPU toggles**: Added `HS_GPU_L2_ENABLED`, `HS_GPU_COSINE_ENABLED`, `HS_GPU_POINCARE_ENABLED`, `HS_GPU_LORENTZ_ENABLED`.
+- **GPU Offload Policy**: Tunable thresholds via `HS_GPU_MIN_BATCH`, `HS_GPU_MIN_DIM`, `HS_GPU_MIN_WORK` to avoid regressions on small rerank batches.
+- **Benchmark coverage**: Added `gpu_dispatch_bench` for CPU-reference vs auto-dispatch comparisons.
+- **Batch API throughput**: `SearchBatch` supports bounded internal fan-out with stable response ordering (`HS_SEARCH_BATCH_INNER_CONCURRENCY`).
+- **Apple Silicon runtime fix**: corrected WGSL struct syntax for `wgpu` shader validation in GPU batch dispatch path.
+- **Batch Dispatch Contract**: Core now exposes runtime batch-distance dispatch (`batch_distance_auto`) with a stable backend model for upcoming native GPU execution.
+
 ## 🆕 v2.2.1 Improvements
 
 - **Fast Upsert**: Optional small-perturbation path (`HS_FAST_UPSERT_DELTA`) updates vector storage/WAL without full graph relink when metadata is unchanged.
 - **CDC Reliability**: Event/replication streams now survive lagged broadcast reads; tunable ring size via `HS_EVENT_STREAM_BUFFER`.
 - **CDC in SDKs**: Python/TypeScript/Rust clients now provide direct subscribe helpers for event stream consumption.
 - **Typed Range Filters**: Numeric range filters now support decimal comparisons and typed numeric metadata values.
+- **Configurable Exact Re-rank**: Server can oversample ANN candidates and apply exact top-K re-ranking (`HS_RERANK_ENABLED`, `HS_RERANK_OVERSAMPLE`).
 - **SDK Math Expansion**: Added `parallel transport`, `riemannian gradient`, and Fréchet mean utilities in Python/TypeScript/Rust SDKs.
 - **Graph Edge Weights**: `GetNeighbors` now returns distances (`edge_weights`) aligned with neighbor order.
 

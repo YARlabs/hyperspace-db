@@ -28,4 +28,5 @@
 - [Storage Format](storage.md)
 - [The Mathematics](math.md)
 - [Zero-Copy HNSW](hnsw.md)
+- [GPU Acceleration Roadmap](gpu_roadmap.md)
 

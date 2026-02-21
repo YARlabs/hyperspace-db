@@ -113,8 +113,14 @@ fn test_lorentz_quantized_distance_accuracy_near() {
     let a_coords = [1.0, 0.0, 0.0];
     let b_coords = [r.cosh(), r.sinh(), 0.0];
 
-    let a = HyperVector::<3> { coords: a_coords, alpha: 0.0 };
-    let b = HyperVector::<3> { coords: b_coords, alpha: 0.0 };
+    let a = HyperVector::<3> {
+        coords: a_coords,
+        alpha: 0.0,
+    };
+    let b = HyperVector::<3> {
+        coords: b_coords,
+        alpha: 0.0,
+    };
 
     let exact = LorentzMetric::distance(&a_coords, &b_coords);
     let q_a = QuantizedHyperVector::from_float_lorentz(&a);
@@ -137,8 +143,14 @@ fn test_lorentz_quantized_distance_accuracy_far() {
     let a_coords = [1.0, 0.0, 0.0];
     let b_coords = [r.cosh(), r.sinh(), 0.0];
 
-    let a = HyperVector::<3> { coords: a_coords, alpha: 0.0 };
-    let b = HyperVector::<3> { coords: b_coords, alpha: 0.0 };
+    let a = HyperVector::<3> {
+        coords: a_coords,
+        alpha: 0.0,
+    };
+    let b = HyperVector::<3> {
+        coords: b_coords,
+        alpha: 0.0,
+    };
 
     let exact = LorentzMetric::distance(&a_coords, &b_coords);
     let q_a = QuantizedHyperVector::from_float_lorentz(&a);
@@ -157,17 +169,29 @@ fn test_lorentz_quantized_distance_preserves_ordering() {
     use crate::vector::{HyperVector, QuantizedHyperVector};
 
     // Three points at increasing geodesic distances from origin
-    let origin = HyperVector::<3> { coords: [1.0, 0.0, 0.0], alpha: 0.0 };
+    let origin = HyperVector::<3> {
+        coords: [1.0, 0.0, 0.0],
+        alpha: 0.0,
+    };
     let q_origin = QuantizedHyperVector::from_float_lorentz(&origin);
 
     let r1 = 0.5_f64;
-    let p1 = HyperVector::<3> { coords: [r1.cosh(), r1.sinh(), 0.0], alpha: 0.0 };
+    let p1 = HyperVector::<3> {
+        coords: [r1.cosh(), r1.sinh(), 0.0],
+        alpha: 0.0,
+    };
 
     let r2 = 1.5_f64;
-    let p2 = HyperVector::<3> { coords: [r2.cosh(), r2.sinh(), 0.0], alpha: 0.0 };
+    let p2 = HyperVector::<3> {
+        coords: [r2.cosh(), r2.sinh(), 0.0],
+        alpha: 0.0,
+    };
 
     let r3 = 3.0_f64;
-    let p3 = HyperVector::<3> { coords: [r3.cosh(), r3.sinh(), 0.0], alpha: 0.0 };
+    let p3 = HyperVector::<3> {
+        coords: [r3.cosh(), r3.sinh(), 0.0],
+        alpha: 0.0,
+    };
 
     let d1 = LorentzMetric::distance_quantized(&q_origin, &p1);
     let d2 = LorentzMetric::distance_quantized(&q_origin, &p2);
@@ -183,7 +207,10 @@ fn test_lorentz_quantized_self_distance_near_zero() {
     use crate::vector::{HyperVector, QuantizedHyperVector};
 
     // Quantized self-distance should be near zero
-    let v = HyperVector::<3> { coords: [1.0, 0.0, 0.0], alpha: 0.0 };
+    let v = HyperVector::<3> {
+        coords: [1.0, 0.0, 0.0],
+        alpha: 0.0,
+    };
     let q = QuantizedHyperVector::from_float_lorentz(&v);
 
     let self_dist = LorentzMetric::distance_quantized(&q, &v);
@@ -205,13 +232,21 @@ fn test_lorentz_quantized_high_dim() {
 
     let mut a_coords = [0.0_f64; 8];
     a_coords[0] = r.cosh();
-    for i in 1..8 { a_coords[i] = component; }
+    for i in 1..8 {
+        a_coords[i] = component;
+    }
 
     let mut b_coords = [0.0_f64; 8];
     b_coords[0] = 1.0; // origin
 
-    let a = HyperVector::<8> { coords: a_coords, alpha: 0.0 };
-    let b = HyperVector::<8> { coords: b_coords, alpha: 0.0 };
+    let a = HyperVector::<8> {
+        coords: a_coords,
+        alpha: 0.0,
+    };
+    let b = HyperVector::<8> {
+        coords: b_coords,
+        alpha: 0.0,
+    };
     let q_a = QuantizedHyperVector::from_float_lorentz(&a);
 
     let exact = LorentzMetric::distance(&a_coords, &b_coords);
@@ -228,7 +263,10 @@ fn test_lorentz_quantized_high_dim() {
 #[should_panic(expected = "Binary quantization is not supported for the Lorentz model")]
 fn test_lorentz_binary_still_panics() {
     use crate::vector::{BinaryHyperVector, HyperVector};
-    let v = HyperVector::<3> { coords: [1.0, 0.0, 0.0], alpha: 0.0 };
+    let v = HyperVector::<3> {
+        coords: [1.0, 0.0, 0.0],
+        alpha: 0.0,
+    };
     let b = BinaryHyperVector::from_float(&v);
     let _ = LorentzMetric::distance_binary(&b, &v);
 }

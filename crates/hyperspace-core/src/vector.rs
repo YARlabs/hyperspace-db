@@ -224,7 +224,9 @@ impl<const N: usize> QuantizedHyperVector<N> {
     /// keeping the struct layout identical (no storage format change).
     pub fn from_float_lorentz(v: &HyperVector<N>) -> Self {
         // Dynamic range: find the maximum absolute coordinate value
-        let scale = v.coords.iter()
+        let scale = v
+            .coords
+            .iter()
             .map(|&x| x.abs())
             .fold(0.0_f64, f64::max)
             .max(1e-12); // Guard against degenerate vectors

@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-02-19
+
+### Added
+* **GPU roadmap bootstrap in core**:
+    * Added WGSL kernels for `L2`, `Cosine`, and `Poincare` batch distance.
+    * Added reusable exact re-rank primitive (`rerank_topk_exact`) and CPU reference kernels.
+* **GPU runtime dispatch (feature-gated)**:
+    * Added `gpu-runtime` feature in `hyperspace-core` (`wgpu`, `pollster`, `bytemuck`).
+    * `batch_distance_auto` now executes `L2/Cosine/Poincare/Lorentz` via `wgpu` when enabled, with safe CPU fallback (`GpuFallbackCpu`).
+    * Added dedicated Lorentz float runtime kernel and connected `GpuMetric::Lorentz` in `kernel_for_metric`.
+    * Added persistent GPU runtime cache (single device/pipeline initialization reused across requests).
+    * Added GPU scratch-buffer reuse pool to reduce per-request buffer allocations in batch kernels.
+    * Added conservative GPU offload thresholds: `HS_GPU_MIN_BATCH`, `HS_GPU_MIN_DIM`, `HS_GPU_MIN_WORK`.
+* **Per-metric GPU controls**:
+    * Added `HS_GPU_L2_ENABLED`, `HS_GPU_COSINE_ENABLED`, `HS_GPU_POINCARE_ENABLED`, `HS_GPU_LORENTZ_ENABLED`.
+* **Benchmarking**:
+    * Added `gpu_dispatch_bench` for CPU-reference vs auto-dispatch comparisons.
+* **Batch Search runtime throughput**:
+    * `search_batch` server handler now supports bounded per-query fan-out while preserving response order.
+    * Added `HS_SEARCH_BATCH_INNER_CONCURRENCY` for deterministic load-scaling control.
+* **Search re-rank integration**:
+    * Added optional exact re-ranking in server search path via `HS_RERANK_ENABLED`.
+    * Added `HS_RERANK_OVERSAMPLE` to control ANN candidate expansion before exact top-K ordering.
+* **GPU runtime dispatch contract**:
+    * Added `batch_distance_auto` and backend tags in core (`Cpu` / `GpuDispatchPlanned`).
+    * Added `HS_GPU_BATCH_ENABLED` configuration toggle for batch kernel dispatch policy.
+
+### Fixed
+* **WGSL runtime parser compatibility**:
+    * Fixed shader `Params` struct field separators for `wgpu` validation on Apple Silicon runtime path.
+
+
 ## [2.2.1] - 2026-02-17
 
 ### Added
