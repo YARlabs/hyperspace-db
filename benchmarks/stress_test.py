@@ -50,6 +50,14 @@ def generate_vector(dim, metric):
         # Poincaré requires norm < 1. Using small random values is safe.
         v = np.random.uniform(-0.05, 0.05, dim)
         return v.tolist()
+    elif metric == "lorentz":
+        # Lorentz: -t^2 + |x|^2 = -1 => t = sqrt(1 + |x|^2)
+        # We assume dim includes the t component (the first one)
+        spatial_dim = dim - 1
+        x = np.random.uniform(-0.1, 0.1, spatial_dim)
+        spatial_sq = np.sum(x * x)
+        t = np.sqrt(1.0 + spatial_sq)
+        return [float(t)] + x.tolist()
     else:
         # Euclidean/Cosine
         v = np.random.uniform(-0.3, 0.3, dim)
@@ -186,12 +194,16 @@ def main():
     # Step 1: Euclidean Baseline
     euc_results = run_concurrency_suite(dim=1024, metric="cosine", label="Euclidean Baseline")
     
-    # Step 2: Hyperbolic Efficiency
-    hyp_results = run_concurrency_suite(dim=64, metric="poincare", label="Hyperbolic Efficiency")
+    # Step 2: Hyperbolic Efficiency (Poincaré)
+    hyp_results = run_concurrency_suite(dim=64, metric="poincare", label="Hyperbolic Efficiency (Poincaré)")
+    
+    # Step 3: Lorentz Model (Minkowski space)
+    lor_results = run_concurrency_suite(dim=64, metric="lorentz", label="Lorentz Hyperboloid")
     
     # Final Reports
     print_results(euc_results, "EUCLIDEAN (1024d Cosine)")
     print_results(hyp_results, "HYPERBOLIC (64d Poincaré)")
+    print_results(lor_results, "LORENTZ (64d Hyperboloid)")
     
     print("\n✨ All tests finished. All temporary data cleared.")
 
