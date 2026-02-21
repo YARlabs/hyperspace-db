@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Zero-Copy HNSW - HyperspaceDB Documentation</title>
+        <title>GPU Acceleration Roadmap - HyperspaceDB Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -90,7 +90,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="wasm.html"><strong aria-hidden="true">5.</strong> WebAssembly (WASM)</a></li><li class="chapter-item expanded "><a href="integrations.html"><strong aria-hidden="true">6.</strong> Integrations (LangChain)</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">7.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">8.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="embeddings.html"><strong aria-hidden="true">9.</strong> Embedding Service</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">10.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">10.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">10.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">10.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="lorentz_quantization.html"><strong aria-hidden="true">10.4.</strong> Lorentz SQ8 & GPU</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">10.5.</strong> Security & Auth</a></li><li class="chapter-item expanded "><a href="durability.html"><strong aria-hidden="true">10.6.</strong> Data Safety & Durability</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">11.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">12.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">13.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html" class="active"><strong aria-hidden="true">14.</strong> Zero-Copy HNSW</a></li><li class="chapter-item expanded "><a href="gpu_roadmap.html"><strong aria-hidden="true">15.</strong> GPU Acceleration Roadmap</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="wasm.html"><strong aria-hidden="true">5.</strong> WebAssembly (WASM)</a></li><li class="chapter-item expanded "><a href="integrations.html"><strong aria-hidden="true">6.</strong> Integrations (LangChain)</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">7.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">8.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="embeddings.html"><strong aria-hidden="true">9.</strong> Embedding Service</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">10.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">10.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">10.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">10.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="lorentz_quantization.html"><strong aria-hidden="true">10.4.</strong> Lorentz SQ8 & GPU</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">10.5.</strong> Security & Auth</a></li><li class="chapter-item expanded "><a href="durability.html"><strong aria-hidden="true">10.6.</strong> Data Safety & Durability</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">11.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">12.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">13.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">14.</strong> Zero-Copy HNSW</a></li><li class="chapter-item expanded "><a href="gpu_roadmap.html" class="active"><strong aria-hidden="true">15.</strong> GPU Acceleration Roadmap</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -178,50 +178,16 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="zero-copy-hyperbolic-hnsw"><a class="header" href="#zero-copy-hyperbolic-hnsw">Zero-Copy Hyperbolic HNSW</a></h1>
-<p>Our implementation of <a href="https://arxiv.org/abs/1603.09320">Hierarchical Navigable Small Worlds</a> is unique in two ways:</p>
-<ol>
-<li><strong>Metric</strong>: It natively speaks hyperbolic geometry.</li>
-<li><strong>Concurrency</strong>: It uses fine-grained locking (<code>parking_lot::RwLock</code>) on every node.</li>
-</ol>
-<h2 id="graph-structure"><a class="header" href="#graph-structure">Graph Structure</a></h2>
-<p>The graph consists of Layers (0..max).</p>
-<ul>
-<li><strong>Layer 0</strong>: Contains ALL vectors. This is the base ground truth.</li>
-<li><strong>Layer N</strong>: Contains a random subset of vectors from Layer N-1.</li>
-</ul>
-<p>This creates a skip-list-like structure for navigation.</p>
-<h2 id="the-select-neighbors-heuristic"><a class="header" href="#the-select-neighbors-heuristic">The &quot;Select Neighbors&quot; Heuristic</a></h2>
-<p>When connecting a new node $U$ to neighbors in HNSW, we use a heuristic to ensure diversity.</p>
-<p>Standard Euclidean HNSW checks:</p>
-<ul>
-<li>Add neighbor $V$ if $dist(U, V)$ is minimal.</li>
-<li>Skip $V$ if it is closer to an <em>already selected</em> neighbor than to $U$.</li>
-</ul>
-<p><strong>Hyperbolic Adaptation</strong>:
-We use the Poincaré distance for this check. Because the space expands exponentially, &quot;diversity&quot; is easier to achieve, but &quot;closeness&quot; is tricky because points near the boundary (norm $\approx$ 1) have massive distances even if they look close in Euclidean space.</p>
-<p>Our heuristic strictly respects the Poincaré metric, preventing &quot;short-circuiting&quot; through the center of the ball unless mathematically valid.</p>
-<h2 id="locking-strategy"><a class="header" href="#locking-strategy">Locking Strategy</a></h2>
-<p>We do not use a global lock.</p>
-<ul>
-<li><strong>Reading</strong>: Search traverses nodes acquiring brief Read Locks.</li>
-<li><strong>Writing</strong>: Indexer acquires Write Locks only on the specific adjacency lists (layers) it is modifying.</li>
-</ul>
-<p>This allows <code>insert</code> and <code>search</code> to run in parallel with high throughput.</p>
-<h3 id="batch-search-acceleration"><a class="header" href="#batch-search-acceleration">Batch Search Acceleration</a></h3>
-<p>For high-throughput batch search operations, HNSW can offload Minkowski distance computations to the GPU using WGSL compute shaders. This is particularly effective when combined with <a href="lorentz_quantization.html">Lorentz SQ8 Quantization</a>.</p>
+                        <h1 id="gpu-acceleration-roadmap"><a class="header" href="#gpu-acceleration-roadmap">GPU Acceleration Roadmap</a></h1>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="math.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="hnsw.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="gpu_roadmap.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -229,13 +195,10 @@ We use the Poincaré distance for this check. Because the space expands exponent
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="math.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="hnsw.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="gpu_roadmap.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
             </nav>
 
         </div>
