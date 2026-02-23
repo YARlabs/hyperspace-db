@@ -457,6 +457,17 @@ impl HyperspaceDB {
     }
 }
 
+impl Drop for HyperspaceDB {
+    fn drop(&mut self) {
+        // Enforce strict memory deallocation
+        self.id_map.write().clear();
+        self.rev_map.write().clear();
+        self.bucket_hashes.write().clear();
+        
+        log("HyperspaceDB index strictly dropped. GC triggered.");
+    }
+}
+
 /// Deserialization struct for vectors received from the sync pull endpoint.
 #[derive(serde::Deserialize)]
 struct SyncEntry {

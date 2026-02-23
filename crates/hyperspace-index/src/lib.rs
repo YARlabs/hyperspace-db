@@ -11,6 +11,7 @@
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use rand::Rng;
+#[cfg(feature = "persistence")]
 use rkyv::ser::Serializer;
 use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
@@ -205,6 +206,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         Self::load_snapshot_with_storage_precision(path, storage, mode, config, false)
     }
 
+    #[cfg(feature = "persistence")]
     pub fn load_snapshot_with_storage_precision(
         path: &std::path::Path,
         storage: Arc<VectorStore>,
