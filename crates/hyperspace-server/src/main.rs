@@ -19,9 +19,12 @@ use clap::Parser;
 // Access index via CollectionManager.
 // use hyperspace_index::HnswIndex;
 
+mod chunk_backend;
+mod chunk_searcher;
 mod collection;
 mod http_server;
 mod manager;
+mod meta_router;
 mod sync;
 #[cfg(test)]
 mod tests;
@@ -40,8 +43,12 @@ use hyperspace_proto::hyperspace::{
     InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse, MetadataValue,
     MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats, TraverseRequest,
     TraverseResponse, VectorDeletedEvent, VectorInsertedEvent,
+    // Delta Sync (Task 2.1)
+    DiffBucket, SyncHandshakeRequest, SyncHandshakeResponse,
+    SyncPullRequest, SyncVectorData, SyncPushResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
+use tonic::Streaming;
 
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -1118,6 +1125,7 @@ impl Database for HyperspaceService {
 
     type ReplicateStream = ReceiverStream<Result<ReplicationLog, Status>>;
     type SubscribeToEventsStream = ReceiverStream<Result<EventMessage, Status>>;
+    type SyncPullStream = ReceiverStream<Result<SyncVectorData, Status>>;
 
     async fn get_digest(
         &self,
@@ -1360,6 +1368,194 @@ impl Database for HyperspaceService {
                 status: "Dynamic config not yet implemented for collections".into(),
             },
         ))
+    }
+
+    // ─── Delta Sync RPCs (Task 2.1) ─────────────────────────────────────────
+
+    async fn sync_handshake(
+        &self,
+        request: Request<SyncHandshakeRequest>,
+    ) -> Result<Response<SyncHandshakeResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default"
+        } else {
+            &req.collection
+        };
+
+        let col = self
+            .manager
+            .get(&user_id, col_name)
+            .await
+            .ok_or_else(|| Status::not_found(format!("Collection '{col_name}' not found")))?;
+
+        let server_buckets = col.buckets();
+        let server_clock = self.manager.cluster_state.read().await.logical_clock;
+        let server_count = col.count() as u64;
+
+        // Compare bucket hashes to find diffs
+        let client_buckets = &req.client_buckets;
+        if client_buckets.len() != server_buckets.len() {
+            return Err(Status::invalid_argument(format!(
+                "Bucket count mismatch: client={}, server={}",
+                client_buckets.len(),
+                server_buckets.len()
+            )));
+        }
+
+        let mut diff_buckets = Vec::new();
+        for (i, (client_hash, server_hash)) in
+            client_buckets.iter().zip(server_buckets.iter()).enumerate()
+        {
+            if client_hash != server_hash {
+                diff_buckets.push(DiffBucket {
+                    bucket_index: i as u32,
+                    server_hash: *server_hash,
+                    client_hash: *client_hash,
+                });
+            }
+        }
+
+        let in_sync = diff_buckets.is_empty();
+        if in_sync {
+            println!("🔄 SyncHandshake: '{col_name}' is in sync (client clock={}, server clock={server_clock})", req.client_logical_clock);
+        } else {
+            println!(
+                "🔄 SyncHandshake: '{col_name}' has {} dirty buckets (client clock={}, server clock={server_clock})",
+                diff_buckets.len(),
+                req.client_logical_clock
+            );
+        }
+
+        Ok(Response::new(SyncHandshakeResponse {
+            diff_buckets,
+            server_logical_clock: server_clock,
+            server_count,
+            in_sync,
+        }))
+    }
+
+    async fn sync_pull(
+        &self,
+        request: Request<SyncPullRequest>,
+    ) -> Result<Response<Self::SyncPullStream>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection.clone()
+        };
+
+        let col = self
+            .manager
+            .get(&user_id, &col_name)
+            .await
+            .ok_or_else(|| Status::not_found(format!("Collection '{col_name}' not found")))?;
+
+        let bucket_indices: Vec<u32> = req.bucket_indices;
+        if bucket_indices.is_empty() {
+            return Err(Status::invalid_argument("No bucket indices specified"));
+        }
+
+        println!(
+            "📥 SyncPull: '{col_name}' pulling {} buckets: {:?}",
+            bucket_indices.len(),
+            &bucket_indices[..bucket_indices.len().min(10)]
+        );
+
+        // Extract vectors for the requested buckets
+        let vectors = col.peek_buckets(&bucket_indices);
+        let total = vectors.len();
+
+        let (tx, rx) = mpsc::channel(256);
+        let col_name_clone = col_name.clone();
+
+        tokio::spawn(async move {
+            for (id, vector, metadata) in vectors {
+                let bucket_index = (id as usize % crate::sync::SYNC_BUCKETS) as u32;
+                let data = SyncVectorData {
+                    collection: col_name_clone.clone(),
+                    id,
+                    vector,
+                    metadata,
+                    bucket_index,
+                };
+                if tx.send(Ok(data)).await.is_err() {
+                    break;
+                }
+            }
+            println!("📥 SyncPull: Streamed {total} vectors for '{col_name}'");
+        });
+
+        Ok(Response::new(ReceiverStream::new(rx)))
+    }
+
+    async fn sync_push(
+        &self,
+        request: Request<Streaming<SyncVectorData>>,
+    ) -> Result<Response<SyncPushResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let mut stream = request.into_inner();
+
+        let mut accepted = 0u32;
+        let mut rejected = 0u32;
+        let mut duplicates = 0u32;
+        let mut target_collection: Option<String> = None;
+
+        let clock = self.manager.tick_cluster_clock().await;
+
+        while let Some(data) = stream.message().await? {
+            let col_name = if data.collection.is_empty() {
+                "default"
+            } else {
+                &data.collection
+            };
+
+            if target_collection.is_none() {
+                target_collection = Some(col_name.to_string());
+            }
+
+            let col = match self.manager.get(&user_id, col_name).await {
+                Some(c) => c,
+                None => {
+                    rejected += 1;
+                    continue;
+                }
+            };
+
+            // Check dimension match
+            if data.vector.len() != col.dimension() {
+                rejected += 1;
+                continue;
+            }
+
+            match col
+                .insert(
+                    &data.vector,
+                    data.id,
+                    data.metadata,
+                    clock,
+                    hyperspace_core::Durability::Batch,
+                )
+                .await
+            {
+                Ok(()) => accepted += 1,
+                Err(_) => duplicates += 1,
+            }
+        }
+
+        let col_display = target_collection.as_deref().unwrap_or("unknown");
+        println!(
+            "📤 SyncPush: '{col_display}' accepted={accepted}, rejected={rejected}, duplicates={duplicates}"
+        );
+
+        Ok(Response::new(SyncPushResponse {
+            accepted,
+            rejected,
+            duplicates,
+        }))
     }
 }
 

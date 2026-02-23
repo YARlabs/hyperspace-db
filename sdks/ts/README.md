@@ -154,6 +154,26 @@ Provided utilities:
 - `parallelTransport(x, y, v, c?)`
 - `frechetMean(points, c?, maxIter?, tol?)`
 
+### `CognitiveMath` (Spatial AI Engine)
+
+Provides advanced tools for Agentic AI, running entirely on the client side:
+
+```ts
+import { CognitiveMath } from "hyperspace-sdk-ts";
+
+// 1. Detect Hallucinations (Entropy approaches 1.0)
+const entropy = CognitiveMath.localEntropy(candidateThought, neighbors, 1.0);
+
+// 2. Proof of Convergence (Negative derivative = convergence)
+const stability = CognitiveMath.lyapunovConvergence(chainOfThought, 1.0);
+
+// 3. Extrapolate next thought (Koopman linearization)
+const nextThought = CognitiveMath.koopmanExtrapolate(past, current, 1.0, 1.0);
+
+// 4. Phase-Locked Loop for topic tracking
+const syncedThought = CognitiveMath.contextResonance(thought, globalContext, 0.5, 1.0);
+```
+
 ## Performance Notes
 
 - Prefer `searchBatch` and `batchInsert` for throughput-heavy services.

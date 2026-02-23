@@ -35,6 +35,12 @@ uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true
 async-trait = "0.1.89"
 futures = "0.3.32"
+ordered-float = "3"
+hyperspace-tiering = { workspace = true, optional = true }
 
 [features]
 embed = ["dep:hyperspace-embed"]
+# S3 tiering: optional cloud storage for cold chunks.
+# Not compiled by default — edge devices get zero cloud dependencies.
+# Enable with: cargo build --features s3-tiering
+s3-tiering = ["dep:hyperspace-tiering"]

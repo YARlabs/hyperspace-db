@@ -108,11 +108,30 @@ client
 ```
 
 ### Hyperbolic Math Utilities
-
 ```rust
 use hyperspace_sdk::math::{
     mobius_add, exp_map, log_map, parallel_transport, riemannian_gradient, frechet_mean
 };
+```
+
+### Cognitive Math SDK (Spatial AI Engine)
+Provides advanced tools for Agentic AI, running entirely on the client side:
+```rust
+use hyperspace_sdk::math::{
+    local_entropy, lyapunov_convergence, koopman_extrapolate, context_resonance
+};
+
+// 1. Detect Hallucinations (Entropy approaches 1.0)
+let entropy = local_entropy(&thought_vector, &neighbors, curvature)?;
+
+// 2. Proof of Convergence (Negative derivative = convergence)
+let stability = lyapunov_convergence(&chain_of_thought, curvature)?;
+
+// 3. Extrapolate next thought (Koopman linearization)
+let next_thought = koopman_extrapolate(&past, &current, 1.0, curvature)?;
+
+// 4. Phase-Locked Loop for topic tracking
+let synced_thought = context_resonance(&thought, &global_context, 0.5, curvature)?;
 ```
 
 ## Optional Feature: Embedders

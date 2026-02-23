@@ -1,5 +1,7 @@
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -7,6 +9,9 @@ use hyperspace_core::{CosineMetric, EuclideanMetric, GlobalConfig, QuantizationM
 use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore;
 use rexie::{ObjectStore, Rexie, TransactionMode};
+
+/// Number of sync buckets — must match crate::sync::SYNC_BUCKETS on the server.
+const SYNC_BUCKETS: usize = 256;
 
 enum IndexWrapper {
     L2Dim384(Arc<HnswIndex<384, EuclideanMetric>>),
@@ -36,6 +41,9 @@ pub struct HyperspaceDB {
     // Reverse mapping InternalID -> UserID
     rev_map: RwLock<HashMap<u32, u32>>,
     dimension: usize,
+    // Merkle Tree Bucket Hashes (Task 2.1 — Delta Sync)
+    // Same algorithm as server: XOR of hash(id, vector) per bucket.
+    bucket_hashes: RwLock<Vec<u64>>,
 }
 
 #[wasm_bindgen]
@@ -75,6 +83,7 @@ impl HyperspaceDB {
             id_map: RwLock::new(HashMap::new()),
             rev_map: RwLock::new(HashMap::new()),
             dimension,
+            bucket_hashes: RwLock::new(vec![0u64; SYNC_BUCKETS]),
         })
     }
 
@@ -117,6 +126,14 @@ impl HyperspaceDB {
 
         id_map.insert(id, internal_id);
         rev_map.insert(internal_id, id);
+
+        // Update bucket hash for Delta Sync (same algorithm as server)
+        let entry_hash = Self::hash_entry(id, vector);
+        let bucket_idx = (id as usize) % SYNC_BUCKETS;
+        {
+            let mut buckets = self.bucket_hashes.write();
+            buckets[bucket_idx] ^= entry_hash;
+        }
 
         Ok(())
     }
@@ -161,6 +178,65 @@ impl HyperspaceDB {
             .collect();
 
         Ok(serde_wasm_bindgen::to_value(&mapped)?)
+    }
+
+    // ─── Delta Sync Helpers (Task 2.1) ────────────────────────────────────
+
+    /// Computes a hash for a vector entry. Must match server's CollectionDigest::hash_entry.
+    fn hash_entry(id: u32, vector: &[f64]) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        id.hash(&mut hasher);
+        for v in vector {
+            v.to_bits().hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    /// Returns the current digest (256 bucket hashes + count) as a JS object.
+    /// Used by the sync protocol: WASM client sends this to the server
+    /// via `POST /api/collections/{name}/sync/handshake`.
+    pub fn get_digest(&self) -> Result<JsValue, JsValue> {
+        let buckets = self.bucket_hashes.read();
+        let id_map = self.id_map.read();
+        let count = id_map.len();
+        let mut root_hash = 0u64;
+        for b in buckets.iter() {
+            root_hash ^= b;
+        }
+        let digest = serde_json::json!({
+            "count": count,
+            "state_hash": root_hash,
+            "buckets": *buckets,
+        });
+        Ok(serde_wasm_bindgen::to_value(&digest)?)
+    }
+
+    /// Applies sync data received from the server.
+    /// Input: JSON array of `{id, vector, metadata}` objects.
+    /// Returns number of vectors applied.
+    pub fn apply_sync_vectors(&self, data: JsValue) -> Result<u32, JsValue> {
+        let entries: Vec<SyncEntry> =
+            serde_wasm_bindgen::from_value(data).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        let mut applied = 0u32;
+        for entry in &entries {
+            if entry.vector.len() != self.dimension {
+                continue;
+            }
+            // Skip if already exists
+            {
+                let id_map = self.id_map.read();
+                if id_map.contains_key(&entry.id) {
+                    continue;
+                }
+            }
+            // Insert
+            match self.insert(entry.id, &entry.vector) {
+                Ok(()) => applied += 1,
+                Err(_) => {}
+            }
+        }
+        Ok(applied)
     }
 
     /// Persist current state to `IndexedDB`.
@@ -233,6 +309,16 @@ impl HyperspaceDB {
 
         db_store
             .put(&map_js, Some(&JsValue::from_str("id_map")))
+            .await
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        // 4. Export Bucket Hashes (Delta Sync)
+        let buckets_js = {
+            let buckets = self.bucket_hashes.read();
+            serde_wasm_bindgen::to_value(&*buckets)?
+        };
+        db_store
+            .put(&buckets_js, Some(&JsValue::from_str("bucket_hashes")))
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
@@ -352,7 +438,30 @@ impl HyperspaceDB {
             rev_map.insert(v, k);
         }
 
+        // Restore Bucket Hashes (Delta Sync)
+        let buckets_js = db_store
+            .get(&JsValue::from_str("bucket_hashes"))
+            .await
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        if !buckets_js.is_undefined() {
+            if let Ok(bucket_data) = serde_wasm_bindgen::from_value::<Vec<u64>>(buckets_js) {
+                if bucket_data.len() == SYNC_BUCKETS {
+                    let mut buckets = self.bucket_hashes.write();
+                    *buckets = bucket_data;
+                }
+            }
+        }
+
         log("Loaded from IndexedDB");
         Ok(true)
     }
+}
+
+/// Deserialization struct for vectors received from the sync pull endpoint.
+#[derive(serde::Deserialize)]
+struct SyncEntry {
+    id: u32,
+    vector: Vec<f64>,
+    #[serde(default)]
+    metadata: HashMap<String, String>,
 }

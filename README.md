@@ -1,4 +1,4 @@
-# [H] HyperspaceDB
+# [H] HyperspaceDB: The Spatial AI Engine
 
 <div align="center">
 
@@ -7,112 +7,70 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v2.2.1** | **The Serverless Hyperbolic Vector Database.**
+**v3.0.0** | **The World's First Spatial AI Engine.**
 
-[Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks) • [License](#-license) • [Contributing](#-contributing) • [Roadmap](#-roadmap) • [DockerHub](https://hub.docker.com/r/glukhota/hyperspace-db)
+[Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
 </div>
 
 ---
 
-## 💡 What is HyperspaceDB?
+## 🌌 What is HyperspaceDB?
 
-**HyperspaceDB** is a **Cloud-Native, Serverless Vector Database** designed for high-performance AI memory. It combines **Hyperbolic Geometry** (Poincaré ball) with an advanced **Idle-Unloading Architecture**, allowing you to host thousands of active collections on a single node with minimal resource usage.
+Traditional vector databases were built to search static PDF files for chatbots. **HyperspaceDB is built for Autonomous Agents, Robotics, and Continuous Learning.**
 
-Unlike traditional vector databases that keep everything in RAM, HyperspaceDB dynamically manages memory, unloading inactive collections to disk and waking them up instantly upon request. It is the **Neon** of vector search.
+It is the world's first **Spatial AI Engine** — a mathematically advanced memory infrastructure that models information exactly how the physical world and human cognition are structured: as hierarchical, spatial, and dynamic graphs.
 
-Built on a **Persistence-First, Index-Second** architecture, it guarantees zero data loss and non-blocking search availability, powered by SIMD intrinsics and memory-mapped storage.
+By combining **Hyperbolic Geometry (Poincaré & Lorentz models)**, **Lock-Free Concurrency**, and an **Edge-to-Cloud Serverless architecture**, HyperspaceDB allows machines to navigate massive semantic spaces in microseconds, using a fraction of the RAM required by traditional databases.
 
-## 🆕 v2.2.2 Improvements
+## 🧠 Why a Spatial AI Engine? (Beyond RAG)
 
-- **Filtered Search Fast Path**: Added exact brute-force fallback for small filtered subsets (`HS_FILTER_BRUTEFORCE_THRESHOLD`) to reduce cache-miss overhead from graph traversal.
-- **BM25 Hybrid Ranking**: Hybrid lexical branch now uses BM25 (global DF + document length normalization) before RRF fusion for stronger relevance quality.
-- **GPU Foundation Expansion**: Core WGSL kernels now cover L2/Cosine/Poincare batch distance with reusable re-rank primitives for exact top-K refinement.
-- **GPU Runtime Dispatch**: `batch_distance_auto` now executes `L2/Cosine/Poincare/Lorentz` kernels through `wgpu` (feature `gpu-runtime`) with deterministic CPU fallback.
-- **GPU Runtime Caching**: `wgpu` device/pipelines are initialized once and reused, removing per-request GPU bootstrap overhead.
-- **GPU Buffer Reuse**: Batch kernels reuse preallocated GPU buffers via a bounded scratch pool.
-- **Per-metric GPU toggles**: Added `HS_GPU_L2_ENABLED`, `HS_GPU_COSINE_ENABLED`, `HS_GPU_POINCARE_ENABLED`, `HS_GPU_LORENTZ_ENABLED`.
-- **GPU Offload Policy**: Tunable thresholds via `HS_GPU_MIN_BATCH`, `HS_GPU_MIN_DIM`, `HS_GPU_MIN_WORK` to avoid regressions on small rerank batches.
-- **Benchmark coverage**: Added `gpu_dispatch_bench` for CPU-reference vs auto-dispatch comparisons.
-- **Batch API throughput**: `SearchBatch` supports bounded internal fan-out with stable response ordering (`HS_SEARCH_BATCH_INNER_CONCURRENCY`).
-- **Search Worker Tuning**: Added explicit `HS_SEARCH_CONCURRENCY` guidance and clarified `HS_FAST_UPSERT_DELTA` value ranges for safe production tuning.
-- **Apple Silicon runtime fix**: corrected WGSL struct syntax for `wgpu` shader validation in GPU batch dispatch path.
-- **Batch Dispatch Contract**: Core now exposes runtime batch-distance dispatch (`batch_distance_auto`) with a stable backend model for upcoming native GPU execution.
+AI is moving from text-in/text-out to autonomous action. Agents need *episodic memory* and *spatial reasoning*. HyperspaceDB provides the primitives to build it:
 
-## 🆕 v2.2.1 Improvements
+* **Fractal Knowledge Graphs:** Euclidean vectors fail at hierarchies. Our native Hyperbolic engine compresses massive trees (like codebases or taxonomies) into 64-dimensional spaces, reducing RAM usage by 50x without losing semantic context.
+* **Continuous Reconsolidation:** AI agents need to "sleep" and organize memories. With our **Fast Upsert Path**, **CDC Event Streams**, and built-in **Riemannian Math SDK** (Fréchet mean, parallel transport), your agents can continuously shift and prune vectors dynamically.
+* **Edge-to-Cloud & Offline-First:** Drones and humanoid robots can't wait for cloud latency. HyperspaceDB runs directly on Edge hardware, using **Merkle Tree Delta Sync** to asynchronously handshake and sync episodic memory chunks with the Cloud when the network is available.
+* **Serverless at Billion-Scale:** HyperspaceDB dynamically unloads idle logic to disk/S3, enabling you to host millions of vectors across thousands of tenants on a single commodity server, acting as the "Neon of Vector Search."
 
-- **Fast Upsert**: Optional small-perturbation path (`HS_FAST_UPSERT_DELTA`) updates vector storage/WAL without full graph relink when metadata is unchanged.
-- **CDC Reliability**: Event/replication streams now survive lagged broadcast reads; tunable ring size via `HS_EVENT_STREAM_BUFFER`.
-- **CDC in SDKs**: Python/TypeScript/Rust clients now provide direct subscribe helpers for event stream consumption.
-- **Typed Range Filters**: Numeric range filters now support decimal comparisons and typed numeric metadata values.
-- **Configurable Exact Re-rank**: Server can oversample ANN candidates and apply exact top-K re-ranking (`HS_RERANK_ENABLED`, `HS_RERANK_OVERSAMPLE`).
-- **SDK Math Expansion**: Added `parallel transport`, `riemannian gradient`, and Fréchet mean utilities in Python/TypeScript/Rust SDKs.
-- **Graph Edge Weights**: `GetNeighbors` now returns distances (`edge_weights`) aligned with neighbor order.
+---
 
-## 🚀 Key Features
+## 🚀 Core Pillars
 
 <table>
   <tr>
-    <td>🧠 <b>Infinite Context</b></td>
-    <td>Store millions of vectors across thousands of collections. Pay only for what you use.</td>
+    <td>⚙️ <b>Reflex-Level Speed</b></td>
+    <td>Built on Nightly Rust. Our <b>ArcSwap Lock-Free architecture</b> and <code>f32</code> SIMD intrinsics deliver up to <b>12,000 Search QPS</b> and <b>60,000 Ingest QPS</b> on a single node.</td>
   </tr>
   <tr>
-    <td>💤 <b>Serverless Core</b></td>
-    <td>Automatic <b>Idle Eviction</b> and <b>Instant Wake-up</b> (Cold Start in ms).</td>
+    <td>📐 <b>Non-Euclidean Native</b></td>
+    <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, and <b>Lorentz Hyperboloid</b> metrics. Stop flattening your hierarchical data.</td>
   </tr>
   <tr>
-    <td>⚡️ <b>Extreme Performance</b></td>
-    <td>Built with <b>Nightly Rust</b> and `std::simd` intrinsics for maximum throughput on AVX2/Neon CPUs.</td>
+    <td>📡 <b>Agentic Workflows</b></td>
+    <td>Built-in Change Data Capture (CDC) via <code>subscribe_to_events</code>. Trigger L-System logic, graph updates, or secondary models the millisecond a vector is stored.</td>
   </tr>
   <tr>
-    <td>🚀 <b>Lock-Free Concurrency</b></td>
-    <td>New in v2.0: <b>ArcSwap</b> architecture allows linear scaling. Handle <b>1000+ concurrent clients</b> with zero lock contention.</td>
+    <td>🧹 <b>Metadata-Driven Pruning</b></td>
+    <td>Agents must forget to stay efficient. Use typed numeric Range Filters (<code>energy < 0.1</code>) inside a Hot Vacuum to automatically prune obsolete memories.</td>
   </tr>
   <tr>
-    <td>📐 <b>Native Hyperbolic HNSW</b></td>
-    <td>A custom implementation of Hierarchical Navigable Small Worlds, mathematically tuned for the Poincaré metric (no expensive `acosh` overhead).</td>
+    <td>📦 <b>LSM-Tree Storage</b></td>
+    <td>Optimized for high-concurrency writes. Hot <b>MemTables</b> swap into immutable <b>HNSW Chunks</b>, enabling near-instant RAM reclamation and stable performance at billion-scale.</td>
   </tr>
   <tr>
-    <td>🔒 <b>Secure & Auth</b></td>
-    <td>Native API Key security (SHA-256) and Role-based Access Control for production deploy.</td>
-  </tr>
-  <tr>
-    <td>🔎 <b>Advanced Filtering</b></td>
-    <td>Complex metadata filtering with `Range` and `Match` operators using Roaring Bitmaps.</td>
-  </tr>
-  <tr>
-    <td>🤝 <b>Federated Cluster</b></td>
-    <td>Leader-Follower replication with <b>CRDT-ready</b> architecture for distributed consistency and Edge Sync.</td>
-  </tr>
-  <tr>
-    <td>🧠 <b>Hybrid Search</b></td>
-    <td>Combine semantic (vector) search with keyword (lexical) search using Reciprocal Rank Fusion (RRF).</td>
-  </tr>
-  <tr>
-    <td>🏘️ <b>Multi-Tenancy</b></td>
-    <td>Native support for logic separation via <b>Collections</b>. Manage multiple independent vector indexes on a single instance.</td>
-  </tr>
-  <tr>
-    <td>🖥️ <b>Web Dashboard</b></td>
-    <td>Built-in dashboard with <b>Cluster Topology</b> visualization, real-time metrics, and data exploration.</td>
-  </tr>
-  <tr>
-    <td>📦 <b>ScalarI8 & Binary</b></td>
-    <td>Integrated <b>ScalarI8</b> and <b>Binary (1-bit)</b> quantization reduces memory footprint by up to <b>64x</b> with blazing speed.</td>
-  </tr>
-  <tr>
-    <td>❄️ <b>Cold Storage</b></td>
-    <td>Lazy loading and <b>Idle Eviction</b> ensure minimal RAM usage, scaling to thousands of collections on limited hardware.</td>
-  </tr>
-  <tr>
-    <td>🧵 <b>Async Write Pipeline</b></td>
-    <td>Decoupled ingestion with a WAL V2 ensures persistence of data and metadata without blocking reads.</td>
-  </tr>
-  <tr>
-    <td>🛠️ <b>Runtime Tuning</b></td>
-    <td>Dynamically adjust `ef_search` and `ef_construction` parameters via gRPC without restarting the server.</td>
+    <td>☁️ <b>S3 Cloud Tiering</b></td>
+    <td>Built-in <b>S3/MinIO</b> offloading with local LRU caching. Scale your vector storage to Petabytes without increasing local NVMe costs.</td>
   </tr>
 </table>
+
+## 🤖 Target Use Cases
+
+1.  **Robotics & Autonomous Drones:** On-device semantic memory, Hierarchical SLAM, and offline-first edge synchronization.
+2.  **Continuous Learning Systems (AGI):** Frameworks doing Riemannian optimization, memory reconsolidation, and Hausdorff-based graph pruning.
+3.  **Enterprise Graph AI:** Merging relational logic with semantic proximity for massive multi-scale data analysis (Code ASTs, Medical Taxonomies).
+4.  **High-Load RAG & SaaS:** Traditional search, but significantly cheaper to operate due to Serverless Idle Eviction and multi-tenant isolation.
+
+---
 
 ## ⚡ 1 Million Vectors Benchmark
  
@@ -227,6 +185,24 @@ HyperspaceDB can run directly in the browser via WebAssembly, enabling **Local-F
 * **Optimized**: Uses `RAMVectorStore` backend for browser environments.
 
 👉 **[Read the WASM Documentation](docs/wasm.md)**
+
+## ⚖️ Heterogeneous Tribunal Framework (Tribunal Router)
+
+HyperspaceDB natively supports the confrontational model of LLM routing (Architect vs. Tribunal) directly on the vector graph.
+
+Using the **Cognitive Math SDK** and the **Graph Traversal API**, the SDK calculates a **Geometric Trust Score** for any LLM claim by verifying the logical path length between concepts in the latent hyperbolic space.
+
+If the geodesic distance (hops) between "Claim A" and "Claim B" on the graph is too large (or disconnected), the Trust Score drops to `0.0` (Hallucination).
+
+```python
+from hyperspace.agents import TribunalContext
+
+tribunal = TribunalContext(client, collection_name="knowledge_graph")
+
+# Evaluates structural graph distance between concepts. 
+# 1.0 = Truth (Identical), 0.0 = Hallucination (Disconnected)
+score = tribunal.evaluate_claim(concept_a_id=12, concept_b_id=45)
+```
 
 ## 🧠 Hybrid Search (RRF)
 

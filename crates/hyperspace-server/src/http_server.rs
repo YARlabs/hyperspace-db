@@ -152,6 +152,15 @@ pub async fn start_http_server(
         )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
         .route("/api/admin/usage", get(get_usage_report_http))
+        // Delta Sync HTTP API (Task 2.1 — for WASM and REST clients)
+        .route(
+            "/api/collections/{name}/sync/handshake",
+            post(sync_handshake_http),
+        )
+        .route(
+            "/api/collections/{name}/sync/pull",
+            post(sync_pull_http),
+        )
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -1056,4 +1065,154 @@ async fn get_usage_report_http(
     }
     let report = manager.get_usage_report();
     Json(report).into_response()
+}
+
+// ─── Delta Sync HTTP Handlers (Task 2.1) ──────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct SyncHandshakeHttpRequest {
+    client_buckets: Vec<u64>,
+    #[serde(default)]
+    client_logical_clock: u64,
+    #[serde(default)]
+    client_count: u64,
+}
+
+#[derive(serde::Serialize)]
+struct SyncDiffBucket {
+    bucket_index: u32,
+    server_hash: u64,
+    client_hash: u64,
+}
+
+#[derive(serde::Serialize)]
+struct SyncHandshakeHttpResponse {
+    diff_buckets: Vec<SyncDiffBucket>,
+    server_logical_clock: u64,
+    server_count: u64,
+    in_sync: bool,
+}
+
+async fn sync_handshake_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(body): Json<SyncHandshakeHttpRequest>,
+) -> impl IntoResponse {
+    let col = match manager.get(&ctx.user_id, &name).await {
+        Some(c) => c,
+        None => return (StatusCode::NOT_FOUND, "Collection not found").into_response(),
+    };
+
+    let server_buckets = col.buckets();
+    let server_clock = manager.cluster_state.read().await.logical_clock;
+    let server_count = col.count() as u64;
+
+    if body.client_buckets.len() != server_buckets.len() {
+        return (
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Bucket count mismatch: client={}, server={}",
+                body.client_buckets.len(),
+                server_buckets.len()
+            ),
+        )
+            .into_response();
+    }
+
+    let mut diff_buckets = Vec::new();
+    for (i, (client_hash, server_hash)) in body
+        .client_buckets
+        .iter()
+        .zip(server_buckets.iter())
+        .enumerate()
+    {
+        if client_hash != server_hash {
+            diff_buckets.push(SyncDiffBucket {
+                bucket_index: i as u32,
+                server_hash: *server_hash,
+                client_hash: *client_hash,
+            });
+        }
+    }
+
+    let in_sync = diff_buckets.is_empty();
+    if in_sync {
+        println!(
+            "🔄 HTTP SyncHandshake: '{name}' in sync (client_clock={})",
+            body.client_logical_clock
+        );
+    } else {
+        println!(
+            "🔄 HTTP SyncHandshake: '{name}' {} dirty buckets",
+            diff_buckets.len()
+        );
+    }
+
+    Json(SyncHandshakeHttpResponse {
+        diff_buckets,
+        server_logical_clock: server_clock,
+        server_count,
+        in_sync,
+    })
+    .into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct SyncPullHttpRequest {
+    bucket_indices: Vec<u32>,
+}
+
+#[derive(serde::Serialize)]
+struct SyncVectorDataHttp {
+    id: u32,
+    vector: Vec<f64>,
+    metadata: std::collections::HashMap<String, String>,
+    bucket_index: u32,
+}
+
+async fn sync_pull_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(body): Json<SyncPullHttpRequest>,
+) -> impl IntoResponse {
+    let col = match manager.get(&ctx.user_id, &name).await {
+        Some(c) => c,
+        None => return (StatusCode::NOT_FOUND, "Collection not found").into_response(),
+    };
+
+    if body.bucket_indices.is_empty() {
+        return (StatusCode::BAD_REQUEST, "No bucket indices specified").into_response();
+    }
+
+    println!(
+        "📥 HTTP SyncPull: '{name}' pulling {} buckets",
+        body.bucket_indices.len()
+    );
+
+    let vectors = col.peek_buckets(&body.bucket_indices);
+    let result: Vec<SyncVectorDataHttp> = vectors
+        .into_iter()
+        .map(|(id, vector, metadata)| {
+            let bucket_index = (id as usize % crate::sync::SYNC_BUCKETS) as u32;
+            SyncVectorDataHttp {
+                id,
+                vector,
+                metadata,
+                bucket_index,
+            }
+        })
+        .collect();
+
+    println!("📥 HTTP SyncPull: '{name}' returning {} vectors", result.len());
+    Json(result).into_response()
 }

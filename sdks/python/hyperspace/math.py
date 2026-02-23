@@ -118,8 +118,68 @@ def frechet_mean(points: Sequence[Sequence[float]], c: float = 1.0, max_iter: in
         inv = 1.0 / float(len(points))
         grad = [g * inv for g in grad]
         g_norm = math.sqrt(max(_norm_sq(grad), 0.0))
-        if g_norm <= max(tol, 1e-15):
-            break
         mu = exp_map(mu, grad, c=c)
         mu = _project_to_ball(mu, c)
     return mu
+
+
+# ==========================================
+# Cognitive Math SDK (Spatial AI Engine)
+# ==========================================
+
+def local_entropy(candidate: Sequence[float], neighbors: Sequence[Sequence[float]], c: float = 1.0) -> float:
+    """
+    Calculates the spatial entropy (dispersion) of a `candidate` vector relative to its `neighbors`.
+    Used to track LLM hallucinations (Task 2.3.1).
+    Returns a value in [0, 1) where values approaching 1 imply high chaos (hallucination).
+    """
+    if not neighbors:
+        return 1.0  # Infinite entropy without neighbors
+    total_deviation = 0.0
+    for neighbor in neighbors:
+        diff = log_map(candidate, neighbor, c=c)
+        total_deviation += math.sqrt(max(_norm_sq(diff), 0.0))
+    mean_deviation = total_deviation / len(neighbors)
+    # Logarithmic compression mapping deviation to [0, 1)
+    return 1.0 - math.exp(-mean_deviation)
+
+
+def lyapunov_convergence(trajectory: Sequence[Sequence[float]], c: float = 1.0) -> float:
+    """
+    Evaluates if a trajectory of vectors (e.g. Chain of Thought) converges to an attractor.
+    Calculates the average energy derivative (Lyapunov function derivative).
+    Negative values indicate convergence (stable), positive indicate divergence (chaos/hallucination).
+    """
+    if len(trajectory) < 3:
+        raise ValueError("Need at least 3 points to evaluate convergence trend")
+    # Attractor is approximated by Fréchet mean of the trajectory
+    attractor = frechet_mean(trajectory, c=c, max_iter=32, tol=1e-6)
+    v_diff_sum = 0.0
+    for i in range(len(trajectory) - 1):
+        v_t0 = math.sqrt(max(_norm_sq(log_map(attractor, trajectory[i], c=c)), 0.0))
+        v_t1 = math.sqrt(max(_norm_sq(log_map(attractor, trajectory[i + 1], c=c)), 0.0))
+        v_diff_sum += (v_t1 - v_t0)
+    
+    return v_diff_sum / (len(trajectory) - 1)
+
+
+def koopman_extrapolate(past: Sequence[float], current: Sequence[float], steps: float, c: float = 1.0) -> List[float]:
+    """
+    Extrapolates the trajectory in linear space (Koopman linearization) by tracking the 
+    shift vector from `past` to `current` and projecting it forward.
+    """
+    velocity_at_past = log_map(past, current, c=c)
+    velocity_at_current = parallel_transport(past, current, velocity_at_past, c=c)
+    future_velocity = [v * steps for v in velocity_at_current]
+    return exp_map(current, future_velocity, c=c)
+
+
+def context_resonance(thought: Sequence[float], global_context: Sequence[float], resonance_factor: float, c: float = 1.0) -> List[float]:
+    """
+    Resonates a thought vector towards a global context vector (Phase-Locked Loop context synchronization).
+    Pulls the thought towards the context along the geodesic by `resonance_factor` [0, 1].
+    """
+    pull_dir = log_map(thought, global_context, c=c)
+    factor = max(0.0, min(1.0, resonance_factor))
+    applied_pull = [v * factor for v in pull_dir]
+    return exp_map(thought, applied_pull, c=c)

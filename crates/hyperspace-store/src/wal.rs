@@ -25,6 +25,9 @@ pub enum WalSyncMode {
 pub struct Wal {
     file: BufWriter<File>,
     mode: WalSyncMode,
+    path: std::path::PathBuf,
+    current_size: u64,
+    size_limit: u64,
 }
 
 /// Represents an operation stored in the WAL.
@@ -39,12 +42,53 @@ pub enum WalEntry {
 }
 
 impl Wal {
-    pub fn new(path: &Path, mode: WalSyncMode) -> io::Result<Self> {
+    pub fn new(path: &std::path::Path, mode: WalSyncMode) -> io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
+        let metadata = file.metadata()?;
+        let current_size = metadata.len();
         Ok(Self {
             file: BufWriter::new(file),
             mode,
+            path: path.to_owned(),
+            current_size,
+            size_limit: 75 * 1024 * 1024, // 75 MB default soft limit
         })
+    }
+
+    pub fn set_size_limit(&mut self, limit_bytes: u64) {
+        self.size_limit = limit_bytes;
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.current_size >= self.size_limit
+    }
+
+    pub fn size(&self) -> u64 {
+        self.current_size
+    }
+
+    pub fn rotate(&mut self) -> io::Result<std::path::PathBuf> {
+        self.file.flush()?;
+        self.file.get_ref().sync_all()?;
+
+        // Rename the old file to a frozen state based on current time
+        let frozen_path = self.path.with_extension(format!(
+            "frozen.{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        ));
+        std::fs::rename(&self.path, &frozen_path)?;
+
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&self.path)?;
+        self.file = BufWriter::new(file);
+        self.current_size = 0;
+        Ok(frozen_path)
     }
 
     fn serialize_entry(
@@ -79,7 +123,7 @@ impl Wal {
         Ok(buf)
     }
 
-    fn write_packet(&mut self, payload: &[u8]) -> io::Result<()> {
+    fn write_packet_internal(&mut self, payload: &[u8]) -> io::Result<()> {
         let len = payload.len() as u32;
         let mut hasher = Hasher::new();
         hasher.update(payload);
@@ -93,13 +137,8 @@ impl Wal {
         // Payload
         self.file.write_all(payload)?;
 
-        // Flush to OS cache (always)
-        self.file.flush()?;
-
-        // Fsync to Disk (if Strict)
-        if self.mode == WalSyncMode::Strict {
-            self.file.get_ref().sync_all()?;
-        }
+        // 9 bytes header + payload length
+        self.current_size += 9 + payload.len() as u64;
 
         Ok(())
     }
@@ -112,7 +151,12 @@ impl Wal {
         logical_clock: u64,
     ) -> io::Result<()> {
         let payload = Self::serialize_entry(id, vector, metadata, logical_clock)?;
-        self.write_packet(&payload)
+        self.write_packet_internal(&payload)?;
+        self.file.flush()?;
+        if self.mode == WalSyncMode::Strict {
+            self.file.get_ref().sync_all()?;
+        }
+        Ok(())
     }
 
     pub fn append_batch(
@@ -122,7 +166,11 @@ impl Wal {
     ) -> io::Result<()> {
         for (vector, id, metadata) in entries {
             let payload = Self::serialize_entry(*id, vector, metadata, logical_clock)?;
-            self.write_packet(&payload)?;
+            self.write_packet_internal(&payload)?;
+        }
+        self.file.flush()?;
+        if self.mode == WalSyncMode::Strict {
+            self.file.get_ref().sync_all()?;
         }
         Ok(())
     }

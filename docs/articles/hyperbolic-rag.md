@@ -273,6 +273,21 @@ fn fast_acosh(x: f64) -> f64 {
 
 ---
 
+## The Heterogeneous Tribunal Framework
+
+Since Hyperbolic space efficiently captures hierarchical logic, it becomes incredibly easy to spot logical jumps—aka **Hallucinations**.
+
+Using the **Cognitive Math SDK**, developers can implement a "Tribunal Router". The Tribunal acts as a geometric judge: it verifies the path between a Context Concept and an LLM-generated Output Concept. If the distance in hyperbolic space (or the graph traversal path length) is too wide, the assertion is mechanically deemed a hallucination with a `0.0` Geometric Trust Score.
+
+```python
+# The Tribunal validates the claim geometry
+score = tribunal.evaluate_claim(concept_a_id=12, concept_b_id=45)
+if score < 0.1:
+    print("Hallucination detected!")
+```
+
+---
+
 ## Performance Overhead
 
 | Operation | Euclidean | Poincaré | Overhead |

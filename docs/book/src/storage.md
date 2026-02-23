@@ -12,15 +12,23 @@ Data is split into "Chunks" of fixed size ($2^{16} = 65,536$ vectors). This avoi
 *   `data/chunk_0.hyp`
 *   ...
 
+## LSM-Tree Segmentation
+
+HyperspaceDB 3.0 adopts an **LSM-Tree** architecture. Data flows from hot memory to immutable on-disk segments:
+
+1.  **MemTable (Hot)**: New vectors are indexed in an in-memory HNSW.
+2.  **Immutable Chunks (Cold)**: When a WAL segment is rotated, the Flush Worker persists the MemTable into a `.hyp` chunk.
+3.  **Local vs Cloud**: Chunks can live on local NVMe or be tiered to S3.
+
+## S3 Cloud Tiering (Optional)
+
+Using the `s3-tiering` feature, HyperspaceDB can offload cold chunks to an S3-compatible object store.
+
+- **LRU Cache**: A byte-weighted cache (`HS_MAX_LOCAL_CACHE_GB`) manages how much data stays on local disk.
+- **Lazy Load**: Search queries automatically trigger a download if a required chunk is only present in the cloud.
+- **Backpressure**: Semaphore-limited concurrent downloads prevent IO/Network saturations.
+
 ## Directory Structure (Multi-Tenancy)
-
-When Multi-Tenancy is active, collections are stored in subdirectories named with the format: `userid_collectionname`.
-Example:
-*   `data/user1_mycollection/meta.json`
-*   `data/user1_mycollection/index`
-*   `data/default_admin_public_data/index`
-
-This ensures complete physical isolation of collection data on disk.
 
 ## File Layout
 

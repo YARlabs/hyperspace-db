@@ -14,6 +14,7 @@ hyperspace-core = { path = "crates/hyperspace-core" }
 hyperspace-proto = { path = "crates/hyperspace-proto" }
 hyperspace-index = { path = "crates/hyperspace-index" }
 hyperspace-store = { path = "crates/hyperspace-store" }
+hyperspace-tiering = { path = "crates/hyperspace-tiering" }
 rand = "0.8"
 memmap2 = "0.9"
 parking_lot = "0.12"

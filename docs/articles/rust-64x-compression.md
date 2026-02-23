@@ -310,7 +310,11 @@ for v in vectors {
 
 **Result**: Readable code, C-level performance
 
-### 3. **Fearless Concurrency**
+### 3. **The Cognitive Mathematics Layer**
+
+All advanced mathematical operations, including our **Heterogeneous Tribunal Framework**, run atop this optimized structure. Calculating graph proximity, **Geometric Trust Scores**, or running `local_entropy` for logical evaluations is extremely performant because the underlying vectors fetched from the `VectorStore` are heavily quantized and directly memory-mapped!
+
+### 4. **Fearless Concurrency**
 
 ```rust
 // ✅ Compiler guarantees no data races

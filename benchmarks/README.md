@@ -80,4 +80,7 @@ python3 run_benchmark.py hyper
 - Recall@10, MRR@10, NDCG@10
 - System Recall@10 (vs exact brute-force)
 - Concurrency profile (C1/C10/C30)
-- Disk usage
+- **LSM-Tree Flush Latency**: Impact of WAL rotation on active search performance.
+- **S3 Tiering Cold Latency**: First-access latency for chunks retrieved from cloud storage.
+- **Cache Hit Ratio**: Effectiveness of the local `moka` LRU cache.
+- Disk usage (Local vs Cloud breakdown).

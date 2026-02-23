@@ -183,6 +183,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         )?;
         let bytes = serializer.into_serializer().into_inner();
 
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+        }
+
         let mut file = File::create(path).map_err(|e| e.to_string())?;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
 

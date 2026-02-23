@@ -1,0 +1,9 @@
+float64[] start_position
+float64[] current_thought
+float64[] context_centroid
+float64 resonance_factor
+---
+float64[] next_velocity_vector
+float64 local_entropy
+float64 lyapunov_stability
+bool hallucinating

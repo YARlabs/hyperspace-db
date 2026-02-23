@@ -21,6 +21,7 @@
     - [Binary Quantization](quantization.md)
     - [Lorentz SQ8 & GPU](lorentz_quantization.md)
     - [Security & Auth](security.md)
+    - [S3 Cloud Tiering](storage.md#s3-cloud-tiering-optional)
     - [Data Safety & Durability](durability.md)
 
 # Architecture & Internals

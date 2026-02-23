@@ -15,17 +15,19 @@ graph TB
         GRPC[gRPC Server<br/>Tonic]
     end
     
-    subgraph "Core Engine"
-        IDX[HNSW Index<br/>Hyperbolic/Euclidean]
-        STORE[Vector Store<br/>MMap/RAM]
+    subgraph "Core Engine (LSM-Tree)"
+        MEM[MemTable<br/>Active HNSW]
+        CHUNK[Immutable Chunks<br/>SSTables]
+        ROUTER[Meta-Router<br/>IVF Centroids]
+        BACKEND[Chunk Backend<br/>Local/S3]
         QUANT[Quantization<br/>ScalarI8/Binary]
-        MERKLE[Merkle Tree<br/>256 Buckets]
     end
     
     subgraph "Storage Layer"
-        WAL[Write-Ahead Log]
+        WAL[Write-Ahead Log<br/>Segmented]
+        FLUSH[Flush Worker]
         SNAP[Snapshots<br/>rkyv]
-        CHUNKS[Segmented Files<br/>chunk_*.hyp]
+        S3[(S3 / Cloud Storage)]
     end
     
     subgraph "Replication"
@@ -36,75 +38,79 @@ graph TB
     PY --> GRPC
     TS --> GRPC
     LC --> GRPC
-    WASM --> STORE
-    WASM --> IDX
+    WASM --> MEM
     
-    GRPC --> IDX
-    IDX --> STORE
-    IDX --> QUANT
-    IDX --> MERKLE
+    GRPC --> MEM
+    GRPC --> ROUTER
+    MEM --> WAL
+    FLUSH --> CHUNK
+    WAL -.-> FLUSH
+    CHUNK --> BACKEND
+    BACKEND --> S3
     
-    STORE --> CHUNKS
-    STORE --> WAL
-    IDX --> SNAP
+    LEADER --> WAL
+    FOLLOWER --> WAL
     
-    LEADER --> MERKLE
-    FOLLOWER --> MERKLE
-    MERKLE -.Delta Sync.-> FOLLOWER
-    
-    style WASM fill:#f9f,stroke:#333,stroke-width:2px
-    style MERKLE fill:#9f9,stroke:#333,stroke-width:2px
-    style IDX fill:#99f,stroke:#333,stroke-width:2px
+    style S3 fill:#f9f,stroke:#333,stroke-width:2px
+    style ROUTER fill:#9f9,stroke:#333,stroke-width:2px
+    style MEM fill:#99f,stroke:#333,stroke-width:2px
 ```
 
-## Data Flow: Insert Operation
+## Data Flow: Insert Operation (LSM-Tree)
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant gRPC
-    participant Index
-    participant Store
+    participant MemTable
     participant WAL
-    participant Merkle
+    participant FlushWorker
+    participant Chunk
     
-    Client->>gRPC: insert(vector, metadata)
-    gRPC->>Index: insert(vector)
-    Index->>Store: allocate(id)
-    Store->>WAL: append(id, vector)
-    WAL-->>Store: ✓
-    Store->>Store: write to mmap
-    Store-->>Index: internal_id
-    Index->>Index: build HNSW graph
-    Index->>Merkle: update_bucket(id)
-    Merkle->>Merkle: recompute hash
-    Merkle-->>Index: ✓
-    Index-->>gRPC: internal_id
+    Client->>gRPC: insert(vector)
+    gRPC->>MemTable: insert(vector)
+    MemTable->>WAL: append(vector)
+    WAL-->>MemTable: ✓
+    MemTable-->>gRPC: internal_id
     gRPC-->>Client: success
+    
+    Note over WAL, FlushWorker: When WAL segment is full...
+    WAL->>FlushWorker: process(frozen_segment)
+    FlushWorker->>Chunk: build immutable HNSW
+    Chunk-->>MemTable: swap(fresh_index)
+    Note over MemTable: RAM reclaimed!
 ```
 
-## Data Flow: Search Operation
+## Data Flow: Scatter-Gather Search
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant gRPC
-    participant Index
-    participant Store
-    participant SIMD
+    participant MemTable
+    participant MetaRouter
+    participant ChunkSearcher
+    participant S3
     
-    Client->>gRPC: search(query, k=10)
-    gRPC->>Index: search(query, k)
-    Index->>Index: select entry point
-    loop HNSW Traversal
-        Index->>Store: get_vector(id)
-        Store->>SIMD: distance(query, vec)
-        SIMD-->>Index: distance
-        Index->>Index: update candidates
+    Client->>gRPC: search(query, k)
+    par Concurrent Search
+        gRPC->>MemTable: search(query)
+        gRPC->>MetaRouter: route(query)
+        MetaRouter-->>gRPC: [chunk_ids]
     end
-    Index->>Index: sort top-k
-    Index-->>gRPC: [(id, dist), ...]
-    gRPC-->>Client: results
+    
+    loop for each chunk_id
+        gRPC->>ChunkSearcher: search(chunk_id)
+        alt Not in local cache
+            ChunkSearcher->>S3: download(chunk_id)
+            S3-->>ChunkSearcher: chunk.hyp
+        end
+        ChunkSearcher->>ChunkSearcher: parallel mmap search
+    end
+    
+    ChunkSearcher-->>gRPC: [sub_results]
+    gRPC->>gRPC: merge & distance-sort
+    gRPC-->>Client: final top-k results
 ```
 
 ## Replication Flow: Merkle Delta Sync
@@ -138,31 +144,33 @@ sequenceDiagram
     Follower->>Follower: Sync complete ✓
 ```
 
-## Storage Layout
-
-```mermaid
-graph LR
-    subgraph "Disk"
-        WAL[wal.log]
-        SNAP[index.snap]
+    subgraph "Local Disk"
+        WAL[wal_segment_*.log]
+        METAR[meta_router.bin]
         C0[chunk_0.hyp]
         C1[chunk_1.hyp]
         CN[chunk_N.hyp]
     end
     
     subgraph "Memory"
+        MEMT[MemTable<br/>HNSW]
         MMAP[Memory Map]
-        IDX_MEM[HNSW Graph]
+    end
+
+    subgraph "Cloud"
+        S3[(S3 Bucket)]
     end
     
     C0 -.mmap.-> MMAP
     C1 -.mmap.-> MMAP
     CN -.mmap.-> MMAP
-    SNAP -.load.-> IDX_MEM
-    WAL -.replay.-> IDX_MEM
+    WAL -.replay.-> MEMT
+    CN --Tiering--> S3
+    S3 --Lazy Load--> CN
     
     style MMAP fill:#ff9,stroke:#333,stroke-width:2px
-    style IDX_MEM fill:#9ff,stroke:#333,stroke-width:2px
+    style MEMT fill:#9ff,stroke:#333,stroke-width:2px
+    style S3 fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 ## Write-Ahead Log (WAL) v3
@@ -259,6 +267,18 @@ graph TB
     
     style WASM_DB fill:#f9f,stroke:#333,stroke-width:2px
     style SERVER fill:#99f,stroke:#333,stroke-width:2px
+```
+
+## ⚖️ Cognitive Math & Tribunal Router
+
+HyperspaceDB natively supports the confrontational model of LLM routing via the **Heterogeneous Tribunal Framework**. 
+Using the **Graph Traversal API** integrated with hyperbolic geometry functions, a "Tribunal Agent" can verify the geometrical proximity of two concepts (e.g., node A vs node B). 
+If a generated LLM response (concept B) has an extremely long geodesic path from the context (concept A) or is completely disconnected, the system automatically flags the claim as a hallucination, assigning it a Geometric Trust Score ~ 0.0.
+
+```python
+# The Tribunal validates the claim geometry
+score = tribunal.evaluate_claim(concept_a_id=12, concept_b_id=45)
+# score = 0.0 (Hallucination) or 1.0 (Identical Concept)
 ```
 
 ## Technology Stack

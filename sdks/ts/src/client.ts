@@ -20,6 +20,8 @@ import {
 } from './proto/hyperspace_pb';
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
 
+export * as CognitiveMath from './math';
+export { TribunalContext } from './agents';
 export { DurabilityLevel };
 export type TypedMetadataValue = string | number | boolean;
 

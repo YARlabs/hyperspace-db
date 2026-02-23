@@ -142,6 +142,16 @@ pub trait Collection: Send + Sync + 'static {
     }
     fn peek(&self, limit: usize)
         -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
+    /// Returns all vectors belonging to the given sync buckets (id % 256 == bucket_index).
+    /// Used by Delta Sync (Task 2.1) to transfer only changed partitions.
+    fn peek_buckets(&self, bucket_indices: &[u32])
+        -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)> {
+        let set: std::collections::HashSet<u32> = bucket_indices.iter().copied().collect();
+        self.peek(self.count().max(1))
+            .into_iter()
+            .filter(|(id, _, _)| set.contains(&((*id as usize % 256) as u32)))
+            .collect()
+    }
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String>;
     fn graph_neighbor_distances(
         &self,

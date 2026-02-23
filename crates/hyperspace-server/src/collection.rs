@@ -1,3 +1,5 @@
+use crate::chunk_searcher;
+use crate::meta_router::{CentroidAccumulator, ChunkMeta, MetaRouter};
 use crate::sync::CollectionDigest;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
@@ -31,13 +33,15 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     name: String,
     node_id: String,
     index_link: Arc<ArcSwap<HnswIndex<N, M>>>,
-    wal: Arc<tokio::sync::Mutex<Wal>>,
+    wal_link: Arc<ArcSwap<tokio::sync::Mutex<Wal>>>,
     index_tx: mpsc::UnboundedSender<(u32, HashMap<String, String>)>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     config: Arc<GlobalConfig>,
     bg_tasks: Vec<JoinHandle<()>>,
     // Buckets for Merkle Tree synchronization
     buckets: Arc<Vec<AtomicU64>>,
+    // Root hash for fast O(1) state comparison (incremental XOR)
+    root_hash: AtomicU64,
     // Mapping from user ID to internal ID for upsert support
     id_map: Arc<DashMap<u32, u32>>,
     // Reverse mapping from internal ID to user ID for search results
@@ -52,8 +56,12 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     ids_are_identity: AtomicBool,
     // Limit CPU-bound search tasks to avoid scheduler thrashing.
     search_limiter: Arc<Semaphore>,
+    // Restrict background WAL rotation flush workers to 1 to prevent CPU starvation
+    flush_limiter: Arc<Semaphore>,
     // If existing vector shift is <= threshold and metadata unchanged, skip graph relinking.
     fast_upsert_delta: f64,
+    // Global Meta-Router for IVF-style chunk routing (Task 1.2)
+    meta_router: Arc<MetaRouter<N>>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -270,8 +278,19 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         }
 
         let wal_path_clone = wal_path.clone();
-        let wal = Wal::new(&wal_path, sync_mode)?;
-        let wal_arc = Arc::new(tokio::sync::Mutex::new(wal));
+        let mut wal = Wal::new(&wal_path, sync_mode)?;
+        // Allow operator to tune WAL segment size via HS_WAL_SEGMENT_SIZE_MB.
+        // Larger value = fewer background flushes (less CPU overhead on servers with lots of RAM).
+        // Smaller value = more frequent rotations (better for RAM-constrained devices or fast S3 tiering).
+        // Default: 75 MB (good balance between rotation frequency and memory usage).
+        let wal_segment_mb = std::env::var("HS_WAL_SEGMENT_SIZE_MB")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(75)
+            .clamp(4, 4096); // Enforce sane min/max bounds (4 MB .. 4 GB)
+        wal.set_size_limit(wal_segment_mb * 1024 * 1024);
+        println!("📦 WAL Segment Size: {wal_segment_mb} MB");
+        let wal_link = Arc::new(ArcSwap::new(Arc::new(tokio::sync::Mutex::new(wal))));
 
         // Replay
         let index_ref = index.clone();
@@ -348,6 +367,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         };
         println!("⚙️  Search Concurrency Limit: {search_concurrency} task(s)");
         let search_limiter = Arc::new(Semaphore::new(search_concurrency));
+        let flush_limiter = Arc::new(Semaphore::new(1));
         let fast_upsert_delta = std::env::var("HS_FAST_UPSERT_DELTA")
             .unwrap_or_else(|_| "0.0".to_string())
             .parse::<f64>()
@@ -439,16 +459,22 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             }
         });
 
+        let mut initial_root_hash = 0u64;
+        for b in buckets.iter() {
+            initial_root_hash ^= b.load(Ordering::Relaxed);
+        }
+
         Ok(Self {
             name,
             node_id,
             index_link,
-            wal: wal_arc,
+            wal_link,
             index_tx,
             replication_tx,
             config,
             bg_tasks: vec![indexer_task, snapshot_handle],
             buckets,
+            root_hash: AtomicU64::new(initial_root_hash),
             reverse_id_map,
             id_map,
             data_dir,
@@ -456,8 +482,126 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             last_clock,
             ids_are_identity: AtomicBool::new(ids_are_identity),
             search_limiter,
+            flush_limiter,
             fast_upsert_delta,
+            meta_router: Arc::new(MetaRouter::new()),
         })
+    }
+
+    fn spawn_flush_worker(
+        frozen_wal_path: PathBuf,
+        config: Arc<GlobalConfig>,
+        mode: hyperspace_core::QuantizationMode,
+        data_dir: PathBuf,
+        flush_limiter: Arc<Semaphore>,
+        meta_router: Arc<MetaRouter<N>>,
+        index_link: Arc<ArcSwap<HnswIndex<N, M>>>,
+    ) {
+        let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+        let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
+        let element_size = match mode {
+            hyperspace_core::QuantizationMode::ScalarI8 => {
+                hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
+            }
+            hyperspace_core::QuantizationMode::Binary => {
+                hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
+            }
+            hyperspace_core::QuantizationMode::None => {
+                if storage_f32 {
+                    hyperspace_core::vector::HyperVectorF32::<N>::SIZE
+                } else {
+                    hyperspace_core::vector::HyperVector::<N>::SIZE
+                }
+            }
+        };
+
+        tokio::spawn(async move {
+            // Acquire permit to serialize flush workers (max 1 at a time).
+            // We move the permit INTO the blocking closure so it's dropped
+            // when the blocking CPU-work completes, not when tokio resumes the
+            // async task.  This avoids starving the blocking thread pool.
+            let permit = flush_limiter.clone().acquire_owned().await;
+            let _ = tokio::task::spawn_blocking(move || {
+                // Hold permit for the duration of blocking work, then drop it
+                // automatically when this closure returns.
+                let _permit = permit;
+
+                let chunk_id = uuid::Uuid::new_v4().to_string();
+                let chunk_name = format!("chunk_{chunk_id}.hyp");
+                let chunk_dir = data_dir.join(&chunk_name);
+                
+                if let Err(e) = std::fs::create_dir_all(&chunk_dir) {
+                    eprintln!("Failed to create chunk directory {chunk_name}: {e}");
+                    return;
+                }
+
+                let temp_store = Arc::new(VectorStore::new(&chunk_dir, element_size));
+                let local_index = HnswIndex::<N, M>::new_with_storage_precision(
+                    temp_store.clone(),
+                    mode,
+                    config.clone(),
+                    storage_f32,
+                );
+
+                let mut insert_count = 0u32;
+                // Streaming centroid accumulator — avoids buffering all vectors.
+                let mut centroid_acc = CentroidAccumulator::new(N);
+                let replay_res = Wal::replay(&frozen_wal_path, |entry| {
+                    let hyperspace_store::wal::WalEntry::Insert { vector, metadata, .. } = entry;
+                    if vector.len() == N {
+                        // Accumulate centroid from raw insertion vectors.
+                        centroid_acc.add(&vector);
+                        // Extract values inline without temporary assignments to fix borrowing.
+                        if let Ok(new_id) = local_index.insert_to_storage(&vector) {
+                            let _ = local_index.index_node(new_id, metadata);
+                            insert_count += 1;
+                        }
+                    }
+                });
+
+                if replay_res.is_err() || insert_count == 0 {
+                    let _ = std::fs::remove_dir_all(&chunk_dir);
+                    let _ = std::fs::remove_file(&frozen_wal_path);
+                    return;
+                }
+
+                if let Err(e) = local_index.save_snapshot(&chunk_dir.join("index.snap")) {
+                    eprintln!("Failed to save index for {chunk_name}: {e}");
+                } else {
+                    println!("✅ Flush Worker: Converted WAL -> Immutable Segment: {chunk_name} ({insert_count} vectors)");
+                    let _ = std::fs::remove_file(&frozen_wal_path);
+
+                    // Register the new chunk in the MetaRouter for IVF-style routing.
+                    if let Some(centroid) = centroid_acc.finish() {
+                        meta_router.register(ChunkMeta {
+                            chunk_id: chunk_name.clone(),
+                            path: chunk_dir.clone(),
+                            centroid,
+                            vector_count: insert_count,
+                        });
+                        println!("🗺️  MetaRouter: Registered chunk {chunk_name} ({insert_count} vectors)");
+                    }
+
+                    // === MemTable Swap (LSM-Tree Core) ===
+                    // Create a fresh empty HNSW index to replace the current MemTable.
+                    // The old MemTable data is now safely persisted in the chunk.
+                    // ArcSwap atomically swaps the pointer — zero downtime.
+                    let memtable_dir = data_dir.join("memtable");
+                    let _ = std::fs::create_dir_all(&memtable_dir);
+                    let fresh_store = Arc::new(VectorStore::new(&memtable_dir, element_size));
+                    let fresh_index = Arc::new(HnswIndex::<N, M>::new_with_storage_precision(
+                        fresh_store,
+                        mode,
+                        config.clone(),
+                        storage_f32,
+                    ));
+                    index_link.store(fresh_index);
+                    println!("🔄 MemTable Swap: Replaced hot index with fresh empty HNSW (freed RAM)");
+                }
+            })
+            .await;
+        });
     }
 }
 
@@ -472,11 +616,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn state_hash(&self) -> u64 {
-        let mut root = 0;
-        for b in self.buckets.iter() {
-            root ^= b.load(Ordering::Relaxed);
-        }
-        root
+        self.root_hash.load(Ordering::Relaxed)
     }
 
     fn buckets(&self) -> Vec<u64> {
@@ -512,9 +652,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let mut reindex_needed = true;
         if let Some(old_internal_id) = existing_internal_id {
             let old_vector = self.index_link.load().get_vector(old_internal_id);
-            let old_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
+            let old_id_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
             let bucket_idx = CollectionDigest::get_bucket_index(id);
-            self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
+            self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
+            self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
 
             if self.fast_upsert_delta > 0.0 {
                 let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
@@ -528,6 +669,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let entry_hash = CollectionDigest::hash_entry(id, processed_vector);
         let bucket_idx = CollectionDigest::get_bucket_index(id);
         self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
+        self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
 
         let internal_id = if let Some(old_id) = existing_internal_id {
             if old_id != id {
@@ -552,8 +694,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             new_id
         };
 
+        let mut frozen_path_opt = None;
         {
-            let mut wal = self.wal.lock().await;
+            let wal_guard = self.wal_link.load();
+            let mut wal = wal_guard.lock().await;
             // Use User ID for WAL to support replication/restore
             wal.append(id, processed_vector, &metadata, clock)
                 .map_err(|e| format!("WAL Error: {e}"))?;
@@ -563,6 +707,22 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             if durability == hyperspace_core::Durability::Strict {
                 wal.sync().map_err(|e| format!("WAL Sync Error: {e}"))?;
             }
+
+            if wal.is_full() {
+                frozen_path_opt = wal.rotate().ok();
+            }
+        }
+
+        if let Some(frozen_path) = frozen_path_opt {
+            Self::spawn_flush_worker(
+                frozen_path,
+                self.config.clone(),
+                self.mode,
+                self.data_dir.clone(),
+                self.flush_limiter.clone(),
+                self.meta_router.clone(),
+                self.index_link.clone(),
+            );
         }
 
         if reindex_needed {
@@ -629,9 +789,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let mut reindex_needed = true;
             if let Some(old_internal_id) = existing_internal_id {
                 let old_vector = index_reader.get_vector(old_internal_id);
-                let old_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
+                let old_id_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
                 let bucket_idx = CollectionDigest::get_bucket_index(*id);
-                self.buckets[bucket_idx].fetch_xor(old_hash, Ordering::Relaxed);
+                self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
+                self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
 
                 if self.fast_upsert_delta > 0.0 {
                     let shift_sq = Self::shift_l2_sq(&old_vector.coords, &processed_vector);
@@ -645,6 +806,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
             let bucket_idx = CollectionDigest::get_bucket_index(*id);
             self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
+            self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
 
             // Storage
             // insert_to_storage writes bytes to Mmap. It copies bytes, but doesn't heap allocate vector objects.
@@ -686,8 +848,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .map(|e| (e.vector.to_vec(), e.id, e.metadata.clone()))
             .collect();
 
+        let mut frozen_path_opt = None;
         {
-            let mut wal = self.wal.lock().await;
+            let wal_guard = self.wal_link.load();
+            let mut wal = wal_guard.lock().await;
             wal.append_batch(&wal_data, clock)
                 .map_err(|e| e.to_string())?;
 
@@ -696,6 +860,22 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             if durability == hyperspace_core::Durability::Strict {
                 wal.sync().map_err(|e| e.to_string())?;
             }
+
+            if wal.is_full() {
+                frozen_path_opt = wal.rotate().ok();
+            }
+        }
+
+        if let Some(frozen_path) = frozen_path_opt {
+            Self::spawn_flush_worker(
+                frozen_path,
+                self.config.clone(),
+                self.mode,
+                self.data_dir.clone(),
+                self.flush_limiter.clone(),
+                self.meta_router.clone(),
+                self.index_link.clone(),
+            );
         }
 
         // 4. Index Queue
@@ -735,13 +915,22 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn delete(&self, id: u32) -> Result<(), String> {
-        if let Some((_, internal_id)) = self.id_map.remove(&id) {
+        let internal_id = if let Some((_, internal_id)) = self.id_map.remove(&id) {
             self.reverse_id_map.remove(&internal_id);
-            self.index_link.load().delete(internal_id);
+            internal_id
         } else {
-            self.index_link.load().delete(id);
-            self.reverse_id_map.remove(&id);
-        }
+            id
+        };
+
+        let idx = self.index_link.load();
+        let vector = idx.get_vector(internal_id);
+        let hash = CollectionDigest::hash_entry(id, &vector.coords);
+        let b_idx = CollectionDigest::get_bucket_index(id);
+        
+        self.buckets[b_idx].fetch_xor(hash, Ordering::Relaxed);
+        self.root_hash.fetch_xor(hash, Ordering::Relaxed);
+        
+        idx.delete(internal_id);
         Ok(())
     }
 
@@ -782,6 +971,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let hybrid_alpha = params.hybrid_alpha;
         let filters_owned = (!filters.is_empty()).then(|| filters.clone());
         let complex_filters_owned = (!complex_filters.is_empty()).then(|| complex_filters.to_vec());
+        let meta_router_ref = self.meta_router.clone();
+        let mode_for_search = self.mode;
+        let config_for_search = self.config.clone();
         let permit = self
             .search_limiter
             .clone()
@@ -802,7 +994,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             } else {
                 top_k
             };
-            let results = index.search(
+
+            // === 1. Search the hot MemTable (in-RAM HNSW) ===
+            let mem_results = index.search(
                 &processed_query,
                 search_k,
                 ef_search,
@@ -811,6 +1005,61 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 hybrid_query.as_deref(),
                 hybrid_alpha,
             );
+
+            // === 2. Search cold chunks via MetaRouter (disk mmap) ===
+            let probe_k = std::env::var("HS_CHUNK_PROBE_K")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(3);
+            let routed_chunks = meta_router_ref.route(&processed_query, probe_k);
+            let chunk_dirs: Vec<std::path::PathBuf> = routed_chunks
+                .iter()
+                .map(|(_, path, _)| path.clone())
+                .collect();
+
+            let chunk_results = if !chunk_dirs.is_empty() {
+                chunk_searcher::scatter_gather_search::<N, M>(
+                    &chunk_dirs,
+                    &processed_query,
+                    search_k,
+                    ef_search,
+                    filters_ref,
+                    complex_filters_ref,
+                    mode_for_search,
+                    config_for_search.clone(),
+                )
+            } else {
+                Vec::new()
+            };
+
+            // === 3. Merge MemTable + Chunk results by distance ===
+            // MemTable results carry real internal IDs.
+            // Chunk results carry chunk-local IDs (not usable for metadata).
+            // We merge by distance only, preferring MemTable entries for metadata.
+            let mut merged: Vec<(u32, f64, bool)> = Vec::with_capacity(
+                mem_results.len() + chunk_results.len(),
+            );
+
+            for (id, dist) in &mem_results {
+                merged.push((*id, *dist, true)); // true = from MemTable
+            }
+            for (_, dist, _) in &chunk_results {
+                // Chunk results don't have usable IDs for the collection's id_map.
+                // We use u32::MAX as a sentinel — they'll be filtered in metadata step.
+                merged.push((u32::MAX, *dist, false)); // false = from chunk
+            }
+
+            merged.sort_by(|a, b| a.1.total_cmp(&b.1));
+            merged.truncate(search_k);
+
+            // Use only the MemTable-sourced results for the final output
+            // (chunk results don't have resolvable IDs in this collection's namespace yet).
+            // This is the correct behavior until Task 2.1 adds cross-segment ID mapping.
+            let results: Vec<(u32, f64)> = merged
+                .into_iter()
+                .filter(|(_, _, from_mem)| *from_mem)
+                .map(|(id, dist, _)| (id, dist))
+                .collect();
 
             let metric_tag = match M::name() {
                 "cosine" => GpuMetric::Cosine,

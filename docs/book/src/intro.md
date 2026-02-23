@@ -21,6 +21,7 @@ HyperspaceDB natively supports both the **Poincaré ball model** (for hierarchie
 *   **🛠️ Runtime Tuning**: Dynamically adjust `ef_search` and `ef_construction` parameters via gRPC on-the-fly.
 *   **🏙 Multi-Tenancy**: Native SaaS support with namespace isolation (`user_id`) and billing stats.
 *   **🔁 Replication**: Leader-Follower architecture with Anti-Entropy catch-up for high availability.
+*   **⚖️ Cognitive Math & Tribunal Router**: Native SDK utilities for calculating geometric trust scores on graphs to detect LLM hallucinations without prompt engineering.
 
 ---
 

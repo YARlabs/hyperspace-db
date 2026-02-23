@@ -1,5 +1,6 @@
 syntax = "proto3";
 package hyperspace;
+option go_package = "github.com/yarlabs/hyperspace-sdk-go/proto";
 
 service Database {
   // Collection Management
@@ -41,6 +42,14 @@ service Database {
   rpc SubscribeToEvents (EventSubscriptionRequest) returns (stream EventMessage);
   rpc GetDigest (DigestRequest) returns (DigestResponse);
   rpc RebuildIndex (RebuildIndexRequest) returns (StatusResponse);
+
+  // Delta Sync (Merkle Tree — Task 2.1)
+  // Step 1: Client sends its digest, server returns which buckets differ.
+  rpc SyncHandshake (SyncHandshakeRequest) returns (SyncHandshakeResponse);
+  // Step 2: Client requests vectors from specific buckets, server streams them.
+  rpc SyncPull (SyncPullRequest) returns (stream SyncVectorData);
+  // Step 3 (optional): Client pushes its unique vectors to the server.
+  rpc SyncPush (stream SyncVectorData) returns (SyncPushResponse);
 }
 
 message ReplicationRequest {
@@ -375,4 +384,52 @@ message DigestResponse {
   uint64 state_hash = 2;
   repeated uint64 buckets = 3;
   uint64 count = 4;
+}
+
+// ─── Delta Sync Messages (Task 2.1) ───────────────────────────────────────
+
+message SyncHandshakeRequest {
+  string collection = 1;
+  // Client's current bucket hashes (256 entries)
+  repeated uint64 client_buckets = 2;
+  uint64 client_logical_clock = 3;
+  uint64 client_count = 4;
+}
+
+message DiffBucket {
+  uint32 bucket_index = 1;
+  uint64 server_hash = 2;
+  uint64 client_hash = 3;
+}
+
+message SyncHandshakeResponse {
+  // Which buckets differ between client and server
+  repeated DiffBucket diff_buckets = 1;
+  // Server's current logical clock
+  uint64 server_logical_clock = 2;
+  // Server's total vector count
+  uint64 server_count = 3;
+  // True if digests match perfectly (no sync needed)
+  bool in_sync = 4;
+}
+
+message SyncPullRequest {
+  string collection = 1;
+  // Which bucket indices to pull vectors from
+  repeated uint32 bucket_indices = 2;
+}
+
+// A single vector transferred during sync
+message SyncVectorData {
+  string collection = 1;
+  uint32 id = 2;
+  repeated double vector = 3;
+  map<string, string> metadata = 4;
+  uint32 bucket_index = 5;
+}
+
+message SyncPushResponse {
+  uint32 accepted = 1;
+  uint32 rejected = 2;
+  uint32 duplicates = 3;
 }

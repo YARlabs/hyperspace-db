@@ -32,6 +32,24 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_SEARCH_BATCH_INNER_CONCURRENCY` | `1` | Internal parallel fan-out in `SearchBatch` handler (bounded) |
 | `HS_SEARCH_CONCURRENCY` | `0` | Global concurrent search-task limit per collection (`0` = auto by CPU cores, max clamped to `CPU*4`) |
 
+### Cloud Tiering (S3)
+
+*Enabled only when compiled with `s3-tiering` feature.*
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `HS_STORAGE_BACKEND` | `local` | `local` (all chunks on disk) or `s3` (offload cold chunks) |
+| `HS_MAX_LOCAL_CACHE_GB` | `10` | Hard limit for local disk cache in Gigabytes |
+| `HS_S3_BUCKET` | - | Target S3 bucket name |
+| `HS_S3_REGION` | `us-east-1` | AWS Region |
+| `HS_S3_ENDPOINT` | - | Custom endpoint (e.g. `http://minio:9000`) |
+| `HS_S3_ACCESS_KEY` | - | S3 Access Key ID |
+| `HS_S3_SECRET_KEY` | - | S3 Secret Access Key |
+| `HS_S3_MAX_RETRIES` | `5` | Retries for failed uploads/downloads |
+| `HS_S3_UPLOAD_CONCURRENCY` | `4` | Semaphore-limited parallel uploads |
+| `HS_WAL_SEGMENT_SIZE_MB` | `256` | Size before WAL rotation (influences chunk size) |
+| `HS_CHUNK_PROBE_K` | `3` | Number of most relevant chunks to search per query |
+
 ### HNSW Index Tuning
 
 | Variable | Default | Description |

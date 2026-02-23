@@ -91,3 +91,52 @@ fn test_wal_crc_corruption() {
     let recovered_len = fs::metadata(&path).unwrap().len();
     assert!(recovered_len < data.len() as u64);
 }
+
+#[test]
+fn test_wal_rotation_crash_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("wal_rotate.log");
+
+    let frozen_path;
+    {
+        let mut wal = Wal::new(&path, WalSyncMode::Async).unwrap();
+
+        // Write some entries (simulate reaching limits)
+        for i in 0..5 {
+            let vec = vec![0.1f64; 10];
+            wal.append(i, &vec, &HashMap::new(), i as u64).unwrap();
+        }
+
+        // Rotate WAL
+        frozen_path = wal.rotate().unwrap();
+
+        // Write more entries to new WAL
+        for i in 5..10 {
+            let vec = vec![0.2f64; 10];
+            wal.append(i, &vec, &HashMap::new(), i as u64).unwrap();
+        }
+    }
+
+    // Now we have both frozen WAL and active WAL.
+    // Replay frozen WAL (simulating crash recovery where index wasn't saved yet)
+    let mut count_frozen = 0;
+    Wal::replay(&frozen_path, |_| {
+        count_frozen += 1;
+    })
+    .unwrap();
+    assert_eq!(
+        count_frozen, 5,
+        "Should recover exactly 5 records from frozen WAL"
+    );
+
+    // Replay active WAL
+    let mut count_active = 0;
+    Wal::replay(&path, |_| {
+        count_active += 1;
+    })
+    .unwrap();
+    assert_eq!(
+        count_active, 5,
+        "Should recover exactly 5 records from active WAL"
+    );
+}

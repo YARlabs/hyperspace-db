@@ -13,38 +13,44 @@ graph TD
     Client[Client (gRPC)] -->|Insert| S[Server Service]
     Client -->|Search| S
     
-    subgraph Persistence Layer
-        S -->|1. Append| WAL[Write-Ahead Log]
-        S -->|2. Append| VS[Vector Store]
+    subgraph LSM_Tree ["LSM-Tree Storage Engine"]
+        S -->|1. Append| WAL[Active WAL]
+        WAL -.->|Rotation| Chunk[Immutable Chunk]
+        S -->|2. Search| MemT[MemTable (HNSW)]
+        MemT -.->|Flush| Chunk
+        Chunk -->|Tiering| S3[(S3 / Cloud)]
+        Chunk -->|Search| Router{Meta-Router}
+        Router -->|Route| Chunk
     end
     
-    subgraph Indexing Layer
-        S -->|3. Send ID| Q[Async Queue (Channel)]
-        Q -->|Pop| W[Indexer Worker]
-        W -->|Update| HNSW[HNSW Graph (RAM)]
-    end
-    
-    subgraph Background Tasks
-        Snap[Snapshotter] -->|Serialize| Disk[Index Snapshot (.snap)]
+    subgraph Read_Path ["Scatter-Gather Search"]
+        S --> Searcher[Chunk Searcher]
+        Searcher -->|Parallel mmap| Chunk
+        S --> Merge[Result Merger]
     end
 ```
 
 ---
 
-## 💾 Storage Layer (hyperspace-store)
+## 💾 Storage Layer (LSM-Tree Architecture)
 
-### 1. Vector Storage (`data/`)
-Vectors are stored in a segmented, append-only format using **Memory-Mapped Files (mmap)**.
+HyperspaceDB 3.0 uses an **LSM-Tree** inspired architecture for vector search, optimized for high throughput and cloud tiering.
 
-*   **Segments**: Data is split into chunks of 65,536 vectors (`2^16`).
-*   **Files**: `chunk_0.hyp`, `chunk_1.hyp`, etc.
-*   **Quantization**: Vectors are optionally quantized (e.g., `ScalarI8`), reducing size from 64-bit float to 8-bit integer per dimension (8x compression).
+### 1. MemTable & WAL
+New vectors are first appended to the **Write-Ahead Log (WAL)** and simultaneously indexed in an in-memory **HNSW MemTable**.
+- **Rotation**: Once the WAL reaches `HS_WAL_SEGMENT_SIZE_MB`, it is rotated (frozen).
+- **Flushing**: A background **Flush Worker** converts the frozen segment into a highly optimized, immutable **HNSW Chunk** (`.hyp`).
+- **RAM Reclamation**: After the flush completes, the old MemTable is atomically swapped for a fresh one, freeing up significant memory.
 
-### 2. Write-Ahead Log (`wal.log`) v3
-Writes are durable. Every insert is appended to `wal.log`.
-- **Format**: Binary `[Magic][Len][CRC32][Op][Data]`.
-- **Durability**: Configurable (Async, Batch, Strict).
-- **Recovery**: Automatic truncation of corrupted tail.
+### 2. Immutable Chunks (SSTables)
+Data is stored in segmented `.hyp` files, each containing a subset of the collection.
+- **Quantization**: Vectors are optionally quantized (e.g., `ScalarI8`), reducing size by 8x or more.
+- **MMap**: Hot chunks are searched directly via memory-mapping, leveraging OS page cache.
+
+### 3. S3 Cloud Tiering (hyperspace-tiering)
+Cold chunks can be transparently offloaded to **S3-compatible storage**.
+- **Local Cache**: A byte-weighted **LRU cache** manages local disk usage (`HS_MAX_LOCAL_CACHE_GB`).
+- **Dynamic Fetch**: Chunks not present locally are automatically downloaded on-demand during search.
 
 ---
 
@@ -52,6 +58,9 @@ Writes are durable. Every insert is appended to `wal.log`.
 
 ### Metric Abstraction & HNSW
 We use a Generic Metric system (`Metric<N>`) to support multiple geometries efficiently, dispatched at compile-time via Const Generics.
+
+#### Cognitive Math & Tribunal Router
+HyperspaceDB SDK includes a **Cognitive Math** engine built upon the HNSW graph that performs Phase-Locked Loop context tracking, Koopman extrapolations, and calculates LLM hallucination chaos via `local_entropy`. The **Heterogeneous Tribunal Framework** uses the Graph Traversal API to assign a "Geometric Trust Score" to any LLM claim by validating logical paths between ideas.
 
 1.  **Hyperbolic Space (Poincaré Ball)**
     *   **Formula**: $ d(u, v) = \text{acosh}\left(1 + 2 \frac{||u-v||^2}{(1-||u||^2)(1-||v||^2)}\right) $

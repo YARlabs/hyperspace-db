@@ -65,6 +65,13 @@ To implement a new metric:
 3.  Register alias and instantiation logic in `crates/hyperspace-server/src/manager.rs`.
 4.  Add unit/integration tests in `crates/hyperspace-core/src/tests.rs` and related crates.
 
+## 🧠 Cognitive SDK Development
+
+If you are contributing to the **Cognitive Math SDK** or the **Heterogeneous Tribunal Framework**:
+1. Add core math to `crates/hyperspace-sdk/src/math.rs` in Rust.
+2. Mirror the functionality to Python (`sdks/python/hyperspace/math.py`) and TypeScript (`sdks/ts/src/math.ts`).
+3. If adding a new multi-agent evaluation metric (e.g. `evaluate_claim` for the Tribunal Router), ensure it leverages the Graph Traversal API efficiently and is added symmetrically across the `agents` module in all SDKs.
+
 ## 🚀 Future Roadmap
 
 We focus on building the **Universal Spatial Memory** for AI Agents.

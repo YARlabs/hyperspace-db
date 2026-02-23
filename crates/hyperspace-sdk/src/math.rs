@@ -202,11 +202,72 @@ pub fn frechet_mean(
     Ok(mu)
 }
 
+// ==========================================
+// Cognitive Math SDK (Spatial AI Engine)
+// ==========================================
+
+/// Calculates the spatial entropy (dispersion) of a `candidate` vector relative to its `neighbors`.
+/// Used to track LLM hallucinations (Task 2.3.1).
+/// Returns a value in [0, 1) where values approaching 1 imply high chaos (hallucination).
+pub fn local_entropy(candidate: &[f64], neighbors: &[Vec<f64>], c: f64) -> Result<f64, String> {
+    if neighbors.is_empty() {
+        return Ok(1.0); // Infinite entropy without neighbors
+    }
+    let mut total_deviation = 0.0;
+    for neighbor in neighbors {
+        let diff = log_map(candidate, neighbor, c)?;
+        total_deviation += norm_sq(&diff).sqrt();
+    }
+    let mean_deviation = total_deviation / neighbors.len() as f64;
+    // Logarithmic compression mapping deviation to [0, 1)
+    Ok(1.0 - (-mean_deviation).exp())
+}
+
+/// Evaluates if a trajectory of vectors (e.g. Chain of Thought) converges to an attractor.
+/// Calculates the average energy derivative (Lyapunov function derivative).
+/// Negative values indicate convergence (stable), positive indicate divergence (chaos/hallucination).
+pub fn lyapunov_convergence(trajectory: &[Vec<f64>], c: f64) -> Result<f64, String> {
+    if trajectory.len() < 3 {
+        return Err("Need at least 3 points to evaluate convergence trend".to_string());
+    }
+    // The attractor is approximated by Fréchet mean
+    let attractor = frechet_mean(trajectory, c, 32, 1e-6)?;
+    
+    let mut v_diff_sum = 0.0;
+    for i in 0..trajectory.len() - 1 {
+        let v_t0 = norm_sq(&log_map(&attractor, &trajectory[i], c)?).sqrt();
+        let v_t1 = norm_sq(&log_map(&attractor, &trajectory[i + 1], c)?).sqrt();
+        v_diff_sum += v_t1 - v_t0;
+    }
+    // Average rate of change of Lyapunov energy function V(x)
+    Ok(v_diff_sum / (trajectory.len() - 1) as f64)
+}
+
+/// Extrapolates the trajectory in linear space (Koopman linearization) by tracking the 
+/// shift vector from `past` to `current` and projecting it forward.
+pub fn koopman_extrapolate(past: &[f64], current: &[f64], steps: f64, c: f64) -> Result<Vec<f64>, String> {
+    // 1. Get velocity at past
+    let velocity_at_past = log_map(past, current, c)?;
+    // 2. Parallel transport to current
+    let velocity_at_current = parallel_transport(past, current, &velocity_at_past, c)?;
+    // 3. Extrapolate
+    let future_velocity: Vec<f64> = velocity_at_current.iter().map(|v| v * steps).collect();
+    // 4. Map back to manifold
+    exp_map(current, &future_velocity, c)
+}
+
+/// Resonates a thought vector towards a global context vector (Phase-Locked Loop context synchronization).
+/// Pulls the thought towards the context along the geodesic by `resonance_factor` [0, 1].
+pub fn context_resonance(thought: &[f64], global_context: &[f64], resonance_factor: f64, c: f64) -> Result<Vec<f64>, String> {
+    let pull_dir = log_map(thought, global_context, c)?;
+    let factor = resonance_factor.clamp(0.0, 1.0);
+    let applied_pull: Vec<f64> = pull_dir.iter().map(|v| v * factor).collect();
+    exp_map(thought, &applied_pull, c)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{
-        exp_map, frechet_mean, log_map, mobius_add, parallel_transport, riemannian_gradient,
-    };
+    use super::*;
 
     #[test]
     fn test_mobius_add_identity() {
@@ -251,5 +312,41 @@ mod tests {
         let pts = vec![vec![0.05, 0.01], vec![0.06, 0.02], vec![0.04, 0.0]];
         let mu = frechet_mean(&pts, 1.0, 32, 1e-8).expect("frechet mean");
         assert_eq!(mu.len(), 2);
+    }
+
+    #[test]
+    fn test_cognitive_math() {
+        // Local Entropy
+        let candidate = vec![0.1, 0.1];
+        let neighbors = vec![
+            vec![0.11, 0.1],
+            vec![0.1, 0.12],
+            vec![0.09, 0.09],
+        ];
+        let entropy = local_entropy(&candidate, &neighbors, 1.0).unwrap();
+        // Since neighbors are close, entropy should be low (close to 0)
+        assert!(entropy < 0.1);
+
+        // Lyapunov Convergence
+        let trajectory_converging = vec![
+            vec![0.5, 0.5],
+            vec![0.3, 0.3],
+            vec![0.1, 0.1],
+            vec![0.05, 0.05]
+        ];
+        let lyapunov = lyapunov_convergence(&trajectory_converging, 1.0).unwrap();
+        assert!(lyapunov < 0.0); // derivative < 0 implies convergence
+
+        // Context Resonance
+        let thought = vec![0.5, 0.0];
+        let global_ctx = vec![0.0, 0.5];
+        let pull = context_resonance(&thought, &global_ctx, 0.5, 1.0).unwrap();
+        assert_eq!(pull.len(), 2);
+
+        // Koopman Extrapolation
+        let past = vec![0.1, 0.2];
+        let current = vec![0.15, 0.25];
+        let predicted = koopman_extrapolate(&past, &current, 1.0, 1.0).unwrap();
+        assert_eq!(predicted.len(), 2);
     }
 }

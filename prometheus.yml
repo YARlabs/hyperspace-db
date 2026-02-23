@@ -1,3 +1,14 @@
+# Available Metrics:
+# -----------------
+# hyperspace_active_collections: gauge
+# hyperspace_total_vectors: gauge
+# hyperspace_ram_usage_mb: gauge
+# hyperspace_disk_usage_mb: gauge
+# hyperspace_s3_uploads_completed: counter (Total successful S3 uploads)
+# hyperspace_s3_downloads_completed: counter (Total successful S3 cache misses)
+# hyperspace_s3_errors: counter (Total S3 request failures)
+# hyperspace_local_chunk_count: gauge (Number of on-disk cold chunks)
+
 global:
   scrape_interval: 15s
 

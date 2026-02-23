@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0-alpha.1] - 2026-02-23
+
+### Added
+* **LSM-Tree Vector Search Architecture (Sprint 1)**:
+    * **MemTable & Flush Worker**: Active WAL segments now rotate and flush into immutable `HNSW` chunks. RAM is reclaimed by atomically swapping the hot index (MemTable) after flush.
+    * **Global Meta-Router**: IVF-style routing layer that maps search queries to relevant immutable chunks via centroid-based pruning (200x faster than linear scan).
+    * **Scatter-Gather Search Pipeline**: Read-path now queries the hot MemTable and multiple cold chunks in parallel using Rayon, merging results by distance.
+* **Optional S3 Tiering (`hyperspace-tiering` crate)**:
+    * **Cloud-Native Backend**: Cold chunks can now be offloaded to AWS S3, MinIO, or Ceph.
+    * **LRU Disk Cache**: Byte-weighted cache (`moka`) manages local storage, automatically evicting cold chunks to S3 when `HS_MAX_LOCAL_CACHE_GB` is reached.
+    * **Lazy Loading & Resilient I/O**: Automated S3 download on cache miss with exponential backoff and jitter-aware retries.
+    * **Feature Gating**: All cloud dependencies are strictly optional via `s3-tiering` cargo feature, ensuring zero overhead for edge deployments.
+* **Tiering Configuration**:
+    * Added comprehensive S3 settings: `HS_STORAGE_BACKEND`, `HS_S3_BUCKET`, `HS_S3_REGION`, `HS_S3_ENDPOINT`, `HS_S3_MAX_RETRIES`, `HS_S3_UPLOAD_CONCURRENCY`.
+* **Delta Sync Protocol (Task 2.1)**:
+    * **Merkle Tree Bucket Sync**: Replaced linear replication with a O(1) lock-free 256-bucket XOR hash state tracker for granular structural diffing.
+    * **Two-way gRPC Sync**: Added `SyncHandshake`, `SyncPull`, and `SyncPush` RPCs for efficient bilateral delta transfer (minimizing bandwidth to O(dirty_buckets)).
+    * **HTTP Sync APIs**: Exposed `POST /api/collections/{name}/sync/handshake` and `/sync/pull` for WASM and REST clients.
+    * **WASM Edge Sync**: Fully integrated synchronization into `hyperspace-wasm` (JS `.get_digest()`, `.apply_sync_vectors()`) with `IndexedDB` persistence for bucket hashes, enabling offline-first Edge-to-Cloud sync.
+* **Cognitive Math SDK & Heterogeneous Tribunal Framework**:
+    * **Math Functions**: Implementations of `local_entropy`, `lyapunov_convergence`, `koopman_extrapolate` and `context_resonance` added to Python, TypeScript, Rust, and C++.
+    * **Tribunal Router (`hyperspace.agents`)**: Added `TribunalContext` for evaluating LLM hallucination dynamically via geometric trust scores over the Graph Traversal API.
+    * **Robotics Stack (ROS2)**: Initializing C++ and Go SDKs with gRPC pooling and Arena Serialization, alongside a ROS2 package `ros2_hyperspace_node` offering `NavigateToAttractor.srv`.
+
 ## [2.2.2] - 2026-02-19
 
 ### Added

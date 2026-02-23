@@ -1,0 +1,27 @@
+[package]
+name = "hyperspace-tiering"
+version = "0.1.0"
+edition = "2021"
+description = "Cloud storage tiering for HyperspaceDB (S3/MinIO chunk offloading)"
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+# S3-compatible object storage
+object_store = { version = "0.11", features = ["aws"] }
+# LRU cache for local chunk eviction policy
+moka = { version = "0.12", features = ["sync"] }
+# Retry / backoff for transient S3 failures
+backoff = { version = "0.4", features = ["tokio"] }
+# Byte handling
+bytes = "1.9"
+# Async stream handling
+futures = "0.3"
+# Tracing for structured logging
+tracing = { workspace = true }
+# Tar archive for chunk directory serialization
+tar = "0.4"
+# Thread-safe mutex
+parking_lot = { workspace = true }
+# Path handling & utils
+url = "2"
