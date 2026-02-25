@@ -52,6 +52,11 @@ def load_sample_documents() -> List[str]:
         10,000 vectors per second and search latencies under 10ms at p99. The use of
         memory-mapped files (mmap) allows for efficient handling of large datasets.
         """,
+        """
+        The Hyperspace Cognitive Math SDK provides modules for Agentic AI, allowing agents to 
+        calculate spatial entropy to detect hallucinations, and simulate trajectory 
+        convergence within the hyperbolic manifold.
+        """,
     ]
 
 

@@ -1,6 +1,6 @@
 use parking_lot::RwLock;
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
@@ -231,9 +231,8 @@ impl HyperspaceDB {
                 }
             }
             // Insert
-            match self.insert(entry.id, &entry.vector) {
-                Ok(()) => applied += 1,
-                Err(_) => {}
+            if let Ok(()) = self.insert(entry.id, &entry.vector) {
+                applied += 1;
             }
         }
         Ok(applied)
@@ -427,16 +426,18 @@ impl HyperspaceDB {
         // Update self
         self.index = new_index_wrapper;
 
-        // Update Maps
-        let mut id_map = self.id_map.write();
-        let mut rev_map = self.rev_map.write();
+        // Update Maps — serialize+drop before any await
+        {
+            let mut id_map = self.id_map.write();
+            let mut rev_map = self.rev_map.write();
 
-        id_map.clone_from(&id_map_data);
+            id_map.clone_from(&id_map_data);
 
-        rev_map.clear();
-        for (k, v) in id_map_data {
-            rev_map.insert(v, k);
-        }
+            rev_map.clear();
+            for (k, v) in id_map_data {
+                rev_map.insert(v, k);
+            }
+        } // id_map and rev_map guards dropped here, before the next `.await`
 
         // Restore Bucket Hashes (Delta Sync)
         let buckets_js = db_store
@@ -463,16 +464,20 @@ impl Drop for HyperspaceDB {
         self.id_map.write().clear();
         self.rev_map.write().clear();
         self.bucket_hashes.write().clear();
-        
+
         log("HyperspaceDB index strictly dropped. GC triggered.");
     }
 }
 
 /// Deserialization struct for vectors received from the sync pull endpoint.
+/// `metadata` is accepted from the server JSON but not yet stored in the WASM
+/// in-memory index (stored for forward-compatibility).
 #[derive(serde::Deserialize)]
 struct SyncEntry {
     id: u32,
     vector: Vec<f64>,
+    /// Accepted from server response; not yet persisted in WASM RAM index.
     #[serde(default)]
+    #[allow(dead_code)]
     metadata: HashMap<String, String>,
 }

@@ -564,4 +564,59 @@ impl Client {
         let resp = self.inner.get_digest(req).await?;
         Ok(resp.into_inner())
     }
+
+    /// Performs Delta Sync Handshake with the server.
+    ///
+    /// # Errors
+    /// Returns error on network failure.
+    pub async fn sync_handshake(
+        &mut self,
+        collection: String,
+        client_buckets: Vec<u64>,
+        client_logical_clock: u64,
+        client_count: u64,
+    ) -> Result<hyperspace_proto::hyperspace::SyncHandshakeResponse, tonic::Status> {
+        if client_buckets.len() != 256 {
+            return Err(tonic::Status::invalid_argument(
+                "client_buckets must contain exactly 256 elements",
+            ));
+        }
+        let req = hyperspace_proto::hyperspace::SyncHandshakeRequest {
+            collection,
+            client_buckets,
+            client_logical_clock,
+            client_count,
+        };
+        let resp = self.inner.sync_handshake(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Pulls differing subset of vectors from server bucket indices.
+    ///
+    /// # Errors
+    /// Returns error if stream initialization fails.
+    pub async fn sync_pull(
+        &mut self,
+        collection: String,
+        bucket_indices: Vec<u32>,
+    ) -> Result<tonic::Streaming<hyperspace_proto::hyperspace::SyncVectorData>, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::SyncPullRequest {
+            collection,
+            bucket_indices,
+        };
+        let resp = self.inner.sync_pull(req).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Pushes offline delta back to the server.
+    ///
+    /// # Errors
+    /// Returns error if push stream initialization fails.
+    pub async fn sync_push(
+        &mut self,
+        stream: impl tonic::IntoStreamingRequest<Message = hyperspace_proto::hyperspace::SyncVectorData>,
+    ) -> Result<hyperspace_proto::hyperspace::SyncPushResponse, tonic::Status> {
+        let resp = self.inner.sync_push(stream).await?;
+        Ok(resp.into_inner())
+    }
 }

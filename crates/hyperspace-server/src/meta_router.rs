@@ -14,7 +14,7 @@
 //! - Thread-safe: `DashMap` for concurrent registration, no locks on hot-path read.
 //!
 //! ## RAM overhead
-//! One centroid of N f64 values (1024-d = 8 KB) per chunk.  
+//! One centroid of N f64 values (1024-d = 8 KB) per chunk.\
 //! 1000 chunks → ~8 MB total — well within the 0.1% budget stated in Gate Check 1.2.
 
 use std::collections::BinaryHeap;
@@ -37,6 +37,8 @@ pub struct ChunkMeta {
     /// Centroid of all vectors in the chunk (arithmetic mean, f64 coords).
     pub centroid: Vec<f64>,
     /// Number of vectors stored in the chunk.
+    /// Used for load-balancing decisions and future Dashboard storage stats.
+    #[allow(dead_code)]
     pub vector_count: u32,
 }
 
@@ -97,6 +99,8 @@ impl<const N: usize> MetaRouter<N> {
     }
 
     /// Removes a chunk from the router (called when a chunk is merged or deleted).
+    /// Used by Flush Worker and Dashboard storage ops (Task 4.1).
+    #[allow(dead_code)]
     pub fn unregister(&self, chunk_id: &str) {
         if let Some((_, removed_idx)) = self.chunk_index.remove(chunk_id) {
             let mut guard = self.chunks.write();
@@ -113,11 +117,15 @@ impl<const N: usize> MetaRouter<N> {
     }
 
     /// Returns the number of registered chunks.
+    /// Used by Dashboard Storage page and telemetry (Task 4.1).
+    #[allow(dead_code)]
     pub fn chunk_count(&self) -> usize {
         self.chunks.read().len()
     }
 
     /// Returns a snapshot of all chunk metadata (for persistence / diagnostics).
+    /// Used by Dashboard Storage page to list NVMe vs S3 segments (Task 4.1).
+    #[allow(dead_code)]
     pub fn all_chunks(&self) -> Vec<ChunkMeta> {
         self.chunks.read().clone()
     }
@@ -180,11 +188,7 @@ impl<const N: usize> MetaRouter<N> {
             .into_iter()
             .map(|(neg_dist, idx)| {
                 let chunk = &guard[idx];
-                (
-                    chunk.chunk_id.clone(),
-                    chunk.path.clone(),
-                    -neg_dist.0,
-                )
+                (chunk.chunk_id.clone(), chunk.path.clone(), -neg_dist.0)
             })
             .collect();
 
@@ -194,6 +198,8 @@ impl<const N: usize> MetaRouter<N> {
 
     /// Computes centroid of a batch of f64 vectors.
     /// Returns None if `vectors` is empty.
+    /// Called by Flush Worker at segment sealing time.
+    #[allow(dead_code)]
     pub fn compute_centroid(vectors: &[Vec<f64>]) -> Option<Vec<f64>> {
         if vectors.is_empty() || vectors[0].is_empty() {
             return None;
@@ -206,7 +212,7 @@ impl<const N: usize> MetaRouter<N> {
             }
         }
         let n = vectors.len() as f64;
-        for c in centroid.iter_mut() {
+        for c in &mut centroid {
             *c /= n;
         }
         Some(centroid)
@@ -214,6 +220,7 @@ impl<const N: usize> MetaRouter<N> {
 
     /// Streaming centroid accumulator — avoids holding all vectors in memory.
     /// Add each vector incrementally, then call `finish()`.
+    #[allow(dead_code)]
     pub fn centroid_accumulator() -> CentroidAccumulator {
         CentroidAccumulator::new(N)
     }
@@ -230,6 +237,8 @@ impl<const N: usize> MetaRouter<N> {
     }
 
     /// Telemetry: average number of chunks accessed per query.
+    /// Exposed via Dashboard metrics API (Task 4.1).
+    #[allow(dead_code)]
     pub fn avg_chunks_per_query(&self, probe_k: usize) -> f64 {
         let queries = self.query_count.load(Ordering::Relaxed);
         if queries == 0 {
@@ -286,6 +295,8 @@ impl CentroidAccumulator {
     }
 
     /// Number of vectors accumulated so far.
+    /// Used when building segment metadata during flush.
+    #[allow(dead_code)]
     pub fn count(&self) -> u64 {
         self.count
     }

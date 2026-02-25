@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-tiering"
-version = "0.1.0"
+version = "3.0.0"
 edition = "2021"
 description = "Cloud storage tiering for HyperspaceDB (S3/MinIO chunk offloading)"
 

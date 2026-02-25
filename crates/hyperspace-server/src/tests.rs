@@ -144,7 +144,7 @@ async fn test_delta_sync() {
 
     // Phase 1: Both nodes insert shared vectors (ID 0..49)
     for i in 0u32..50 {
-        let vec = vec![i as f64 * 0.01; dim as usize];
+        let vec = vec![f64::from(i) * 0.01; dim as usize];
         col_a
             .insert(&vec, i, HashMap::new(), 0, Durability::Default)
             .await
@@ -157,14 +157,14 @@ async fn test_delta_sync() {
 
     // Phase 2: NETWORK PARTITION — Node A gets IDs 50..74, Node B gets IDs 75..99
     for i in 50u32..75 {
-        let vec = vec![i as f64 * 0.01; dim as usize];
+        let vec = vec![f64::from(i) * 0.01; dim as usize];
         col_a
             .insert(&vec, i, HashMap::new(), 0, Durability::Default)
             .await
             .unwrap();
     }
     for i in 75u32..100 {
-        let vec = vec![i as f64 * 0.01; dim as usize];
+        let vec = vec![f64::from(i) * 0.01; dim as usize];
         col_b
             .insert(&vec, i, HashMap::new(), 0, Durability::Default)
             .await
@@ -200,14 +200,8 @@ async fn test_delta_sync() {
         }
     }
 
-    println!(
-        "Dirty buckets: {} indices (out of 256)",
-        dirty_a_to_b.len()
-    );
-    assert!(
-        !dirty_a_to_b.is_empty(),
-        "There should be dirty buckets"
-    );
+    println!("Dirty buckets: {} indices (out of 256)", dirty_a_to_b.len());
+    assert!(!dirty_a_to_b.is_empty(), "There should be dirty buckets");
     // With 50 unique IDs spread across 256 buckets, we expect roughly 50 dirty buckets,
     // not all 256.
     assert!(
@@ -263,8 +257,16 @@ async fn test_delta_sync() {
     println!("Synced A→B: {synced_to_b}, B→A: {synced_to_a}");
 
     // Phase 5: Verify convergence
-    assert_eq!(col_a.count(), 100, "Node A should have 100 vectors after sync");
-    assert_eq!(col_b.count(), 100, "Node B should have 100 vectors after sync");
+    assert_eq!(
+        col_a.count(),
+        100,
+        "Node A should have 100 vectors after sync"
+    );
+    assert_eq!(
+        col_b.count(),
+        100,
+        "Node B should have 100 vectors after sync"
+    );
     assert_eq!(
         col_a.state_hash(),
         col_b.state_hash(),

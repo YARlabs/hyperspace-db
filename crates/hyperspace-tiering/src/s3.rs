@@ -106,7 +106,9 @@ impl S3Backend {
         }
 
         let store: Arc<dyn ObjectStore> = Arc::new(
-            builder.build().expect("Failed to build S3 client. Check HS_S3_* environment variables."),
+            builder
+                .build()
+                .expect("Failed to build S3 client. Check HS_S3_* environment variables."),
         );
 
         // LRU cache: max weight = max_local_cache_gb in bytes.
@@ -182,7 +184,10 @@ impl S3Backend {
         match &result {
             Ok(()) => {
                 self.uploads_completed.fetch_add(1, Ordering::Relaxed);
-                println!("☁️  Uploaded chunk {chunk_id} to s3://{}/{object_key}", self.config.bucket);
+                println!(
+                    "☁️  Uploaded chunk {chunk_id} to s3://{}/{object_key}",
+                    self.config.bucket
+                );
             }
             Err(e) => {
                 self.uploads_failed.fetch_add(1, Ordering::Relaxed);
@@ -240,8 +245,10 @@ impl S3Backend {
             Ok(bytes) => {
                 Self::untar_to_directory(&bytes, &local_path)?;
                 self.downloads_completed.fetch_add(1, Ordering::Relaxed);
-                println!("☁️  Downloaded chunk {chunk_id} from s3://{}/{object_key}",
-                         self.config.bucket);
+                println!(
+                    "☁️  Downloaded chunk {chunk_id} from s3://{}/{object_key}",
+                    self.config.bucket
+                );
                 Ok(local_path)
             }
             Err(e) => {
@@ -254,11 +261,14 @@ impl S3Backend {
     /// Creates a tar archive of a directory in memory.
     fn tar_directory(dir: &Path) -> Result<Vec<u8>, String> {
         let mut archive = tar::Builder::new(Vec::new());
-        archive.append_dir_all(".", dir)
+        archive
+            .append_dir_all(".", dir)
             .map_err(|e| format!("Failed to tar chunk directory {}: {e}", dir.display()))?;
-        archive.finish()
+        archive
+            .finish()
             .map_err(|e| format!("Failed to finalize tar archive: {e}"))?;
-        let buf = archive.into_inner()
+        let buf = archive
+            .into_inner()
             .map_err(|e| format!("Failed to extract tar buffer: {e}"))?;
         Ok(buf)
     }
@@ -269,7 +279,8 @@ impl S3Backend {
             .map_err(|e| format!("Failed to create chunk dir {}: {e}", target_dir.display()))?;
         let cursor = std::io::Cursor::new(tar_bytes);
         let mut archive = tar::Archive::new(cursor);
-        archive.unpack(target_dir)
+        archive
+            .unpack(target_dir)
             .map_err(|e| format!("Failed to untar chunk to {}: {e}", target_dir.display()))?;
         Ok(())
     }
@@ -308,22 +319,28 @@ impl ChunkBackend for S3Backend {
         let local_path = self.config.local_chunk_path(chunk_id);
         if local_path.exists() {
             let size = Self::dir_size(&local_path);
-            self.cache.insert(chunk_id.to_string(), ChunkCacheEntry {
-                local_path: local_path.clone(),
-                uploaded: true, // Assume uploaded since it was there before restart.
-                size_bytes: size,
-            });
+            self.cache.insert(
+                chunk_id.to_string(),
+                ChunkCacheEntry {
+                    local_path: local_path.clone(),
+                    uploaded: true, // Assume uploaded since it was there before restart.
+                    size_bytes: size,
+                },
+            );
             return Ok(local_path);
         }
 
         // 3. Download from S3.
         let downloaded_path = self.download_chunk(chunk_id)?;
         let size = Self::dir_size(&downloaded_path);
-        self.cache.insert(chunk_id.to_string(), ChunkCacheEntry {
-            local_path: downloaded_path.clone(),
-            uploaded: true,
-            size_bytes: size,
-        });
+        self.cache.insert(
+            chunk_id.to_string(),
+            ChunkCacheEntry {
+                local_path: downloaded_path.clone(),
+                uploaded: true,
+                size_bytes: size,
+            },
+        );
         Ok(downloaded_path)
     }
 
@@ -331,11 +348,14 @@ impl ChunkBackend for S3Backend {
         let size = Self::dir_size(local_path);
 
         // Register in LRU cache (not yet uploaded).
-        self.cache.insert(chunk_id.to_string(), ChunkCacheEntry {
-            local_path: local_path.to_path_buf(),
-            uploaded: false,
-            size_bytes: size,
-        });
+        self.cache.insert(
+            chunk_id.to_string(),
+            ChunkCacheEntry {
+                local_path: local_path.to_path_buf(),
+                uploaded: false,
+                size_bytes: size,
+            },
+        );
 
         // Schedule async upload.
         let chunk_id_owned = chunk_id.to_string();

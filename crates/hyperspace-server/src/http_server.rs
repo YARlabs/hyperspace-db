@@ -157,10 +157,7 @@ pub async fn start_http_server(
             "/api/collections/{name}/sync/handshake",
             post(sync_handshake_http),
         )
-        .route(
-            "/api/collections/{name}/sync/pull",
-            post(sync_pull_http),
-        )
+        .route("/api/collections/{name}/sync/pull", post(sync_pull_http))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -1069,12 +1066,19 @@ async fn get_usage_report_http(
 
 // ─── Delta Sync HTTP Handlers (Task 2.1) ──────────────────────────────────
 
+// The `client_` prefix on all fields mirrors the JSON API schema where all peer
+// fields are named client_* to distinguish them from server_* counterparts.
+#[allow(clippy::struct_field_names)]
 #[derive(serde::Deserialize)]
 struct SyncHandshakeHttpRequest {
+    /// Raw bucket hashes from the client (256 entries).
     client_buckets: Vec<u64>,
+    /// Client's Lamport clock at time of handshake.
     #[serde(default)]
     client_logical_clock: u64,
+    /// Total vector count on client side (reserved for future quota checks).
     #[serde(default)]
+    #[allow(dead_code)]
     client_count: u64,
 }
 
@@ -1103,9 +1107,8 @@ async fn sync_handshake_http(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<SyncHandshakeHttpRequest>,
 ) -> impl IntoResponse {
-    let col = match manager.get(&ctx.user_id, &name).await {
-        Some(c) => c,
-        None => return (StatusCode::NOT_FOUND, "Collection not found").into_response(),
+    let Some(col) = manager.get(&ctx.user_id, &name).await else {
+        return (StatusCode::NOT_FOUND, "Collection not found").into_response();
     };
 
     let server_buckets = col.buckets();
@@ -1185,9 +1188,8 @@ async fn sync_pull_http(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<SyncPullHttpRequest>,
 ) -> impl IntoResponse {
-    let col = match manager.get(&ctx.user_id, &name).await {
-        Some(c) => c,
-        None => return (StatusCode::NOT_FOUND, "Collection not found").into_response(),
+    let Some(col) = manager.get(&ctx.user_id, &name).await else {
+        return (StatusCode::NOT_FOUND, "Collection not found").into_response();
     };
 
     if body.bucket_indices.is_empty() {
@@ -1213,6 +1215,9 @@ async fn sync_pull_http(
         })
         .collect();
 
-    println!("📥 HTTP SyncPull: '{name}' returning {} vectors", result.len());
+    println!(
+        "📥 HTTP SyncPull: '{name}' returning {} vectors",
+        result.len()
+    );
     Json(result).into_response()
 }

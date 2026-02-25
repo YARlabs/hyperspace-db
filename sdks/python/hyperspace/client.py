@@ -500,6 +500,53 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return []
 
+    def sync_handshake(self, collection: str, client_buckets: list, client_logical_clock: int = 0, client_count: int = 0) -> dict:
+        """
+        Initiate synchronization by sending local bucket hashes to the server.
+        """
+        if len(client_buckets) != 256:
+            raise ValueError("client_buckets must contain exactly 256 elements")
+            
+        req = hyperspace_pb2.SyncHandshakeRequest(
+            collection=collection,
+            client_buckets=client_buckets,
+            client_logical_clock=client_logical_clock,
+            client_count=client_count
+        )
+        try:
+            resp = self.stub.SyncHandshake(req, metadata=self.metadata)
+            diff_buckets = [{"bucket_index": b.bucket_index, "server_hash": b.server_hash, "client_hash": b.client_hash} for b in resp.diff_buckets]
+            return {
+                "diff_buckets": diff_buckets,
+                "server_logical_clock": resp.server_logical_clock,
+                "server_count": resp.server_count,
+                "in_sync": resp.in_sync
+            }
+        except grpc.RpcError as e:
+            print(f"RPC Error in sync_handshake: {e}")
+            return {}
+
+    def sync_pull(self, collection: str, bucket_indices: list):
+        """
+        Pull specific buckets from the remote server.
+        Returns a generator yielding SyncVectorData dicts.
+        """
+        req = hyperspace_pb2.SyncPullRequest(
+            collection=collection,
+            bucket_indices=bucket_indices
+        )
+        try:
+            for item in self.stub.SyncPull(req, metadata=self.metadata):
+                yield {
+                    "collection": item.collection,
+                    "id": item.id,
+                    "vector": list(item.vector),
+                    "metadata": dict(item.metadata),
+                    "bucket_index": item.bucket_index
+                }
+        except grpc.RpcError as e:
+            print(f"RPC Error in sync_pull: {e}")
+
     def close(self):
         self.channel.close()
 

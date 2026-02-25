@@ -26,6 +26,11 @@ public:
     bool CreateCollection(const std::string& name, int dimension, const std::string& metric = "cosine");
     bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "");
     std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "");
+    
+    // Sync API signatures
+    bool SyncHandshake(const std::string& collection, const std::vector<uint64_t>& client_buckets, uint64_t client_logical_clock, uint64_t client_count, std::vector<uint32_t>& out_diff_buckets);
+    bool SyncPull(const std::string& collection, const std::vector<uint32_t>& bucket_indices);
+    bool SyncPush(const std::string& collection);
 
 private:
     std::unique_ptr<hyperspace_grpc::Database::Stub> stub_;

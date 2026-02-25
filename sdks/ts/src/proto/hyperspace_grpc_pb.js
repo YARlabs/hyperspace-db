@@ -378,6 +378,61 @@ function deserialize_hyperspace_StatusResponse(buffer_arg) {
   return hyperspace_pb.StatusResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_SyncHandshakeRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.SyncHandshakeRequest)) {
+    throw new Error('Expected argument of type hyperspace.SyncHandshakeRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SyncHandshakeRequest(buffer_arg) {
+  return hyperspace_pb.SyncHandshakeRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_SyncHandshakeResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.SyncHandshakeResponse)) {
+    throw new Error('Expected argument of type hyperspace.SyncHandshakeResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SyncHandshakeResponse(buffer_arg) {
+  return hyperspace_pb.SyncHandshakeResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_SyncPullRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.SyncPullRequest)) {
+    throw new Error('Expected argument of type hyperspace.SyncPullRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SyncPullRequest(buffer_arg) {
+  return hyperspace_pb.SyncPullRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_SyncPushResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.SyncPushResponse)) {
+    throw new Error('Expected argument of type hyperspace.SyncPushResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SyncPushResponse(buffer_arg) {
+  return hyperspace_pb.SyncPushResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_SyncVectorData(arg) {
+  if (!(arg instanceof hyperspace_pb.SyncVectorData)) {
+    throw new Error('Expected argument of type hyperspace.SyncVectorData');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SyncVectorData(buffer_arg) {
+  return hyperspace_pb.SyncVectorData.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_SystemStats(arg) {
   if (!(arg instanceof hyperspace_pb.SystemStats)) {
     throw new Error('Expected argument of type hyperspace.SystemStats');
@@ -676,6 +731,43 @@ subscribeToEvents: {
     requestDeserialize: deserialize_hyperspace_RebuildIndexRequest,
     responseSerialize: serialize_hyperspace_StatusResponse,
     responseDeserialize: deserialize_hyperspace_StatusResponse,
+  },
+  // Delta Sync (Merkle Tree — Task 2.1)
+// Step 1: Client sends its digest, server returns which buckets differ.
+syncHandshake: {
+    path: '/hyperspace.Database/SyncHandshake',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.SyncHandshakeRequest,
+    responseType: hyperspace_pb.SyncHandshakeResponse,
+    requestSerialize: serialize_hyperspace_SyncHandshakeRequest,
+    requestDeserialize: deserialize_hyperspace_SyncHandshakeRequest,
+    responseSerialize: serialize_hyperspace_SyncHandshakeResponse,
+    responseDeserialize: deserialize_hyperspace_SyncHandshakeResponse,
+  },
+  // Step 2: Client requests vectors from specific buckets, server streams them.
+syncPull: {
+    path: '/hyperspace.Database/SyncPull',
+    requestStream: false,
+    responseStream: true,
+    requestType: hyperspace_pb.SyncPullRequest,
+    responseType: hyperspace_pb.SyncVectorData,
+    requestSerialize: serialize_hyperspace_SyncPullRequest,
+    requestDeserialize: deserialize_hyperspace_SyncPullRequest,
+    responseSerialize: serialize_hyperspace_SyncVectorData,
+    responseDeserialize: deserialize_hyperspace_SyncVectorData,
+  },
+  // Step 3 (optional): Client pushes its unique vectors to the server.
+syncPush: {
+    path: '/hyperspace.Database/SyncPush',
+    requestStream: true,
+    responseStream: false,
+    requestType: hyperspace_pb.SyncVectorData,
+    responseType: hyperspace_pb.SyncPushResponse,
+    requestSerialize: serialize_hyperspace_SyncVectorData,
+    requestDeserialize: deserialize_hyperspace_SyncVectorData,
+    responseSerialize: serialize_hyperspace_SyncPushResponse,
+    responseDeserialize: deserialize_hyperspace_SyncPushResponse,
   },
 };
 

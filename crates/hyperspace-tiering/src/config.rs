@@ -39,13 +39,11 @@ impl TieringConfig {
                 .to_lowercase(),
             bucket: std::env::var("HS_S3_BUCKET")
                 .unwrap_or_else(|_| "hyperspace-chunks".to_string()),
-            region: std::env::var("HS_S3_REGION")
-                .unwrap_or_else(|_| "us-east-1".to_string()),
+            region: std::env::var("HS_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
             endpoint: std::env::var("HS_S3_ENDPOINT").ok(),
             access_key: std::env::var("HS_S3_ACCESS_KEY").ok(),
             secret_key: std::env::var("HS_S3_SECRET_KEY").ok(),
-            prefix: std::env::var("HS_S3_PREFIX")
-                .unwrap_or_else(|_| "v1/chunks".to_string()),
+            prefix: std::env::var("HS_S3_PREFIX").unwrap_or_else(|_| "v1/chunks".to_string()),
             max_local_cache_gb: std::env::var("HS_MAX_LOCAL_CACHE_GB")
                 .ok()
                 .and_then(|v| v.parse().ok())

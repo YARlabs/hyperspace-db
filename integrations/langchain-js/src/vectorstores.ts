@@ -43,6 +43,9 @@ export class HyperspaceStore extends VectorStore {
         const ids = options?.ids || [];
         const resultIds: string[] = [];
         const metadatas = options?.metadatas || documents.map((d) => d.metadata);
+        const idsToInsert: number[] = [];
+        const vectorsToInsert: number[][] = [];
+        const metadatasToInsert: Record<string, string>[] = [];
 
         for (let i = 0; i < vectors.length; i++) {
             const text = documents[i].pageContent;
@@ -68,14 +71,26 @@ export class HyperspaceStore extends VectorStore {
                 idStr = idNum.toString();
             }
 
-            try {
-                await this.client.insert(idNum, vector, fullMetadata, this.collectionName);
-            } catch (e) {
-                console.error(`Failed to insert vector ${idNum}:`, e);
-                throw e;
-            }
-
+            idsToInsert.push(idNum);
+            vectorsToInsert.push(vector);
+            metadatasToInsert.push(fullMetadata);
             resultIds.push(idStr);
+        }
+
+        const items = idsToInsert.map((idNum, idx) => ({
+            id: idNum,
+            vector: vectorsToInsert[idx],
+            metadata: metadatasToInsert[idx]
+        }));
+
+        try {
+            await this.client.batchInsert(
+                items,
+                this.collectionName
+            );
+        } catch (e) {
+            console.error(`Failed to batch insert vectors:`, e);
+            throw e;
         }
 
         return resultIds;
@@ -88,7 +103,7 @@ export class HyperspaceStore extends VectorStore {
     ): Promise<[Document, number][]> {
         const results = await this.client.search(query, k, this.collectionName);
 
-        const output: [Document, number][] = results.map(r => {
+        const output: [Document, number][] = results.map((r: any) => {
             // r is { id, distance, metadata } which we added in SDK
             // @ts-ignore - metadata is added in our modified SDK
             const metadata = r.metadata || {};

@@ -232,7 +232,7 @@ pub fn lyapunov_convergence(trajectory: &[Vec<f64>], c: f64) -> Result<f64, Stri
     }
     // The attractor is approximated by Fréchet mean
     let attractor = frechet_mean(trajectory, c, 32, 1e-6)?;
-    
+
     let mut v_diff_sum = 0.0;
     for i in 0..trajectory.len() - 1 {
         let v_t0 = norm_sq(&log_map(&attractor, &trajectory[i], c)?).sqrt();
@@ -243,9 +243,14 @@ pub fn lyapunov_convergence(trajectory: &[Vec<f64>], c: f64) -> Result<f64, Stri
     Ok(v_diff_sum / (trajectory.len() - 1) as f64)
 }
 
-/// Extrapolates the trajectory in linear space (Koopman linearization) by tracking the 
+/// Extrapolates the trajectory in linear space (Koopman linearization) by tracking the
 /// shift vector from `past` to `current` and projecting it forward.
-pub fn koopman_extrapolate(past: &[f64], current: &[f64], steps: f64, c: f64) -> Result<Vec<f64>, String> {
+pub fn koopman_extrapolate(
+    past: &[f64],
+    current: &[f64],
+    steps: f64,
+    c: f64,
+) -> Result<Vec<f64>, String> {
     // 1. Get velocity at past
     let velocity_at_past = log_map(past, current, c)?;
     // 2. Parallel transport to current
@@ -258,7 +263,12 @@ pub fn koopman_extrapolate(past: &[f64], current: &[f64], steps: f64, c: f64) ->
 
 /// Resonates a thought vector towards a global context vector (Phase-Locked Loop context synchronization).
 /// Pulls the thought towards the context along the geodesic by `resonance_factor` [0, 1].
-pub fn context_resonance(thought: &[f64], global_context: &[f64], resonance_factor: f64, c: f64) -> Result<Vec<f64>, String> {
+pub fn context_resonance(
+    thought: &[f64],
+    global_context: &[f64],
+    resonance_factor: f64,
+    c: f64,
+) -> Result<Vec<f64>, String> {
     let pull_dir = log_map(thought, global_context, c)?;
     let factor = resonance_factor.clamp(0.0, 1.0);
     let applied_pull: Vec<f64> = pull_dir.iter().map(|v| v * factor).collect();
@@ -318,11 +328,7 @@ mod tests {
     fn test_cognitive_math() {
         // Local Entropy
         let candidate = vec![0.1, 0.1];
-        let neighbors = vec![
-            vec![0.11, 0.1],
-            vec![0.1, 0.12],
-            vec![0.09, 0.09],
-        ];
+        let neighbors = vec![vec![0.11, 0.1], vec![0.1, 0.12], vec![0.09, 0.09]];
         let entropy = local_entropy(&candidate, &neighbors, 1.0).unwrap();
         // Since neighbors are close, entropy should be low (close to 0)
         assert!(entropy < 0.1);
@@ -332,7 +338,7 @@ mod tests {
             vec![0.5, 0.5],
             vec![0.3, 0.3],
             vec![0.1, 0.1],
-            vec![0.05, 0.05]
+            vec![0.05, 0.05],
         ];
         let lyapunov = lyapunov_convergence(&trajectory_converging, 1.0).unwrap();
         assert!(lyapunov < 0.0); // derivative < 0 implies convergence

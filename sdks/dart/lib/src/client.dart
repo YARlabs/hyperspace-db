@@ -40,4 +40,19 @@ class HyperspaceClient {
     // return _stub.insert(...);
     return true;
   }
+
+  // Delta Sync API implementation stubs
+  Future<dynamic> syncHandshake(String collection, List<int> clientBuckets, {int clientLogicalClock = 0, int clientCount = 0}) async {
+    if (clientBuckets.length != 256) throw Exception("Buckets length must be 256");
+    // return _stub.syncHandshake(...);
+    return {};
+  }
+
+  Stream<dynamic> syncPull(String collection, List<int> bucketIndices) async* {
+    // yield* _stub.syncPull(...);
+  }
+
+  Future<dynamic> syncPush(Stream<dynamic> vectors) async {
+    // return _stub.syncPush(vectors);
+  }
 }

@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["YAR"]
 edition = "2021"
 
+[workspace]
+
 [build-dependencies]
 tauri-build = { version = "1", features = [] }
 

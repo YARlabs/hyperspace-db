@@ -19,8 +19,10 @@ impl LocalBackend {
         // Scan existing chunks on startup.
         let (count, bytes) = Self::scan_chunks(&data_dir);
         if count > 0 {
-            println!("📂 LocalBackend: Found {count} existing chunk(s) ({} MB on disk)",
-                     bytes / (1024 * 1024));
+            println!(
+                "📂 LocalBackend: Found {count} existing chunk(s) ({} MB on disk)",
+                bytes / (1024 * 1024)
+            );
         }
         Self {
             data_dir,

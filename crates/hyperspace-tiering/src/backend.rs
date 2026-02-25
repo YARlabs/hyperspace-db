@@ -1,4 +1,4 @@
-//! ChunkBackend trait + factory function.
+//! `ChunkBackend` trait + factory function.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,6 +18,9 @@ pub trait ChunkBackend: Send + Sync {
     ///
     /// For `LocalBackend`, this is always `data_dir / chunk_id`.
     /// For `S3Backend`, this may trigger a download if the chunk is not cached locally.
+    ///
+    /// # Errors
+    /// Returns an error if the chunk cannot be found, if download fails, or if directory creation fails.
     fn resolve(&self, chunk_id: &str) -> Result<PathBuf, String>;
 
     /// Notifies the backend that a new chunk was created locally.
@@ -28,6 +31,9 @@ pub trait ChunkBackend: Send + Sync {
     /// Requests eviction of a chunk from local storage.
     /// `LocalBackend`: no-op.
     /// `S3Backend`: ensures chunk is uploaded, then removes local copy.
+    ///
+    /// # Errors
+    /// Returns an error if the chunk is not yet uploaded to S3 or if local deletion fails.
     fn evict(&self, chunk_id: &str) -> Result<(), String>;
 
     /// Returns the backend name for logging/diagnostics.
@@ -46,7 +52,10 @@ pub trait ChunkBackend: Send + Sync {
 /// - `HS_STORAGE_BACKEND=s3` → `S3Backend` (LRU cache + async S3 I/O).
 pub fn create_backend(config: TieringConfig) -> Arc<dyn ChunkBackend> {
     if config.is_s3() {
-        println!("☁️  Storage Backend: S3 (bucket: {}, region: {})", config.bucket, config.region);
+        println!(
+            "☁️  Storage Backend: S3 (bucket: {}, region: {})",
+            config.bucket, config.region
+        );
         if let Some(ref ep) = config.endpoint {
             println!("    Endpoint: {ep}");
         }

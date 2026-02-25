@@ -1507,6 +1507,181 @@ export namespace DigestResponse {
     }
 }
 
+export class SyncHandshakeRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): SyncHandshakeRequest;
+    clearClientBucketsList(): void;
+    getClientBucketsList(): Array<number>;
+    setClientBucketsList(value: Array<number>): SyncHandshakeRequest;
+    addClientBuckets(value: number, index?: number): number;
+    getClientLogicalClock(): number;
+    setClientLogicalClock(value: number): SyncHandshakeRequest;
+    getClientCount(): number;
+    setClientCount(value: number): SyncHandshakeRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SyncHandshakeRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: SyncHandshakeRequest): SyncHandshakeRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SyncHandshakeRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SyncHandshakeRequest;
+    static deserializeBinaryFromReader(message: SyncHandshakeRequest, reader: jspb.BinaryReader): SyncHandshakeRequest;
+}
+
+export namespace SyncHandshakeRequest {
+    export type AsObject = {
+        collection: string,
+        clientBucketsList: Array<number>,
+        clientLogicalClock: number,
+        clientCount: number,
+    }
+}
+
+export class DiffBucket extends jspb.Message { 
+    getBucketIndex(): number;
+    setBucketIndex(value: number): DiffBucket;
+    getServerHash(): number;
+    setServerHash(value: number): DiffBucket;
+    getClientHash(): number;
+    setClientHash(value: number): DiffBucket;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): DiffBucket.AsObject;
+    static toObject(includeInstance: boolean, msg: DiffBucket): DiffBucket.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: DiffBucket, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): DiffBucket;
+    static deserializeBinaryFromReader(message: DiffBucket, reader: jspb.BinaryReader): DiffBucket;
+}
+
+export namespace DiffBucket {
+    export type AsObject = {
+        bucketIndex: number,
+        serverHash: number,
+        clientHash: number,
+    }
+}
+
+export class SyncHandshakeResponse extends jspb.Message { 
+    clearDiffBucketsList(): void;
+    getDiffBucketsList(): Array<DiffBucket>;
+    setDiffBucketsList(value: Array<DiffBucket>): SyncHandshakeResponse;
+    addDiffBuckets(value?: DiffBucket, index?: number): DiffBucket;
+    getServerLogicalClock(): number;
+    setServerLogicalClock(value: number): SyncHandshakeResponse;
+    getServerCount(): number;
+    setServerCount(value: number): SyncHandshakeResponse;
+    getInSync(): boolean;
+    setInSync(value: boolean): SyncHandshakeResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SyncHandshakeResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: SyncHandshakeResponse): SyncHandshakeResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SyncHandshakeResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SyncHandshakeResponse;
+    static deserializeBinaryFromReader(message: SyncHandshakeResponse, reader: jspb.BinaryReader): SyncHandshakeResponse;
+}
+
+export namespace SyncHandshakeResponse {
+    export type AsObject = {
+        diffBucketsList: Array<DiffBucket.AsObject>,
+        serverLogicalClock: number,
+        serverCount: number,
+        inSync: boolean,
+    }
+}
+
+export class SyncPullRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): SyncPullRequest;
+    clearBucketIndicesList(): void;
+    getBucketIndicesList(): Array<number>;
+    setBucketIndicesList(value: Array<number>): SyncPullRequest;
+    addBucketIndices(value: number, index?: number): number;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SyncPullRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: SyncPullRequest): SyncPullRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SyncPullRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SyncPullRequest;
+    static deserializeBinaryFromReader(message: SyncPullRequest, reader: jspb.BinaryReader): SyncPullRequest;
+}
+
+export namespace SyncPullRequest {
+    export type AsObject = {
+        collection: string,
+        bucketIndicesList: Array<number>,
+    }
+}
+
+export class SyncVectorData extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): SyncVectorData;
+    getId(): number;
+    setId(value: number): SyncVectorData;
+    clearVectorList(): void;
+    getVectorList(): Array<number>;
+    setVectorList(value: Array<number>): SyncVectorData;
+    addVector(value: number, index?: number): number;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+    getBucketIndex(): number;
+    setBucketIndex(value: number): SyncVectorData;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SyncVectorData.AsObject;
+    static toObject(includeInstance: boolean, msg: SyncVectorData): SyncVectorData.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SyncVectorData, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SyncVectorData;
+    static deserializeBinaryFromReader(message: SyncVectorData, reader: jspb.BinaryReader): SyncVectorData;
+}
+
+export namespace SyncVectorData {
+    export type AsObject = {
+        collection: string,
+        id: number,
+        vectorList: Array<number>,
+
+        metadataMap: Array<[string, string]>,
+        bucketIndex: number,
+    }
+}
+
+export class SyncPushResponse extends jspb.Message { 
+    getAccepted(): number;
+    setAccepted(value: number): SyncPushResponse;
+    getRejected(): number;
+    setRejected(value: number): SyncPushResponse;
+    getDuplicates(): number;
+    setDuplicates(value: number): SyncPushResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SyncPushResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: SyncPushResponse): SyncPushResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SyncPushResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SyncPushResponse;
+    static deserializeBinaryFromReader(message: SyncPushResponse, reader: jspb.BinaryReader): SyncPushResponse;
+}
+
+export namespace SyncPushResponse {
+    export type AsObject = {
+        accepted: number,
+        rejected: number,
+        duplicates: number,
+    }
+}
+
 export enum QuantizationMode {
     NONE = 0,
     SCALAR_I8 = 1,

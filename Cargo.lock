@@ -1535,12 +1535,12 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "chrono",
  "crossterm",
  "hyperspace-core",
- "hyperspace-proto 2.2.1",
+ "hyperspace-proto",
  "hyperspace-sdk",
  "rand 0.8.5",
  "ratatui",
@@ -1550,7 +1550,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "2.2.2"
+version = "3.0.0"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -1578,7 +1578,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "2.2.2"
+version = "3.0.0"
 dependencies = [
  "dashmap",
  "hyperspace-core",
@@ -1598,18 +1598,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "2.2.1"
-dependencies = [
- "prost",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
-name = "hyperspace-proto"
-version = "2.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e6c438495c33e3ce49d94f9b7deb4178e5c8ae7f2ceffe9b882928a670d26c"
+version = "3.0.0"
 dependencies = [
  "prost",
  "tonic",
@@ -1618,10 +1607,10 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "2.2.1"
+version = "3.0.0"
 dependencies = [
  "async-trait",
- "hyperspace-proto 2.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyperspace-proto",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
@@ -1631,7 +1620,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "2.2.2"
+version = "3.0.0"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -1644,7 +1633,7 @@ dependencies = [
  "hyperspace-core",
  "hyperspace-embed",
  "hyperspace-index",
- "hyperspace-proto 2.2.1",
+ "hyperspace-proto",
  "hyperspace-store",
  "hyperspace-tiering",
  "mime_guess",
@@ -1669,7 +1658,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "arc-swap",
  "byteorder",
@@ -1684,7 +1673,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-tiering"
-version = "0.1.0"
+version = "3.0.0"
 dependencies = [
  "backoff",
  "bytes",
@@ -1700,7 +1689,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-wasm"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",

@@ -31,6 +31,9 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     subscribeToEvents: IDatabaseService_ISubscribeToEvents;
     getDigest: IDatabaseService_IGetDigest;
     rebuildIndex: IDatabaseService_IRebuildIndex;
+    syncHandshake: IDatabaseService_ISyncHandshake;
+    syncPull: IDatabaseService_ISyncPull;
+    syncPush: IDatabaseService_ISyncPush;
 }
 
 interface IDatabaseService_ICreateCollection extends grpc.MethodDefinition<hyperspace_pb.CreateCollectionRequest, hyperspace_pb.StatusResponse> {
@@ -240,6 +243,33 @@ interface IDatabaseService_IRebuildIndex extends grpc.MethodDefinition<hyperspac
     responseSerialize: grpc.serialize<hyperspace_pb.StatusResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.StatusResponse>;
 }
+interface IDatabaseService_ISyncHandshake extends grpc.MethodDefinition<hyperspace_pb.SyncHandshakeRequest, hyperspace_pb.SyncHandshakeResponse> {
+    path: "/hyperspace.Database/SyncHandshake";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.SyncHandshakeRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.SyncHandshakeRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.SyncHandshakeResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.SyncHandshakeResponse>;
+}
+interface IDatabaseService_ISyncPull extends grpc.MethodDefinition<hyperspace_pb.SyncPullRequest, hyperspace_pb.SyncVectorData> {
+    path: "/hyperspace.Database/SyncPull";
+    requestStream: false;
+    responseStream: true;
+    requestSerialize: grpc.serialize<hyperspace_pb.SyncPullRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.SyncPullRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.SyncVectorData>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.SyncVectorData>;
+}
+interface IDatabaseService_ISyncPush extends grpc.MethodDefinition<hyperspace_pb.SyncVectorData, hyperspace_pb.SyncPushResponse> {
+    path: "/hyperspace.Database/SyncPush";
+    requestStream: true;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.SyncVectorData>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.SyncVectorData>;
+    responseSerialize: grpc.serialize<hyperspace_pb.SyncPushResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.SyncPushResponse>;
+}
 
 export const DatabaseService: IDatabaseService;
 
@@ -267,6 +297,9 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     subscribeToEvents: grpc.handleServerStreamingCall<hyperspace_pb.EventSubscriptionRequest, hyperspace_pb.EventMessage>;
     getDigest: grpc.handleUnaryCall<hyperspace_pb.DigestRequest, hyperspace_pb.DigestResponse>;
     rebuildIndex: grpc.handleUnaryCall<hyperspace_pb.RebuildIndexRequest, hyperspace_pb.StatusResponse>;
+    syncHandshake: grpc.handleUnaryCall<hyperspace_pb.SyncHandshakeRequest, hyperspace_pb.SyncHandshakeResponse>;
+    syncPull: grpc.handleServerStreamingCall<hyperspace_pb.SyncPullRequest, hyperspace_pb.SyncVectorData>;
+    syncPush: grpc.handleClientStreamingCall<hyperspace_pb.SyncVectorData, hyperspace_pb.SyncPushResponse>;
 }
 
 export interface IDatabaseClient {
@@ -336,6 +369,15 @@ export interface IDatabaseClient {
     rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    syncHandshake(request: hyperspace_pb.SyncHandshakeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncHandshakeResponse) => void): grpc.ClientUnaryCall;
+    syncHandshake(request: hyperspace_pb.SyncHandshakeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncHandshakeResponse) => void): grpc.ClientUnaryCall;
+    syncHandshake(request: hyperspace_pb.SyncHandshakeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncHandshakeResponse) => void): grpc.ClientUnaryCall;
+    syncPull(request: hyperspace_pb.SyncPullRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SyncVectorData>;
+    syncPull(request: hyperspace_pb.SyncPullRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SyncVectorData>;
+    syncPush(callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
+    syncPush(metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
+    syncPush(options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
+    syncPush(metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
 }
 
 export class DatabaseClient extends grpc.Client implements IDatabaseClient {
@@ -406,4 +448,13 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public rebuildIndex(request: hyperspace_pb.RebuildIndexRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public syncHandshake(request: hyperspace_pb.SyncHandshakeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncHandshakeResponse) => void): grpc.ClientUnaryCall;
+    public syncHandshake(request: hyperspace_pb.SyncHandshakeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncHandshakeResponse) => void): grpc.ClientUnaryCall;
+    public syncHandshake(request: hyperspace_pb.SyncHandshakeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncHandshakeResponse) => void): grpc.ClientUnaryCall;
+    public syncPull(request: hyperspace_pb.SyncPullRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SyncVectorData>;
+    public syncPull(request: hyperspace_pb.SyncPullRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SyncVectorData>;
+    public syncPush(callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
+    public syncPush(metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
+    public syncPush(options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
+    public syncPush(metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SyncPushResponse) => void): grpc.ClientWritableStream<hyperspace_pb.SyncVectorData>;
 }

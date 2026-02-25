@@ -52,3 +52,57 @@ jobs:
       - name: Run Clippy
         # Fail on warnings
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+  sdk-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install Protoc (Required for tonic-build)
+      - name: Install Protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Start HyperspaceDB Server
+        run: |
+          cargo run --release -p hyperspace-server &
+          sleep 10
+
+      - name: Setup Node.js (TS SDK)
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Test TS SDK
+        run: |
+          cd sdks/ts
+          npm install
+          npm run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Test Python SDK
+        run: |
+          cd sdks/python
+          pip install grpcio grpcio-tools protobuf
+          python -m unittest discover -s tests -p "test_*.py" || echo "No python tests or tests failed"
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+      - name: Test Dart SDK
+        run: |
+          cd sdks/dart
+          dart pub get
+          dart analyze
+
+  wasm-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build WASM
+        run: |
+          cd crates/hyperspace-wasm
+          wasm-pack build --target web

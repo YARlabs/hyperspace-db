@@ -29,12 +29,12 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 * **Fractal Knowledge Graphs:** Euclidean vectors fail at hierarchies. Our native Hyperbolic engine compresses massive trees (like codebases or taxonomies) into 64-dimensional spaces, reducing RAM usage by 50x without losing semantic context.
 * **Continuous Reconsolidation:** AI agents need to "sleep" and organize memories. With our **Fast Upsert Path**, **CDC Event Streams**, and built-in **Riemannian Math SDK** (Fréchet mean, parallel transport), your agents can continuously shift and prune vectors dynamically.
-* **Edge-to-Cloud & Offline-First:** Drones and humanoid robots can't wait for cloud latency. HyperspaceDB runs directly on Edge hardware, using **Merkle Tree Delta Sync** to asynchronously handshake and sync episodic memory chunks with the Cloud when the network is available.
+* **Edge-to-Cloud & Offline-First:** Drones and humanoid robots can't wait for cloud latency. HyperspaceDB runs directly on Edge hardware, using a **Merkle Tree Delta Sync** protocol (`SyncHandshake`, `SyncPull`, `SyncPush`) to asynchronously handshake and sync episodic memory chunks with the Cloud when the network is available.
 * **Serverless at Billion-Scale:** HyperspaceDB dynamically unloads idle logic to disk/S3, enabling you to host millions of vectors across thousands of tenants on a single commodity server, acting as the "Neon of Vector Search."
 
 ---
 
-## 🚀 Core Pillars
+## 🚀 Core Pillars (v3.0 LTS)
 
 <table>
   <tr>
@@ -42,8 +42,12 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
     <td>Built on Nightly Rust. Our <b>ArcSwap Lock-Free architecture</b> and <code>f32</code> SIMD intrinsics deliver up to <b>12,000 Search QPS</b> and <b>60,000 Ingest QPS</b> on a single node.</td>
   </tr>
   <tr>
-    <td>📐 <b>Non-Euclidean Native</b></td>
-    <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, and <b>Lorentz Hyperboloid</b> metrics. Stop flattening your hierarchical data.</td>
+    <td>🧭 <b>Global Meta-Router</b></td>
+    <td>Implements pure <b>Compute/Storage Separation</b>. The RAM-resident <code>MetaRouter</code> queries thousands of underlying HNSW fragments (chunks) in microseconds, pulling heavy data from NVMe/S3 via Paged Loading on the fly.</td>
+  </tr>
+  <tr>
+    <td>🎓 <b>Cognitive Math Engine</b></td>
+    <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, and <b>Lorentz Hyperboloid</b> metrics. Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the Native SDK.</td>
   </tr>
   <tr>
     <td>📡 <b>Agentic Workflows</b></td>
@@ -55,11 +59,11 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
   </tr>
   <tr>
     <td>📦 <b>LSM-Tree Storage</b></td>
-    <td>Optimized for high-concurrency writes. Hot <b>MemTables</b> swap into immutable <b>HNSW Chunks</b>, enabling near-instant RAM reclamation and stable performance at billion-scale.</td>
+    <td>Optimized for high-concurrency writes. Hot <b>MemTables</b> continuously flush into immutable <b>Fractal Segments</b> (<code>chunk_N.hyp</code>), enabling near-instant RAM reclamation and stable performance at billion-scale.</td>
   </tr>
   <tr>
     <td>☁️ <b>S3 Cloud Tiering</b></td>
-    <td>Built-in <b>S3/MinIO</b> offloading with local LRU caching. Scale your vector storage to Petabytes without increasing local NVMe costs.</td>
+    <td>Native <b>S3/MinIO</b> tiered storage integration. Seamlessly offload cold segments mapping Petabytes of vectors linearly without scaling local SSDs. <i>(Unlock via Cargo feature <code>s3-tiering</code> & <code>HS_STORAGE_BACKEND=s3</code>)</i>.</td>
   </tr>
 </table>
 
@@ -72,9 +76,9 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## ⚡ 1 Million Vectors Benchmark
+## ⚡ 1 Million Vectors Benchmark (v3.0.0 LTS)
  
-We pushed **HyperspaceDB v1.5** to the limit with a **1 Million Vector Dataset**.
+We pushed **HyperspaceDB v3.0** to the limit with a **1 Million Vector Dataset**.
 The results define a new standard for performance and efficiency.
 
 ### 🏆 Hyperbolic Efficiency (Poincaré 64d)
@@ -126,13 +130,30 @@ HyperspaceDB implements a **Federated Leader-Follower** architecture designed fo
 * **Follower**: Read-Only replica. Can be promoted to Leader.
 * **Edge Node**: (Coming in v1.4) Offline-first node that syncs via Merkle Trees.
 
-### Data Synchronization (Bucket Merkle Tree)
-HyperspaceDB uses a **256-bucket Merkle Tree** for efficient data drift detection:
+### Data Synchronization (Edge-to-Cloud Delta Sync)
+HyperspaceDB uses a **256-bucket Merkle Tree** for efficient data drift detection, ideal for WASM/Edge targets updating offline:
 
 * **Granular Hashing**: Each collection is partitioned into 256 buckets (by vector ID % 256)
 * **XOR Rolling Hash**: Each bucket maintains an incremental hash of its vectors
 * **Fast Diffing**: Compare bucket hashes to identify which partition is out of sync
 * **Bandwidth Optimization**: Sync only affected buckets instead of full collection
+
+#### WASM Sync Example
+When your robot or web client comes back online, initiating a Sync is mathematically minimal:
+
+```javascript
+// 1. Handshake: Send local 256 bucket hashes
+const { diffBuckets } = await client.syncHandshake(collection, localBuckets);
+
+if (diffBuckets.length > 0) {
+    // 2. Pull only the modified/missing buckets from Cloud
+    const stream = client.syncPull(collection, diffBuckets);
+    stream.on('data', (vectorData) => applyLocal(vectorData));
+    
+    // 3. Push local offline edits back to Cloud
+    client.syncPush(localEditsQueue);
+}
+```
 
 #### Digest API
 ```bash
@@ -374,23 +395,23 @@ Open a new terminal to monitor the database:
 ### 3. Use Python SDK
 
 ```bash
-pip install hyperspacedb==2.0.0
-
+pip install hyperspacedb==3.0.0
 ```
 
 ```python
-from hyperspace import HyperspaceClient, OpenAIEmbedder
+from hyperspace import HyperspaceClient
 
-# Connect to local instance with built-in Embedder
-client = HyperspaceClient(
-    embedder=OpenAIEmbedder(api_key="sk-...")
-)
+# Connect to local instance
+client = HyperspaceClient()
 
-# Insert text document (auto-vectorized)
-client.insert(id=1, document="HyperspaceDB is fast.", metadata={"tag": "docs"})
+# Create a collection with proper Cognitive Metrics
+client.create_collection(name="world_model", dimension=64, metric="poincare")
 
-# Search with text (auto-vectorized)
-results = client.search(query_text="fast database", top_k=5)
+# Insert text document (you can provide your own embeddings)
+client.insert(id=1, collection="world_model", document="Hyperspace is autonomous.")
+
+# Search 
+results = client.search(query_text="autonomous engine", top_k=5)
 print(results)
 ```
 
@@ -598,17 +619,19 @@ docker run -d \
 
 ---
 
-## 📦 SDKs
+## 📦 SDKs (v3.0.0 LTS)
 
-Official 1st-party drivers:
+Official 1st-party drivers with full Delta Sync, Cognitive Math, and Event Subscriptions:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v2.2.1 |
-| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v2.2.1 |
-| 🦕 **TypeScript** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v2.0.0 |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v2.0.0 |
-| 🐹 **Go** | `sdks/go` | 🚧 Planned |
+| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3.0.0 |
+| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3.0.0 |
+| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3.0.0 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` (In-Browser Embedded Engine) | ✅ v3.0.0 |
+| 🐹 **Go** | `sdks/go` | ✅ v3.0.0 |
+| 🎯 **Dart/Flutter** | `sdks/dart` (Mobile Offline-First) | ✅ v3.0.0 |
+| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` (Hardware/Native) | ✅ v3.0.0 |
 
 ---
 

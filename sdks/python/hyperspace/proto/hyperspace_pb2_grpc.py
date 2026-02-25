@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import hyperspace_pb2 as hyperspace__pb2
+from . import hyperspace_pb2 as hyperspace__pb2
 
 GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
@@ -148,6 +148,21 @@ class DatabaseStub(object):
                 '/hyperspace.Database/RebuildIndex',
                 request_serializer=hyperspace__pb2.RebuildIndexRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.SyncHandshake = channel.unary_unary(
+                '/hyperspace.Database/SyncHandshake',
+                request_serializer=hyperspace__pb2.SyncHandshakeRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.SyncHandshakeResponse.FromString,
+                _registered_method=True)
+        self.SyncPull = channel.unary_stream(
+                '/hyperspace.Database/SyncPull',
+                request_serializer=hyperspace__pb2.SyncPullRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.SyncVectorData.FromString,
+                _registered_method=True)
+        self.SyncPush = channel.stream_unary(
+                '/hyperspace.Database/SyncPush',
+                request_serializer=hyperspace__pb2.SyncVectorData.SerializeToString,
+                response_deserializer=hyperspace__pb2.SyncPushResponse.FromString,
                 _registered_method=True)
 
 
@@ -303,6 +318,28 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SyncHandshake(self, request, context):
+        """Delta Sync (Merkle Tree — Task 2.1)
+        Step 1: Client sends its digest, server returns which buckets differ.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SyncPull(self, request, context):
+        """Step 2: Client requests vectors from specific buckets, server streams them.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SyncPush(self, request_iterator, context):
+        """Step 3 (optional): Client pushes its unique vectors to the server.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -420,6 +457,21 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.RebuildIndex,
                     request_deserializer=hyperspace__pb2.RebuildIndexRequest.FromString,
                     response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'SyncHandshake': grpc.unary_unary_rpc_method_handler(
+                    servicer.SyncHandshake,
+                    request_deserializer=hyperspace__pb2.SyncHandshakeRequest.FromString,
+                    response_serializer=hyperspace__pb2.SyncHandshakeResponse.SerializeToString,
+            ),
+            'SyncPull': grpc.unary_stream_rpc_method_handler(
+                    servicer.SyncPull,
+                    request_deserializer=hyperspace__pb2.SyncPullRequest.FromString,
+                    response_serializer=hyperspace__pb2.SyncVectorData.SerializeToString,
+            ),
+            'SyncPush': grpc.stream_unary_rpc_method_handler(
+                    servicer.SyncPush,
+                    request_deserializer=hyperspace__pb2.SyncVectorData.FromString,
+                    response_serializer=hyperspace__pb2.SyncPushResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1043,6 +1095,87 @@ class Database(object):
             '/hyperspace.Database/RebuildIndex',
             hyperspace__pb2.RebuildIndexRequest.SerializeToString,
             hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SyncHandshake(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/SyncHandshake',
+            hyperspace__pb2.SyncHandshakeRequest.SerializeToString,
+            hyperspace__pb2.SyncHandshakeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SyncPull(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/hyperspace.Database/SyncPull',
+            hyperspace__pb2.SyncPullRequest.SerializeToString,
+            hyperspace__pb2.SyncVectorData.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SyncPush(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/hyperspace.Database/SyncPush',
+            hyperspace__pb2.SyncVectorData.SerializeToString,
+            hyperspace__pb2.SyncPushResponse.FromString,
             options,
             channel_credentials,
             insecure,

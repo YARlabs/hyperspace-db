@@ -90,3 +90,31 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 
 	return res.Results, nil
 }
+
+// SyncHandshake sends local buckets to server and gets differing ones in return
+func (c *HyperspaceClient) SyncHandshake(ctx context.Context, collection string, clientBuckets []uint64, clientClock uint64, clientCount uint64) (*pb.SyncHandshakeResponse, error) {
+	if len(clientBuckets) != 256 {
+		return nil, fmt.Errorf("clientBuckets must contain exactly 256 elements")
+	}
+	req := &pb.SyncHandshakeRequest{
+		Collection:         collection,
+		ClientBuckets:      clientBuckets,
+		ClientLogicalClock: clientClock,
+		ClientCount:        clientCount,
+	}
+	return c.client.SyncHandshake(c.withContext(ctx), req)
+}
+
+// SyncPull streams vectors for specified bucket indices
+func (c *HyperspaceClient) SyncPull(ctx context.Context, collection string, bucketIndices []uint32) (pb.Database_SyncPullClient, error) {
+	req := &pb.SyncPullRequest{
+		Collection:    collection,
+		BucketIndices: bucketIndices,
+	}
+	return c.client.SyncPull(c.withContext(ctx), req)
+}
+
+// SyncPush initiates a stream to push offline vectors to server
+func (c *HyperspaceClient) SyncPush(ctx context.Context) (pb.Database_SyncPushClient, error) {
+	return c.client.SyncPush(c.withContext(ctx))
+}

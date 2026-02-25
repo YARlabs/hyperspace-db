@@ -44,6 +44,7 @@ use hyperspace_store::VectorStore;
 /// `Vec<(internal_id, distance)>` — raw results from the chunk's local ID space.
 /// The caller must NOT map these IDs through the collection's id_map since chunk
 /// segments use their own internal IDs starting from 0.
+#[allow(clippy::too_many_arguments)]
 pub fn search_chunk<const N: usize, M: Metric<N>>(
     chunk_dir: &Path,
     query: &[f64],
@@ -52,14 +53,11 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
     filters: &HashMap<String, String>,
     complex_filters: &[FilterExpr],
     mode: QuantizationMode,
-    config: Arc<GlobalConfig>,
+    config: &Arc<GlobalConfig>,
 ) -> Result<Vec<(u32, f64)>, String> {
     let snap_path = chunk_dir.join("index.snap");
     if !snap_path.exists() {
-        return Err(format!(
-            "Chunk snapshot not found: {}",
-            snap_path.display()
-        ));
+        return Err(format!("Chunk snapshot not found: {}", snap_path.display()));
     }
 
     let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
@@ -67,12 +65,8 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
     let storage_f32 = storage_f32_requested && mode == QuantizationMode::None;
 
     let element_size = match mode {
-        QuantizationMode::ScalarI8 => {
-            hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
-        }
-        QuantizationMode::Binary => {
-            hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
-        }
+        QuantizationMode::ScalarI8 => hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE,
+        QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<N>::SIZE,
         QuantizationMode::None => {
             if storage_f32 {
                 hyperspace_core::vector::HyperVectorF32::<N>::SIZE
@@ -87,7 +81,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
         &snap_path,
         store,
         mode,
-        config,
+        Arc::clone(config),
         storage_f32,
     )?;
 
@@ -98,8 +92,8 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
         ef_search,
         filters,
         complex_filters,
-        None,  // hybrid_query not supported on chunk level (applied only on MemTable)
-        None,  // hybrid_alpha
+        None, // hybrid_query not supported on chunk level (applied only on MemTable)
+        None, // hybrid_alpha
     );
 
     Ok(results)
@@ -120,6 +114,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
 /// Merged and sorted `Vec<(internal_id_within_chunk, distance)>`, truncated to `k`.
 /// Note: IDs are chunk-local and cannot be used for metadata lookups in the main index.
 /// The caller should use only the distances for ranking merge.
+#[allow(clippy::too_many_arguments)]
 pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
     chunk_dirs: &[std::path::PathBuf],
     query: &[f64],
@@ -128,7 +123,7 @@ pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
     filters: &HashMap<String, String>,
     complex_filters: &[FilterExpr],
     mode: QuantizationMode,
-    config: Arc<GlobalConfig>,
+    config: &Arc<GlobalConfig>,
 ) -> Vec<(u32, f64, usize)> {
     // (chunk_local_id, distance, chunk_index) — chunk_index identifies which chunk
     let mut all_results: Vec<(u32, f64, usize)> = Vec::new();
@@ -136,7 +131,16 @@ pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
     // Use sequential iteration for now (chunks are mmap'd so loading is cheap).
     // Rayon parallelism can be added later if profiling shows this is a bottleneck.
     for (chunk_idx, dir) in chunk_dirs.iter().enumerate() {
-        match search_chunk::<N, M>(dir, query, k, ef_search, filters, complex_filters, mode, config.clone()) {
+        match search_chunk::<N, M>(
+            dir,
+            query,
+            k,
+            ef_search,
+            filters,
+            complex_filters,
+            mode,
+            config,
+        ) {
             Ok(results) => {
                 for (local_id, dist) in results {
                     all_results.push((local_id, dist, chunk_idx));

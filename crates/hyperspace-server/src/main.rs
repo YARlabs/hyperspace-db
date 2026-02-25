@@ -34,18 +34,53 @@ use manager::CollectionManager;
 use hyperspace_embed::{ApiProvider, Metric, OnnxVectorizer, RemoteVectorizer, Vectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
-    metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
-    CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest,
-    DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest, DigestResponse,
-    EventMessage, EventSubscriptionRequest, EventType, Filter, FindSemanticClustersRequest,
-    FindSemanticClustersResponse, GetConceptParentsRequest, GetConceptParentsResponse,
-    GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GraphCluster, GraphNode,
-    InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse, MetadataValue,
-    MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats, TraverseRequest,
-    TraverseResponse, VectorDeletedEvent, VectorInsertedEvent,
+    metadata_value,
+    BatchInsertRequest,
+    BatchSearchRequest,
+    BatchSearchResponse,
+    CollectionStatsRequest,
+    CollectionStatsResponse,
+    ConfigUpdate,
+    CreateCollectionRequest,
+    DeleteCollectionRequest,
+    DeleteRequest,
+    DeleteResponse,
     // Delta Sync (Task 2.1)
-    DiffBucket, SyncHandshakeRequest, SyncHandshakeResponse,
-    SyncPullRequest, SyncVectorData, SyncPushResponse,
+    DiffBucket,
+    DigestRequest,
+    DigestResponse,
+    EventMessage,
+    EventSubscriptionRequest,
+    EventType,
+    Filter,
+    FindSemanticClustersRequest,
+    FindSemanticClustersResponse,
+    GetConceptParentsRequest,
+    GetConceptParentsResponse,
+    GetNeighborsRequest,
+    GetNeighborsResponse,
+    GetNodeRequest,
+    GraphCluster,
+    GraphNode,
+    InsertRequest,
+    InsertResponse,
+    InsertTextRequest,
+    ListCollectionsResponse,
+    MetadataValue,
+    MonitorRequest,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+    SyncHandshakeRequest,
+    SyncHandshakeResponse,
+    SyncPullRequest,
+    SyncPushResponse,
+    SyncVectorData,
+    SystemStats,
+    TraverseRequest,
+    TraverseResponse,
+    VectorDeletedEvent,
+    VectorInsertedEvent,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
@@ -1517,12 +1552,9 @@ impl Database for HyperspaceService {
                 target_collection = Some(col_name.to_string());
             }
 
-            let col = match self.manager.get(&user_id, col_name).await {
-                Some(c) => c,
-                None => {
-                    rejected += 1;
-                    continue;
-                }
+            let Some(col) = self.manager.get(&user_id, col_name).await else {
+                rejected += 1;
+                continue;
             };
 
             // Check dimension match
@@ -1908,7 +1940,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("[H] HyperspaceDB Server v2.2.2");
+    println!("[H] HyperspaceDB Server v3.0.0");
     hyperspace_core::check_simd();
 
     dotenv::dotenv().ok();

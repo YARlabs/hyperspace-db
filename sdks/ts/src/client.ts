@@ -653,6 +653,49 @@ export class HyperspaceClient {
         return stream;
     }
 
+    public syncHandshake(
+        collection: string,
+        clientBuckets: number[],
+        clientLogicalClock: number = 0,
+        clientCount: number = 0
+    ): Promise<hyperspace_pb.SyncHandshakeResponse.AsObject> {
+        return new Promise((resolve, reject) => {
+            if (clientBuckets.length !== 256) {
+                return reject(new Error("clientBuckets must contain exactly 256 elements"));
+            }
+            const req = new hyperspace_pb.SyncHandshakeRequest();
+            req.setCollection(collection);
+            req.setClientBucketsList(clientBuckets);
+            req.setClientLogicalClock(clientLogicalClock);
+            req.setClientCount(clientCount);
+
+            this.client.syncHandshake(req, this.metadata, (err, res) => {
+                if (err) return reject(err);
+                resolve(res.toObject());
+            });
+        });
+    }
+
+    public syncPull(
+        collection: string,
+        bucketIndices: number[],
+        onData: (data: hyperspace_pb.SyncVectorData.AsObject) => void,
+        onError?: (err: Error) => void
+    ): grpc.ClientReadableStream<hyperspace_pb.SyncVectorData> {
+        const req = new hyperspace_pb.SyncPullRequest();
+        req.setCollection(collection);
+        req.setBucketIndicesList(bucketIndices);
+
+        const stream = this.client.syncPull(req, this.metadata);
+        stream.on('data', (data: hyperspace_pb.SyncVectorData) => {
+            onData(data.toObject());
+        });
+        if (onError) {
+            stream.on('error', onError);
+        }
+        return stream;
+    }
+
     public close() {
         this.client.close();
     }

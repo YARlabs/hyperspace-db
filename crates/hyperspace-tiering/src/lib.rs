@@ -41,7 +41,7 @@ pub mod config;
 pub mod local;
 pub mod s3;
 
-pub use backend::{ChunkBackend, create_backend};
+pub use backend::{create_backend, ChunkBackend};
 pub use config::TieringConfig;
 pub use local::LocalBackend;
 pub use s3::S3Backend;

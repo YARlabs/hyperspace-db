@@ -530,7 +530,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 let chunk_id = uuid::Uuid::new_v4().to_string();
                 let chunk_name = format!("chunk_{chunk_id}.hyp");
                 let chunk_dir = data_dir.join(&chunk_name);
-                
+
                 if let Err(e) = std::fs::create_dir_all(&chunk_dir) {
                     eprintln!("Failed to create chunk directory {chunk_name}: {e}");
                     return;
@@ -926,10 +926,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let vector = idx.get_vector(internal_id);
         let hash = CollectionDigest::hash_entry(id, &vector.coords);
         let b_idx = CollectionDigest::get_bucket_index(id);
-        
+
         self.buckets[b_idx].fetch_xor(hash, Ordering::Relaxed);
         self.root_hash.fetch_xor(hash, Ordering::Relaxed);
-        
+
         idx.delete(internal_id);
         Ok(())
     }
@@ -1017,7 +1017,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 .map(|(_, path, _)| path.clone())
                 .collect();
 
-            let chunk_results = if !chunk_dirs.is_empty() {
+            let chunk_results = if chunk_dirs.is_empty() {
+                Vec::new()
+            } else {
                 chunk_searcher::scatter_gather_search::<N, M>(
                     &chunk_dirs,
                     &processed_query,
@@ -1026,19 +1028,16 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     filters_ref,
                     complex_filters_ref,
                     mode_for_search,
-                    config_for_search.clone(),
+                    &config_for_search,
                 )
-            } else {
-                Vec::new()
             };
 
             // === 3. Merge MemTable + Chunk results by distance ===
             // MemTable results carry real internal IDs.
             // Chunk results carry chunk-local IDs (not usable for metadata).
             // We merge by distance only, preferring MemTable entries for metadata.
-            let mut merged: Vec<(u32, f64, bool)> = Vec::with_capacity(
-                mem_results.len() + chunk_results.len(),
-            );
+            let mut merged: Vec<(u32, f64, bool)> =
+                Vec::with_capacity(mem_results.len() + chunk_results.len());
 
             for (id, dist) in &mem_results {
                 merged.push((*id, *dist, true)); // true = from MemTable

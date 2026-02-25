@@ -45,7 +45,33 @@ def main():
 
     # cleanup
     client.delete_collection(col_name)
-    print("Done.")
+    
+    # ---------------------------------------------------------
+    # Cognitive Math SDK (Spatial AI) Showcase
+    # ---------------------------------------------------------
+    print("\n--- Cognitive Math SDK ---")
+    try:
+        from hyperspace.math import local_entropy
+        
+        # Suppose an LLM agent generated this "thought" vector
+        thought_vector = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+        
+        # We retrieve context neighbors from HyperspaceDB
+        neighbors = [
+            [0.11, 0.19, 0.31, 0.4, 0.5, 0.6, 0.7, 0.8],
+            [0.09, 0.21, 0.29, 0.4, 0.5, 0.6, 0.7, 0.8],
+        ]
+        
+        entropy = local_entropy(candidate=thought_vector, neighbors=neighbors, c=1.0)
+        print(f"Agent's Thought Entropy: {entropy:.4f}")
+        if entropy > 0.8:
+            print(" -> Warning: High hallucination probability!")
+        else:
+            print(" -> Thought is coherent with context.")
+    except ImportError:
+        print("hyperspace.math not found. Make sure you have the latest SDK version installed.")
+
+    print("\nDone.")
 
 if __name__ == "__main__":
     main()
