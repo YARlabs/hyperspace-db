@@ -245,8 +245,11 @@ graph TD
     style B255 fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
-## Edge-Cloud Federation
+## Edge-Cloud Federation & P2P Swarms
 
+HyperspaceDB supports both hierarchical Cloud boundaries and decentralized Edge networks:
+
+### 1. WASM-Cloud Hybrid Sync
 ```mermaid
 graph TB
     subgraph "Browser (WASM)"
@@ -268,6 +271,12 @@ graph TB
     style WASM_DB fill:#f9f,stroke:#333,stroke-width:2px
     style SERVER fill:#99f,stroke:#333,stroke-width:2px
 ```
+
+### 2. Edge-to-Edge Gossip Swarms
+For decentralized robotics and AGI systems where no Leader node exists:
+* **UDP Heartbeats**: Nodes broadcast a `GossipMessage::Heartbeat` (containing their Logical Clock and partition hashes) every `HEARTBEAT_INTERVAL`.
+* **Zero-Dependency**: Does not require Heavy DHT or `libp2p` layers, runs on raw UDP (`tokio::net::UdpSocket`).
+* **Self-Healing Topology**: If node $A$ fails, peers notice the lack of UDP packets within `PEER_TTL` and evict it from the swarm memory. When it connects again, `Merkle Sync` auto-resolves missing data.
 
 ## ⚖️ Cognitive Math & Tribunal Router
 

@@ -22,7 +22,8 @@ We will acknowledge your report within 48 hours and provide an estimated timefra
 ## Security Features
 
 *   **Memory Safety**: Built 100% in Rust to prevent buffer overflows and use-after-free errors.
-*   **Authentication**: Built-in API Key support (SHA-256 hashed storage, Constant-time comparison).
+*   **Authentication**: Built-in API Key support (SHA-256 hashed storage, Constant-time comparison) for all HTTP & gRPC traffic.
+*   **Swarm Perimeter (v3.0)**: The UDP Edge-to-Edge Gossip protocol (`HS_GOSSIP_PEERS`) operates without built-in encryption. **It is designed for isolated Local Area Networks (LAN) or WireGuard/Tailscale VPCs.** Do not expose the Gossip port (`7946` by default) to the public internet.
 *   **Multi-Tenancy**: Native namespace isolation between users ensuring data privacy in shared environments.
 *   **Role Based Access**: Strict Leader (Read/Write) and Follower (Read-Only) separation.
 *   **Dependency Audits**: We regularly audit our crate dependencies.

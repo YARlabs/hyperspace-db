@@ -61,3 +61,59 @@ This JSON response tells you:
 - Who it is following (if Follower).
 - Who is following it (if Leader).
 - The current logical timestamp of its database state.
+
+---
+
+## Edge-to-Edge Gossip Swarm (v3.0)
+
+Beyond centralized replication, v3.0 introduces a decentralized **Peer-to-Peer UDP Swarm** network. This feature is crucial for robotics and offline-first autonomous agents.
+
+### Features
+* **Zero-Configuration Topology**: Nodes broadcast heartbeat logs via UDP (`tokio::net::UdpSocket`).
+* **Self-Healing**: Unresponsive nodes (TTL > 30s) are automatically dropped from the registry.
+* **Auto-Discovery**: Swarm nodes discover each other and exchange `Logical Clocks` and `Collection Digests` for the Merkle Delta Sync.
+
+### Swarm Configuration
+Add these variables to your environment or `.env` file to start joining the global Swarm:
+
+```bash
+# Enable the Gossip listener on the specified local port
+HS_GOSSIP_PORT=7946
+
+# Bootstrapping nodes to connect to
+HS_GOSSIP_PEERS=192.168.1.10:7946,192.168.1.11:7946
+```
+
+### Swarm State Monitoring
+You can monitor the active mesh structure from the dashboard UI or standard HTTP:
+
+**Request:**
+```bash
+curl http://localhost:50050/api/swarm/peers
+```
+
+**Response:**
+```json
+{
+  "gossip_enabled": true,
+  "peer_count": 1,
+  "peers": [
+    {
+      "node_id": "a92jfe...",
+      "addr": "192.168.1.10:50050",
+      "http_port": 50050,
+      "role": "Leader",
+      "logical_clock": 4200,
+      "collections": [
+        {
+          "name": "vision_system",
+          "state_hash": 6712399120,
+          "vector_count": 500
+        }
+      ],
+      "last_seen_secs": 1729384910,
+      "healthy": true
+    }
+  ]
+}
+```

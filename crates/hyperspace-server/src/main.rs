@@ -22,6 +22,7 @@ use clap::Parser;
 mod chunk_backend;
 mod chunk_searcher;
 mod collection;
+mod gossip;
 mod http_server;
 mod manager;
 mod meta_router;
@@ -1595,7 +1596,9 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let addr = format!("0.0.0.0:{}", args.port).parse()?;
 
     // Setup Manager
-    let data_dir = std::path::PathBuf::from("data");
+    let data_dir = std::path::PathBuf::from(
+        std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data".to_string())
+    );
     let event_buffer = std::env::var("HS_EVENT_STREAM_BUFFER")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -1881,11 +1884,38 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         None
     };
 
-    // 3. Start HTTP Dashboard
-    let http_mgr = manager.clone();
+    // 3. Start Gossip Engine (Task 3.4) — optional, driven by HS_GOSSIP_PEERS env var
     let http_port = args.http_port;
+    let gossip_enabled = std::env::var("HS_GOSSIP_ENABLED")
+        .map(|v| v.to_lowercase() == "true")
+        .unwrap_or(false);
+
+    let peer_registry: Option<gossip::PeerRegistry> = if gossip_enabled {
+        let (node_id, role, logical_clock) = {
+            let state = manager.cluster_state.read().await;
+            (
+                state.node_id.clone(),
+                state.role.clone(),
+                state.logical_clock,
+            )
+        };
+        // Digests ref: empty initially, populated as insert/search ops update bucket hashes
+        let digests_ref = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+        // Logical clock ref: mirrors the cluster Lamport clock
+        let clock_ref = Arc::new(tokio::sync::RwLock::new(logical_clock));
+        let registry = gossip::start_gossip(node_id, role, http_port, clock_ref, digests_ref).await;
+        Some(registry)
+    } else {
+        println!("ℹ️  Gossip disabled — set HS_GOSSIP_PEERS=<ip:port,...> to enable swarm mode");
+        None
+    };
+
+    // 4. Start HTTP Dashboard
+    let http_mgr = manager.clone();
     tokio::spawn(async move {
-        if let Err(e) = http_server::start_http_server(http_mgr, http_port, embedding_info).await {
+        if let Err(e) =
+            http_server::start_http_server(http_mgr, http_port, embedding_info, peer_registry).await
+        {
             eprintln!("HTTP Server panicked: {e}");
         }
     });

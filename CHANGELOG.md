@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     * **Two-way gRPC Sync**: Added `SyncHandshake`, `SyncPull`, and `SyncPush` RPCs for efficient bilateral delta transfer (minimizing bandwidth to O(dirty_buckets)).
     * **HTTP Sync APIs**: Exposed `POST /api/collections/{name}/sync/handshake` and `/sync/pull` for WASM and REST clients.
     * **WASM Edge Sync**: Fully integrated synchronization into `hyperspace-wasm` (JS `.get_digest()`, `.apply_sync_vectors()`) with `IndexedDB` persistence for bucket hashes, enabling offline-first Edge-to-Cloud sync.
+* **Peer-to-Peer (Edge-to-Edge) Gossip Swarm**:
+    * **UDP Heartbeats**: Replaced centralized mesh logic with zero-dependency peer-to-peer UDP broadcasts. Nodes transmit state, role, and logical clocks (`tokio::net::UdpSocket`).
+    * **Network Discovery**: `HS_GOSSIP_PEERS` enables dynamic cluster topologies without central coordinators. Stale peers are evicted via configurable `PEER_TTL` logic.
+    * **Swarm Topology API**: `GET /api/swarm/peers` added for real-time visualization of the P2P Graph in the Dashboard.
 * **Cognitive Math SDK & Heterogeneous Tribunal Framework**:
     * **Math Functions**: Implementations of `local_entropy`, `lyapunov_convergence`, `koopman_extrapolate` and `context_resonance` added to Python, TypeScript, Rust, and C++.
     * **Tribunal Router (`hyperspace.agents`)**: Added `TribunalContext` for evaluating LLM hallucination dynamically via geometric trust scores over the Graph Traversal API.

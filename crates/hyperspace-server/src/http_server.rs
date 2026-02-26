@@ -1,3 +1,4 @@
+use crate::gossip::PeerRegistry;
 use crate::manager::CollectionManager;
 use axum::{
     extract::{Extension, Path, Query, Request, State},
@@ -99,6 +100,7 @@ pub async fn start_http_server(
     manager: Arc<CollectionManager>,
     port: u16,
     embedding_info: Option<EmbeddingInfo>,
+    peer_registry: Option<PeerRegistry>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Get API key hash if set
     let api_key_hash = std::env::var("HYPERSPACE_API_KEY").ok().map(|key| {
@@ -158,12 +160,17 @@ pub async fn start_http_server(
             post(sync_handshake_http),
         )
         .route("/api/collections/{name}/sync/pull", post(sync_pull_http))
+        // P2P Swarm API (Task 3.4) — Gossip peer registry
+        .route("/api/swarm/peers", get(get_swarm_peers))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
         ))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
+        // Pass PeerRegistry as an Extension so all handlers can opt-in without
+        // changing the 3-tuple State type.
+        .layer(axum::Extension(Arc::new(peer_registry)))
         .with_state((manager, start_time, embedding_state));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
@@ -1220,4 +1227,39 @@ async fn sync_pull_http(
         result.len()
     );
     Json(result).into_response()
+}
+
+// ─── P2P Swarm API (Task 3.4) ──────────────────────────────────────────────
+
+/// GET /api/swarm/peers
+///
+/// Returns all currently known gossip peers with their sync status.
+/// The list is derived from the live PeerRegistry (gossip engine).
+/// Stale peers (not seen for >30s) are automatically excluded.
+async fn get_swarm_peers(
+    Extension(registry): Extension<Arc<Option<PeerRegistry>>>,
+) -> impl IntoResponse {
+    #[derive(serde::Serialize)]
+    struct SwarmStatus {
+        peers: Vec<crate::gossip::PeerInfo>,
+        peer_count: usize,
+        gossip_enabled: bool,
+    }
+
+    let registry_opt = registry.as_ref();
+    let (peers, gossip_enabled) = if let Some(reg) = registry_opt {
+        let guard = reg.read().await;
+        let peers: Vec<_> = guard.values().filter(|p| !p.is_stale()).cloned().collect();
+        (peers, true)
+    } else {
+        (vec![], false)
+    };
+
+    let count = peers.len();
+    Json(SwarmStatus {
+        peers,
+        peer_count: count,
+        gossip_enabled,
+    })
+    .into_response()
 }

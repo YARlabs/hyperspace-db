@@ -96,7 +96,7 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 ### Phase 3: Collective Intelligence (v3.x)
 *The goal: Beyond storage. The "Digital Thalamus" realization.*
 
-* **v3.0**: **Federated Swarm Protocol**. Connecting independent HyperspaceDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers.
+* **v3.0**: ✅ **Federated Swarm Protocol**. Connecting independent HyperspaceDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers. *Completed in Task 3.4.*
 * **v3.1**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
 
 Join us in pushing the boundaries of hyperbolic vector search!

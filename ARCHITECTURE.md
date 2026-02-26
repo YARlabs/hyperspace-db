@@ -101,14 +101,22 @@ HyperspaceDB supports SaaS-style multi-tenancy natively.
 
 ## 🔁 Replication & Consistency (Since v2.0)
 
-HyperspaceDB uses a **Leader-Follower** replication model with **Async Anti-Entropy**.
+HyperspaceDB implements a hybrid replication model supporting both high-availability Cloud deployments and dynamic Edge swarms.
 
+### 1. Leader-Follower Replication (WAL Anti-Entropy)
+Used for stable cloud deployments. Maintains strict order.
 1.  **Leader**: Accepts writes, appends to local WAL, and broadcasts replication stream.
-2.  **Follower**: Connects to Leader, requests stream starting from its last persisted `logical_clock`.
+2.  **Follower**: Connects to Leader via gRPC `Replicate()`, requests stream starting from its last persisted `logical_clock`.
 3.  **Consistency**:
     -   **Logical Clocks**: Every WAL entry has a monotonic `logical_clock` ID.
     -   **Anti-Entropy**: Followers catch up by replaying missing entries from the Leader's stream.
     -   **Durability**: Followers persist their own WAL and snapshots entirely independently.
+
+### 2. Edge-to-Edge Gossip Swarm
+Used for robotics and Local-First AI where nodes are ephemeral and there is no central Leader.
+1.  **UDP Heartbeats**: Nodes broadcast their presence and collection metadata summaries (`CollectionSummary`) every 5 seconds.
+2.  **Network Discovery**: Nodes listen on `HS_GOSSIP_PORT` and construct a live registry of active peers. Stale peers are evicted after a 30-second TTL.
+3.  **Merkle Delta Sync**: Upon discovery, nodes exchange 256-bucket XOR hashes. Only diverging partitions (buckets) are synchronized, making decentralized synchronization extremely bandwidth-efficient.
 
 ---
 

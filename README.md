@@ -122,13 +122,20 @@ Store more, pay less. HyperspaceDB's 1-bit quantization and efficient storage en
 * **Header**: Clients must send `x-api-key: <key>`.
 * **Zero-Knowledge**: Server stores only SHA-256 hash of the key in memory.
 
-## 🤝 Federated Clustering (v1.2)
-HyperspaceDB implements a **Federated Leader-Follower** architecture designed for both high availability and Edge-Cloud synchronization.
+## 🤝 Federated Clustering & P2P Swarm (v3.0)
+HyperspaceDB implements two distinct clustering architectures designed for both high availability in the Cloud and dynamic Edge-to-Edge discovery for robotics swarms.
 
+### 1. Leader-Follower Replication (Cloud / High Availability)
 * **Node Identity**: Each node generates a unique UUID (`node_id`) and maintains a Lamport logical clock.
 * **Leader**: Handles Writes (Coordinator). Streams WAL events. Manages Cluster Topology.
 * **Follower**: Read-Only replica. Can be promoted to Leader.
-* **Edge Node**: (Coming in v1.4) Offline-first node that syncs via Merkle Trees.
+
+### 2. Edge-to-Edge Gossip Swarm (Robotics / Local-First)
+Designed for robotic swarms without a central Leader. Uses raw UDP multicasting to form a decentralized, self-healing network.
+* **Zero-Dependency**: Built on raw `tokio::net::UdpSocket` (no heavy libp2p dependencies).
+* **Heartbeats**: Nodes broadcast state via UDP. Disconnected nodes are automatically evicted after a TTL interval.
+* **Auto-Discovery**: Discover peers and instantly initiate a Delta Sync handshake to resolve diverging graphs.
+* **Enable**: Set `HS_GOSSIP_PEERS` (e.g. `192.168.1.10:7946`) or `HS_GOSSIP_PORT` to join the swarm.
 
 ### Data Synchronization (Edge-to-Cloud Delta Sync)
 HyperspaceDB uses a **256-bucket Merkle Tree** for efficient data drift detection, ideal for WASM/Edge targets updating offline:
@@ -174,16 +181,26 @@ Response includes:
 View the logic state of the cluster via HTTP:
 
 ```bash
+# Get Replication State
 curl http://localhost:50050/api/cluster/status
+
+# Get Decentralized Swarm Peers (Gossip)
+curl http://localhost:50050/api/swarm/peers
 ```
 
 ```json
 {
-  "node_id": "e8...0e",
-  "role": "Leader",
-  "upstream_peer": null,
-  "downstream_peers": [],
-  "logical_clock": 0
+  "gossip_enabled": true,
+  "peer_count": 2,
+  "peers": [
+    {
+       "node_id": "e8...0e",
+       "role": "Leader",
+       "addr": "192.168.1.20:50050",
+       "logical_clock": 42,
+       "healthy": true
+    }
+  ]
 }
 ```
 
