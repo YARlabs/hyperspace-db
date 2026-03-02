@@ -326,6 +326,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             forward.insert(k, attributes);
         }
 
+        let fast_routing = std::env::var("HS_FAST_ROUTING")
+            .is_ok_and(|v| v.to_lowercase() == "true")
+            && M::name() == "poincare"
+            && matches!(mode, QuantizationMode::None);
+
+        let density_pruning = std::env::var("HS_DENSITY_PRUNING")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+        let zonal = std::env::var("HS_ZONAL_QUANTIZATION")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+
+        let node_count = storage.count();
         let index = Self {
             nodes: RwLock::new(nodes),
             metadata: MetadataIndex {
@@ -345,6 +356,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             storage_f32,
             config,
             has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
+            fast_routing,
+            density_pruning,
+            zonal,
+            zonal_storage: dashmap::DashMap::new(),
+            node_counter: AtomicU32::new(node_count as u32),
             _marker: PhantomData,
         };
         index.rebuild_lexical_stats();
@@ -479,6 +495,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             forward.insert(k, attributes);
         }
 
+        let fast_routing = std::env::var("HS_FAST_ROUTING")
+            .is_ok_and(|v| v.to_lowercase() == "true")
+            && M::name() == "poincare"
+            && matches!(mode, QuantizationMode::None);
+
+        let density_pruning = std::env::var("HS_DENSITY_PRUNING")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+        let zonal = std::env::var("HS_ZONAL_QUANTIZATION")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+
+        let node_count = storage.count();
         let index = Self {
             nodes: RwLock::new(nodes),
             metadata: MetadataIndex {
@@ -498,6 +525,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             storage_f32: false,
             config,
             has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
+            fast_routing,
+            density_pruning,
+            zonal,
+            zonal_storage: dashmap::DashMap::new(),
+            node_counter: AtomicU32::new(node_count as u32),
             _marker: PhantomData,
         };
         index.rebuild_lexical_stats();
@@ -515,6 +547,7 @@ pub type NodeId = u32;
 const MAX_LAYERS: usize = 16;
 
 #[derive(Debug)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct HnswIndex<const N: usize, M: Metric<N>> {
     // Topology storage. Index in vector = NodeId.
     nodes: RwLock<Vec<Node>>,
@@ -539,6 +572,17 @@ pub struct HnswIndex<const N: usize, M: Metric<N>> {
     // Runtime configuration
     pub config: Arc<GlobalConfig>,
     has_nonempty_metadata: AtomicBool,
+
+    // Fast multi-geometric routing (Klein Euclidean chords on upper layers)
+    pub fast_routing: bool,
+
+    // Task 6.4: Density-based HNSW graph pruning in syntactic voids
+    pub density_pruning: bool,
+
+    // Task 6.3: Zonal storage to compress items and bypass mmap
+    pub zonal: bool,
+    pub zonal_storage: dashmap::DashMap<NodeId, hyperspace_core::vector::ZonalVector>,
+    pub node_counter: AtomicU32,
 
     _marker: PhantomData<M>,
 }
@@ -630,6 +674,16 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         config: Arc<GlobalConfig>,
         storage_f32: bool,
     ) -> Self {
+        let fast_routing = std::env::var("HS_FAST_ROUTING")
+            .is_ok_and(|v| v.to_lowercase() == "true")
+            && M::name() == "poincare"
+            && matches!(mode, QuantizationMode::None);
+
+        let density_pruning = std::env::var("HS_DENSITY_PRUNING")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+        let zonal = std::env::var("HS_ZONAL_QUANTIZATION")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+
         Self {
             nodes: RwLock::new(Vec::new()),
             metadata: MetadataIndex::default(),
@@ -640,6 +694,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             storage_f32,
             config,
             has_nonempty_metadata: AtomicBool::new(false),
+            fast_routing,
+            density_pruning,
+            zonal,
+            zonal_storage: dashmap::DashMap::new(),
+            node_counter: AtomicU32::new(0),
             _marker: PhantomData,
         }
     }
@@ -807,7 +866,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return vec![];
         }
 
-        let mut curr_dist = self.dist(entry_node, &q_vec);
+        let query_klein = if self.fast_routing {
+            Some(q_vec.to_klein())
+        } else {
+            None
+        };
+
+        let mut curr_dist = self.dist_upper(entry_node, &q_vec, query_klein.as_ref());
         let mut curr_node = entry_node;
 
         // 1. Zoom-in phase: Greedy search from top to layer 1.
@@ -834,7 +899,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     let neighbors = node.layers[level].read();
 
                     for &neighbor in neighbors.iter() {
-                        let d = self.dist(neighbor, &q_vec);
+                        let d = self.dist_upper(neighbor, &q_vec, query_klein.as_ref());
                         if d < curr_dist {
                             curr_dist = d;
                             curr_node = neighbor;
@@ -923,6 +988,28 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
             }
         }
+    }
+
+    // Distance calculation helper specifically for upper routing layers
+    // It takes an optional `query_klein` buffer to perform fast euclidean chord distance in Klein mode.
+    #[inline]
+    fn dist_upper(
+        &self,
+        node_id: NodeId,
+        query: &HyperVector<N>,
+        query_klein: Option<&HyperVector<N>>,
+    ) -> f64 {
+        if let Some(qk) = query_klein {
+            let bytes = self.storage.get(node_id);
+            if self.storage_f32 {
+                let v = HyperVectorF32::<N>::from_bytes(bytes);
+                let v64 = v.to_float64();
+                return v64.to_klein().klein_chord_distance_sq(qk);
+            }
+            let v = HyperVector::<N>::from_bytes(bytes);
+            return v.to_klein().klein_chord_distance_sq(qk);
+        }
+        self.dist(node_id, query)
     }
 
     fn filtered_bruteforce_threshold() -> u64 {
@@ -1094,6 +1181,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         &self,
         start_node: NodeId,
         query: &HyperVector<N>,
+        query_klein: Option<&HyperVector<N>>,
         level: usize,
         ef: usize,
     ) -> BinaryHeap<Candidate> {
@@ -1125,7 +1213,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 results.reserve(ef_capacity - results.capacity());
             }
 
-            let d = self.dist(start_node, query);
+            let d = self.dist_upper(start_node, query, query_klein);
             let first = Candidate {
                 id: start_node,
                 distance: d,
@@ -1156,7 +1244,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         continue;
                     }
 
-                    let dist = self.dist(neighbor, query);
+                    let dist = self.dist_upper(neighbor, query, query_klein);
 
                     if results.len() < ef || dist < curr_worst {
                         let c = Candidate {
@@ -1189,12 +1277,31 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         candidates: BinaryHeap<Candidate>,
         m: usize,
     ) -> Vec<NodeId> {
-        let mut result = Vec::with_capacity(m);
         let mut sorted_candidates = candidates.into_sorted_vec();
+        
+        // Task 6.4: Density-based HNSW graph pruning
+        let mut actual_m = m;
+        if self.density_pruning && !sorted_candidates.is_empty() {
+            let n_samples = sorted_candidates.len().min(m);
+            let mut sum_dist = 0.0;
+            // sorted_candidates has smallest distance at the end (due to Reverse Ord logic)
+            for i in 0..n_samples {
+                sum_dist += sorted_candidates[sorted_candidates.len() - 1 - i].distance;
+            }
+            let avg_dist = sum_dist / (n_samples as f64);
+            
+            // If average distance to nearest candidates is large, we are in a sparse "void".
+            // We can aggressively prune connections to M/2 without significantly hurting recall.
+            if avg_dist > 1.2 {
+                actual_m = (m / 2).max(1);
+            }
+        }
+
+        let mut result = Vec::with_capacity(actual_m);
 
         while let Some(cand) = sorted_candidates.pop() {
             // Gets closest (sorted vec is ascending, pop from end)
-            if result.len() >= m {
+            if result.len() >= actual_m {
                 break;
             }
 
@@ -1220,6 +1327,32 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     // Helper to get HyperVector from id
     pub fn get_vector(&self, id: NodeId) -> HyperVector<N> {
+        if self.zonal {
+            if let Some(zv) = self.zonal_storage.get(&id) {
+                let vector = match zv.value() {
+                    hyperspace_core::vector::ZonalVector::Core(ref i8_coords) => {
+                        let mut coords = [0.0; N];
+                        let mut sq_norm = 0.0;
+                        for (i, &c) in i8_coords.iter().enumerate() {
+                            let val = f64::from(c) / 127.0;
+                            coords[i] = val;
+                            sq_norm += val * val;
+                        }
+                        HyperVector { 
+                            coords, 
+                            alpha: if M::name() == "poincare" { 1.0 / (1.0 - sq_norm) } else { 0.0 } 
+                        }
+                    }
+                    hyperspace_core::vector::ZonalVector::Boundary(ref f64_coords) => {
+                        let mut coords = [0.0; N];
+                        coords.copy_from_slice(f64_coords);
+                        HyperVector::new_unchecked(coords)
+                    }
+                };
+                return vector;
+            }
+        }
+
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
@@ -1284,6 +1417,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // Validate against Metric logic (Poincare checks bounds, Euclidean doesn't)
         M::validate(&arr)?;
 
+        if self.zonal {
+            let id = self.node_counter.fetch_add(1, Ordering::SeqCst);
+            let zv = hyperspace_core::vector::ZonalVector::new_zonal(&arr);
+            self.zonal_storage.insert(id, zv);
+            return Ok(id);
+        }
+
         // Create vector (we already validated)
         let q_vec_full = HyperVector::new_unchecked(arr);
 
@@ -1319,6 +1459,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         // Validate against Metric logic
         M::validate(&arr)?;
+
+        if self.zonal {
+            let zv = hyperspace_core::vector::ZonalVector::new_zonal(&arr);
+            self.zonal_storage.insert(id, zv);
+            return Ok(id);
+        }
 
         // Create vector
         let q_vec_full = HyperVector::new_unchecked(arr);
@@ -1416,8 +1562,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // q_vec already loaded at start of function
 
         // Need to check if entry_point is valid before dist calc
+        let query_klein = if self.fast_routing {
+            Some(q_vec.to_klein())
+        } else {
+            None
+        };
+
         let mut curr_dist = if (entry_point as usize) < self.nodes.read().len() {
-            self.dist(curr_obj, &q_vec)
+            self.dist_upper(curr_obj, &q_vec, query_klein.as_ref())
         } else {
             f64::MAX
         };
@@ -1439,7 +1591,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     let neighbors = nodes_guard[curr_obj as usize].layers[level].read();
                     let mut best_n = None;
                     for &n in neighbors.iter() {
-                        let d = self.dist(n, &q_vec);
+                        let d = self.dist_upper(n, &q_vec, query_klein.as_ref());
                         if d < curr_dist {
                             curr_dist = d;
                             best_n = Some(n);
@@ -1465,8 +1617,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let m_max = if level == 0 { m_base * 2 } else { m_base };
 
                 // a) Search candidates
+                // Fast routing is only on upper layers, not on Layer 0. But passing query_klein 
+                // and letting dist_upper handle it inside search_layer_candidates is safe.
+                let q_klein_opt = if level > 0 { query_klein.as_ref() } else { None };
                 let candidates_heap =
-                    self.search_layer_candidates(curr_obj, &q_vec, level, ef_construction);
+                    self.search_layer_candidates(curr_obj, &q_vec, q_klein_opt, level, ef_construction);
 
                 // b) Select neighbors with heuristic (using layer-specific M)
                 let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, m_max);
@@ -1577,7 +1732,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     }
 
     pub fn count_nodes(&self) -> usize {
-        self.storage.count()
+        if self.zonal {
+            self.node_counter.load(Ordering::Relaxed) as usize
+        } else {
+            self.storage.count()
+        }
     }
 
     pub fn count_deleted(&self) -> usize {

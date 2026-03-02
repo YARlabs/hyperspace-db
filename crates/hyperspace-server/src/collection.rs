@@ -175,7 +175,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
         let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
 
-        let element_size = match mode {
+        let mut element_size = match mode {
             hyperspace_core::QuantizationMode::ScalarI8 => {
                 hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
             }
@@ -190,6 +190,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 }
             }
         };
+
+        if std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true") {
+            element_size = 0;
+        }
 
         if !data_dir.exists() {
             std::fs::create_dir_all(&data_dir)?;

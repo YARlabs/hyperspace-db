@@ -144,7 +144,7 @@ for event in client.subscribe_to_events(types=["insert", "delete"], collection="
 ### Hyperbolic Math Utilities
 
 ```python
-from hyperspace import (
+from hyperspace.math import (
     mobius_add,
     exp_map,
     log_map,
@@ -152,6 +152,31 @@ from hyperspace import (
     riemannian_gradient,
     frechet_mean,
 )
+```
+
+### Cognitive Math SDK (Spatial AI Engine)
+
+Provides advanced tools for Agentic AI, running entirely on the client side:
+
+```python
+from hyperspace.math import (
+    local_entropy,
+    lyapunov_convergence,
+    koopman_extrapolate,
+    context_resonance,
+)
+
+# 1. Detect Hallucinations (Entropy approaches 1.0)
+entropy = local_entropy(candidate=thought_vector, neighbors=neighbors, c=1.0)
+
+# 2. Proof of Convergence (Negative derivative = convergence)
+stability = lyapunov_convergence(trajectory=chain_of_thought, c=1.0)
+
+# 3. Extrapolate next thought (Koopman linearization)
+next_thought = koopman_extrapolate(past, current, steps=1.0, c=1.0)
+
+# 4. Phase-Locked Loop for topic tracking
+synced_thought = context_resonance(thought, global_context, resonance_factor=0.5, c=1.0)
 ```
 
 ## Durability Levels

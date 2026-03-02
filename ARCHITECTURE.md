@@ -32,6 +32,21 @@ graph TD
 
 ---
 
+## 🌌 Cosmological Architecture (The Design Philosophy)
+
+HyperspaceDB relies on principles from modern cosmology to execute vector search dynamically. The database maps semantic dispersion to real physical properties:
+
+1. **Multi-Geometric Routing (The Hubble Tension):**
+   Upper layers of the HNSW graph utilize the **Klein projective model**, routing queries via cheap Euclidean chord distances (SIMD-optimized), while the bottom exact-search layer converts metrics back to the **Lorentz hyperboloid** for maximum-precision ranking.
+2. **Anisotropic Quantization (The Axis of Evil):**
+   Semantic vectors are concentrated along principal components (not cleanly isotropic). Our engine applies a weighted Vector Quantization function ($L \approx ||x||^2 ||e_{||}||^2 + h(x) ||e_{\perp}||^2$) to penalize unaligned orthogonal semantic shifts.
+3. **Zonal Quantization (The MOND Hypothesis):**
+   At the core of the hyperbolic disk, nodes correspond to broad semantic clusters requiring fewer bits of precision (`i8`/`f16`). Nearing the Euclidean horizon ($||x|| \to 1$), exact relationships demand extreme mapping in pure `f64`.
+4. **Graph Density Pruning (The $S_8$ Void Tension):**
+   Akin to comic voids and clustered galaxies, HyperspaceDB performs Density-based Graph Pruning. Outlying vectors in sparse "voids" inherit restricted edge mappings ($M/2$) reducing RAM, while heavily-occupied topics possess rich mesh networks.
+
+---
+
 ## 💾 Storage Layer (LSM-Tree Architecture)
 
 HyperspaceDB 3.0 uses an **LSM-Tree** inspired architecture for vector search, optimized for high throughput and cloud tiering.

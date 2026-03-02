@@ -315,6 +315,7 @@ mod tests {
         let mut peer = PeerInfo {
             node_id: "abc".to_string(),
             addr: "127.0.0.1:8080".to_string(),
+            gossip_addr: "127.0.0.1:7946".to_string(),
             http_port: 8080,
             role: "Leader".to_string(),
             logical_clock: 0,

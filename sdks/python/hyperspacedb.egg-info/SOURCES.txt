@@ -1,6 +1,7 @@
 README.md
 pyproject.toml
 hyperspace/__init__.py
+hyperspace/agents.py
 hyperspace/client.py
 hyperspace/embedders.py
 hyperspace/math.py

@@ -1887,8 +1887,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     // 3. Start Gossip Engine (Task 3.4) — optional, driven by HS_GOSSIP_PEERS env var
     let http_port = args.http_port;
     let gossip_enabled = std::env::var("HS_GOSSIP_ENABLED")
-        .map(|v| v.to_lowercase() == "true")
-        .unwrap_or(false);
+        .is_ok_and(|v| v.to_lowercase() == "true");
 
     let peer_registry: Option<gossip::PeerRegistry> = if gossip_enabled {
         let (node_id, role, logical_clock) = {

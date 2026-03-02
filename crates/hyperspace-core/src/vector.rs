@@ -101,6 +101,77 @@ impl<const N: usize> HyperVector<N> {
     pub fn true_distance(&self, other: &Self) -> f64 {
         self.poincare_distance_sq(other).acosh()
     }
+
+    /// Converts a Poincaré vector to a Klein model vector.
+    /// `x_K` = 2 * `x_P` / (1 + ||`x_P`||^2)
+    #[must_use]
+    pub fn to_klein(&self) -> Self {
+        let mut coords_k = [0.0f64; N];
+        // self.alpha = 1 / (1 - sq_norm), so sq_norm = 1 - 1/alpha
+        // denom = 1 + sq_norm = 2 - 1/alpha
+        let sq_norm = 1.0 - (1.0 / self.alpha);
+        let denom = 1.0 + sq_norm;
+        
+        for (k, &p) in coords_k.iter_mut().zip(self.coords.iter()) {
+            *k = 2.0 * p / denom;
+        }
+        Self::new_unchecked(coords_k)
+    }
+
+    /// Converts a Klein model vector to a Lorentz hyperboloid point.
+    /// Returns (`time_component`, [`spatial_components`; N]).
+    #[must_use]
+    pub fn klein_to_lorentz(&self) -> (f64, [f64; N]) {
+        let sq_norm: f64 = self.coords.iter().map(|&x| x * x).sum();
+        let factor = 1.0 / (1.0 - sq_norm).max(1e-12).sqrt();
+        let mut spatial = [0.0f64; N];
+        for (s, &k) in spatial.iter_mut().zip(self.coords.iter()) {
+            *s = k * factor;
+        }
+        (factor, spatial)
+    }
+
+    /// Computes the Euclidean squared distance between two Klein vectors (chords).
+    /// Used for fast multi-geometric routing in upper HNSW layers.
+    #[inline(always)]
+    pub fn klein_chord_distance_sq(&self, other: &Self) -> f64 {
+        #[cfg(feature = "nightly-simd")]
+        {
+            const LANES: usize = 8;
+            let mut sum_sq_diff = f64x8::splat(0.0);
+
+            for i in (0..N).step_by(LANES) {
+                if i + LANES <= N {
+                    let a = f64x8::from_slice(&self.coords[i..i + LANES]);
+                    let b = f64x8::from_slice(&other.coords[i..i + LANES]);
+                    let diff = a - b;
+                    sum_sq_diff += diff * diff;
+                }
+            }
+
+            let mut eucl_sq = sum_sq_diff.reduce_sum();
+
+            let remainder = N % LANES;
+            if remainder != 0 {
+                let start = N - remainder;
+                for i in start..N {
+                    let diff = self.coords[i] - other.coords[i];
+                    eucl_sq += diff * diff;
+                }
+            }
+            eucl_sq
+        }
+
+        #[cfg(not(feature = "nightly-simd"))]
+        {
+            let mut sum_sq_diff = 0.0;
+            for (u, v) in self.coords.iter().zip(other.coords.iter()) {
+                let diff = u - v;
+                sum_sq_diff += diff * diff;
+            }
+            sum_sq_diff
+        }
+    }
 }
 
 impl<const N: usize> HyperVectorF32<N> {
@@ -482,6 +553,35 @@ impl<const N: usize> BinaryHyperVector<N> {
             "BinaryHyperVector: Misaligned bytes!"
         );
         unsafe { &*bytes.as_ptr().cast::<Self>() }
+    }
+}
+
+/// Task 6.3: Zonal (MOND) Quantization
+/// Core vectors (near the origin) use compressed i8 representation.
+/// Boundary vectors (near the horizon) use high-precision f64.
+#[derive(Debug, Clone)]
+pub enum ZonalVector {
+    Core(Vec<i8>),
+    Boundary(Vec<f64>),
+}
+
+impl ZonalVector {
+    pub fn new_zonal(coords: &[f64]) -> Self {
+        let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
+        let r = sq_norm.sqrt();
+        
+        // If hyperbolic radius is small (R < 0.5), compress to Core.
+        if r < 0.5 {
+            // Compress to i8 via dynamic range or simple [-1, 1] mapping
+             let mut i8_coords = Vec::with_capacity(coords.len());
+             for &c in coords {
+                 let val = (c * 127.0).round().clamp(-127.0, 127.0);
+                 i8_coords.push(val as i8);
+             }
+             ZonalVector::Core(i8_coords)
+        } else {
+             ZonalVector::Boundary(coords.to_vec())
+        }
     }
 }
 
