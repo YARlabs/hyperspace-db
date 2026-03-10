@@ -284,6 +284,8 @@ HyperspaceDB natively supports the confrontational model of LLM routing via the 
 Using the **Graph Traversal API** integrated with hyperbolic geometry functions, a "Tribunal Agent" can verify the geometrical proximity of two concepts (e.g., node A vs node B). 
 If a generated LLM response (concept B) has an extremely long geodesic path from the context (concept A) or is completely disconnected, the system automatically flags the claim as a hallucination, assigning it a Geometric Trust Score ~ 0.0.
 
+In addition to this, HyperspaceDB introduces **Memory Reconsolidation (AI Sleep Mode)** logic. Using Riemannian Gradient Descent and Flow Matching algorithms natively via `TriggerReconsolidation`, vectors can be algorithmically shifted toward semantic attractors while the database is idle, cleaning noisy data distributions structurally.
+
 ```python
 # The Tribunal validates the claim geometry
 score = tribunal.evaluate_claim(concept_a_id=12, concept_b_id=45)

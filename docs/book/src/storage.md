@@ -17,7 +17,7 @@ Data is split into "Chunks" of fixed size ($2^{16} = 65,536$ vectors). This avoi
 HyperspaceDB 3.0 adopts an **LSM-Tree** architecture. Data flows from hot memory to immutable on-disk segments:
 
 1.  **MemTable (Hot)**: New vectors are indexed in an in-memory HNSW.
-2.  **Immutable Chunks (Cold)**: When a WAL segment is rotated, the Flush Worker persists the MemTable into a `.hyp` chunk.
+2.  **Immutable Chunks (Cold)**: When a WAL segment is rotated, the Flush Worker persists the MemTable into an immutable `.hyp` chunk. During this flush, the in-memory HNSW topology is re-written into a **Spatial Navigable Graph (Vamana / DiskANN format)** to minimize page faults when read via mmap from SSDs.
 3.  **Local vs Cloud**: Chunks can live on local NVMe or be tiered to S3.
 
 ## S3 Cloud Tiering (Optional)
@@ -34,9 +34,15 @@ Using the `s3-tiering` feature, HyperspaceDB can offload cold chunks to an S3-co
 
 Each `.hyp` file is a flat array of fixed-size records. No headers, no metadata. Metadata is stored in the Index Snapshot or recovered from layout.
 
+### Zonal Quantization (v3.0 LTS)
+
+For hyperbolic collections, HyperspaceDB automatically applies **Zonal Quantization (MOND theory)** to vectors.
+- Vectors near the origin ($||x|| < 0.5$) are tightly compressed as `i8` (`Core`).
+- Vectors near the infinite boundary ($||x|| \to 1$) are preserved in pure `f64` (`Boundary`) to maintain strict exact precision required for hierarchical routing.
+
 ### Record Structure (`ScalarI8`)
 
-When `QuantizationMode::ScalarI8` is active:
+When `QuantizationMode::ScalarI8` is active (and vector is within the `Core` zone):
 
 | Byte Offset | Content | Type |
 | :--- | :--- | :--- |

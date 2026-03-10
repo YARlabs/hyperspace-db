@@ -63,7 +63,7 @@ proptest! {
         for (i, vec) in vectors.iter().enumerate() {
             let empty_filter = HashMap::new();
             // Use ef=200 to ensure we find it if it's there
-            let results = index.search(vec, 1, 200, &empty_filter, &[], None, None);
+            let results = index.search(vec, 1, 200, &empty_filter, &[], None, None, false);
 
             if let Some((_id, dist)) = results.first() {
                 assert!(*dist < 1e-4, "Search for inserted vector {i} failed. Dist: {dist}");

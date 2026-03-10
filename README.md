@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v3.0.0** | **The World's First Spatial AI Engine.**
+**v3.0.0-alpha.3** | **The World's First Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -47,11 +47,11 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
   </tr>
   <tr>
     <td>🎓 <b>Cognitive Math Engine</b></td>
-    <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, and <b>Lorentz Hyperboloid</b> metrics. Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the Native SDK.</td>
+    <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, <b>Lorentz Hyperboloid</b> metrics, and <b>Wasserstein O(N) CFM</b>. Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the Native SDK. Evaluate datasets via <b>Gromov's Delta-Hyperbolicity</b>.</td>
   </tr>
   <tr>
     <td>📡 <b>Agentic Workflows</b></td>
-    <td>Built-in Change Data Capture (CDC) via <code>subscribe_to_events</code>. Trigger L-System logic, graph updates, or secondary models the millisecond a vector is stored.</td>
+    <td>Trigger <b>Memory Reconsolidation</b> via Flow Matching natively to shift paradigms. Connect CDC Streams via <code>subscribe_to_events</code> to trigger secondary models the millisecond a vector is stored.</td>
   </tr>
   <tr>
     <td>🧹 <b>Metadata-Driven Pruning</b></td>
@@ -255,6 +255,57 @@ results = client.search(
     hybrid_alpha=0.3
 )
 ```
+
+## 📊 Quantization Modes
+
+All quantization is configured per-collection at creation time via `HS_QUANTIZATION_LEVEL`:
+
+| Mode | env value | Bits/dim | Compression | Best for |
+|---|---|---|---|---|
+| **SQ8 Anisotropic** | `scalar` (default) | 8 | 8x | Cosine/L2 — best recall at 1 byte/dim |
+| **Binary (Hamming)** | `binary` | 1 | 64x | RAM-critical, 100M+ vectors |
+| **Lorentz SQ8** | automatic | 8 | 8x | Lorentz metric (auto-selected) |
+| **Zonal (MOND)** | `HS_ZONAL_QUANTIZATION=true` | mixed | ~30-40% | Hyperbolic with mixed density |
+| **Full f64** | `none` | 64 | 1x | Research / debugging |
+
+The default `scalar` mode uses a **ScaNN-inspired anisotropic loss** $L = \|e_\parallel\|^2 + t_w \cdot \|e_\perp\|^2$ ($t_w=10$), which penalizes directional error more than magnitude error, improving Recall@10 by **+5.3% (Cosine)** and **+3.8% (L2)** versus isotropic SQ8.
+
+---
+
+## 🧠 Built-in Embedding Service
+
+HyperspaceDB can automatically convert text to vectors — no external embedding server needed.
+
+Enable with `HYPERSPACE_EMBED=true`. Each geometry has its own independent backend:
+
+| Provider | How | env |
+|---|---|---|
+| Local ONNX | Any `.onnx` model from disk | `HS_EMBED_COSINE_PROVIDER=local` |
+| HuggingFace Hub | Auto-download + cache | `HS_EMBED_COSINE_PROVIDER=huggingface` |
+| OpenAI / Cohere / Mistral / Voyage | Remote API | `HS_EMBED_COSINE_PROVIDER=openai` |
+| Generic (OpenAI-compat.) | Any endpoint | `HS_EMBED_COSINE_PROVIDER=generic` |
+
+Example — 4 geometries, 4 different providers:
+```env
+HS_EMBED_L2_PROVIDER=openai
+HS_EMBED_L2_EMBED_MODEL=text-embedding-3-small
+HS_EMBED_L2_API_KEY=sk-...
+
+HS_EMBED_COSINE_PROVIDER=huggingface
+HS_EMBED_COSINE_HF_MODEL_ID=BAAI/bge-small-en-v1.5
+HS_EMBED_COSINE_DIM=384
+
+HS_EMBED_POINCARE_PROVIDER=local
+HS_EMBED_POINCARE_MODEL_PATH=./models/poincare.onnx
+HS_EMBED_POINCARE_TOKENIZER_PATH=./models/poincare-tokenizer.json
+HS_EMBED_POINCARE_DIM=128
+
+HF_TOKEN=hf_your_token_here  # for private/gated HF models
+```
+
+For details see [embeddings.md](docs/book/src/embeddings.md).
+
+---
 
 ## 📉 Binary Quantization (1-bit)
 

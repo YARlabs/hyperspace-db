@@ -32,6 +32,7 @@ pub struct TieringConfig {
 impl TieringConfig {
     /// Parses configuration from environment variables.
     /// Uses sensible defaults for all optional fields.
+    #[must_use]
     pub fn from_env(data_dir: PathBuf) -> Self {
         Self {
             backend: std::env::var("HS_STORAGE_BACKEND")
@@ -61,6 +62,7 @@ impl TieringConfig {
     }
 
     /// Returns the S3 object key for a given chunk ID.
+    #[must_use]
     pub fn object_key(&self, chunk_id: &str) -> String {
         if self.prefix.is_empty() {
             chunk_id.to_string()
@@ -70,11 +72,13 @@ impl TieringConfig {
     }
 
     /// Returns the local cache directory for a chunk.
+    #[must_use]
     pub fn local_chunk_path(&self, chunk_id: &str) -> PathBuf {
         self.data_dir.join(chunk_id)
     }
 
     /// Whether S3 backend is requested.
+    #[must_use]
     pub fn is_s3(&self) -> bool {
         self.backend == "s3"
     }

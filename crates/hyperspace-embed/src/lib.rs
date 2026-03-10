@@ -12,9 +12,10 @@ use tokenizers::Tokenizer;
 
 // --- Config Types ---
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Metric {
     Poincare,
+    Lorentz,
     L2,
     Cosine,
     None,
@@ -92,6 +93,45 @@ impl OnnxVectorizer {
         })
     }
 
+    ///
+    /// # Errors
+    /// Returns error if API key is invalid, model download fails, or model parsing fails.
+    pub fn new_from_hf(
+        model_id: &str,
+        hf_token: Option<String>,
+        dimension: usize,
+        metric: Metric,
+    ) -> Result<Self> {
+        let mut builder = hf_hub::api::sync::ApiBuilder::new().with_progress(false);
+        if let Some(token) = hf_token {
+            if !token.is_empty() {
+                builder = builder.with_token(Some(token));
+            }
+        }
+        let api = builder
+            .build()
+            .map_err(|e| anyhow::anyhow!("HF API error: {e}"))?;
+        let repo = api.model(model_id.to_string());
+
+        let model_path = repo
+            .get("model.onnx")
+            .map_err(|e| anyhow::anyhow!("Failed to download model.onnx: {e}"))?;
+        let tokenizer_path = repo
+            .get("tokenizer.json")
+            .map_err(|e| anyhow::anyhow!("Failed to download tokenizer.json: {e}"))?;
+
+        Self::new(
+            model_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?,
+            tokenizer_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid tokenizer path"))?,
+            dimension,
+            metric,
+        )
+    }
+
     fn normalize(&self, vec: &mut [f64]) {
         const EPSILON: f64 = 1e-5;
         let norm_sq: f64 = vec.iter().map(|x| x * x).sum();
@@ -106,6 +146,12 @@ impl OnnxVectorizer {
                     }
                 }
             }
+            Metric::Lorentz | Metric::None => {
+                // Lorentz vectors are usually (x0, x1, ... xn) on the hyperboloid
+                // where -x0^2 + x1^2 + ... = -1. Local models output tangent vectors that need expmap
+                // or just leave them as they are and let the database expect correct format.
+                // Normally we don't normalize Lorentz here unless we do Poincare to Lorentz mapping.
+            }
             Metric::L2 | Metric::Cosine => {
                 if norm > 0.0 {
                     for x in vec.iter_mut() {
@@ -113,7 +159,6 @@ impl OnnxVectorizer {
                     }
                 }
             }
-            Metric::None => {}
         }
     }
 

@@ -19,32 +19,33 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Database_CreateCollection_FullMethodName     = "/hyperspace.Database/CreateCollection"
-	Database_DeleteCollection_FullMethodName     = "/hyperspace.Database/DeleteCollection"
-	Database_ListCollections_FullMethodName      = "/hyperspace.Database/ListCollections"
-	Database_GetCollectionStats_FullMethodName   = "/hyperspace.Database/GetCollectionStats"
-	Database_Insert_FullMethodName               = "/hyperspace.Database/Insert"
-	Database_BatchInsert_FullMethodName          = "/hyperspace.Database/BatchInsert"
-	Database_InsertText_FullMethodName           = "/hyperspace.Database/InsertText"
-	Database_Delete_FullMethodName               = "/hyperspace.Database/Delete"
-	Database_Search_FullMethodName               = "/hyperspace.Database/Search"
-	Database_SearchBatch_FullMethodName          = "/hyperspace.Database/SearchBatch"
-	Database_GetNode_FullMethodName              = "/hyperspace.Database/GetNode"
-	Database_GetNeighbors_FullMethodName         = "/hyperspace.Database/GetNeighbors"
-	Database_GetConceptParents_FullMethodName    = "/hyperspace.Database/GetConceptParents"
-	Database_Traverse_FullMethodName             = "/hyperspace.Database/Traverse"
-	Database_FindSemanticClusters_FullMethodName = "/hyperspace.Database/FindSemanticClusters"
-	Database_Monitor_FullMethodName              = "/hyperspace.Database/Monitor"
-	Database_TriggerSnapshot_FullMethodName      = "/hyperspace.Database/TriggerSnapshot"
-	Database_TriggerVacuum_FullMethodName        = "/hyperspace.Database/TriggerVacuum"
-	Database_Configure_FullMethodName            = "/hyperspace.Database/Configure"
-	Database_Replicate_FullMethodName            = "/hyperspace.Database/Replicate"
-	Database_SubscribeToEvents_FullMethodName    = "/hyperspace.Database/SubscribeToEvents"
-	Database_GetDigest_FullMethodName            = "/hyperspace.Database/GetDigest"
-	Database_RebuildIndex_FullMethodName         = "/hyperspace.Database/RebuildIndex"
-	Database_SyncHandshake_FullMethodName        = "/hyperspace.Database/SyncHandshake"
-	Database_SyncPull_FullMethodName             = "/hyperspace.Database/SyncPull"
-	Database_SyncPush_FullMethodName             = "/hyperspace.Database/SyncPush"
+	Database_CreateCollection_FullMethodName       = "/hyperspace.Database/CreateCollection"
+	Database_DeleteCollection_FullMethodName       = "/hyperspace.Database/DeleteCollection"
+	Database_ListCollections_FullMethodName        = "/hyperspace.Database/ListCollections"
+	Database_GetCollectionStats_FullMethodName     = "/hyperspace.Database/GetCollectionStats"
+	Database_Insert_FullMethodName                 = "/hyperspace.Database/Insert"
+	Database_BatchInsert_FullMethodName            = "/hyperspace.Database/BatchInsert"
+	Database_InsertText_FullMethodName             = "/hyperspace.Database/InsertText"
+	Database_Delete_FullMethodName                 = "/hyperspace.Database/Delete"
+	Database_Search_FullMethodName                 = "/hyperspace.Database/Search"
+	Database_SearchBatch_FullMethodName            = "/hyperspace.Database/SearchBatch"
+	Database_GetNode_FullMethodName                = "/hyperspace.Database/GetNode"
+	Database_GetNeighbors_FullMethodName           = "/hyperspace.Database/GetNeighbors"
+	Database_GetConceptParents_FullMethodName      = "/hyperspace.Database/GetConceptParents"
+	Database_Traverse_FullMethodName               = "/hyperspace.Database/Traverse"
+	Database_FindSemanticClusters_FullMethodName   = "/hyperspace.Database/FindSemanticClusters"
+	Database_Monitor_FullMethodName                = "/hyperspace.Database/Monitor"
+	Database_TriggerSnapshot_FullMethodName        = "/hyperspace.Database/TriggerSnapshot"
+	Database_TriggerVacuum_FullMethodName          = "/hyperspace.Database/TriggerVacuum"
+	Database_TriggerReconsolidation_FullMethodName = "/hyperspace.Database/TriggerReconsolidation"
+	Database_Configure_FullMethodName              = "/hyperspace.Database/Configure"
+	Database_Replicate_FullMethodName              = "/hyperspace.Database/Replicate"
+	Database_SubscribeToEvents_FullMethodName      = "/hyperspace.Database/SubscribeToEvents"
+	Database_GetDigest_FullMethodName              = "/hyperspace.Database/GetDigest"
+	Database_RebuildIndex_FullMethodName           = "/hyperspace.Database/RebuildIndex"
+	Database_SyncHandshake_FullMethodName          = "/hyperspace.Database/SyncHandshake"
+	Database_SyncPull_FullMethodName               = "/hyperspace.Database/SyncPull"
+	Database_SyncPush_FullMethodName               = "/hyperspace.Database/SyncPush"
 )
 
 // DatabaseClient is the client API for Database service.
@@ -77,6 +78,7 @@ type DatabaseClient interface {
 	// Admin Controls
 	TriggerSnapshot(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StatusResponse, error)
 	TriggerVacuum(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StatusResponse, error)
+	TriggerReconsolidation(ctx context.Context, in *ReconsolidationRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// Dynamic Configuration
 	Configure(ctx context.Context, in *ConfigUpdate, opts ...grpc.CallOption) (*StatusResponse, error)
 	// Replication (Leader -> Follower)
@@ -291,6 +293,16 @@ func (c *databaseClient) TriggerVacuum(ctx context.Context, in *Empty, opts ...g
 	return out, nil
 }
 
+func (c *databaseClient) TriggerReconsolidation(ctx context.Context, in *ReconsolidationRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, Database_TriggerReconsolidation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *databaseClient) Configure(ctx context.Context, in *ConfigUpdate, opts ...grpc.CallOption) (*StatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatusResponse)
@@ -431,6 +443,7 @@ type DatabaseServer interface {
 	// Admin Controls
 	TriggerSnapshot(context.Context, *Empty) (*StatusResponse, error)
 	TriggerVacuum(context.Context, *Empty) (*StatusResponse, error)
+	TriggerReconsolidation(context.Context, *ReconsolidationRequest) (*StatusResponse, error)
 	// Dynamic Configuration
 	Configure(context.Context, *ConfigUpdate) (*StatusResponse, error)
 	// Replication (Leader -> Follower)
@@ -509,6 +522,9 @@ func (UnimplementedDatabaseServer) TriggerSnapshot(context.Context, *Empty) (*St
 }
 func (UnimplementedDatabaseServer) TriggerVacuum(context.Context, *Empty) (*StatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TriggerVacuum not implemented")
+}
+func (UnimplementedDatabaseServer) TriggerReconsolidation(context.Context, *ReconsolidationRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TriggerReconsolidation not implemented")
 }
 func (UnimplementedDatabaseServer) Configure(context.Context, *ConfigUpdate) (*StatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Configure not implemented")
@@ -872,6 +888,24 @@ func _Database_TriggerVacuum_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Database_TriggerReconsolidation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReconsolidationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).TriggerReconsolidation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_TriggerReconsolidation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).TriggerReconsolidation(ctx, req.(*ReconsolidationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Database_Configure_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ConfigUpdate)
 	if err := dec(in); err != nil {
@@ -1058,6 +1092,10 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TriggerVacuum",
 			Handler:    _Database_TriggerVacuum_Handler,
+		},
+		{
+			MethodName: "TriggerReconsolidation",
+			Handler:    _Database_TriggerReconsolidation_Handler,
 		},
 		{
 			MethodName: "Configure",

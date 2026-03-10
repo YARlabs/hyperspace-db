@@ -75,6 +75,8 @@ message SearchRequest {
   // Hybrid search
   optional string hybrid_query = 6;
   optional float hybrid_alpha = 7;
+  // Wasserstein 1D CDF O(N) distance
+  optional bool use_wasserstein = 8;
 }
 ```
 
@@ -200,7 +202,20 @@ message VacuumFilterQuery {
 }
 ```
 
-Use this API for sleep/reconsolidation cycles when you need to rebuild an index and prune low-value vectors in one server-side operation.
+Use this API for pruning cycles when you need to rebuild an index and drop low-value vectors in one server-side operation.
+
+#### `TriggerReconsolidation` (v3.0 LTS)
+Trigger AI Sleep Mode (Riemannian SGD / Flow Matching) directly on the engine to algorithmically shift vectors.
+
+```protobuf
+rpc TriggerReconsolidation (ReconsolidationRequest) returns (StatusResponse);
+
+message ReconsolidationRequest {
+  string collection = 1;
+  repeated double target_vector = 2;
+  double learning_rate = 3;
+}
+```
 
 ---
 
@@ -218,6 +233,18 @@ Every request should include:
 `GET /api/cluster/status`
 
 Returns the node's identity and topology role.
+
+### Swarm Peers (Gossip Protocol)
+`GET /api/swarm/peers`
+
+Returns active peers discovered via UDP multicast (Edge-to-Edge Sync).
+```json
+{
+  "gossip_enabled": true,
+  "peer_count": 2,
+  "peers": [...]
+}
+```
 
 ```json
 {

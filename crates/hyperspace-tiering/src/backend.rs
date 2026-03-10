@@ -50,6 +50,7 @@ pub trait ChunkBackend: Send + Sync {
 ///
 /// - `HS_STORAGE_BACKEND=local` (default) → `LocalBackend` (zero overhead).
 /// - `HS_STORAGE_BACKEND=s3` → `S3Backend` (LRU cache + async S3 I/O).
+#[must_use]
 pub fn create_backend(config: TieringConfig) -> Arc<dyn ChunkBackend> {
     if config.is_s3() {
         println!(

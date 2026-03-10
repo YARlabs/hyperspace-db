@@ -26,6 +26,7 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     monitor: IDatabaseService_IMonitor;
     triggerSnapshot: IDatabaseService_ITriggerSnapshot;
     triggerVacuum: IDatabaseService_ITriggerVacuum;
+    triggerReconsolidation: IDatabaseService_ITriggerReconsolidation;
     configure: IDatabaseService_IConfigure;
     replicate: IDatabaseService_IReplicate;
     subscribeToEvents: IDatabaseService_ISubscribeToEvents;
@@ -198,6 +199,15 @@ interface IDatabaseService_ITriggerVacuum extends grpc.MethodDefinition<hyperspa
     responseSerialize: grpc.serialize<hyperspace_pb.StatusResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.StatusResponse>;
 }
+interface IDatabaseService_ITriggerReconsolidation extends grpc.MethodDefinition<hyperspace_pb.ReconsolidationRequest, hyperspace_pb.StatusResponse> {
+    path: "/hyperspace.Database/TriggerReconsolidation";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.ReconsolidationRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.ReconsolidationRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.StatusResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.StatusResponse>;
+}
 interface IDatabaseService_IConfigure extends grpc.MethodDefinition<hyperspace_pb.ConfigUpdate, hyperspace_pb.StatusResponse> {
     path: "/hyperspace.Database/Configure";
     requestStream: false;
@@ -292,6 +302,7 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     monitor: grpc.handleServerStreamingCall<hyperspace_pb.MonitorRequest, hyperspace_pb.SystemStats>;
     triggerSnapshot: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
     triggerVacuum: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
+    triggerReconsolidation: grpc.handleUnaryCall<hyperspace_pb.ReconsolidationRequest, hyperspace_pb.StatusResponse>;
     configure: grpc.handleUnaryCall<hyperspace_pb.ConfigUpdate, hyperspace_pb.StatusResponse>;
     replicate: grpc.handleServerStreamingCall<hyperspace_pb.ReplicationRequest, hyperspace_pb.ReplicationLog>;
     subscribeToEvents: grpc.handleServerStreamingCall<hyperspace_pb.EventSubscriptionRequest, hyperspace_pb.EventMessage>;
@@ -356,6 +367,9 @@ export interface IDatabaseClient {
     triggerVacuum(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     triggerVacuum(request: hyperspace_pb.Empty, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     triggerVacuum(request: hyperspace_pb.Empty, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    triggerReconsolidation(request: hyperspace_pb.ReconsolidationRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    triggerReconsolidation(request: hyperspace_pb.ReconsolidationRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    triggerReconsolidation(request: hyperspace_pb.ReconsolidationRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     configure(request: hyperspace_pb.ConfigUpdate, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
@@ -435,6 +449,9 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public triggerVacuum(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public triggerVacuum(request: hyperspace_pb.Empty, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public triggerVacuum(request: hyperspace_pb.Empty, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public triggerReconsolidation(request: hyperspace_pb.ReconsolidationRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public triggerReconsolidation(request: hyperspace_pb.ReconsolidationRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public triggerReconsolidation(request: hyperspace_pb.ReconsolidationRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public configure(request: hyperspace_pb.ConfigUpdate, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public configure(request: hyperspace_pb.ConfigUpdate, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;

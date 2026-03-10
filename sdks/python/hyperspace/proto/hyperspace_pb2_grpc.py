@@ -5,7 +5,7 @@ import warnings
 
 from . import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.71.2'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in hyperspace_pb2_grpc.py depends on'
+        + ' but the generated code in hyperspace_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -122,6 +122,11 @@ class DatabaseStub(object):
         self.TriggerVacuum = channel.unary_unary(
                 '/hyperspace.Database/TriggerVacuum',
                 request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.TriggerReconsolidation = channel.unary_unary(
+                '/hyperspace.Database/TriggerReconsolidation',
+                request_serializer=hyperspace__pb2.ReconsolidationRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.StatusResponse.FromString,
                 _registered_method=True)
         self.Configure = channel.unary_unary(
@@ -285,6 +290,12 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def TriggerReconsolidation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Configure(self, request, context):
         """Dynamic Configuration
         """
@@ -431,6 +442,11 @@ def add_DatabaseServicer_to_server(servicer, server):
             'TriggerVacuum': grpc.unary_unary_rpc_method_handler(
                     servicer.TriggerVacuum,
                     request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'TriggerReconsolidation': grpc.unary_unary_rpc_method_handler(
+                    servicer.TriggerReconsolidation,
+                    request_deserializer=hyperspace__pb2.ReconsolidationRequest.FromString,
                     response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
             ),
             'Configure': grpc.unary_unary_rpc_method_handler(
@@ -959,6 +975,33 @@ class Database(object):
             target,
             '/hyperspace.Database/TriggerVacuum',
             hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TriggerReconsolidation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/TriggerReconsolidation',
+            hyperspace__pb2.ReconsolidationRequest.SerializeToString,
             hyperspace__pb2.StatusResponse.FromString,
             options,
             channel_credentials,

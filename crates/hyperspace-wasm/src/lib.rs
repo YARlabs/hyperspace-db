@@ -10,7 +10,7 @@ use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore;
 use rexie::{ObjectStore, Rexie, TransactionMode};
 
-/// Number of sync buckets — must match crate::sync::SYNC_BUCKETS on the server.
+/// Number of sync buckets — must match `crate::sync::SYNC_BUCKETS` on the server.
 const SYNC_BUCKETS: usize = 256;
 
 enum IndexWrapper {
@@ -149,7 +149,7 @@ impl HyperspaceDB {
 
         macro_rules! search_impl {
             ($idx:expr) => {
-                $idx.search(vector, k, 100, &HashMap::new(), &[], None, None)
+                $idx.search(vector, k, 100, &HashMap::new(), &[], None, None, false)
             };
         }
 
@@ -182,7 +182,7 @@ impl HyperspaceDB {
 
     // ─── Delta Sync Helpers (Task 2.1) ────────────────────────────────────
 
-    /// Computes a hash for a vector entry. Must match server's CollectionDigest::hash_entry.
+    /// Computes a hash for a vector entry. Must match server's `CollectionDigest::hash_entry`.
     fn hash_entry(id: u32, vector: &[f64]) -> u64 {
         let mut hasher = DefaultHasher::new();
         id.hash(&mut hasher);
@@ -195,6 +195,9 @@ impl HyperspaceDB {
     /// Returns the current digest (256 bucket hashes + count) as a JS object.
     /// Used by the sync protocol: WASM client sends this to the server
     /// via `POST /api/collections/{name}/sync/handshake`.
+    ///
+    /// # Errors
+    /// Returns error if JSON serialization fails.
     pub fn get_digest(&self) -> Result<JsValue, JsValue> {
         let buckets = self.bucket_hashes.read();
         let id_map = self.id_map.read();
@@ -214,6 +217,9 @@ impl HyperspaceDB {
     /// Applies sync data received from the server.
     /// Input: JSON array of `{id, vector, metadata}` objects.
     /// Returns number of vectors applied.
+    ///
+    /// # Errors
+    /// Returns error if JSON deserialization fails.
     pub fn apply_sync_vectors(&self, data: JsValue) -> Result<u32, JsValue> {
         let entries: Vec<SyncEntry> =
             serde_wasm_bindgen::from_value(data).map_err(|e| JsValue::from_str(&e.to_string()))?;

@@ -54,6 +54,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
     complex_filters: &[FilterExpr],
     mode: QuantizationMode,
     config: &Arc<GlobalConfig>,
+    use_wasserstein: bool,
 ) -> Result<Vec<(u32, f64)>, String> {
     let snap_path = chunk_dir.join("index.snap");
     if !snap_path.exists() {
@@ -94,6 +95,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
         complex_filters,
         None, // hybrid_query not supported on chunk level (applied only on MemTable)
         None, // hybrid_alpha
+        use_wasserstein,
     );
 
     Ok(results)
@@ -124,6 +126,7 @@ pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
     complex_filters: &[FilterExpr],
     mode: QuantizationMode,
     config: &Arc<GlobalConfig>,
+    use_wasserstein: bool,
 ) -> Vec<(u32, f64, usize)> {
     // (chunk_local_id, distance, chunk_index) — chunk_index identifies which chunk
     let mut all_results: Vec<(u32, f64, usize)> = Vec::new();
@@ -140,6 +143,7 @@ pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
             complex_filters,
             mode,
             config,
+            use_wasserstein,
         ) {
             Ok(results) => {
                 for (local_id, dist) in results {

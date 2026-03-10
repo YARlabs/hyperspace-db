@@ -42,8 +42,12 @@ HyperspaceDB relies on principles from modern cosmology to execute vector search
    Semantic vectors are concentrated along principal components (not cleanly isotropic). Our engine applies a weighted Vector Quantization function ($L \approx ||x||^2 ||e_{||}||^2 + h(x) ||e_{\perp}||^2$) to penalize unaligned orthogonal semantic shifts.
 3. **Zonal Quantization (The MOND Hypothesis):**
    At the core of the hyperbolic disk, nodes correspond to broad semantic clusters requiring fewer bits of precision (`i8`/`f16`). Nearing the Euclidean horizon ($||x|| \to 1$), exact relationships demand extreme mapping in pure `f64`.
-4. **Graph Density Pruning (The $S_8$ Void Tension):**
-   Akin to comic voids and clustered galaxies, HyperspaceDB performs Density-based Graph Pruning. Outlying vectors in sparse "voids" inherit restricted edge mappings ($M/2$) reducing RAM, while heavily-occupied topics possess rich mesh networks.
+4. **Density Pruning (The $S_8$ Void Tension):**
+   Akin to comic voids and clustered galaxies, HyperspaceDB performs Density-based Graph Pruning. Outlying vectors inherit restricted edge mappings, reducing RAM.
+5. **Memory Reconsolidation (AI Sleep Mode):**
+   Continuous Riemannian SGD pulls vectors towards an attractor state (e.g. Flow Matching) directly via `TriggerReconsolidation`, restructuring the graph dynamically without full re-indexing.
+6. **Cross-Feature Matching (Wasserstein-1):**
+   Instead of $O(N^3)$ generic OT, we execute an ultra-fast $O(N)$ 1D L1-CDF algorithm to compare distributions along feature axes directly inside the metric dispatch.
 
 ---
 
@@ -84,8 +88,11 @@ HyperspaceDB SDK includes a **Cognitive Math** engine built upon the HNSW graph 
 
 2.  **Euclidean Space (Squared L2)**
     *   **Formula**: $ d(u, v) = \sum (u_i - v_i)^2 $
-    *   **Optimization**: We use Squared L2 distance to avoid expensive `sqrt` calls (monotonicity is preserved for HNSW).
-    *   **Compatibility**: Optimized for OpenAI, Cohere, and other standard embeddings.
+    *   **Optimization**: We use Squared L2 distance to avoid expensive `sqrt` calls.
+    
+3.  **Wasserstein-1 (Cross-Feature Matching / 1D CDF)**
+    *   **Formula**: $ d(u, v) = \sum |CDF_u(i) - CDF_v(i)| $
+    *   **Optimization**: O(N) evaluation instead of O(N^3) Sinkhorn, used for structural distribution matching.
 
 *   **Locking**: The graph uses fine-grained `RwLock` per node layer, allowing concurrent searches and updates.
 

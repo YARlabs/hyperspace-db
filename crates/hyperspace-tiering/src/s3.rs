@@ -1,4 +1,4 @@
-//! S3Backend — Cloud-tiered chunk storage with LRU cache and retry logic.
+//! `S3Backend` — Cloud-tiered chunk storage with LRU cache and retry logic.
 //!
 //! ## Architecture
 //!
@@ -65,10 +65,10 @@ struct ChunkCacheEntry {
 
 pub struct S3Backend {
     config: TieringConfig,
-    /// S3-compatible object store client.
+    /// `S3`-compatible object store client.
     store: Arc<dyn ObjectStore>,
     /// LRU cache tracking locally-cached chunks.
-    /// Key: chunk_id, Value: cache entry with local path + upload status.
+    /// Key: `chunk_id`, Value: cache entry with local path + upload status.
     cache: Cache<String, ChunkCacheEntry>,
     /// Set of chunk IDs currently being uploaded (prevents duplicate uploads).
     uploading: Arc<Mutex<HashSet<String>>>,
@@ -84,7 +84,12 @@ pub struct S3Backend {
 }
 
 impl S3Backend {
-    /// Creates a new S3Backend with the given configuration.
+    /// Creates a new `S3Backend` with the given configuration.
+    ///
+    /// # Panics
+    /// Panics if the S3 client cannot be built from the given config (invalid S3 env vars)
+    /// or if called outside a Tokio runtime context.
+    #[must_use]
     pub fn new(config: TieringConfig) -> Self {
         // Build the S3 client.
         let mut builder = AmazonS3Builder::new()
@@ -117,7 +122,7 @@ impl S3Backend {
             .max_capacity(max_cache_bytes)
             .weigher(|_key: &String, entry: &ChunkCacheEntry| -> u32 {
                 // Weight in bytes, capped at u32::MAX (~4 GB per entry).
-                entry.size_bytes.min(u32::MAX as u64) as u32
+                u32::try_from(entry.size_bytes.min(u64::from(u32::MAX))).unwrap_or(u32::MAX)
             })
             .build();
 
@@ -144,7 +149,7 @@ impl S3Backend {
     /// Uploads a chunk directory to S3 as a tar archive.
     ///
     /// We tar the chunk directory into a single object to preserve the
-    /// directory structure (index.snap + VectorStore files).
+    /// directory structure (`index.snap` + `VectorStore` files).
     fn upload_chunk(&self, chunk_id: &str, local_path: &Path) -> Result<(), String> {
         let object_key = self.config.object_key(chunk_id);
         let store = self.store.clone();
@@ -172,8 +177,7 @@ impl S3Backend {
                             100 * 2u64.pow(attempt - 1), // Exponential backoff
                         );
                         eprintln!(
-                            "⚠️  S3 upload attempt {attempt}/{max_retries} failed for {object_key}: {e}. Retrying in {:?}...",
-                            delay
+                            "⚠️  S3 upload attempt {attempt}/{max_retries} failed for {object_key}: {e}. Retrying in {delay:?}..."
                         );
                         tokio::time::sleep(delay).await;
                     }
@@ -234,8 +238,7 @@ impl S3Backend {
                     100 * 2u64.pow(attempt - 1),
                 );
                 eprintln!(
-                    "⚠️  S3 download attempt {attempt}/{max_retries} failed for {object_key}. Retrying in {:?}...",
-                    delay
+                    "⚠️  S3 download attempt {attempt}/{max_retries} failed for {object_key}. Retrying in {delay:?}..."
                 );
                 tokio::time::sleep(delay).await;
             }
@@ -452,7 +455,7 @@ impl ChunkBackend for S3Backend {
     }
 
     fn chunk_count(&self) -> usize {
-        self.cache.entry_count() as usize
+        usize::try_from(self.cache.entry_count()).unwrap_or(usize::MAX)
     }
 
     fn local_disk_usage_bytes(&self) -> u64 {

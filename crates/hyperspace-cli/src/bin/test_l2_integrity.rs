@@ -96,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             filters: vec![],
             hybrid_query: None,
             hybrid_alpha: None,
+            use_wasserstein: false,
         })
         .await?;
 

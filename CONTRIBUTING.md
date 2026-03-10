@@ -72,6 +72,22 @@ If you are contributing to the **Cognitive Math SDK** or the **Heterogeneous Tri
 2. Mirror the functionality to Python (`sdks/python/hyperspace/math.py`) and TypeScript (`sdks/ts/src/math.ts`).
 3. If adding a new multi-agent evaluation metric (e.g. `evaluate_claim` for the Tribunal Router), ensure it leverages the Graph Traversal API efficiently and is added symmetrically across the `agents` module in all SDKs.
 
+## 📊 Adding Quantization Modes
+
+To implement a new quantization mode:
+1. Add a variant to `QuantizationMode` enum in `crates/hyperspace-core/src/lib.rs`.
+2. Implement encoder in `crates/hyperspace-core/src/vector.rs` (see `QuantizedHyperVector::from_float()` for the SQ8 Anisotropic reference — it uses coordinate-descent refinement with an anisotropic loss $L = \|e_\parallel\|^2 + t_w \cdot \|e_\perp\|^2$).
+3. Wire the new variant in `CollectionMetadata::quantization_mode()` in `crates/hyperspace-server/src/manager.rs`.
+4. Update `HS_QUANTIZATION_LEVEL` docs in `docs/book/src/quantization.md`.
+
+## 🤖 Adding Embedding Providers
+
+To add a new embedding provider to the built-in service:
+1. Implement the `Embedder` trait in `crates/hyperspace-embed/src/lib.rs`.
+2. Add a new variant to `EmbedProvider` enum and wire it in `EmbedRouter::from_env()`.
+3. Add corresponding `HS_EMBED_<METRIC>_PROVIDER=<name>` documentation to `docs/book/src/embeddings.md`.
+4. If the provider requires a new Cargo dependency, gate it behind a feature flag.
+
 ## 🚀 Future Roadmap
 
 We focus on building the **Universal Spatial Memory** for AI Agents.
@@ -96,7 +112,10 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 ### Phase 3: Collective Intelligence (v3.x)
 *The goal: Beyond storage. The "Digital Thalamus" realization.*
 
-* **v3.0**: ✅ **Federated Swarm Protocol**. Connecting independent HyperspaceDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers. *Completed in Task 3.4.*
+* **v3.0-alpha.1**: ✅ **Federated Swarm Protocol & Graph Diagnostics**. Connecting independent HyperspaceDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers. Also added AI Sleep Mode / Memory Reconsolidation. *Completed.*
+* **v3.0-alpha.2**: ✅ **Multi-Geometry Benchmark & SDK Sync**. Graph Diagnostics in SDK, Multi-Geometry Search API, Wasserstein metric (native O(N) 1D), dependency pruning. *Completed.*
+* **v3.0-alpha.3**: ✅ **Anisotropic SQ8 & Per-Geometry Embedding System**. ScaNN-inspired coordinate-descent quantization for Cosine/L2 (+5.3% / +3.8% Recall@10). Full embedding service with Local ONNX, HuggingFace Hub, and 6 remote API providers. Documentation overhaul. *Completed.*
+* **v3.0-LTS** *(planned)*: **Validation Layer & Batch ONNX Inference**. Strict NaN/Infinity filtering at gRPC ingress. Batch inference pipeline for `InsertBatch`. Gate Check: fuzzy testing with malformed vectors.
 * **v3.1**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
 
 Join us in pushing the boundaries of hyperbolic vector search!

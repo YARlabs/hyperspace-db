@@ -331,10 +331,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             && M::name() == "poincare"
             && matches!(mode, QuantizationMode::None);
 
-        let density_pruning = std::env::var("HS_DENSITY_PRUNING")
-            .is_ok_and(|v| v.to_lowercase() == "true");
-        let zonal = std::env::var("HS_ZONAL_QUANTIZATION")
-            .is_ok_and(|v| v.to_lowercase() == "true");
+        let density_pruning =
+            std::env::var("HS_DENSITY_PRUNING").is_ok_and(|v| v.to_lowercase() == "true");
+        let zonal =
+            std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true");
 
         let node_count = storage.count();
         let index = Self {
@@ -500,10 +500,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             && M::name() == "poincare"
             && matches!(mode, QuantizationMode::None);
 
-        let density_pruning = std::env::var("HS_DENSITY_PRUNING")
-            .is_ok_and(|v| v.to_lowercase() == "true");
-        let zonal = std::env::var("HS_ZONAL_QUANTIZATION")
-            .is_ok_and(|v| v.to_lowercase() == "true");
+        let density_pruning =
+            std::env::var("HS_DENSITY_PRUNING").is_ok_and(|v| v.to_lowercase() == "true");
+        let zonal =
+            std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true");
 
         let node_count = storage.count();
         let index = Self {
@@ -679,10 +679,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             && M::name() == "poincare"
             && matches!(mode, QuantizationMode::None);
 
-        let density_pruning = std::env::var("HS_DENSITY_PRUNING")
-            .is_ok_and(|v| v.to_lowercase() == "true");
-        let zonal = std::env::var("HS_ZONAL_QUANTIZATION")
-            .is_ok_and(|v| v.to_lowercase() == "true");
+        let density_pruning =
+            std::env::var("HS_DENSITY_PRUNING").is_ok_and(|v| v.to_lowercase() == "true");
+        let zonal =
+            std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true");
 
         Self {
             nodes: RwLock::new(Vec::new()),
@@ -783,6 +783,58 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     }
                     apply_mask(&range_union);
                 }
+                FilterExpr::InBox {
+                    min_bounds,
+                    max_bounds,
+                } => {
+                    let mut box_match = RoaringBitmap::new();
+                    let count = self.count_nodes() as u32;
+                    let region = hyperspace_core::region::BoxRegion::new(
+                        min_bounds.clone(),
+                        max_bounds.clone(),
+                    );
+
+                    for i in 0..count {
+                        if deleted.contains(i) {
+                            continue;
+                        }
+                        let vec = self.get_vector(i);
+                        if region.contains(&vec) {
+                            box_match.insert(i);
+                        }
+                    }
+                    if box_match.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
+                    apply_mask(&box_match);
+                }
+                FilterExpr::InCone {
+                    axes,
+                    apertures,
+                    cen,
+                } => {
+                    let mut cone_match = RoaringBitmap::new();
+                    let count = self.count_nodes() as u32;
+                    let region = hyperspace_core::region::ConeRegion::new(
+                        axes.clone(),
+                        apertures.clone(),
+                        *cen,
+                    );
+
+                    for i in 0..count {
+                        if deleted.contains(i) {
+                            continue;
+                        }
+                        let vec = self.get_vector(i);
+                        if region.contains(&vec) {
+                            cone_match.insert(i);
+                        }
+                    }
+                    if cone_match.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
+                    apply_mask(&cone_match);
+                }
             }
         }
 
@@ -811,6 +863,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         complex_filters: &[FilterExpr],
         hybrid_query: Option<&str>,
         hybrid_alpha: Option<f32>,
+        use_wasserstein: bool,
     ) -> Vec<(NodeId, f64)> {
         // If hybrid query is present, we use RRF Fusion
         if let Some(text) = hybrid_query {
@@ -822,6 +875,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 complex_filters,
                 text,
                 hybrid_alpha.unwrap_or(60.0),
+                use_wasserstein,
             );
         }
 
@@ -911,7 +965,21 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         } // Read lock released here
 
         // 2. Local search phase: Layer 0 with Filter
-        self.search_layer0(curr_node, &q_vec, k, ef_search, allowed_bitmap.as_ref())
+        let mut candidates =
+            self.search_layer0(curr_node, &q_vec, k, ef_search, allowed_bitmap.as_ref());
+
+        if use_wasserstein {
+            for cand in &mut candidates {
+                let vec = self.get_vector(cand.0);
+                cand.1 =
+                    hyperspace_core::wasserstein::WassersteinDistance::compute(query, &vec.coords);
+            }
+            candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            // Ensure we keep only top k
+            candidates.truncate(k);
+        }
+
+        candidates
     }
 
     pub fn peek(
@@ -1278,7 +1346,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         m: usize,
     ) -> Vec<NodeId> {
         let mut sorted_candidates = candidates.into_sorted_vec();
-        
+
         // Task 6.4: Density-based HNSW graph pruning
         let mut actual_m = m;
         if self.density_pruning && !sorted_candidates.is_empty() {
@@ -1289,7 +1357,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 sum_dist += sorted_candidates[sorted_candidates.len() - 1 - i].distance;
             }
             let avg_dist = sum_dist / (n_samples as f64);
-            
+
             // If average distance to nearest candidates is large, we are in a sparse "void".
             // We can aggressively prune connections to M/2 without significantly hurting recall.
             if avg_dist > 1.2 {
@@ -1338,9 +1406,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                             coords[i] = val;
                             sq_norm += val * val;
                         }
-                        HyperVector { 
-                            coords, 
-                            alpha: if M::name() == "poincare" { 1.0 / (1.0 - sq_norm) } else { 0.0 } 
+                        HyperVector {
+                            coords,
+                            alpha: if M::name() == "poincare" {
+                                1.0 / (1.0 - sq_norm)
+                            } else {
+                                0.0
+                            },
                         }
                     }
                     hyperspace_core::vector::ZonalVector::Boundary(ref f64_coords) => {
@@ -1617,11 +1689,20 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let m_max = if level == 0 { m_base * 2 } else { m_base };
 
                 // a) Search candidates
-                // Fast routing is only on upper layers, not on Layer 0. But passing query_klein 
+                // Fast routing is only on upper layers, not on Layer 0. But passing query_klein
                 // and letting dist_upper handle it inside search_layer_candidates is safe.
-                let q_klein_opt = if level > 0 { query_klein.as_ref() } else { None };
-                let candidates_heap =
-                    self.search_layer_candidates(curr_obj, &q_vec, q_klein_opt, level, ef_construction);
+                let q_klein_opt = if level > 0 {
+                    query_klein.as_ref()
+                } else {
+                    None
+                };
+                let candidates_heap = self.search_layer_candidates(
+                    curr_obj,
+                    &q_vec,
+                    q_klein_opt,
+                    level,
+                    ef_construction,
+                );
 
                 // b) Select neighbors with heuristic (using layer-specific M)
                 let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, m_max);
@@ -1737,6 +1818,81 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         } else {
             self.storage.count()
         }
+    }
+
+    /// Task 7.2: DiskANN / Vamana Graph Pruning
+    /// Converts the dense HNSW base layer into a Spatial Navigable Graph (SNG).
+    /// Prevents excessive page faults on NVMe when searching evicted cold chunks.
+    pub fn optimize_as_sng(&self, alpha: f64) {
+        println!(
+            "🔧 Optimizing HNSW Graph -> Spatial Navigable Graph (DiskANN) with alpha={alpha}"
+        );
+        let num_nodes = self.count_nodes() as u32;
+
+        for i in 0..num_nodes {
+            let node_vec = self.get_vector(i);
+
+            // 1. Read layer 0 neighbors (short and long range candidates from HNSW)
+            let candidates: Vec<u32> = {
+                let nodes = self.nodes.read();
+                if (i as usize) < nodes.len() && !nodes[i as usize].layers.is_empty() {
+                    nodes[i as usize].layers[0].read().clone()
+                } else {
+                    Vec::new()
+                }
+            };
+
+            if candidates.is_empty() {
+                continue;
+            }
+
+            // 2. Compute distances between node `i` and all candidates
+            let mut c_with_dist = Vec::with_capacity(candidates.len());
+            for &c in &candidates {
+                if c != i {
+                    let c_vec = self.get_vector(c);
+                    let dist = M::distance(&node_vec.coords, &c_vec.coords);
+                    c_with_dist.push((c, dist));
+                }
+            }
+
+            c_with_dist.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            // 3. Alpha pruning (RobustPrune from Vamana/DiskANN)
+            let max_degree = self.config.m.load(std::sync::atomic::Ordering::Relaxed);
+            let mut new_neighbors = Vec::with_capacity(max_degree);
+
+            for (c, cand_dist) in c_with_dist {
+                if new_neighbors.len() >= max_degree {
+                    break;
+                }
+                let c_vec = self.get_vector(c);
+                let mut prune = false;
+
+                for &existing in &new_neighbors {
+                    let existing_vec = self.get_vector(existing);
+                    let dist_existing_c = M::distance(&existing_vec.coords, &c_vec.coords);
+
+                    // If candidate can be reached easily from an already selected neighbor, prune it.
+                    if alpha * dist_existing_c <= cand_dist {
+                        prune = true;
+                        break;
+                    }
+                }
+
+                if !prune {
+                    new_neighbors.push(c);
+                }
+            }
+
+            // 4. Update the graph layer 0 in place
+            let nodes = self.nodes.read();
+            if (i as usize) < nodes.len() && !nodes[i as usize].layers.is_empty() {
+                let mut l0 = nodes[i as usize].layers[0].write();
+                *l0 = new_neighbors;
+            }
+        }
+        println!("✅ Graph optimization complete.");
     }
 
     pub fn count_deleted(&self) -> usize {
@@ -1993,12 +2149,21 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         complex_filters: &[FilterExpr],
         text: &str,
         alpha: f32,
+        use_wasserstein: bool,
     ) -> Vec<(NodeId, f64)> {
         // 1. Get Vector Search Results (Semantic) -> Top K*2 for recall
         // We reuse the basic search but with NO hybrid query to avoid recursion
         let vec_k = k * 2;
-        let vector_results =
-            self.search(query, vec_k, ef_search, filter, complex_filters, None, None);
+        let vector_results = self.search(
+            query,
+            vec_k,
+            ef_search,
+            filter,
+            complex_filters,
+            None,
+            None,
+            use_wasserstein,
+        );
 
         // 2. BM25 lexical ranking over the same filtered space.
         let tokens = Self::tokenize(text);

@@ -1,4 +1,4 @@
-//! LocalBackend — default zero-overhead chunk storage.
+//! `LocalBackend` — default zero-overhead chunk storage.
 //!
 //! All chunks live on local disk forever. No LRU, no async I/O,
 //! no cloud dependencies. Optimal for edge devices and performance-tuned setups.
@@ -15,6 +15,7 @@ pub struct LocalBackend {
 }
 
 impl LocalBackend {
+    #[must_use]
     pub fn new(data_dir: PathBuf) -> Self {
         // Scan existing chunks on startup.
         let (count, bytes) = Self::scan_chunks(&data_dir);
@@ -88,7 +89,7 @@ impl ChunkBackend for LocalBackend {
     }
 
     fn chunk_count(&self) -> usize {
-        self.chunk_count.load(Ordering::Relaxed) as usize
+        usize::try_from(self.chunk_count.load(Ordering::Relaxed)).unwrap_or(usize::MAX)
     }
 
     fn local_disk_usage_bytes(&self) -> u64 {

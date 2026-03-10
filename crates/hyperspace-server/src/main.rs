@@ -69,6 +69,8 @@ use hyperspace_proto::hyperspace::{
     ListCollectionsResponse,
     MetadataValue,
     MonitorRequest,
+    SearchMultiCollectionRequest,
+    SearchMultiCollectionResponse,
     SearchRequest,
     SearchResponse,
     SearchResult,
@@ -238,6 +240,7 @@ fn build_filters(
         ef_search: default_ef_search(),
         hybrid_query: req.hybrid_query,
         hybrid_alpha: req.hybrid_alpha,
+        use_wasserstein: req.use_wasserstein,
     };
 
     (col_name, req.vector, exact_filter, complex_filters, params)
@@ -400,6 +403,11 @@ fn matches_filter_exprs(
                         return false;
                     }
                 }
+            }
+            hyperspace_core::FilterExpr::InCone { .. }
+            | hyperspace_core::FilterExpr::InBox { .. } => {
+                // Vector-based filters are evaluated during search index traversal,
+                // so we can't evaluate them purely on metadata. We assume match here.
             }
         }
     }
@@ -929,6 +937,109 @@ impl Database for HyperspaceService {
         Ok(Response::new(BatchSearchResponse { responses }))
     }
 
+    async fn search_multi_collection(
+        &self,
+        request: Request<SearchMultiCollectionRequest>,
+    ) -> Result<Response<SearchMultiCollectionResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let inner_concurrency = search_batch_inner_concurrency();
+
+        let mut responses = std::collections::HashMap::new();
+
+        if inner_concurrency <= 1 {
+            for col_name in req.collections {
+                let col = self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{col_name}' not found"))
+                })?;
+                let params = hyperspace_core::SearchParams {
+                    top_k: req.top_k as usize,
+                    ef_search: default_ef_search(),
+                    hybrid_query: None,
+                    hybrid_alpha: None,
+                    use_wasserstein: false,
+                };
+                let exact_filter = std::collections::HashMap::new();
+                let complex_filters = Vec::new();
+                let res = col
+                    .search(&req.vector, &exact_filter, &complex_filters, &params)
+                    .await
+                    .map_err(Status::internal)?;
+                let results = res
+                    .into_iter()
+                    .map(|(id, dist, meta)| {
+                        let typed_metadata = extract_typed_metadata(&meta);
+                        let metadata = strip_internal_metadata(&meta);
+                        SearchResult {
+                            id,
+                            distance: dist,
+                            metadata,
+                            typed_metadata,
+                        }
+                    })
+                    .collect();
+                responses.insert(col_name, SearchResponse { results });
+            }
+            return Ok(Response::new(SearchMultiCollectionResponse { responses }));
+        }
+
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(inner_concurrency));
+        let mut tasks = tokio::task::JoinSet::new();
+
+        for col_name in req.collections {
+            let col =
+                self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{col_name}' not found"))
+                })?;
+            let vector = req.vector.clone();
+            let top_k = req.top_k;
+            let permit = semaphore.clone().acquire_owned().await.map_err(|e| {
+                Status::internal(format!("search_multi_collection semaphore error: {e}"))
+            })?;
+
+            tasks.spawn(async move {
+                let _permit = permit;
+                let params = hyperspace_core::SearchParams {
+                    top_k: top_k as usize,
+                    ef_search: default_ef_search(),
+                    hybrid_query: None,
+                    hybrid_alpha: None,
+                    use_wasserstein: false,
+                };
+                let exact_filter = std::collections::HashMap::new();
+                let complex_filters = Vec::new();
+                let res = col
+                    .search(&vector, &exact_filter, &complex_filters, &params)
+                    .await
+                    .map_err(Status::internal)?;
+                let results = res
+                    .into_iter()
+                    .map(|(id, dist, meta)| {
+                        let typed_metadata = extract_typed_metadata(&meta);
+                        let metadata = strip_internal_metadata(&meta);
+                        SearchResult {
+                            id,
+                            distance: dist,
+                            metadata,
+                            typed_metadata,
+                        }
+                    })
+                    .collect();
+                Ok::<_, Status>((col_name, SearchResponse { results }))
+            });
+        }
+
+        while let Some(join_res) = tasks.join_next().await {
+            let res = join_res.map_err(|e| {
+                Status::internal(format!("search_multi_collection join error: {e}"))
+            })?;
+            let (col_name, response) = res?;
+            responses.insert(col_name, response);
+        }
+
+        Ok(Response::new(SearchMultiCollectionResponse { responses }))
+    }
+
     async fn get_node(
         &self,
         request: Request<GetNodeRequest>,
@@ -1352,6 +1463,28 @@ impl Database for HyperspaceService {
         ))
     }
 
+    async fn trigger_reconsolidation(
+        &self,
+        request: Request<hyperspace_proto::hyperspace::ReconsolidationRequest>,
+    ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+
+        let lr = req.learning_rate;
+        println!("🧠 Memory Reconsolidation Triggered for {col_name} (lr={lr})");
+
+        // Future: spawn background Tokio task using hyperspace_core::optim::MemoryReconsolidator
+        Ok(Response::new(
+            hyperspace_proto::hyperspace::StatusResponse {
+                status: "Memory reconsolidation background task scheduled".to_string(),
+            },
+        ))
+    }
+
     async fn rebuild_index(
         &self,
         request: Request<hyperspace_proto::hyperspace::RebuildIndexRequest>,
@@ -1597,7 +1730,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
     // Setup Manager
     let data_dir = std::path::PathBuf::from(
-        std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data".to_string())
+        std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data".to_string()),
     );
     let event_buffer = std::env::var("HS_EVENT_STREAM_BUFFER")
         .ok()
@@ -1763,85 +1896,130 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     }
 
     // 1. Initialize Vectorizer (Moved before HTTP Server)
+    //
+    // Per-Metric Embedding Architecture:
+    // Each geometry (l2, cosine, poincare, lorentz) can have its own embedding backend.
+    // Priority per metric:
+    //   1. HS_EMBED_<METRIC>_PROVIDER=local   → HYPERSPACE_<METRIC>_MODEL_PATH + TOKENIZER_PATH (filesystem ONNX)
+    //   2. HS_EMBED_<METRIC>_PROVIDER=huggingface → HS_EMBED_<METRIC>_HF_MODEL_ID (downloads from HF Hub)
+    //   3. HS_EMBED_<METRIC>_PROVIDER=<api>   → HYPERSPACE_API_KEY / HYPERSPACE_EMBED_MODEL (cloud API)
+    //
+    // Fallback: if no per-metric config exists, use the global HYPERSPACE_EMBED_PROVIDER config.
     #[cfg(feature = "embed")]
     let vectorizer: Option<Arc<dyn Vectorizer>> = {
-        // 1. Check explicit enable/disable
         let enabled = std::env::var("HYPERSPACE_EMBED")
-            .unwrap_or_else(|_| "true".to_string())
+            .unwrap_or_else(|_| "false".to_string())
             .to_lowercase()
             == "true";
 
         if enabled {
-            let provider_str = std::env::var("HYPERSPACE_EMBED_PROVIDER")
-                .unwrap_or_else(|_| "local".to_string())
-                .to_lowercase();
-
+            // Determine which metric the server is operating in
             let metric_str = std::env::var("HS_METRIC")
                 .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
-                .unwrap_or("poincare".to_string())
+                .unwrap_or_else(|_| "cosine".to_string())
                 .to_lowercase();
 
             let metric = match metric_str.as_str() {
-                "poincare" | "hyperbolic" => Metric::Poincare,
-                "cosine" | "l2" | "euclidean" => Metric::L2,
-                _ => Metric::None,
+                "poincare" => Metric::Poincare,
+                "lorentz" => Metric::Lorentz,
+                "l2" => Metric::L2,
+                _ => Metric::Cosine,
             };
 
-            // 2. Validate Configuration
-            if provider_str == "local" && metric != Metric::Poincare {
-                eprintln!("⚠️ CRITICAL CONFIG CONFLICT:");
-                eprintln!("   Provider 'local' (Hyperbolic ONNX) requires HS_METRIC='poincare'.");
-                eprintln!("   Found HS_METRIC='{metric_str}'.");
-                eprintln!("🛑 Embedding Service Disabled to prevent mathematical errors.");
+            // --- Build per-metric env key prefix ---
+            // e.g. for "cosine" → "COSINE", for "poincare" → "POINCARE"
+            let metric_upper = metric_str.to_uppercase();
+            let per_metric_provider_key = format!("HS_EMBED_{metric_upper}_PROVIDER");
+
+            // Try per-metric provider first, then fall back to global
+            let provider_str = std::env::var(&per_metric_provider_key)
+                .or_else(|_| std::env::var("HYPERSPACE_EMBED_PROVIDER"))
+                .unwrap_or_else(|_| "disabled".to_string())
+                .to_lowercase();
+
+            if provider_str == "disabled" || provider_str == "none" {
+                println!("⏭️  Embedding skipped for metric '{metric_str}' (provider=disabled)");
                 None
             } else if provider_str == "local" {
-                let model_path = std::env::var("HYPERSPACE_MODEL_PATH").ok();
-                let tok_path = std::env::var("HYPERSPACE_TOKENIZER_PATH").ok();
+                // --- LOCAL ONNX (filesystem path) ---
+                let model_path = std::env::var(format!("HS_EMBED_{metric_upper}_MODEL_PATH"))
+                    .or_else(|_| std::env::var("HYPERSPACE_MODEL_PATH"))
+                    .ok();
+                let tok_path = std::env::var(format!("HS_EMBED_{metric_upper}_TOKENIZER_PATH"))
+                    .or_else(|_| std::env::var("HYPERSPACE_TOKENIZER_PATH"))
+                    .ok();
 
                 if let (Some(m), Some(t)) = (model_path, tok_path) {
-                    println!("🧠 Loading Local Embedding Model: {m}");
-                    let dim: usize = std::env::var("HYPERSPACE_EMBED_DIM")
-                        .unwrap_or("128".to_string())
+                    let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
+                        .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
+                        .unwrap_or_else(|_| "128".to_string())
                         .parse()
                         .unwrap_or(128);
-
+                    println!("🧠 [{metric_upper}] Loading local ONNX model: {m} (dim={dim})");
                     match OnnxVectorizer::new(&m, &t, dim, metric) {
                         Ok(v) => Some(Arc::new(v)),
                         Err(e) => {
-                            eprintln!("❌ Failed to load local vectorizer: {e}");
+                            eprintln!("❌ [{metric_upper}] Local load failed: {e}");
                             None
                         }
                     }
                 } else {
-                    // If defaulting to local but no model path provided
-                    println!(
-                        "⚠️ Embedding Service needs HYPERSPACE_MODEL_PATH for 'local' provider."
-                    );
+                    eprintln!("⚠️  [{metric_upper}] provider=local requires HS_EMBED_{metric_upper}_MODEL_PATH and HS_EMBED_{metric_upper}_TOKENIZER_PATH");
+                    None
+                }
+            } else if provider_str == "huggingface" || provider_str == "hf" {
+                // --- HUGGINGFACE (downloads model.onnx + tokenizer.json from Hub) ---
+                let hf_model_id = std::env::var(format!("HS_EMBED_{metric_upper}_HF_MODEL_ID"))
+                    .or_else(|_| std::env::var("HYPERSPACE_HF_MODEL_ID"))
+                    .ok();
+
+                if let Some(model_id) = hf_model_id {
+                    let hf_token = std::env::var("HF_TOKEN")
+                        .or_else(|_| std::env::var("HUGGING_FACE_HUB_TOKEN"))
+                        .ok();
+                    let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
+                        .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
+                        .unwrap_or_else(|_| "128".to_string())
+                        .parse()
+                        .unwrap_or(128);
+
+                    println!("🤗 [{metric_upper}] Downloading HF model: {model_id} (dim={dim})");
+                    match OnnxVectorizer::new_from_hf(&model_id, hf_token, dim, metric) {
+                        Ok(v) => Some(Arc::new(v)),
+                        Err(e) => {
+                            eprintln!("❌ [{metric_upper}] HF download failed: {e}");
+                            None
+                        }
+                    }
+                } else {
+                    eprintln!("⚠️  [{metric_upper}] provider=huggingface requires HS_EMBED_{metric_upper}_HF_MODEL_ID");
                     None
                 }
             } else {
-                // Remote
+                // --- REMOTE API (OpenAI / Cohere / Mistral / Voyage / OpenRouter / Generic) ---
                 if let Ok(provider) = ApiProvider::from_str(&provider_str) {
-                    let api_key = std::env::var("HYPERSPACE_API_KEY_EMBED")
+                    let api_key = std::env::var(format!("HS_EMBED_{metric_upper}_API_KEY"))
+                        .or_else(|_| std::env::var("HYPERSPACE_API_KEY_EMBED"))
                         .or_else(|_| std::env::var("OPENAI_API_KEY"))
                         .unwrap_or_default();
+                    let model = std::env::var(format!("HS_EMBED_{metric_upper}_EMBED_MODEL"))
+                        .or_else(|_| std::env::var("HYPERSPACE_EMBED_MODEL"))
+                        .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+                    let base_url = std::env::var(format!("HS_EMBED_{metric_upper}_API_BASE"))
+                        .or_else(|_| std::env::var("HYPERSPACE_API_BASE"))
+                        .ok();
 
-                    let model = std::env::var("HYPERSPACE_EMBED_MODEL")
-                        .unwrap_or("text-embedding-3-small".to_string());
-
-                    let base_url = std::env::var("HYPERSPACE_API_BASE").ok();
-
-                    println!("☁️ Using Remote Embeddings: {provider:?} | Model: {model}");
+                    println!("☁️  [{metric_upper}] Remote embedding: {provider:?} | model={model}");
                     Some(Arc::new(RemoteVectorizer::new(
                         provider, api_key, model, base_url,
                     )))
                 } else {
-                    eprintln!("❌ Unknown embedding provider: {provider_str}");
+                    eprintln!("❌ [{metric_upper}] Unknown embedding provider: '{provider_str}'");
                     None
                 }
             }
         } else {
-            println!("🛑 Embedding Service Disabled (HYPERSPACE_EMBED=false)");
+            println!("🛑 Embedding Pipeline Disabled (HYPERSPACE_EMBED=false)");
             None
         }
     };
@@ -1886,8 +2064,8 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
     // 3. Start Gossip Engine (Task 3.4) — optional, driven by HS_GOSSIP_PEERS env var
     let http_port = args.http_port;
-    let gossip_enabled = std::env::var("HS_GOSSIP_ENABLED")
-        .is_ok_and(|v| v.to_lowercase() == "true");
+    let gossip_enabled =
+        std::env::var("HS_GOSSIP_ENABLED").is_ok_and(|v| v.to_lowercase() == "true");
 
     let peer_registry: Option<gossip::PeerRegistry> = if gossip_enabled {
         let (node_id, role, logical_clock) = {

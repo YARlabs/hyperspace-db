@@ -203,12 +203,91 @@ pub fn frechet_mean(
 }
 
 // ==========================================
+// Lorentz Model Math (Hyperboloid)
+// ==========================================
+
+/// Computes the Minkowski inner product (Lorentz product) between two vectors.
+/// ⟨u, v⟩_L = -u_0 * v_0 + Σ(u_i * v_i)
+pub fn lorentz_product(u: &[f32], v: &[f32]) -> f32 {
+    if u.is_empty() || v.is_empty() {
+        return 0.0;
+    }
+    let mut dot = -u[0] * v[0];
+    for (ui, vi) in u.iter().skip(1).zip(v.iter().skip(1)) {
+        dot += ui * vi;
+    }
+    dot
+}
+
+/// Computes the Lorentz distance between two points on the hyperboloid.
+pub fn lorentz_dist(u: &[f32], v: &[f32]) -> f32 {
+    let inner = -lorentz_product(u, v);
+    // Clamp to 1.0 to avoid NaN in acosh due to floating point inaccuracies
+    let arg = inner.max(1.0);
+    arg.acosh()
+}
+
+/// Computes the parallel transport of a tangent vector `v` from point `x` to point `y`
+/// in the Lorentz model.
+pub fn lorentz_parallel_transport(x: &[f32], y: &[f32], v: &[f32]) -> Result<Vec<f32>, String> {
+    if x.len() != y.len() || x.len() != v.len() {
+        return Err("Dimension mismatch".to_string());
+    }
+    let inner_xy = lorentz_product(x, y);
+    let inner_yv = lorentz_product(y, v);
+    let denom = 1.0 - inner_xy;
+    
+    // Prevent division by zero
+    let factor = if denom.abs() < 1e-7 {
+        0.0
+    } else {
+        inner_yv / denom
+    };
+
+    Ok(v.iter()
+        .zip(x.iter())
+        .zip(y.iter())
+        .map(|((vi, xi), yi)| vi + factor * (xi + yi))
+        .collect())
+}
+
+/// Converts a point from the Lorentz model (Hyperboloid) to the Poincaré Ball model.
+pub fn lorentz_to_poincare(x: &[f32]) -> Vec<f32> {
+    if x.is_empty() {
+        return vec![];
+    }
+    let denom = 1.0 + x[0];
+    if denom.abs() < 1e-7 {
+        return vec![0.0; x.len() - 1]; // Fallback
+    }
+    x.iter().skip(1).map(|xi| xi / denom).collect()
+}
+
+/// Converts a point from the Poincaré Ball model to the Lorentz model (Hyperboloid).
+pub fn poincare_to_lorentz(p: &[f32]) -> Vec<f32> {
+    let p_sq: f32 = p.iter().map(|v| v * v).sum();
+    let denom = 1.0 - p_sq;
+    let denom = if denom.abs() < 1e-7 { 1e-7 } else { denom }; // Prevent division by zero
+
+    let mut x = Vec::with_capacity(p.len() + 1);
+    x.push((1.0 + p_sq) / denom);
+    for pi in p {
+        x.push(2.0 * pi / denom);
+    }
+    x
+}
+
+// ==========================================
 // Cognitive Math SDK (Spatial AI Engine)
 // ==========================================
 
 /// Calculates the spatial entropy (dispersion) of a `candidate` vector relative to its `neighbors`.
 /// Used to track LLM hallucinations (Task 2.3.1).
 /// Returns a value in [0, 1) where values approaching 1 imply high chaos (hallucination).
+///
+/// # Errors
+/// Returns an error if internal hyperbolic mapping (`log_map`) fails due to curvature constraints.
+#[allow(clippy::cast_precision_loss)]
 pub fn local_entropy(candidate: &[f64], neighbors: &[Vec<f64>], c: f64) -> Result<f64, String> {
     if neighbors.is_empty() {
         return Ok(1.0); // Infinite entropy without neighbors
@@ -226,6 +305,10 @@ pub fn local_entropy(candidate: &[f64], neighbors: &[Vec<f64>], c: f64) -> Resul
 /// Evaluates if a trajectory of vectors (e.g. Chain of Thought) converges to an attractor.
 /// Calculates the average energy derivative (Lyapunov function derivative).
 /// Negative values indicate convergence (stable), positive indicate divergence (chaos/hallucination).
+///
+/// # Errors
+/// Returns an error if `trajectory` is too short, or if Fréchet mean or `log_map` calculations fail.
+#[allow(clippy::cast_precision_loss)]
 pub fn lyapunov_convergence(trajectory: &[Vec<f64>], c: f64) -> Result<f64, String> {
     if trajectory.len() < 3 {
         return Err("Need at least 3 points to evaluate convergence trend".to_string());
@@ -245,6 +328,9 @@ pub fn lyapunov_convergence(trajectory: &[Vec<f64>], c: f64) -> Result<f64, Stri
 
 /// Extrapolates the trajectory in linear space (Koopman linearization) by tracking the
 /// shift vector from `past` to `current` and projecting it forward.
+///
+/// # Errors
+/// Returns an error if internal manifold mappings fail due to dimensions or non-positive curvature.
 pub fn koopman_extrapolate(
     past: &[f64],
     current: &[f64],
@@ -263,6 +349,9 @@ pub fn koopman_extrapolate(
 
 /// Resonates a thought vector towards a global context vector (Phase-Locked Loop context synchronization).
 /// Pulls the thought towards the context along the geodesic by `resonance_factor` [0, 1].
+///
+/// # Errors
+/// Returns an error if the manifold mappings (`log_map`, `exp_map`) fail.
 pub fn context_resonance(
     thought: &[f64],
     global_context: &[f64],
@@ -354,5 +443,47 @@ mod tests {
         let current = vec![0.15, 0.25];
         let predicted = koopman_extrapolate(&past, &current, 1.0, 1.0).unwrap();
         assert_eq!(predicted.len(), 2);
+    }
+
+    #[test]
+    fn test_lorentz_product_and_distance() {
+        let u = vec![2.0f32, (3.0f32).sqrt()]; // ||u||^2 = -4 + 3 = -1
+        let v = vec![2.0f32, (3.0f32).sqrt()]; 
+        let dist = lorentz_dist(&u, &v);
+        assert!(dist < 1e-4);
+
+        let w = vec![3.0f32, (8.0f32).sqrt()]; // ||w||^2 = -9 + 8 = -1
+        let product = lorentz_product(&u, &w);
+        let expected = -2.0 * 3.0 + (3.0f32).sqrt() * (8.0f32).sqrt();
+        assert!((product - expected).abs() < 1e-4);
+        assert!(lorentz_dist(&u, &w) > 0.0);
+    }
+
+    #[test]
+    fn test_lorentz_parallel_transport() {
+        let x = vec![1.0f32, 0.0];
+        let y = vec![2.0f32, (3.0f32).sqrt()];
+        let v = vec![0.0f32, 1.0]; // Tangent to x: <v, x>_L = 0
+        let transported = lorentz_parallel_transport(&x, &y, &v).unwrap();
+        assert_eq!(transported.len(), 2);
+        
+        // <transported, y>_L should remain close to 0 as it's a tangent vector
+        let dot_y = lorentz_product(&transported, &y);
+        assert!(dot_y.abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_lorentz_poincare_conversions() {
+        let l = vec![2.0f32, (3.0f32).sqrt()];
+        let p = lorentz_to_poincare(&l);
+        assert_eq!(p.len(), 1);
+        let expected_p = (3.0f32).sqrt() / 3.0;
+        assert!((p[0] - expected_p).abs() < 1e-4);
+
+        let l_back = poincare_to_lorentz(&p);
+        assert_eq!(l_back.len(), 2);
+        for (v_orig, v_back) in l.iter().zip(l_back.iter()) {
+            assert!((v_orig - v_back).abs() < 1e-4);
+        }
     }
 }

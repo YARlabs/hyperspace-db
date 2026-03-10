@@ -323,6 +323,17 @@ function deserialize_hyperspace_RebuildIndexRequest(buffer_arg) {
   return hyperspace_pb.RebuildIndexRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_ReconsolidationRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.ReconsolidationRequest)) {
+    throw new Error('Expected argument of type hyperspace.ReconsolidationRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_ReconsolidationRequest(buffer_arg) {
+  return hyperspace_pb.ReconsolidationRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_ReplicationLog(arg) {
   if (!(arg instanceof hyperspace_pb.ReplicationLog)) {
     throw new Error('Expected argument of type hyperspace.ReplicationLog');
@@ -671,6 +682,17 @@ triggerSnapshot: {
     responseType: hyperspace_pb.StatusResponse,
     requestSerialize: serialize_hyperspace_Empty,
     requestDeserialize: deserialize_hyperspace_Empty,
+    responseSerialize: serialize_hyperspace_StatusResponse,
+    responseDeserialize: deserialize_hyperspace_StatusResponse,
+  },
+  triggerReconsolidation: {
+    path: '/hyperspace.Database/TriggerReconsolidation',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.ReconsolidationRequest,
+    responseType: hyperspace_pb.StatusResponse,
+    requestSerialize: serialize_hyperspace_ReconsolidationRequest,
+    requestDeserialize: deserialize_hyperspace_ReconsolidationRequest,
     responseSerialize: serialize_hyperspace_StatusResponse,
     responseDeserialize: deserialize_hyperspace_StatusResponse,
   },

@@ -20,6 +20,8 @@ service Database {
   rpc Search (SearchRequest) returns (SearchResponse);
   // Batch Search (ANN)
   rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
+  // Multi-Geometry Search (v3.0)
+  rpc SearchMultiCollection (SearchMultiCollectionRequest) returns (SearchMultiCollectionResponse);
   // Graph Traversal API (v2.3)
   rpc GetNode (GetNodeRequest) returns (GraphNode);
   rpc GetNeighbors (GetNeighborsRequest) returns (GetNeighborsResponse);
@@ -32,6 +34,7 @@ service Database {
   // Admin Controls
   rpc TriggerSnapshot (Empty) returns (StatusResponse);
   rpc TriggerVacuum (Empty) returns (StatusResponse);
+  rpc TriggerReconsolidation (ReconsolidationRequest) returns (StatusResponse);
   
   // Dynamic Configuration
   rpc Configure (ConfigUpdate) returns (StatusResponse);
@@ -136,8 +139,14 @@ message ConfigUpdate {
 
 message VacuumFilterQuery {
   string key = 1;
-  string op = 2; // "lt" | "lte" | "gt" | "gte" | "eq" | "ne"
+  string op = 2; // "lt" | "lte" | "gt" | "eq" | "ne"
   double value = 3;
+}
+
+message ReconsolidationRequest {
+  string collection = 1;
+  repeated double target_vector = 2;
+  double learning_rate = 3;
 }
 
 
@@ -207,6 +216,7 @@ message SearchRequest {
   repeated Filter filters = 5;
   optional string hybrid_query = 6;
   optional float hybrid_alpha = 7;
+  bool use_wasserstein = 8;
 }
 
 message Filter {
@@ -239,6 +249,16 @@ message BatchSearchRequest {
 
 message BatchSearchResponse {
   repeated SearchResponse responses = 1;
+}
+
+message SearchMultiCollectionRequest {
+  repeated string collections = 1;
+  repeated double vector = 2;
+  uint32 top_k = 3;
+}
+
+message SearchMultiCollectionResponse {
+  map<string, SearchResponse> responses = 1;
 }
 
 message SearchResult {

@@ -11,6 +11,8 @@ categories = ["database", "api-bindings"]
 [features]
 default = []
 embedders = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait"]
+local-onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "dep:serde", "dep:async-trait"]
+huggingface = ["local-onnx", "dep:hf-hub"]
 
 [dependencies]
 hyperspace-proto = { path = "../hyperspace-proto", version = "3.0.0" }
@@ -22,3 +24,15 @@ reqwest = { version = "0.11", features = ["json", "rustls-tls"], optional = true
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 async-trait = { version = "0.1", optional = true }
+rand = "0.10.0"
+
+# Local ONNX (optional)
+ort = { version = "2.0.0-rc.0", features = ["download-binaries", "load-dynamic"], optional = true }
+tokenizers = { version = "0.15", features = ["onig"], optional = true }
+ndarray = { version = "0.17", optional = true }
+
+# HuggingFace Hub (optional)
+hf-hub = { version = "0.3", optional = true }
+
+[dev-dependencies]
+proptest.workspace = true

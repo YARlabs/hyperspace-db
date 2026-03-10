@@ -584,6 +584,7 @@ struct SearchReq {
     top_k: Option<usize>,
     filter: Option<HashMap<String, String>>,
     filters: Option<Vec<HttpFilter>>,
+    use_wasserstein: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -594,6 +595,11 @@ struct HttpFilter {
     value: Option<String>,
     gte: Option<f64>,
     lte: Option<f64>,
+    axes: Option<Vec<f64>>,
+    apertures: Option<Vec<f64>>,
+    cen: Option<f64>,
+    min_bounds: Option<Vec<f64>>,
+    max_bounds: Option<Vec<f64>>,
 }
 
 #[derive(serde::Serialize)]
@@ -642,6 +648,23 @@ fn convert_filters(raw: &[HttpFilter]) -> Vec<hyperspace_core::FilterExpr> {
                     gte: f.gte,
                     lte: f.lte,
                 });
+            }
+            "in_cone" => {
+                if let (Some(axes), Some(apertures), Some(cen)) = (&f.axes, &f.apertures, f.cen) {
+                    filters.push(hyperspace_core::FilterExpr::InCone {
+                        axes: axes.clone(),
+                        apertures: apertures.clone(),
+                        cen,
+                    });
+                }
+            }
+            "in_box" => {
+                if let (Some(min), Some(max)) = (&f.min_bounds, &f.max_bounds) {
+                    filters.push(hyperspace_core::FilterExpr::InBox {
+                        min_bounds: min.clone(),
+                        max_bounds: max.clone(),
+                    });
+                }
             }
             _ => {}
         }
@@ -715,6 +738,10 @@ fn graph_match_filters(
                     }
                 }
             }
+            hyperspace_core::FilterExpr::InCone { .. }
+            | hyperspace_core::FilterExpr::InBox { .. } => {
+                // Geometric filters are skipped in purely metadata-based graph traversal matching
+            }
         }
     }
     true
@@ -752,6 +779,7 @@ async fn search_collection(
             ef_search: default_ef_search(),
             hybrid_query: None,
             hybrid_alpha: None,
+            use_wasserstein: payload.use_wasserstein.unwrap_or(false),
         };
         match col
             .search(

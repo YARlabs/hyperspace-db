@@ -11,8 +11,12 @@
 #![allow(clippy::needless_range_loop)]
 
 pub mod config;
+pub mod fuzzy;
 pub mod gpu;
+pub mod optim;
+pub mod region;
 pub mod vector;
+pub mod wasserstein;
 
 pub use config::GlobalConfig;
 use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
@@ -57,6 +61,15 @@ pub enum FilterExpr {
         gte: Option<f64>,
         lte: Option<f64>,
     },
+    InCone {
+        axes: Vec<f64>,
+        apertures: Vec<f64>,
+        cen: f64, // tolerance factor
+    },
+    InBox {
+        min_bounds: Vec<f64>,
+        max_bounds: Vec<f64>,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -65,6 +78,7 @@ pub struct SearchParams {
     pub ef_search: usize,
     pub hybrid_query: Option<String>,
     pub hybrid_alpha: Option<f32>,
+    pub use_wasserstein: bool,
 }
 
 pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>);

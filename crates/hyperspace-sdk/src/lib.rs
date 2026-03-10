@@ -11,6 +11,8 @@ use tonic::service::Interceptor;
 use tonic::transport::Channel;
 use tonic::{Request, Status};
 
+pub mod fuzzy;
+pub mod gromov;
 pub mod math;
 
 #[cfg(feature = "embedders")]
@@ -182,6 +184,25 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
+    /// Triggers background memory reconsolidation (AI Sleep Mode / Flow Matching SGD).
+    ///
+    /// # Errors
+    /// Returns error if the operation fails.
+    pub async fn trigger_reconsolidation(
+        &mut self,
+        collection: String,
+        target_vector: Vec<f64>,
+        learning_rate: f64,
+    ) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::ReconsolidationRequest {
+            collection,
+            target_vector,
+            learning_rate,
+        };
+        let resp = self.inner.trigger_reconsolidation(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
     /// Inserts a vector into the collection.
     ///
     /// # Errors
@@ -286,6 +307,7 @@ impl Client {
             filters: vec![],
             hybrid_query: None,
             hybrid_alpha: None,
+            use_wasserstein: false,
             collection: collection.unwrap_or_default(),
         };
         let resp = self.inner.search(req).await?;
@@ -304,6 +326,30 @@ impl Client {
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         self.search(Self::vec_f32_to_f64(vector), top_k, collection)
             .await
+    }
+
+    /// Performs search utilizing the Wasserstein distance (Cross-Feature Matching Metric).
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_wasserstein(
+        &mut self,
+        vector: Vec<f64>,
+        top_k: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
+        let req = SearchRequest {
+            vector,
+            top_k,
+            filter: std::collections::HashMap::default(),
+            filters: vec![],
+            hybrid_query: None,
+            hybrid_alpha: None,
+            use_wasserstein: true,
+            collection: collection.unwrap_or_default(),
+        };
+        let resp = self.inner.search(req).await?;
+        Ok(resp.into_inner().results)
     }
 
     /// Batch search for multiple vectors in a single RPC.
@@ -326,6 +372,7 @@ impl Client {
                 filters: vec![],
                 hybrid_query: None,
                 hybrid_alpha: None,
+                use_wasserstein: false,
                 collection: collection_name.clone(),
             })
             .collect();
@@ -357,6 +404,46 @@ impl Client {
         self.search_batch(vectors_f64, top_k, collection).await
     }
 
+    /// Multi-Geometry Benchmark Endpoint (10.3)
+    /// Performs identical searches across multiple collections in parallel (via Batch Search).
+    /// Typically used by the Frontend to compare L2, Cosine, Poincare and Lorentz results directly.
+    ///
+    /// # Errors
+    /// Returns error if the batch search RPC fails.
+    pub async fn search_multi_collection(
+        &mut self,
+        vector: Vec<f64>,
+        collections: Vec<String>,
+        top_k: u32,
+    ) -> Result<std::collections::HashMap<String, Vec<SearchResult>>, tonic::Status> {
+        let searches = collections
+            .iter()
+            .map(|col_name| SearchRequest {
+                vector: vector.clone(),
+                top_k,
+                filter: std::collections::HashMap::default(),
+                filters: vec![],
+                hybrid_query: None,
+                hybrid_alpha: None,
+                use_wasserstein: false,
+                collection: col_name.clone(),
+            })
+            .collect();
+
+        let req = BatchSearchRequest { searches };
+        let resp = self.inner.search_batch(req).await?;
+
+        let mut result_map = std::collections::HashMap::new();
+        for (col_name, response) in collections
+            .into_iter()
+            .zip(resp.into_inner().responses.into_iter())
+        {
+            result_map.insert(col_name, response.results);
+        }
+
+        Ok(result_map)
+    }
+
     /// Advanced search with filters and hybrid query.
     ///
     /// # Errors
@@ -381,6 +468,7 @@ impl Client {
             filters,
             hybrid_query,
             hybrid_alpha,
+            use_wasserstein: false,
             collection: collection.unwrap_or_default(),
         };
         let resp = self.inner.search(req).await?;
@@ -618,5 +706,55 @@ impl Client {
     ) -> Result<hyperspace_proto::hyperspace::SyncPushResponse, tonic::Status> {
         let resp = self.inner.sync_push(stream).await?;
         Ok(resp.into_inner())
+    }
+
+    /// Evaluates a fuzzy logic search query locally by issuing batch search RPCs
+    /// and scoring candidates with TNorms/TConorms.
+    ///
+    /// # Errors
+    /// Returns error if the batch search fails.
+    pub async fn search_fuzzy(
+        &mut self,
+        query: &fuzzy::FuzzyQuery,
+        top_k: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<(u32, f32)>, tonic::Status> {
+        let mut vectors = Vec::new();
+        query.extract_vectors(&mut vectors);
+
+        if vectors.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Search with an oversample factor to try to collect all relevant overlapping candidates
+        let batch_results = self.search_batch(vectors, top_k * 5, collection).await?;
+
+        // Extract distances into a structured map: NodeId -> HashMap<QueryIdx, Distance>
+        let mut node_dists: std::collections::HashMap<u32, std::collections::HashMap<usize, f32>> =
+            std::collections::HashMap::new();
+        #[allow(clippy::cast_possible_truncation)]
+        for (q_idx, results) in batch_results.iter().enumerate() {
+            for res in results {
+                node_dists
+                    .entry(res.id)
+                    .or_default()
+                    .insert(q_idx, res.distance as f32);
+            }
+        }
+
+        let mut scored_nodes = Vec::with_capacity(node_dists.len());
+
+        for (id, dists) in node_dists {
+            let mut eval_idx: usize = 0;
+            // Unretrieved elements are assumed infinitely far (producing minimum membership)
+            let score = query.evaluate_indexed(&mut eval_idx, &|idx| {
+                *dists.get(&idx).unwrap_or(&(1000.0)) // very large distance fallback
+            });
+            scored_nodes.push((id, score));
+        }
+
+        scored_nodes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored_nodes.truncate(usize::try_from(top_k).unwrap_or(usize::MAX));
+        Ok(scored_nodes)
     }
 }

@@ -13,7 +13,7 @@ This crate provides:
 
 ```toml
 [dependencies]
-hyperspace-sdk = "2.2.1"
+hyperspace-sdk = "3.0.0-alpha.2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -86,11 +86,11 @@ The crate converts to protocol `f64` once per call.
 - `create_collection`, `delete_collection`, `list_collections`
 - `insert`, `insert_f32`
 - `search`, `search_f32`, `search_advanced`
-- `search_batch`, `search_batch_f32`
+- `search_batch`, `search_batch_f32`, `search_wasserstein`, `search_multi_collection`
 - `delete`
 - `configure`
 - `get_collection_stats`, `get_digest`
-- `trigger_vacuum`, `rebuild_index`, `rebuild_index_with_filter`
+- `trigger_vacuum`, `trigger_reconsolidation`, `rebuild_index`, `rebuild_index_with_filter`
 - `get_neighbors_with_weights` (graph edges with distances)
 - `subscribe_to_events` (CDC stream)
 
@@ -114,6 +114,21 @@ use hyperspace_sdk::math::{
 };
 ```
 
+### Graph Diagnostics (Gromov Delta)
+Analyze your dataset structure directly on the client to select the correct metric:
+```rust
+use hyperspace_sdk::gromov::analyze_delta_hyperbolicity;
+
+// Returns the delta value and recommended metric (lorentz, poincare, cosine, l2)
+let (delta, metric) = analyze_delta_hyperbolicity(&vectors, 100);
+```
+
+### AI Sleep Mode / Memory Reconsolidation
+Trigger the database to run Riemannian SGD via Flow Matching natively:
+```rust
+client.trigger_reconsolidation("my_collection".to_string(), target_vector, 0.01).await?;
+```
+
 ### Cognitive Math SDK (Spatial AI Engine)
 Provides advanced tools for Agentic AI, running entirely on the client side:
 ```rust
@@ -134,12 +149,128 @@ let next_thought = koopman_extrapolate(&past, &current, 1.0, curvature)?;
 let synced_thought = context_resonance(&thought, &global_context, 0.5, curvature)?;
 ```
 
-## Optional Feature: Embedders
+## Embedding Pipeline (Optional)
 
-Enable with:
+HyperspaceDB supports **per-geometry embeddings** — each of the 4 distance types (`l2`, `cosine`, `poincare`, `lorentz`) can have its own embedding backend configured independently.
+
+### Available Backends
+
+| Backend | Feature Flag | Description |
+|---|---|---|
+| Local ONNX | `local-onnx` | Load `model.onnx` + `tokenizer.json` from disk |
+| HuggingFace Hub | `huggingface` | Auto-download `model.onnx` + `tokenizer.json` from Hub |
+| OpenAI / OpenRouter | `embedders` | Cloud API with OpenAI-compatible protocol |
+| Cohere | `embedders` | Cohere `/v1/embed` endpoint |
+| Voyage AI | `embedders` | Voyage `/v1/embeddings` endpoint |
+| Google Gemini | `embedders` | Gemini `embedContent` endpoint |
+
+### Usage
 
 ```toml
-hyperspace-sdk = { version = "2.2.1", features = ["embedders"] }
+# Cargo.toml
+[dependencies]
+# API providers only
+hyperspace-sdk = { version = "3.0.0", features = ["embedders"] }
+
+# Local ONNX files (no network required at inference time)
+hyperspace-sdk = { version = "3.0.0", features = ["local-onnx"] }
+
+# Download from HuggingFace Hub (includes local-onnx)
+hyperspace-sdk = { version = "3.0.0", features = ["huggingface"] }
+```
+
+### EmbedGeometry
+
+Every embedder requires specifying the target geometry, which controls post-processing:
+
+```rust
+use hyperspace_sdk::embedder::EmbedGeometry;
+
+// Cosine / dot-product: vectors are unit-normalized
+let geom = EmbedGeometry::Cosine;
+
+// L2 / Euclidean: vectors are unit-normalized
+let geom = EmbedGeometry::L2;
+
+// Poincaré ball: vectors are clamped inside the unit ball (||x|| < 1)
+let geom = EmbedGeometry::Poincare;
+
+// Lorentz hyperboloid: no post-processing (model head handles constraint)
+let geom = EmbedGeometry::Lorentz;
+
+// Parse from collection metric string
+let geom = EmbedGeometry::from_str("poincare");
+```
+
+### Local ONNX Embedder
+
+```rust
+use hyperspace_sdk::embedder::{LocalOnnxEmbedder, EmbedGeometry, Embedder};
+
+let embedder = LocalOnnxEmbedder::new(
+    "./models/bge-small-en-v1.5.onnx",
+    "./models/bge-small-en-v1.5-tokenizer.json",
+    EmbedGeometry::Cosine,
+)?;
+
+let vector = embedder.encode("Hello, hyperbolic world!").await?;
+```
+
+### HuggingFace Hub Embedder
+
+Downloads `model.onnx` and `tokenizer.json` automatically from the Hub on first use. Files are cached locally (`~/.cache/huggingface/hub`).
+
+```rust
+use hyperspace_sdk::embedder::{HuggingFaceEmbedder, EmbedGeometry, Embedder};
+
+// Public model — no token needed
+let embedder = HuggingFaceEmbedder::new(
+    "BAAI/bge-small-en-v1.5",
+    None, // HF token (None for public models)
+    EmbedGeometry::Cosine,
+)?;
+
+// Private or gated model — provide HF_TOKEN
+let embedder = HuggingFaceEmbedder::new(
+    "your-org/cde-spatial-lorentz-128d",
+    std::env::var("HF_TOKEN").ok(),
+    EmbedGeometry::Lorentz,
+)?;
+
+let vector = embedder.encode("Retrieve context").await?;
+```
+
+### OpenAI / Remote API Embedder
+
+```rust
+use hyperspace_sdk::embedder::{OpenAIEmbedder, Embedder};
+
+let embedder = OpenAIEmbedder::new(
+    std::env::var("OPENAI_API_KEY").unwrap(),
+    "text-embedding-3-small".to_string(),
+);
+
+let vector = embedder.encode("my document text").await?;
+```
+
+### Server-Side Embedding (`InsertText` / `SearchText`)
+
+The server can embed text automatically. Configure in `.env` (see server docs):
+
+```env
+HYPERSPACE_EMBED=true
+
+# Cosine geometry via HuggingFace
+HS_EMBED_COSINE_PROVIDER=huggingface
+HS_EMBED_COSINE_HF_MODEL_ID=BAAI/bge-small-en-v1.5
+HS_EMBED_COSINE_DIM=384
+HF_TOKEN=hf_your_token_here  # Optional: for gated models
+
+# Lorentz geometry via local ONNX
+HS_EMBED_LORENTZ_PROVIDER=local
+HS_EMBED_LORENTZ_MODEL_PATH=./models/lorentz_128d.onnx
+HS_EMBED_LORENTZ_TOKENIZER_PATH=./models/lorentz_128d_tokenizer.json
+HS_EMBED_LORENTZ_DIM=129
 ```
 
 ## Production Notes
@@ -147,4 +278,5 @@ hyperspace-sdk = { version = "2.2.1", features = ["embedders"] }
 - Reuse long-lived clients instead of reconnecting per request.
 - Prefer `search_batch` on concurrency-heavy paths.
 - Keep collection metric/dimension consistent with your vector source.
-
+- For `huggingface` provider, models are cached; first startup incurs download time.
+- For `lorentz` geometry, dimension is typically spatial_dim + 1 (the time component).

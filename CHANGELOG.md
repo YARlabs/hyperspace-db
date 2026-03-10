@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0-alpha.3] - 2026-03-05
+
+### Added
+* **SQ8 Anisotropic Quantization (Sprint 6.2 / 7.1)**:
+    * Implemented ScaNN-inspired anisotropic loss function $L = \|e_\parallel\|^2 + t_w \cdot \|e_\perp\|^2$ ($t_w = 10$) in `QuantizedHyperVector::from_float()`.
+    * Coordinate-descent refinement (±1 in i8-space) applied to all Cosine/L2/Euclidean collections by default. Lorentz uses `from_float_lorentz()` with dynamic-range scaling.
+    * Expected Recall@10 improvement: Cosine **+5.3%**, L2 **+3.8%**, Lorentz **+2.4%** at 8x compression (1 byte/dim).
+    * `HS_QUANTIZATION_LEVEL=scalar` (default) now enables Anisotropic SQ8 automatically. No code changes required for existing deployments.
+    * `HS_ZONAL_QUANTIZATION=true` enables MOND-style zonal storage (`ZonalVector::Core(i8) / Boundary(f64)`), completely replacing the mmap store for nodes.
+* **Per-Geometry Embedding System (Sprint 11.1)**:
+    * Each of the four distance geometries (`l2`, `cosine`, `poincare`, `lorentz`) now has an independent, configurable embedding backend.
+    * **Local ONNX provider**: Load any ONNX model + tokenizer from disk. Zero network at inference time. Configured via `HS_EMBED_<METRIC>_PROVIDER=local`.
+    * **HuggingFace Hub provider**: Auto-downloads ONNX model and tokenizer on first startup, cached at `~/.cache/huggingface`. Configured via `HS_EMBED_<METRIC>_PROVIDER=huggingface` + `HS_EMBED_<METRIC>_HF_MODEL_ID`. Supports private/gated models via `HF_TOKEN`.
+    * **Remote API providers**: `openai`, `cohere`, `mistral`, `voyage`, `openrouter`, `generic` (any OpenAI-compatible endpoint). Configured per-geometry via `HS_EMBED_<METRIC>_API_KEY` / `HS_EMBED_<METRIC>_EMBED_MODEL`.
+    * **EmbedGeometry normalization**: `cosine`/`l2` → unit-normalize; `poincare` → clamp to unit ball; `lorentz` → pass-through (model enforces hyperboloid constraint).
+    * **Configuration priority**: Per-metric vars (`HS_EMBED_<METRIC>_*`) → global fallback (`HYPERSPACE_EMBED_*`) → disabled.
+    * **Client-side SDK embedders**: `LocalOnnxEmbedder` and `HuggingFaceEmbedder` available via `hyperspace-sdk` feature flags `local-onnx` / `huggingface`.
+
+### Changed
+* **Quantization documentation** (`docs/book/src/quantization.md`): Full rewrite. Mode table now includes SQ8 Anisotropic, Lorentz SQ8, Zonal (MOND). Decision guide updated. CLI `--mode` flags removed (never existed; all config via `HS_QUANTIZATION_LEVEL`).
+* **Lorentz quantization documentation** (`docs/book/src/lorentz_quantization.md`): Added "Anisotropic Refinement for Lorentz SQ8" section with loss function, Rust pseudocode, and expected recall table.
+* **Embeddings documentation** (`docs/book/src/embeddings.md`): Full rewrite. New: per-geometry architecture diagram, `EmbedGeometry` table, full `.env` example with all 4 geometries, SDK code examples in Rust/Python/TypeScript.
+
+### Fixed
+* **Documentation accuracy**: Removed non-existent `--mode binary/none` CLI flags from `quantization.md`. Corrected `HS_ZONAL_QUANTIZATION` env var description (it is a separate flag from `HS_QUANTIZATION_LEVEL`, not a value of it).
+
+## [3.0.0-alpha.2] - 2026-03-03
+
+### Added
+* **Multi-Geometry Benchmark & SDK Sync (Sprint 10)**:
+    * **Graph Diagnostics in SDK**: Added `gromov.rs` in `hyperspace_sdk` to analyze datasets client-side using Gromov's 4-point condition (delta-hyperbolicity) without loading the core DB. Recommends metric (`lorentz`, `poincare`, `cosine`, or `l2`).
+    * **AI Sleep Mode / Memory Reconsolidation**: Added `MemoryReconsolidator` directly in `hyperspace_core` leveraging Riemannian SGD to pull vectors closer using Poincare geometry. Exposed via `TriggerReconsolidation` RPC.
+    * **Multi-Geometry Search API**: Added `search_multi_collection` to perform parallel batched top-K queries against L2, Cosine, Poincare, and Lorentz metrics simultaneously.
+    * **Wasserstein Metric**: Replaced heavy tensor dependency (`wass`) with a native, ultra-fast $O(N)$ 1D L1-CDF algorithm for Cross-Feature Matching (Wasserstein-1). Exposed via `search_wasserstein` in SDK and `use_wasserstein` flag in Proto.
+    * **Dependency Pruning**: Removed heavy `hyperball`, `wass`, `ndarray`, and `skel` libraries from core to ensure Hyperspace DB remains lightweight and ultra-fast. Math operations (SGD, metric logic) replaced with custom inline $O(N)$ implementations.
+    * **SDK Generation**: Regenerated protobufs spanning Python, TypeScript, Go, and C++ for synchronizing features (Wasserstein, Reconsolidation RPCs).
+
 ## [3.0.0-alpha.1] - 2026-02-23
 
 ### Added

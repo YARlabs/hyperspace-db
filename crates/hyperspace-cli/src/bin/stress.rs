@@ -124,6 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             filters: Vec::new(),
             hybrid_query: None,
             hybrid_alpha: None,
+            use_wasserstein: false,
             collection: COLLECTION_NAME.to_string(),
         };
         client.search(req).await?;

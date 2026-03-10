@@ -403,6 +403,34 @@ export namespace VacuumFilterQuery {
     }
 }
 
+export class ReconsolidationRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): ReconsolidationRequest;
+    clearTargetVectorList(): void;
+    getTargetVectorList(): Array<number>;
+    setTargetVectorList(value: Array<number>): ReconsolidationRequest;
+    addTargetVector(value: number, index?: number): number;
+    getLearningRate(): number;
+    setLearningRate(value: number): ReconsolidationRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ReconsolidationRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: ReconsolidationRequest): ReconsolidationRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ReconsolidationRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ReconsolidationRequest;
+    static deserializeBinaryFromReader(message: ReconsolidationRequest, reader: jspb.BinaryReader): ReconsolidationRequest;
+}
+
+export namespace ReconsolidationRequest {
+    export type AsObject = {
+        collection: string,
+        targetVectorList: Array<number>,
+        learningRate: number,
+    }
+}
+
 export class InsertRequest extends jspb.Message { 
     getCollection(): string;
     setCollection(value: string): InsertRequest;
@@ -642,6 +670,8 @@ export class SearchRequest extends jspb.Message {
     clearHybridAlpha(): void;
     getHybridAlpha(): number | undefined;
     setHybridAlpha(value: number): SearchRequest;
+    getUseWasserstein(): boolean;
+    setUseWasserstein(value: boolean): SearchRequest;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
@@ -663,6 +693,7 @@ export namespace SearchRequest {
         filtersList: Array<Filter.AsObject>,
         hybridQuery?: string,
         hybridAlpha?: number,
+        useWasserstein: boolean,
     }
 }
 

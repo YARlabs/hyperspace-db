@@ -104,7 +104,7 @@ fn test_wal_rotation_crash_recovery() {
         // Write some entries (simulate reaching limits)
         for i in 0..5 {
             let vec = vec![0.1f64; 10];
-            wal.append(i, &vec, &HashMap::new(), i as u64).unwrap();
+            wal.append(i, &vec, &HashMap::new(), u64::from(i)).unwrap();
         }
 
         // Rotate WAL
@@ -113,7 +113,7 @@ fn test_wal_rotation_crash_recovery() {
         // Write more entries to new WAL
         for i in 5..10 {
             let vec = vec![0.2f64; 10];
-            wal.append(i, &vec, &HashMap::new(), i as u64).unwrap();
+            wal.append(i, &vec, &HashMap::new(), u64::from(i)).unwrap();
         }
     }
 

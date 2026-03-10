@@ -570,6 +570,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     return;
                 }
 
+                // Task 7.2: DiskANN (Vamana)
+                // Optimize HNSW graph into a SNG for minimal NVMe page faults before saving
+                local_index.optimize_as_sng(1.2);
+
                 if let Err(e) = local_index.save_snapshot(&chunk_dir.join("index.snap")) {
                     eprintln!("Failed to save index for {chunk_name}: {e}");
                 } else {
@@ -973,6 +977,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .max(1);
         let hybrid_query = params.hybrid_query.clone();
         let hybrid_alpha = params.hybrid_alpha;
+        let use_wasserstein = params.use_wasserstein;
         let filters_owned = (!filters.is_empty()).then(|| filters.clone());
         let complex_filters_owned = (!complex_filters.is_empty()).then(|| complex_filters.to_vec());
         let meta_router_ref = self.meta_router.clone();
@@ -1008,6 +1013,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 complex_filters_ref,
                 hybrid_query.as_deref(),
                 hybrid_alpha,
+                use_wasserstein,
             );
 
             // === 2. Search cold chunks via MetaRouter (disk mmap) ===
@@ -1033,6 +1039,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     complex_filters_ref,
                     mode_for_search,
                     &config_for_search,
+                    use_wasserstein,
                 )
             };
 

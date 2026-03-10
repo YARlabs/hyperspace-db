@@ -364,6 +364,35 @@ struct ReplicationRequestDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ReplicationRequestDefaultTypeInternal _ReplicationRequest_default_instance_;
 
+inline constexpr ReconsolidationRequest::Impl_::Impl_(
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        target_vector_{},
+        collection_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        learning_rate_{0} {}
+
+template <typename>
+PROTOBUF_CONSTEXPR ReconsolidationRequest::ReconsolidationRequest(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(ReconsolidationRequest_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(::_pbi::ConstantInitialized()) {
+}
+struct ReconsolidationRequestDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR ReconsolidationRequestDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~ReconsolidationRequestDefaultTypeInternal() {}
+  union {
+    ReconsolidationRequest _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ReconsolidationRequestDefaultTypeInternal _ReconsolidationRequest_default_instance_;
+
 inline constexpr Range::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
@@ -1576,6 +1605,7 @@ inline constexpr SearchRequest::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         top_k_{0u},
         hybrid_alpha_{0},
+        use_wasserstein_{false},
         filter_{} {}
 
 template <typename>
@@ -2071,6 +2101,15 @@ const ::uint32_t
         1,
         2,
         0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::ReconsolidationRequest, _impl_._has_bits_),
+        6, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::ReconsolidationRequest, _impl_.collection_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::ReconsolidationRequest, _impl_.target_vector_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::ReconsolidationRequest, _impl_.learning_rate_),
+        1,
+        0,
+        2,
+        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest_MetadataEntry_DoNotUse, _impl_._has_bits_),
         5, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest_MetadataEntry_DoNotUse, _impl_.key_),
@@ -2187,7 +2226,7 @@ const ::uint32_t
         1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_._has_bits_),
-        10, // hasbit index offset
+        11, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.collection_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.vector_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.top_k_),
@@ -2195,13 +2234,15 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.filters_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.hybrid_query_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.hybrid_alpha_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.use_wasserstein_),
         2,
         0,
         4,
-        6,
+        7,
         1,
         3,
         5,
+        6,
         0x004, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::Filter, _impl_._oneof_case_[0]),
         PROTOBUF_FIELD_OFFSET(::hyperspace::Filter, _impl_.condition_),
@@ -2578,63 +2619,64 @@ static const ::_pbi::MigrationSchema
         {102, sizeof(::hyperspace::RebuildIndexRequest)},
         {109, sizeof(::hyperspace::ConfigUpdate)},
         {118, sizeof(::hyperspace::VacuumFilterQuery)},
-        {127, sizeof(::hyperspace::InsertRequest_MetadataEntry_DoNotUse)},
-        {134, sizeof(::hyperspace::InsertRequest_TypedMetadataEntry_DoNotUse)},
-        {141, sizeof(::hyperspace::InsertRequest)},
-        {160, sizeof(::hyperspace::VectorData_MetadataEntry_DoNotUse)},
-        {167, sizeof(::hyperspace::VectorData_TypedMetadataEntry_DoNotUse)},
-        {174, sizeof(::hyperspace::VectorData)},
-        {185, sizeof(::hyperspace::BatchInsertRequest)},
-        {198, sizeof(::hyperspace::InsertTextRequest_MetadataEntry_DoNotUse)},
-        {205, sizeof(::hyperspace::InsertTextRequest)},
-        {218, sizeof(::hyperspace::InsertResponse)},
-        {223, sizeof(::hyperspace::DeleteRequest)},
-        {230, sizeof(::hyperspace::DeleteResponse)},
-        {235, sizeof(::hyperspace::SearchRequest_FilterEntry_DoNotUse)},
-        {242, sizeof(::hyperspace::SearchRequest)},
-        {259, sizeof(::hyperspace::Filter)},
-        {264, sizeof(::hyperspace::Match)},
-        {271, sizeof(::hyperspace::Range)},
-        {284, sizeof(::hyperspace::SearchResponse)},
-        {289, sizeof(::hyperspace::BatchSearchRequest)},
-        {294, sizeof(::hyperspace::BatchSearchResponse)},
-        {299, sizeof(::hyperspace::SearchResult_MetadataEntry_DoNotUse)},
-        {306, sizeof(::hyperspace::SearchResult_TypedMetadataEntry_DoNotUse)},
-        {313, sizeof(::hyperspace::SearchResult)},
-        {324, sizeof(::hyperspace::GetNodeRequest)},
-        {333, sizeof(::hyperspace::GraphNode_MetadataEntry_DoNotUse)},
-        {340, sizeof(::hyperspace::GraphNode_TypedMetadataEntry_DoNotUse)},
-        {347, sizeof(::hyperspace::GraphNode)},
-        {360, sizeof(::hyperspace::GetNeighborsRequest)},
-        {373, sizeof(::hyperspace::GetNeighborsResponse)},
-        {380, sizeof(::hyperspace::TraverseRequest_FilterEntry_DoNotUse)},
-        {387, sizeof(::hyperspace::TraverseRequest)},
-        {404, sizeof(::hyperspace::TraverseResponse)},
-        {409, sizeof(::hyperspace::FindSemanticClustersRequest)},
-        {422, sizeof(::hyperspace::GetConceptParentsRequest)},
-        {433, sizeof(::hyperspace::GetConceptParentsResponse)},
-        {438, sizeof(::hyperspace::GraphCluster)},
-        {443, sizeof(::hyperspace::FindSemanticClustersResponse)},
-        {448, sizeof(::hyperspace::MetadataValue)},
-        {455, sizeof(::hyperspace::EventSubscriptionRequest)},
-        {462, sizeof(::hyperspace::VectorInsertedEvent_MetadataEntry_DoNotUse)},
-        {469, sizeof(::hyperspace::VectorInsertedEvent_TypedMetadataEntry_DoNotUse)},
-        {476, sizeof(::hyperspace::VectorInsertedEvent)},
-        {491, sizeof(::hyperspace::VectorDeletedEvent)},
-        {502, sizeof(::hyperspace::EventMessage)},
-        {513, sizeof(::hyperspace::Empty)},
-        {514, sizeof(::hyperspace::StatusResponse)},
-        {519, sizeof(::hyperspace::MonitorRequest)},
-        {520, sizeof(::hyperspace::SystemStats)},
-        {531, sizeof(::hyperspace::DigestRequest)},
-        {536, sizeof(::hyperspace::DigestResponse)},
-        {547, sizeof(::hyperspace::SyncHandshakeRequest)},
-        {558, sizeof(::hyperspace::DiffBucket)},
-        {567, sizeof(::hyperspace::SyncHandshakeResponse)},
-        {578, sizeof(::hyperspace::SyncPullRequest)},
-        {585, sizeof(::hyperspace::SyncVectorData_MetadataEntry_DoNotUse)},
-        {592, sizeof(::hyperspace::SyncVectorData)},
-        {605, sizeof(::hyperspace::SyncPushResponse)},
+        {127, sizeof(::hyperspace::ReconsolidationRequest)},
+        {136, sizeof(::hyperspace::InsertRequest_MetadataEntry_DoNotUse)},
+        {143, sizeof(::hyperspace::InsertRequest_TypedMetadataEntry_DoNotUse)},
+        {150, sizeof(::hyperspace::InsertRequest)},
+        {169, sizeof(::hyperspace::VectorData_MetadataEntry_DoNotUse)},
+        {176, sizeof(::hyperspace::VectorData_TypedMetadataEntry_DoNotUse)},
+        {183, sizeof(::hyperspace::VectorData)},
+        {194, sizeof(::hyperspace::BatchInsertRequest)},
+        {207, sizeof(::hyperspace::InsertTextRequest_MetadataEntry_DoNotUse)},
+        {214, sizeof(::hyperspace::InsertTextRequest)},
+        {227, sizeof(::hyperspace::InsertResponse)},
+        {232, sizeof(::hyperspace::DeleteRequest)},
+        {239, sizeof(::hyperspace::DeleteResponse)},
+        {244, sizeof(::hyperspace::SearchRequest_FilterEntry_DoNotUse)},
+        {251, sizeof(::hyperspace::SearchRequest)},
+        {270, sizeof(::hyperspace::Filter)},
+        {275, sizeof(::hyperspace::Match)},
+        {282, sizeof(::hyperspace::Range)},
+        {295, sizeof(::hyperspace::SearchResponse)},
+        {300, sizeof(::hyperspace::BatchSearchRequest)},
+        {305, sizeof(::hyperspace::BatchSearchResponse)},
+        {310, sizeof(::hyperspace::SearchResult_MetadataEntry_DoNotUse)},
+        {317, sizeof(::hyperspace::SearchResult_TypedMetadataEntry_DoNotUse)},
+        {324, sizeof(::hyperspace::SearchResult)},
+        {335, sizeof(::hyperspace::GetNodeRequest)},
+        {344, sizeof(::hyperspace::GraphNode_MetadataEntry_DoNotUse)},
+        {351, sizeof(::hyperspace::GraphNode_TypedMetadataEntry_DoNotUse)},
+        {358, sizeof(::hyperspace::GraphNode)},
+        {371, sizeof(::hyperspace::GetNeighborsRequest)},
+        {384, sizeof(::hyperspace::GetNeighborsResponse)},
+        {391, sizeof(::hyperspace::TraverseRequest_FilterEntry_DoNotUse)},
+        {398, sizeof(::hyperspace::TraverseRequest)},
+        {415, sizeof(::hyperspace::TraverseResponse)},
+        {420, sizeof(::hyperspace::FindSemanticClustersRequest)},
+        {433, sizeof(::hyperspace::GetConceptParentsRequest)},
+        {444, sizeof(::hyperspace::GetConceptParentsResponse)},
+        {449, sizeof(::hyperspace::GraphCluster)},
+        {454, sizeof(::hyperspace::FindSemanticClustersResponse)},
+        {459, sizeof(::hyperspace::MetadataValue)},
+        {466, sizeof(::hyperspace::EventSubscriptionRequest)},
+        {473, sizeof(::hyperspace::VectorInsertedEvent_MetadataEntry_DoNotUse)},
+        {480, sizeof(::hyperspace::VectorInsertedEvent_TypedMetadataEntry_DoNotUse)},
+        {487, sizeof(::hyperspace::VectorInsertedEvent)},
+        {502, sizeof(::hyperspace::VectorDeletedEvent)},
+        {513, sizeof(::hyperspace::EventMessage)},
+        {524, sizeof(::hyperspace::Empty)},
+        {525, sizeof(::hyperspace::StatusResponse)},
+        {530, sizeof(::hyperspace::MonitorRequest)},
+        {531, sizeof(::hyperspace::SystemStats)},
+        {542, sizeof(::hyperspace::DigestRequest)},
+        {547, sizeof(::hyperspace::DigestResponse)},
+        {558, sizeof(::hyperspace::SyncHandshakeRequest)},
+        {569, sizeof(::hyperspace::DiffBucket)},
+        {578, sizeof(::hyperspace::SyncHandshakeResponse)},
+        {589, sizeof(::hyperspace::SyncPullRequest)},
+        {596, sizeof(::hyperspace::SyncVectorData_MetadataEntry_DoNotUse)},
+        {603, sizeof(::hyperspace::SyncVectorData)},
+        {616, sizeof(::hyperspace::SyncPushResponse)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_ReplicationRequest_default_instance_._instance,
@@ -2654,6 +2696,7 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_RebuildIndexRequest_default_instance_._instance,
     &::hyperspace::_ConfigUpdate_default_instance_._instance,
     &::hyperspace::_VacuumFilterQuery_default_instance_._instance,
+    &::hyperspace::_ReconsolidationRequest_default_instance_._instance,
     &::hyperspace::_InsertRequest_MetadataEntry_DoNotUse_default_instance_._instance,
     &::hyperspace::_InsertRequest_TypedMetadataEntry_DoNotUse_default_instance_._instance,
     &::hyperspace::_InsertRequest_default_instance_._instance,
@@ -2750,210 +2793,216 @@ const char descriptor_table_protodef_hyperspace_2eproto[] ABSL_ATTRIBUTE_SECTION
     "\n\017ef_construction\030\003 \001(\rH\001\210\001\001B\014\n\n_ef_sear"
     "chB\022\n\020_ef_construction\";\n\021VacuumFilterQu"
     "ery\022\013\n\003key\030\001 \001(\t\022\n\n\002op\030\002 \001(\t\022\r\n\005value\030\003 "
-    "\001(\001\"\242\003\n\rInsertRequest\022\022\n\ncollection\030\001 \001("
-    "\t\022\016\n\006vector\030\002 \003(\001\022\n\n\002id\030\003 \001(\r\0229\n\010metadat"
-    "a\030\004 \003(\0132\'.hyperspace.InsertRequest.Metad"
-    "ataEntry\022\026\n\016origin_node_id\030\005 \001(\t\022\025\n\rlogi"
-    "cal_clock\030\006 \001(\004\022/\n\ndurability\030\007 \001(\0162\033.hy"
-    "perspace.DurabilityLevel\022D\n\016typed_metada"
-    "ta\030\010 \003(\0132,.hyperspace.InsertRequest.Type"
-    "dMetadataEntry\032/\n\rMetadataEntry\022\013\n\003key\030\001"
-    " \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022TypedMetadata"
-    "Entry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hype"
-    "rspace.MetadataValue:\0028\001\"\245\002\n\nVectorData\022"
-    "\016\n\006vector\030\001 \003(\001\022\n\n\002id\030\002 \001(\r\0226\n\010metadata\030"
-    "\003 \003(\0132$.hyperspace.VectorData.MetadataEn"
-    "try\022A\n\016typed_metadata\030\004 \003(\0132).hyperspace"
-    ".VectorData.TypedMetadataEntry\032/\n\rMetada"
-    "taEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032"
-    "O\n\022TypedMetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005va"
-    "lue\030\002 \001(\0132\031.hyperspace.MetadataValue:\0028\001"
-    "\"\261\001\n\022BatchInsertRequest\022\022\n\ncollection\030\001 "
-    "\001(\t\022\'\n\007vectors\030\002 \003(\0132\026.hyperspace.Vector"
-    "Data\022\026\n\016origin_node_id\030\003 \001(\t\022\025\n\rlogical_"
-    "clock\030\004 \001(\004\022/\n\ndurability\030\005 \001(\0162\033.hypers"
-    "pace.DurabilityLevel\"\342\001\n\021InsertTextReque"
-    "st\022\022\n\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\014\n\004te"
-    "xt\030\003 \001(\t\022=\n\010metadata\030\004 \003(\0132+.hyperspace."
-    "InsertTextRequest.MetadataEntry\022/\n\ndurab"
-    "ility\030\005 \001(\0162\033.hyperspace.DurabilityLevel"
-    "\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030"
-    "\002 \001(\t:\0028\001\"!\n\016InsertResponse\022\017\n\007success\030\001"
-    " \001(\010\"/\n\rDeleteRequest\022\022\n\ncollection\030\001 \001("
-    "\t\022\n\n\002id\030\002 \001(\r\"!\n\016DeleteResponse\022\017\n\007succe"
-    "ss\030\001 \001(\010\"\245\002\n\rSearchRequest\022\022\n\ncollection"
-    "\030\001 \001(\t\022\016\n\006vector\030\002 \003(\001\022\r\n\005top_k\030\003 \001(\r\0225\n"
-    "\006filter\030\004 \003(\0132%.hyperspace.SearchRequest"
-    ".FilterEntry\022#\n\007filters\030\005 \003(\0132\022.hyperspa"
-    "ce.Filter\022\031\n\014hybrid_query\030\006 \001(\tH\000\210\001\001\022\031\n\014"
-    "hybrid_alpha\030\007 \001(\002H\001\210\001\001\032-\n\013FilterEntry\022\013"
-    "\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001B\017\n\r_hybri"
-    "d_queryB\017\n\r_hybrid_alpha\"]\n\006Filter\022\"\n\005ma"
-    "tch\030\001 \001(\0132\021.hyperspace.MatchH\000\022\"\n\005range\030"
-    "\002 \001(\0132\021.hyperspace.RangeH\000B\013\n\tcondition\""
-    "#\n\005Match\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t\"\214\001\n"
-    "\005Range\022\013\n\003key\030\001 \001(\t\022\020\n\003gte\030\002 \001(\003H\000\210\001\001\022\020\n"
-    "\003lte\030\003 \001(\003H\001\210\001\001\022\024\n\007gte_f64\030\004 \001(\001H\002\210\001\001\022\024\n"
-    "\007lte_f64\030\005 \001(\001H\003\210\001\001B\006\n\004_gteB\006\n\004_lteB\n\n\010_"
-    "gte_f64B\n\n\010_lte_f64\";\n\016SearchResponse\022)\n"
-    "\007results\030\001 \003(\0132\030.hyperspace.SearchResult"
-    "\"A\n\022BatchSearchRequest\022+\n\010searches\030\001 \003(\013"
-    "2\031.hyperspace.SearchRequest\"D\n\023BatchSear"
-    "chResponse\022-\n\tresponses\030\001 \003(\0132\032.hyperspa"
-    "ce.SearchResponse\"\255\002\n\014SearchResult\022\n\n\002id"
-    "\030\001 \001(\r\022\020\n\010distance\030\002 \001(\001\0228\n\010metadata\030\003 \003"
-    "(\0132&.hyperspace.SearchResult.MetadataEnt"
-    "ry\022C\n\016typed_metadata\030\004 \003(\0132+.hyperspace."
-    "SearchResult.TypedMetadataEntry\032/\n\rMetad"
-    "ataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001"
-    "\032O\n\022TypedMetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005v"
-    "alue\030\002 \001(\0132\031.hyperspace.MetadataValue:\0028"
-    "\001\"\?\n\016GetNodeRequest\022\022\n\ncollection\030\001 \001(\t\022"
-    "\n\n\002id\030\002 \001(\r\022\r\n\005layer\030\003 \001(\r\"\264\002\n\tGraphNode"
-    "\022\n\n\002id\030\001 \001(\r\022\r\n\005layer\030\002 \001(\r\022\021\n\tneighbors"
-    "\030\003 \003(\r\0225\n\010metadata\030\004 \003(\0132#.hyperspace.Gr"
-    "aphNode.MetadataEntry\022@\n\016typed_metadata\030"
-    "\005 \003(\0132(.hyperspace.GraphNode.TypedMetada"
-    "taEntry\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n"
-    "\005value\030\002 \001(\t:\0028\001\032O\n\022TypedMetadataEntry\022\013"
-    "\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hyperspace."
-    "MetadataValue:\0028\001\"c\n\023GetNeighborsRequest"
-    "\022\022\n\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\r\n\005laye"
-    "r\030\003 \001(\r\022\r\n\005limit\030\004 \001(\r\022\016\n\006offset\030\005 \001(\r\"V"
-    "\n\024GetNeighborsResponse\022(\n\tneighbors\030\001 \003("
-    "\0132\025.hyperspace.GraphNode\022\024\n\014edge_weights"
-    "\030\002 \003(\001\"\371\001\n\017TraverseRequest\022\022\n\ncollection"
-    "\030\001 \001(\t\022\020\n\010start_id\030\002 \001(\r\022\021\n\tmax_depth\030\003 "
-    "\001(\r\022\021\n\tmax_nodes\030\004 \001(\r\022\r\n\005layer\030\005 \001(\r\0227\n"
-    "\006filter\030\006 \003(\0132\'.hyperspace.TraverseReque"
-    "st.FilterEntry\022#\n\007filters\030\007 \003(\0132\022.hypers"
-    "pace.Filter\032-\n\013FilterEntry\022\013\n\003key\030\001 \001(\t\022"
-    "\r\n\005value\030\002 \001(\t:\0028\001\"8\n\020TraverseResponse\022$"
-    "\n\005nodes\030\001 \003(\0132\025.hyperspace.GraphNode\"\203\001\n"
-    "\033FindSemanticClustersRequest\022\022\n\ncollecti"
-    "on\030\001 \001(\t\022\r\n\005layer\030\002 \001(\r\022\030\n\020min_cluster_s"
-    "ize\030\003 \001(\r\022\024\n\014max_clusters\030\004 \001(\r\022\021\n\tmax_n"
-    "odes\030\005 \001(\r\"X\n\030GetConceptParentsRequest\022\022"
-    "\n\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\r\n\005layer\030"
-    "\003 \001(\r\022\r\n\005limit\030\004 \001(\r\"C\n\031GetConceptParent"
-    "sResponse\022&\n\007parents\030\001 \003(\0132\025.hyperspace."
-    "GraphNode\" \n\014GraphCluster\022\020\n\010node_ids\030\001 "
-    "\003(\r\"J\n\034FindSemanticClustersResponse\022*\n\010c"
-    "lusters\030\001 \003(\0132\030.hyperspace.GraphCluster\""
-    "r\n\rMetadataValue\022\026\n\014string_value\030\001 \001(\tH\000"
-    "\022\023\n\tint_value\030\002 \001(\003H\000\022\026\n\014double_value\030\003 "
-    "\001(\001H\000\022\024\n\nbool_value\030\004 \001(\010H\000B\006\n\004kind\"h\n\030E"
-    "ventSubscriptionRequest\022$\n\005types\030\001 \003(\0162\025"
-    ".hyperspace.EventType\022\027\n\ncollection\030\002 \001("
-    "\tH\000\210\001\001B\r\n\013_collection\"\363\002\n\023VectorInserted"
-    "Event\022\n\n\002id\030\001 \001(\r\022\022\n\ncollection\030\002 \001(\t\022\025\n"
-    "\rlogical_clock\030\003 \001(\004\022\026\n\016origin_node_id\030\004"
-    " \001(\t\022\?\n\010metadata\030\005 \003(\0132-.hyperspace.Vect"
-    "orInsertedEvent.MetadataEntry\022J\n\016typed_m"
-    "etadata\030\006 \003(\01322.hyperspace.VectorInserte"
-    "dEvent.TypedMetadataEntry\032/\n\rMetadataEnt"
-    "ry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022Ty"
-    "pedMetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002"
-    " \001(\0132\031.hyperspace.MetadataValue:\0028\001\"c\n\022V"
-    "ectorDeletedEvent\022\n\n\002id\030\001 \001(\r\022\022\n\ncollect"
-    "ion\030\002 \001(\t\022\025\n\rlogical_clock\030\003 \001(\004\022\026\n\016orig"
-    "in_node_id\030\004 \001(\t\"\264\001\n\014EventMessage\022#\n\004typ"
-    "e\030\001 \001(\0162\025.hyperspace.EventType\022:\n\017vector"
-    "_inserted\030\002 \001(\0132\037.hyperspace.VectorInser"
-    "tedEventH\000\0228\n\016vector_deleted\030\003 \001(\0132\036.hyp"
-    "erspace.VectorDeletedEventH\000B\t\n\007payload\""
-    "\007\n\005Empty\" \n\016StatusResponse\022\016\n\006status\030\001 \001"
-    "(\t\"\020\n\016MonitorRequest\"e\n\013SystemStats\022\031\n\021t"
-    "otal_collections\030\001 \001(\004\022\025\n\rtotal_vectors\030"
-    "\002 \001(\004\022\027\n\017total_memory_mb\030\003 \001(\001\022\013\n\003qps\030\004 "
-    "\001(\001\"#\n\rDigestRequest\022\022\n\ncollection\030\001 \001(\t"
-    "\"[\n\016DigestResponse\022\025\n\rlogical_clock\030\001 \001("
-    "\004\022\022\n\nstate_hash\030\002 \001(\004\022\017\n\007buckets\030\003 \003(\004\022\r"
-    "\n\005count\030\004 \001(\004\"v\n\024SyncHandshakeRequest\022\022\n"
-    "\ncollection\030\001 \001(\t\022\026\n\016client_buckets\030\002 \003("
-    "\004\022\034\n\024client_logical_clock\030\003 \001(\004\022\024\n\014clien"
-    "t_count\030\004 \001(\004\"L\n\nDiffBucket\022\024\n\014bucket_in"
-    "dex\030\001 \001(\r\022\023\n\013server_hash\030\002 \001(\004\022\023\n\013client"
-    "_hash\030\003 \001(\004\"\212\001\n\025SyncHandshakeResponse\022,\n"
-    "\014diff_buckets\030\001 \003(\0132\026.hyperspace.DiffBuc"
-    "ket\022\034\n\024server_logical_clock\030\002 \001(\004\022\024\n\014ser"
-    "ver_count\030\003 \001(\004\022\017\n\007in_sync\030\004 \001(\010\"=\n\017Sync"
-    "PullRequest\022\022\n\ncollection\030\001 \001(\t\022\026\n\016bucke"
-    "t_indices\030\002 \003(\r\"\303\001\n\016SyncVectorData\022\022\n\nco"
-    "llection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\016\n\006vector\030\003 \003"
-    "(\001\022:\n\010metadata\030\004 \003(\0132(.hyperspace.SyncVe"
-    "ctorData.MetadataEntry\022\024\n\014bucket_index\030\005"
-    " \001(\r\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005va"
-    "lue\030\002 \001(\t:\0028\001\"J\n\020SyncPushResponse\022\020\n\010acc"
-    "epted\030\001 \001(\r\022\020\n\010rejected\030\002 \001(\r\022\022\n\nduplica"
-    "tes\030\003 \001(\r*+\n\020QuantizationMode\022\010\n\004NONE\020\000\022"
-    "\r\n\tSCALAR_I8\020\001*F\n\017DurabilityLevel\022\021\n\rDEF"
-    "AULT_LEVEL\020\000\022\t\n\005ASYNC\020\001\022\t\n\005BATCH\020\002\022\n\n\006ST"
-    "RICT\020\003*G\n\tEventType\022\021\n\rEVENT_UNKNOWN\020\000\022\023"
-    "\n\017VECTOR_INSERTED\020\001\022\022\n\016VECTOR_DELETED\020\0022"
-    "\311\017\n\010Database\022S\n\020CreateCollection\022#.hyper"
-    "space.CreateCollectionRequest\032\032.hyperspa"
-    "ce.StatusResponse\022S\n\020DeleteCollection\022#."
-    "hyperspace.DeleteCollectionRequest\032\032.hyp"
-    "erspace.StatusResponse\022I\n\017ListCollection"
-    "s\022\021.hyperspace.Empty\032#.hyperspace.ListCo"
-    "llectionsResponse\022]\n\022GetCollectionStats\022"
-    "\".hyperspace.CollectionStatsRequest\032#.hy"
-    "perspace.CollectionStatsResponse\022\?\n\006Inse"
-    "rt\022\031.hyperspace.InsertRequest\032\032.hyperspa"
-    "ce.InsertResponse\022I\n\013BatchInsert\022\036.hyper"
-    "space.BatchInsertRequest\032\032.hyperspace.In"
-    "sertResponse\022G\n\nInsertText\022\035.hyperspace."
-    "InsertTextRequest\032\032.hyperspace.InsertRes"
-    "ponse\022\?\n\006Delete\022\031.hyperspace.DeleteReque"
-    "st\032\032.hyperspace.DeleteResponse\022\?\n\006Search"
-    "\022\031.hyperspace.SearchRequest\032\032.hyperspace"
-    ".SearchResponse\022N\n\013SearchBatch\022\036.hypersp"
-    "ace.BatchSearchRequest\032\037.hyperspace.Batc"
-    "hSearchResponse\022<\n\007GetNode\022\032.hyperspace."
-    "GetNodeRequest\032\025.hyperspace.GraphNode\022Q\n"
-    "\014GetNeighbors\022\037.hyperspace.GetNeighborsR"
-    "equest\032 .hyperspace.GetNeighborsResponse"
-    "\022`\n\021GetConceptParents\022$.hyperspace.GetCo"
-    "nceptParentsRequest\032%.hyperspace.GetConc"
-    "eptParentsResponse\022E\n\010Traverse\022\033.hypersp"
-    "ace.TraverseRequest\032\034.hyperspace.Travers"
-    "eResponse\022i\n\024FindSemanticClusters\022\'.hype"
-    "rspace.FindSemanticClustersRequest\032(.hyp"
-    "erspace.FindSemanticClustersResponse\022@\n\007"
-    "Monitor\022\032.hyperspace.MonitorRequest\032\027.hy"
-    "perspace.SystemStats0\001\022@\n\017TriggerSnapsho"
-    "t\022\021.hyperspace.Empty\032\032.hyperspace.Status"
-    "Response\022>\n\rTriggerVacuum\022\021.hyperspace.E"
-    "mpty\032\032.hyperspace.StatusResponse\022A\n\tConf"
-    "igure\022\030.hyperspace.ConfigUpdate\032\032.hypers"
-    "pace.StatusResponse\022I\n\tReplicate\022\036.hyper"
-    "space.ReplicationRequest\032\032.hyperspace.Re"
-    "plicationLog0\001\022U\n\021SubscribeToEvents\022$.hy"
-    "perspace.EventSubscriptionRequest\032\030.hype"
-    "rspace.EventMessage0\001\022B\n\tGetDigest\022\031.hyp"
-    "erspace.DigestRequest\032\032.hyperspace.Diges"
-    "tResponse\022K\n\014RebuildIndex\022\037.hyperspace.R"
-    "ebuildIndexRequest\032\032.hyperspace.StatusRe"
-    "sponse\022T\n\rSyncHandshake\022 .hyperspace.Syn"
-    "cHandshakeRequest\032!.hyperspace.SyncHands"
-    "hakeResponse\022E\n\010SyncPull\022\033.hyperspace.Sy"
-    "ncPullRequest\032\032.hyperspace.SyncVectorDat"
-    "a0\001\022F\n\010SyncPush\022\032.hyperspace.SyncVectorD"
-    "ata\032\034.hyperspace.SyncPushResponse(\001b\006pro"
-    "to3"
+    "\001(\001\"Z\n\026ReconsolidationRequest\022\022\n\ncollect"
+    "ion\030\001 \001(\t\022\025\n\rtarget_vector\030\002 \003(\001\022\025\n\rlear"
+    "ning_rate\030\003 \001(\001\"\242\003\n\rInsertRequest\022\022\n\ncol"
+    "lection\030\001 \001(\t\022\016\n\006vector\030\002 \003(\001\022\n\n\002id\030\003 \001("
+    "\r\0229\n\010metadata\030\004 \003(\0132\'.hyperspace.InsertR"
+    "equest.MetadataEntry\022\026\n\016origin_node_id\030\005"
+    " \001(\t\022\025\n\rlogical_clock\030\006 \001(\004\022/\n\ndurabilit"
+    "y\030\007 \001(\0162\033.hyperspace.DurabilityLevel\022D\n\016"
+    "typed_metadata\030\010 \003(\0132,.hyperspace.Insert"
+    "Request.TypedMetadataEntry\032/\n\rMetadataEn"
+    "try\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022T"
+    "ypedMetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030"
+    "\002 \001(\0132\031.hyperspace.MetadataValue:\0028\001\"\245\002\n"
+    "\nVectorData\022\016\n\006vector\030\001 \003(\001\022\n\n\002id\030\002 \001(\r\022"
+    "6\n\010metadata\030\003 \003(\0132$.hyperspace.VectorDat"
+    "a.MetadataEntry\022A\n\016typed_metadata\030\004 \003(\0132"
+    ").hyperspace.VectorData.TypedMetadataEnt"
+    "ry\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005valu"
+    "e\030\002 \001(\t:\0028\001\032O\n\022TypedMetadataEntry\022\013\n\003key"
+    "\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hyperspace.Metad"
+    "ataValue:\0028\001\"\261\001\n\022BatchInsertRequest\022\022\n\nc"
+    "ollection\030\001 \001(\t\022\'\n\007vectors\030\002 \003(\0132\026.hyper"
+    "space.VectorData\022\026\n\016origin_node_id\030\003 \001(\t"
+    "\022\025\n\rlogical_clock\030\004 \001(\004\022/\n\ndurability\030\005 "
+    "\001(\0162\033.hyperspace.DurabilityLevel\"\342\001\n\021Ins"
+    "ertTextRequest\022\022\n\ncollection\030\001 \001(\t\022\n\n\002id"
+    "\030\002 \001(\r\022\014\n\004text\030\003 \001(\t\022=\n\010metadata\030\004 \003(\0132+"
+    ".hyperspace.InsertTextRequest.MetadataEn"
+    "try\022/\n\ndurability\030\005 \001(\0162\033.hyperspace.Dur"
+    "abilityLevel\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001"
+    "(\t\022\r\n\005value\030\002 \001(\t:\0028\001\"!\n\016InsertResponse\022"
+    "\017\n\007success\030\001 \001(\010\"/\n\rDeleteRequest\022\022\n\ncol"
+    "lection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\"!\n\016DeleteRespo"
+    "nse\022\017\n\007success\030\001 \001(\010\"\276\002\n\rSearchRequest\022\022"
+    "\n\ncollection\030\001 \001(\t\022\016\n\006vector\030\002 \003(\001\022\r\n\005to"
+    "p_k\030\003 \001(\r\0225\n\006filter\030\004 \003(\0132%.hyperspace.S"
+    "earchRequest.FilterEntry\022#\n\007filters\030\005 \003("
+    "\0132\022.hyperspace.Filter\022\031\n\014hybrid_query\030\006 "
+    "\001(\tH\000\210\001\001\022\031\n\014hybrid_alpha\030\007 \001(\002H\001\210\001\001\022\027\n\017u"
+    "se_wasserstein\030\010 \001(\010\032-\n\013FilterEntry\022\013\n\003k"
+    "ey\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001B\017\n\r_hybrid_q"
+    "ueryB\017\n\r_hybrid_alpha\"]\n\006Filter\022\"\n\005match"
+    "\030\001 \001(\0132\021.hyperspace.MatchH\000\022\"\n\005range\030\002 \001"
+    "(\0132\021.hyperspace.RangeH\000B\013\n\tcondition\"#\n\005"
+    "Match\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t\"\214\001\n\005Ra"
+    "nge\022\013\n\003key\030\001 \001(\t\022\020\n\003gte\030\002 \001(\003H\000\210\001\001\022\020\n\003lt"
+    "e\030\003 \001(\003H\001\210\001\001\022\024\n\007gte_f64\030\004 \001(\001H\002\210\001\001\022\024\n\007lt"
+    "e_f64\030\005 \001(\001H\003\210\001\001B\006\n\004_gteB\006\n\004_lteB\n\n\010_gte"
+    "_f64B\n\n\010_lte_f64\";\n\016SearchResponse\022)\n\007re"
+    "sults\030\001 \003(\0132\030.hyperspace.SearchResult\"A\n"
+    "\022BatchSearchRequest\022+\n\010searches\030\001 \003(\0132\031."
+    "hyperspace.SearchRequest\"D\n\023BatchSearchR"
+    "esponse\022-\n\tresponses\030\001 \003(\0132\032.hyperspace."
+    "SearchResponse\"\255\002\n\014SearchResult\022\n\n\002id\030\001 "
+    "\001(\r\022\020\n\010distance\030\002 \001(\001\0228\n\010metadata\030\003 \003(\0132"
+    "&.hyperspace.SearchResult.MetadataEntry\022"
+    "C\n\016typed_metadata\030\004 \003(\0132+.hyperspace.Sea"
+    "rchResult.TypedMetadataEntry\032/\n\rMetadata"
+    "Entry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n"
+    "\022TypedMetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005valu"
+    "e\030\002 \001(\0132\031.hyperspace.MetadataValue:\0028\001\"\?"
+    "\n\016GetNodeRequest\022\022\n\ncollection\030\001 \001(\t\022\n\n\002"
+    "id\030\002 \001(\r\022\r\n\005layer\030\003 \001(\r\"\264\002\n\tGraphNode\022\n\n"
+    "\002id\030\001 \001(\r\022\r\n\005layer\030\002 \001(\r\022\021\n\tneighbors\030\003 "
+    "\003(\r\0225\n\010metadata\030\004 \003(\0132#.hyperspace.Graph"
+    "Node.MetadataEntry\022@\n\016typed_metadata\030\005 \003"
+    "(\0132(.hyperspace.GraphNode.TypedMetadataE"
+    "ntry\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005va"
+    "lue\030\002 \001(\t:\0028\001\032O\n\022TypedMetadataEntry\022\013\n\003k"
+    "ey\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hyperspace.Met"
+    "adataValue:\0028\001\"c\n\023GetNeighborsRequest\022\022\n"
+    "\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\r\n\005layer\030\003"
+    " \001(\r\022\r\n\005limit\030\004 \001(\r\022\016\n\006offset\030\005 \001(\r\"V\n\024G"
+    "etNeighborsResponse\022(\n\tneighbors\030\001 \003(\0132\025"
+    ".hyperspace.GraphNode\022\024\n\014edge_weights\030\002 "
+    "\003(\001\"\371\001\n\017TraverseRequest\022\022\n\ncollection\030\001 "
+    "\001(\t\022\020\n\010start_id\030\002 \001(\r\022\021\n\tmax_depth\030\003 \001(\r"
+    "\022\021\n\tmax_nodes\030\004 \001(\r\022\r\n\005layer\030\005 \001(\r\0227\n\006fi"
+    "lter\030\006 \003(\0132\'.hyperspace.TraverseRequest."
+    "FilterEntry\022#\n\007filters\030\007 \003(\0132\022.hyperspac"
+    "e.Filter\032-\n\013FilterEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005"
+    "value\030\002 \001(\t:\0028\001\"8\n\020TraverseResponse\022$\n\005n"
+    "odes\030\001 \003(\0132\025.hyperspace.GraphNode\"\203\001\n\033Fi"
+    "ndSemanticClustersRequest\022\022\n\ncollection\030"
+    "\001 \001(\t\022\r\n\005layer\030\002 \001(\r\022\030\n\020min_cluster_size"
+    "\030\003 \001(\r\022\024\n\014max_clusters\030\004 \001(\r\022\021\n\tmax_node"
+    "s\030\005 \001(\r\"X\n\030GetConceptParentsRequest\022\022\n\nc"
+    "ollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\r\n\005layer\030\003 \001"
+    "(\r\022\r\n\005limit\030\004 \001(\r\"C\n\031GetConceptParentsRe"
+    "sponse\022&\n\007parents\030\001 \003(\0132\025.hyperspace.Gra"
+    "phNode\" \n\014GraphCluster\022\020\n\010node_ids\030\001 \003(\r"
+    "\"J\n\034FindSemanticClustersResponse\022*\n\010clus"
+    "ters\030\001 \003(\0132\030.hyperspace.GraphCluster\"r\n\r"
+    "MetadataValue\022\026\n\014string_value\030\001 \001(\tH\000\022\023\n"
+    "\tint_value\030\002 \001(\003H\000\022\026\n\014double_value\030\003 \001(\001"
+    "H\000\022\024\n\nbool_value\030\004 \001(\010H\000B\006\n\004kind\"h\n\030Even"
+    "tSubscriptionRequest\022$\n\005types\030\001 \003(\0162\025.hy"
+    "perspace.EventType\022\027\n\ncollection\030\002 \001(\tH\000"
+    "\210\001\001B\r\n\013_collection\"\363\002\n\023VectorInsertedEve"
+    "nt\022\n\n\002id\030\001 \001(\r\022\022\n\ncollection\030\002 \001(\t\022\025\n\rlo"
+    "gical_clock\030\003 \001(\004\022\026\n\016origin_node_id\030\004 \001("
+    "\t\022\?\n\010metadata\030\005 \003(\0132-.hyperspace.VectorI"
+    "nsertedEvent.MetadataEntry\022J\n\016typed_meta"
+    "data\030\006 \003(\01322.hyperspace.VectorInsertedEv"
+    "ent.TypedMetadataEntry\032/\n\rMetadataEntry\022"
+    "\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022Typed"
+    "MetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001("
+    "\0132\031.hyperspace.MetadataValue:\0028\001\"c\n\022Vect"
+    "orDeletedEvent\022\n\n\002id\030\001 \001(\r\022\022\n\ncollection"
+    "\030\002 \001(\t\022\025\n\rlogical_clock\030\003 \001(\004\022\026\n\016origin_"
+    "node_id\030\004 \001(\t\"\264\001\n\014EventMessage\022#\n\004type\030\001"
+    " \001(\0162\025.hyperspace.EventType\022:\n\017vector_in"
+    "serted\030\002 \001(\0132\037.hyperspace.VectorInserted"
+    "EventH\000\0228\n\016vector_deleted\030\003 \001(\0132\036.hypers"
+    "pace.VectorDeletedEventH\000B\t\n\007payload\"\007\n\005"
+    "Empty\" \n\016StatusResponse\022\016\n\006status\030\001 \001(\t\""
+    "\020\n\016MonitorRequest\"e\n\013SystemStats\022\031\n\021tota"
+    "l_collections\030\001 \001(\004\022\025\n\rtotal_vectors\030\002 \001"
+    "(\004\022\027\n\017total_memory_mb\030\003 \001(\001\022\013\n\003qps\030\004 \001(\001"
+    "\"#\n\rDigestRequest\022\022\n\ncollection\030\001 \001(\t\"[\n"
+    "\016DigestResponse\022\025\n\rlogical_clock\030\001 \001(\004\022\022"
+    "\n\nstate_hash\030\002 \001(\004\022\017\n\007buckets\030\003 \003(\004\022\r\n\005c"
+    "ount\030\004 \001(\004\"v\n\024SyncHandshakeRequest\022\022\n\nco"
+    "llection\030\001 \001(\t\022\026\n\016client_buckets\030\002 \003(\004\022\034"
+    "\n\024client_logical_clock\030\003 \001(\004\022\024\n\014client_c"
+    "ount\030\004 \001(\004\"L\n\nDiffBucket\022\024\n\014bucket_index"
+    "\030\001 \001(\r\022\023\n\013server_hash\030\002 \001(\004\022\023\n\013client_ha"
+    "sh\030\003 \001(\004\"\212\001\n\025SyncHandshakeResponse\022,\n\014di"
+    "ff_buckets\030\001 \003(\0132\026.hyperspace.DiffBucket"
+    "\022\034\n\024server_logical_clock\030\002 \001(\004\022\024\n\014server"
+    "_count\030\003 \001(\004\022\017\n\007in_sync\030\004 \001(\010\"=\n\017SyncPul"
+    "lRequest\022\022\n\ncollection\030\001 \001(\t\022\026\n\016bucket_i"
+    "ndices\030\002 \003(\r\"\303\001\n\016SyncVectorData\022\022\n\ncolle"
+    "ction\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\016\n\006vector\030\003 \003(\001\022"
+    ":\n\010metadata\030\004 \003(\0132(.hyperspace.SyncVecto"
+    "rData.MetadataEntry\022\024\n\014bucket_index\030\005 \001("
+    "\r\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value"
+    "\030\002 \001(\t:\0028\001\"J\n\020SyncPushResponse\022\020\n\010accept"
+    "ed\030\001 \001(\r\022\020\n\010rejected\030\002 \001(\r\022\022\n\nduplicates"
+    "\030\003 \001(\r*+\n\020QuantizationMode\022\010\n\004NONE\020\000\022\r\n\t"
+    "SCALAR_I8\020\001*F\n\017DurabilityLevel\022\021\n\rDEFAUL"
+    "T_LEVEL\020\000\022\t\n\005ASYNC\020\001\022\t\n\005BATCH\020\002\022\n\n\006STRIC"
+    "T\020\003*G\n\tEventType\022\021\n\rEVENT_UNKNOWN\020\000\022\023\n\017V"
+    "ECTOR_INSERTED\020\001\022\022\n\016VECTOR_DELETED\020\0022\243\020\n"
+    "\010Database\022S\n\020CreateCollection\022#.hyperspa"
+    "ce.CreateCollectionRequest\032\032.hyperspace."
+    "StatusResponse\022S\n\020DeleteCollection\022#.hyp"
+    "erspace.DeleteCollectionRequest\032\032.hypers"
+    "pace.StatusResponse\022I\n\017ListCollections\022\021"
+    ".hyperspace.Empty\032#.hyperspace.ListColle"
+    "ctionsResponse\022]\n\022GetCollectionStats\022\".h"
+    "yperspace.CollectionStatsRequest\032#.hyper"
+    "space.CollectionStatsResponse\022\?\n\006Insert\022"
+    "\031.hyperspace.InsertRequest\032\032.hyperspace."
+    "InsertResponse\022I\n\013BatchInsert\022\036.hyperspa"
+    "ce.BatchInsertRequest\032\032.hyperspace.Inser"
+    "tResponse\022G\n\nInsertText\022\035.hyperspace.Ins"
+    "ertTextRequest\032\032.hyperspace.InsertRespon"
+    "se\022\?\n\006Delete\022\031.hyperspace.DeleteRequest\032"
+    "\032.hyperspace.DeleteResponse\022\?\n\006Search\022\031."
+    "hyperspace.SearchRequest\032\032.hyperspace.Se"
+    "archResponse\022N\n\013SearchBatch\022\036.hyperspace"
+    ".BatchSearchRequest\032\037.hyperspace.BatchSe"
+    "archResponse\022<\n\007GetNode\022\032.hyperspace.Get"
+    "NodeRequest\032\025.hyperspace.GraphNode\022Q\n\014Ge"
+    "tNeighbors\022\037.hyperspace.GetNeighborsRequ"
+    "est\032 .hyperspace.GetNeighborsResponse\022`\n"
+    "\021GetConceptParents\022$.hyperspace.GetConce"
+    "ptParentsRequest\032%.hyperspace.GetConcept"
+    "ParentsResponse\022E\n\010Traverse\022\033.hyperspace"
+    ".TraverseRequest\032\034.hyperspace.TraverseRe"
+    "sponse\022i\n\024FindSemanticClusters\022\'.hypersp"
+    "ace.FindSemanticClustersRequest\032(.hypers"
+    "pace.FindSemanticClustersResponse\022@\n\007Mon"
+    "itor\022\032.hyperspace.MonitorRequest\032\027.hyper"
+    "space.SystemStats0\001\022@\n\017TriggerSnapshot\022\021"
+    ".hyperspace.Empty\032\032.hyperspace.StatusRes"
+    "ponse\022>\n\rTriggerVacuum\022\021.hyperspace.Empt"
+    "y\032\032.hyperspace.StatusResponse\022X\n\026Trigger"
+    "Reconsolidation\022\".hyperspace.Reconsolida"
+    "tionRequest\032\032.hyperspace.StatusResponse\022"
+    "A\n\tConfigure\022\030.hyperspace.ConfigUpdate\032\032"
+    ".hyperspace.StatusResponse\022I\n\tReplicate\022"
+    "\036.hyperspace.ReplicationRequest\032\032.hypers"
+    "pace.ReplicationLog0\001\022U\n\021SubscribeToEven"
+    "ts\022$.hyperspace.EventSubscriptionRequest"
+    "\032\030.hyperspace.EventMessage0\001\022B\n\tGetDiges"
+    "t\022\031.hyperspace.DigestRequest\032\032.hyperspac"
+    "e.DigestResponse\022K\n\014RebuildIndex\022\037.hyper"
+    "space.RebuildIndexRequest\032\032.hyperspace.S"
+    "tatusResponse\022T\n\rSyncHandshake\022 .hypersp"
+    "ace.SyncHandshakeRequest\032!.hyperspace.Sy"
+    "ncHandshakeResponse\022E\n\010SyncPull\022\033.hypers"
+    "pace.SyncPullRequest\032\032.hyperspace.SyncVe"
+    "ctorData0\001\022F\n\010SyncPush\022\032.hyperspace.Sync"
+    "VectorData\032\034.hyperspace.SyncPushResponse"
+    "(\001B,Z*github.com/yarlabs/hyperspace-sdk-"
+    "go/protob\006proto3"
 };
 static ::absl::once_flag descriptor_table_hyperspace_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_hyperspace_2eproto = {
     false,
     false,
-    9083,
+    9336,
     descriptor_table_protodef_hyperspace_2eproto,
     "hyperspace.proto",
     &descriptor_table_hyperspace_2eproto_once,
     nullptr,
     0,
-    74,
+    75,
     schemas,
     file_default_instances,
     TableStruct_hyperspace_2eproto::offsets,
@@ -7955,6 +8004,361 @@ void VacuumFilterQuery::InternalSwap(VacuumFilterQuery* PROTOBUF_RESTRICT PROTOB
 }
 // ===================================================================
 
+class ReconsolidationRequest::_Internal {
+ public:
+  using HasBits =
+      decltype(::std::declval<ReconsolidationRequest>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_._has_bits_);
+};
+
+ReconsolidationRequest::ReconsolidationRequest(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, ReconsolidationRequest_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:hyperspace.ReconsolidationRequest)
+}
+PROTOBUF_NDEBUG_INLINE ReconsolidationRequest::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    [[maybe_unused]] const ::hyperspace::ReconsolidationRequest& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        target_vector_{visibility, arena, from.target_vector_},
+        collection_(arena, from.collection_) {}
+
+ReconsolidationRequest::ReconsolidationRequest(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const ReconsolidationRequest& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, ReconsolidationRequest_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  ReconsolidationRequest* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  _impl_.learning_rate_ = from._impl_.learning_rate_;
+
+  // @@protoc_insertion_point(copy_constructor:hyperspace.ReconsolidationRequest)
+}
+PROTOBUF_NDEBUG_INLINE ReconsolidationRequest::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        target_vector_{visibility, arena},
+        collection_(arena) {}
+
+inline void ReconsolidationRequest::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+  _impl_.learning_rate_ = {};
+}
+ReconsolidationRequest::~ReconsolidationRequest() {
+  // @@protoc_insertion_point(destructor:hyperspace.ReconsolidationRequest)
+  SharedDtor(*this);
+}
+inline void ReconsolidationRequest::SharedDtor(MessageLite& self) {
+  ReconsolidationRequest& this_ = static_cast<ReconsolidationRequest&>(self);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.collection_.Destroy();
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL ReconsolidationRequest::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) ReconsolidationRequest(arena);
+}
+constexpr auto ReconsolidationRequest::InternalNewImpl_() {
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_.target_vector_) +
+          decltype(ReconsolidationRequest::_impl_.target_vector_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::CopyInit(
+        sizeof(ReconsolidationRequest), alignof(ReconsolidationRequest), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&ReconsolidationRequest::PlacementNew_,
+                                 sizeof(ReconsolidationRequest),
+                                 alignof(ReconsolidationRequest));
+  }
+}
+constexpr auto ReconsolidationRequest::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_ReconsolidationRequest_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // OnDemandRegisterArenaDtor
+          nullptr,  // IsInitialized
+          &ReconsolidationRequest::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<ReconsolidationRequest>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &ReconsolidationRequest::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<ReconsolidationRequest>(), &ReconsolidationRequest::ByteSizeLong,
+              &ReconsolidationRequest::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_._cached_size_),
+          false,
+      },
+      &ReconsolidationRequest::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull ReconsolidationRequest_class_data_ =
+        ReconsolidationRequest::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+ReconsolidationRequest::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&ReconsolidationRequest_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(ReconsolidationRequest_class_data_.tc_table);
+  return ReconsolidationRequest_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<2, 3, 0, 52, 2>
+ReconsolidationRequest::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_._has_bits_),
+    0, // no _extensions_
+    3, 24,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967288,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    3,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    ReconsolidationRequest_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::ReconsolidationRequest>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    {::_pbi::TcParser::MiniParse, {}},
+    // string collection = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 1, 0,
+      PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_.collection_)}},
+    // repeated double target_vector = 2;
+    {::_pbi::TcParser::FastF64P1,
+     {18, 0, 0,
+      PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_.target_vector_)}},
+    // double learning_rate = 3;
+    {::_pbi::TcParser::FastF64S1,
+     {25, 2, 0,
+      PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_.learning_rate_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string collection = 1;
+    {PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_.collection_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // repeated double target_vector = 2;
+    {PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_.target_vector_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+    // double learning_rate = 3;
+    {PROTOBUF_FIELD_OFFSET(ReconsolidationRequest, _impl_.learning_rate_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+  }},
+  // no aux_entries
+  {{
+    "\41\12\0\0\0\0\0\0"
+    "hyperspace.ReconsolidationRequest"
+    "collection"
+  }},
+};
+PROTOBUF_NOINLINE void ReconsolidationRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:hyperspace.ReconsolidationRequest)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _impl_.target_vector_.Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      _impl_.collection_.ClearNonDefaultToEmpty();
+    }
+  }
+  _impl_.learning_rate_ = 0;
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL ReconsolidationRequest::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const ReconsolidationRequest& this_ = static_cast<const ReconsolidationRequest&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL ReconsolidationRequest::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const ReconsolidationRequest& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(serialize_to_array_start:hyperspace.ReconsolidationRequest)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // string collection = 1;
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (!this_._internal_collection().empty()) {
+      const ::std::string& _s = this_._internal_collection();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.ReconsolidationRequest.collection");
+      target = stream->WriteStringMaybeAliased(1, _s, target);
+    }
+  }
+
+  // repeated double target_vector = 2;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+    if (this_._internal_target_vector_size() > 0) {
+      target = stream->WriteFixedPacked(2, this_._internal_target_vector(), target);
+    }
+  }
+
+  // double learning_rate = 3;
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (::absl::bit_cast<::uint64_t>(this_._internal_learning_rate()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteDoubleToArray(
+          3, this_._internal_learning_rate(), target);
+    }
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:hyperspace.ReconsolidationRequest)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t ReconsolidationRequest::ByteSizeLong(const MessageLite& base) {
+  const ReconsolidationRequest& this_ = static_cast<const ReconsolidationRequest&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t ReconsolidationRequest::ByteSizeLong() const {
+  const ReconsolidationRequest& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:hyperspace.ReconsolidationRequest)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
+    // repeated double target_vector = 2;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      ::size_t data_size = ::size_t{8} *
+          ::_pbi::FromIntSize(this_._internal_target_vector_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 1 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
+    // string collection = 1;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!this_._internal_collection().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_collection());
+      }
+    }
+    // double learning_rate = 3;
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (::absl::bit_cast<::uint64_t>(this_._internal_learning_rate()) != 0) {
+        total_size += 9;
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void ReconsolidationRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
+                            const ::google::protobuf::MessageLite& from_msg) {
+   auto* const _this =
+      static_cast<ReconsolidationRequest*>(&to_msg);
+  auto& from = static_cast<const ReconsolidationRequest&>(from_msg);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    from.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.ReconsolidationRequest)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _this->_internal_mutable_target_vector()->MergeFrom(from._internal_target_vector());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!from._internal_collection().empty()) {
+        _this->_internal_set_collection(from._internal_collection());
+      } else {
+        if (_this->_impl_.collection_.IsDefault()) {
+          _this->_internal_set_collection("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (::absl::bit_cast<::uint64_t>(from._internal_learning_rate()) != 0) {
+        _this->_impl_.learning_rate_ = from._impl_.learning_rate_;
+      }
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+}
+
+void ReconsolidationRequest::CopyFrom(const ReconsolidationRequest& from) {
+  // @@protoc_insertion_point(class_specific_copy_from_start:hyperspace.ReconsolidationRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void ReconsolidationRequest::InternalSwap(ReconsolidationRequest* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using ::std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  _impl_.target_vector_.InternalSwap(&other->_impl_.target_vector_);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.collection_, &other->_impl_.collection_, arena);
+  swap(_impl_.learning_rate_, other->_impl_.learning_rate_);
+}
+
+::google::protobuf::Metadata ReconsolidationRequest::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
 #if defined(PROTOBUF_CUSTOM_VTABLE)
 InsertRequest_MetadataEntry_DoNotUse::InsertRequest_MetadataEntry_DoNotUse()
     : SuperType(InsertRequest_MetadataEntry_DoNotUse_class_data_.base()) {}
@@ -11349,9 +11753,9 @@ SearchRequest::SearchRequest(
                offsetof(Impl_, top_k_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, top_k_),
-           offsetof(Impl_, hybrid_alpha_) -
+           offsetof(Impl_, use_wasserstein_) -
                offsetof(Impl_, top_k_) +
-               sizeof(Impl_::hybrid_alpha_));
+               sizeof(Impl_::use_wasserstein_));
 
   // @@protoc_insertion_point(copy_constructor:hyperspace.SearchRequest)
 }
@@ -11370,9 +11774,9 @@ inline void SearchRequest::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, top_k_),
            0,
-           offsetof(Impl_, hybrid_alpha_) -
+           offsetof(Impl_, use_wasserstein_) -
                offsetof(Impl_, top_k_) +
-               sizeof(Impl_::hybrid_alpha_));
+               sizeof(Impl_::use_wasserstein_));
 }
 SearchRequest::~SearchRequest() {
   // @@protoc_insertion_point(destructor:hyperspace.SearchRequest)
@@ -11453,16 +11857,16 @@ SearchRequest::GetClassData() const {
   return SearchRequest_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 7, 2, 61, 2>
+const ::_pbi::TcParseTable<3, 8, 2, 69, 2>
 SearchRequest::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_._has_bits_),
     0, // no _extensions_
-    7, 56,  // max_field_number, fast_idx_mask
+    8, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967168,  // skipmap
+    4294967040,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    7,  // num_field_entries
+    8,  // num_field_entries
     2,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     SearchRequest_class_data_.base(),
@@ -11472,7 +11876,10 @@ SearchRequest::_table_ = {
     ::_pbi::TcParser::GetTable<::hyperspace::SearchRequest>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    {::_pbi::TcParser::MiniParse, {}},
+    // bool use_wasserstein = 8;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(SearchRequest, _impl_.use_wasserstein_), 6>(),
+     {64, 6, 0,
+      PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.use_wasserstein_)}},
     // string collection = 1;
     {::_pbi::TcParser::FastUS1,
      {10, 2, 0,
@@ -11508,13 +11915,15 @@ SearchRequest::_table_ = {
     // uint32 top_k = 3;
     {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.top_k_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
     // map<string, string> filter = 4;
-    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.filter_), _Internal::kHasBitsOffset + 6, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.filter_), _Internal::kHasBitsOffset + 7, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // repeated .hyperspace.Filter filters = 5;
     {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.filters_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // optional string hybrid_query = 6;
     {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.hybrid_query_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // optional float hybrid_alpha = 7;
     {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.hybrid_alpha_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+    // bool use_wasserstein = 8;
+    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.use_wasserstein_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::hyperspace::Filter>()},
@@ -11522,7 +11931,7 @@ SearchRequest::_table_ = {
           1, 0, 9, 9, 0)},
   }},
   {{
-    "\30\12\0\0\6\0\14\0"
+    "\30\12\0\0\6\0\14\0\0\0\0\0\0\0\0\0"
     "hyperspace.SearchRequest"
     "collection"
     "filter"
@@ -11551,11 +11960,11 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
       _impl_.hybrid_query_.ClearNonDefaultToEmpty();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000070U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000f0U)) {
     ::memset(&_impl_.top_k_, 0, static_cast<::size_t>(
-        reinterpret_cast<char*>(&_impl_.hybrid_alpha_) -
-        reinterpret_cast<char*>(&_impl_.top_k_)) + sizeof(_impl_.hybrid_alpha_));
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+        reinterpret_cast<char*>(&_impl_.use_wasserstein_) -
+        reinterpret_cast<char*>(&_impl_.top_k_)) + sizeof(_impl_.use_wasserstein_));
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       _impl_.filter_.Clear();
     }
   }
@@ -11609,7 +12018,7 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
   }
 
   // map<string, string> filter = 4;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
     if (!this_._internal_filter().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, ::std::string>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, ::std::string,
@@ -11671,6 +12080,15 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
         7, this_._internal_hybrid_alpha(), target);
   }
 
+  // bool use_wasserstein = 8;
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (this_._internal_use_wasserstein() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteBoolToArray(
+          8, this_._internal_use_wasserstein(), target);
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -11697,7 +12115,7 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
   total_size += static_cast<bool>(0x00000020U & cached_has_bits) * 5;
-  if (BatchCheckHasBit(cached_has_bits, 0x0000005fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000dfU)) {
     // repeated double vector = 2;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       ::size_t data_size = ::size_t{8} *
@@ -11734,8 +12152,14 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
             this_._internal_top_k());
       }
     }
+    // bool use_wasserstein = 8;
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      if (this_._internal_use_wasserstein() != 0) {
+        total_size += 2;
+      }
+    }
     // map<string, string> filter = 4;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_filter_size());
       for (const auto& entry : this_._internal_filter()) {
@@ -11764,7 +12188,7 @@ void SearchRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_vector()->MergeFrom(from._internal_vector());
     }
@@ -11793,7 +12217,12 @@ void SearchRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       _this->_impl_.hybrid_alpha_ = from._impl_.hybrid_alpha_;
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      if (from._internal_use_wasserstein() != 0) {
+        _this->_impl_.use_wasserstein_ = from._impl_.use_wasserstein_;
+      }
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       _this->_impl_.filter_.MergeFrom(from._impl_.filter_);
     }
   }
@@ -11821,8 +12250,8 @@ void SearchRequest::InternalSwap(SearchRequest* PROTOBUF_RESTRICT PROTOBUF_NONNU
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.collection_, &other->_impl_.collection_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.hybrid_query_, &other->_impl_.hybrid_query_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.hybrid_alpha_)
-      + sizeof(SearchRequest::_impl_.hybrid_alpha_)
+      PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.use_wasserstein_)
+      + sizeof(SearchRequest::_impl_.use_wasserstein_)
       - PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.top_k_)>(
           reinterpret_cast<char*>(&_impl_.top_k_),
           reinterpret_cast<char*>(&other->_impl_.top_k_));

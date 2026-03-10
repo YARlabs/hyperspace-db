@@ -1,4 +1,4 @@
-//! # hyperspace-tiering — Cloud Storage Tiering for HyperspaceDB
+//! # hyperspace-tiering — Cloud Storage Tiering for `HyperspaceDB`
 //!
 //! This crate provides a `ChunkBackend` abstraction for managing immutable HNSW
 //! chunk segments across local disk and cloud object storage (S3/MinIO).

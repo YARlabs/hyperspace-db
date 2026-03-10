@@ -111,7 +111,7 @@ impl<const N: usize> HyperVector<N> {
         // denom = 1 + sq_norm = 2 - 1/alpha
         let sq_norm = 1.0 - (1.0 / self.alpha);
         let denom = 1.0 + sq_norm;
-        
+
         for (k, &p) in coords_k.iter_mut().zip(self.coords.iter()) {
             *k = 2.0 * p / denom;
         }
@@ -208,10 +208,63 @@ pub struct QuantizedHyperVector<const N: usize> {
 
 impl<const N: usize> QuantizedHyperVector<N> {
     pub fn from_float(v: &HyperVector<N>) -> Self {
-        let mut coords = [0; N];
-        for (dst, &src) in coords.iter_mut().zip(v.coords.iter()) {
-            let val = (src * 127.0).clamp(-127.0, 127.0);
-            *dst = val as i8;
+        let mut coords = [0i8; N];
+        let mut float_coords = [0.0f64; N];
+
+        // 1. Compute norm of original vector
+        let mut sq_norm = 0.0;
+        for src in &v.coords {
+            sq_norm += src * src;
+        }
+        let norm = sq_norm.sqrt();
+        let inv_norm = if norm > 1e-9 { 1.0 / norm } else { 0.0 };
+
+        // 2. Initial isotropic quantization
+        for i in 0..N {
+            let val = (v.coords[i] * 127.0).round().clamp(-127.0, 127.0);
+            coords[i] = val as i8;
+            float_coords[i] = val / 127.0;
+        }
+
+        if norm > 1e-9 {
+            // 3. Anisotropic Coordinate Descent Refinement (ScaNN / RaBitQ inspired)
+            // Penalize orthogonal error 10x more than parallel error to preserve angles
+            let t_weight = 10.0;
+
+            for i in 0..N {
+                let original_q = coords[i];
+                let mut best_q = original_q;
+                let mut best_loss = f64::MAX;
+
+                for delta in [-1i16, 0, 1] {
+                    let candidate_q = (original_q as i16 + delta).clamp(-127, 127) as i8;
+                    float_coords[i] = candidate_q as f64 / 127.0;
+
+                    let mut dot_err_x = 0.0;
+                    let mut sq_err = 0.0;
+
+                    for j in 0..N {
+                        let err = float_coords[j] - v.coords[j];
+                        dot_err_x += err * v.coords[j];
+                        sq_err += err * err;
+                    }
+
+                    let e_parallel_mag = dot_err_x * inv_norm;
+                    let e_parallel_sq = e_parallel_mag * e_parallel_mag;
+                    let e_ortho_sq = (sq_err - e_parallel_sq).max(0.0);
+
+                    // Anisotropic loss
+                    let loss = e_parallel_sq + t_weight * e_ortho_sq;
+
+                    if loss < best_loss {
+                        best_loss = loss;
+                        best_q = candidate_q;
+                    }
+                }
+
+                coords[i] = best_q;
+                float_coords[i] = best_q as f64 / 127.0;
+            }
         }
 
         Self {
@@ -569,18 +622,18 @@ impl ZonalVector {
     pub fn new_zonal(coords: &[f64]) -> Self {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
         let r = sq_norm.sqrt();
-        
+
         // If hyperbolic radius is small (R < 0.5), compress to Core.
         if r < 0.5 {
             // Compress to i8 via dynamic range or simple [-1, 1] mapping
-             let mut i8_coords = Vec::with_capacity(coords.len());
-             for &c in coords {
-                 let val = (c * 127.0).round().clamp(-127.0, 127.0);
-                 i8_coords.push(val as i8);
-             }
-             ZonalVector::Core(i8_coords)
+            let mut i8_coords = Vec::with_capacity(coords.len());
+            for &c in coords {
+                let val = (c * 127.0).round().clamp(-127.0, 127.0);
+                i8_coords.push(val as i8);
+            }
+            ZonalVector::Core(i8_coords)
         } else {
-             ZonalVector::Boundary(coords.to_vec())
+            ZonalVector::Boundary(coords.to_vec())
         }
     }
 }
