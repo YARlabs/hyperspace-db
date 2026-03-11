@@ -226,28 +226,40 @@ impl<const N: usize> QuantizedHyperVector<N> {
             float_coords[i] = val / 127.0;
         }
 
-        if norm > 1e-9 {
+        if norm > 1e-9 && N <= 128 {
             // 3. Anisotropic Coordinate Descent Refinement (ScaNN / RaBitQ inspired)
             // Penalize orthogonal error 10x more than parallel error to preserve angles
             let t_weight = 10.0;
 
+            let mut current_dot_err_x = 0.0;
+            let mut current_sq_err = 0.0;
+            for j in 0..N {
+                let err = float_coords[j] - v.coords[j];
+                current_dot_err_x += err * v.coords[j];
+                current_sq_err += err * err;
+            }
+
             for i in 0..N {
                 let original_q = coords[i];
+                let original_f = float_coords[i];
+                let original_err = original_f - v.coords[i];
+
+                let base_dot_err = current_dot_err_x - original_err * v.coords[i];
+                let base_sq_err = current_sq_err - original_err * original_err;
+
                 let mut best_q = original_q;
+                let mut best_f = original_f;
                 let mut best_loss = f64::MAX;
+                let mut best_dot_err = current_dot_err_x;
+                let mut best_sq_err = current_sq_err;
 
                 for delta in [-1i16, 0, 1] {
                     let candidate_q = (original_q as i16 + delta).clamp(-127, 127) as i8;
-                    float_coords[i] = candidate_q as f64 / 127.0;
+                    let candidate_f = f64::from(candidate_q) / 127.0;
+                    let candidate_err = candidate_f - v.coords[i];
 
-                    let mut dot_err_x = 0.0;
-                    let mut sq_err = 0.0;
-
-                    for j in 0..N {
-                        let err = float_coords[j] - v.coords[j];
-                        dot_err_x += err * v.coords[j];
-                        sq_err += err * err;
-                    }
+                    let dot_err_x = base_dot_err + candidate_err * v.coords[i];
+                    let sq_err = base_sq_err + candidate_err * candidate_err;
 
                     let e_parallel_mag = dot_err_x * inv_norm;
                     let e_parallel_sq = e_parallel_mag * e_parallel_mag;
@@ -259,11 +271,16 @@ impl<const N: usize> QuantizedHyperVector<N> {
                     if loss < best_loss {
                         best_loss = loss;
                         best_q = candidate_q;
+                        best_f = candidate_f;
+                        best_dot_err = dot_err_x;
+                        best_sq_err = sq_err;
                     }
                 }
 
                 coords[i] = best_q;
-                float_coords[i] = best_q as f64 / 127.0;
+                float_coords[i] = best_f;
+                current_dot_err_x = best_dot_err;
+                current_sq_err = best_sq_err;
             }
         }
 

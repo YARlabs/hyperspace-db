@@ -28,7 +28,7 @@ Requires-Dist: sentence-transformers>=2.2.0; extra == "all"
 
 # HyperspaceDB Python SDK
 
-Official Python client for HyperspaceDB gRPC API (v2.2.1).
+Official Python client for HyperspaceDB gRPC API (v3.0.0-alpha.2).
 
 The SDK is designed for production services and benchmark tooling:
 - collection management
@@ -116,6 +116,8 @@ batch_results = client.search_batch(
 - `batch_insert(vectors, ids, metadatas=None, collection="", durability=Durability.DEFAULT) -> bool`
 - `search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, collection="") -> list[dict]`
 - `search_batch(vectors, top_k=10, collection="") -> list[list[dict]]`
+- `search_wasserstein(vector, top_k=10, collection="") -> list[dict]`
+- `search_multi_collection(vector, collections, top_k=10) -> dict[str, list[dict]]`
 
 For `filters` with `type="range"`, decimal thresholds are supported (`gte_f64/lte_f64` in gRPC payload are set automatically for non-integer values).
 
@@ -125,6 +127,7 @@ For `filters` with `type="range"`, decimal thresholds are supported (`gte_f64/lt
 - `trigger_vacuum() -> bool`
 - `trigger_snapshot() -> bool`
 - `configure(ef_search=None, ef_construction=None, collection="") -> bool`
+- `trigger_reconsolidation(collection, target_vector, learning_rate) -> bool`
 - `subscribe_to_events(types=None, collection=None) -> Iterator[dict]`
 
 `filter_query` example:
@@ -199,12 +202,79 @@ client = HyperspaceClient(
 )
 ```
 
+## Embedding Pipeline (Optional)
+
+HyperspaceDB supports **per-geometry embeddings** — each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can use its own backend independently.
+
+### Quick Setup via Environment Variables
+
+```bash
+export HYPERSPACE_EMBED=true
+
+# Cosine geometry → OpenAI API
+export HS_EMBED_COSINE_PROVIDER=openai
+export HS_EMBED_COSINE_EMBED_MODEL=text-embedding-3-small
+export HS_EMBED_COSINE_API_KEY=sk-...
+
+# Poincaré geometry → HuggingFace Hub (auto-downloads ONNX model)
+export HS_EMBED_POINCARE_PROVIDER=huggingface
+export HS_EMBED_POINCARE_HF_MODEL_ID=your-org/cde-spatial-poincare-128d
+export HS_EMBED_POINCARE_DIM=128
+export HF_TOKEN=hf_...  # Optional: for gated models
+
+# Lorentz geometry → Local ONNX file
+export HS_EMBED_LORENTZ_PROVIDER=local
+export HS_EMBED_LORENTZ_MODEL_PATH=./models/lorentz_128d.onnx
+export HS_EMBED_LORENTZ_TOKENIZER_PATH=./models/lorentz_128d_tokenizer.json
+export HS_EMBED_LORENTZ_DIM=129
+```
+
+### Client-Side Embedder
+
+The Python SDK also includes client-side embedders (no server config needed):
+
+```python
+from hyperspace.embedder import OpenAIEmbedder, LocalOnnxEmbedder, HuggingFaceEmbedder
+
+# OpenAI
+embedder = OpenAIEmbedder(api_key="sk-...", model="text-embedding-3-small")
+vector = await embedder.encode("my text")
+
+# Local ONNX — load from disk
+embedder = LocalOnnxEmbedder(
+    model_path="./models/bge-small.onnx",
+    tokenizer_path="./models/bge-small-tokenizer.json",
+    geometry="cosine",
+)
+vector = await embedder.encode("my text")
+
+# HuggingFace Hub — auto-downloads on first use
+# Cached at ~/.cache/huggingface/hub
+embedder = HuggingFaceEmbedder(
+    model_id="BAAI/bge-small-en-v1.5",
+    geometry="cosine",
+    hf_token=None,  # Set for gated/private models
+)
+vector = await embedder.encode("my text")
+```
+
+### Supported Geometries
+
+| Geometry | Post-Processing | Typical Use Case |
+|---|---|---|
+| `cosine` | Unit normalize | Semantic similarity |
+| `l2` | Unit normalize | Euclidean distance |
+| `poincare` | Clamp to unit ball | Hierarchical data (ontologies) |
+| `lorentz` | None (model handles it) | Mixed hierarchical + semantic |
+
 ## Best Practices
 
 - Reuse one client instance per worker/process.
 - Prefer `search_batch` for benchmark and high-QPS paths.
 - Chunk large inserts instead of one huge request.
 - Keep vector dimensionality aligned with collection configuration.
+- For `lorentz` geometry, dimension = spatial_dim + 1 (the time component x₀).
+- For `huggingface` provider, models are cached after first download.
 
 ## Error Handling
 
