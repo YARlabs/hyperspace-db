@@ -209,6 +209,19 @@ pub struct QuantizedHyperVector<const N: usize> {
 impl<const N: usize> QuantizedHyperVector<N> {
     pub fn from_float(v: &HyperVector<N>) -> Self {
         let mut coords = [0i8; N];
+
+        // 1. If high dimension, fast path isotropic quantization
+        if N > 128 {
+            for (dst, &src) in coords.iter_mut().zip(v.coords.iter()) {
+                let val = (src * 127.0).round().clamp(-127.0, 127.0);
+                *dst = val as i8;
+            }
+            return Self {
+                coords,
+                alpha: v.alpha as f32,
+            };
+        }
+
         let mut float_coords = [0.0f64; N];
 
         // 1. Compute norm of original vector
@@ -226,7 +239,7 @@ impl<const N: usize> QuantizedHyperVector<N> {
             float_coords[i] = val / 127.0;
         }
 
-        if norm > 1e-9 && N <= 128 {
+        if norm > 1e-9 {
             // 3. Anisotropic Coordinate Descent Refinement (ScaNN / RaBitQ inspired)
             // Penalize orthogonal error 10x more than parallel error to preserve angles
             let t_weight = 10.0;

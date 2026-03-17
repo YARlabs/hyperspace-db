@@ -21,7 +21,7 @@ export function DashboardLayout() {
                     <NavItem to="/collections" icon={Database} label="Collections" />
                     <NavItem to="/nodes" icon={Network} label="Cluster Nodes" />
                     <NavItem to="/explorer" icon={Search} label="Data Explorer" />
-                    <NavItem to="/graph" icon={Network} label="Graph Explorer" badge="v2.2" />
+                    <NavItem to="/graph" icon={Network} label="Graph Explorer" />
                     <NavItem to="/settings" icon={Settings} label="Settings" />
                 </nav>
 

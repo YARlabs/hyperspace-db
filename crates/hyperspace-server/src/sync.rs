@@ -1,6 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 /// Number of buckets for Anti-Entropy (ID-based sharding)
 /// 256 buckets means ~4000 vectors per bucket for 1M collection.
@@ -50,16 +48,17 @@ impl CollectionDigest {
         (id as usize) % SYNC_BUCKETS
     }
 
-    /// Computes a hash for a vector entry and returns it.
-    /// In a real Merkle tree, this would be a leaf node hash.
     pub fn hash_entry(id: u32, vector: &[f64]) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        id.hash(&mut hasher);
-        // Hashing f64 is tricky due to NaN, but we assume clean vectors here.
-        // Convert to bits to hash.
+        // Fast FNV-1a hash instead of cryptographic SipHash (DefaultHasher)
+        // Eliminates CPU bottleneck for high-dimensional vectors (e.g. 1024D = 8KB)
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        h ^= u64::from(id);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+
         for v in vector {
-            v.to_bits().hash(&mut hasher);
+            h ^= v.to_bits();
+            h = h.wrapping_mul(0x0100_0000_01b3);
         }
-        hasher.finish()
+        h
     }
 }

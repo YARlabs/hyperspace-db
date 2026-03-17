@@ -229,6 +229,9 @@ pub fn lorentz_dist(u: &[f32], v: &[f32]) -> f32 {
 
 /// Computes the parallel transport of a tangent vector `v` from point `x` to point `y`
 /// in the Lorentz model.
+/// # Errors
+///
+/// Returns a string error if denominator of parallel transport is zero or invalid due to numerical instability.
 pub fn lorentz_parallel_transport(x: &[f32], y: &[f32], v: &[f32]) -> Result<Vec<f32>, String> {
     if x.len() != y.len() || x.len() != v.len() {
         return Err("Dimension mismatch".to_string());
@@ -236,7 +239,7 @@ pub fn lorentz_parallel_transport(x: &[f32], y: &[f32], v: &[f32]) -> Result<Vec
     let inner_xy = lorentz_product(x, y);
     let inner_yv = lorentz_product(y, v);
     let denom = 1.0 - inner_xy;
-    
+
     // Prevent division by zero
     let factor = if denom.abs() < 1e-7 {
         0.0
@@ -448,7 +451,7 @@ mod tests {
     #[test]
     fn test_lorentz_product_and_distance() {
         let u = vec![2.0f32, (3.0f32).sqrt()]; // ||u||^2 = -4 + 3 = -1
-        let v = vec![2.0f32, (3.0f32).sqrt()]; 
+        let v = vec![2.0f32, (3.0f32).sqrt()];
         let dist = lorentz_dist(&u, &v);
         assert!(dist < 1e-4);
 
@@ -466,7 +469,7 @@ mod tests {
         let v = vec![0.0f32, 1.0]; // Tangent to x: <v, x>_L = 0
         let transported = lorentz_parallel_transport(&x, &y, &v).unwrap();
         assert_eq!(transported.len(), 2);
-        
+
         // <transported, y>_L should remain close to 0 as it's a tangent vector
         let dot_y = lorentz_product(&transported, &y);
         assert!(dot_y.abs() < 1e-4);

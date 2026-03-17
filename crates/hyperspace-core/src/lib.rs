@@ -306,10 +306,14 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
         const LANES: usize = 8;
 
         while i + LANES <= N {
-            let va_f64 = std::simd::f64x8::from_slice(&a[i..i + LANES]);
-            let vb_f64 = std::simd::f64x8::from_slice(&b[i..i + LANES]);
-            let va: f32x8 = va_f64.cast();
-            let vb: f32x8 = vb_f64.cast();
+            let mut a_buf = [0.0f32; LANES];
+            let mut b_buf = [0.0f32; LANES];
+            for k in 0..LANES {
+                a_buf[k] = a[i + k] as f32;
+                b_buf[k] = b[i + k] as f32;
+            }
+            let va = f32x8::from_slice(&a_buf);
+            let vb = f32x8::from_slice(&b_buf);
             let diff = va - vb;
             sum += diff * diff;
             i += LANES;
@@ -358,9 +362,12 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
             // 1. Load quantized vector (i8)
             let a_chunk = i8x8::from_slice(&a.coords[i..i + LANES]);
 
-            // 2. Load Query (f64) and cast to f32 (Vectorized)
-            let b_f64 = std::simd::f64x8::from_slice(&b.coords[i..i + LANES]);
-            let b_chunk: f32x8 = b_f64.cast();
+            // 2. Load Query (f64) and convert to f32
+            let mut query_buf = [0.0f32; LANES];
+            for k in 0..LANES {
+                query_buf[k] = b.coords[i + k] as f32;
+            }
+            let b_chunk = f32x8::from_slice(&query_buf);
 
             // 3. Vectorized cast i8 -> f32
             let a_f32: f32x8 = a_chunk.cast();
