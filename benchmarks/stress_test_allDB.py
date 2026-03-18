@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import json
 import numpy as np
 import threading
 import requests
@@ -8,6 +9,9 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import List, Dict, Any
+import resource
+import warnings
+warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # Paths
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sdks", "python")))
@@ -158,16 +162,8 @@ class StressTestRunner:
             eff_data.extend([next((r.srch_eff for r in db_res if r.concurrency == c), 0) for c in self.concurrencies[1:]])
             eff_data.append(0) # Empty placeholder for C=1100
             
-            js_eff_datasets.append({
-                "label": db, 
-                "data": eff_data, 
-                "backgroundColor": color,
-                "hoverBackgroundColor": "#fff"
-            })
-
-        import json
-        with open(html_path, "w") as f:
-            f.write(f"""<!DOCTYPE html>
+            # Efficiency data not needed for this version of the report
+        html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -177,7 +173,7 @@ class StressTestRunner:
     <style>
         :root {{ --bg: #0f172a; --card-bg: #1e293b; --text: #f8fafc; --accent: #38bdf8; }}
         body {{ font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding: 2rem; margin: 0; }}
-        .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }}
+        .grid {{ display: grid; grid-template-columns: 1fr; gap: 2rem; }}
         .card {{ background: var(--card-bg); padding: 1.5rem; border-radius: 1rem; border: 1px solid #334155; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }}
         canvas {{ max-height: 450px; width: 100% !important; }}
         h1 {{ text-align: center; color: var(--accent); margin-bottom: 2rem; }}
@@ -187,17 +183,14 @@ class StressTestRunner:
 <body>
     <h1>Vector DB Stress Test Metrics</h1>
     <div class="grid">
-        <div class="card"><h2>Search Throughput (Total QPS)</h2><canvas id="sChart"></canvas></div>
         <div class="card"><h2>Insert Throughput (Total QPS)</h2><canvas id="iChart"></canvas></div>
-    </div>
-    <div class="card">
-        <h2>Scalability Efficiency (%) - Search</h2>
-        <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1rem;">(Percentage of linear speedup. Higher is better. Labels show % of core utilization and diff from leader)</p>
-        <canvas id="eChart"></canvas>
+        <div class="card"><h2>Search Throughput (Total QPS)</h2><canvas id="sChart"></canvas></div>
     </div>
     <script>
         const concs = {json.dumps(self.concurrencies)};
-        const effConcs = {json.dumps(eff_concs)};
+        const js_insert = {json.dumps(js_insert_datasets)};
+        const js_search = {json.dumps(js_search_datasets)};
+        
         const commonOptions = {{ 
             responsive: true, 
             maintainAspectRatio: false,
@@ -208,70 +201,22 @@ class StressTestRunner:
             }} 
         }};
 
-        // Data Labels Plugin
-        const topLabelsPlugin = {{
-            id: 'topLabels',
-            afterDatasetsDraw(chart) {{
-                if (chart.canvas.id !== 'eChart') return;
-                const {{ ctx, data }} = chart;
-                ctx.save();
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'bottom';
-                
-                data.datasets.forEach((dataset, i) => {{
-                    const meta = chart.getDatasetMeta(i);
-                    meta.data.forEach((bar, index) => {{
-                        const val = dataset.data[index];
-                        if (val <= 0) return;
-
-                        // Find leader for this concurrency point
-                        let leaderVal = 0;
-                        data.datasets.forEach(ds => {{ leaderVal = Math.max(leaderVal, ds.data[index]); }});
-                        
-                        // Value label
-                        ctx.font = 'bold 11px Inter';
-                        ctx.fillStyle = '#fff';
-                        ctx.fillText(val.toFixed(1) + '%', bar.x, bar.y - 18);
-                        
-                        // Comparison label
-                        if (leaderVal > 0) {{
-                            const isLeader = val === leaderVal;
-                            const diff = isLeader ? 'Leader' : '-' + ((leaderVal - val) / leaderVal * 100).toFixed(0) + '%';
-                            ctx.font = '9px Inter';
-                            ctx.fillStyle = isLeader ? '#10b981' : '#f87171';
-                            ctx.fillText(diff, bar.x, bar.y - 6);
-                        }}
-                    }});
-                }});
-                ctx.restore();
-            }}
-        }};
-
-        new Chart(document.getElementById('sChart'), {{ 
-            type: 'line', 
-            data: {{ labels: concs, datasets: {json.dumps(js_search_datasets)} }}, 
-            options: commonOptions 
-        }});
         new Chart(document.getElementById('iChart'), {{ 
             type: 'line', 
-            data: {{ labels: concs, datasets: {json.dumps(js_insert_datasets)} }}, 
+            data: {{ labels: concs, datasets: js_insert }}, 
             options: commonOptions 
         }});
-        new Chart(document.getElementById('eChart'), {{ 
-            type: 'bar', 
-            data: {{ labels: effConcs, datasets: {json.dumps(js_eff_datasets)} }}, 
-            options: {{
-                ...commonOptions,
-                plugins: {{ ...commonOptions.plugins }},
-                barPercentage: 0.8,
-                categoryPercentage: 0.8
-            }},
-            plugins: [topLabelsPlugin]
+        new Chart(document.getElementById('sChart'), {{ 
+            type: 'line', 
+            data: {{ labels: concs, datasets: js_search }}, 
+            options: commonOptions 
         }});
     </script>
 </body>
-</html>""")
-        print(f"\n✅ Visual report updated: {{html_path}}")
+</html>"""
+        with open(html_path, "w") as f:
+            f.write(html_content)
+        print(f"\n✅ Visual report updated: {html_path}")
 
 def run_stress_test():
     parser = argparse.ArgumentParser(description="Multi-DB Stress Test Runner")
@@ -282,21 +227,14 @@ def run_stress_test():
     runner = StressTestRunner(dim=args.dim)
     target_dbs = [d.lower() for d in args.db] if args.db else None
 
-    # --- MONKEYPATCH CHROMA (Legacy logic) ---
+    # Raise file descriptor limit for stress testing
     try:
-        class UniversalNoopTelemetry:
-            def __init__(self, *args, **kwargs): pass
-            def capture(self, *args, **kwargs): pass
-            def context(self, *args, **kwargs): pass
-            def dependencies(self): return set()
-            def start(self): pass
-            def stop(self): pass
-        
-        import chromadb.telemetry.product.posthog
-        chromadb.telemetry.product.posthog.Posthog = UniversalNoopTelemetry
-        import chromadb.telemetry.product.noop
-        chromadb.telemetry.product.noop.NoopTelemetry = UniversalNoopTelemetry
-    except: pass
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (min(16384, hard), hard))
+        print(f"  [System] FD limit raised from {soft} to {min(16384, hard)}")
+    except Exception as e:
+        print(f"  [Warning] Could not raise FD limit: {e}")
+
 
     # --- HYPERSPACE ---
     if not target_dbs or "hyperspace" in target_dbs:
@@ -330,7 +268,11 @@ def run_stress_test():
                         if r.get("indexing_queue", 0) == 0 and r.get("count", 0) > 0: return
                     except: pass
                     time.sleep(1)
-            runner.run_concurrency("Hyperspace", hs_setup, hs_ins, hs_srch, lambda cl, c: cl.delete_collection(c), hs_wait)
+            def hs_cleanup(client, c):
+                try: client.delete_collection(c)
+                except: pass
+                if hasattr(client, "close"): client.close()
+            runner.run_concurrency("Hyperspace", hs_setup, hs_ins, hs_srch, hs_cleanup, hs_wait)
         except Exception as e: print(f"Skipping Hyperspace: {e}")
 
     # --- QDRANT ---
@@ -351,7 +293,11 @@ def run_stress_test():
                     points = [PointStruct(id=start_id + i + k, vector=v, payload={}) for k, v in enumerate(chunk)]
                     client.upsert(c, points, wait=True)
             def qd_srch(client, c, v): client.search(c, query_vector=v, limit=10)
-            runner.run_concurrency("Qdrant", qd_setup, qd_ins, qd_srch, lambda cl, c: cl.delete_collection(c))
+            def qd_cleanup(client, c):
+                try: client.delete_collection(c)
+                except: pass
+                if hasattr(client, "close"): client.close()
+            runner.run_concurrency("Qdrant", qd_setup, qd_ins, qd_srch, qd_cleanup)
         except Exception as e: print(f"Skipping Qdrant: {e}")
 
     # --- MILVUS ---
@@ -382,20 +328,87 @@ def run_stress_test():
         try:
             import chromadb
             from chromadb.config import Settings
+            
+            # Universal Noop Telemetry (matching chroma_plugin.py logic)
+            class UniversalNoopTelemetry:
+                def __init__(self, *args, **kwargs): pass
+                def capture(self, *args, **kwargs): pass
+                def context(self, *args, **kwargs): pass
+                def dependencies(self): return set()
+                def start(self): pass
+                def stop(self): pass
+
+            # Re-patch locally before setup
+            try:
+                import chromadb.telemetry.product.posthog
+                chromadb.telemetry.product.posthog.Posthog = UniversalNoopTelemetry
+            except ImportError:
+                pass
+
+            try:
+                import chromadb.telemetry.product.noop
+                chromadb.telemetry.product.noop.NoopTelemetry = UniversalNoopTelemetry
+            except ImportError:
+                pass
+
             def chr_setup(c):
-                client = chromadb.HttpClient(host="localhost", port=8000, settings=Settings(anonymized_telemetry=False))
-                try: client.delete_collection(c)
-                except: pass
-                col = client.create_collection(c, metadata={"hnsw:space": "cosine"})
+                client = None
+                col = None
+                try:
+                    client = chromadb.HttpClient(
+                        host="localhost",
+                        port=8000,
+                        settings=Settings(anonymized_telemetry=False),
+                    )
+                    if hasattr(client, "_telemetry"): client._telemetry = UniversalNoopTelemetry()
+                    try: client.delete_collection(c)
+                    except: pass
+                    col = client.create_collection(c, metadata={"hnsw:space": "cosine"})
+                except Exception:
+                    # Fallback to PersistentClient if HTTP fails or tenant error occurs
+                    client = None
+                    col = None
+
+                if col is None:
+                    db_dir = os.path.abspath(".chroma_stress_data")
+                    client = chromadb.PersistentClient(
+                        path=db_dir,
+                        settings=Settings(anonymized_telemetry=False),
+                    )
+                    if hasattr(client, "_telemetry"): client._telemetry = UniversalNoopTelemetry()
+                    try: client.delete_collection(c)
+                    except: pass
+                    col = client.create_collection(c, metadata={"hnsw:space": "cosine"})
+                
+                if col is not None:
+                    col._runner_client = client
+                
                 return col
+
             def chr_ins(col, c, vecs, start_id):
                 ids = [str(start_id + i) for i in range(len(vecs))]
-                for k in range(0, len(vecs), 500):
-                    col.add(embeddings=vecs[k:k+500], ids=ids[k:k+500])
+                batch_size = 500
+                for k in range(0, len(vecs), batch_size):
+                    col.add(embeddings=vecs[k : k + batch_size], ids=ids[k : k + batch_size])
+
             def chr_srch(col, c, v):
                 col.query(query_embeddings=[v], n_results=10)
-            runner.run_concurrency("Chroma", chr_setup, chr_ins, chr_srch, lambda col, c: None) # Cleanup can be added if needed
-        except Exception as e: print(f"Skipping Chroma: {e}")
+
+            def chr_cleanup(col, c):
+                try:
+                    if hasattr(col, "_runner_client"):
+                        col._runner_client.delete_collection(c)
+                except: pass
+                # Attempt to close the client if it has a way to release resources
+                if hasattr(col, "_runner_client"):
+                    try:
+                        # Chroma internal db often uses persistent/sqlite
+                        if hasattr(col._runner_client, "close"): col._runner_client.close()
+                    except: pass
+
+            runner.run_concurrency("Chroma", chr_setup, chr_ins, chr_srch, chr_cleanup)
+        except Exception as e:
+            print(f"Skipping Chroma: {e}")
 
     # --- WEAVIATE ---
     if not target_dbs or "weaviate" in target_dbs:
@@ -412,7 +425,11 @@ def run_stress_test():
                     for v in vecs: b.add_data_object({}, c, vector=v)
             def weav_srch(client, c, v):
                 client.query.get(c, ["_additional { id }"]).with_near_vector({"vector": v}).with_limit(10).do()
-            runner.run_concurrency("Weaviate", weav_setup, weav_ins, weav_srch, lambda cl, c: cl.schema.delete_class(c))
+            def weav_cleanup(client, c):
+                try: client.schema.delete_class(c)
+                except: pass
+                # Weaviate v3 client doesn't have a close(), but we do our best
+            runner.run_concurrency("Weaviate", weav_setup, weav_ins, weav_srch, weav_cleanup)
         except Exception as e: print(f"Skipping Weaviate: {e}")
 
     runner.print_final_report()

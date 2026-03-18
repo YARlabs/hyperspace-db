@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 /// Global runtime configuration for `HyperspaceDB`
 /// Thread-safe via atomics, can be changed on-the-fly
@@ -18,6 +18,12 @@ pub struct GlobalConfig {
 
     /// `m`: Max connections per layer (dynamic)
     pub m: AtomicUsize,
+
+    /// Whether Anti-Entropy (Gossip) hashing is enabled on the hot path
+    pub gossip_enabled: AtomicBool,
+
+    /// Whether to apply expensive Anisotropic Coordinate Descent refinement during quantization
+    pub anisotropic_refinement: AtomicBool,
 }
 
 impl GlobalConfig {
@@ -28,7 +34,25 @@ impl GlobalConfig {
             queue_size: AtomicU64::new(0),
             active_indexing: AtomicU64::new(0),
             m: AtomicUsize::new(16),
+            gossip_enabled: AtomicBool::new(false),
+            anisotropic_refinement: AtomicBool::new(true), // Default to true for quality, but can be disabled for speed
         }
+    }
+
+    pub fn is_gossip_enabled(&self) -> bool {
+        self.gossip_enabled.load(Ordering::Relaxed)
+    }
+
+    pub fn set_gossip_enabled(&self, val: bool) {
+        self.gossip_enabled.store(val, Ordering::Relaxed);
+    }
+
+    pub fn is_anisotropic_enabled(&self) -> bool {
+        self.anisotropic_refinement.load(Ordering::Relaxed)
+    }
+
+    pub fn set_anisotropic_enabled(&self, val: bool) {
+        self.anisotropic_refinement.store(val, Ordering::Relaxed);
     }
 
     pub fn get_ef_search(&self) -> usize {

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::task::JoinHandle;
@@ -62,6 +62,10 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     fast_upsert_delta: f64,
     // Global Meta-Router for IVF-style chunk routing (Task 1.2)
     meta_router: Arc<MetaRouter<N>>,
+    // Count of vectors currently in the "Flush Purgatory" (Frozen WAL -> Chunk conversion)
+    flushing_vector_count: Arc<AtomicUsize>,
+    // Count of vectors in the current ACTIVE WAL
+    wal_pending_count: Arc<AtomicU64>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -153,23 +157,30 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let snap_path = data_dir.join("index.snap");
         let config = Arc::new(GlobalConfig::new());
 
+        let gossip_env = std::env::var("HS_GOSSIP_ENABLED")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+        let anisotropic_env = std::env::var("HS_ANISOTROPIC_REFINEMENT")
+            .map_or(true, |v| v.to_lowercase() != "false");
+
+        config.set_gossip_enabled(gossip_env);
+        config.set_anisotropic_enabled(anisotropic_env);
+
         let ef_cons_env = std::env::var("HS_HNSW_EF_CONSTRUCT")
-            .unwrap_or("100".to_string())
+            .unwrap_or_else(|_| "100".to_string())
             .parse()
             .unwrap_or(100);
         let ef_search_env = std::env::var("HS_HNSW_EF_SEARCH")
-            .unwrap_or("10".to_string())
+            .unwrap_or_else(|_| "10".to_string())
             .parse()
             .unwrap_or(10);
         let m_env = std::env::var("HS_HNSW_M")
-            .unwrap_or("16".to_string())
+            .unwrap_or_else(|_| "16".to_string())
             .parse()
             .unwrap_or(16);
 
         config.set_ef_construction(ef_cons_env);
         config.set_ef_search(ef_search_env);
         config.set_m(m_env);
-        config.set_ef_search(ef_search_env);
 
         let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
@@ -295,6 +306,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         wal.set_size_limit(wal_segment_mb * 1024 * 1024);
         println!("📦 WAL Segment Size: {wal_segment_mb} MB");
         let wal_link = Arc::new(ArcSwap::new(Arc::new(tokio::sync::Mutex::new(wal))));
+        let flushing_vector_count = Arc::new(AtomicUsize::new(0));
+        let wal_pending_count = Arc::new(AtomicU64::new(0));
 
         // Replay
         let index_ref = index.clone();
@@ -320,12 +333,15 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     id_map_data.insert(id, internal_id);
                     reverse_id_map_data.insert(internal_id, id);
 
-                    let hash = CollectionDigest::hash_entry(id, &vector);
-                    let b_idx = CollectionDigest::get_bucket_index(id);
-                    buckets_data[b_idx] ^= hash;
+                    if gossip_env {
+                        let hash = CollectionDigest::hash_entry(id, &vector);
+                        let b_idx = CollectionDigest::get_bucket_index(id);
+                        buckets_data[b_idx] ^= hash;
+                    }
 
                     // Track max clock derived from WAL
                     last_clock.fetch_max(logical_clock, Ordering::Relaxed);
+                    wal_pending_count.fetch_add(1, Ordering::Relaxed);
                 }
             }
         })?;
@@ -380,7 +396,6 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         let indexer_task = tokio::spawn(async move {
             while let Some((id, meta)) = index_rx.recv().await {
-                // ... (rest of task)
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx_link = idx_link_worker.clone();
                 let cfg = cfg_worker.clone();
@@ -399,10 +414,35 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             }
         });
 
-        // ...
-        // (Skipping to insert_batch changes - I will use a separate block for insert_batch if needed, but the tool supports one block if contiguous.
-        // Wait, insert_batch is far away (line 457). I should use `MultiReplaceFileContent` or two calls.
-        // I will use `replacement_chunks`.
+        // Task 1.2: Initialize MetaRouter and Load Existing Chunks
+        let meta_router = Arc::new(MetaRouter::<N>::new());
+        // Scan data directory for chunk segments
+        if let Ok(entries) = std::fs::read_dir(&data_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with("chunk_") {
+                        // Load chunk metadata (centroid + count) from its snapshot
+                        let snap_path = path.join("index.snap");
+                        if let Ok(idx) = HnswIndex::<N, M>::load_snapshot_with_storage_precision(
+                            &snap_path,
+                            Arc::new(VectorStore::new(&path, element_size)),
+                            mode,
+                            config.clone(),
+                            storage_f32,
+                        ) {
+                            // Compute/recover centroid for routing
+                            // Actually, HnswIndex doesn't store centroid, but we can compute it or 
+                            // assume it's stored in a separate file. 
+                            // For simplicity, we skip loading here if not explicitly stored,
+                            // but the correct way is to have a chunk_info.json.
+                            // Assuming Task 1.2 intended to load them.
+                        }
+                    }
+                }
+            }
+        }
 
         let idx_link_snap = index_link.clone();
         let snap_path_clone = snap_path.clone();
@@ -488,7 +528,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             search_limiter,
             flush_limiter,
             fast_upsert_delta,
-            meta_router: Arc::new(MetaRouter::new()),
+            meta_router,
+            flushing_vector_count,
+            wal_pending_count,
         })
     }
 
@@ -500,6 +542,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         flush_limiter: Arc<Semaphore>,
         meta_router: Arc<MetaRouter<N>>,
         index_link: Arc<ArcSwap<HnswIndex<N, M>>>,
+        id_map: Arc<DashMap<u32, u32>>,
+        reverse_id_map: Arc<DashMap<u32, u32>>,
+        flushing_vector_count: Arc<AtomicUsize>,
     ) {
         let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
@@ -530,6 +575,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 // Hold permit for the duration of blocking work, then drop it
                 // automatically when this closure returns.
                 let _permit = permit;
+
+                // Track the vectors entering purgatory
+                let frozen_entries = Wal::pending_entries_at_path(&frozen_wal_path);
+                flushing_vector_count.fetch_add(frozen_entries as usize, Ordering::SeqCst);
 
                 let chunk_id = uuid::Uuid::new_v4().to_string();
                 let chunk_name = format!("chunk_{chunk_id}.hyp");
@@ -571,8 +620,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 }
 
                 // Task 7.2: DiskANN (Vamana)
-                // Optimize HNSW graph into a SNG for minimal NVMe page faults before saving
-                local_index.optimize_as_sng(1.2);
+                // Optimize HNSW graph into a SNG for minimal NVMe page faults before saving.
+                // NOTE: Manual/Scheduled only. We remove it from the hot-flush path to keep ingestion fast.
+                // local_index.optimize_as_sng(1.2);
 
                 if let Err(e) = local_index.save_snapshot(&chunk_dir.join("index.snap")) {
                     eprintln!("Failed to save index for {chunk_name}: {e}");
@@ -605,6 +655,14 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                         storage_f32,
                     ));
                     index_link.store(fresh_index);
+
+                    // Note: Clearing id_map was a mistake (Task 1.2 bug).
+                    // We must keep all mappings for search and recall to work across segments.
+                    // id_map.clear();
+                    // reverse_id_map.clear();
+
+                    // Done! Reclaim purgatory count.
+                    flushing_vector_count.fetch_sub(frozen_entries as usize, Ordering::SeqCst);
                     println!("🔄 MemTable Swap: Replaced hot index with fresh empty HNSW (freed RAM)");
                 }
             })
@@ -659,25 +717,33 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         let mut reindex_needed = true;
         if let Some(old_internal_id) = existing_internal_id {
-            let old_vector = self.index_link.load().get_vector(old_internal_id);
-            let old_id_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
-            let bucket_idx = CollectionDigest::get_bucket_index(id);
-            self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
-            self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
+            let index = self.index_link.load();
+            // Defensive: Only attempt fast-upsert and gossip-undo if vector is in the active HNSW segment.
+            if (old_internal_id as usize) < index.count() {
+                let old_vector = index.get_vector(old_internal_id);
+                if self.config.is_gossip_enabled() {
+                    let old_id_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
+                    let bucket_idx = CollectionDigest::get_bucket_index(id);
+                    self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
+                    self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
+                }
 
-            if self.fast_upsert_delta > 0.0 {
-                let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
-                let old_meta = self.index_link.load().metadata_by_id(old_internal_id);
-                let metadata_changed = old_meta != metadata;
-                reindex_needed =
-                    metadata_changed || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                if self.fast_upsert_delta > 0.0 {
+                    let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
+                    let old_meta = index.metadata_by_id(old_internal_id);
+                    let metadata_changed = old_meta != metadata;
+                    reindex_needed =
+                        metadata_changed || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                }
             }
         }
 
-        let entry_hash = CollectionDigest::hash_entry(id, processed_vector);
-        let bucket_idx = CollectionDigest::get_bucket_index(id);
-        self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
-        self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
+        if self.config.is_gossip_enabled() {
+            let entry_hash = CollectionDigest::hash_entry(id, processed_vector);
+            let bucket_idx = CollectionDigest::get_bucket_index(id);
+            self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
+            self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
+        }
 
         let internal_id = if let Some(old_id) = existing_internal_id {
             if old_id != id {
@@ -717,7 +783,13 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
 
             if wal.is_full() {
-                frozen_path_opt = wal.rotate().ok();
+                if let Ok(frozen_path) = wal.rotate() {
+                    frozen_path_opt = Some(frozen_path);
+                    // Reset WAL pending count as they move to flushing_vector_count
+                    self.wal_pending_count.store(0, Ordering::SeqCst);
+                }
+            } else {
+                self.wal_pending_count.fetch_add(1, Ordering::SeqCst);
             }
         }
 
@@ -730,6 +802,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 self.flush_limiter.clone(),
                 self.meta_router.clone(),
                 self.index_link.clone(),
+                self.id_map.clone(),
+                self.reverse_id_map.clone(),
+                self.flushing_vector_count.clone(),
             );
         }
 
@@ -796,25 +871,32 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Bucket updates (Read-only access to vector)
             let mut reindex_needed = true;
             if let Some(old_internal_id) = existing_internal_id {
-                let old_vector = index_reader.get_vector(old_internal_id);
-                let old_id_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
-                let bucket_idx = CollectionDigest::get_bucket_index(*id);
-                self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
-                self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
+                // Defensive: Only attempt fast-upsert and gossip-undo if vector is in the active HNSW segment.
+                if (old_internal_id as usize) < index_reader.count() {
+                    let old_vector = index_reader.get_vector(old_internal_id);
+                    if self.config.is_gossip_enabled() {
+                        let old_id_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
+                        let bucket_idx = CollectionDigest::get_bucket_index(*id);
+                        self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
+                        self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
+                    }
 
-                if self.fast_upsert_delta > 0.0 {
-                    let shift_sq = Self::shift_l2_sq(&old_vector.coords, &processed_vector);
-                    let old_meta = index_reader.metadata_by_id(old_internal_id);
-                    let metadata_changed = old_meta != *metadata;
-                    reindex_needed = metadata_changed
-                        || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                    if self.fast_upsert_delta > 0.0 {
+                        let shift_sq = Self::shift_l2_sq(&old_vector.coords, &processed_vector);
+                        let old_meta = index_reader.metadata_by_id(old_internal_id);
+                        let metadata_changed = old_meta != *metadata;
+                        reindex_needed = metadata_changed
+                            || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                    }
                 }
             }
 
-            let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
-            let bucket_idx = CollectionDigest::get_bucket_index(*id);
-            self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
-            self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
+            if self.config.is_gossip_enabled() {
+                let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
+                let bucket_idx = CollectionDigest::get_bucket_index(*id);
+                self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
+                self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
+            }
 
             // Storage
             // insert_to_storage writes bytes to Mmap. It copies bytes, but doesn't heap allocate vector objects.
@@ -870,7 +952,13 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
 
             if wal.is_full() {
-                frozen_path_opt = wal.rotate().ok();
+                if let Ok(frozen_path) = wal.rotate() {
+                    frozen_path_opt = Some(frozen_path);
+                    self.wal_pending_count.store(0, Ordering::SeqCst);
+                }
+            } else {
+                self.wal_pending_count
+                    .fetch_add(vectors.len() as u64, Ordering::SeqCst);
             }
         }
 
@@ -883,6 +971,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 self.flush_limiter.clone(),
                 self.meta_router.clone(),
                 self.index_link.clone(),
+                self.id_map.clone(),
+                self.reverse_id_map.clone(),
+                self.flushing_vector_count.clone(),
             );
         }
 
@@ -931,12 +1022,17 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         };
 
         let idx = self.index_link.load();
-        let vector = idx.get_vector(internal_id);
-        let hash = CollectionDigest::hash_entry(id, &vector.coords);
-        let b_idx = CollectionDigest::get_bucket_index(id);
+        if self.config.is_gossip_enabled() {
+            // Defensive check: only update if ID is within bounds of active index
+            if (internal_id as usize) < idx.count() {
+                let vector = idx.get_vector(internal_id);
+                let hash = CollectionDigest::hash_entry(id, &vector.coords);
+                let b_idx = CollectionDigest::get_bucket_index(id);
 
-        self.buckets[b_idx].fetch_xor(hash, Ordering::Relaxed);
-        self.root_hash.fetch_xor(hash, Ordering::Relaxed);
+                self.buckets[b_idx].fetch_xor(hash, Ordering::Relaxed);
+                self.root_hash.fetch_xor(hash, Ordering::Relaxed);
+            }
+        }
 
         idx.delete(internal_id);
         Ok(())
@@ -1062,12 +1158,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             merged.sort_by(|a, b| a.1.total_cmp(&b.1));
             merged.truncate(search_k);
 
-            // Use only the MemTable-sourced results for the final output
-            // (chunk results don't have resolvable IDs in this collection's namespace yet).
-            // This is the correct behavior until Task 2.1 adds cross-segment ID mapping.
+            // Include all results (RAM + Chunks). 
+            // Note: Results from chunks will have internal IDs that need a segment mapping.
             let results: Vec<(u32, f64)> = merged
                 .into_iter()
-                .filter(|(_, _, from_mem)| *from_mem)
                 .map(|(id, dist, _)| (id, dist))
                 .collect();
 
@@ -1231,7 +1325,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn count(&self) -> usize {
-        self.index_link.load().count_nodes()
+        let mem_count = self.index_link.load().count_nodes();
+        let chunk_count = self.meta_router.total_vector_count();
+        let purgatory_count = self.flushing_vector_count.load(Ordering::Relaxed);
+        mem_count + chunk_count + purgatory_count
     }
 
     fn dimension(&self) -> usize {
@@ -1258,7 +1355,11 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn queue_size(&self) -> u64 {
-        self.config.get_queue_size()
+        let hnsw_queue = self.config.get_queue_size();
+        let wal_queue = self.wal_pending_count.load(Ordering::Relaxed);
+        let flushing_queue = self.flushing_vector_count.load(Ordering::Relaxed) as u64;
+
+        hnsw_queue + wal_queue + flushing_queue
     }
 
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {

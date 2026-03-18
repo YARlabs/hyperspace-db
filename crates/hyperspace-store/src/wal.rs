@@ -28,6 +28,7 @@ pub struct Wal {
     path: std::path::PathBuf,
     current_size: u64,
     size_limit: u64,
+    pending_entries: u64,
 }
 
 /// Represents an operation stored in the WAL.
@@ -52,6 +53,7 @@ impl Wal {
             path: path.to_owned(),
             current_size,
             size_limit: 75 * 1024 * 1024, // 75 MB default soft limit
+            pending_entries: 0,           // Fresh WAL assumes 0 until we support append-resume
         })
     }
 
@@ -65,6 +67,10 @@ impl Wal {
 
     pub fn size(&self) -> u64 {
         self.current_size
+    }
+
+    pub fn pending_entries(&self) -> u64 {
+        self.pending_entries
     }
 
     pub fn rotate(&mut self) -> io::Result<std::path::PathBuf> {
@@ -88,6 +94,7 @@ impl Wal {
             .open(&self.path)?;
         self.file = BufWriter::new(file);
         self.current_size = 0;
+        self.pending_entries = 0;
         Ok(frozen_path)
     }
 
@@ -139,6 +146,7 @@ impl Wal {
 
         // 9 bytes header + payload length
         self.current_size += 9 + payload.len() as u64;
+        self.pending_entries += 1;
 
         Ok(())
     }
@@ -406,5 +414,12 @@ impl Wal {
                 "Unknown Legacy OpCode",
             )),
         }
+    }
+
+    /// Quickly counts entries in a frozen WAL file without full deserialization.
+    pub fn pending_entries_at_path(path: &Path) -> u64 {
+        let mut count = 0;
+        let _ = Self::replay(path, |_| count += 1);
+        count
     }
 }

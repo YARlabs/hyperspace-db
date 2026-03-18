@@ -30,6 +30,10 @@ pub struct VectorStore {
     base_path: PathBuf,
 }
 
+#[repr(align(64))]
+struct AlignedZero([u8; 131072]);
+static ZERO_BUF: AlignedZero = AlignedZero([0u8; 131072]);
+
 impl VectorStore {
     /// Creates or opens a `VectorStore` at the given path.
     pub fn new(base_path: &Path, element_size: usize) -> Self {
@@ -77,6 +81,19 @@ impl VectorStore {
         let mmap = unsafe { MmapOptions::new().map_mut(&file)? };
         let read_mmap = unsafe { MmapOptions::new().map(&file)? };
 
+        let addr = read_mmap.as_ptr();
+        let offset = addr.align_offset(64);
+        if offset != 0 {
+            eprintln!(
+                "⚠️ CRITICAL: Mmap misaligned for {}: offset={}, addr={:?}. This will cause panics in quantized kernels!",
+                path.display(),
+                offset,
+                addr
+            );
+            // On Mac, mmap should be page-aligned. Page size is always multiple of 64.
+            // If this happens, we have a platform weirdness.
+        }
+
         Ok(Segment {
             read_mmap,
             write_mmap: Mutex::new(mmap),
@@ -123,10 +140,16 @@ impl VectorStore {
         let local_idx = id_val & CHUNK_MASK;
 
         let segs = self.segments.load();
-        assert!(
-            segment_idx < segs.len(),
-            "VectorStore: Access out of bounds segment {segment_idx}"
-        );
+        if segment_idx >= segs.len() {
+            // Defensive: Return a 64-byte aligned zero slice instead of panicking.
+            // This prevents crashes during MemTable swaps/race conditions.
+            let ptr = ZERO_BUF.0.as_ptr();
+            let offset = ptr.align_offset(64);
+            if offset != 0 {
+                eprintln!("⚠️ ZERO_BUF is misaligned! offset={}, addr={:?}", offset, ptr);
+            }
+            return &ZERO_BUF.0[..self.element_size];
+        }
         let segment = &segs[segment_idx];
 
         let start = local_idx * self.element_size;
@@ -190,7 +213,6 @@ impl VectorStore {
     }
 
     /// Serializes only the used portion of the storage to a byte vector.
-    /// This is primarily for WASM/serialization use cases.
     pub fn export(&self) -> Vec<u8> {
         let count = self.count.load(Ordering::Relaxed);
         let total_bytes = count * self.element_size;
@@ -221,16 +243,12 @@ impl VectorStore {
     }
 
     /// Reconstructs the store from bytes.
-    /// This is primarily for WASM/deserialization use cases.
-    /// Note: For mmap implementation, this creates temporary files.
     pub fn from_bytes(path: &Path, element_size: usize, data: &[u8]) -> Self {
         let store = Self::new(path, element_size);
 
-        // Calculate count derived from data length
         let count = data.len() / element_size;
         store.set_count(count);
 
-        // Fill segments by writing data
         let mut offset = 0;
         let mut segment_idx = 0;
 

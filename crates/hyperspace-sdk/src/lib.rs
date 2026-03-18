@@ -436,7 +436,7 @@ impl Client {
         let mut result_map = std::collections::HashMap::new();
         for (col_name, response) in collections
             .into_iter()
-            .zip(resp.into_inner().responses.into_iter())
+            .zip(resp.into_inner().responses)
         {
             result_map.insert(col_name, response.results);
         }

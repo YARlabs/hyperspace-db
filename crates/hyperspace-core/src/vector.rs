@@ -207,11 +207,12 @@ pub struct QuantizedHyperVector<const N: usize> {
 }
 
 impl<const N: usize> QuantizedHyperVector<N> {
-    pub fn from_float(v: &HyperVector<N>) -> Self {
+    pub fn from_float(v: &HyperVector<N>, anisotropic: bool) -> Self {
         let mut coords = [0i8; N];
 
         // 1. If high dimension, fast path isotropic quantization
-        if N > 128 {
+        // OR if anisotropic refinement is explicitly disabled
+        if N > 128 || !anisotropic {
             for (dst, &src) in coords.iter_mut().zip(v.coords.iter()) {
                 let val = (src * 127.0).round().clamp(-127.0, 127.0);
                 *dst = val as i8;
@@ -609,12 +610,17 @@ impl<const N: usize> QuantizedHyperVector<N> {
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "QuantizedHyperVector: Misaligned bytes!"
-        );
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
+        let addr = bytes.as_ptr();
+        let align = std::mem::align_of::<Self>();
+        let offset = addr.align_offset(align);
+        if offset != 0 {
+            panic!(
+                "QuantizedHyperVector: Misaligned bytes! addr={:?}, align={}, offset={}. Use aligned storage.",
+                addr, align, offset
+            );
+        }
+        // SAFETY: alignment and size are controlled by caller/storage element sizing.
+        unsafe { &*addr.cast::<Self>() }
     }
 }
 

@@ -708,6 +708,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         self.has_nonempty_metadata.load(Ordering::Relaxed)
     }
 
+    #[inline]
+    pub fn count(&self) -> usize {
+        self.storage.count()
+    }
+
     fn build_allowed_bitmap(
         &self,
         filter: &std::collections::HashMap<String, String>,
@@ -1035,6 +1040,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     // Distance calculation helper
     #[inline]
     fn dist(&self, node_id: NodeId, query: &HyperVector<N>) -> f64 {
+        // Defensive: Check bounds to avoid casting fallback/misaligned bytes during swaps
+        if node_id as usize >= self.storage.count() {
+            return f64::MAX;
+        }
+
         let bytes = self.storage.get(node_id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
@@ -1068,6 +1078,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         query_klein: Option<&HyperVector<N>>,
     ) -> f64 {
         if let Some(qk) = query_klein {
+            // Defensive: Check bounds
+            if node_id as usize >= self.storage.count() {
+                return f64::MAX;
+            }
             let bytes = self.storage.get(node_id);
             if self.storage_f32 {
                 let v = HyperVectorF32::<N>::from_bytes(bytes);
@@ -1425,6 +1439,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
         }
 
+        // Defensive: Check bounds against the storage backend.
+        // During MemTable swaps, a stale internal ID might be used against a fresh storage.
+        if id as usize >= self.storage.count() {
+            return HyperVector::new_unchecked([0.0; N]);
+        }
+
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
@@ -1504,7 +1524,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let q = if M::name() == "lorentz" {
                     QuantizedHyperVector::from_float_lorentz(&q_vec_full)
                 } else {
-                    QuantizedHyperVector::from_float(&q_vec_full)
+                    QuantizedHyperVector::from_float(&q_vec_full, self.config.is_anisotropic_enabled())
                 };
                 self.storage.append(q.as_bytes())?
             }
@@ -1547,7 +1567,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let q = if M::name() == "lorentz" {
                     QuantizedHyperVector::from_float_lorentz(&q_vec_full)
                 } else {
-                    QuantizedHyperVector::from_float(&q_vec_full)
+                    QuantizedHyperVector::from_float(&q_vec_full, self.config.is_anisotropic_enabled())
                 };
                 self.storage.update(id, q.as_bytes())?;
             }
