@@ -314,7 +314,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let storage_mode = match hs_mode_env.as_str() {
             "tiered" | "lsm" => StorageMode::Tiered,
             "performance" => {
-                println!("⚠️  Performance Mode: WAL will NOT flush until RAM limit hit. Use for testing only!");
+                println!("🚀 Performance Mode: WAL will NOT flush until RAM limit hit.");
                 StorageMode::Performance
             }
             _ => StorageMode::Tiered,

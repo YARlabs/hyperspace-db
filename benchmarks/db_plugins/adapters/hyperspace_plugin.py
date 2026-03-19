@@ -22,7 +22,7 @@ class HyperspacePlugin(DatabasePlugin):
         from hyperspace import HyperspaceClient
 
         mode = ctx.cfg.HYPER_MODE.lower()
-        use_hyp = mode == "poincare"
+        use_hyp = mode in ["poincare", "lorentz"]
         target_vecs = ctx.doc_vecs_hyp if use_hyp else ctx.doc_vecs_euc
         target_q_vecs = ctx.q_vecs_hyp if use_hyp else ctx.q_vecs_euc
         target_dim = ctx.cfg.dim_hyp if use_hyp else ctx.cfg.dim_base

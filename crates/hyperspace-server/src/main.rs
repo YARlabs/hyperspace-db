@@ -32,7 +32,7 @@ mod tests;
 use manager::CollectionManager;
 
 #[cfg(feature = "embed")]
-use hyperspace_embed::{ApiProvider, Metric, OnnxVectorizer, RemoteVectorizer, Vectorizer};
+use hyperspace_embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
     metadata_value,
@@ -718,7 +718,7 @@ impl Database for HyperspaceService {
 
                 // Discover metric from collection to route to correct model
                 let metric = if let Some(col) = self.manager.get(&user_id, &col_name).await {
-                    col.metric().to_string()
+                    col.metric_name().to_string()
                 } else {
                     "l2".to_string()
                 };
@@ -2012,7 +2012,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let embedding_info = {
         #[cfg(feature = "embed")]
         {
-            let mut models_map = HashMap::new();
+            let mut models_map = std::collections::HashMap::new();
             let metrics = ["l2", "cosine", "poincare", "lorentz"];
 
             for metric in metrics {

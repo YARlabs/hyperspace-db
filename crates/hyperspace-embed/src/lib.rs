@@ -1,4 +1,6 @@
-use anyhow::Result;
+use std::collections::HashMap;
+use std::sync::Arc;
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ndarray::{Array, ArrayViewD};
 use ort::{
@@ -98,6 +100,15 @@ impl MultiVectorizer {
             models: HashMap::new(),
         }
     }
+}
+
+impl Default for MultiVectorizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MultiVectorizer {
 
     pub fn add(&mut self, metric: &str, vectorizer: Arc<dyn Vectorizer>) {
         self.models.insert(metric.to_string(), vectorizer);
@@ -119,7 +130,7 @@ impl MultiVectorizer {
             if let Some(v) = self.models.get("l2").or_else(|| self.models.values().next()) {
                 v.vectorize(texts).await
             } else {
-                Err("No vectorizer available".into())
+                Err(anyhow!("No vectorizer available"))
             }
         }
     }
@@ -295,8 +306,8 @@ impl OnnxVectorizer {
                     let x0 = vec[0];
                     let denom = (1.0 + x0).max(EPSILON);
                     let mut projected = Vec::with_capacity(self.dimension);
-                    for i in 1..vec.len() {
-                        projected.push(vec[i] / denom);
+                    for &x_val in vec.iter().skip(1) {
+                        projected.push(x_val / denom);
                     }
                     *vec = projected;
                     
