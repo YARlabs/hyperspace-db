@@ -164,6 +164,22 @@ function CreateCollectionDialog() {
         })
     }
 
+    const getDimensions = () => {
+        const large_base = [8, 16, 32, 64, 128, 768, 1024, 1536, 2048, 3072, 4096, 8192]
+        const small_base_hyper = [4, 8, 16, 32, 64, 128]
+
+        if (metric === "lorentz") {
+            // Lorentz restricted to 129 (128 spatial + 1 time)
+            return small_base_hyper.flatMap(d => [d, d + 1])
+        }
+        if (metric === "poincare") {
+            // Poincare restricted to 128
+            return small_base_hyper
+        }
+        // L2 and Cosine support full range up to 8192
+        return large_base
+    }
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -182,21 +198,24 @@ function CreateCollectionDialog() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label htmlFor="dimension">Dimension</Label>
-                            <Select value={dimension} onValueChange={setDimension}>
-                                <SelectTrigger id="dimension">
-                                    <SelectValue placeholder="Select" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {[8, 16, 32, 64, 128, 768, 1024, 1536, 2048].map(d => (
-                                        <SelectItem key={d} value={d.toString()}>{d}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
                             <Label htmlFor="metric">Metric</Label>
-                            <Select value={metric} onValueChange={setMetric}>
+                            <Select value={metric} onValueChange={(v) => {
+                                setMetric(v)
+                                // Auto-adjust dimension to N+1 if switching to lorentz
+                                const current = parseInt(dimension)
+                                if (v === "lorentz") {
+                                    if (current % 128 === 0 || [4, 8, 16, 32, 64].includes(current)) {
+                                        if (current <= 128) setDimension((current + 1).toString())
+                                        else setDimension("129")
+                                    }
+                                } else if (metric === "lorentz") {
+                                    if (current % 128 === 1 || [5, 9, 17, 33, 65].includes(current)) {
+                                        setDimension((current - 1).toString())
+                                    }
+                                } else if (v === "poincare") {
+                                    if (current > 128) setDimension("128")
+                                }
+                            }}>
                                 <SelectTrigger id="metric">
                                     <SelectValue placeholder="Select" />
                                 </SelectTrigger>
@@ -204,6 +223,20 @@ function CreateCollectionDialog() {
                                     <SelectItem value="l2">Euclidean (L2)</SelectItem>
                                     <SelectItem value="cosine">Cosine</SelectItem>
                                     <SelectItem value="poincare">Poincaré</SelectItem>
+                                    <SelectItem value="lorentz">Lorentz (Hyperbolic)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="dimension">Dimension</Label>
+                            <Select value={dimension} onValueChange={setDimension}>
+                                <SelectTrigger id="dimension">
+                                    <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {getDimensions().map(d => (
+                                        <SelectItem key={d} value={d.toString()}>{d}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -211,7 +244,7 @@ function CreateCollectionDialog() {
 
                     <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400">
                         <p className="font-bold mb-1">Architecture Warning:</p>
-                        Current gRPC implementation requires dimensions and metrics to match pre-compiled templates for maximum performance.
+                        Selected dimensions and metrics must match the capabilities of your embedding model (e.g. 129d for YAR Lorentz).
                     </div>
                 </div>
                 <DialogFooter>

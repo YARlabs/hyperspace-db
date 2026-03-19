@@ -222,18 +222,12 @@ impl CollectionManager {
 
         let collection: Arc<dyn Collection> = match (meta.dimension, meta.metric.as_str()) {
             // Hyperbolic (Poincaré)
+            (4, "poincare") => inst!(4, PoincareMetric),
             (8, "poincare") => inst!(8, PoincareMetric),
             (16, "poincare") => inst!(16, PoincareMetric),
             (32, "poincare") => inst!(32, PoincareMetric),
             (64, "poincare") => inst!(64, PoincareMetric),
             (128, "poincare") => inst!(128, PoincareMetric),
-            (768, "poincare") => inst!(768, PoincareMetric),
-            (1024, "poincare") => inst!(1024, PoincareMetric),
-            (1536, "poincare") => inst!(1536, PoincareMetric),
-            (2048, "poincare") => inst!(2048, PoincareMetric),
-            (3072, "poincare") => inst!(3072, PoincareMetric),
-            (4096, "poincare") => inst!(4096, PoincareMetric),
-            (8192, "poincare") => inst!(8192, PoincareMetric),
 
             // Euclidean (L2)
             (8, "euclidean" | "l2") => inst!(8, EuclideanMetric),
@@ -263,20 +257,21 @@ impl CollectionManager {
             (4096, "cosine") => inst!(4096, CosineMetric),
             (8192, "cosine") => inst!(8192, CosineMetric),
 
-            // Lorentz Model
+            // Lorentz Model (Minkowski Space)
+            // Note: In HyperspaceDB, Lorentz requires N+1 dimensions (Spatial + 1)
+            (4, "lorentz") => inst!(4, LorentzMetric),
+            (5, "lorentz") => inst!(5, LorentzMetric),
             (8, "lorentz") => inst!(8, LorentzMetric),
+            (9, "lorentz") => inst!(9, LorentzMetric),
             (16, "lorentz") => inst!(16, LorentzMetric),
+            (17, "lorentz") => inst!(17, LorentzMetric),
             (32, "lorentz") => inst!(32, LorentzMetric),
+            (33, "lorentz") => inst!(33, LorentzMetric),
             (64, "lorentz") => inst!(64, LorentzMetric),
+            (65, "lorentz") => inst!(65, LorentzMetric),
             (128, "lorentz") => inst!(128, LorentzMetric),
-            (768, "lorentz") => inst!(768, LorentzMetric),
-            (1024, "lorentz") => inst!(1024, LorentzMetric),
-            (1536, "lorentz") => inst!(1536, LorentzMetric),
-            (2048, "lorentz") => inst!(2048, LorentzMetric),
-            (3072, "lorentz") => inst!(3072, LorentzMetric),
-            (4096, "lorentz") => inst!(4096, LorentzMetric),
-            (8192, "lorentz") => inst!(8192, LorentzMetric),
-
+            (129, "lorentz") => inst!(129, LorentzMetric),
+            
             _ => {
                 return Err(format!(
                     "Unsupported configuration: dim={}, metric={}",

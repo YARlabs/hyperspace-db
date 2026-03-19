@@ -498,7 +498,7 @@ pub struct HyperspaceService {
     replication_tx: broadcast::Sender<ReplicationLog>,
     role: String,
     #[cfg(feature = "embed")]
-    vectorizer: Option<Arc<dyn Vectorizer>>,
+    vectorizer: Option<Arc<MultiVectorizer>>,
 }
 
 #[tonic::async_trait]
@@ -709,9 +709,22 @@ impl Database for HyperspaceService {
             let user_id = get_user_id(&request);
             let req = request.into_inner();
 
-            if let Some(vectorizer) = &self.vectorizer {
-                let vectors = vectorizer
-                    .vectorize(vec![req.text])
+            if let Some(multi) = &self.vectorizer {
+                let col_name = if req.collection.is_empty() {
+                    "default".to_string()
+                } else {
+                    req.collection.clone()
+                };
+
+                // Discover metric from collection to route to correct model
+                let metric = if let Some(col) = self.manager.get(&user_id, &col_name).await {
+                    col.metric().to_string()
+                } else {
+                    "l2".to_string()
+                };
+
+                let vectors = multi
+                    .vectorize_for(vec![req.text], &metric)
                     .await
                     .map_err(|e| Status::internal(format!("Embedding failed: {e}")))?;
 
@@ -1906,104 +1919,71 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     //
     // Fallback: if no per-metric config exists, use the global HYPERSPACE_EMBED_PROVIDER config.
     #[cfg(feature = "embed")]
-    let vectorizer: Option<Arc<dyn Vectorizer>> = {
+    let vectorizer: Option<Arc<MultiVectorizer>> = {
         let enabled = std::env::var("HYPERSPACE_EMBED")
             .unwrap_or_else(|_| "false".to_string())
             .to_lowercase()
             == "true";
 
         if enabled {
-            // Determine which metric the server is operating in
-            let metric_str = std::env::var("HS_METRIC")
-                .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
-                .unwrap_or_else(|_| "cosine".to_string())
-                .to_lowercase();
+            let mut multi = MultiVectorizer::new();
+            for metric_name in ["l2", "cosine", "poincare", "lorentz"] {
+                let metric_upper = metric_name.to_uppercase();
+                let provider_key = format!("HS_EMBED_{metric_upper}_PROVIDER");
+                let provider_str = std::env::var(&provider_key)
+                    .or_else(|_| std::env::var("HYPERSPACE_EMBED_PROVIDER"))
+                    .unwrap_or_else(|_| "disabled".to_string())
+                    .to_lowercase();
 
-            let metric = match metric_str.as_str() {
-                "poincare" => Metric::Poincare,
-                "lorentz" => Metric::Lorentz,
-                "l2" => Metric::L2,
-                _ => Metric::Cosine,
-            };
-
-            // --- Build per-metric env key prefix ---
-            // e.g. for "cosine" → "COSINE", for "poincare" → "POINCARE"
-            let metric_upper = metric_str.to_uppercase();
-            let per_metric_provider_key = format!("HS_EMBED_{metric_upper}_PROVIDER");
-
-            // Try per-metric provider first, then fall back to global
-            let provider_str = std::env::var(&per_metric_provider_key)
-                .or_else(|_| std::env::var("HYPERSPACE_EMBED_PROVIDER"))
-                .unwrap_or_else(|_| "disabled".to_string())
-                .to_lowercase();
-
-            if provider_str == "disabled" || provider_str == "none" {
-                println!("⏭️  Embedding skipped for metric '{metric_str}' (provider=disabled)");
-                None
-            } else if provider_str == "local" {
-                // --- LOCAL ONNX (filesystem path) ---
-                let model_path = std::env::var(format!("HS_EMBED_{metric_upper}_MODEL_PATH"))
-                    .or_else(|_| std::env::var("HYPERSPACE_MODEL_PATH"))
-                    .ok();
-                let tok_path = std::env::var(format!("HS_EMBED_{metric_upper}_TOKENIZER_PATH"))
-                    .or_else(|_| std::env::var("HYPERSPACE_TOKENIZER_PATH"))
-                    .ok();
-
-                if let (Some(m), Some(t)) = (model_path, tok_path) {
-                    let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
-                        .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
-                        .unwrap_or_else(|_| "128".to_string())
-                        .parse()
-                        .unwrap_or(128);
-                    println!("🧠 [{metric_upper}] Loading local ONNX model: {m} (dim={dim})");
-                    match OnnxVectorizer::new(&m, &t, dim, metric, &metric_upper) {
-                        Ok(v) => Some(Arc::new(v)),
-                        Err(e) => {
-                            eprintln!("❌ [{metric_upper}] Local load failed: {e}");
-                            None
-                        }
-                    }
-                } else {
-                    eprintln!("⚠️  [{metric_upper}] provider=local requires HS_EMBED_{metric_upper}_MODEL_PATH and HS_EMBED_{metric_upper}_TOKENIZER_PATH");
-                    None
+                if provider_str == "disabled" || provider_str == "none" {
+                    continue;
                 }
-            } else if provider_str == "huggingface" || provider_str == "hf" {
-                // --- HUGGINGFACE (downloads model.onnx + tokenizer.json from Hub) ---
-                let hf_model_id = std::env::var(format!("HS_EMBED_{metric_upper}_HF_MODEL_ID"))
-                    .or_else(|_| std::env::var("HYPERSPACE_HF_MODEL_ID"))
-                    .ok();
 
-                if let Some(model_id) = hf_model_id {
-                    let hf_token = std::env::var("HF_TOKEN")
-                        .or_else(|_| std::env::var("HUGGING_FACE_HUB_TOKEN"))
+                let metric = match metric_name {
+                    "poincare" => Metric::Poincare,
+                    "lorentz" => Metric::Lorentz,
+                    "l2" => Metric::L2,
+                    _ => Metric::Cosine,
+                };
+
+                if provider_str == "local" {
+                    let model_path = std::env::var(format!("HS_EMBED_{metric_upper}_MODEL_PATH"))
+                        .or_else(|_| std::env::var("HYPERSPACE_MODEL_PATH"))
                         .ok();
-                    let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
-                        .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
-                        .unwrap_or_else(|_| "128".to_string())
-                        .parse()
-                        .unwrap_or(128);
+                    let tok_path = std::env::var(format!("HS_EMBED_{metric_upper}_TOKENIZER_PATH"))
+                        .or_else(|_| std::env::var("HYPERSPACE_TOKENIZER_PATH"))
+                        .ok();
 
-                    println!("🤗 [{metric_upper}] Downloading HF model: {model_id} (dim={dim})");
-                    match OnnxVectorizer::new_from_hf(
-                        &model_id,
-                        hf_token,
-                        dim,
-                        metric,
-                        &metric_upper,
-                    ) {
-                        Ok(v) => Some(Arc::new(v)),
-                        Err(e) => {
-                            eprintln!("❌ [{metric_upper}] HF download failed: {e}");
-                            None
+                    if let (Some(m), Some(t)) = (model_path, tok_path) {
+                        let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
+                            .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
+                            .unwrap_or_else(|_| "128".to_string())
+                            .parse()
+                            .unwrap_or(128);
+                        println!("🧠 [{metric_upper}] Loading local ONNX model: {m} (dim={dim})");
+                        if let Ok(v) = OnnxVectorizer::new(&m, &t, dim, metric, &metric_upper) {
+                            multi.add(metric_name, Arc::new(v));
                         }
                     }
-                } else {
-                    eprintln!("⚠️  [{metric_upper}] provider=huggingface requires HS_EMBED_{metric_upper}_HF_MODEL_ID");
-                    None
-                }
-            } else {
-                // --- REMOTE API (OpenAI / Cohere / Mistral / Voyage / OpenRouter / Generic) ---
-                if let Ok(provider) = ApiProvider::from_str(&provider_str) {
+                } else if provider_str == "huggingface" || provider_str == "hf" {
+                    let hf_model_id = std::env::var(format!("HS_EMBED_{metric_upper}_HF_MODEL_ID"))
+                        .or_else(|_| std::env::var("HYPERSPACE_HF_MODEL_ID"))
+                        .ok();
+                    if let Some(model_id) = hf_model_id {
+                        let hf_token = std::env::var("HF_TOKEN")
+                            .or_else(|_| std::env::var("HUGGING_FACE_HUB_TOKEN"))
+                            .ok();
+                        let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
+                            .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
+                            .unwrap_or_else(|_| "128".to_string())
+                            .parse()
+                            .unwrap_or(128);
+                        println!("🤗 [{metric_upper}] Downloading HF model: {model_id} (dim={dim})");
+                        if let Ok(v) = OnnxVectorizer::new_from_hf(&model_id, hf_token, dim, metric, &metric_upper) {
+                            multi.add(metric_name, Arc::new(v));
+                        }
+                    }
+                } else if let Ok(provider) = ApiProvider::from_str(&provider_str) {
                     let api_key = std::env::var(format!("HS_EMBED_{metric_upper}_API_KEY"))
                         .or_else(|_| std::env::var("HYPERSPACE_API_KEY_EMBED"))
                         .or_else(|_| std::env::var("OPENAI_API_KEY"))
@@ -2014,18 +1994,16 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                     let base_url = std::env::var(format!("HS_EMBED_{metric_upper}_API_BASE"))
                         .or_else(|_| std::env::var("HYPERSPACE_API_BASE"))
                         .ok();
-
                     println!("☁️  [{metric_upper}] Remote embedding: {provider:?} | model={model}");
-                    Some(Arc::new(RemoteVectorizer::new(
-                        provider, api_key, model, base_url,
-                    )))
-                } else {
-                    eprintln!("❌ [{metric_upper}] Unknown embedding provider: '{provider_str}'");
-                    None
+                    multi.add(metric_name, Arc::new(RemoteVectorizer::new(provider, api_key, model, base_url)));
                 }
             }
+            if multi.models.is_empty() {
+                None
+            } else {
+                Some(Arc::new(multi))
+            }
         } else {
-            println!("🛑 Embedding Pipeline Disabled (HYPERSPACE_EMBED=false)");
             None
         }
     };
@@ -2034,35 +2012,50 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let embedding_info = {
         #[cfg(feature = "embed")]
         {
-            if let Some(v) = &vectorizer {
-                let provider =
-                    std::env::var("HYPERSPACE_EMBED_PROVIDER").unwrap_or("local".to_string());
-                let model =
-                    std::env::var("HYPERSPACE_EMBED_MODEL").unwrap_or("default".to_string());
-                Some(http_server::EmbeddingInfo {
-                    enabled: true,
-                    provider,
-                    model,
-                    dimension: v.dimension(), // Requires Vectorizer trait to expose dimension()
-                })
-            } else {
-                // Check if it was explicitly disabled or failed
-                let enabled_flag = std::env::var("HYPERSPACE_EMBED")
-                    .unwrap_or("true".to_string())
-                    .to_lowercase()
-                    == "true";
+            let mut models_map = HashMap::new();
+            let metrics = ["l2", "cosine", "poincare", "lorentz"];
 
-                if enabled_flag {
-                    None // Failed to load
+            for metric in metrics {
+                let status = if let Some(multi) = &vectorizer {
+                    if let Some(v) = multi.models.get(metric) {
+                        let m_u = metric.to_uppercase();
+                        let provider = std::env::var(format!("HS_EMBED_{m_u}_PROVIDER"))
+                            .or_else(|_| std::env::var("HYPERSPACE_EMBED_PROVIDER"))
+                            .unwrap_or("local".to_string());
+                        let model_id = std::env::var(format!("HS_EMBED_{m_u}_HF_MODEL_ID"))
+                            .or_else(|_| std::env::var(format!("HS_EMBED_{m_u}_EMBED_MODEL")))
+                            .or_else(|_| std::env::var("HYPERSPACE_EMBED_MODEL"))
+                            .unwrap_or("default".to_string());
+
+                        http_server::ModelStatus {
+                            enabled: true,
+                            provider,
+                            model: model_id,
+                            dimension: v.dimension(),
+                        }
+                    } else {
+                        http_server::ModelStatus {
+                            enabled: false,
+                            provider: "-".into(),
+                            model: "-".into(),
+                            dimension: 0,
+                        }
+                    }
                 } else {
-                    Some(http_server::EmbeddingInfo {
+                    http_server::ModelStatus {
                         enabled: false,
                         provider: "-".into(),
                         model: "-".into(),
                         dimension: 0,
-                    })
-                }
+                    }
+                };
+                models_map.insert(metric.to_string(), status);
             }
+
+            Some(http_server::EmbeddingInfo {
+                enabled: vectorizer.is_some(),
+                models: models_map,
+            })
         }
         #[cfg(not(feature = "embed"))]
         None

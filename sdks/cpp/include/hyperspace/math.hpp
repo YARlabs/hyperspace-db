@@ -135,6 +135,62 @@ inline std::vector<double> frechet_mean(const std::vector<std::vector<double>>& 
 }
 
 // ==========================================
+// Lorentz Model Math (Hyperboloid)
+// ==========================================
+
+/** Computes the Minkowski inner product (Lorentz product) between two vectors. */
+inline double lorentz_product(const std::vector<double>& u, const std::vector<double>& v) {
+    if (u.empty() || v.empty()) return 0.0;
+    double dot = -u[0] * v[0];
+    for (size_t i = 1; i < u.size(); ++i) {
+        dot += u[i] * v[i];
+    }
+    return dot;
+}
+
+/** Computes the Lorentz distance between two points on the hyperboloid. */
+inline double lorentz_dist(const std::vector<double>& u, const std::vector<double>& v) {
+    double inner = -lorentz_product(u, v);
+    return std::acosh(std::max(inner, 1.0));
+}
+
+/** Converts a point from the Lorentz model (Hyperboloid) to the Poincaré Ball model (129 -> 128). */
+inline std::vector<double> lorentz_to_poincare(const std::vector<double>& x) {
+    if (x.empty()) return {};
+    double denom = std::max(1.0 + x[0], 1e-12);
+    std::vector<double> proj;
+    proj.reserve(x.size() - 1);
+    for (size_t i = 1; i < x.size(); ++i) {
+        proj.push_back(x[i] / denom);
+    }
+    return proj;
+}
+
+/** Converts a point from the Poincaré Ball model to the Lorentz model (128 -> 129). */
+inline std::vector<double> poincare_to_lorentz(const std::vector<double>& p) {
+    double p_sq = norm_sq(p);
+    double denom = std::max(1.0 - p_sq, 1e-12);
+    std::vector<double> x;
+    x.reserve(p.size() + 1);
+    x.push_back((1.0 + p_sq) / denom);
+    for (double pi : p) {
+        x.push_back(2.0 * pi / denom);
+    }
+    return x;
+}
+
+/** Ensures a vector satisfies the Lorentz constraint -x0^2 + |x|^2 = -1 (stabilization). */
+inline std::vector<double> project_to_hyperboloid(std::vector<double> v) {
+    if (v.empty()) return {};
+    double spatial_norm_sq = 0.0;
+    for (size_t i = 1; i < v.size(); ++i) {
+        spatial_norm_sq += v[i] * v[i];
+    }
+    v[0] = std::sqrt(1.0 + spatial_norm_sq);
+    return v;
+}
+
+// ==========================================
 // Cognitive Math SDK (Spatial AI Engine)
 // ==========================================
 

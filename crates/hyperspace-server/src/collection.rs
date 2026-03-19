@@ -1561,8 +1561,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
 
             // 2. Setup "Turbo Mode"
-            let vacuum_m = 64;
-            let vacuum_ef = 500;
+            let vacuum_m = 128;
+            let vacuum_ef = 800;
 
             let vacuum_config = Arc::new(GlobalConfig::new());
             vacuum_config.set_m(vacuum_m);

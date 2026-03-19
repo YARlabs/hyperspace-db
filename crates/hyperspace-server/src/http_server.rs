@@ -89,11 +89,17 @@ async fn validate_api_key(
 }
 
 #[derive(Clone, serde::Serialize)]
-pub struct EmbeddingInfo {
+pub struct ModelStatus {
     pub enabled: bool,
     pub provider: String,
     pub model: String,
     pub dimension: usize,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct EmbeddingInfo {
+    pub enabled: bool,
+    pub models: HashMap<String, ModelStatus>,
 }
 
 pub async fn start_http_server(
@@ -422,12 +428,14 @@ async fn get_status(
 
     Json(serde_json::json!({
         "status": "ONLINE",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "uptime": uptime_str,
         "config": {
             "dimension": dim,
             "metric": metric,
             "quantization": quantization,
+            "mode": std::env::var("HS_MODE").unwrap_or("performance".to_string()),
+            "max_ram_gb": std::env::var("HS_MAX_RAM_GB").unwrap_or("0".to_string()),
         },
         "embedding": embedding.as_ref()
     }))

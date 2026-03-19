@@ -38,12 +38,20 @@ export function OverviewPage() {
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
                 <StatCard title="Total Vectors" value={metrics?.total_vectors?.toLocaleString() || "0"} icon={Database} desc="Across all collections" />
-                <StatCard title="RAM Usage" value={`${metrics?.ram_usage_mb || 0} MB`} icon={HardDrive} desc="Resident Set Size" />
+                <StatCard 
+                    title="RAM Usage" 
+                    value={`${metrics?.ram_usage_mb || 0} MB`} 
+                    icon={HardDrive} 
+                    desc={status?.config?.max_ram_gb && status.config.max_ram_gb !== "0" 
+                        ? `${((metrics?.ram_usage_mb / (parseInt(status.config.max_ram_gb) * 1024)) * 100).toFixed(1)}% of ceiling` 
+                        : "Resident Set Size"} 
+                />
                 <StatCard title="Disk Usage" value={formatDiskSize(metrics?.disk_usage_mb || 0)} icon={FolderOpen} desc="Data directory size" />
                 <StatCard title="Collections" value={metrics?.total_collections || 0} icon={Server} desc="Active indices" />
                 <StatCard title="CPU Load" value={`${metrics?.cpu_usage_percent || 0}%`} icon={Zap} desc="System Load (Est.)" />
+                <StatCard title="System Mode" value={status?.config?.mode?.toUpperCase() || "PERFORMANCE"} icon={Zap} desc="Optimization profile" />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -52,6 +60,8 @@ export function OverviewPage() {
                     <CardContent>
                         <div className="space-y-4">
                             <ConfigRow label="Version" value={status?.version} />
+                            <ConfigRow label="Optimization Mode" value={status?.config?.mode} />
+                            <ConfigRow label="RAM Ceiling" value={status?.config?.max_ram_gb && status.config.max_ram_gb !== "0" ? `${status.config.max_ram_gb} GB` : "Unlimited"} />
                             <ConfigRow label="Global Dimension" value={status?.config?.dimension} />
                             <ConfigRow label="Metric Space" value={
                                 status?.config?.metric === 'cosine' ? 'Cosine Similarity' :
@@ -60,17 +70,29 @@ export function OverviewPage() {
                                             status?.config?.metric || 'Unknown'
                             } />
                             <ConfigRow label="Quantization" value={status?.config?.quantization || "Scalar I8"} />
-                            <ConfigRow label="Uptime" value={status?.uptime} />
-                            <ConfigRow label="Embedding" value={status?.embedding?.enabled ? "Enabled" : "Disabled"} />
-                            {status?.embedding?.enabled && (
-                                <>
-                                    <ConfigRow label="Provider" value={status?.embedding?.provider} />
-                                    <ConfigRow label="Model" value={status?.embedding?.model} />
-                                </>
+                            <ConfigRow label="Embedding Engine" value={status?.embedding?.enabled ? "Multi-Model Active" : "Disabled"} />
+                            {status?.embedding?.enabled && status?.embedding?.models && (
+                                <div className="mt-2 pl-4 border-l-2 border-primary/20 space-y-2">
+                                    {Object.entries(status.embedding.models).map(([metric, info]: [string, any]) => (
+                                        <div key={metric} className="flex flex-col">
+                                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                                                {metric === 'l2' ? 'Euclidean (L2)' : 
+                                                 metric === 'cosine' ? 'Cosine' : 
+                                                 metric.charAt(0).toUpperCase() + metric.slice(1)}
+                                            </span>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs">{info.enabled ? info.model : <span className="text-muted-foreground/50 italic">Disabled</span>}</span>
+                                                <span className="text-[10px] font-mono bg-muted px-1 rounded">{info.enabled ? info.provider : "off"}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
+                            <ConfigRow label="Uptime" value={status?.uptime} />
                         </div>
                     </CardContent>
                 </Card>
+
 
                 <IngestionStatusCard metrics={metrics} />
 

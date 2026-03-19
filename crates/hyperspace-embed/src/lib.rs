@@ -86,6 +86,45 @@ pub trait Vectorizer: Send + Sync {
     fn dimension(&self) -> usize;
 }
 
+// --- Multi-Vectorizer (Routes by Metric) ---
+
+pub struct MultiVectorizer {
+    pub models: HashMap<String, Arc<dyn Vectorizer>>,
+}
+
+impl MultiVectorizer {
+    pub fn new() -> Self {
+        Self {
+            models: HashMap::new(),
+        }
+    }
+
+    pub fn add(&mut self, metric: &str, vectorizer: Arc<dyn Vectorizer>) {
+        self.models.insert(metric.to_string(), vectorizer);
+    }
+
+    pub async fn vectorize_for(&self, texts: Vec<String>, metric: &str) -> Result<Vec<Vec<f64>>> {
+        let metric_key = match metric.to_lowercase().as_str() {
+            "l2" | "euclidean" => "l2",
+            "cosine" => "cosine",
+            "poincare" => "poincare",
+            "lorentz" => "lorentz",
+            _ => metric,
+        };
+
+        if let Some(v) = self.models.get(metric_key) {
+            v.vectorize(texts).await
+        } else {
+            // Fallback to primary if exists
+            if let Some(v) = self.models.get("l2").or_else(|| self.models.values().next()) {
+                v.vectorize(texts).await
+            } else {
+                Err("No vectorizer available".into())
+            }
+        }
+    }
+}
+
 // --- Local ONNX Vectorizer ---
 
 pub struct OnnxVectorizer {
@@ -242,23 +281,40 @@ impl OnnxVectorizer {
         })
     }
 
-    fn normalize(&self, vec: &mut [f64]) {
-        const EPSILON: f64 = 1e-5;
-        let norm_sq: f64 = vec.iter().map(|x| x * x).sum();
-        let norm = norm_sq.sqrt();
+    fn normalize(&self, vec: &mut Vec<f64>) {
+        const EPSILON: f64 = 1e-12; // Use stricter epsilon for hyperbolic geometry
+        let mut norm_sq: f64 = vec.iter().map(|x| x * x).sum();
+        let mut norm = norm_sq.sqrt();
 
         match self.metric {
             Metric::Poincare => {
-                // For Poincaré model: project to unit ball
-                // v5_Embedding outputs tangent vectors at origin
-                // Need to apply inverse stereographic projection or scale to unit ball
+                // Task: Project to Poincare Ball (Dimension N)
+                // Case 1: Model outputs N+1 dims (Lorentz Point/Hyperboloid)
+                // Result: Dimensionality reduction (e.g. 129 -> 128)
+                if vec.len() == self.dimension + 1 {
+                    let x0 = vec[0];
+                    let denom = (1.0 + x0).max(EPSILON);
+                    let mut projected = Vec::with_capacity(self.dimension);
+                    for i in 1..vec.len() {
+                        projected.push(vec[i] / denom);
+                    }
+                    *vec = projected;
+                    
+                    // Re-calculate norm for clamping
+                    norm_sq = vec.iter().map(|x| x * x).sum();
+                    norm = norm_sq.sqrt();
+                }
+
+                // Case 2: Model outputs N dims (Tangent Space or raw Ball coordinates)
+                // Standard stereographic projection or scaling to unit ball
                 if norm >= 1.0 - EPSILON {
-                    let scale = (1.0 - EPSILON) / (norm + 1e-12);
+                    let scale = (1.0 - EPSILON) / (norm + EPSILON);
                     for x in vec.iter_mut() {
                         *x *= scale;
                     }
                 }
-                // NaN protection
+
+                // NaN/Inf Guard
                 for x in vec.iter_mut() {
                     if x.is_nan() || x.is_infinite() {
                         *x = 0.0;
@@ -266,70 +322,35 @@ impl OnnxVectorizer {
                 }
             }
             Metric::Lorentz => {
-                // v5_Embedding outputs tangent vectors in Minkowski space
-                // Need to project to hyperboloid first, then to Poincaré ball
-                //
-                // Input: tangent vector v = [v0, v1, ..., vn] at origin
-                // Step 1: Exp map to hyperboloid (simplified for small vectors)
-                //   For small ||v||: exp_0(v) ≈ [sqrt(1 + ||v||^2), v1, v2, ..., vn]
-                // Step 2: Project hyperboloid to Poincaré ball
-                //   poincare = [x1, x2, ..., xn] / (x0 + 1)
-                //
-                // For v5_Embedding_0.5B: model outputs Euclidean-like vectors
-                // We treat first component as time-like or apply direct scaling
-
+                // Task: Project to Lorentz Hyperboloid (Dimension N)
+                // In HyperspaceDB, Lorentz metric REQUIRES N+1 format (e.g. 129)
+                
                 if vec.is_empty() {
                     return;
                 }
 
-                // Option A: Direct projection (model outputs tangent space vectors)
-                // This is the standard approach for v5_Embedding
-                let spatial_norm: f64 = vec[1..].iter().map(|x| x * x).sum::<f64>().sqrt();
-
-                if spatial_norm > EPSILON {
-                    // Project to Poincaré ball using stereographic projection
-                    // For tangent vector v: Poincaré = v / (1 + sqrt(1 + ||v||^2))
-                    let lorentz_norm = (1.0 + norm_sq).sqrt();
-                    let scale = 1.0 / (1.0 + lorentz_norm + EPSILON);
-
-                    for x in vec.iter_mut() {
-                        *x *= scale;
-                    }
-
-                    // Ensure we're inside the unit ball
-                    let new_norm: f64 = vec.iter().map(|x| x * x).sum();
-                    if new_norm >= 1.0 - EPSILON {
-                        let final_scale = (1.0 - EPSILON) / (new_norm.sqrt() + EPSILON);
-                        for x in vec.iter_mut() {
-                            *x *= final_scale;
-                        }
-                    }
+                // Case 1: Model outputs N-1 dims (Spatial/Tangent vector)
+                // Result: Dimension expansion (e.g. 128 -> 129)
+                if vec.len() == self.dimension - 1 {
+                    let spatial_norm_sq = norm_sq;
+                    let x0 = (1.0 + spatial_norm_sq).sqrt();
+                    vec.insert(0, x0);
+                } 
+                // Case 2: Model outputs N dims (already Hyperboloid format)
+                else if vec.len() == self.dimension {
+                    // Constraint: -x0^2 + |x|^2 = -1  =>  x0 = sqrt(1 + |x|^2)
+                    let spatial_norm_sq: f64 = vec[1..].iter().map(|x| x * x).sum();
+                    vec[0] = (1.0 + spatial_norm_sq).sqrt(); // Enforce upper sheet constraint
                 }
 
-                // NaN/Infinity protection (critical for hyperbolic geometry)
+                // NaN/Infinity protection
                 for x in vec.iter_mut() {
                     if x.is_nan() || x.is_infinite() {
-                        eprintln!("⚠️  Lorentz projection produced NaN/Inf, clamping to 0");
                         *x = 0.0;
                     }
                 }
-
-                // Final sanity check: ensure vector is inside unit ball
-                let final_norm_sq: f64 = vec.iter().map(|x| x * x).sum();
-                if final_norm_sq >= 1.0 {
-                    eprintln!(
-                        "⚠️  Lorentz projection outside unit ball (norm²={:.4}), rescaling",
-                        final_norm_sq
-                    );
-                    let scale = (1.0 - EPSILON) / (final_norm_sq.sqrt() + EPSILON);
-                    for x in vec.iter_mut() {
-                        *x *= scale;
-                    }
-                }
             }
-            Metric::None => {
-                // No normalization (raw embeddings)
-            }
+            Metric::None => {}
             Metric::L2 | Metric::Cosine => {
                 if norm > 0.0 {
                     for x in vec.iter_mut() {

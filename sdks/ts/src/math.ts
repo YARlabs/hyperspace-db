@@ -104,6 +104,52 @@ export function frechetMean(points: number[][], c: number = 1.0, maxIter: number
 }
 
 // ==========================================
+// Lorentz Model Math (Hyperboloid)
+// ==========================================
+
+/** Computes the Minkowski inner product (Lorentz product) between two vectors. */
+export function lorentzProduct(u: number[], v: number[]): number {
+    if (u.length === 0 || v.length === 0) return 0.0;
+    let product = -u[0] * v[0];
+    for (let i = 1; i < u.length; i++) product += u[i] * v[i];
+    return product;
+}
+
+/** Computes the Lorentz distance between two points on the hyperboloid. */
+export function lorentzDist(u: number[], v: number[]): number {
+    const inner = -lorentzProduct(u, v);
+    return Math.acosh(Math.max(inner, 1.0));
+}
+
+/** Converts a point from the Lorentz model (Hyperboloid) to the Poincaré Ball model (129 -> 128). */
+export function lorentzToPoincare(x: number[]): number[] {
+    if (x.length === 0) return [];
+    const denom = Math.max(1.0 + x[0], 1e-12);
+    const proj: number[] = [];
+    for (let i = 1; i < x.length; i++) proj.push(x[i] / denom);
+    return proj;
+}
+
+/** Converts a point from the Poincaré Ball model to the Lorentz model (128 -> 129). */
+export function poincareToLorentz(p: number[]): number[] {
+    const pSq = normSq(p);
+    const denom = Math.max(1.0 - pSq, 1e-12);
+    const x = [(1.0 + pSq) / denom];
+    for (const pi of p) x.push((2.0 * pi) / denom);
+    return x;
+}
+
+/** Ensures a vector satisfies the Lorentz constraint -x0^2 + |x|^2 = -1 (stabilization). */
+export function projectToHyperboloid(v: number[]): number[] {
+    if (v.length === 0) return [];
+    const res = [...v];
+    let spatialNormSq = 0;
+    for (let i = 1; i < res.length; i++) spatialNormSq += res[i] * res[i];
+    res[0] = Math.sqrt(1.0 + spatialNormSq);
+    return res;
+}
+
+// ==========================================
 // Cognitive Math SDK (Spatial AI Engine)
 // ==========================================
 

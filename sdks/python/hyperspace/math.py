@@ -124,8 +124,61 @@ def frechet_mean(points: Sequence[Sequence[float]], c: float = 1.0, max_iter: in
 
 
 # ==========================================
+# Lorentz Model Math (Hyperboloid)
+# ==========================================
+
+def lorentz_product(u: Sequence[float], v: Sequence[float]) -> float:
+    """Computes the Minkowski inner product (Lorentz product) between two vectors."""
+    if not u or not v:
+        return 0.0
+    dot = -u[0] * v[0]
+    for ui, vi in zip(u[1:], v[1:]):
+        dot += ui * vi
+    return dot
+
+
+def lorentz_dist(u: Sequence[float], v: Sequence[float]) -> float:
+    """Computes the Lorentz distance between two points on the hyperboloid."""
+    inner = -lorentz_product(u, v)
+    # Clamp to 1.0 to avoid NaN in acosh due to floating point inaccuracies
+    arg = max(inner, 1.0)
+    return math.acosh(arg)
+
+
+def lorentz_to_poincare(x: Sequence[float]) -> List[float]:
+    """Converts a point from the Lorentz model (Hyperboloid) to the Poincaré Ball model (129 -> 128)."""
+    if not x:
+        return []
+    x0 = x[0]
+    denom = max(1.0 + x0, 1e-12)
+    return [xi / denom for xi in x[1:]]
+
+
+def poincare_to_lorentz(p: Sequence[float]) -> List[float]:
+    """Converts a point from the Poincaré Ball model to the Lorentz model (128 -> 129)."""
+    p_sq = sum(v * v for v in p)
+    denom = max(1.0 - p_sq, 1e-12)
+    
+    x = [(1.0 + p_sq) / denom]
+    for pi in p:
+        x.append(2.0 * pi / denom)
+    return x
+
+
+def project_to_hyperboloid(v: Sequence[float]) -> List[float]:
+    """Ensures a vector satisfies the Lorentz constraint -x0^2 + |x|^2 = -1 (stabilization)."""
+    if not v:
+        return []
+    res = list(v)
+    spatial_norm_sq = sum(x * x for x in res[1:])
+    res[0] = math.sqrt(1.0 + spatial_norm_sq)
+    return res
+
+
+# ==========================================
 # Cognitive Math SDK (Spatial AI Engine)
 # ==========================================
+# ... rest of the file ...
 
 def local_entropy(candidate: Sequence[float], neighbors: Sequence[Sequence[float]], c: float = 1.0) -> float:
     """
