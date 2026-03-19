@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 thiserror = { workspace = true }
+serde = { workspace = true }
 async-trait = "0.1.89"
 wgpu = { version = "*", optional = true }
 pollster = { version = "*", optional = true }

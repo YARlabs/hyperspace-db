@@ -5,7 +5,7 @@ use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use hyperspace_core::gpu::{rerank_topk_exact, GpuMetric};
 use hyperspace_core::{
-    Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult, VacuumFilterOp,
+    Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult, StorageMode, VacuumFilterOp,
     VacuumFilterQuery,
 };
 use hyperspace_index::HnswIndex;
@@ -66,6 +66,12 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     flushing_vector_count: Arc<AtomicUsize>,
     // Count of vectors in the current ACTIVE WAL
     wal_pending_count: Arc<AtomicU64>,
+    // Storage Mode: Performance vs Tiered
+    storage_mode: StorageMode,
+    // Max RAM allowed for MemTable before forcing a flush
+    max_ram_bytes: u64,
+    // List of rotated WAL segments waiting to be flushed into a chunk (Task 8.1)
+    pending_wal_flushes: Arc<tokio::sync::Mutex<Vec<PathBuf>>>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -93,11 +99,19 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
     #[inline]
     fn to_internal_id(&self, user_id: u32) -> u32 {
+        // Quick Win #3: Bypass DashMap lookup when identity mode is enabled
+        if self.ids_are_identity.load(Ordering::Relaxed) {
+            return user_id;
+        }
         self.id_map.get(&user_id).map_or(user_id, |v| *v)
     }
 
     #[inline]
     fn to_user_id(&self, internal_id: u32) -> u32 {
+        // Quick Win #3: Bypass DashMap lookup when identity mode is enabled
+        if self.ids_are_identity.load(Ordering::Relaxed) {
+            return internal_id;
+        }
         self.reverse_id_map
             .get(&internal_id)
             .map_or(internal_id, |v| *v)
@@ -292,19 +306,55 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             println!("🔒 WAL Durability: BATCH (Background fsync every 100ms)");
         }
 
-        let wal_path_clone = wal_path.clone();
+        // Storage & Performance Tuning
+        let hs_mode_env = std::env::var("HS_MODE")
+            .unwrap_or_else(|_| "tiered".to_string())  // FIX: Default to Tiered (LSM) mode
+            .to_lowercase();
+        let storage_mode = match hs_mode_env.as_str() {
+            "tiered" | "lsm" => StorageMode::Tiered,
+            "performance" => {
+                println!("⚠️  Performance Mode: WAL will NOT flush until RAM limit hit. Use for testing only!");
+                StorageMode::Performance
+            },
+            _ => StorageMode::Tiered,
+        };
+
+        // Determine Memory Budget
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_all();
+        let total_ram_bytes = sys.total_memory();
+        let max_ram_gb_env = std::env::var("HS_MAX_RAM_GB")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok());
+        
+        let max_ram_bytes = match max_ram_gb_env {
+            Some(gb) => gb * 1024 * 1024 * 1024,
+            None => total_ram_bytes * 70 / 100, // Default to 70% of total RAM
+        };
+
+        println!(
+            "🚀 Collection Mode: {:?} (Budget: {} GB)",
+            storage_mode,
+            max_ram_bytes / (1024 * 1024 * 1024)
+        );
+
         let mut wal = Wal::new(&wal_path, sync_mode)?;
-        // Allow operator to tune WAL segment size via HS_WAL_SEGMENT_SIZE_MB.
-        // Larger value = fewer background flushes (less CPU overhead on servers with lots of RAM).
-        // Smaller value = more frequent rotations (better for RAM-constrained devices or fast S3 tiering).
-        // Default: 75 MB (good balance between rotation frequency and memory usage).
+
+        // WAL Segment Configuration
+        let default_segment_mb = match storage_mode {
+            StorageMode::Performance => 4096, // 4 GB
+            StorageMode::Tiered => 256,       // 256 MB
+        };
+        
         let wal_segment_mb = std::env::var("HS_WAL_SEGMENT_SIZE_MB")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(75)
-            .clamp(4, 4096); // Enforce sane min/max bounds (4 MB .. 4 GB)
+            .unwrap_or(default_segment_mb)
+            .clamp(16, 16384); // 16 MB .. 16 GB
+
         wal.set_size_limit(wal_segment_mb * 1024 * 1024);
         println!("📦 WAL Segment Size: {wal_segment_mb} MB");
+        
         let wal_link = Arc::new(ArcSwap::new(Arc::new(tokio::sync::Mutex::new(wal))));
         let flushing_vector_count = Arc::new(AtomicUsize::new(0));
         let wal_pending_count = Arc::new(AtomicU64::new(0));
@@ -312,40 +362,76 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // Replay
         let index_ref = index.clone();
         let loaded_clock = last_clock.load(Ordering::Relaxed);
-
-        Wal::replay(&wal_path_clone, |entry| {
-            let hyperspace_store::wal::WalEntry::Insert {
-                id,
-                vector,
-                metadata,
-                logical_clock,
-            } = entry;
-
-            // Only replay operations strictly newer than what's persisted in state.json
-            if logical_clock > loaded_clock {
-                // If ID exists, delete old version from index to prevent leaks (Upsert)
-                if let Some(&old_internal_id) = id_map_data.get(&id) {
-                    index_ref.delete(old_internal_id);
-                    reverse_id_map_data.remove(&old_internal_id);
-                }
-
-                if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
-                    id_map_data.insert(id, internal_id);
-                    reverse_id_map_data.insert(internal_id, id);
-
-                    if gossip_env {
-                        let hash = CollectionDigest::hash_entry(id, &vector);
-                        let b_idx = CollectionDigest::get_bucket_index(id);
-                        buckets_data[b_idx] ^= hash;
+        
+        // Find all frozen WAL segments that haven't been flushed yet
+        let mut wal_segments = Vec::new();
+        if let Some(parent) = wal_path.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if file_name.contains(".frozen.") {
+                        // Extract timestamp (e.g. "frozen.171234567890")
+                        if let Some(ts_str) = file_name.rsplit('.').next() {
+                            if let Ok(ts) = ts_str.parse::<u64>() {
+                                wal_segments.push((ts, path));
+                            }
+                        }
                     }
-
-                    // Track max clock derived from WAL
-                    last_clock.fetch_max(logical_clock, Ordering::Relaxed);
-                    wal_pending_count.fetch_add(1, Ordering::Relaxed);
                 }
             }
-        })?;
+        }
+        
+        // Sort segments chronologically
+        wal_segments.sort_by_key(|(ts, _)| *ts);
+        
+        // Final list: all frozen segments + the active WAL path
+        let replay_queue: Vec<_> = wal_segments.clone().into_iter().map(|(_, p)| p).collect();
+        let pending_wal_flushes = Arc::new(tokio::sync::Mutex::new(
+            wal_segments.into_iter().map(|(_, p)| p).collect::<Vec<_>>(),
+        ));
+        
+        // Add the active path to replay, but it's not "frozen" yet
+        let mut final_replay = replay_queue;
+        final_replay.push(wal_path.clone());
 
+        println!("⚡ Replaying {} WAL segment(s)...", final_replay.len());
+
+        for path in final_replay {
+            Wal::replay(&path, |entry| {
+                let hyperspace_store::wal::WalEntry::Insert {
+                    id,
+                    vector,
+                    metadata,
+                    logical_clock,
+                } = entry;
+
+                // Only replay operations strictly newer than what's persisted in state.json
+                if logical_clock > loaded_clock {
+                    // If ID exists, delete old version from index to prevent leaks (Upsert)
+                    if let Some(&old_internal_id) = id_map_data.get(&id) {
+                        index_ref.delete(old_internal_id);
+                        reverse_id_map_data.remove(&old_internal_id);
+                    }
+
+                    if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
+                        id_map_data.insert(id, internal_id);
+                        reverse_id_map_data.insert(internal_id, id);
+
+                        if gossip_env {
+                            let hash = CollectionDigest::hash_entry(id, &vector);
+                            let b_idx = CollectionDigest::get_bucket_index(id);
+                            buckets_data[b_idx] ^= hash;
+                        }
+
+                        // Track max clock derived from WAL
+                        last_clock.fetch_max(logical_clock, Ordering::Relaxed);
+                        wal_pending_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            })?;
+        }
+        
         // Background Tasks
         let (index_tx, mut index_rx) = mpsc::unbounded_channel();
         let idx_link_worker = index_link.clone();
@@ -378,14 +464,16 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             .unwrap_or_else(|_| "0".to_string())
             .parse::<usize>()
             .unwrap_or(0);
+        // Quick Win #4: Auto-calculate search concurrency based on CPU count
+        // Default: num_cpus * 2 for better throughput, with manual override via env var
         let search_concurrency = if search_concurrency_env == 0 {
-            num_cpus
+            num_cpus * 2  // Auto: 2x CPU count for better parallelism
         } else if search_concurrency_env > num_cpus * 4 {
-            num_cpus * 4
+            num_cpus * 4  // Cap at 4x to avoid thrashing
         } else {
             search_concurrency_env
         };
-        println!("⚙️  Search Concurrency Limit: {search_concurrency} task(s)");
+        println!("⚙️  Search Concurrency Limit: {search_concurrency} task(s) (CPU cores: {num_cpus})");
         let search_limiter = Arc::new(Semaphore::new(search_concurrency));
         let flush_limiter = Arc::new(Semaphore::new(1));
         let fast_upsert_delta = std::env::var("HS_FAST_UPSERT_DELTA")
@@ -395,23 +483,59 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             .max(0.0);
 
         let indexer_task = tokio::spawn(async move {
+            use std::sync::atomic::AtomicU64;
+            let received = Arc::new(AtomicU64::new(0));
+            let errors = Arc::new(AtomicU64::new(0));
+
             while let Some((id, meta)) = index_rx.recv().await {
                 let permit = semaphore.clone().acquire_owned().await.unwrap();
                 let idx_link = idx_link_worker.clone();
                 let cfg = cfg_worker.clone();
+                let errors_ref = errors.clone();
                 cfg.inc_active();
 
                 tokio::spawn(async move {
                     let _permit = permit;
-                    let _ = tokio::task::spawn_blocking(move || {
+                    let result = tokio::task::spawn_blocking(move || {
                         let idx = idx_link.load().clone();
-                        let _ = idx.index_node(id, meta);
-                        cfg.dec_queue();
-                        cfg.dec_active();
+                        let result = idx.index_node(id, meta);
+                        (result, id)
                     })
                     .await;
+
+                    match result {
+                        Ok((Ok(_), _processed_id)) => {
+                            cfg.dec_queue();
+                            cfg.dec_active();
+                        }
+                        Ok((Err(e), failed_id)) => {
+                            eprintln!("❌ Indexer error on ID {}: {}", failed_id, e);
+                            cfg.dec_queue();
+                            cfg.dec_active();
+                            errors_ref.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(join_err) => {
+                            eprintln!("❌ Indexer task panicked: {}", join_err);
+                            cfg.dec_queue();
+                            cfg.dec_active();
+                            errors_ref.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
                 });
+
+                let r = received.fetch_add(1, Ordering::Relaxed) + 1;
+                if r % 10_000 == 0 {
+                    let active = cfg_worker.active_indexing.load(Ordering::Relaxed);
+                    let queue = cfg_worker.queue_size.load(Ordering::Relaxed);
+                    let errs = errors.load(Ordering::Relaxed);
+                    println!("📊 Indexer: {} received, {} active, {} in queue, {} errors",
+                        r, active, queue, errs);
+                }
             }
+
+            let final_r = received.load(Ordering::Relaxed);
+            let final_e = errors.load(Ordering::Relaxed);
+            println!("🏁 Indexer task finished. Total received: {}, errors: {}", final_r, final_e);
         });
 
         // Task 1.2: Initialize MetaRouter and Load Existing Chunks
@@ -425,7 +549,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     if name.starts_with("chunk_") {
                         // Load chunk metadata (centroid + count) from its snapshot
                         let snap_path = path.join("index.snap");
-                        if let Ok(idx) = HnswIndex::<N, M>::load_snapshot_with_storage_precision(
+                        if let Ok(_idx) = HnswIndex::<N, M>::load_snapshot_with_storage_precision(
                             &snap_path,
                             Arc::new(VectorStore::new(&path, element_size)),
                             mode,
@@ -433,8 +557,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                             storage_f32,
                         ) {
                             // Compute/recover centroid for routing
-                            // Actually, HnswIndex doesn't store centroid, but we can compute it or 
-                            // assume it's stored in a separate file. 
+                            // Actually, HnswIndex doesn't store centroid, but we can compute it or
+                            // assume it's stored in a separate file.
                             // For simplicity, we skip loading here if not explicitly stored,
                             // but the correct way is to have a chunk_info.json.
                             // Assuming Task 1.2 intended to load them.
@@ -450,7 +574,18 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let buckets: Arc<Vec<AtomicU64>> =
             Arc::new(buckets_data.into_iter().map(AtomicU64::new).collect());
         let id_map = Arc::new(id_map_data.into_iter().collect::<DashMap<u32, u32>>());
-        let ids_are_identity = id_map.iter().all(|entry| *entry.key() == *entry.value());
+        // Quick Win #3: HS_IDENTITY_IDS flag for ID mapping bypass
+        // If true, skip DashMap lookups entirely (user IDs == internal IDs)
+        let identity_ids_env = std::env::var("HS_IDENTITY_IDS")
+            .is_ok_and(|v| v.to_lowercase() == "true");
+        let ids_are_identity = identity_ids_env || id_map.iter().all(|entry| *entry.key() == *entry.value());
+        if identity_ids_env {
+            println!("⚡ ID Mapping: BYPASSED (HS_IDENTITY_IDS=true, user IDs == internal IDs)");
+        } else if ids_are_identity {
+            println!("⚡ ID Mapping: Identity mode detected (all user IDs match internal IDs)");
+        } else {
+            println!("🗺️  ID Mapping: Enabled (user ID ↔ internal ID translation)");
+        }
         let reverse_id_map = Arc::new(
             reverse_id_map_data
                 .into_iter()
@@ -531,19 +666,22 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             meta_router,
             flushing_vector_count,
             wal_pending_count,
+            storage_mode,
+            max_ram_bytes,
+            pending_wal_flushes,
         })
     }
 
     fn spawn_flush_worker(
-        frozen_wal_path: PathBuf,
+        frozen_wal_paths: Vec<PathBuf>,
         config: Arc<GlobalConfig>,
         mode: hyperspace_core::QuantizationMode,
         data_dir: PathBuf,
         flush_limiter: Arc<Semaphore>,
         meta_router: Arc<MetaRouter<N>>,
         index_link: Arc<ArcSwap<HnswIndex<N, M>>>,
-        id_map: Arc<DashMap<u32, u32>>,
-        reverse_id_map: Arc<DashMap<u32, u32>>,
+        _id_map: Arc<DashMap<u32, u32>>,
+        _reverse_id_map: Arc<DashMap<u32, u32>>,
         flushing_vector_count: Arc<AtomicUsize>,
     ) {
         let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
@@ -566,19 +704,20 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         };
 
         tokio::spawn(async move {
-            // Acquire permit to serialize flush workers (max 1 at a time).
-            // We move the permit INTO the blocking closure so it's dropped
-            // when the blocking CPU-work completes, not when tokio resumes the
-            // async task.  This avoids starving the blocking thread pool.
             let permit = flush_limiter.clone().acquire_owned().await;
             let _ = tokio::task::spawn_blocking(move || {
-                // Hold permit for the duration of blocking work, then drop it
-                // automatically when this closure returns.
                 let _permit = permit;
 
-                // Track the vectors entering purgatory
-                let frozen_entries = Wal::pending_entries_at_path(&frozen_wal_path);
-                flushing_vector_count.fetch_add(frozen_entries as usize, Ordering::SeqCst);
+                println!("🔄 Flush Worker: Starting conversion of {} WAL segment(s)...", frozen_wal_paths.len());
+                let _flush_start = std::time::Instant::now();
+
+                // Track the vectors entering purgatory across all files
+                let mut total_frozen_entries = 0;
+                for path in &frozen_wal_paths {
+                    total_frozen_entries += Wal::pending_entries_at_path(path);
+                }
+                flushing_vector_count.fetch_add(total_frozen_entries as usize, Ordering::SeqCst);
+                println!("🔄 Flush Worker: Total entries to process: {}", total_frozen_entries);
 
                 let chunk_id = uuid::Uuid::new_v4().to_string();
                 let chunk_name = format!("chunk_{chunk_id}.hyp");
@@ -598,39 +737,52 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 );
 
                 let mut insert_count = 0u32;
-                // Streaming centroid accumulator — avoids buffering all vectors.
                 let mut centroid_acc = CentroidAccumulator::new(N);
-                let replay_res = Wal::replay(&frozen_wal_path, |entry| {
-                    let hyperspace_store::wal::WalEntry::Insert { vector, metadata, .. } = entry;
-                    if vector.len() == N {
-                        // Accumulate centroid from raw insertion vectors.
-                        centroid_acc.add(&vector);
-                        // Extract values inline without temporary assignments to fix borrowing.
-                        if let Ok(new_id) = local_index.insert_to_storage(&vector) {
-                            let _ = local_index.index_node(new_id, metadata);
-                            insert_count += 1;
-                        }
-                    }
-                });
 
-                if replay_res.is_err() || insert_count == 0 {
+                // Replay ALL accumulated segments into the same chunk
+                for (i, path) in frozen_wal_paths.iter().enumerate() {
+                    let replay_start = std::time::Instant::now();
+                    let replay_res = Wal::replay(path, |entry| {
+                        let hyperspace_store::wal::WalEntry::Insert { vector, metadata, .. } = entry;
+                        if vector.len() == N {
+                            centroid_acc.add(&vector);
+                            if let Ok(new_id) = local_index.insert_to_storage(&vector) {
+                                let _ = local_index.index_node(new_id, metadata);
+                                insert_count += 1;
+                            }
+                        }
+                    });
+
+                    let replay_elapsed = replay_start.elapsed();
+                    println!("🔄 Flush Worker: Replay segment {}/{} completed in {:.2}s ({} vectors)",
+                        i+1, frozen_wal_paths.len(), replay_elapsed.as_secs_f64(), insert_count);
+
+                    if replay_res.is_err() {
+                        eprintln!("⚠️ Failed to replay WAL segment {}/{} during flush. Some data may be lost or chunk will be partial.", i+1, frozen_wal_paths.len());
+                    }
+                }
+
+                if insert_count == 0 {
                     let _ = std::fs::remove_dir_all(&chunk_dir);
-                    let _ = std::fs::remove_file(&frozen_wal_path);
+                    for path in &frozen_wal_paths { let _ = std::fs::remove_file(path); }
+                    println!("⚠️ Flush Worker: No vectors to insert, cleaned up");
                     return;
                 }
 
-                // Task 7.2: DiskANN (Vamana)
-                // Optimize HNSW graph into a SNG for minimal NVMe page faults before saving.
-                // NOTE: Manual/Scheduled only. We remove it from the hot-flush path to keep ingestion fast.
-                // local_index.optimize_as_sng(1.2);
-
+                let save_start = std::time::Instant::now();
                 if let Err(e) = local_index.save_snapshot(&chunk_dir.join("index.snap")) {
                     eprintln!("Failed to save index for {chunk_name}: {e}");
                 } else {
-                    println!("✅ Flush Worker: Converted WAL -> Immutable Segment: {chunk_name} ({insert_count} vectors)");
-                    let _ = std::fs::remove_file(&frozen_wal_path);
+                    let save_elapsed = save_start.elapsed();
+                    println!("✅ Flush Worker: Converted {} WAL segment(s) -> Immutable Segment: {} ({} vectors) in {:.2}s",
+                        frozen_wal_paths.len(), chunk_name, insert_count, save_elapsed.as_secs_f64()
+                    );
 
-                    // Register the new chunk in the MetaRouter for IVF-style routing.
+                    // Cleanup handled WALs
+                    for path in &frozen_wal_paths {
+                        let _ = std::fs::remove_file(path);
+                    }
+
                     if let Some(centroid) = centroid_acc.finish() {
                         meta_router.register(ChunkMeta {
                             chunk_id: chunk_name.clone(),
@@ -662,7 +814,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     // reverse_id_map.clear();
 
                     // Done! Reclaim purgatory count.
-                    flushing_vector_count.fetch_sub(frozen_entries as usize, Ordering::SeqCst);
+                    flushing_vector_count.fetch_sub(total_frozen_entries as usize, Ordering::SeqCst);
                     println!("🔄 MemTable Swap: Replaced hot index with fresh empty HNSW (freed RAM)");
                 }
             })
@@ -768,10 +920,11 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             new_id
         };
 
-        let mut frozen_path_opt = None;
+        let mut frozen_paths_opt = None;
         {
             let wal_guard = self.wal_link.load();
             let mut wal = wal_guard.lock().await;
+            
             // Use User ID for WAL to support replication/restore
             wal.append(id, processed_vector, &metadata, clock)
                 .map_err(|e| format!("WAL Error: {e}"))?;
@@ -784,18 +937,60 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
             if wal.is_full() {
                 if let Ok(frozen_path) = wal.rotate() {
-                    frozen_path_opt = Some(frozen_path);
-                    // Reset WAL pending count as they move to flushing_vector_count
+                    // Reset WAL pending count as they move to next phase
                     self.wal_pending_count.store(0, Ordering::SeqCst);
+                    
+                    let mut pending = self.pending_wal_flushes.lock().await;
+                    pending.push(frozen_path);
+
+                    let should_flush = match self.storage_mode {
+                        StorageMode::Tiered => {
+                            // LSM-style: Flush when MemTable exceeds memory budget
+                            let memtable_nodes = self.index_link.load().count_nodes();
+                            let memtable_budget = self.max_ram_bytes / 10;
+                            let est_memory = memtable_nodes * (N * 8 + 64);
+
+                            let should = est_memory as u64 > memtable_budget;
+
+                            // DEBUG: Log every rotation
+                            if should {
+                                println!(
+                                    "🔍 Flush Check (Tiered): memtable={} vectors | est_memory={} MB | threshold={} MB | should_flush={}",
+                                    memtable_nodes,
+                                    est_memory / (1024 * 1024),
+                                    memtable_budget / (1024 * 1024),
+                                    should
+                                );
+                            }
+
+                            should
+                        }
+                        StorageMode::Performance => {
+                            // Performance Mode: NEVER flush to chunks
+                            // All data stays in RAM (MemTable) for maximum performance
+                            // Persistence is handled by snapshots only
+                            false
+                        }
+                    };
+
+                    if should_flush {
+                        // Take all pending segments to flush into one chunk
+                        frozen_paths_opt = Some(std::mem::take(&mut *pending));
+                    } else {
+                        println!(
+                            "📦 WAL Rotated ({} pending segments), keeping MemTable HOT (Performance Mode)", 
+                            pending.len()
+                        );
+                    }
                 }
             } else {
                 self.wal_pending_count.fetch_add(1, Ordering::SeqCst);
             }
         }
 
-        if let Some(frozen_path) = frozen_path_opt {
+        if let Some(frozen_paths) = frozen_paths_opt {
             Self::spawn_flush_worker(
-                frozen_path,
+                frozen_paths,
                 self.config.clone(),
                 self.mode,
                 self.data_dir.clone(),
@@ -810,6 +1005,18 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
         if reindex_needed {
             self.config.inc_queue();
+            let queue_size = self.config.get_queue_size();
+
+            // Debug: Log queue buildup
+            if queue_size > 10_000 && queue_size % 5_000 == 0 {
+                let active = self.config.active_indexing.load(Ordering::Relaxed);
+                println!(
+                    "⚠️  Index queue building up: {} pending, {} active",
+                    queue_size,
+                    active
+                );
+            }
+
             let _ = self.index_tx.send((internal_id, metadata.clone()));
         }
 
@@ -938,7 +1145,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .map(|e| (e.vector.to_vec(), e.id, e.metadata.clone()))
             .collect();
 
-        let mut frozen_path_opt = None;
+        let mut frozen_paths_opt = None;
         {
             let wal_guard = self.wal_link.load();
             let mut wal = wal_guard.lock().await;
@@ -953,8 +1160,49 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
             if wal.is_full() {
                 if let Ok(frozen_path) = wal.rotate() {
-                    frozen_path_opt = Some(frozen_path);
+                    // Reset WAL pending count as they move to next phase
                     self.wal_pending_count.store(0, Ordering::SeqCst);
+                    
+                    let mut pending = self.pending_wal_flushes.lock().await;
+                    pending.push(frozen_path);
+
+                    let should_flush = match self.storage_mode {
+                        StorageMode::Tiered => {
+                            // LSM-style: Flush when MemTable exceeds memory budget
+                            let memtable_nodes = self.index_link.load().count_nodes();
+                            let memtable_budget = self.max_ram_bytes / 10;
+                            let est_memory = memtable_nodes * (N * 8 + 64);
+
+                            let should = est_memory as u64 > memtable_budget;
+
+                            // DEBUG: Log every rotation
+                            if should {
+                                println!(
+                                    "🔍 Flush Check (Tiered, batch): memtable={} vectors | est_memory={} MB | threshold={} MB | should_flush={}",
+                                    memtable_nodes,
+                                    est_memory / (1024 * 1024),
+                                    memtable_budget / (1024 * 1024),
+                                    should
+                                );
+                            }
+
+                            should
+                        }
+                        StorageMode::Performance => {
+                            // Performance Mode: NEVER flush to chunks
+                            // All data stays in RAM (MemTable) for maximum performance
+                            false
+                        }
+                    };
+
+                    if should_flush {
+                        frozen_paths_opt = Some(std::mem::take(&mut *pending));
+                    } else {
+                        println!(
+                            "📦 WAL Rotated (batch, {} pending segments), keeping MemTable HOT (Performance Mode)",
+                            pending.len()
+                        );
+                    }
                 }
             } else {
                 self.wal_pending_count
@@ -962,9 +1210,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             }
         }
 
-        if let Some(frozen_path) = frozen_path_opt {
+        if let Some(frozen_paths) = frozen_paths_opt {
             Self::spawn_flush_worker(
-                frozen_path,
+                frozen_paths,
                 self.config.clone(),
                 self.mode,
                 self.data_dir.clone(),
@@ -1053,9 +1301,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             ));
         }
 
-        // Zero-copy normalization if possible
-        // We must own the data for spawn_blocking
-        let processed_query = Self::normalize_if_cosine(query).into_owned();
+        // Quick Win #5: Zero-copy normalization - keep Cow until absolutely necessary
+        let processed_query_cow = Self::normalize_if_cosine(query);
 
         let index_link = self.index_link.clone();
         let reverse_id_map = self.reverse_id_map.clone();
@@ -1086,7 +1333,148 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .await
             .map_err(|e| format!("Search limiter failed: {e}"))?;
 
-        tokio::task::spawn_blocking(move || {
+        // Quick Win: For small top_k, run search inline to avoid spawn_blocking overhead
+        let use_blocking = top_k > 50 || rerank_enabled;
+
+        if use_blocking {
+            // Convert to owned only when entering blocking task
+            let processed_query = processed_query_cow.into_owned();
+            tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                let index = index_link.load();
+                let include_metadata = index.has_nonempty_metadata();
+                let filters_ref = filters_owned.as_ref().unwrap_or(&EMPTY_LEGACY_FILTERS);
+                let complex_filters_ref = complex_filters_owned
+                    .as_ref()
+                    .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
+                let search_k = if rerank_enabled {
+                    top_k.saturating_mul(rerank_oversample).max(top_k)
+                } else {
+                    top_k
+                };
+
+                // === 1. Search the hot MemTable (in-RAM HNSW) ===
+                let mem_results = index.search(
+                    &processed_query,
+                    search_k,
+                    ef_search,
+                    filters_ref,
+                    complex_filters_ref,
+                    hybrid_query.as_deref(),
+                    hybrid_alpha,
+                    use_wasserstein,
+                );
+
+                // === 2. Search cold chunks via MetaRouter (disk mmap) ===
+                let probe_k = std::env::var("HS_CHUNK_PROBE_K")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(3);
+                let routed_chunks = meta_router_ref.route(&processed_query, probe_k);
+                let chunk_dirs: Vec<std::path::PathBuf> = routed_chunks
+                    .iter()
+                    .map(|(_, path, _)| path.clone())
+                    .collect();
+
+                let chunk_results = if chunk_dirs.is_empty() {
+                    Vec::new()
+                } else {
+                    chunk_searcher::scatter_gather_search::<N, M>(
+                        &chunk_dirs,
+                        &processed_query,
+                        search_k,
+                        ef_search,
+                        filters_ref,
+                        complex_filters_ref,
+                        mode_for_search,
+                        &config_for_search,
+                        use_wasserstein,
+                    )
+                };
+
+                // === 3. Merge MemTable + Chunk results by distance ===
+                // MemTable results carry real internal IDs.
+                // Chunk results carry chunk-local IDs (not usable for metadata).
+                // We merge by distance only, preferring MemTable entries for metadata.
+                let mut merged: Vec<(u32, f64, bool)> =
+                    Vec::with_capacity(mem_results.len() + chunk_results.len());
+
+                for (id, dist) in &mem_results {
+                    merged.push((*id, *dist, true)); // true = from MemTable
+                }
+                for (_, dist, _) in &chunk_results {
+                    // Chunk results don't have usable IDs for the collection's id_map.
+                    // We use u32::MAX as a sentinel — they'll be filtered in metadata step.
+                    merged.push((u32::MAX, *dist, false)); // false = from chunk
+                }
+
+                merged.sort_by(|a, b| a.1.total_cmp(&b.1));
+                merged.truncate(search_k);
+
+                // Include all results (RAM + Chunks).
+                // Note: Results from chunks will have internal IDs that need a segment mapping.
+                let results: Vec<(u32, f64)> = merged
+                    .into_iter()
+                    .map(|(id, dist, _)| (id, dist))
+                    .collect();
+
+                let metric_tag = match M::name() {
+                    "cosine" => GpuMetric::Cosine,
+                    "poincare" => GpuMetric::Poincare,
+                    "lorentz" => GpuMetric::Lorentz,
+                    _ => GpuMetric::L2,
+                };
+
+                let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
+                    let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
+                    let candidate_vectors: Vec<Vec<f64>> = candidate_ids
+                        .iter()
+                        .map(|id| index.get_vector(*id).coords.to_vec())
+                        .collect();
+                    let candidate_refs: Vec<&[f64]> =
+                        candidate_vectors.iter().map(Vec::as_slice).collect();
+                    rerank_topk_exact(
+                        metric_tag,
+                        &processed_query,
+                        &candidate_ids,
+                        &candidate_refs,
+                    )
+                } else {
+                    results
+                };
+
+                // Fetch metadata and convert IDs inside blocking worker.
+                reranked_internal
+                    .into_iter()
+                    .take(top_k)
+                    .map(|(internal_id, dist)| {
+                        let meta = if include_metadata {
+                            index
+                                .metadata
+                                .forward
+                                .get(&internal_id)
+                                .map(|m| m.clone())
+                                .unwrap_or_default()
+                        } else {
+                            HashMap::new()
+                        };
+
+                        let user_id = if ids_are_identity {
+                            internal_id
+                        } else {
+                            reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v)
+                        };
+
+                        (user_id, dist, meta)
+                    })
+                    .collect::<Vec<SearchResult>>()
+            })
+            .await
+            .map_err(|e| format!("Search task failed: {e}"))
+        } else {
+            // Quick Win: Inline search for small top_k - avoid spawn_blocking overhead
+            // Still need to convert Cow to owned for HNSW search
+            let processed_query = processed_query_cow.into_owned();
             let _permit = permit;
             let index = index_link.load();
             let include_metadata = index.has_nonempty_metadata();
@@ -1094,16 +1482,11 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let complex_filters_ref = complex_filters_owned
                 .as_ref()
                 .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
-            let search_k = if rerank_enabled {
-                top_k.saturating_mul(rerank_oversample).max(top_k)
-            } else {
-                top_k
-            };
 
             // === 1. Search the hot MemTable (in-RAM HNSW) ===
             let mem_results = index.search(
                 &processed_query,
-                search_k,
+                top_k,
                 ef_search,
                 filters_ref,
                 complex_filters_ref,
@@ -1112,86 +1495,11 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 use_wasserstein,
             );
 
-            // === 2. Search cold chunks via MetaRouter (disk mmap) ===
-            let probe_k = std::env::var("HS_CHUNK_PROBE_K")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(3);
-            let routed_chunks = meta_router_ref.route(&processed_query, probe_k);
-            let chunk_dirs: Vec<std::path::PathBuf> = routed_chunks
-                .iter()
-                .map(|(_, path, _)| path.clone())
-                .collect();
+            // === 2. Search cold chunks (skip for small queries - assume hot data) ===
+            // Skip chunk search for small top_k to reduce latency
 
-            let chunk_results = if chunk_dirs.is_empty() {
-                Vec::new()
-            } else {
-                chunk_searcher::scatter_gather_search::<N, M>(
-                    &chunk_dirs,
-                    &processed_query,
-                    search_k,
-                    ef_search,
-                    filters_ref,
-                    complex_filters_ref,
-                    mode_for_search,
-                    &config_for_search,
-                    use_wasserstein,
-                )
-            };
-
-            // === 3. Merge MemTable + Chunk results by distance ===
-            // MemTable results carry real internal IDs.
-            // Chunk results carry chunk-local IDs (not usable for metadata).
-            // We merge by distance only, preferring MemTable entries for metadata.
-            let mut merged: Vec<(u32, f64, bool)> =
-                Vec::with_capacity(mem_results.len() + chunk_results.len());
-
-            for (id, dist) in &mem_results {
-                merged.push((*id, *dist, true)); // true = from MemTable
-            }
-            for (_, dist, _) in &chunk_results {
-                // Chunk results don't have usable IDs for the collection's id_map.
-                // We use u32::MAX as a sentinel — they'll be filtered in metadata step.
-                merged.push((u32::MAX, *dist, false)); // false = from chunk
-            }
-
-            merged.sort_by(|a, b| a.1.total_cmp(&b.1));
-            merged.truncate(search_k);
-
-            // Include all results (RAM + Chunks). 
-            // Note: Results from chunks will have internal IDs that need a segment mapping.
-            let results: Vec<(u32, f64)> = merged
-                .into_iter()
-                .map(|(id, dist, _)| (id, dist))
-                .collect();
-
-            let metric_tag = match M::name() {
-                "cosine" => GpuMetric::Cosine,
-                "poincare" => GpuMetric::Poincare,
-                "lorentz" => GpuMetric::Lorentz,
-                _ => GpuMetric::L2,
-            };
-
-            let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
-                let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
-                let candidate_vectors: Vec<Vec<f64>> = candidate_ids
-                    .iter()
-                    .map(|id| index.get_vector(*id).coords.to_vec())
-                    .collect();
-                let candidate_refs: Vec<&[f64]> =
-                    candidate_vectors.iter().map(Vec::as_slice).collect();
-                rerank_topk_exact(
-                    metric_tag,
-                    &processed_query,
-                    &candidate_ids,
-                    &candidate_refs,
-                )
-            } else {
-                results
-            };
-
-            // Fetch metadata and convert IDs inside blocking worker.
-            reranked_internal
+            // === 3. Convert results ===
+            let results: Vec<SearchResult> = mem_results
                 .into_iter()
                 .take(top_k)
                 .map(|(internal_id, dist)| {
@@ -1214,10 +1522,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
                     (user_id, dist, meta)
                 })
-                .collect::<Vec<SearchResult>>()
-        })
-        .await
-        .map_err(|e| format!("Search task failed: {e}"))
+                .collect();
+
+            Ok(results)
+        }
     }
 
     async fn optimize(&self) -> Result<(), String> {
@@ -1356,10 +1664,17 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
     fn queue_size(&self) -> u64 {
         let hnsw_queue = self.config.get_queue_size();
-        let wal_queue = self.wal_pending_count.load(Ordering::Relaxed);
-        let flushing_queue = self.flushing_vector_count.load(Ordering::Relaxed) as u64;
 
-        hnsw_queue + wal_queue + flushing_queue
+        // Performance Mode: Only report HNSW indexing queue
+        // Tiered Mode: Include WAL pending and flushing queues for full picture
+        match self.storage_mode {
+            StorageMode::Performance => hnsw_queue,
+            StorageMode::Tiered => {
+                let wal_queue = self.wal_pending_count.load(Ordering::Relaxed);
+                let flushing_queue = self.flushing_vector_count.load(Ordering::Relaxed) as u64;
+                hnsw_queue + wal_queue + flushing_queue
+            }
+        }
     }
 
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {

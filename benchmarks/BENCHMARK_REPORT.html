@@ -21,7 +21,7 @@
 <body>
     <div class="header">
         <h1>📐 Benchmark Comparison Report</h1>
-        <p>Testing on <b>Synthetic/Random</b> with <b>50,000</b> docs and <b>1,000</b> queries.</p>
+        <p>Testing on <b>Synthetic/Random</b> with <b>1,000,000</b> docs and <b>1,000</b> queries.</p>
     </div>
 
     <div class="grid">
@@ -52,7 +52,7 @@
     </div>
 
     <script>
-        const dbs = ["Hyperspace", "Qdrant", "Milvus", "Weaviate"];
+        const dbs = ["Hyperspace", "ChromaDB", "Milvus", "Weaviate", "Qdrant"];
         const colors = ["#22d3ee", "#fac05e", "#818cf8", "#f472b6", "#10b981", "#6366f1"];
         const commonOptions = {
             responsive: true,
@@ -86,17 +86,17 @@
             });
         }
 
-        createBarChart('searchChart', 'Search QPS', [2377.285364091083, 376.4843417113429, 327.7430137153714, 94.40142658711024]);
-        createBarChart('insertChart', 'Insert QPS', [11855.139452293815, 1256.796509506395, 10817.89311809023, 749.367255781957]);
-        createBarChart('recallChart', 'Recall@10 %', [90.57000000000001, 99.92000000000002, 92.86000000000001, 99.69], '%');
-        createBarChart('latencyChart', 'P99 Latency (ms)', [0.5739517509937286, 4.039180278778074, 5.30851602554321, 16.29549741744994], 'ms');
-        createBarChart('diskChart', 'Disk Usage (MB)', [756.0, 336.0, 6144.0, 351.5], ' MB');
+        createBarChart('searchChart', 'Search QPS', [1858.5915520418876, 811.8753619687383, 148.50830957779783, 146.76936418233956, 113.16411173717093]);
+        createBarChart('insertChart', 'Insert QPS', [7469.3324963111, 1243.2674057364181, 7029.889278050518, 981.0526483863474, 1582.7886825422677]);
+        createBarChart('recallChart', 'Recall@10 %', [89.62, 54.27000000000001, 88.83000000000001, 89.87, 91.34], '%');
+        createBarChart('latencyChart', 'P99 Latency (ms)', [0.6958283483982086, 1.8268942832946775, 13.044238090515135, 9.017693996429442, 31.866686344146718], 'ms');
+        createBarChart('diskChart', 'Disk Usage (MB)', [9390.08, 8611.84, 4300.8, 5017.6, 4198.4], ' MB');
 
         new Chart(document.getElementById('concChart'), {
             type: 'line',
             data: {
                 labels: [1, 10, 30],
-                datasets: [{"label": "Hyperspace", "data": [2518.3820988073603, 3316.3131915743165, 3262.6162220355122], "borderColor": "#22d3ee", "backgroundColor": "#22d3ee", "tension": 0.1, "fill": false}, {"label": "Qdrant", "data": [413.32940991205214, 1737.2883532246854, 1917.2085565115], "borderColor": "#fac05e", "backgroundColor": "#fac05e", "tension": 0.1, "fill": false}, {"label": "Milvus", "data": [347.4126014994149, 2524.459724123154, 3442.6948584936636], "borderColor": "#818cf8", "backgroundColor": "#818cf8", "tension": 0.1, "fill": false}, {"label": "Weaviate", "data": [108.80358505953335, 594.4448239570262, 722.2147415488575], "borderColor": "#f472b6", "backgroundColor": "#f472b6", "tension": 0.1, "fill": false}]
+                datasets: [{"label": "Hyperspace", "data": [2394.2353001953097, 4050.5172207537266, 4121.057103736396], "borderColor": "#22d3ee", "backgroundColor": "#22d3ee", "tension": 0.1, "fill": false}, {"label": "ChromaDB", "data": [1167.691640390405, 465.70457638722496, 445.5978674046156], "borderColor": "#fac05e", "backgroundColor": "#fac05e", "tension": 0.1, "fill": false}, {"label": "Milvus", "data": [172.34489754727514, 363.53380558678197, 456.4276989963236], "borderColor": "#818cf8", "backgroundColor": "#818cf8", "tension": 0.1, "fill": false}, {"label": "Weaviate", "data": [159.8673951477016, 816.9906148334017, 988.5940449186083], "borderColor": "#f472b6", "backgroundColor": "#f472b6", "tension": 0.1, "fill": false}, {"label": "Qdrant", "data": [423.42670120598206, 2046.379283594731, 2215.431682074263], "borderColor": "#10b981", "backgroundColor": "#10b981", "tension": 0.1, "fill": false}]
             },
             options: commonOptions
         });

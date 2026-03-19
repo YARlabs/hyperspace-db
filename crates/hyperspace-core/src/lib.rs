@@ -36,11 +36,17 @@ mod tests;
 
 pub type HyperFloat = f64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum QuantizationMode {
     None,
     ScalarI8,
     Binary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum StorageMode {
+    Performance, // Default: Huge single HNSW index, high RAM usage, max speed.
+    Tiered,      // LSM Mode: Frequent WAL-to-Chunk flushes, minimizes RAM.
 }
 
 /// Metric abstraction for distance calculation

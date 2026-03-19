@@ -101,7 +101,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
     Ok(results)
 }
 
-/// Searches multiple chunks in parallel using Rayon and merges results.
+/// Searches multiple chunks in parallel using tokio (P1: Parallel chunk search).
 ///
 /// # Parameters
 /// - `chunk_dirs`: Paths to chunk directories to search.
@@ -117,7 +117,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
 /// Note: IDs are chunk-local and cannot be used for metadata lookups in the main index.
 /// The caller should use only the distances for ranking merge.
 #[allow(clippy::too_many_arguments)]
-pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
+pub async fn scatter_gather_search_async<const N: usize, M: Metric<N> + Send + Sync + 'static>(
     chunk_dirs: &[std::path::PathBuf],
     query: &[f64],
     k: usize,
@@ -128,30 +128,49 @@ pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
     config: &Arc<GlobalConfig>,
     use_wasserstein: bool,
 ) -> Vec<(u32, f64, usize)> {
-    // (chunk_local_id, distance, chunk_index) — chunk_index identifies which chunk
+    // P1: Parallel chunk search - use tokio to search chunks concurrently
+    // Chunk loading is mmap-based, so parallel loading is safe and efficient
+    let chunk_futures: Vec<_> = chunk_dirs
+        .iter()
+        .enumerate()
+        .map(|(_chunk_idx, dir)| {
+            let dir = dir.clone();
+            let query = query.to_vec();
+            let filters = filters.clone();
+            let complex_filters = complex_filters.to_vec();
+            let config = config.clone();
+
+            tokio::task::spawn_blocking(move || {
+                search_chunk::<N, M>(
+                    &dir,
+                    &query,
+                    k,
+                    ef_search,
+                    &filters,
+                    &complex_filters,
+                    mode,
+                    &config,
+                    use_wasserstein,
+                )
+            })
+        })
+        .collect();
+
+    // Collect results from all parallel tasks
     let mut all_results: Vec<(u32, f64, usize)> = Vec::new();
 
-    // Use sequential iteration for now (chunks are mmap'd so loading is cheap).
-    // Rayon parallelism can be added later if profiling shows this is a bottleneck.
-    for (chunk_idx, dir) in chunk_dirs.iter().enumerate() {
-        match search_chunk::<N, M>(
-            dir,
-            query,
-            k,
-            ef_search,
-            filters,
-            complex_filters,
-            mode,
-            config,
-            use_wasserstein,
-        ) {
-            Ok(results) => {
+    for (chunk_idx, future) in chunk_futures.into_iter().enumerate() {
+        match future.await {
+            Ok(Ok(results)) => {
                 for (local_id, dist) in results {
                     all_results.push((local_id, dist, chunk_idx));
                 }
             }
+            Ok(Err(e)) => {
+                eprintln!("⚠️ ChunkSearcher: Failed to search chunk: {e}");
+            }
             Err(e) => {
-                eprintln!("⚠️ ChunkSearcher: Failed to search {}: {e}", dir.display());
+                eprintln!("⚠️ ChunkSearcher: Task panicked: {e}");
             }
         }
     }
@@ -160,4 +179,33 @@ pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync>(
     all_results.sort_by(|a, b| a.1.total_cmp(&b.1));
     all_results.truncate(k);
     all_results
+}
+
+/// Legacy synchronous wrapper for backwards compatibility.
+/// Spawns an async task and blocks on it - use scatter_gather_search_async when possible.
+#[allow(clippy::too_many_arguments)]
+pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync + 'static>(
+    chunk_dirs: &[std::path::PathBuf],
+    query: &[f64],
+    k: usize,
+    ef_search: usize,
+    filters: &HashMap<String, String>,
+    complex_filters: &[FilterExpr],
+    mode: QuantizationMode,
+    config: &Arc<GlobalConfig>,
+    use_wasserstein: bool,
+) -> Vec<(u32, f64, usize)> {
+    // Use tokio runtime to run async function
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(scatter_gather_search_async::<N, M>(
+        chunk_dirs,
+        query,
+        k,
+        ef_search,
+        filters,
+        complex_filters,
+        mode,
+        config,
+        use_wasserstein,
+    ))
 }

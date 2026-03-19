@@ -29,6 +29,10 @@ pub struct Wal {
     current_size: u64,
     size_limit: u64,
     pending_entries: u64,
+    /// Batch mode: track last fsync time for background sync
+    last_fsync_time: std::time::Instant,
+    /// Batch mode fsync interval in milliseconds
+    batch_fsync_interval_ms: u64,
 }
 
 /// Represents an operation stored in the WAL.
@@ -47,13 +51,22 @@ impl Wal {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
         let metadata = file.metadata()?;
         let current_size = metadata.len();
+        // Default 512 MB segment size (Quick Win #2: increased from 75 MB for better performance)
+        // Can be overridden via set_size_limit() based on HS_WAL_SEGMENT_SIZE_MB env var
+        // Batch mode fsync interval from env var (default 100ms)
+        let batch_fsync_interval_ms = std::env::var("HYPERSPACE_WAL_BATCH_INTERVAL")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(100);
         Ok(Self {
             file: BufWriter::new(file),
             mode,
             path: path.to_owned(),
             current_size,
-            size_limit: 75 * 1024 * 1024, // 75 MB default soft limit
-            pending_entries: 0,           // Fresh WAL assumes 0 until we support append-resume
+            size_limit: 512 * 1024 * 1024,
+            pending_entries: 0,
+            last_fsync_time: std::time::Instant::now(),
+            batch_fsync_interval_ms,
         })
     }
 
@@ -95,6 +108,7 @@ impl Wal {
         self.file = BufWriter::new(file);
         self.current_size = 0;
         self.pending_entries = 0;
+        self.last_fsync_time = std::time::Instant::now();  // Reset fsync timer for new WAL
         Ok(frozen_path)
     }
 
@@ -161,8 +175,25 @@ impl Wal {
         let payload = Self::serialize_entry(id, vector, metadata, logical_clock)?;
         self.write_packet_internal(&payload)?;
         self.file.flush()?;
-        if self.mode == WalSyncMode::Strict {
-            self.file.get_ref().sync_all()?;
+
+        // P0: Async fsync for Batch mode - only fsync if interval elapsed
+        match self.mode {
+            WalSyncMode::Strict => {
+                // Strict: fsync on every write (safest, slowest)
+                self.file.get_ref().sync_all()?;
+                self.last_fsync_time = std::time::Instant::now();
+            }
+            WalSyncMode::Batch => {
+                // Batch: fsync only if interval elapsed (balanced durability/speed)
+                if self.last_fsync_time.elapsed().as_millis() >= self.batch_fsync_interval_ms as u128 {
+                    self.file.get_ref().sync_all()?;
+                    self.last_fsync_time = std::time::Instant::now();
+                }
+            }
+            WalSyncMode::Async => {
+                // Async: rely on OS cache flush (fastest, least durable)
+                // No explicit fsync
+            }
         }
         Ok(())
     }
@@ -177,8 +208,22 @@ impl Wal {
             self.write_packet_internal(&payload)?;
         }
         self.file.flush()?;
-        if self.mode == WalSyncMode::Strict {
-            self.file.get_ref().sync_all()?;
+
+        // P0: Async fsync for Batch mode - only fsync if interval elapsed
+        match self.mode {
+            WalSyncMode::Strict => {
+                self.file.get_ref().sync_all()?;
+                self.last_fsync_time = std::time::Instant::now();
+            }
+            WalSyncMode::Batch => {
+                if self.last_fsync_time.elapsed().as_millis() >= self.batch_fsync_interval_ms as u128 {
+                    self.file.get_ref().sync_all()?;
+                    self.last_fsync_time = std::time::Instant::now();
+                }
+            }
+            WalSyncMode::Async => {
+                // No explicit fsync
+            }
         }
         Ok(())
     }
@@ -187,6 +232,7 @@ impl Wal {
     pub fn sync(&mut self) -> io::Result<()> {
         self.file.flush()?;
         self.file.get_ref().sync_all()?;
+        self.last_fsync_time = std::time::Instant::now();
         Ok(())
     }
 

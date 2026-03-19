@@ -994,7 +994,7 @@ async fn graph_clusters(
 
 async fn get_logs() -> Json<Vec<String>> {
     Json(vec![
-        "[SYSTEM] Hyperspace DB v1.2.0 Online".into(),
+        "[SYSTEM] Hyperspace DB Online".into(),
         "[INFO] Control Plane: HTTP :50050".into(),
         "[INFO] Data Plane: gRPC :50051".into(),
     ])
