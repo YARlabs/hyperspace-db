@@ -31,8 +31,8 @@ pub struct VectorStore {
 }
 
 #[repr(align(64))]
-struct AlignedZero([u8; 131072]);
-static ZERO_BUF: AlignedZero = AlignedZero([0u8; 131072]);
+struct AlignedZero([u8; 131_072]);
+static ZERO_BUF: AlignedZero = AlignedZero([0u8; 131_072]);
 
 impl VectorStore {
     /// Creates or opens a `VectorStore` at the given path.
@@ -146,7 +146,7 @@ impl VectorStore {
             let ptr = ZERO_BUF.0.as_ptr();
             let offset = ptr.align_offset(64);
             if offset != 0 {
-                eprintln!("⚠️ ZERO_BUF is misaligned! offset={}, addr={:?}", offset, ptr);
+                eprintln!("⚠️ ZERO_BUF is misaligned! offset={offset}, addr={ptr:?}");
             }
             return &ZERO_BUF.0[..self.element_size];
         }

@@ -132,7 +132,11 @@ impl<const N: usize> MetaRouter<N> {
 
     /// Returns the total number of vectors across all registered chunks.
     pub fn total_vector_count(&self) -> usize {
-        self.chunks.read().iter().map(|c| c.vector_count as usize).sum()
+        self.chunks
+            .read()
+            .iter()
+            .map(|c| c.vector_count as usize)
+            .sum()
     }
 
     /// Routes a search query to the `probe_k` most-relevant chunks.

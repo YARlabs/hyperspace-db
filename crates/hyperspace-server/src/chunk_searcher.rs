@@ -132,8 +132,7 @@ pub async fn scatter_gather_search_async<const N: usize, M: Metric<N> + Send + S
     // Chunk loading is mmap-based, so parallel loading is safe and efficient
     let chunk_futures: Vec<_> = chunk_dirs
         .iter()
-        .enumerate()
-        .map(|(_chunk_idx, dir)| {
+        .map(|dir| {
             let dir = dir.clone();
             let query = query.to_vec();
             let filters = filters.clone();

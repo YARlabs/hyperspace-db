@@ -613,12 +613,10 @@ impl<const N: usize> QuantizedHyperVector<N> {
         let addr = bytes.as_ptr();
         let align = std::mem::align_of::<Self>();
         let offset = addr.align_offset(align);
-        if offset != 0 {
-            panic!(
-                "QuantizedHyperVector: Misaligned bytes! addr={:?}, align={}, offset={}. Use aligned storage.",
-                addr, align, offset
-            );
-        }
+        assert!(
+            offset == 0,
+            "QuantizedHyperVector: Misaligned bytes! addr={addr:?}, align={align}, offset={offset}. Use aligned storage."
+        );
         // SAFETY: alignment and size are controlled by caller/storage element sizing.
         unsafe { &*addr.cast::<Self>() }
     }

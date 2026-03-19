@@ -5,8 +5,8 @@ use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use hyperspace_core::gpu::{rerank_topk_exact, GpuMetric};
 use hyperspace_core::{
-    Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult, StorageMode, VacuumFilterOp,
-    VacuumFilterQuery,
+    Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult, StorageMode,
+    VacuumFilterOp, VacuumFilterQuery,
 };
 use hyperspace_index::HnswIndex;
 use hyperspace_proto::hyperspace::{replication_log, InsertOp, ReplicationLog};
@@ -171,8 +171,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let snap_path = data_dir.join("index.snap");
         let config = Arc::new(GlobalConfig::new());
 
-        let gossip_env = std::env::var("HS_GOSSIP_ENABLED")
-            .is_ok_and(|v| v.to_lowercase() == "true");
+        let gossip_env =
+            std::env::var("HS_GOSSIP_ENABLED").is_ok_and(|v| v.to_lowercase() == "true");
         let anisotropic_env = std::env::var("HS_ANISOTROPIC_REFINEMENT")
             .map_or(true, |v| v.to_lowercase() != "false");
 
@@ -308,14 +308,15 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         // Storage & Performance Tuning
         let hs_mode_env = std::env::var("HS_MODE")
-            .unwrap_or_else(|_| "tiered".to_string())  // FIX: Default to Tiered (LSM) mode
+            .unwrap_or_else(|_| "tiered".to_string()) // FIX: Default to Tiered (LSM) mode
             .to_lowercase();
+        #[allow(clippy::match_same_arms)] // Intentional: explicit tiered/lsm aliases
         let storage_mode = match hs_mode_env.as_str() {
             "tiered" | "lsm" => StorageMode::Tiered,
             "performance" => {
                 println!("⚠️  Performance Mode: WAL will NOT flush until RAM limit hit. Use for testing only!");
                 StorageMode::Performance
-            },
+            }
             _ => StorageMode::Tiered,
         };
 
@@ -326,7 +327,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let max_ram_gb_env = std::env::var("HS_MAX_RAM_GB")
             .ok()
             .and_then(|v| v.parse::<u64>().ok());
-        
+
         let max_ram_bytes = match max_ram_gb_env {
             Some(gb) => gb * 1024 * 1024 * 1024,
             None => total_ram_bytes * 70 / 100, // Default to 70% of total RAM
@@ -345,7 +346,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             StorageMode::Performance => 4096, // 4 GB
             StorageMode::Tiered => 256,       // 256 MB
         };
-        
+
         let wal_segment_mb = std::env::var("HS_WAL_SEGMENT_SIZE_MB")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -354,7 +355,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         wal.set_size_limit(wal_segment_mb * 1024 * 1024);
         println!("📦 WAL Segment Size: {wal_segment_mb} MB");
-        
+
         let wal_link = Arc::new(ArcSwap::new(Arc::new(tokio::sync::Mutex::new(wal))));
         let flushing_vector_count = Arc::new(AtomicUsize::new(0));
         let wal_pending_count = Arc::new(AtomicU64::new(0));
@@ -362,7 +363,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // Replay
         let index_ref = index.clone();
         let loaded_clock = last_clock.load(Ordering::Relaxed);
-        
+
         // Find all frozen WAL segments that haven't been flushed yet
         let mut wal_segments = Vec::new();
         if let Some(parent) = wal_path.parent() {
@@ -381,16 +382,16 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 }
             }
         }
-        
+
         // Sort segments chronologically
         wal_segments.sort_by_key(|(ts, _)| *ts);
-        
+
         // Final list: all frozen segments + the active WAL path
         let replay_queue: Vec<_> = wal_segments.clone().into_iter().map(|(_, p)| p).collect();
         let pending_wal_flushes = Arc::new(tokio::sync::Mutex::new(
             wal_segments.into_iter().map(|(_, p)| p).collect::<Vec<_>>(),
         ));
-        
+
         // Add the active path to replay, but it's not "frozen" yet
         let mut final_replay = replay_queue;
         final_replay.push(wal_path.clone());
@@ -431,7 +432,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 }
             })?;
         }
-        
+
         // Background Tasks
         let (index_tx, mut index_rx) = mpsc::unbounded_channel();
         let idx_link_worker = index_link.clone();
@@ -467,13 +468,15 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         // Quick Win #4: Auto-calculate search concurrency based on CPU count
         // Default: num_cpus * 2 for better throughput, with manual override via env var
         let search_concurrency = if search_concurrency_env == 0 {
-            num_cpus * 2  // Auto: 2x CPU count for better parallelism
+            num_cpus * 2 // Auto: 2x CPU count for better parallelism
         } else if search_concurrency_env > num_cpus * 4 {
-            num_cpus * 4  // Cap at 4x to avoid thrashing
+            num_cpus * 4 // Cap at 4x to avoid thrashing
         } else {
             search_concurrency_env
         };
-        println!("⚙️  Search Concurrency Limit: {search_concurrency} task(s) (CPU cores: {num_cpus})");
+        println!(
+            "⚙️  Search Concurrency Limit: {search_concurrency} task(s) (CPU cores: {num_cpus})"
+        );
         let search_limiter = Arc::new(Semaphore::new(search_concurrency));
         let flush_limiter = Arc::new(Semaphore::new(1));
         let fast_upsert_delta = std::env::var("HS_FAST_UPSERT_DELTA")
@@ -504,18 +507,18 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     .await;
 
                     match result {
-                        Ok((Ok(_), _processed_id)) => {
+                        Ok((Ok(()), _processed_id)) => {
                             cfg.dec_queue();
                             cfg.dec_active();
                         }
                         Ok((Err(e), failed_id)) => {
-                            eprintln!("❌ Indexer error on ID {}: {}", failed_id, e);
+                            eprintln!("❌ Indexer error on ID {failed_id}: {e}");
                             cfg.dec_queue();
                             cfg.dec_active();
                             errors_ref.fetch_add(1, Ordering::Relaxed);
                         }
                         Err(join_err) => {
-                            eprintln!("❌ Indexer task panicked: {}", join_err);
+                            eprintln!("❌ Indexer task panicked: {join_err}");
                             cfg.dec_queue();
                             cfg.dec_active();
                             errors_ref.fetch_add(1, Ordering::Relaxed);
@@ -524,18 +527,19 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 });
 
                 let r = received.fetch_add(1, Ordering::Relaxed) + 1;
-                if r % 10_000 == 0 {
+                if r.is_multiple_of(10_000) {
                     let active = cfg_worker.active_indexing.load(Ordering::Relaxed);
                     let queue = cfg_worker.queue_size.load(Ordering::Relaxed);
                     let errs = errors.load(Ordering::Relaxed);
-                    println!("📊 Indexer: {} received, {} active, {} in queue, {} errors",
-                        r, active, queue, errs);
+                    println!(
+                        "📊 Indexer: {r} received, {active} active, {queue} in queue, {errs} errors"
+                    );
                 }
             }
 
             let final_r = received.load(Ordering::Relaxed);
             let final_e = errors.load(Ordering::Relaxed);
-            println!("🏁 Indexer task finished. Total received: {}, errors: {}", final_r, final_e);
+            println!("🏁 Indexer task finished. Total received: {final_r}, errors: {final_e}");
         });
 
         // Task 1.2: Initialize MetaRouter and Load Existing Chunks
@@ -576,9 +580,10 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         let id_map = Arc::new(id_map_data.into_iter().collect::<DashMap<u32, u32>>());
         // Quick Win #3: HS_IDENTITY_IDS flag for ID mapping bypass
         // If true, skip DashMap lookups entirely (user IDs == internal IDs)
-        let identity_ids_env = std::env::var("HS_IDENTITY_IDS")
-            .is_ok_and(|v| v.to_lowercase() == "true");
-        let ids_are_identity = identity_ids_env || id_map.iter().all(|entry| *entry.key() == *entry.value());
+        let identity_ids_env =
+            std::env::var("HS_IDENTITY_IDS").is_ok_and(|v| v.to_lowercase() == "true");
+        let ids_are_identity =
+            identity_ids_env || id_map.iter().all(|entry| *entry.key() == *entry.value());
         if identity_ids_env {
             println!("⚡ ID Mapping: BYPASSED (HS_IDENTITY_IDS=true, user IDs == internal IDs)");
         } else if ids_are_identity {
@@ -672,6 +677,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)] // Background worker requires all context
     fn spawn_flush_worker(
         frozen_wal_paths: Vec<PathBuf>,
         config: Arc<GlobalConfig>,
@@ -717,7 +723,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     total_frozen_entries += Wal::pending_entries_at_path(path);
                 }
                 flushing_vector_count.fetch_add(total_frozen_entries as usize, Ordering::SeqCst);
-                println!("🔄 Flush Worker: Total entries to process: {}", total_frozen_entries);
+                println!("🔄 Flush Worker: Total entries to process: {total_frozen_entries}");
 
                 let chunk_id = uuid::Uuid::new_v4().to_string();
                 let chunk_name = format!("chunk_{chunk_id}.hyp");
@@ -884,8 +890,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
                     let old_meta = index.metadata_by_id(old_internal_id);
                     let metadata_changed = old_meta != metadata;
-                    reindex_needed =
-                        metadata_changed || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                    reindex_needed = metadata_changed
+                        || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
                 }
             }
         }
@@ -924,7 +930,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         {
             let wal_guard = self.wal_link.load();
             let mut wal = wal_guard.lock().await;
-            
+
             // Use User ID for WAL to support replication/restore
             wal.append(id, processed_vector, &metadata, clock)
                 .map_err(|e| format!("WAL Error: {e}"))?;
@@ -939,7 +945,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 if let Ok(frozen_path) = wal.rotate() {
                     // Reset WAL pending count as they move to next phase
                     self.wal_pending_count.store(0, Ordering::SeqCst);
-                    
+
                     let mut pending = self.pending_wal_flushes.lock().await;
                     pending.push(frozen_path);
 
@@ -1008,13 +1014,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let queue_size = self.config.get_queue_size();
 
             // Debug: Log queue buildup
-            if queue_size > 10_000 && queue_size % 5_000 == 0 {
+            if queue_size > 10_000 && queue_size.is_multiple_of(5_000) {
                 let active = self.config.active_indexing.load(Ordering::Relaxed);
-                println!(
-                    "⚠️  Index queue building up: {} pending, {} active",
-                    queue_size,
-                    active
-                );
+                println!("⚠️  Index queue building up: {queue_size} pending, {active} active");
             }
 
             let _ = self.index_tx.send((internal_id, metadata.clone()));
@@ -1162,7 +1164,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 if let Ok(frozen_path) = wal.rotate() {
                     // Reset WAL pending count as they move to next phase
                     self.wal_pending_count.store(0, Ordering::SeqCst);
-                    
+
                     let mut pending = self.pending_wal_flushes.lock().await;
                     pending.push(frozen_path);
 
@@ -1413,10 +1415,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
                 // Include all results (RAM + Chunks).
                 // Note: Results from chunks will have internal IDs that need a segment mapping.
-                let results: Vec<(u32, f64)> = merged
-                    .into_iter()
-                    .map(|(id, dist, _)| (id, dist))
-                    .collect();
+                let results: Vec<(u32, f64)> =
+                    merged.into_iter().map(|(id, dist, _)| (id, dist)).collect();
 
                 let metric_tag = match M::name() {
                     "cosine" => GpuMetric::Cosine,

@@ -108,7 +108,7 @@ impl Wal {
         self.file = BufWriter::new(file);
         self.current_size = 0;
         self.pending_entries = 0;
-        self.last_fsync_time = std::time::Instant::now();  // Reset fsync timer for new WAL
+        self.last_fsync_time = std::time::Instant::now(); // Reset fsync timer for new WAL
         Ok(frozen_path)
     }
 
@@ -185,7 +185,9 @@ impl Wal {
             }
             WalSyncMode::Batch => {
                 // Batch: fsync only if interval elapsed (balanced durability/speed)
-                if self.last_fsync_time.elapsed().as_millis() >= self.batch_fsync_interval_ms as u128 {
+                if self.last_fsync_time.elapsed().as_millis()
+                    >= u128::from(self.batch_fsync_interval_ms)
+                {
                     self.file.get_ref().sync_all()?;
                     self.last_fsync_time = std::time::Instant::now();
                 }
@@ -216,7 +218,9 @@ impl Wal {
                 self.last_fsync_time = std::time::Instant::now();
             }
             WalSyncMode::Batch => {
-                if self.last_fsync_time.elapsed().as_millis() >= self.batch_fsync_interval_ms as u128 {
+                if self.last_fsync_time.elapsed().as_millis()
+                    >= u128::from(self.batch_fsync_interval_ms)
+                {
                     self.file.get_ref().sync_all()?;
                     self.last_fsync_time = std::time::Instant::now();
                 }

@@ -1956,7 +1956,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                         .parse()
                         .unwrap_or(128);
                     println!("🧠 [{metric_upper}] Loading local ONNX model: {m} (dim={dim})");
-                    match OnnxVectorizer::new(&m, &t, dim, metric) {
+                    match OnnxVectorizer::new(&m, &t, dim, metric, &metric_upper) {
                         Ok(v) => Some(Arc::new(v)),
                         Err(e) => {
                             eprintln!("❌ [{metric_upper}] Local load failed: {e}");
@@ -1984,7 +1984,13 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                         .unwrap_or(128);
 
                     println!("🤗 [{metric_upper}] Downloading HF model: {model_id} (dim={dim})");
-                    match OnnxVectorizer::new_from_hf(&model_id, hf_token, dim, metric) {
+                    match OnnxVectorizer::new_from_hf(
+                        &model_id,
+                        hf_token,
+                        dim,
+                        metric,
+                        &metric_upper,
+                    ) {
                         Ok(v) => Some(Arc::new(v)),
                         Err(e) => {
                             eprintln!("❌ [{metric_upper}] HF download failed: {e}");

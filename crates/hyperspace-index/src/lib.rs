@@ -1524,7 +1524,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let q = if M::name() == "lorentz" {
                     QuantizedHyperVector::from_float_lorentz(&q_vec_full)
                 } else {
-                    QuantizedHyperVector::from_float(&q_vec_full, self.config.is_anisotropic_enabled())
+                    QuantizedHyperVector::from_float(
+                        &q_vec_full,
+                        self.config.is_anisotropic_enabled(),
+                    )
                 };
                 self.storage.append(q.as_bytes())?
             }
@@ -1567,7 +1570,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let q = if M::name() == "lorentz" {
                     QuantizedHyperVector::from_float_lorentz(&q_vec_full)
                 } else {
-                    QuantizedHyperVector::from_float(&q_vec_full, self.config.is_anisotropic_enabled())
+                    QuantizedHyperVector::from_float(
+                        &q_vec_full,
+                        self.config.is_anisotropic_enabled(),
+                    )
                 };
                 self.storage.update(id, q.as_bytes())?;
             }

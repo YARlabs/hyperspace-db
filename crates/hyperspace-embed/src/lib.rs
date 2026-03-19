@@ -21,6 +21,35 @@ pub enum Metric {
     None,
 }
 
+/// Chunking configuration for long document processing
+/// Model-agnostic: enabled via env vars if needed
+#[derive(Debug, Clone)]
+pub struct ChunkingConfig {
+    pub chunk_size: usize, // tokens per chunk (e.g., 512, 4096)
+    pub overlap: f64,      // overlap ratio (e.g., 0.10 = 10%)
+}
+
+impl ChunkingConfig {
+    /// Load from env vars for a specific metric
+    /// Returns None if chunking is not configured
+    pub fn from_env(metric: &str) -> Option<Self> {
+        let chunk_size_key = format!("HS_EMBED_{}_CHUNK_SIZE", metric.to_uppercase());
+        let overlap_key = format!("HS_EMBED_{}_OVERLAP", metric.to_uppercase());
+
+        let chunk_size = std::env::var(&chunk_size_key).ok()?.parse::<usize>().ok()?;
+
+        let overlap = std::env::var(&overlap_key)
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.10); // Default 10% overlap
+
+        Some(Self {
+            chunk_size,
+            overlap,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ApiProvider {
     OpenAI,
@@ -64,6 +93,9 @@ pub struct OnnxVectorizer {
     session: Mutex<Session>,
     dimension: usize,
     metric: Metric,
+    chunking_config: Option<ChunkingConfig>, // Optional chunking (model-agnostic)
+    #[allow(dead_code)] // Kept for future debugging/logging
+    model_id: String,
 }
 
 impl OnnxVectorizer {
@@ -76,6 +108,7 @@ impl OnnxVectorizer {
         tokenizer_path: &str,
         dimension: usize,
         metric: Metric,
+        metric_name: &str, // For env var lookup (e.g., "L2", "COSINE", "LORENTZ", "POINCARE")
     ) -> Result<Self> {
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
@@ -85,11 +118,16 @@ impl OnnxVectorizer {
             .with_intra_threads(4)?
             .commit_from_file(model_path)?;
 
+        // Load chunking config from env (model-agnostic)
+        let chunking_config = ChunkingConfig::from_env(metric_name);
+
         Ok(Self {
             tokenizer,
             session: Mutex::new(session),
             dimension,
             metric,
+            chunking_config,
+            model_id: "local".to_string(),
         })
     }
 
@@ -101,17 +139,53 @@ impl OnnxVectorizer {
         hf_token: Option<String>,
         dimension: usize,
         metric: Metric,
+        metric_name: &str, // For env var lookup (e.g., "L2", "COSINE", "LORENTZ", "POINCARE")
     ) -> Result<Self> {
-        let mut builder = hf_hub::api::sync::ApiBuilder::new().with_progress(false);
-        if let Some(token) = hf_token {
+        use hf_hub::api::sync::{ApiBuilder, ApiRepo};
+        use std::path::PathBuf;
+
+        // 1. Setup HF hub with progress disabled but cache enabled
+        let mut builder = ApiBuilder::new().with_progress(false); // Disable progress bar for cleaner logs
+
+        if let Some(token) = hf_token.clone() {
             if !token.is_empty() {
                 builder = builder.with_token(Some(token));
             }
         }
+
+        // 2. Get cache directory for logging
+        let cache_dir = PathBuf::from(std::env::var("HF_HOME").unwrap_or_else(|_| {
+            std::env::var("HOME")
+                .map(|h| format!("{}/.cache/huggingface", h))
+                .unwrap_or_else(|_| "./.hf_cache".to_string())
+        }));
+        let model_path_cached = cache_dir.join("hub").join(model_id.replace('/', "--"));
+        let model_onnx_path = model_path_cached.join("model.onnx");
+        let tokenizer_path_cached = model_path_cached.join("tokenizer.json");
+
+        // 3. Check if already cached
+        let is_cached = model_onnx_path.exists() && tokenizer_path_cached.exists();
+
+        // 4. Log appropriately
+        if is_cached {
+            eprintln!(
+                "✅ Using cached model: {} ({})",
+                model_id,
+                model_path_cached.display()
+            );
+        } else {
+            eprintln!(
+                "📥 Loading model from HF Hub: {} → {}",
+                model_id,
+                model_path_cached.display()
+            );
+        }
+
+        // 5. Download/load model (hf_hub handles caching automatically)
         let api = builder
             .build()
             .map_err(|e| anyhow::anyhow!("HF API error: {e}"))?;
-        let repo = api.model(model_id.to_string());
+        let repo: ApiRepo = api.model(model_id.to_string());
 
         let model_path = repo
             .get("model.onnx")
@@ -120,16 +194,52 @@ impl OnnxVectorizer {
             .get("tokenizer.json")
             .map_err(|e| anyhow::anyhow!("Failed to download tokenizer.json: {e}"))?;
 
-        Self::new(
-            model_path
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?,
+        // 6. Load tokenizer
+        let tokenizer = Tokenizer::from_file(
             tokenizer_path
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Invalid tokenizer path"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
+
+        // 7. Load session
+        let session = Session::builder()?
+            .with_optimization_level(GraphOptimizationLevel::Level3)?
+            .with_intra_threads(4)?
+            .commit_from_file(
+                model_path
+                    .to_str()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?,
+            )?;
+
+        // 8. Load chunking config from env (model-agnostic)
+        let chunking_config = ChunkingConfig::from_env(metric_name);
+
+        // 9. Log activation
+        let chunk_info = chunking_config
+            .as_ref()
+            .map(|c| {
+                format!(
+                    "chunk={} tokens, overlap={:.0}%",
+                    c.chunk_size,
+                    c.overlap * 100.0
+                )
+            })
+            .unwrap_or_else(|| "no chunking".to_string());
+
+        eprintln!(
+            "🚀 Model activated: {} ({}d, {}, metric={:?})",
+            model_id, dimension, chunk_info, metric
+        );
+
+        Ok(Self {
+            tokenizer,
+            session: Mutex::new(session),
             dimension,
             metric,
-        )
+            chunking_config,
+            model_id: model_id.to_string(),
+        })
     }
 
     fn normalize(&self, vec: &mut [f64]) {
@@ -139,18 +249,86 @@ impl OnnxVectorizer {
 
         match self.metric {
             Metric::Poincare => {
-                if norm >= 1.0 {
+                // For Poincaré model: project to unit ball
+                // v5_Embedding outputs tangent vectors at origin
+                // Need to apply inverse stereographic projection or scale to unit ball
+                if norm >= 1.0 - EPSILON {
                     let scale = (1.0 - EPSILON) / (norm + 1e-12);
                     for x in vec.iter_mut() {
                         *x *= scale;
                     }
                 }
+                // NaN protection
+                for x in vec.iter_mut() {
+                    if x.is_nan() || x.is_infinite() {
+                        *x = 0.0;
+                    }
+                }
             }
-            Metric::Lorentz | Metric::None => {
-                // Lorentz vectors are usually (x0, x1, ... xn) on the hyperboloid
-                // where -x0^2 + x1^2 + ... = -1. Local models output tangent vectors that need expmap
-                // or just leave them as they are and let the database expect correct format.
-                // Normally we don't normalize Lorentz here unless we do Poincare to Lorentz mapping.
+            Metric::Lorentz => {
+                // v5_Embedding outputs tangent vectors in Minkowski space
+                // Need to project to hyperboloid first, then to Poincaré ball
+                //
+                // Input: tangent vector v = [v0, v1, ..., vn] at origin
+                // Step 1: Exp map to hyperboloid (simplified for small vectors)
+                //   For small ||v||: exp_0(v) ≈ [sqrt(1 + ||v||^2), v1, v2, ..., vn]
+                // Step 2: Project hyperboloid to Poincaré ball
+                //   poincare = [x1, x2, ..., xn] / (x0 + 1)
+                //
+                // For v5_Embedding_0.5B: model outputs Euclidean-like vectors
+                // We treat first component as time-like or apply direct scaling
+
+                if vec.is_empty() {
+                    return;
+                }
+
+                // Option A: Direct projection (model outputs tangent space vectors)
+                // This is the standard approach for v5_Embedding
+                let spatial_norm: f64 = vec[1..].iter().map(|x| x * x).sum::<f64>().sqrt();
+
+                if spatial_norm > EPSILON {
+                    // Project to Poincaré ball using stereographic projection
+                    // For tangent vector v: Poincaré = v / (1 + sqrt(1 + ||v||^2))
+                    let lorentz_norm = (1.0 + norm_sq).sqrt();
+                    let scale = 1.0 / (1.0 + lorentz_norm + EPSILON);
+
+                    for x in vec.iter_mut() {
+                        *x *= scale;
+                    }
+
+                    // Ensure we're inside the unit ball
+                    let new_norm: f64 = vec.iter().map(|x| x * x).sum();
+                    if new_norm >= 1.0 - EPSILON {
+                        let final_scale = (1.0 - EPSILON) / (new_norm.sqrt() + EPSILON);
+                        for x in vec.iter_mut() {
+                            *x *= final_scale;
+                        }
+                    }
+                }
+
+                // NaN/Infinity protection (critical for hyperbolic geometry)
+                for x in vec.iter_mut() {
+                    if x.is_nan() || x.is_infinite() {
+                        eprintln!("⚠️  Lorentz projection produced NaN/Inf, clamping to 0");
+                        *x = 0.0;
+                    }
+                }
+
+                // Final sanity check: ensure vector is inside unit ball
+                let final_norm_sq: f64 = vec.iter().map(|x| x * x).sum();
+                if final_norm_sq >= 1.0 {
+                    eprintln!(
+                        "⚠️  Lorentz projection outside unit ball (norm²={:.4}), rescaling",
+                        final_norm_sq
+                    );
+                    let scale = (1.0 - EPSILON) / (final_norm_sq.sqrt() + EPSILON);
+                    for x in vec.iter_mut() {
+                        *x *= scale;
+                    }
+                }
+            }
+            Metric::None => {
+                // No normalization (raw embeddings)
             }
             Metric::L2 | Metric::Cosine => {
                 if norm > 0.0 {
@@ -160,6 +338,59 @@ impl OnnxVectorizer {
                 }
             }
         }
+    }
+
+    /// Split text into chunks with overlap (word-based for simplicity)
+    fn split_into_chunks(text: &str, config: &ChunkingConfig) -> Vec<String> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let chunk_size = config.chunk_size;
+        let overlap_size = (chunk_size as f64 * config.overlap) as usize;
+        let step_size = chunk_size.saturating_sub(overlap_size);
+
+        if words.len() <= chunk_size {
+            // No chunking needed
+            return vec![text.to_string()];
+        }
+
+        let mut chunks = Vec::new();
+        let mut start = 0;
+
+        while start < words.len() {
+            let end = (start + chunk_size).min(words.len());
+            let chunk = words[start..end].join(" ");
+            chunks.push(chunk);
+
+            if end == words.len() {
+                break;
+            }
+
+            start += step_size;
+        }
+
+        chunks
+    }
+
+    /// Aggregate chunk embeddings via mean pooling
+    fn aggregate_embeddings(chunk_embeddings: Vec<Vec<f64>>) -> Vec<f64> {
+        if chunk_embeddings.is_empty() {
+            return vec![];
+        }
+
+        let dim = chunk_embeddings[0].len();
+        let mut aggregated = vec![0.0; dim];
+
+        for emb in &chunk_embeddings {
+            for (i, &v) in emb.iter().enumerate() {
+                aggregated[i] += v;
+            }
+        }
+
+        let count = chunk_embeddings.len() as f64;
+        for v in &mut aggregated {
+            *v /= count;
+        }
+
+        aggregated
     }
 
     #[allow(clippy::unused_self)]
@@ -204,6 +435,66 @@ impl Vectorizer for OnnxVectorizer {
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     async fn vectorize(&self, texts: Vec<String>) -> Result<Vec<Vec<f64>>> {
+        if texts.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Check if chunking is enabled
+        if let Some(config) = &self.chunking_config {
+            let texts_len = texts.len();
+
+            // Split all texts into chunks
+            let all_chunks: Vec<(usize, String)> = texts
+                .into_iter()
+                .enumerate()
+                .flat_map(|(text_idx, text)| {
+                    OnnxVectorizer::split_into_chunks(&text, config)
+                        .into_iter()
+                        .map(move |chunk| (text_idx, chunk))
+                })
+                .collect();
+
+            if all_chunks.is_empty() {
+                return Ok(vec![vec![0.0; self.dimension]; texts_len]);
+            }
+
+            // Process chunks in batches (batch_size=16 for efficiency)
+            let batch_size = 16;
+            let mut chunk_embeddings: Vec<Vec<Vec<f64>>> = vec![Vec::new(); texts_len];
+
+            for chunk_batch in all_chunks.chunks(batch_size) {
+                let chunk_texts: Vec<String> = chunk_batch.iter().map(|(_, c)| c.clone()).collect();
+                let embeddings = self.vectorize_direct(chunk_texts).await?;
+
+                for ((text_idx, _), embedding) in chunk_batch.iter().zip(embeddings) {
+                    chunk_embeddings[*text_idx].push(embedding);
+                }
+            }
+
+            // Aggregate chunk embeddings per text via mean pooling
+            let final_embeddings = chunk_embeddings
+                .into_iter()
+                .map(|chunks| {
+                    if chunks.is_empty() {
+                        vec![0.0; self.dimension]
+                    } else {
+                        OnnxVectorizer::aggregate_embeddings(chunks)
+                    }
+                })
+                .collect();
+
+            return Ok(final_embeddings);
+        }
+
+        // No chunking - direct vectorization
+        self.vectorize_direct(texts).await
+    }
+}
+
+impl OnnxVectorizer {
+    /// Direct vectorization without chunking (internal helper)
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    async fn vectorize_direct(&self, texts: Vec<String>) -> Result<Vec<Vec<f64>>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }

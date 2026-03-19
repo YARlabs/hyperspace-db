@@ -618,6 +618,7 @@ def generate_benchmark_html_report(results: List[Result], dataset_name: str = "U
     mrrs = [r.mrr * 100 for r in data]
     latencies = [r.p99 for r in data]
     disk_mb = [parse_size_to_mb(r.disk_usage) for r in data]
+    ndcgs = [r.ndcg * 100 for r in data]
     
     # Concurrency Scaling Data
     conc_labels = [1, 10, 30]
@@ -652,6 +653,12 @@ def generate_benchmark_html_report(results: List[Result], dataset_name: str = "U
         .card h2 {{ color: #94a3b8; font-size: 1.2rem; margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 0.75rem; margin-bottom: 1.5rem; }}
         .full-width {{ grid-column: 1 / -1; }}
         canvas {{ max-height: 400px; width: 100% !important; }}
+        .table-container {{ margin-top: 3rem; background: var(--card-bg); padding: 1.5rem; border-radius: 1rem; border: 1px solid #334155; overflow-x: auto; }}
+        table {{ width: 100%; border-collapse: collapse; text-align: left; }}
+        th, td {{ padding: 1rem; border-bottom: 1px solid #334155; }}
+        th {{ color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; }}
+        tr:last-child td {{ border-bottom: none; }}
+        .highlight {{ color: var(--accent); font-weight: bold; }}
     </style>
 </head>
 <body>
@@ -681,10 +688,37 @@ def generate_benchmark_html_report(results: List[Result], dataset_name: str = "U
             <h2>Disk Footprint (MB) (Smaller is better)</h2>
             <canvas id="diskChart"></canvas>
         </div>
+        <div class="card">
+            <h2>Search Quality (NDCG@10 %) (Bigger is better)</h2>
+            <canvas id="ndcgChart"></canvas>
+        </div>
         <div class="card full-width">
             <h2>Concurrency Scaling (Search QPS) (Bigger is better)</h2>
             <canvas id="concChart"></canvas>
         </div>
+    </div>
+
+    <div class="table-container">
+        <h2>📊 Detailed Results Table</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Database</th>
+                    <th>Dim</th>
+                    <th>Geometry</th>
+                    <th>Metric</th>
+                    <th>Search QPS</th>
+                    <th>Insert QPS</th>
+                    <th>Recall@10</th>
+                    <th>NDCG@10</th>
+                    <th>P99 (ms)</th>
+                    <th>Disk</th>
+                </tr>
+            </thead>
+            <tbody>
+                {"".join([f"<tr><td class='highlight'>{r.database}</td><td>{r.dimension}</td><td>{r.geometry}</td><td>{r.metric}</td><td>{r.search_qps:,.0f}</td><td>{r.insert_qps:,.0f}</td><td>{r.recall:.1%}</td><td>{r.ndcg:.3f}</td><td>{r.p99:.2f}</td><td>{r.disk_usage}</td></tr>" for r in data])}
+            </tbody>
+        </table>
     </div>
 
     <script>
@@ -727,6 +761,7 @@ def generate_benchmark_html_report(results: List[Result], dataset_name: str = "U
         createBarChart('recallChart', 'Recall@10 %', {json.dumps(recalls)}, '%');
         createBarChart('latencyChart', 'P99 Latency (ms)', {json.dumps(latencies)}, 'ms');
         createBarChart('diskChart', 'Disk Usage (MB)', {json.dumps(disk_mb)}, ' MB');
+        createBarChart('ndcgChart', 'NDCG@10 %', {json.dumps(ndcgs)}, '%');
 
         new Chart(document.getElementById('concChart'), {{
             type: 'line',
