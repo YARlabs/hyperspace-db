@@ -5,8 +5,8 @@ edition = "2021"
 description = "Universal Embedding Wrapper for HyperspaceDB (Local ONNX + Remote APIs)"
 
 [dependencies]
-ort = { version = "2.0.0-rc.0", features = ["download-binaries", "load-dynamic"] } 
-tokenizers = { version = "0.15", features = ["onig"] }
+ort = { version = "2.0.0-rc.3", features = ["download-binaries"] } 
+tokenizers = { version = "0.22.2", features = ["onig"] }
 ndarray = "0.17"
 
 anyhow = "1.0"

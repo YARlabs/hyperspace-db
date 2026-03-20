@@ -5,7 +5,7 @@ import warnings
 
 from . import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.71.2'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in hyperspace_pb2_grpc.py depends on'
+        + ' but the generated code in hyperspace_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -68,6 +68,16 @@ class DatabaseStub(object):
                 '/hyperspace.Database/InsertText',
                 request_serializer=hyperspace__pb2.InsertTextRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.InsertResponse.FromString,
+                _registered_method=True)
+        self.Vectorize = channel.unary_unary(
+                '/hyperspace.Database/Vectorize',
+                request_serializer=hyperspace__pb2.VectorizeRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.VectorizeResponse.FromString,
+                _registered_method=True)
+        self.SearchText = channel.unary_unary(
+                '/hyperspace.Database/SearchText',
+                request_serializer=hyperspace__pb2.SearchTextRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.SearchResponse.FromString,
                 _registered_method=True)
         self.Delete = channel.unary_unary(
                 '/hyperspace.Database/Delete',
@@ -218,6 +228,18 @@ class DatabaseServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def InsertText(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Vectorize(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SearchText(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -400,6 +422,16 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.InsertText,
                     request_deserializer=hyperspace__pb2.InsertTextRequest.FromString,
                     response_serializer=hyperspace__pb2.InsertResponse.SerializeToString,
+            ),
+            'Vectorize': grpc.unary_unary_rpc_method_handler(
+                    servicer.Vectorize,
+                    request_deserializer=hyperspace__pb2.VectorizeRequest.FromString,
+                    response_serializer=hyperspace__pb2.VectorizeResponse.SerializeToString,
+            ),
+            'SearchText': grpc.unary_unary_rpc_method_handler(
+                    servicer.SearchText,
+                    request_deserializer=hyperspace__pb2.SearchTextRequest.FromString,
+                    response_serializer=hyperspace__pb2.SearchResponse.SerializeToString,
             ),
             'Delete': grpc.unary_unary_rpc_method_handler(
                     servicer.Delete,
@@ -696,6 +728,60 @@ class Database(object):
             '/hyperspace.Database/InsertText',
             hyperspace__pb2.InsertTextRequest.SerializeToString,
             hyperspace__pb2.InsertResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Vectorize(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Vectorize',
+            hyperspace__pb2.VectorizeRequest.SerializeToString,
+            hyperspace__pb2.VectorizeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SearchText(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/SearchText',
+            hyperspace__pb2.SearchTextRequest.SerializeToString,
+            hyperspace__pb2.SearchResponse.FromString,
             options,
             channel_credentials,
             insecure,

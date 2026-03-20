@@ -56,14 +56,26 @@ class HyperspacePlugin(DatabasePlugin):
                 )
 
             client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
-            coll_name = "bench_semantic"
+            # Unique name to avoid conflicts
+            import time
+            coll_name = f"bench_semantic_{int(time.time())}"
+            
             try:
                 client.delete_collection(coll_name)
+                time.sleep(0.5) 
             except Exception:
                 pass
 
+            print(f"   Creating collection '{coll_name}' [dim={target_dim}, metric={mode}]...")
             if not client.create_collection(coll_name, dimension=target_dim, metric=mode):
-                raise RuntimeError("Collection creation failed")
+                # We need to know WHY, so we'll try a raw call to get the exception
+                from hyperspace.proto import hyperspace_pb2
+                req = hyperspace_pb2.CreateCollectionRequest(name=coll_name, dimension=target_dim, metric=mode)
+                try:
+                    client.stub.CreateCollection(req, metadata=client.metadata)
+                except Exception as e:
+                    print(f"❌ Critical Create Error: {e}")
+                    raise RuntimeError(f"Hyperspace collection creation failed: {e}")
 
             t0 = time.time()
             # gRPC limit is 64MB (server config). Using 48MB safely allows for overhead.

@@ -39,6 +39,7 @@ ordered-float = "3"
 hyperspace-tiering = { workspace = true, optional = true }
 
 [features]
+default = ["embed"]
 embed = ["dep:hyperspace-embed"]
 # S3 tiering: optional cloud storage for cold chunks.
 # Not compiled by default — edge devices get zero cloud dependencies.

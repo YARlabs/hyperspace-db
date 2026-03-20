@@ -46,7 +46,6 @@ use hyperspace_proto::hyperspace::{
     DeleteCollectionRequest,
     DeleteRequest,
     DeleteResponse,
-    // Delta Sync (Task 2.1)
     DiffBucket,
     DigestRequest,
     DigestResponse,
@@ -74,6 +73,7 @@ use hyperspace_proto::hyperspace::{
     SearchRequest,
     SearchResponse,
     SearchResult,
+    SearchTextRequest,
     SyncHandshakeRequest,
     SyncHandshakeResponse,
     SyncPullRequest,
@@ -84,6 +84,8 @@ use hyperspace_proto::hyperspace::{
     TraverseResponse,
     VectorDeletedEvent,
     VectorInsertedEvent,
+    VectorizeRequest,
+    VectorizeResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
@@ -779,6 +781,113 @@ impl Database for HyperspaceService {
         }
         #[cfg(not(feature = "embed"))]
         return Err(Status::unimplemented("Embedding feature not compiled"));
+    }
+
+    async fn vectorize(
+        &self,
+        request: Request<VectorizeRequest>,
+    ) -> Result<Response<VectorizeResponse>, Status> {
+        #[cfg(feature = "embed")]
+        {
+            let req = request.into_inner();
+            if let Some(multi) = &self.vectorizer {
+                let vectors = multi
+                    .vectorize_for(vec![req.text], &req.metric)
+                    .await
+                    .map_err(|e| Status::internal(format!("Embedding failed: {e}")))?;
+                if vectors.is_empty() {
+                    return Err(Status::internal("Empty vector result"));
+                }
+                Ok(Response::new(VectorizeResponse { vector: vectors[0].clone() }))
+            } else {
+                Err(Status::failed_precondition("Embedding engine disabled"))
+            }
+        }
+        #[cfg(not(feature = "embed"))]
+        {
+            let _ = request;
+            Err(Status::unimplemented("Embedding feature not compiled"))
+        }
+    }
+
+    async fn search_text(
+        &self,
+        request: Request<SearchTextRequest>,
+    ) -> Result<Response<SearchResponse>, Status> {
+        #[cfg(feature = "embed")]
+        {
+            let user_id = get_user_id(&request);
+            let req = request.into_inner();
+            
+            if let Some(multi) = &self.vectorizer {
+                let col_name = if req.collection.is_empty() { "default".to_string() } else { req.collection.clone() };
+                
+                // Discover metric from collection to route to correct model
+                let metric = if let Some(col) = self.manager.get(&user_id, &col_name).await {
+                    col.metric_name().to_string()
+                } else {
+                    "l2".to_string()
+                };
+
+                let vectors = multi
+                    .vectorize_for(vec![req.text], &metric)
+                    .await
+                    .map_err(|e| Status::internal(format!("Embedding failed: {e}")))?;
+
+                if vectors.is_empty() {
+                    return Err(Status::internal("Empty vector result"));
+                }
+                let vector = vectors[0].clone();
+
+                // Build filters and search parameters
+                let exact_filter = req.filter.clone().into_iter().collect();
+                let mut complex_filters = Vec::new();
+                for f in req.filters {
+                    if let Some(cond) = f.condition {
+                        match cond {
+                            hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
+                                complex_filters.push(hyperspace_core::FilterExpr::Match { key: m.key, value: m.value });
+                            }
+                            hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                                let (gte, lte) = range_bounds_f64(&r);
+                                complex_filters.push(hyperspace_core::FilterExpr::Range { key: r.key, gte, lte });
+                            }
+                        }
+                    }
+                }
+
+                let params = hyperspace_core::SearchParams {
+                    top_k: req.top_k as usize,
+                    ef_search: default_ef_search(),
+                    hybrid_query: None,
+                    hybrid_alpha: None,
+                    use_wasserstein: false,
+                };
+
+                if let Some(col) = self.manager.get(&user_id, &col_name).await {
+                    match col.search(&vector, &exact_filter, &complex_filters, &params).await {
+                        Ok(res) => {
+                            let output = res.into_iter().map(|(id, dist, meta)| {
+                                let typed_metadata = extract_typed_metadata(&meta);
+                                let metadata = strip_internal_metadata(&meta);
+                                SearchResult { id, distance: dist, metadata, typed_metadata }
+                            }).collect();
+                            Ok(Response::new(SearchResponse { results: output }))
+                        }
+                        Err(e) => Err(Status::internal(e)),
+                    }
+                } else {
+                    Err(Status::not_found(format!("Collection '{col_name}' not found")))
+                }
+            } else {
+                Err(Status::failed_precondition("Embedding engine disabled"))
+            }
+        }
+        #[cfg(not(feature = "embed"))]
+        {
+            let _ = request;
+            Err(Status::unimplemented("Embedding feature not compiled"))
+        }
     }
 
     async fn delete(
@@ -1920,10 +2029,9 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     // Fallback: if no per-metric config exists, use the global HYPERSPACE_EMBED_PROVIDER config.
     #[cfg(feature = "embed")]
     let vectorizer: Option<Arc<MultiVectorizer>> = {
-        let enabled = std::env::var("HYPERSPACE_EMBED")
-            .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase()
-            == "true";
+        let enabled_raw = std::env::var("HYPERSPACE_EMBED").unwrap_or_else(|_| "false".to_string());
+        let enabled = enabled_raw.to_lowercase() == "true";
+        println!("🔍 Embedding Global Status: [HYPERSPACE_EMBED={enabled_raw}] -> enabled={enabled}");
 
         if enabled {
             let mut multi = MultiVectorizer::new();
@@ -1934,6 +2042,8 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                     .or_else(|_| std::env::var("HYPERSPACE_EMBED_PROVIDER"))
                     .unwrap_or_else(|_| "disabled".to_string())
                     .to_lowercase();
+
+                println!("   ⚙️  Checking metric: {metric_name} | Provider: {provider_str}");
 
                 if provider_str == "disabled" || provider_str == "none" {
                     continue;
@@ -1973,13 +2083,14 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                         let hf_token = std::env::var("HF_TOKEN")
                             .or_else(|_| std::env::var("HUGGING_FACE_HUB_TOKEN"))
                             .ok();
+                        let hf_filename = std::env::var(format!("HS_EMBED_{metric_upper}_HF_FILENAME")).ok();
                         let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
                             .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
                             .unwrap_or_else(|_| "128".to_string())
                             .parse()
                             .unwrap_or(128);
                         println!("🤗 [{metric_upper}] Downloading HF model: {model_id} (dim={dim})");
-                        if let Ok(v) = OnnxVectorizer::new_from_hf(&model_id, hf_token, dim, metric, &metric_upper) {
+                        if let Ok(v) = OnnxVectorizer::new_from_hf(&model_id, hf_token, dim, metric, &metric_upper, hf_filename) {
                             multi.add(metric_name, Arc::new(v));
                         }
                     }
@@ -1998,12 +2109,16 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                     multi.add(metric_name, Arc::new(RemoteVectorizer::new(provider, api_key, model, base_url)));
                 }
             }
-            if multi.models.is_empty() {
+            let count = multi.models.len();
+            if count == 0 {
+                println!("⚠️  All configured models failed to load - Embedding Pipeline DISABLED");
                 None
             } else {
+                println!("✅ Embedding Pipeline ACTIVE with {count} model(s)");
                 Some(Arc::new(multi))
             }
         } else {
+            println!("⚠️  Embedding Pipeline is COMPRESSED into NULL (HYPERSPACE_EMBED=false or not found)");
             None
         }
     };
@@ -2058,7 +2173,10 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
             })
         }
         #[cfg(not(feature = "embed"))]
-        None
+        {
+            println!("❌ Embedding Engine NOT COMPILED (missing --features embed)");
+            None
+        }
     };
 
     // 3. Start Gossip Engine (Task 3.4) — optional, driven by HS_GOSSIP_PEERS env var

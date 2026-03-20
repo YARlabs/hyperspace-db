@@ -163,10 +163,14 @@ impl OnnxVectorizer {
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
-        let session = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
-            .commit_from_file(model_path)?;
+        let session = Session::builder()
+            .map_err(|e| anyhow::anyhow!("Ort session builder failed: {e}"))?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow::anyhow!("Ort optimization failure: {e}"))?
+            .with_intra_threads(4)
+            .map_err(|e| anyhow::anyhow!("Ort thread configuration failure: {e}"))?
+            .commit_from_file(model_path)
+            .map_err(|e| anyhow::anyhow!("Ort session commit failed for path {}: {}", model_path, e))?;
 
         // Load chunking config from env (model-agnostic)
         let chunking_config = ChunkingConfig::from_env(metric_name);
@@ -190,6 +194,7 @@ impl OnnxVectorizer {
         dimension: usize,
         metric: Metric,
         metric_name: &str, // For env var lookup (e.g., "L2", "COSINE", "LORENTZ", "POINCARE")
+        model_file: Option<String>,
     ) -> Result<Self> {
         use hf_hub::api::sync::{ApiBuilder, ApiRepo};
         use std::path::PathBuf;
@@ -234,15 +239,31 @@ impl OnnxVectorizer {
         // 5. Download/load model (hf_hub handles caching automatically)
         let api = builder
             .build()
-            .map_err(|e| anyhow::anyhow!("HF API error: {e}"))?;
+            .map_err(|e| {
+                eprintln!("❌ HF API error for {}: {}", model_id, e);
+                anyhow::anyhow!("HF API error: {e}")
+            })?;
         let repo: ApiRepo = api.model(model_id.to_string());
 
+        let filename = model_file.unwrap_or_else(|| "model.onnx".to_string());
         let model_path = repo
-            .get("model.onnx")
-            .map_err(|e| anyhow::anyhow!("Failed to download model.onnx: {e}"))?;
+            .get(&filename)
+            .map_err(|e| {
+                eprintln!("❌ Failed to download {} for {}: {}", filename, model_id, e);
+                anyhow::anyhow!("Failed to download {}: {e}", filename)
+            })?;
+        
+        // Try to download external data for large models (.onnx.data or .onnx_data)
+        for suffix in &[".data", "_data"] {
+            let data_filename = format!("{}{}", filename, suffix);
+            let _ = repo.get(&data_filename);
+        }
         let tokenizer_path = repo
             .get("tokenizer.json")
-            .map_err(|e| anyhow::anyhow!("Failed to download tokenizer.json: {e}"))?;
+            .map_err(|e| {
+                eprintln!("❌ Failed to download tokenizer.json for {}: {}", model_id, e);
+                anyhow::anyhow!("Failed to download tokenizer.json: {e}")
+            })?;
 
         // 6. Load tokenizer
         let tokenizer = Tokenizer::from_file(
@@ -250,17 +271,30 @@ impl OnnxVectorizer {
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Invalid tokenizer path"))?,
         )
-        .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
+        .map_err(|e| {
+            eprintln!("❌ Failed to parse tokenizer.json for {}: {}", model_id, e);
+            anyhow::anyhow!("Failed to load tokenizer: {e}")
+        })?;
 
         // 7. Load session
-        let session = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
+        let session = Session::builder()
+            .map_err(|e| {
+                eprintln!("❌ Ort session builder failed: {}", e);
+                anyhow::anyhow!("Ort session builder failed: {e}")
+            })?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow::anyhow!("Ort optimization failure: {e}"))?
+            .with_intra_threads(4)
+            .map_err(|e| anyhow::anyhow!("Ort thread configuration failure: {e}"))?
             .commit_from_file(
                 model_path
                     .to_str()
                     .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?,
-            )?;
+            )
+            .map_err(|e| {
+                eprintln!("❌ Ort session commit failed for {} path {:?}: {}", model_id, model_path, e);
+                anyhow::anyhow!("Ort session commit failed: {e}")
+            })?;
 
         // 8. Load chunking config from env (model-agnostic)
         let chunking_config = ChunkingConfig::from_env(metric_name);

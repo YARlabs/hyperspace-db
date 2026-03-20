@@ -131,6 +131,31 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
+    def insert_text(self, id: int, text: str, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+        req = hyperspace_pb2.InsertTextRequest(
+            id=id,
+            text=text,
+            collection=collection,
+            durability=durability
+        )
+        if metadata:
+            req.metadata.update(metadata)
+        try:
+            resp = self.stub.InsertText(req, metadata=self.metadata)
+            return resp.success
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
+    def vectorize(self, text: str, metric: str = "l2") -> List[float]:
+        req = hyperspace_pb2.VectorizeRequest(text=text, metric=metric)
+        try:
+            resp = self.stub.Vectorize(req, metadata=self.metadata)
+            return list(resp.vector)
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
+
     def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, typed_metadatas: List[Dict[str, object]] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if len(vectors) != len(ids):
              raise ValueError("Vectors and IDs length mismatch")
@@ -233,6 +258,57 @@ class HyperspaceClient:
             req.hybrid_alpha = hybrid_alpha
         try:
             resp = self.stub.Search(req, metadata=self.metadata)
+            return [
+                {
+                    "id": r.id,
+                    "distance": r.distance,
+                    "metadata": (dict(r.metadata) if r.metadata else {}),
+                    "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {}
+                }
+                for r in resp.results
+            ]
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return []
+
+    def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, collection: str = "") -> List[Dict]:
+        proto_filters = []
+        if filters:
+            for f in filters:
+                if f.get("type") == "match":
+                    proto_filters.append(hyperspace_pb2.Filter(
+                        match=hyperspace_pb2.Match(key=f["key"], value=f["value"])
+                    ))
+                elif f.get("type") == "range":
+                    kwargs = {"key": f["key"]}
+                    if "gte" in f:
+                        gte_val = f["gte"]
+                        if isinstance(gte_val, int):
+                            kwargs["gte"] = int(gte_val)
+                        else:
+                            kwargs["gte_f64"] = float(gte_val)
+                    if "lte" in f:
+                        lte_val = f["lte"]
+                        if isinstance(lte_val, int):
+                            kwargs["lte"] = int(lte_val)
+                        else:
+                            kwargs["lte_f64"] = float(lte_val)
+                    proto_filters.append(hyperspace_pb2.Filter(
+                        range=hyperspace_pb2.Range(**kwargs)
+                    ))
+
+        req = hyperspace_pb2.SearchTextRequest(
+            text=text,
+            top_k=top_k,
+            collection=collection
+        )
+        if filter:
+            req.filter.update(filter)
+        if proto_filters:
+            req.filters.extend(proto_filters)
+            
+        try:
+            resp = self.stub.SearchText(req, metadata=self.metadata)
             return [
                 {
                     "id": r.id,

@@ -15,39 +15,49 @@ import run_benchmark_legacy as legacy
 from db_plugins.registry import load_plugins, select_plugins
 from plugin_runtime import BenchmarkContext, Result
 
-def load_cached_vectors(cache_dir):
-    print(f"📂 Loading cached vectors from {cache_dir}...")
+def load_cached_vectors(cache_dir, model_name, dtype='float32'):
+    """Load vectors and immediately sterilize them for numerical stability"""
+    q_path = os.path.join(cache_dir, f"{model_name}_q_embs.npy")
+    p_path = os.path.join(cache_dir, f"{model_name}_p_embs.npy")
     
-    # Qwen (Euclidean) - kept as float16 to save time
-    qwen_p = np.fromfile(os.path.join(cache_dir, "qwen_p_embs.npy"), dtype='float16').reshape(-1, 1024).astype('float32')
+    dim = 129 if model_name == "yar" else 1024
     
-    # YAR (Lorentz 129D) - Ultra-High Precision float64
-    yar_p_full = np.fromfile(os.path.join(cache_dir, "yar_p_embs.npy"), dtype='float64').reshape(-1, 129)
+    # Load raw
+    q_vecs = np.fromfile(q_path, dtype=dtype).reshape(-1, dim).astype(np.float64)
+    p_vecs = np.fromfile(p_path, dtype=dtype).reshape(-1, dim).astype(np.float64)
     
-    # --- Data Sanitation ---
-    print("   [Fix] Cleaning vectors (NaN/Inf check)...")
-    qwen_p = np.nan_to_num(qwen_p, nan=0.0, posinf=1e4, neginf=-1e4)
-    # YAR is now in f64, so it should be much cleaner, but we keep it safe
-    yar_p_full = np.nan_to_num(yar_p_full, nan=0.0, posinf=1e9, neginf=-1e9)
+    # FORCED STERILIZATION: Remove any non-finite values before they touch the math engine
+    q_vecs = np.nan_to_num(q_vecs, nan=0.0, posinf=0.0, neginf=0.0)
+    p_vecs = np.nan_to_num(p_vecs, nan=0.0, posinf=0.0, neginf=0.0)
     
-    num_samples = len(qwen_p)
-    print(f"✅ Detected {num_samples:,} samples in cache.")
-    
-    return qwen_p, yar_p_full, num_samples
+    # Pre-normalize Qwen for Cosine to match legacy exactly
+    if model_name == "qwen":
+        norms = np.linalg.norm(p_vecs, axis=1, keepdims=True)
+        norms[norms < 1e-12] = 1.0
+        p_vecs = p_vecs / norms
+        
+    return q_vecs, p_vecs
 
 def calculate_lorentz_gt(q_vecs, doc_vecs, doc_ids, k=10):
-    """Exact Lorentz nearest neighbor search using Minkowski inner product"""
-    # Distance d(u,v) = arccosh(-B(u,v)) where B(u,v) = -u0*v0 + sum(ui*vi)
-    # Minimizing distance == Maximizing B(u,v) (since arccosh is monotonic 
-    # and B is always <= -1)
+    """Exact Lorentz nearest neighbor search with total silence and precision"""
     gt = []
+    # Already in f64 from loader, but ensure it here too
+    q_vecs = q_vecs.astype(np.float64)
+    doc_vecs = doc_vecs.astype(np.float64)
+    
+    # Lorentz search batching for speed and safety
+    spatial_docs = doc_vecs[:, 1:]
+    t_docs = doc_vecs[:, 0]
+    
     for q in tqdm(q_vecs, desc="Brute-force GT (Lorentz)"):
-        # Minkowski Inner Product: -q0*d0 + q_spatial @ d_spatial.T
-        minkowski_ip = -q[0] * doc_vecs[:, 0] + (doc_vecs[:, 1:] @ q[1:])
-        # Top-K indices with LARGEST minkowski_ip
+        # Minkowski IP formula: -q0*d0 + <q_x, d_x>
+        # Add tiny eps only if we had to handle arccosh (here we don't need it for ranking)
+        minkowski_ip = (-q[0] * t_docs) + (spatial_docs @ q[1:])
+        
+        # Ranking is stable here. Closest point = point with largest Minkowski IP.
         top_idx = np.argpartition(-minkowski_ip, k - 1)[:k]
         top_idx = top_idx[np.argsort(-minkowski_ip[top_idx])]
-        gt.append([doc_ids[idx] for idx in top_idx])
+        gt.append([str(doc_ids[idx]) for idx in top_idx])
     return gt
 
 def write_ultimate_story(final_results: List[Result], num_docs: int, num_queries: int):
@@ -78,21 +88,29 @@ def main():
     parser.add_argument("--query_limit", type=int, default=1000)
     args = parser.parse_args()
 
-    # 1. Load Vectors
-    qwen_vecs, yar_vecs_full, total_loaded = load_cached_vectors(args.cache_dir)
+    # 1. Load Vectors correctly
+    try:
+        q_vecs_euc, doc_vecs_euc = load_cached_vectors(args.cache_dir, "qwen", dtype='float32')
+        print("✅ Loaded Qwen vectors (float32)")
+    except Exception:
+        q_vecs_euc, doc_vecs_euc = load_cached_vectors(args.cache_dir, "qwen", dtype='float16')
+        print("✅ Loaded Qwen vectors (float16 fallback)")
+        
+    q_vecs_yar, doc_vecs_yar = load_cached_vectors(args.cache_dir, "yar", dtype='float64')
+    print("✅ Loaded YAR vectors (float64)")
     
-    # 2. Sequential Partitioning
-    actual_q = min(args.query_limit, total_loaded // 10)
-    actual_d = total_loaded - actual_q
+    # 2. Preparation
+    actual_q = min(len(q_vecs_euc), args.query_limit)
+    actual_d = len(doc_vecs_euc)
     
-    doc_ids = [str(i) for i in range(total_loaded)]
-    test_query_ids = doc_ids[:actual_q]
-    corpus_ids = doc_ids[actual_q:]
+    print(f"📊 Dataset: {actual_q} queries (limited), {actual_d} documents.")
     
-    q_vecs_euc = qwen_vecs[:actual_q]
-    doc_vecs_euc = qwen_vecs[actual_q:]
-    q_vecs_yar = yar_vecs_full[:actual_q]
-    doc_vecs_yar = yar_vecs_full[actual_q:]
+    q_vecs_euc = q_vecs_euc[:actual_q]
+    q_vecs_yar = q_vecs_yar[:actual_q]
+    
+    # INTERNAL IDS: Use integers for database insertion logic, but strings for results comparison
+    corpus_ids = [str(i) for i in range(actual_d)]
+    test_query_ids = [str(i) for i in range(actual_q)]
 
     q_vecs_poincare = q_vecs_yar[:, 1:]
     doc_vecs_poincare = doc_vecs_yar[:, 1:]
@@ -139,9 +157,9 @@ def main():
             else:
                 if not plugin.is_available(): continue
                 
-                # Mode A: Euclidean
-                print("\n🚀 Running Hyperspace [EUCLIDEAN] (Qwen-1024D)...")
-                cfg.HYPER_MODE = "euclidean"; cfg.dim_base = 1024
+                # Mode A: Cosine (for Qwen)
+                print("\n🚀 Running Hyperspace [COSINE] (Qwen-1024D)...")
+                cfg.HYPER_MODE = "cosine"; cfg.dim_base = 1024
                 # use euc qrels for euc run
                 common_ctx.valid_qrels = valid_qrels_euc
                 final_results.append(plugin.run(common_ctx))
