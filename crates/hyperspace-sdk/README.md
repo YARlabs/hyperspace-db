@@ -85,7 +85,10 @@ The crate converts to protocol `f64` once per call.
 - `Client::connect`
 - `create_collection`, `delete_collection`, `list_collections`
 - `insert`, `insert_f32`
+- `insert_text` (server-side vectorization and storage)
+- `vectorize` (convert text to vector on server)
 - `search`, `search_f32`, `search_advanced`
+- `search_text` (search with text input, vectorized on server)
 - `search_batch`, `search_batch_f32`, `search_wasserstein`, `search_multi_collection`
 - `delete`
 - `configure`

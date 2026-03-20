@@ -28,39 +28,35 @@ import (
 	"context"
 	"log"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
-
-	pb "github.com/yarlabs/hyperspace-sdk-go/proto"
+	"github.com/yarlabs/hyperspace-sdk-go"
 )
 
 func main() {
-	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
+	client, err := hyperspace.NewHyperspaceClient("localhost:50051", "I_LOVE_HYPERSPACEDB")
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		log.Fatalf("failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer client.Close()
 
-	client := pb.NewDatabaseClient(conn)
+	ctx := context.Background()
+	collection := "docs_go"
 
-	// Auth token
-	md := metadata.Pairs("authorization", "Bearer I_LOVE_HYPERSPACEDB")
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
+	// Create collection
+	_ = client.CreateCollection(ctx, collection, 1024, "cosine")
 
-	// Create request
-	req := &pb.SearchRequest{
-		Collection:     "default",
-		Vector:         []float64{0.1, 0.2, -0.3},
-		TopK:           10,
-		UseWasserstein: true, // Use O(N) CFM distance instead of Euclidean/Poincare logic if needed
+	// Insert text (server-side vectorization)
+	err = client.InsertText(ctx, 1, "HyperspaceDB is awesome!", collection)
+	if err != nil {
+		log.Fatalf("Insert failed: %v", err)
 	}
 
-	res, err := client.Search(ctx, req)
+	// Search text
+	results, err := client.SearchText(ctx, "How is HyperspaceDB?", 5, collection)
 	if err != nil {
 		log.Fatalf("Search failed: %v", err)
 	}
 
-	log.Printf("Found %d vectors", len(res.GetResults()))
+	log.Printf("Found %d vectors", len(results))
 }
 ```
 ## Embedding Pipeline (Optional)

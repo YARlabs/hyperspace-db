@@ -15,9 +15,12 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     insert: IDatabaseService_IInsert;
     batchInsert: IDatabaseService_IBatchInsert;
     insertText: IDatabaseService_IInsertText;
+    vectorize: IDatabaseService_IVectorize;
+    searchText: IDatabaseService_ISearchText;
     delete: IDatabaseService_IDelete;
     search: IDatabaseService_ISearch;
     searchBatch: IDatabaseService_ISearchBatch;
+    searchMultiCollection: IDatabaseService_ISearchMultiCollection;
     getNode: IDatabaseService_IGetNode;
     getNeighbors: IDatabaseService_IGetNeighbors;
     getConceptParents: IDatabaseService_IGetConceptParents;
@@ -100,6 +103,24 @@ interface IDatabaseService_IInsertText extends grpc.MethodDefinition<hyperspace_
     responseSerialize: grpc.serialize<hyperspace_pb.InsertResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.InsertResponse>;
 }
+interface IDatabaseService_IVectorize extends grpc.MethodDefinition<hyperspace_pb.VectorizeRequest, hyperspace_pb.VectorizeResponse> {
+    path: "/hyperspace.Database/Vectorize";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.VectorizeRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.VectorizeRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.VectorizeResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.VectorizeResponse>;
+}
+interface IDatabaseService_ISearchText extends grpc.MethodDefinition<hyperspace_pb.SearchTextRequest, hyperspace_pb.SearchResponse> {
+    path: "/hyperspace.Database/SearchText";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.SearchTextRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.SearchTextRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.SearchResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.SearchResponse>;
+}
 interface IDatabaseService_IDelete extends grpc.MethodDefinition<hyperspace_pb.DeleteRequest, hyperspace_pb.DeleteResponse> {
     path: "/hyperspace.Database/Delete";
     requestStream: false;
@@ -126,6 +147,15 @@ interface IDatabaseService_ISearchBatch extends grpc.MethodDefinition<hyperspace
     requestDeserialize: grpc.deserialize<hyperspace_pb.BatchSearchRequest>;
     responseSerialize: grpc.serialize<hyperspace_pb.BatchSearchResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.BatchSearchResponse>;
+}
+interface IDatabaseService_ISearchMultiCollection extends grpc.MethodDefinition<hyperspace_pb.SearchMultiCollectionRequest, hyperspace_pb.SearchMultiCollectionResponse> {
+    path: "/hyperspace.Database/SearchMultiCollection";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.SearchMultiCollectionRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.SearchMultiCollectionRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.SearchMultiCollectionResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.SearchMultiCollectionResponse>;
 }
 interface IDatabaseService_IGetNode extends grpc.MethodDefinition<hyperspace_pb.GetNodeRequest, hyperspace_pb.GraphNode> {
     path: "/hyperspace.Database/GetNode";
@@ -291,9 +321,12 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     insert: grpc.handleUnaryCall<hyperspace_pb.InsertRequest, hyperspace_pb.InsertResponse>;
     batchInsert: grpc.handleUnaryCall<hyperspace_pb.BatchInsertRequest, hyperspace_pb.InsertResponse>;
     insertText: grpc.handleUnaryCall<hyperspace_pb.InsertTextRequest, hyperspace_pb.InsertResponse>;
+    vectorize: grpc.handleUnaryCall<hyperspace_pb.VectorizeRequest, hyperspace_pb.VectorizeResponse>;
+    searchText: grpc.handleUnaryCall<hyperspace_pb.SearchTextRequest, hyperspace_pb.SearchResponse>;
     delete: grpc.handleUnaryCall<hyperspace_pb.DeleteRequest, hyperspace_pb.DeleteResponse>;
     search: grpc.handleUnaryCall<hyperspace_pb.SearchRequest, hyperspace_pb.SearchResponse>;
     searchBatch: grpc.handleUnaryCall<hyperspace_pb.BatchSearchRequest, hyperspace_pb.BatchSearchResponse>;
+    searchMultiCollection: grpc.handleUnaryCall<hyperspace_pb.SearchMultiCollectionRequest, hyperspace_pb.SearchMultiCollectionResponse>;
     getNode: grpc.handleUnaryCall<hyperspace_pb.GetNodeRequest, hyperspace_pb.GraphNode>;
     getNeighbors: grpc.handleUnaryCall<hyperspace_pb.GetNeighborsRequest, hyperspace_pb.GetNeighborsResponse>;
     getConceptParents: grpc.handleUnaryCall<hyperspace_pb.GetConceptParentsRequest, hyperspace_pb.GetConceptParentsResponse>;
@@ -335,6 +368,12 @@ export interface IDatabaseClient {
     insertText(request: hyperspace_pb.InsertTextRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     insertText(request: hyperspace_pb.InsertTextRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     insertText(request: hyperspace_pb.InsertTextRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
+    vectorize(request: hyperspace_pb.VectorizeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VectorizeResponse) => void): grpc.ClientUnaryCall;
+    vectorize(request: hyperspace_pb.VectorizeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VectorizeResponse) => void): grpc.ClientUnaryCall;
+    vectorize(request: hyperspace_pb.VectorizeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VectorizeResponse) => void): grpc.ClientUnaryCall;
+    searchText(request: hyperspace_pb.SearchTextRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
+    searchText(request: hyperspace_pb.SearchTextRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
+    searchText(request: hyperspace_pb.SearchTextRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
     delete(request: hyperspace_pb.DeleteRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DeleteResponse) => void): grpc.ClientUnaryCall;
     delete(request: hyperspace_pb.DeleteRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DeleteResponse) => void): grpc.ClientUnaryCall;
     delete(request: hyperspace_pb.DeleteRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DeleteResponse) => void): grpc.ClientUnaryCall;
@@ -344,6 +383,9 @@ export interface IDatabaseClient {
     searchBatch(request: hyperspace_pb.BatchSearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    searchMultiCollection(request: hyperspace_pb.SearchMultiCollectionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchMultiCollectionResponse) => void): grpc.ClientUnaryCall;
+    searchMultiCollection(request: hyperspace_pb.SearchMultiCollectionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchMultiCollectionResponse) => void): grpc.ClientUnaryCall;
+    searchMultiCollection(request: hyperspace_pb.SearchMultiCollectionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchMultiCollectionResponse) => void): grpc.ClientUnaryCall;
     getNode(request: hyperspace_pb.GetNodeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
     getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
     getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
@@ -417,6 +459,12 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public insertText(request: hyperspace_pb.InsertTextRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     public insertText(request: hyperspace_pb.InsertTextRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     public insertText(request: hyperspace_pb.InsertTextRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
+    public vectorize(request: hyperspace_pb.VectorizeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VectorizeResponse) => void): grpc.ClientUnaryCall;
+    public vectorize(request: hyperspace_pb.VectorizeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VectorizeResponse) => void): grpc.ClientUnaryCall;
+    public vectorize(request: hyperspace_pb.VectorizeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VectorizeResponse) => void): grpc.ClientUnaryCall;
+    public searchText(request: hyperspace_pb.SearchTextRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
+    public searchText(request: hyperspace_pb.SearchTextRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
+    public searchText(request: hyperspace_pb.SearchTextRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchResponse) => void): grpc.ClientUnaryCall;
     public delete(request: hyperspace_pb.DeleteRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DeleteResponse) => void): grpc.ClientUnaryCall;
     public delete(request: hyperspace_pb.DeleteRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DeleteResponse) => void): grpc.ClientUnaryCall;
     public delete(request: hyperspace_pb.DeleteRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.DeleteResponse) => void): grpc.ClientUnaryCall;
@@ -426,6 +474,9 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public searchBatch(request: hyperspace_pb.BatchSearchRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     public searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
     public searchBatch(request: hyperspace_pb.BatchSearchRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.BatchSearchResponse) => void): grpc.ClientUnaryCall;
+    public searchMultiCollection(request: hyperspace_pb.SearchMultiCollectionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchMultiCollectionResponse) => void): grpc.ClientUnaryCall;
+    public searchMultiCollection(request: hyperspace_pb.SearchMultiCollectionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchMultiCollectionResponse) => void): grpc.ClientUnaryCall;
+    public searchMultiCollection(request: hyperspace_pb.SearchMultiCollectionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.SearchMultiCollectionResponse) => void): grpc.ClientUnaryCall;
     public getNode(request: hyperspace_pb.GetNodeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
     public getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;
     public getNode(request: hyperspace_pb.GetNodeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GraphNode) => void): grpc.ClientUnaryCall;

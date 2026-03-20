@@ -75,6 +75,30 @@ func (c *HyperspaceClient) Insert(ctx context.Context, id uint32, vector []float
 	return err
 }
 
+// InsertText pushes text to be vectorized and inserted on the server side
+func (c *HyperspaceClient) InsertText(ctx context.Context, id uint32, text string, collection string) error {
+	req := &pb.InsertTextRequest{
+		Id:         id,
+		Text:       text,
+		Collection: collection,
+	}
+	_, err := c.client.InsertText(c.withContext(ctx), req)
+	return err
+}
+
+// Vectorize converts text to a dense vector using server-side embedding
+func (c *HyperspaceClient) Vectorize(ctx context.Context, text string, metric string) ([]float64, error) {
+	req := &pb.VectorizeRequest{
+		Text:   text,
+		Metric: metric,
+	}
+	resp, err := c.client.Vectorize(c.withContext(ctx), req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Vector, nil
+}
+
 // Search performs ANN lookup
 func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK uint32, collection string) ([]*pb.SearchResult, error) {
 	req := &pb.SearchRequest{
@@ -88,6 +112,20 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 		return nil, err
 	}
 
+	return res.Results, nil
+}
+
+// SearchText performs ANN lookup using text input (vectorized on server)
+func (c *HyperspaceClient) SearchText(ctx context.Context, text string, topK uint32, collection string) ([]*pb.SearchResult, error) {
+	req := &pb.SearchTextRequest{
+		Text:       text,
+		TopK:       topK,
+		Collection: collection,
+	}
+	res, err := c.client.SearchText(c.withContext(ctx), req)
+	if err != nil {
+		return nil, err
+	}
 	return res.Results, nil
 }
 

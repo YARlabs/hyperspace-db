@@ -26,9 +26,12 @@ const (
 	Database_Insert_FullMethodName                 = "/hyperspace.Database/Insert"
 	Database_BatchInsert_FullMethodName            = "/hyperspace.Database/BatchInsert"
 	Database_InsertText_FullMethodName             = "/hyperspace.Database/InsertText"
+	Database_Vectorize_FullMethodName              = "/hyperspace.Database/Vectorize"
+	Database_SearchText_FullMethodName             = "/hyperspace.Database/SearchText"
 	Database_Delete_FullMethodName                 = "/hyperspace.Database/Delete"
 	Database_Search_FullMethodName                 = "/hyperspace.Database/Search"
 	Database_SearchBatch_FullMethodName            = "/hyperspace.Database/SearchBatch"
+	Database_SearchMultiCollection_FullMethodName  = "/hyperspace.Database/SearchMultiCollection"
 	Database_GetNode_FullMethodName                = "/hyperspace.Database/GetNode"
 	Database_GetNeighbors_FullMethodName           = "/hyperspace.Database/GetNeighbors"
 	Database_GetConceptParents_FullMethodName      = "/hyperspace.Database/GetConceptParents"
@@ -61,12 +64,16 @@ type DatabaseClient interface {
 	Insert(ctx context.Context, in *InsertRequest, opts ...grpc.CallOption) (*InsertResponse, error)
 	BatchInsert(ctx context.Context, in *BatchInsertRequest, opts ...grpc.CallOption) (*InsertResponse, error)
 	InsertText(ctx context.Context, in *InsertTextRequest, opts ...grpc.CallOption) (*InsertResponse, error)
+	Vectorize(ctx context.Context, in *VectorizeRequest, opts ...grpc.CallOption) (*VectorizeResponse, error)
+	SearchText(ctx context.Context, in *SearchTextRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	// Delete vectors
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	// Search (ANN)
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	// Batch Search (ANN)
 	SearchBatch(ctx context.Context, in *BatchSearchRequest, opts ...grpc.CallOption) (*BatchSearchResponse, error)
+	// Multi-Geometry Search (v3.0)
+	SearchMultiCollection(ctx context.Context, in *SearchMultiCollectionRequest, opts ...grpc.CallOption) (*SearchMultiCollectionResponse, error)
 	// Graph Traversal API (v2.3)
 	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GraphNode, error)
 	GetNeighbors(ctx context.Context, in *GetNeighborsRequest, opts ...grpc.CallOption) (*GetNeighborsResponse, error)
@@ -174,6 +181,26 @@ func (c *databaseClient) InsertText(ctx context.Context, in *InsertTextRequest, 
 	return out, nil
 }
 
+func (c *databaseClient) Vectorize(ctx context.Context, in *VectorizeRequest, opts ...grpc.CallOption) (*VectorizeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VectorizeResponse)
+	err := c.cc.Invoke(ctx, Database_Vectorize_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) SearchText(ctx context.Context, in *SearchTextRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchResponse)
+	err := c.cc.Invoke(ctx, Database_SearchText_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *databaseClient) Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteResponse)
@@ -198,6 +225,16 @@ func (c *databaseClient) SearchBatch(ctx context.Context, in *BatchSearchRequest
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BatchSearchResponse)
 	err := c.cc.Invoke(ctx, Database_SearchBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) SearchMultiCollection(ctx context.Context, in *SearchMultiCollectionRequest, opts ...grpc.CallOption) (*SearchMultiCollectionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchMultiCollectionResponse)
+	err := c.cc.Invoke(ctx, Database_SearchMultiCollection_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -426,12 +463,16 @@ type DatabaseServer interface {
 	Insert(context.Context, *InsertRequest) (*InsertResponse, error)
 	BatchInsert(context.Context, *BatchInsertRequest) (*InsertResponse, error)
 	InsertText(context.Context, *InsertTextRequest) (*InsertResponse, error)
+	Vectorize(context.Context, *VectorizeRequest) (*VectorizeResponse, error)
+	SearchText(context.Context, *SearchTextRequest) (*SearchResponse, error)
 	// Delete vectors
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	// Search (ANN)
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// Batch Search (ANN)
 	SearchBatch(context.Context, *BatchSearchRequest) (*BatchSearchResponse, error)
+	// Multi-Geometry Search (v3.0)
+	SearchMultiCollection(context.Context, *SearchMultiCollectionRequest) (*SearchMultiCollectionResponse, error)
 	// Graph Traversal API (v2.3)
 	GetNode(context.Context, *GetNodeRequest) (*GraphNode, error)
 	GetNeighbors(context.Context, *GetNeighborsRequest) (*GetNeighborsResponse, error)
@@ -490,6 +531,12 @@ func (UnimplementedDatabaseServer) BatchInsert(context.Context, *BatchInsertRequ
 func (UnimplementedDatabaseServer) InsertText(context.Context, *InsertTextRequest) (*InsertResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InsertText not implemented")
 }
+func (UnimplementedDatabaseServer) Vectorize(context.Context, *VectorizeRequest) (*VectorizeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Vectorize not implemented")
+}
+func (UnimplementedDatabaseServer) SearchText(context.Context, *SearchTextRequest) (*SearchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchText not implemented")
+}
 func (UnimplementedDatabaseServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
@@ -498,6 +545,9 @@ func (UnimplementedDatabaseServer) Search(context.Context, *SearchRequest) (*Sea
 }
 func (UnimplementedDatabaseServer) SearchBatch(context.Context, *BatchSearchRequest) (*BatchSearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SearchBatch not implemented")
+}
+func (UnimplementedDatabaseServer) SearchMultiCollection(context.Context, *SearchMultiCollectionRequest) (*SearchMultiCollectionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchMultiCollection not implemented")
 }
 func (UnimplementedDatabaseServer) GetNode(context.Context, *GetNodeRequest) (*GraphNode, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNode not implemented")
@@ -697,6 +747,42 @@ func _Database_InsertText_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Database_Vectorize_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VectorizeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).Vectorize(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_Vectorize_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).Vectorize(ctx, req.(*VectorizeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_SearchText_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchTextRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).SearchText(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_SearchText_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).SearchText(ctx, req.(*SearchTextRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Database_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteRequest)
 	if err := dec(in); err != nil {
@@ -747,6 +833,24 @@ func _Database_SearchBatch_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseServer).SearchBatch(ctx, req.(*BatchSearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_SearchMultiCollection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchMultiCollectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).SearchMultiCollection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_SearchMultiCollection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).SearchMultiCollection(ctx, req.(*SearchMultiCollectionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1054,6 +1158,14 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Database_InsertText_Handler,
 		},
 		{
+			MethodName: "Vectorize",
+			Handler:    _Database_Vectorize_Handler,
+		},
+		{
+			MethodName: "SearchText",
+			Handler:    _Database_SearchText_Handler,
+		},
+		{
 			MethodName: "Delete",
 			Handler:    _Database_Delete_Handler,
 		},
@@ -1064,6 +1176,10 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SearchBatch",
 			Handler:    _Database_SearchBatch_Handler,
+		},
+		{
+			MethodName: "SearchMultiCollection",
+			Handler:    _Database_SearchMultiCollection_Handler,
 		},
 		{
 			MethodName: "GetNode",

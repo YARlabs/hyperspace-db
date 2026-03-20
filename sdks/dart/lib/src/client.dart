@@ -41,6 +41,21 @@ class HyperspaceClient {
     return true;
   }
 
+  Future<bool> insertText(int id, String text, {String collection = ''}) async {
+    // return _stub.insertText(...);
+    return true;
+  }
+
+  Future<List<double>> vectorize(String text, String metric) async {
+    // return _stub.vectorize(...).vector;
+    return [];
+  }
+
+  Future<List<dynamic>> searchText(String text, int topK, {String collection = ''}) async {
+    // return _stub.searchText(...).results;
+    return [];
+  }
+
   // Delta Sync API implementation stubs
   Future<dynamic> syncHandshake(String collection, List<int> clientBuckets, {int clientLogicalClock = 0, int clientCount = 0}) async {
     if (clientBuckets.length != 256) throw Exception("Buckets length must be 256");

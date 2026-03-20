@@ -1,15 +1,14 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use ndarray::{Array, ArrayViewD};
+use ndarray::{Array, Array2, ArrayD, ArrayViewD};
 use ort::{
     session::{builder::GraphOptimizationLevel, Session},
     value::Value,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
 
 // --- Config Types ---
@@ -109,7 +108,6 @@ impl Default for MultiVectorizer {
 }
 
 impl MultiVectorizer {
-
     pub fn add(&mut self, metric: &str, vectorizer: Arc<dyn Vectorizer>) {
         self.models.insert(metric.to_string(), vectorizer);
     }
@@ -127,7 +125,11 @@ impl MultiVectorizer {
             v.vectorize(texts).await
         } else {
             // Fallback to primary if exists
-            if let Some(v) = self.models.get("l2").or_else(|| self.models.values().next()) {
+            if let Some(v) = self
+                .models
+                .get("l2")
+                .or_else(|| self.models.values().next())
+            {
                 v.vectorize(texts).await
             } else {
                 Err(anyhow!("No vectorizer available"))
@@ -170,7 +172,9 @@ impl OnnxVectorizer {
             .with_intra_threads(4)
             .map_err(|e| anyhow::anyhow!("Ort thread configuration failure: {e}"))?
             .commit_from_file(model_path)
-            .map_err(|e| anyhow::anyhow!("Ort session commit failed for path {}: {}", model_path, e))?;
+            .map_err(|e| {
+                anyhow::anyhow!("Ort session commit failed for path {}: {}", model_path, e)
+            })?;
 
         // Load chunking config from env (model-agnostic)
         let chunking_config = ChunkingConfig::from_env(metric_name);
@@ -237,33 +241,30 @@ impl OnnxVectorizer {
         }
 
         // 5. Download/load model (hf_hub handles caching automatically)
-        let api = builder
-            .build()
-            .map_err(|e| {
-                eprintln!("❌ HF API error for {}: {}", model_id, e);
-                anyhow::anyhow!("HF API error: {e}")
-            })?;
+        let api = builder.build().map_err(|e| {
+            eprintln!("❌ HF API error for {}: {}", model_id, e);
+            anyhow::anyhow!("HF API error: {e}")
+        })?;
         let repo: ApiRepo = api.model(model_id.to_string());
 
         let filename = model_file.unwrap_or_else(|| "model.onnx".to_string());
-        let model_path = repo
-            .get(&filename)
-            .map_err(|e| {
-                eprintln!("❌ Failed to download {} for {}: {}", filename, model_id, e);
-                anyhow::anyhow!("Failed to download {}: {e}", filename)
-            })?;
-        
+        let model_path = repo.get(&filename).map_err(|e| {
+            eprintln!("❌ Failed to download {} for {}: {}", filename, model_id, e);
+            anyhow::anyhow!("Failed to download {}: {e}", filename)
+        })?;
+
         // Try to download external data for large models (.onnx.data or .onnx_data)
         for suffix in &[".data", "_data"] {
             let data_filename = format!("{}{}", filename, suffix);
             let _ = repo.get(&data_filename);
         }
-        let tokenizer_path = repo
-            .get("tokenizer.json")
-            .map_err(|e| {
-                eprintln!("❌ Failed to download tokenizer.json for {}: {}", model_id, e);
-                anyhow::anyhow!("Failed to download tokenizer.json: {e}")
-            })?;
+        let tokenizer_path = repo.get("tokenizer.json").map_err(|e| {
+            eprintln!(
+                "❌ Failed to download tokenizer.json for {}: {}",
+                model_id, e
+            );
+            anyhow::anyhow!("Failed to download tokenizer.json: {e}")
+        })?;
 
         // 6. Load tokenizer
         let tokenizer = Tokenizer::from_file(
@@ -292,7 +293,10 @@ impl OnnxVectorizer {
                     .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?,
             )
             .map_err(|e| {
-                eprintln!("❌ Ort session commit failed for {} path {:?}: {}", model_id, model_path, e);
+                eprintln!(
+                    "❌ Ort session commit failed for {} path {:?}: {}",
+                    model_id, model_path, e
+                );
                 anyhow::anyhow!("Ort session commit failed: {e}")
             })?;
 
@@ -344,7 +348,7 @@ impl OnnxVectorizer {
                         projected.push(x_val / denom);
                     }
                     *vec = projected;
-                    
+
                     // Re-calculate norm for clamping
                     norm_sq = vec.iter().map(|x| x * x).sum();
                     norm = norm_sq.sqrt();
@@ -369,7 +373,7 @@ impl OnnxVectorizer {
             Metric::Lorentz => {
                 // Task: Project to Lorentz Hyperboloid (Dimension N)
                 // In HyperspaceDB, Lorentz metric REQUIRES N+1 format (e.g. 129)
-                
+
                 if vec.is_empty() {
                     return;
                 }
@@ -380,7 +384,7 @@ impl OnnxVectorizer {
                     let spatial_norm_sq = norm_sq;
                     let x0 = (1.0 + spatial_norm_sq).sqrt();
                     vec.insert(0, x0);
-                } 
+                }
                 // Case 2: Model outputs N dims (already Hyperboloid format)
                 else if vec.len() == self.dimension {
                     // Constraint: -x0^2 + |x|^2 = -1  =>  x0 = sqrt(1 + |x|^2)
@@ -589,22 +593,89 @@ impl OnnxVectorizer {
 
         let attention_mask_clone = attention_mask_arr.clone();
 
-        let input_ids_val = Value::from_array(input_ids_arr)?;
-        let attention_mask_val = Value::from_array(attention_mask_arr)?;
-
-        let inputs = ort::inputs![
-            "input_ids" => input_ids_val,
-            "attention_mask" => attention_mask_val
-        ];
-
+        // 6. Prepare inputs
         let mut session_guard = self
             .session
             .lock()
             .map_err(|_| anyhow::anyhow!("Session lock poisoned"))?;
-        let outputs = session_guard.run(inputs)?;
 
+        // Detect required inputs
+        let mut inputs: Vec<(String, Value)> = Vec::new();
+        for input in session_guard.inputs() {
+            let name = input.name();
+            match name {
+                "input_ids" => {
+                    inputs.push((
+                        name.to_string(),
+                        Value::from_array(input_ids_arr.clone())?.into(),
+                    ));
+                }
+                "attention_mask" => {
+                    inputs.push((
+                        name.to_string(),
+                        Value::from_array(attention_mask_arr.clone())?.into(),
+                    ));
+                }
+                "position_ids" => {
+                    let position_ids_arr =
+                        Array::from_shape_fn((batch_size, seq_len), |(_, c)| c as i64);
+                    inputs.push((
+                        name.to_string(),
+                        Value::from_array(position_ids_arr)?.into(),
+                    ));
+                }
+                name if name.contains("past_key_values") => {
+                    if let ort::value::ValueType::Tensor { shape, .. } = input.dtype() {
+                        let mut final_shape = Vec::new();
+                        // Generic dimension extraction from debug print or direct parse
+                        for (i, dim) in shape.iter().enumerate() {
+                            let dim_str = format!("{:?}", dim);
+
+                            // 1. Try direct parse (e.g. "8", "128")
+                            if let Ok(n) = dim_str.parse::<usize>() {
+                                final_shape.push(n);
+                            }
+                            // 2. Try extract from Fixed(N) or Some(N)
+                            else if dim_str.contains("Fixed") || dim_str.contains("Some(") {
+                                let n = dim_str
+                                    .chars()
+                                    .filter(|c| c.is_ascii_digit())
+                                    .collect::<String>()
+                                    .parse::<usize>()
+                                    .unwrap_or(0);
+                                final_shape.push(n);
+                            }
+                            // 3. Handle Dynamic/Batch
+                            else if i == 0 {
+                                final_shape.push(batch_size);
+                            } else {
+                                final_shape.push(0); // Dynamic seq_len_past (e.g. initial pass)
+                            }
+                        }
+
+                        let dummy = ArrayD::<f32>::zeros(final_shape);
+                        inputs.push((name.to_string(), Value::from_array(dummy)?.into()));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let outputs = session_guard.run(inputs)?;
         let output_tensor = &outputs[0];
         let (shape, data) = output_tensor.try_extract_tensor::<f32>()?;
+
+        self.process_outputs(batch_size, shape, data, &attention_mask_clone)
+    }
+
+    /// Internal helper to process raw tensor outputs into normalized vectors
+    fn process_outputs(
+        &self,
+        batch_size: usize,
+        shape: &[i64],
+        data: &[f32],
+        attention_mask: &Array2<i64>,
+    ) -> Result<Vec<Vec<f64>>> {
         let shape_usize: Vec<usize> = shape.iter().map(|&x| x as usize).collect();
         let embeddings_tensor = ArrayViewD::from_shape(shape_usize, data)
             .map_err(|e| anyhow::anyhow!("Failed to create view from tensor: {e}"))?;
@@ -612,10 +683,8 @@ impl OnnxVectorizer {
         let mut final_vectors = Vec::with_capacity(batch_size);
 
         if embeddings_tensor.ndim() == 3 {
-            final_vectors = self.mean_pooling(
-                &embeddings_tensor.view(),
-                &attention_mask_clone.view().into_dyn(),
-            );
+            final_vectors =
+                self.mean_pooling(&embeddings_tensor.view(), &attention_mask.view().into_dyn());
         } else if embeddings_tensor.ndim() == 2 {
             for i in 0..batch_size {
                 let mut vec = Vec::with_capacity(self.dimension);

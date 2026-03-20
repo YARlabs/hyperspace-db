@@ -581,6 +581,87 @@ export namespace InsertTextRequest {
     }
 }
 
+export class VectorizeRequest extends jspb.Message { 
+    getText(): string;
+    setText(value: string): VectorizeRequest;
+    getMetric(): string;
+    setMetric(value: string): VectorizeRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VectorizeRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: VectorizeRequest): VectorizeRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VectorizeRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VectorizeRequest;
+    static deserializeBinaryFromReader(message: VectorizeRequest, reader: jspb.BinaryReader): VectorizeRequest;
+}
+
+export namespace VectorizeRequest {
+    export type AsObject = {
+        text: string,
+        metric: string,
+    }
+}
+
+export class VectorizeResponse extends jspb.Message { 
+    clearVectorList(): void;
+    getVectorList(): Array<number>;
+    setVectorList(value: Array<number>): VectorizeResponse;
+    addVector(value: number, index?: number): number;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VectorizeResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: VectorizeResponse): VectorizeResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VectorizeResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VectorizeResponse;
+    static deserializeBinaryFromReader(message: VectorizeResponse, reader: jspb.BinaryReader): VectorizeResponse;
+}
+
+export namespace VectorizeResponse {
+    export type AsObject = {
+        vectorList: Array<number>,
+    }
+}
+
+export class SearchTextRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): SearchTextRequest;
+    getText(): string;
+    setText(value: string): SearchTextRequest;
+    getTopK(): number;
+    setTopK(value: number): SearchTextRequest;
+
+    getFilterMap(): jspb.Map<string, string>;
+    clearFilterMap(): void;
+    clearFiltersList(): void;
+    getFiltersList(): Array<Filter>;
+    setFiltersList(value: Array<Filter>): SearchTextRequest;
+    addFilters(value?: Filter, index?: number): Filter;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SearchTextRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: SearchTextRequest): SearchTextRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SearchTextRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SearchTextRequest;
+    static deserializeBinaryFromReader(message: SearchTextRequest, reader: jspb.BinaryReader): SearchTextRequest;
+}
+
+export namespace SearchTextRequest {
+    export type AsObject = {
+        collection: string,
+        text: string,
+        topK: number,
+
+        filterMap: Array<[string, string]>,
+        filtersList: Array<Filter.AsObject>,
+    }
+}
+
 export class InsertResponse extends jspb.Message { 
     getSuccess(): boolean;
     setSuccess(value: boolean): InsertResponse;
@@ -865,6 +946,58 @@ export class BatchSearchResponse extends jspb.Message {
 export namespace BatchSearchResponse {
     export type AsObject = {
         responsesList: Array<SearchResponse.AsObject>,
+    }
+}
+
+export class SearchMultiCollectionRequest extends jspb.Message { 
+    clearCollectionsList(): void;
+    getCollectionsList(): Array<string>;
+    setCollectionsList(value: Array<string>): SearchMultiCollectionRequest;
+    addCollections(value: string, index?: number): string;
+    clearVectorList(): void;
+    getVectorList(): Array<number>;
+    setVectorList(value: Array<number>): SearchMultiCollectionRequest;
+    addVector(value: number, index?: number): number;
+    getTopK(): number;
+    setTopK(value: number): SearchMultiCollectionRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SearchMultiCollectionRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: SearchMultiCollectionRequest): SearchMultiCollectionRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SearchMultiCollectionRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SearchMultiCollectionRequest;
+    static deserializeBinaryFromReader(message: SearchMultiCollectionRequest, reader: jspb.BinaryReader): SearchMultiCollectionRequest;
+}
+
+export namespace SearchMultiCollectionRequest {
+    export type AsObject = {
+        collectionsList: Array<string>,
+        vectorList: Array<number>,
+        topK: number,
+    }
+}
+
+export class SearchMultiCollectionResponse extends jspb.Message { 
+
+    getResponsesMap(): jspb.Map<string, SearchResponse>;
+    clearResponsesMap(): void;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SearchMultiCollectionResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: SearchMultiCollectionResponse): SearchMultiCollectionResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: SearchMultiCollectionResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): SearchMultiCollectionResponse;
+    static deserializeBinaryFromReader(message: SearchMultiCollectionResponse, reader: jspb.BinaryReader): SearchMultiCollectionResponse;
+}
+
+export namespace SearchMultiCollectionResponse {
+    export type AsObject = {
+
+        responsesMap: Array<[string, SearchResponse.AsObject]>,
     }
 }
 

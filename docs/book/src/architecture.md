@@ -23,6 +23,11 @@ graph TD
         Q -->|Pop| W[Indexer Worker]
         W -->|Update| HNSW[HNSW Graph (RAM)]
     end
+
+    subgraph Embedding Layer
+        S -->|InsertText| EE[Embedding Service]
+        EE -->|Chunking| BE[Embedding Backends]
+    end
     
     subgraph Background Tasks
         Snap[Snapshotter] -->|Serialize| Disk[Index Snapshot (.snap)]

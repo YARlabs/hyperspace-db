@@ -35,57 +35,18 @@ use manager::CollectionManager;
 use hyperspace_embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
-    metadata_value,
-    BatchInsertRequest,
-    BatchSearchRequest,
-    BatchSearchResponse,
-    CollectionStatsRequest,
-    CollectionStatsResponse,
-    ConfigUpdate,
-    CreateCollectionRequest,
-    DeleteCollectionRequest,
-    DeleteRequest,
-    DeleteResponse,
-    DiffBucket,
-    DigestRequest,
-    DigestResponse,
-    EventMessage,
-    EventSubscriptionRequest,
-    EventType,
-    Filter,
-    FindSemanticClustersRequest,
-    FindSemanticClustersResponse,
-    GetConceptParentsRequest,
-    GetConceptParentsResponse,
-    GetNeighborsRequest,
-    GetNeighborsResponse,
-    GetNodeRequest,
-    GraphCluster,
-    GraphNode,
-    InsertRequest,
-    InsertResponse,
-    InsertTextRequest,
-    ListCollectionsResponse,
-    MetadataValue,
-    MonitorRequest,
-    SearchMultiCollectionRequest,
-    SearchMultiCollectionResponse,
-    SearchRequest,
-    SearchResponse,
-    SearchResult,
-    SearchTextRequest,
-    SyncHandshakeRequest,
-    SyncHandshakeResponse,
-    SyncPullRequest,
-    SyncPushResponse,
-    SyncVectorData,
-    SystemStats,
-    TraverseRequest,
-    TraverseResponse,
-    VectorDeletedEvent,
-    VectorInsertedEvent,
-    VectorizeRequest,
-    VectorizeResponse,
+    metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
+    CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest,
+    DeleteCollectionRequest, DeleteRequest, DeleteResponse, DiffBucket, DigestRequest,
+    DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
+    FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
+    GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
+    GraphCluster, GraphNode, InsertRequest, InsertResponse, InsertTextRequest,
+    ListCollectionsResponse, MetadataValue, MonitorRequest, SearchMultiCollectionRequest,
+    SearchMultiCollectionResponse, SearchRequest, SearchResponse, SearchResult, SearchTextRequest,
+    SyncHandshakeRequest, SyncHandshakeResponse, SyncPullRequest, SyncPushResponse, SyncVectorData,
+    SystemStats, TraverseRequest, TraverseResponse, VectorDeletedEvent, VectorInsertedEvent,
+    VectorizeRequest, VectorizeResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
@@ -798,7 +759,9 @@ impl Database for HyperspaceService {
                 if vectors.is_empty() {
                     return Err(Status::internal("Empty vector result"));
                 }
-                Ok(Response::new(VectorizeResponse { vector: vectors[0].clone() }))
+                Ok(Response::new(VectorizeResponse {
+                    vector: vectors[0].clone(),
+                }))
             } else {
                 Err(Status::failed_precondition("Embedding engine disabled"))
             }
@@ -818,10 +781,14 @@ impl Database for HyperspaceService {
         {
             let user_id = get_user_id(&request);
             let req = request.into_inner();
-            
+
             if let Some(multi) = &self.vectorizer {
-                let col_name = if req.collection.is_empty() { "default".to_string() } else { req.collection.clone() };
-                
+                let col_name = if req.collection.is_empty() {
+                    "default".to_string()
+                } else {
+                    req.collection.clone()
+                };
+
                 // Discover metric from collection to route to correct model
                 let metric = if let Some(col) = self.manager.get(&user_id, &col_name).await {
                     col.metric_name().to_string()
@@ -846,11 +813,18 @@ impl Database for HyperspaceService {
                     if let Some(cond) = f.condition {
                         match cond {
                             hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
-                                complex_filters.push(hyperspace_core::FilterExpr::Match { key: m.key, value: m.value });
+                                complex_filters.push(hyperspace_core::FilterExpr::Match {
+                                    key: m.key,
+                                    value: m.value,
+                                });
                             }
                             hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
                                 let (gte, lte) = range_bounds_f64(&r);
-                                complex_filters.push(hyperspace_core::FilterExpr::Range { key: r.key, gte, lte });
+                                complex_filters.push(hyperspace_core::FilterExpr::Range {
+                                    key: r.key,
+                                    gte,
+                                    lte,
+                                });
                             }
                         }
                     }
@@ -865,19 +839,32 @@ impl Database for HyperspaceService {
                 };
 
                 if let Some(col) = self.manager.get(&user_id, &col_name).await {
-                    match col.search(&vector, &exact_filter, &complex_filters, &params).await {
+                    match col
+                        .search(&vector, &exact_filter, &complex_filters, &params)
+                        .await
+                    {
                         Ok(res) => {
-                            let output = res.into_iter().map(|(id, dist, meta)| {
-                                let typed_metadata = extract_typed_metadata(&meta);
-                                let metadata = strip_internal_metadata(&meta);
-                                SearchResult { id, distance: dist, metadata, typed_metadata }
-                            }).collect();
+                            let output = res
+                                .into_iter()
+                                .map(|(id, dist, meta)| {
+                                    let typed_metadata = extract_typed_metadata(&meta);
+                                    let metadata = strip_internal_metadata(&meta);
+                                    SearchResult {
+                                        id,
+                                        distance: dist,
+                                        metadata,
+                                        typed_metadata,
+                                    }
+                                })
+                                .collect();
                             Ok(Response::new(SearchResponse { results: output }))
                         }
                         Err(e) => Err(Status::internal(e)),
                     }
                 } else {
-                    Err(Status::not_found(format!("Collection '{col_name}' not found")))
+                    Err(Status::not_found(format!(
+                        "Collection '{col_name}' not found"
+                    )))
                 }
             } else {
                 Err(Status::failed_precondition("Embedding engine disabled"))
@@ -2031,7 +2018,9 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let vectorizer: Option<Arc<MultiVectorizer>> = {
         let enabled_raw = std::env::var("HYPERSPACE_EMBED").unwrap_or_else(|_| "false".to_string());
         let enabled = enabled_raw.to_lowercase() == "true";
-        println!("🔍 Embedding Global Status: [HYPERSPACE_EMBED={enabled_raw}] -> enabled={enabled}");
+        println!(
+            "🔍 Embedding Global Status: [HYPERSPACE_EMBED={enabled_raw}] -> enabled={enabled}"
+        );
 
         if enabled {
             let mut multi = MultiVectorizer::new();
@@ -2083,14 +2072,24 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                         let hf_token = std::env::var("HF_TOKEN")
                             .or_else(|_| std::env::var("HUGGING_FACE_HUB_TOKEN"))
                             .ok();
-                        let hf_filename = std::env::var(format!("HS_EMBED_{metric_upper}_HF_FILENAME")).ok();
+                        let hf_filename =
+                            std::env::var(format!("HS_EMBED_{metric_upper}_HF_FILENAME")).ok();
                         let dim: usize = std::env::var(format!("HS_EMBED_{metric_upper}_DIM"))
                             .or_else(|_| std::env::var("HYPERSPACE_EMBED_DIM"))
                             .unwrap_or_else(|_| "128".to_string())
                             .parse()
                             .unwrap_or(128);
-                        println!("🤗 [{metric_upper}] Downloading HF model: {model_id} (dim={dim})");
-                        if let Ok(v) = OnnxVectorizer::new_from_hf(&model_id, hf_token, dim, metric, &metric_upper, hf_filename) {
+                        println!(
+                            "🤗 [{metric_upper}] Downloading HF model: {model_id} (dim={dim})"
+                        );
+                        if let Ok(v) = OnnxVectorizer::new_from_hf(
+                            &model_id,
+                            hf_token,
+                            dim,
+                            metric,
+                            &metric_upper,
+                            hf_filename,
+                        ) {
                             multi.add(metric_name, Arc::new(v));
                         }
                     }
@@ -2106,7 +2105,10 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                         .or_else(|_| std::env::var("HYPERSPACE_API_BASE"))
                         .ok();
                     println!("☁️  [{metric_upper}] Remote embedding: {provider:?} | model={model}");
-                    multi.add(metric_name, Arc::new(RemoteVectorizer::new(provider, api_key, model, base_url)));
+                    multi.add(
+                        metric_name,
+                        Arc::new(RemoteVectorizer::new(provider, api_key, model, base_url)),
+                    );
                 }
             }
             let count = multi.models.len();

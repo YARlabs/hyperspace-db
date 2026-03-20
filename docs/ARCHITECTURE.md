@@ -29,6 +29,13 @@ graph TB
         SNAP[Snapshots<br/>rkyv]
         S3[(S3 / Cloud Storage)]
     end
+
+    subgraph "Embedding Layer"
+        EMBED[Embedding Engine]
+        CHUNKER[Chunker & Pooling]
+        BF_ONNX[ONNX Backend]
+        BF_API[Cloud API Backend]
+    end
     
     subgraph "Replication"
         LEADER[Leader Node]
@@ -42,6 +49,10 @@ graph TB
     
     GRPC --> MEM
     GRPC --> ROUTER
+    GRPC --> EMBED
+    EMBED --> CHUNKER
+    CHUNKER --> BF_ONNX
+    CHUNKER --> BF_API
     MEM --> WAL
     FLUSH --> CHUNK
     WAL -.-> FLUSH

@@ -71,6 +71,15 @@ Delete collection and all its data.
 Insert one vector. Accepts `number[]`, `Float32Array`, `Float64Array`.
 Optional `typedMetadata` supports typed values for range/boolean filters.
 
+### `insertText(id, text, meta?, collection?, durability?)`
+
+Insert text to be vectorized and stored on the server side (Server-Side Embedding).
+
+### `vectorize(text, metric?)`
+
+Convert text to a dense vector using the server's embedding engine.
+- `metric`: defaults to `"l2"`.
+
 ### `batchInsert(items, collection?, durability?)`
 
 Efficient bulk insertion.
@@ -83,18 +92,17 @@ await client.batchInsert([
 
 ### `search(vector, topK, collection?, options?)`
 
-Run nearest-neighbor search. 
-Options include `filters`, `hybridQuery`, and `hybridAlpha`.
-Decimal range values are supported and sent as `gte_f64/lte_f64` in gRPC payload.
+Run nearest-neighbor search with a raw vector. 
+
+### `searchText(text, topK, collection?, options?)`
+
+Run nearest-neighbor search using text input. The text is vectorized on the server before searching.
 
 ```ts
-const results = await client.search(vector, 10, "coll", {
+const results = await client.searchText("How to use HyperspaceDB?", 10, "coll", {
   filters: [
-    { match: { key: "category", value: "electronics" } },
-    { range: { key: "price", gte: 100, lte: 500 } }
-  ],
-  hybridQuery: "latest smartphone",
-  hybridAlpha: 0.5
+    { match: { key: "category", value: "docs" } }
+  ]
 });
 ```
 

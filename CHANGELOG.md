@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0-rc.1] - 2026-03-20
+
+### Added
+* **Finalized Embedding Pipeline (Sprint 12 / Final Release Candidate)**:
+    * **New gRPC Endpoints**: Added `InsertText`, `Vectorize`, and `SearchText` RPCs for native server-side vectorization across all geometries.
+    * **Native Model Support**:
+        * **Qwen3-Embedding-0.6B**: First-class support for L2 and Cosine geometries (1024d, 32K context).
+        * **YAR v5 Embedding**: Recommended models for Poincaré (128d) and Lorentz (129d) geometries.
+    * **Advanced Text Handling**:
+        * **Chunking & Overlap**: Added `HS_EMBED_<M>_CHUNK_SIZE` and `HS_EMBED_<M>_OVERLAP` to handle long text by vectorizing chunks and performing mean-pooling of resulting embeddings.
+        * **HS_EMBED_<M>_HF_FILENAME**: Direct control over which file to load from a HuggingFace repository (e.g., `onnx/model.onnx`).
+    * **SDK Parity**:
+        * **Python**: Added `insert_text`, `vectorize`, `search_text`, and `search_multi_collection_text`.
+        * **Rust**: Integrated `insert_text`, `vectorize`, and `search_text` into high-level `Client`.
+        * **TS/Go/CPP/Dart**: Full API alignment for server-side embedding tasks.
+    * **Integration Tests**: Added `benchmarks/test_all_embeddings.py` verifying 100% pass rate across L2, Cosine, Poincaré, and Lorentz with Qwen3 and YAR v5.
+
+### Fixed
+* **Clippy compliance**: Resolved redundant slicing and useless `as_ref()` warnings in the `hyperspace-embed` crate.
+* **Documentation**: Updated all SDK READMEs and the official book with the finalized embedding API.
+
 ## [3.0.0-alpha.3] - 2026-03-05
 
 ### Added

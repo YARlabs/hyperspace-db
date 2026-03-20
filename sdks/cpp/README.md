@@ -40,6 +40,36 @@ grpc::ClientContext context;
 context.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 
 grpc::Status status = stub->Search(&context, request, &response);
+
+// 2. Insert Text (Server-Side Embedding)
+hyperspace::InsertTextRequest insert_req;
+insert_req.set_collection("docs");
+insert_req.set_id(1);
+insert_req.set_text("HyperspaceDB is fast!");
+hyperspace::InsertResponse insert_res;
+grpc::ClientContext insert_ctx;
+insert_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
+status = stub->InsertText(&insert_ctx, insert_req, &insert_res);
+
+// 3. Vectorize Text
+hyperspace::VectorizeRequest vec_req;
+vec_req.set_text("Hello!");
+vec_req.set_metric("cosine");
+hyperspace::VectorizeResponse vec_res;
+grpc::ClientContext vec_ctx;
+vec_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
+status = stub->Vectorize(&vec_ctx, vec_req, &vec_res);
+// vec_res.vector() -> repeated double
+
+// 4. Search Text
+hyperspace::SearchTextRequest search_text_req;
+search_text_req.set_collection("docs");
+search_text_req.set_text("Is HyperspaceDB fast?");
+search_text_req.set_top_k(5);
+hyperspace::SearchResponse search_text_res;
+grpc::ClientContext search_text_ctx;
+search_text_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
+status = stub->SearchText(&search_text_ctx, search_text_req, &search_text_res);
 ```
 ## Embedding Pipeline (Optional)
 

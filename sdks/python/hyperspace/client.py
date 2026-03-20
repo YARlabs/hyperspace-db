@@ -623,6 +623,10 @@ class HyperspaceClient:
         except grpc.RpcError as e:
             print(f"RPC Error in sync_pull: {e}")
 
+    def search_multi_collection_text(self, text: str, collections: List[str], top_k: int = 10) -> Dict[str, List[Dict]]:
+        vector = self.vectorize(text)
+        return self.search_multi_collection(vector, collections, top_k)
+
     def close(self):
         self.channel.close()
 

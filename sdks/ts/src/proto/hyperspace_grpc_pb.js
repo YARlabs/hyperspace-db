@@ -356,6 +356,28 @@ function deserialize_hyperspace_ReplicationRequest(buffer_arg) {
   return hyperspace_pb.ReplicationRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_SearchMultiCollectionRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.SearchMultiCollectionRequest)) {
+    throw new Error('Expected argument of type hyperspace.SearchMultiCollectionRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SearchMultiCollectionRequest(buffer_arg) {
+  return hyperspace_pb.SearchMultiCollectionRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_SearchMultiCollectionResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.SearchMultiCollectionResponse)) {
+    throw new Error('Expected argument of type hyperspace.SearchMultiCollectionResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SearchMultiCollectionResponse(buffer_arg) {
+  return hyperspace_pb.SearchMultiCollectionResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_SearchRequest(arg) {
   if (!(arg instanceof hyperspace_pb.SearchRequest)) {
     throw new Error('Expected argument of type hyperspace.SearchRequest');
@@ -376,6 +398,17 @@ function serialize_hyperspace_SearchResponse(arg) {
 
 function deserialize_hyperspace_SearchResponse(buffer_arg) {
   return hyperspace_pb.SearchResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_SearchTextRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.SearchTextRequest)) {
+    throw new Error('Expected argument of type hyperspace.SearchTextRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_SearchTextRequest(buffer_arg) {
+  return hyperspace_pb.SearchTextRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_StatusResponse(arg) {
@@ -477,6 +510,28 @@ function deserialize_hyperspace_TraverseResponse(buffer_arg) {
   return hyperspace_pb.TraverseResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_VectorizeRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.VectorizeRequest)) {
+    throw new Error('Expected argument of type hyperspace.VectorizeRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_VectorizeRequest(buffer_arg) {
+  return hyperspace_pb.VectorizeRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_VectorizeResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.VectorizeResponse)) {
+    throw new Error('Expected argument of type hyperspace.VectorizeResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_VectorizeResponse(buffer_arg) {
+  return hyperspace_pb.VectorizeResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 
 var DatabaseService = exports.DatabaseService = {
   // Collection Management
@@ -558,6 +613,28 @@ insert: {
     responseSerialize: serialize_hyperspace_InsertResponse,
     responseDeserialize: deserialize_hyperspace_InsertResponse,
   },
+  vectorize: {
+    path: '/hyperspace.Database/Vectorize',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.VectorizeRequest,
+    responseType: hyperspace_pb.VectorizeResponse,
+    requestSerialize: serialize_hyperspace_VectorizeRequest,
+    requestDeserialize: deserialize_hyperspace_VectorizeRequest,
+    responseSerialize: serialize_hyperspace_VectorizeResponse,
+    responseDeserialize: deserialize_hyperspace_VectorizeResponse,
+  },
+  searchText: {
+    path: '/hyperspace.Database/SearchText',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.SearchTextRequest,
+    responseType: hyperspace_pb.SearchResponse,
+    requestSerialize: serialize_hyperspace_SearchTextRequest,
+    requestDeserialize: deserialize_hyperspace_SearchTextRequest,
+    responseSerialize: serialize_hyperspace_SearchResponse,
+    responseDeserialize: deserialize_hyperspace_SearchResponse,
+  },
   // Delete vectors
 delete: {
     path: '/hyperspace.Database/Delete',
@@ -593,6 +670,18 @@ searchBatch: {
     requestDeserialize: deserialize_hyperspace_BatchSearchRequest,
     responseSerialize: serialize_hyperspace_BatchSearchResponse,
     responseDeserialize: deserialize_hyperspace_BatchSearchResponse,
+  },
+  // Multi-Geometry Search (v3.0)
+searchMultiCollection: {
+    path: '/hyperspace.Database/SearchMultiCollection',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.SearchMultiCollectionRequest,
+    responseType: hyperspace_pb.SearchMultiCollectionResponse,
+    requestSerialize: serialize_hyperspace_SearchMultiCollectionRequest,
+    requestDeserialize: deserialize_hyperspace_SearchMultiCollectionRequest,
+    responseSerialize: serialize_hyperspace_SearchMultiCollectionResponse,
+    responseDeserialize: deserialize_hyperspace_SearchMultiCollectionResponse,
   },
   // Graph Traversal API (v2.3)
 getNode: {

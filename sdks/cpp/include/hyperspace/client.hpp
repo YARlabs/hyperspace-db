@@ -25,7 +25,10 @@ public:
     // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
     bool CreateCollection(const std::string& name, int dimension, const std::string& metric = "cosine");
     bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "");
+    bool InsertText(uint32_t id, const std::string& text, const std::string& collection = "");
+    std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
     std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "");
+    std::vector<SearchResult> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "");
     
     // Sync API signatures
     bool SyncHandshake(const std::string& collection, const std::vector<uint64_t>& client_buckets, uint64_t client_logical_clock, uint64_t client_count, std::vector<uint32_t>& out_diff_buckets);

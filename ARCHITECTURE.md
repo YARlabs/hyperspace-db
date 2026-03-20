@@ -28,6 +28,12 @@ graph TD
         Searcher -->|Parallel mmap| Chunk
         S --> Merge[Result Merger]
     end
+
+    subgraph Embedding_Engine ["Embedding Engine"]
+        S -->|InsertText| EE[Embedding Service]
+        EE -->|Chunking| ONNX[ONNX Backend]
+        EE -->|Pooling| API[Cloud API Backend]
+    end
 ```
 
 ---

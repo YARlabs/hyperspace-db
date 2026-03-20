@@ -217,6 +217,50 @@ message ReconsolidationRequest {
 }
 ```
 
+#### `InsertText` (v3.0-rc.1)
+Inserts raw text to be embedded and stored on the server.
+
+```protobuf
+rpc InsertText (InsertTextRequest) returns (InsertResponse);
+
+message InsertTextRequest {
+  string collection = 1;
+  string text = 2;
+  uint32 id = 3;
+  map<string, MetadataValue> typed_metadata = 4;
+}
+```
+
+#### `Vectorize` (v3.0-rc.1)
+Converts text to a vector using the server's embedding engine.
+
+```protobuf
+rpc Vectorize (VectorizeRequest) returns (VectorizeResponse);
+
+message VectorizeRequest {
+  string text = 1;
+  string metric = 2; // "l2", "cosine", "poincare", "lorentz"
+}
+
+message VectorizeResponse {
+  repeated double vector = 1;
+}
+```
+
+#### `SearchText` (v3.0-rc.1)
+Searches the collection using a text query.
+
+```protobuf
+rpc SearchText (SearchTextRequest) returns (SearchResponse);
+
+message SearchTextRequest {
+  string collection = 1;
+  string text = 2;
+  uint32 top_k = 3;
+  repeated Filter filters = 4;
+}
+```
+
 ---
 
 ## 🌐 HTTP API (Control Plane)

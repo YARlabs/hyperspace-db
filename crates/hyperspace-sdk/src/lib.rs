@@ -3,8 +3,9 @@ pub use hyperspace_proto::hyperspace::{
     BatchInsertRequest, BatchSearchRequest, DurabilityLevel, EventMessage,
     EventSubscriptionRequest, EventType, FindSemanticClustersRequest, FindSemanticClustersResponse,
     GetConceptParentsRequest, GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse,
-    GetNodeRequest, GraphNode, InsertRequest, SearchRequest, SearchResponse, SearchResult,
-    TraverseRequest, TraverseResponse, VectorData,
+    GetNodeRequest, GraphNode, InsertRequest, InsertTextRequest, SearchRequest, SearchResponse,
+    SearchResult, SearchTextRequest, TraverseRequest, TraverseResponse, VectorData,
+    VectorizeRequest, VectorizeResponse,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -243,6 +244,42 @@ impl Client {
             .await
     }
 
+    /// Inserts text that will be vectorized on the server side.
+    ///
+    /// # Errors
+    /// Returns error if insertion/vectorization fails.
+    pub async fn insert_text(
+        &mut self,
+        id: u32,
+        text: String,
+        metadata: std::collections::HashMap<String, String>,
+        collection: Option<String>,
+    ) -> Result<bool, tonic::Status> {
+        let req = InsertTextRequest {
+            id,
+            text,
+            metadata,
+            collection: collection.unwrap_or_default(),
+            durability: 0,
+        };
+        let resp = self.inner.insert_text(req).await?;
+        Ok(resp.into_inner().success)
+    }
+
+    /// Vectoize text using the server-side embedding engine.
+    ///
+    /// # Errors
+    /// Returns error if vectorization fails.
+    pub async fn vectorize(
+        &mut self,
+        text: String,
+        metric: String,
+    ) -> Result<Vec<f64>, tonic::Status> {
+        let req = VectorizeRequest { text, metric };
+        let resp = self.inner.vectorize(req).await?;
+        Ok(resp.into_inner().vector)
+    }
+
     /// Batch inserts multiple vectors.
     ///
     /// # Errors
@@ -326,6 +363,27 @@ impl Client {
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         self.search(Self::vec_f32_to_f64(vector), top_k, collection)
             .await
+    }
+
+    /// Searches using text that will be vectorized on the server side.
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_text(
+        &mut self,
+        text: String,
+        top_k: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
+        let req = SearchTextRequest {
+            text,
+            top_k,
+            collection: collection.unwrap_or_default(),
+            filter: std::collections::HashMap::new(),
+            filters: vec![],
+        };
+        let resp = self.inner.search_text(req).await?;
+        Ok(resp.into_inner().results)
     }
 
     /// Performs search utilizing the Wasserstein distance (Cross-Feature Matching Metric).

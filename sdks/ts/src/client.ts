@@ -16,7 +16,10 @@ import {
     VacuumFilterQuery,
     EventSubscriptionRequest,
     EventType,
-    EventMessage
+    EventMessage,
+    VectorizeRequest,
+    InsertTextRequest,
+    SearchTextRequest
 } from './proto/hyperspace_pb';
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
 
@@ -270,6 +273,44 @@ export class HyperspaceClient {
         });
     }
 
+    public insertText(
+        id: number,
+        text: string,
+        meta?: { [key: string]: string },
+        collection: string = '',
+        durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL
+    ): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            const req = new InsertTextRequest();
+            req.setId(id);
+            req.setText(text);
+            if (meta) {
+                const map = req.getMetadataMap();
+                for (const k in meta) map.set(k, meta[k]);
+            }
+            req.setCollection(collection);
+            req.setDurability(durability);
+
+            this.client.insertText(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getSuccess());
+            });
+        });
+    }
+
+    public vectorize(text: string, metric: string = 'l2'): Promise<number[]> {
+        return new Promise((resolve, reject) => {
+            const req = new VectorizeRequest();
+            req.setText(text);
+            req.setMetric(metric);
+
+            this.client.vectorize(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getVectorList());
+            });
+        });
+    }
+
     public batchInsert(
         items: {
             id: number,
@@ -354,6 +395,68 @@ export class HyperspaceClient {
             if (options?.hybridAlpha !== undefined) req.setHybridAlpha(options.hybridAlpha);
 
             this.client.search(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const results = resp.getResultsList().map(r => {
+                    const metaMap = r.getMetadataMap();
+                    const meta: { [key: string]: string } = {};
+                    if (metaMap.getLength() > 0) {
+                        metaMap.forEach((entry: string, key: string) => {
+                            meta[key] = entry;
+                        });
+                    }
+                    return {
+                        id: r.getId(),
+                        distance: r.getDistance(),
+                        metadata: meta,
+                        typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap())
+                    };
+                });
+                resolve(results);
+            });
+        });
+    }
+
+    public searchText(
+        text: string,
+        topK: number,
+        collection: string = '',
+        options?: {
+            filters?: Filter[]
+        }
+    ): Promise<SearchResult[]> {
+        return new Promise((resolve, reject) => {
+            const req = new SearchTextRequest();
+            req.setText(text);
+            req.setTopK(topK);
+            req.setCollection(collection);
+
+            if (options?.filters) {
+                const protoFilters = options.filters.map(f => {
+                    const pf = new hyperspace_pb.Filter();
+                    if (f.match) {
+                        const m = new hyperspace_pb.Match();
+                        m.setKey(f.match.key);
+                        m.setValue(f.match.value);
+                        pf.setMatch(m);
+                    } else if (f.range) {
+                        const r = new hyperspace_pb.Range();
+                        r.setKey(f.range.key);
+                        if (f.range.gte !== undefined) {
+                            if (Number.isInteger(f.range.gte)) r.setGte(f.range.gte);
+                            else r.setGteF64(f.range.gte);
+                        }
+                        if (f.range.lte !== undefined) {
+                            if (Number.isInteger(f.range.lte)) r.setLte(f.range.lte);
+                            else r.setLteF64(f.range.lte);
+                        }
+                        pf.setRange(r);
+                    }
+                    return pf;
+                });
+                req.setFiltersList(protoFilters);
+            }
+
+            this.client.searchText(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
                 const results = resp.getResultsList().map(r => {
                     const metaMap = r.getMetadataMap();

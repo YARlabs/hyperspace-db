@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v3.0.0-alpha.3** | **The World's First Spatial AI Engine.**
+**v3.0.0-rc.1** | **The World's First Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -272,35 +272,34 @@ The default `scalar` mode uses a **ScaNN-inspired anisotropic loss** $L = \|e_\p
 
 ---
 
-## 🧠 Built-in Embedding Service
+Each geometry has its own independent backend, now featuring **native support for Qwen3-Embedding (0.6B)** and **YAR v5** models:
 
-HyperspaceDB can automatically convert text to vectors — no external embedding server needed.
-
-Enable with `HYPERSPACE_EMBED=true`. Each geometry has its own independent backend:
-
-| Provider | How | env |
+| Provider | Description | Recommended For |
 |---|---|---|
-| Local ONNX | Any `.onnx` model from disk | `HS_EMBED_COSINE_PROVIDER=local` |
-| HuggingFace Hub | Auto-download + cache | `HS_EMBED_COSINE_PROVIDER=huggingface` |
-| OpenAI / Cohere / Mistral / Voyage | Remote API | `HS_EMBED_COSINE_PROVIDER=openai` |
-| Generic (OpenAI-compat.) | Any endpoint | `HS_EMBED_COSINE_PROVIDER=generic` |
+| **Local ONNX** | Any `.onnx` model from disk | Air-gapped / Edge |
+| **HuggingFace** | Auto-download, cache, and chunk | High accuracy / Long context |
+| **Remote API** | Mistral / OpenAI / Cohere / Voyage | Cloud API offload |
 
-Example — 4 geometries, 4 different providers:
+Example — Config for **Qwen3 (1024d)** and **YAR v5 (128d)**:
 ```env
-HS_EMBED_L2_PROVIDER=openai
-HS_EMBED_L2_EMBED_MODEL=text-embedding-3-small
-HS_EMBED_L2_API_KEY=sk-...
+HYPERSPACE_EMBED=true
 
+# Cosine via Qwen3 (HuggingFace)
 HS_EMBED_COSINE_PROVIDER=huggingface
-HS_EMBED_COSINE_HF_MODEL_ID=BAAI/bge-small-en-v1.5
-HS_EMBED_COSINE_DIM=384
+HS_EMBED_COSINE_HF_MODEL_ID=onnx-community/Qwen3-Embedding-0.6B-ONNX
+HS_EMBED_COSINE_DIM=1024
+HS_EMBED_COSINE_CHUNK_SIZE=4096   # 32K context window
 
-HS_EMBED_POINCARE_PROVIDER=local
-HS_EMBED_POINCARE_MODEL_PATH=./models/poincare.onnx
-HS_EMBED_POINCARE_TOKENIZER_PATH=./models/poincare-tokenizer.json
+# Poincaré via YAR Labs v5
+HS_EMBED_POINCARE_PROVIDER=huggingface
+HS_EMBED_POINCARE_HF_MODEL_ID=YARlabs/v5_Embedding_0.5B
 HS_EMBED_POINCARE_DIM=128
+```
 
-HF_TOKEN=hf_your_token_here  # for private/gated HF models
+Direct Search from SDK:
+```python
+# Server-side text-to-vector search (v3.0.0-rc.1)
+results = client.search_text("Find similar robotics docs", top_k=5)
 ```
 
 For details see [embeddings.md](docs/book/src/embeddings.md).

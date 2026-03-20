@@ -271,7 +271,7 @@ impl CollectionManager {
             (65, "lorentz") => inst!(65, LorentzMetric),
             (128, "lorentz") => inst!(128, LorentzMetric),
             (129, "lorentz") => inst!(129, LorentzMetric),
-            
+
             _ => {
                 return Err(format!(
                     "Unsupported configuration: dim={}, metric={}",
