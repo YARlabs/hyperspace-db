@@ -26,7 +26,13 @@ class HyperspacePlugin(DatabasePlugin):
         target_vecs = ctx.doc_vecs_hyp if use_hyp else ctx.doc_vecs_euc
         target_q_vecs = ctx.q_vecs_hyp if use_hyp else ctx.q_vecs_euc
         target_dim = ctx.cfg.dim_hyp if use_hyp else ctx.cfg.dim_base
-        geom_name = "Poincaré" if use_hyp else "Euclidean"
+        
+        if mode == "poincare":
+            geom_name = "Poincaré"
+        elif mode == "lorentz":
+            geom_name = "Lorentz"
+        else:
+            geom_name = "Euclidean"
 
         if target_vecs is None or target_q_vecs is None:
             return Result("Hyperspace", target_dim, geom_name, mode.capitalize(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", "Error: missing vectors")

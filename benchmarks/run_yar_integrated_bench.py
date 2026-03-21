@@ -22,16 +22,30 @@ def load_cached_vectors(cache_dir, model_name, dtype='float32'):
     
     dim = 129 if model_name == "yar" else 1024
     
-    # Load raw
-    q_vecs = np.fromfile(q_path, dtype=dtype).reshape(-1, dim).astype(np.float64)
-    p_vecs = np.fromfile(p_path, dtype=dtype).reshape(-1, dim).astype(np.float64)
+    # Load raw binary data
+    try:
+        q_vecs = np.fromfile(q_path, dtype=dtype).reshape(-1, dim).astype(np.float64)
+        p_vecs = np.fromfile(p_path, dtype=dtype).reshape(-1, dim).astype(np.float64)
+    except Exception as e:
+        print(f"⚠️ Error loading binary vectors: {e}. Ensure cache exists at {cache_dir}")
+        raise
     
     # FORCED STERILIZATION: Remove any non-finite values before they touch the math engine
-    q_vecs = np.nan_to_num(q_vecs, nan=0.0, posinf=0.0, neginf=0.0)
-    p_vecs = np.nan_to_num(p_vecs, nan=0.0, posinf=0.0, neginf=0.0)
+    q_vecs = np.nan_to_num(q_vecs, nan=0.0, posinf=1e6, neginf=-1e6)
+    p_vecs = np.nan_to_num(p_vecs, nan=0.0, posinf=1e6, neginf=-1e6)
     
-    # Pre-normalize Qwen for Cosine to match legacy exactly
-    if model_name == "qwen":
+    if model_name == "yar":
+        # RE-NORMALIZE LORENTZ: Ensure absolute precision for hyperboloid constraint (-t^2 + |x|^2 = -1)
+        # Server-side check is strict, so we re-calculate t = sqrt(1 + |x|^2)
+        def lorentz_fix(v):
+            spatial = v[:, 1:]
+            sq_norms = np.sum(spatial**2, axis=1)
+            v[:, 0] = np.sqrt(1.0 + sq_norms)
+            return v
+        q_vecs = lorentz_fix(q_vecs)
+        p_vecs = lorentz_fix(p_vecs)
+    elif model_name == "qwen":
+        # Pre-normalize Qwen for Cosine to match legacy exactly
         norms = np.linalg.norm(p_vecs, axis=1, keepdims=True)
         norms[norms < 1e-12] = 1.0
         p_vecs = p_vecs / norms
@@ -39,22 +53,24 @@ def load_cached_vectors(cache_dir, model_name, dtype='float32'):
     return q_vecs, p_vecs
 
 def calculate_lorentz_gt(q_vecs, doc_vecs, doc_ids, k=10):
-    """Exact Lorentz nearest neighbor search with total silence and precision"""
+    """Exact Lorentz nearest neighbor search using Minkowski scalar product"""
     gt = []
-    # Already in f64 from loader, but ensure it here too
+    # Ensure double precision for Minkowski calc
     q_vecs = q_vecs.astype(np.float64)
     doc_vecs = doc_vecs.astype(np.float64)
     
-    # Lorentz search batching for speed and safety
     spatial_docs = doc_vecs[:, 1:]
     t_docs = doc_vecs[:, 0]
     
     for q in tqdm(q_vecs, desc="Brute-force GT (Lorentz)"):
-        # Minkowski IP formula: -q0*d0 + <q_x, d_x>
-        # Add tiny eps only if we had to handle arccosh (here we don't need it for ranking)
+        # Minkowski Inner Product: B(u, v) = -u0*v0 + <u_spatial, v_spatial>
+        # Distance d(u,v) = acosh(-B(u,v)). To minimize distance, MAXIMIZE B(u,v).
         minkowski_ip = (-q[0] * t_docs) + (spatial_docs @ q[1:])
         
-        # Ranking is stable here. Closest point = point with largest Minkowski IP.
+        # Stability fix: cap values to prevent numerical explosion during argpartition
+        minkowski_ip = np.nan_to_num(minkowski_ip, nan=-1e12, posinf=1e12, neginf=-1e12)
+        
+        # Select Top-K indices with largest IP
         top_idx = np.argpartition(-minkowski_ip, k - 1)[:k]
         top_idx = top_idx[np.argsort(-minkowski_ip[top_idx])]
         gt.append([str(doc_ids[idx]) for idx in top_idx])
@@ -112,9 +128,6 @@ def main():
     corpus_ids = [str(i) for i in range(actual_d)]
     test_query_ids = [str(i) for i in range(actual_q)]
 
-    q_vecs_poincare = q_vecs_yar[:, 1:]
-    doc_vecs_poincare = doc_vecs_yar[:, 1:]
-
     # 3. Build Config
     cfg = legacy.Config()
     cfg.dataset_name = "Cached_YAR_Comparison_MSMARCO"
@@ -123,7 +136,7 @@ def main():
     
     # 4. Brute-force GT Calculation
     print("\n🧮 Calculating Ground Truth...")
-    # Euclidean GT
+    # Euclidean/Cosine GT
     math_gt_euc = legacy.calculate_brute_force_gt(q_vecs_euc, doc_vecs_euc, corpus_ids, k=10, metric="cosine")
     
     # Real Lorentz GT
@@ -141,18 +154,23 @@ def main():
     common_ctx = BenchmarkContext(
         cfg=cfg, docs=[""]*actual_d, doc_ids=corpus_ids,
         test_queries=[""]*actual_q, test_query_ids=test_query_ids,
-        valid_qrels=valid_qrels_euc, # Defaults to Euclidean for baseline comparison
+        valid_qrels=valid_qrels_euc,
         doc_vecs_euc=doc_vecs_euc, q_vecs_euc=q_vecs_euc,
-        doc_vecs_hyp=doc_vecs_poincare, q_vecs_hyp=q_vecs_poincare,
-        math_gt_euc=math_gt_euc, math_gt_hyp=math_gt_lorentz # use Lorentz as Hyperbolic GT
+        doc_vecs_hyp=doc_vecs_yar, q_vecs_hyp=q_vecs_yar,
+        math_gt_euc=math_gt_euc, math_gt_hyp=math_gt_lorentz
     )
 
     for plugin in selected_plugins:
+        # Reset to Euc by default for all standard plugins
+        common_ctx.valid_qrels = valid_qrels_euc
+        
         try:
             if plugin.name != "hyper":
                 if not plugin.is_available(): continue
                 print(f"\n🚀 Running {plugin.name.upper()} [Euclidean] (Qwen-1024D)...")
                 cfg.HYPER_MODE = "euclidean"; cfg.dim_base = 1024
+                # Reset GT for non-hyper plugins
+                common_ctx.math_gt_euc = math_gt_euc
                 final_results.append(plugin.run(common_ctx))
             else:
                 if not plugin.is_available(): continue
@@ -160,24 +178,16 @@ def main():
                 # Mode A: Cosine (for Qwen)
                 print("\n🚀 Running Hyperspace [COSINE] (Qwen-1024D)...")
                 cfg.HYPER_MODE = "cosine"; cfg.dim_base = 1024
-                # use euc qrels for euc run
                 common_ctx.valid_qrels = valid_qrels_euc
+                common_ctx.math_gt_euc = math_gt_euc
                 final_results.append(plugin.run(common_ctx))
 
                 # Mode C: Lorentz
                 print("\n🚀 Running Hyperspace [LORENTZ] (YAR-129D)...")
                 cfg.HYPER_MODE = "lorentz"; cfg.dim_hyp = 129
-                # update qrels to lorentz for lorentz run
                 common_ctx.valid_qrels = valid_qrels_lorentz
-                
-                lorentz_ctx = BenchmarkContext(
-                    cfg=cfg, docs=common_ctx.docs, doc_ids=common_ctx.doc_ids,
-                    test_queries=common_ctx.test_queries, test_query_ids=common_ctx.test_query_ids,
-                    valid_qrels=valid_qrels_lorentz, doc_vecs_euc=doc_vecs_euc, q_vecs_euc=q_vecs_euc,
-                    doc_vecs_hyp=doc_vecs_yar, q_vecs_hyp=q_vecs_yar,
-                    math_gt_euc=math_gt_euc, math_gt_hyp=math_gt_lorentz
-                )
-                final_results.append(plugin.run(lorentz_ctx))
+                common_ctx.math_gt_hyp = math_gt_lorentz
+                final_results.append(plugin.run(common_ctx))
         except Exception as e:
             print(f"❌ Error in {plugin.name}: {e}")
 
