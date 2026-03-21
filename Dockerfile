@@ -9,8 +9,6 @@ RUN npm run build
 # === Stage 2: Rust Builder ===
 FROM rustlang/rust:nightly AS builder
 
-ARG TARGETPLATFORM
-
 # Install protobuf compiler
 RUN apt-get update && apt-get install -y protobuf-compiler cmake clang build-essential pkg-config
 
@@ -19,19 +17,15 @@ COPY . .
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Remove toolchain file to use the image's nightly toolchain
+# Remove toolchain file
 RUN rm -f rust-toolchain.toml
 
-# Build optimized release with platform-specific features:
-# - linux/amd64: native build with SIMD optimizations
-# - linux/arm64: standard build (QEMU emulation crashes with SIMD)
-RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
-      echo "Building for AMD64 with nightly-simd..." && \
-      cargo build --release --workspace --features nightly-simd; \
-    else \
-      echo "Building for ARM64 without SIMD (QEMU compatibility)..." && \
-      cargo build --release --workspace; \
-    fi
+# Build Release
+# WARNING: 'native' optimizes for the BUILD machine's CPU. 
+# If build & run machines differ significantly, this may cause crashes.
+# For public images, use '-C target-cpu=x86-64-v3' instead.
+ENV RUSTFLAGS="-C target-cpu=native"
+RUN cargo build --release --workspace --features nightly-simd
 
 # Strip binaries to reduce size
 RUN strip target/release/hyperspace-server

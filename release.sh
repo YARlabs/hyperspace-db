@@ -20,16 +20,7 @@ cargo test --workspace --release || { echo "❌ Tests failed!"; exit 1; }
 
 # 2. Build Release Binaries
 echo "🔨 Building Release Binaries..."
-# Build optimized release with SIMD for native platform.
-# Docker multi-arch build handles platform-specific features in Dockerfile.
-ARCH=$(uname -m)
-if [ "$ARCH" = "x86_64" ]; then
-    echo "Building for x86_64 with nightly-simd..."
-    cargo build --release --workspace --features nightly-simd
-else
-    echo "Building for $ARCH without SIMD (for Docker multi-arch compatibility)..."
-    cargo build --release --workspace
-fi
+cargo build --release -p hyperspace-server -p hyperspace-cli
 
 # Use target directory for staging (cleaner)
 STAGING_DIR="target/release_pkg"
@@ -44,8 +35,8 @@ echo "📦 Creating Release Archive: $ARCHIVE_NAME"
 tar -czf "$ARCHIVE_NAME" -C "$STAGING_DIR" .
 echo "✅ Archive created: $ARCHIVE_NAME"
 
-# 4. Docker Build & Push (ARM64 only - AMD64 requires x86_64 hardware)
-echo "🐳 Building & Pushing Docker Image (ARM64)..."
+# 4. Docker Build & Push (Multi-arch)
+echo "🐳 Building & Pushing Docker Image (amd64 & arm64)..."
 # Ensure builder exists
 if ! docker buildx inspect hyperspace-builder >/dev/null 2>&1; then
     docker buildx create --name hyperspace-builder --use
@@ -54,21 +45,12 @@ else
 fi
 
 if docker buildx version >/dev/null 2>&1; then
-    # Build ARM64 image only (native on Apple Silicon)
-    # Note: AMD64 build requires x86_64 hardware due to nightly-simd + QEMU incompatibility
-    # Use GitHub Actions or an x86_64 builder for AMD64 images.
-    echo "🔨 Building ARM64 image..."
-    docker buildx build --platform linux/arm64 \
+    docker buildx build --platform linux/amd64,linux/arm64 \
         -t glukhota/hyperspace-db:latest \
         -t glukhota/hyperspace-db:$VERSION \
         -t ghcr.io/yarlabs/hyperspace-db:latest \
         -t ghcr.io/yarlabs/hyperspace-db:$VERSION \
-        -f Dockerfile.arm64 \
         --push .
-
-    echo "⚠️  AMD64 image requires x86_64 hardware for nightly-simd support."
-    echo "⚠️  Use GitHub Actions or an x86_64 machine to build AMD64 image."
-    echo "⚠️  Run: docker buildx build --platform linux/amd64 -f Dockerfile.amd64 --push ."
 else
     echo "❌ docker buildx not found. Cannot push multi-arch."
     exit 1
