@@ -2084,7 +2084,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                         );
                         if let Ok(v) = OnnxVectorizer::new_from_hf(
                             &model_id,
-                            hf_token,
+                            hf_token.as_deref(),
                             dim,
                             metric,
                             &metric_upper,

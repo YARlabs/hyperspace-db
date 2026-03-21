@@ -8,7 +8,7 @@ tokio = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 hyperspace-proto = { workspace = true }
-hyperspace-core = { workspace = true, features = ["nightly-simd", "gpu-runtime"] }
+hyperspace-core = { workspace = true, features = ["gpu-runtime"] }
 hyperspace-index = { workspace = true }
 hyperspace-store = { workspace = true }
 tokio-stream = "0.1"
@@ -41,6 +41,7 @@ hyperspace-tiering = { workspace = true, optional = true }
 [features]
 default = ["embed"]
 embed = ["dep:hyperspace-embed"]
+nightly-simd = ["hyperspace-core/nightly-simd", "hyperspace-index/nightly-simd"]
 # S3 tiering: optional cloud storage for cold chunks.
 # Not compiled by default — edge devices get zero cloud dependencies.
 # Enable with: cargo build --features s3-tiering

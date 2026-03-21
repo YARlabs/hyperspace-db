@@ -67,6 +67,7 @@ class HyperspaceVectorStore(VectorStore):
         dimension: int = 1536,  # OpenAI default
         metric: str = "l2",
         enable_deduplication: bool = True,
+        use_server_side_embedding: bool = False,
         **kwargs: Any,
     ):
         """Initialize HyperspaceDB vector store.
@@ -100,6 +101,7 @@ class HyperspaceVectorStore(VectorStore):
         self.dimension = dimension
         self.metric = metric
         self.enable_deduplication = enable_deduplication
+        self.use_server_side_embedding = use_server_side_embedding
         
         # Create full SDK client
         self._client = HyperspaceClient(
@@ -166,15 +168,18 @@ class HyperspaceVectorStore(VectorStore):
         Returns:
             List of IDs for the added texts
         """
-        if self._embedding_function is None:
-            raise ValueError("embedding_function is required for add_texts")
+        if self._embedding_function is None and not self.use_server_side_embedding:
+            raise ValueError("embedding_function is required for add_texts when use_server_side_embedding is False")
         
         texts_list = list(texts)
         if not texts_list:
             return []
         
-        # Generate embeddings
-        embeddings = self._embedding_function.embed_documents(texts_list)
+        # Generate embeddings or let server handle it
+        if self.use_server_side_embedding:
+            embeddings_data = None
+        else:
+            embeddings_data = self._embedding_function.embed_documents(texts_list)
         
         # Prepare metadata
         if metadatas is None:
@@ -198,12 +203,21 @@ class HyperspaceVectorStore(VectorStore):
         
         # Insert batch vectors via Python SDK
         try:
-            self._client.batch_insert(
-                vectors=embeddings,
-                ids=ids,
-                metadatas=metadatas,
-                collection=self.collection_name,
-            )
+            if self.use_server_side_embedding:
+                for i, text in enumerate(texts_list):
+                    self._client.insert_text(
+                        id=ids[i],
+                        text=text,
+                        collection=self.collection_name,
+                        typed_metadata={str(k): str(v) for k, v in metadatas[i].items()}
+                    )
+            else:
+                self._client.batch_insert(
+                    vectors=embeddings_data,
+                    ids=ids,
+                    metadatas=metadatas,
+                    collection=self.collection_name,
+                )
             inserted_ids = [str(x) for x in ids]
         except Exception as e:
             logger.error(f"Failed to batch insert vectors: {e}")
@@ -247,11 +261,47 @@ class HyperspaceVectorStore(VectorStore):
             raise ValueError("embedding_function is required for search")
         
         # Generate query embedding
+        if self.use_server_side_embedding:
+            # Let the server handle it
+            return self._similarity_search_by_text(query, k=k, filter=filter, **kwargs)
+        
         query_embedding = self._embedding_function.embed_query(query)
         
         return self._similarity_search_with_score_by_vector(
             embedding=query_embedding, k=k, filter=filter, **kwargs
         )
+
+    def _similarity_search_by_text(
+        self,
+        query: str,
+        k: int = 4,
+        filter: Optional[dict] = None,
+        **kwargs: Any,
+    ) -> List[Tuple[Document, float]]:
+        """Search for similar documents using server-side embedding."""
+        logger.debug(f"Searching {self.collection_name} via text for query with k={k}")
+        try:
+            hits = self._client.search_text(
+                text=query,
+                top_k=k,
+                collection=self.collection_name,
+            )
+            return self._parse_hits(hits)
+        except Exception as e:
+            logger.error(f"Failed to search by text: {e}")
+            return []
+
+    def _parse_hits(self, hits: List[Any]) -> List[Tuple[Document, float]]:
+        results = []
+        for hit in hits:
+            # the result hit assumes dictionary format: {"id": ID, "distance": dist, "metadata": {...}}
+            metadata = getattr(hit, "metadata", {}) if not isinstance(hit, dict) else hit.get("metadata", {})
+            distance = getattr(hit, "distance", 0.0) if not isinstance(hit, dict) else hit.get("distance", 0.0)
+            text = metadata.pop("text", "")
+            
+            doc = Document(page_content=text, metadata=metadata)
+            results.append((doc, distance))
+        return results
 
     def _similarity_search_with_score_by_vector(
         self,
@@ -270,17 +320,8 @@ class HyperspaceVectorStore(VectorStore):
                 collection=self.collection_name,
             )
             
-            results = []
-            for hit in hits:
-                # the result hit assumes dictionary format: {"id": ID, "distance": dist, "metadata": {...}}
-                metadata = getattr(hit, "metadata", {}) if not isinstance(hit, dict) else hit.get("metadata", {})
-                distance = getattr(hit, "distance", 0.0) if not isinstance(hit, dict) else hit.get("distance", 0.0)
-                text = metadata.pop("text", "")
-                
-                doc = Document(page_content=text, metadata=metadata)
-                results.append((doc, distance))
-                
-            logger.info(f"Found {len(results)} results for query")
+            results = self._parse_hits(hits)
+            logger.info(f"Found {len(results)} results for vector query")
             return results
         except Exception as e:
             logger.error(f"Failed to search: {e}")

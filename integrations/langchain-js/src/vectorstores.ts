@@ -8,19 +8,25 @@ export interface HyperspaceStoreArgs {
     client: HyperspaceClient;
     collectionName?: string;
     enableDeduplication?: boolean;
+    /**
+     * If true, server will handle embedding (via insertText/searchText).
+     * @default false
+     */
+    useServerSideEmbedding?: boolean;
 }
 
 export class HyperspaceStore extends VectorStore {
-    declare FilterType: object;
     private client: HyperspaceClient;
     private collectionName: string;
     private enableDeduplication: boolean;
+    private useServerSideEmbedding: boolean;
 
     constructor(embeddings: Embeddings, args: HyperspaceStoreArgs) {
         super(embeddings, args);
         this.client = args.client;
         this.collectionName = args.collectionName ?? "default";
         this.enableDeduplication = args.enableDeduplication ?? true;
+        this.useServerSideEmbedding = args.useServerSideEmbedding ?? false;
     }
 
     _vectorstoreType(): string {
@@ -28,6 +34,23 @@ export class HyperspaceStore extends VectorStore {
     }
 
     async addDocuments(documents: Document[]): Promise<string[]> {
+        if (this.useServerSideEmbedding) {
+            const resultIds: string[] = [];
+            for (const doc of documents) {
+                const idNum = this.computeContentHash(doc.pageContent);
+                const metadata = { ...doc.metadata, text: doc.pageContent };
+                
+                const typed_metadata: Record<string, string> = {};
+                for (const [key, value] of Object.entries(metadata)) {
+                    typed_metadata[key] = String(value);
+                }
+
+                await this.client.insertText(idNum, doc.pageContent, typed_metadata, this.collectionName);
+                resultIds.push(idNum.toString());
+            }
+            return resultIds;
+        }
+
         const texts = documents.map(({ pageContent }) => pageContent);
         return this.addVectors(
             await this.embeddings.embedDocuments(texts),
@@ -101,17 +124,29 @@ export class HyperspaceStore extends VectorStore {
         k: number,
         filter?: this["FilterType"]
     ): Promise<[Document, number][]> {
+        // This is only called when useServerSideEmbedding is false or via low-level
         const results = await this.client.search(query, k, this.collectionName);
+        return this.resultsToDocuments(results);
+    }
 
-        const output: [Document, number][] = results.map((r: any) => {
-            // r is { id, distance, metadata } which we added in SDK
-            // @ts-ignore - metadata is added in our modified SDK
+    async similaritySearch(
+        query: string,
+        k: number,
+        filter?: this["FilterType"]
+    ): Promise<Document[]> {
+        if (this.useServerSideEmbedding) {
+            const results = await this.client.searchText(query, k, this.collectionName);
+            const docsWithScore = this.resultsToDocuments(results);
+            return docsWithScore.map(([doc]) => doc);
+        }
+        return super.similaritySearch(query, k, filter);
+    }
+
+    private resultsToDocuments(results: any[]): [Document, number][] {
+        return results.map((r: any) => {
             const metadata = r.metadata || {};
             const text = metadata["text"] || "";
-            // Remove text from metadata to avoid duplication
             const docMeta = { ...metadata };
-            // delete docMeta["text"]; // Optional: keep it or remove it
-
             return [
                 new Document({
                     pageContent: text,
@@ -120,8 +155,6 @@ export class HyperspaceStore extends VectorStore {
                 r.distance
             ];
         });
-
-        return output;
     }
 
     private computeContentHash(text: string): number {

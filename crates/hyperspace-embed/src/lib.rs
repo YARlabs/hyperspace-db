@@ -33,6 +33,7 @@ pub struct ChunkingConfig {
 impl ChunkingConfig {
     /// Load from env vars for a specific metric
     /// Returns None if chunking is not configured
+    #[must_use]
     pub fn from_env(metric: &str) -> Option<Self> {
         let chunk_size_key = format!("HS_EMBED_{}_CHUNK_SIZE", metric.to_uppercase());
         let overlap_key = format!("HS_EMBED_{}_OVERLAP", metric.to_uppercase());
@@ -94,6 +95,7 @@ pub struct MultiVectorizer {
 }
 
 impl MultiVectorizer {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             models: HashMap::new(),
@@ -112,6 +114,10 @@ impl MultiVectorizer {
         self.models.insert(metric.to_string(), vectorizer);
     }
 
+    /// Vectorizes text using a specific metric (routes to the correct internal model).
+    ///
+    /// # Errors
+    /// Returns an error if no vectorizer is available or if vectorization fails.
     pub async fn vectorize_for(&self, texts: Vec<String>, metric: &str) -> Result<Vec<Vec<f64>>> {
         let metric_key = match metric.to_lowercase().as_str() {
             "l2" | "euclidean" => "l2",
@@ -172,9 +178,7 @@ impl OnnxVectorizer {
             .with_intra_threads(4)
             .map_err(|e| anyhow::anyhow!("Ort thread configuration failure: {e}"))?
             .commit_from_file(model_path)
-            .map_err(|e| {
-                anyhow::anyhow!("Ort session commit failed for path {}: {}", model_path, e)
-            })?;
+            .map_err(|e| anyhow::anyhow!("Ort session commit failed for path {model_path}: {e}"))?;
 
         // Load chunking config from env (model-agnostic)
         let chunking_config = ChunkingConfig::from_env(metric_name);
@@ -194,7 +198,7 @@ impl OnnxVectorizer {
     /// Returns error if API key is invalid, model download fails, or model parsing fails.
     pub fn new_from_hf(
         model_id: &str,
-        hf_token: Option<String>,
+        hf_token: Option<&str>,
         dimension: usize,
         metric: Metric,
         metric_name: &str, // For env var lookup (e.g., "L2", "COSINE", "LORENTZ", "POINCARE")
@@ -206,17 +210,18 @@ impl OnnxVectorizer {
         // 1. Setup HF hub with progress disabled but cache enabled
         let mut builder = ApiBuilder::new().with_progress(false); // Disable progress bar for cleaner logs
 
-        if let Some(token) = hf_token.clone() {
+        if let Some(token) = hf_token {
             if !token.is_empty() {
-                builder = builder.with_token(Some(token));
+                builder = builder.with_token(Some(token.to_string()));
             }
         }
 
         // 2. Get cache directory for logging
         let cache_dir = PathBuf::from(std::env::var("HF_HOME").unwrap_or_else(|_| {
-            std::env::var("HOME")
-                .map(|h| format!("{}/.cache/huggingface", h))
-                .unwrap_or_else(|_| "./.hf_cache".to_string())
+            std::env::var("HOME").map_or_else(
+                |_| "./.hf_cache".to_string(),
+                |h| format!("{h}/.cache/huggingface"),
+            )
         }));
         let model_path_cached = cache_dir.join("hub").join(model_id.replace('/', "--"));
         let model_onnx_path = model_path_cached.join("model.onnx");
@@ -242,27 +247,24 @@ impl OnnxVectorizer {
 
         // 5. Download/load model (hf_hub handles caching automatically)
         let api = builder.build().map_err(|e| {
-            eprintln!("❌ HF API error for {}: {}", model_id, e);
+            eprintln!("❌ HF API error for {model_id}: {e}");
             anyhow::anyhow!("HF API error: {e}")
         })?;
         let repo: ApiRepo = api.model(model_id.to_string());
 
         let filename = model_file.unwrap_or_else(|| "model.onnx".to_string());
         let model_path = repo.get(&filename).map_err(|e| {
-            eprintln!("❌ Failed to download {} for {}: {}", filename, model_id, e);
-            anyhow::anyhow!("Failed to download {}: {e}", filename)
+            eprintln!("❌ Failed to download {filename} for {model_id}: {e}");
+            anyhow::anyhow!("Failed to download {filename}: {e}")
         })?;
 
         // Try to download external data for large models (.onnx.data or .onnx_data)
         for suffix in &[".data", "_data"] {
-            let data_filename = format!("{}{}", filename, suffix);
+            let data_filename = format!("{filename}{suffix}");
             let _ = repo.get(&data_filename);
         }
         let tokenizer_path = repo.get("tokenizer.json").map_err(|e| {
-            eprintln!(
-                "❌ Failed to download tokenizer.json for {}: {}",
-                model_id, e
-            );
+            eprintln!("❌ Failed to download tokenizer.json for {model_id}: {e}");
             anyhow::anyhow!("Failed to download tokenizer.json: {e}")
         })?;
 
@@ -273,14 +275,14 @@ impl OnnxVectorizer {
                 .ok_or_else(|| anyhow::anyhow!("Invalid tokenizer path"))?,
         )
         .map_err(|e| {
-            eprintln!("❌ Failed to parse tokenizer.json for {}: {}", model_id, e);
+            eprintln!("❌ Failed to parse tokenizer.json for {model_id}: {e}");
             anyhow::anyhow!("Failed to load tokenizer: {e}")
         })?;
 
         // 7. Load session
         let session = Session::builder()
             .map_err(|e| {
-                eprintln!("❌ Ort session builder failed: {}", e);
+                eprintln!("❌ Ort session builder failed: {e}");
                 anyhow::anyhow!("Ort session builder failed: {e}")
             })?
             .with_optimization_level(GraphOptimizationLevel::Level3)
@@ -294,8 +296,8 @@ impl OnnxVectorizer {
             )
             .map_err(|e| {
                 eprintln!(
-                    "❌ Ort session commit failed for {} path {:?}: {}",
-                    model_id, model_path, e
+                    "❌ Ort session commit failed for {model_id} path {}: {e}",
+                    model_path.display()
                 );
                 anyhow::anyhow!("Ort session commit failed: {e}")
             })?;
@@ -304,21 +306,18 @@ impl OnnxVectorizer {
         let chunking_config = ChunkingConfig::from_env(metric_name);
 
         // 9. Log activation
-        let chunk_info = chunking_config
-            .as_ref()
-            .map(|c| {
+        let chunk_info = chunking_config.as_ref().map_or_else(
+            || "no chunking".to_string(),
+            |c| {
                 format!(
                     "chunk={} tokens, overlap={:.0}%",
                     c.chunk_size,
                     c.overlap * 100.0
                 )
-            })
-            .unwrap_or_else(|| "no chunking".to_string());
-
-        eprintln!(
-            "🚀 Model activated: {} ({}d, {}, metric={:?})",
-            model_id, dimension, chunk_info, metric
+            },
         );
+
+        eprintln!("🚀 Model activated: {model_id} ({dimension}d, {chunk_info}, metric={metric:?})");
 
         Ok(Self {
             tokenizer,
@@ -414,6 +413,11 @@ impl OnnxVectorizer {
     fn split_into_chunks(text: &str, config: &ChunkingConfig) -> Vec<String> {
         let words: Vec<&str> = text.split_whitespace().collect();
         let chunk_size = config.chunk_size;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
         let overlap_size = (chunk_size as f64 * config.overlap) as usize;
         let step_size = chunk_size.saturating_sub(overlap_size);
 
@@ -441,7 +445,7 @@ impl OnnxVectorizer {
     }
 
     /// Aggregate chunk embeddings via mean pooling
-    fn aggregate_embeddings(chunk_embeddings: Vec<Vec<f64>>) -> Vec<f64> {
+    fn aggregate_embeddings(chunk_embeddings: &[Vec<f64>]) -> Vec<f64> {
         if chunk_embeddings.is_empty() {
             return vec![];
         }
@@ -449,12 +453,13 @@ impl OnnxVectorizer {
         let dim = chunk_embeddings[0].len();
         let mut aggregated = vec![0.0; dim];
 
-        for emb in &chunk_embeddings {
+        for emb in chunk_embeddings {
             for (i, &v) in emb.iter().enumerate() {
                 aggregated[i] += v;
             }
         }
 
+        #[allow(clippy::cast_precision_loss)]
         let count = chunk_embeddings.len() as f64;
         for v in &mut aggregated {
             *v /= count;
@@ -534,7 +539,7 @@ impl Vectorizer for OnnxVectorizer {
 
             for chunk_batch in all_chunks.chunks(batch_size) {
                 let chunk_texts: Vec<String> = chunk_batch.iter().map(|(_, c)| c.clone()).collect();
-                let embeddings = self.vectorize_direct(chunk_texts).await?;
+                let embeddings = self.vectorize_direct(&chunk_texts)?;
 
                 for ((text_idx, _), embedding) in chunk_batch.iter().zip(embeddings) {
                     chunk_embeddings[*text_idx].push(embedding);
@@ -548,7 +553,7 @@ impl Vectorizer for OnnxVectorizer {
                     if chunks.is_empty() {
                         vec![0.0; self.dimension]
                     } else {
-                        OnnxVectorizer::aggregate_embeddings(chunks)
+                        OnnxVectorizer::aggregate_embeddings(&chunks)
                     }
                 })
                 .collect();
@@ -557,21 +562,21 @@ impl Vectorizer for OnnxVectorizer {
         }
 
         // No chunking - direct vectorization
-        self.vectorize_direct(texts).await
+        self.vectorize_direct(&texts)
     }
 }
 
 impl OnnxVectorizer {
     /// Direct vectorization without chunking (internal helper)
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    async fn vectorize_direct(&self, texts: Vec<String>) -> Result<Vec<Vec<f64>>> {
+    fn vectorize_direct(&self, texts: &[String]) -> Result<Vec<Vec<f64>>> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
 
         let encoding = self
             .tokenizer
-            .encode_batch(texts.clone(), true)
+            .encode_batch(texts.to_owned(), true)
             .map_err(|e| anyhow::anyhow!("Tokenization failed: {e}"))?;
 
         let batch_size = encoding.len();
@@ -617,6 +622,7 @@ impl OnnxVectorizer {
                     ));
                 }
                 "position_ids" => {
+                    #[allow(clippy::cast_possible_wrap)]
                     let position_ids_arr =
                         Array::from_shape_fn((batch_size, seq_len), |(_, c)| c as i64);
                     inputs.push((
@@ -629,7 +635,7 @@ impl OnnxVectorizer {
                         let mut final_shape = Vec::new();
                         // Generic dimension extraction from debug print or direct parse
                         for (i, dim) in shape.iter().enumerate() {
-                            let dim_str = format!("{:?}", dim);
+                            let dim_str = format!("{dim:?}");
 
                             // 1. Try direct parse (e.g. "8", "128")
                             if let Ok(n) = dim_str.parse::<usize>() {
@@ -639,7 +645,7 @@ impl OnnxVectorizer {
                             else if dim_str.contains("Fixed") || dim_str.contains("Some(") {
                                 let n = dim_str
                                     .chars()
-                                    .filter(|c| c.is_ascii_digit())
+                                    .filter(char::is_ascii_digit)
                                     .collect::<String>()
                                     .parse::<usize>()
                                     .unwrap_or(0);
@@ -676,6 +682,7 @@ impl OnnxVectorizer {
         data: &[f32],
         attention_mask: &Array2<i64>,
     ) -> Result<Vec<Vec<f64>>> {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let shape_usize: Vec<usize> = shape.iter().map(|&x| x as usize).collect();
         let embeddings_tensor = ArrayViewD::from_shape(shape_usize, data)
             .map_err(|e| anyhow::anyhow!("Failed to create view from tensor: {e}"))?;

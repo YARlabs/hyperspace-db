@@ -1663,18 +1663,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn queue_size(&self) -> u64 {
-        let hnsw_queue = self.config.get_queue_size();
-
-        // Performance Mode: Only report HNSW indexing queue
-        // Tiered Mode: Include WAL pending and flushing queues for full picture
-        match self.storage_mode {
-            StorageMode::Performance => hnsw_queue,
-            StorageMode::Tiered => {
-                let wal_queue = self.wal_pending_count.load(Ordering::Relaxed);
-                let flushing_queue = self.flushing_vector_count.load(Ordering::Relaxed) as u64;
-                hnsw_queue + wal_queue + flushing_queue
-            }
-        }
+        // Return only the active indexing queue size.
+        // WAL pending and flushing counts are internal LSM state and don't
+        // necessarily indicate "pending indexing" from a user/search perspective.
+        self.config.get_queue_size()
     }
 
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {

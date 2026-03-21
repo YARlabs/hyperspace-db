@@ -11,11 +11,11 @@ pub struct TieringConfig {
     pub bucket: String,
     /// AWS region (e.g. "us-east-1")
     pub region: String,
-    /// S3 endpoint override (for MinIO / localstack)
+    /// S3 endpoint override (for `MinIO` / localstack)
     pub endpoint: Option<String>,
-    /// AWS access key (or MinIO user)
+    /// AWS access key (or `MinIO` user)
     pub access_key: Option<String>,
-    /// AWS secret key (or MinIO password)
+    /// AWS secret key (or `MinIO` password)
     pub secret_key: Option<String>,
     /// Object key prefix inside the bucket (e.g. "v1/chunks")
     pub prefix: String,

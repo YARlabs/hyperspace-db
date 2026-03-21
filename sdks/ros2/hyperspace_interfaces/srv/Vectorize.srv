@@ -1,0 +1,5 @@
+string text
+string metric
+---
+float64[] vector
+bool success

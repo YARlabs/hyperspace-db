@@ -9,7 +9,11 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/SearchResult.msg"
   "srv/NavigateToAttractor.srv"
+  "srv/InsertText.srv"
+  "srv/SearchText.srv"
+  "srv/Vectorize.srv"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

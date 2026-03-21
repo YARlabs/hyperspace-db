@@ -41,12 +41,24 @@ async function main() {
     }
 
     // 2. Initialize VectorStore
-    const embeddings = new FakeEmbeddings(1024);
-    const vectorStore = new HyperspaceStore(embeddings, {
+    // OPTION A: Conventional client-side embedding (using FakeEmbeddings)
+    const clientSideEmbeddings = new FakeEmbeddings(1024);
+    
+    // OPTION B: Server-side embedding (New in v3.0.0)
+    const useServerSide = true; // Set to true to use server's built-in models (Qwen3/YAR)
+
+    const vectorStore = new HyperspaceStore(clientSideEmbeddings, {
         client,
         collectionName,
-        enableDeduplication: true
+        enableDeduplication: true,
+        useServerSideEmbedding: useServerSide
     });
+
+    if (useServerSide) {
+        console.log("☁️ Using Server-Side Embedding Pipeline (Built-in Qwen3/YAR)");
+    } else {
+        console.log("💻 Using Client-Side Embedding (Local Model)");
+    }
 
     // 3. Ingest Data
     console.log("📥 Ingesting notes...");

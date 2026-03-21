@@ -68,7 +68,7 @@ npm run tauri build
 - [x] PDF text extraction
 - [x] Local storage (~/.hivemind)
 - [x] Basic UI dashboard
-- [ ] Actual embedding (currently uses dummy vectors)
+- [x] Actual embedding (via Server-Side Pipeline)
 - [ ] Search UI
 - [ ] Cloud sync
 - [ ] Knowledge graph visualization

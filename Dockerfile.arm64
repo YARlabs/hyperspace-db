@@ -6,10 +6,8 @@ RUN npm install
 COPY dashboard/ .
 RUN npm run build
 
-# === Stage 2: Rust Builder ===
+# === Stage 2: Rust Builder (ARM64 without SIMD for QEMU compatibility) ===
 FROM rustlang/rust:nightly AS builder
-
-ARG TARGETPLATFORM
 
 # Install protobuf compiler
 RUN apt-get update && apt-get install -y protobuf-compiler cmake clang build-essential pkg-config
@@ -22,16 +20,8 @@ COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 # Remove toolchain file to use the image's nightly toolchain
 RUN rm -f rust-toolchain.toml
 
-# Build optimized release with platform-specific features:
-# - linux/amd64: native build with SIMD optimizations
-# - linux/arm64: standard build (QEMU emulation crashes with SIMD)
-RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
-      echo "Building for AMD64 with nightly-simd..." && \
-      cargo build --release --workspace --features nightly-simd; \
-    else \
-      echo "Building for ARM64 without SIMD (QEMU compatibility)..." && \
-      cargo build --release --workspace; \
-    fi
+# Build optimized release without SIMD for ARM64 (QEMU compatibility)
+RUN cargo build --release --workspace
 
 # Strip binaries to reduce size
 RUN strip target/release/hyperspace-server

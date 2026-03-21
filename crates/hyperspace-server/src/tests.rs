@@ -120,6 +120,7 @@ async fn test_delta_sync() {
     // With scalar quantization, f64→i8→f64 introduces precision loss that
     // causes hash mismatches between original insert and peek-reconstructed vectors.
     env::set_var("HS_QUANTIZATION_LEVEL", "none");
+    env::set_var("HS_GOSSIP_ENABLED", "true");
 
     let (tx_a, _) = broadcast::channel(100);
     let (tx_b, _) = broadcast::channel(100);

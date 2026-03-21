@@ -28,12 +28,14 @@ data/
 *.snap
 
 # Python
-__pycache__/
+**/venv/
+**/.venv/
+**/__pycache__/
 *.py[cod]
 *$py.class
-.Python
-venv/
-.venv/
+
+# Benchmarks
+benchmarks/
 
 # Node
 node_modules/

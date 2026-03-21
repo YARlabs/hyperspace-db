@@ -1,0 +1,5 @@
+string query
+uint32 top_k
+string collection
+---
+SearchResult[] results

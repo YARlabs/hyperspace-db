@@ -207,7 +207,8 @@ pub fn frechet_mean(
 // ==========================================
 
 /// Computes the Minkowski inner product (Lorentz product) between two vectors.
-/// ⟨u, v⟩_L = -u_0 * v_0 + Σ(u_i * v_i)
+/// ⟨u, v⟩_L = -`u_0` * `v_0` + `Σ(u_i` * `v_i`)
+#[must_use]
 pub fn lorentz_product(u: &[f32], v: &[f32]) -> f32 {
     if u.is_empty() || v.is_empty() {
         return 0.0;
@@ -220,6 +221,7 @@ pub fn lorentz_product(u: &[f32], v: &[f32]) -> f32 {
 }
 
 /// Computes the Lorentz distance between two points on the hyperboloid.
+#[must_use]
 pub fn lorentz_dist(u: &[f32], v: &[f32]) -> f32 {
     let inner = -lorentz_product(u, v);
     // Clamp to 1.0 to avoid NaN in acosh due to floating point inaccuracies
@@ -255,6 +257,7 @@ pub fn lorentz_parallel_transport(x: &[f32], y: &[f32], v: &[f32]) -> Result<Vec
 }
 
 /// Converts a point from the Lorentz model (Hyperboloid) to the Poincaré Ball model.
+#[must_use]
 pub fn lorentz_to_poincare(x: &[f32]) -> Vec<f32> {
     if x.is_empty() {
         return vec![];
@@ -267,6 +270,7 @@ pub fn lorentz_to_poincare(x: &[f32]) -> Vec<f32> {
 }
 
 /// Converts a point from the Poincaré Ball model to the Lorentz model (Hyperboloid).
+#[must_use]
 pub fn poincare_to_lorentz(p: &[f32]) -> Vec<f32> {
     let p_sq: f32 = p.iter().map(|v| v * v).sum();
     let denom = 1.0 - p_sq;

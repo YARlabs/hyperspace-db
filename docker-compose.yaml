@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   hyperspace:
     # Build from source using new optimized Dockerfile
