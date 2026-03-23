@@ -26,8 +26,11 @@ public:
     bool CreateCollection(const std::string& name, int dimension, const std::string& metric = "cosine");
     bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "");
     bool InsertText(uint32_t id, const std::string& text, const std::string& collection = "");
+    bool Delete(uint32_t id, const std::string& collection = "");
+    bool BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection = "");
     std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
     std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "");
+    std::vector<std::vector<SearchResult>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
     std::vector<SearchResult> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "");
     
     // Sync API signatures

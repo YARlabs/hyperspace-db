@@ -1,0 +1,14 @@
+{
+  "name": "llamaindex-hyperspace",
+  "version": "3.0.0",
+  "description": "LlamaIndex integration for HyperspaceDB",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "hyperspace-sdk-ts": "latest",
+    "llamaindex": "^0.1.0"
+  },
+  "scripts": {
+    "build": "tsc"
+  }
+}

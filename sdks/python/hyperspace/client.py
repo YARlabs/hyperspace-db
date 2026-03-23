@@ -147,6 +147,18 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
+    def delete(self, id: int, collection: str = "") -> bool:
+        req = hyperspace_pb2.DeleteRequest(
+            id=id,
+            collection=collection
+        )
+        try:
+            resp = self.stub.Delete(req, metadata=self.metadata)
+            return resp.success
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
+            return False
+
     def vectorize(self, text: str, metric: str = "l2") -> List[float]:
         req = hyperspace_pb2.VectorizeRequest(text=text, metric=metric)
         try:
@@ -635,3 +647,48 @@ class HyperspaceClient:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+def analyze_delta_hyperbolicity(vectors: List[List[float]], num_samples: int = 1000) -> (float, str):
+    """
+    Computes Gromov's delta-hyperbolicity of a dataset.
+    A metric space is delta-hyperbolic if for any 4 points x,y,u,v:
+    d(x,y) + d(u,v) <= max(d(x,u)+d(y,v), d(x,v)+d(y,u)) + 2*delta
+    """
+    import random
+    import math
+
+    if len(vectors) < 4:
+        return 0.0, "euclidean"
+
+    def l2_dist(a, b):
+        return math.sqrt(sum((ax - bx) ** 2 for ax, bx in zip(a, b)))
+
+    max_delta = 0.0
+    for _ in range(num_samples):
+        i, j, k, l = random.sample(range(len(vectors)), 4)
+        
+        d_ij = l2_dist(vectors[i], vectors[j])
+        d_kl = l2_dist(vectors[k], vectors[l])
+        
+        d_ik = l2_dist(vectors[i], vectors[k])
+        d_jl = l2_dist(vectors[j], vectors[l])
+        
+        d_il = l2_dist(vectors[i], vectors[l])
+        d_jk = l2_dist(vectors[j], vectors[k])
+        
+        s1 = d_ij + d_kl
+        s2 = d_ik + d_jl
+        s3 = d_il + d_jk
+        
+        sums = sorted([s1, s2, s3], reverse=True)
+        delta = (sums[0] - sums[1]) / 2.0
+        if delta > max_delta:
+            max_delta = delta
+
+    # Recommendation heuristic
+    if max_delta < 0.15:
+        return max_delta, "lorentz"
+    elif max_delta < 0.30:
+        return max_delta, "poincare"
+    else:
+        return max_delta, "l2"

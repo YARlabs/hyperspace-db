@@ -1,5 +1,6 @@
 syntax = "proto3";
 package hyperspace;
+option go_package = "github.com/yarlabs/hyperspace-sdk-go/proto";
 
 service Database {
   // Collection Management
@@ -10,32 +11,87 @@ service Database {
 
   // Insert vectors
   rpc Insert (InsertRequest) returns (InsertResponse);
+  rpc BatchInsert (BatchInsertRequest) returns (InsertResponse);
+  rpc InsertText (InsertTextRequest) returns (InsertResponse);
+  rpc Vectorize (VectorizeRequest) returns (VectorizeResponse);
+  rpc SearchText (SearchTextRequest) returns (SearchResponse);
+
   // Delete vectors
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   // Search (ANN)
   rpc Search (SearchRequest) returns (SearchResponse);
+  // Batch Search (ANN)
+  rpc SearchBatch (BatchSearchRequest) returns (BatchSearchResponse);
+  // Multi-Geometry Search (v3.0)
+  rpc SearchMultiCollection (SearchMultiCollectionRequest) returns (SearchMultiCollectionResponse);
+  // Graph Traversal API (v2.3)
+  rpc GetNode (GetNodeRequest) returns (GraphNode);
+  rpc GetNeighbors (GetNeighborsRequest) returns (GetNeighborsResponse);
+  rpc GetConceptParents (GetConceptParentsRequest) returns (GetConceptParentsResponse);
+  rpc Traverse (TraverseRequest) returns (TraverseResponse);
+  rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClustersResponse);
   // Stream statistics for TUI (Global or Collection tailored)
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
   
   // Admin Controls
   rpc TriggerSnapshot (Empty) returns (StatusResponse);
   rpc TriggerVacuum (Empty) returns (StatusResponse);
+  rpc TriggerReconsolidation (ReconsolidationRequest) returns (StatusResponse);
   
   // Dynamic Configuration
   rpc Configure (ConfigUpdate) returns (StatusResponse);
   
   // Replication (Leader -> Follower)
-  rpc Replicate (Empty) returns (stream ReplicationLog);
+  rpc Replicate (ReplicationRequest) returns (stream ReplicationLog);
+  // CDC/Event Stream (External subscribers)
+  rpc SubscribeToEvents (EventSubscriptionRequest) returns (stream EventMessage);
   rpc GetDigest (DigestRequest) returns (DigestResponse);
+  rpc RebuildIndex (RebuildIndexRequest) returns (StatusResponse);
+
+  // Delta Sync (Merkle Tree — Task 2.1)
+  // Step 1: Client sends its digest, server returns which buckets differ.
+  rpc SyncHandshake (SyncHandshakeRequest) returns (SyncHandshakeResponse);
+  // Step 2: Client requests vectors from specific buckets, server streams them.
+  rpc SyncPull (SyncPullRequest) returns (stream SyncVectorData);
+  // Step 3 (optional): Client pushes its unique vectors to the server.
+  rpc SyncPush (stream SyncVectorData) returns (SyncPushResponse);
+}
+
+message ReplicationRequest {
+  uint64 last_logical_clock = 1;
 }
 
 message ReplicationLog {
+  uint64 logical_clock = 1;
+  string origin_node_id = 2;
+  string collection = 3; 
+
+  oneof operation {
+    InsertOp insert = 4;
+    CreateCollectionOp create_collection = 5;
+    DeleteCollectionOp delete_collection = 6;
+    DeleteOp delete = 7;
+  }
+}
+
+message InsertOp {
   uint32 id = 1;
   repeated double vector = 2;
   map<string, string> metadata = 3;
-  string collection = 4;
-  string origin_node_id = 5;
-  uint64 logical_clock = 6;
+  map<string, MetadataValue> typed_metadata = 4;
+}
+
+message CreateCollectionOp {
+  uint32 dimension = 1;
+  string metric = 2;
+}
+
+message DeleteCollectionOp {
+  // name is in outer message
+}
+
+message DeleteOp {
+  uint32 id = 1;
 }
 
 message QuantizationConfig {
@@ -69,12 +125,38 @@ message CollectionStatsResponse {
   uint64 count = 1;
   uint32 dimension = 2;
   string metric = 3;
+  uint64 indexing_queue = 4;
+}
+
+message RebuildIndexRequest {
+  string name = 1;
+  optional VacuumFilterQuery filter_query = 2;
 }
 
 message ConfigUpdate {
   string collection = 1; 
   optional uint32 ef_search = 2;
   optional uint32 ef_construction = 3;
+}
+
+message VacuumFilterQuery {
+  string key = 1;
+  string op = 2; // "lt" | "lte" | "gt" | "eq" | "ne"
+  double value = 3;
+}
+
+message ReconsolidationRequest {
+  string collection = 1;
+  repeated double target_vector = 2;
+  double learning_rate = 3;
+}
+
+
+enum DurabilityLevel {
+  DEFAULT_LEVEL = 0;
+  ASYNC = 1;
+  BATCH = 2;
+  STRICT = 3;
 }
 
 message InsertRequest {
@@ -86,7 +168,51 @@ message InsertRequest {
   // Replication fields
   string origin_node_id = 5;
   uint64 logical_clock = 6;
+
+  DurabilityLevel durability = 7;
+  map<string, MetadataValue> typed_metadata = 8;
 }
+
+message VectorData {
+  repeated double vector = 1;
+  uint32 id = 2;
+  map<string, string> metadata = 3;
+  map<string, MetadataValue> typed_metadata = 4;
+}
+
+message BatchInsertRequest {
+  string collection = 1;
+  repeated VectorData vectors = 2;
+  string origin_node_id = 3;
+  uint64 logical_clock = 4;
+  DurabilityLevel durability = 5;
+}
+
+message InsertTextRequest {
+  string collection = 1;
+  uint32 id = 2;
+  string text = 3;
+  map<string, string> metadata = 4;
+  DurabilityLevel durability = 5;
+}
+
+message VectorizeRequest {
+  string text = 1;
+  string metric = 2; // "l2", "cosine", "poincare", "lorentz"
+}
+
+message VectorizeResponse {
+  repeated double vector = 1;
+}
+
+message SearchTextRequest {
+  string collection = 1;
+  string text = 2;
+  uint32 top_k = 3;
+  map<string, string> filter = 4;
+  repeated Filter filters = 5;
+}
+
 
 message InsertResponse {
   bool success = 1;
@@ -109,6 +235,7 @@ message SearchRequest {
   repeated Filter filters = 5;
   optional string hybrid_query = 6;
   optional float hybrid_alpha = 7;
+  bool use_wasserstein = 8;
 }
 
 message Filter {
@@ -127,15 +254,149 @@ message Range {
   string key = 1;
   optional int64 gte = 2;
   optional int64 lte = 3;
+  optional double gte_f64 = 4;
+  optional double lte_f64 = 5;
 }
 
 message SearchResponse {
   repeated SearchResult results = 1;
 }
 
+message BatchSearchRequest {
+  repeated SearchRequest searches = 1;
+}
+
+message BatchSearchResponse {
+  repeated SearchResponse responses = 1;
+}
+
+message SearchMultiCollectionRequest {
+  repeated string collections = 1;
+  repeated double vector = 2;
+  uint32 top_k = 3;
+}
+
+message SearchMultiCollectionResponse {
+  map<string, SearchResponse> responses = 1;
+}
+
 message SearchResult {
   uint32 id = 1;
   double distance = 2;
+  map<string, string> metadata = 3;
+  map<string, MetadataValue> typed_metadata = 4;
+}
+
+message GetNodeRequest {
+  string collection = 1;
+  uint32 id = 2;
+  uint32 layer = 3;
+}
+
+message GraphNode {
+  uint32 id = 1;
+  uint32 layer = 2;
+  repeated uint32 neighbors = 3;
+  map<string, string> metadata = 4;
+  map<string, MetadataValue> typed_metadata = 5;
+}
+
+message GetNeighborsRequest {
+  string collection = 1;
+  uint32 id = 2;
+  uint32 layer = 3;
+  uint32 limit = 4;
+  uint32 offset = 5;
+}
+
+message GetNeighborsResponse {
+  repeated GraphNode neighbors = 1;
+  repeated double edge_weights = 2; // distance(source -> neighbors[i])
+}
+
+message TraverseRequest {
+  string collection = 1;
+  uint32 start_id = 2;
+  uint32 max_depth = 3;
+  uint32 max_nodes = 4;
+  uint32 layer = 5;
+  map<string, string> filter = 6;
+  repeated Filter filters = 7;
+}
+
+message TraverseResponse {
+  repeated GraphNode nodes = 1;
+}
+
+message FindSemanticClustersRequest {
+  string collection = 1;
+  uint32 layer = 2;
+  uint32 min_cluster_size = 3;
+  uint32 max_clusters = 4;
+  uint32 max_nodes = 5;
+}
+
+message GetConceptParentsRequest {
+  string collection = 1;
+  uint32 id = 2;
+  uint32 layer = 3;
+  uint32 limit = 4;
+}
+
+message GetConceptParentsResponse {
+  repeated GraphNode parents = 1;
+}
+
+message GraphCluster {
+  repeated uint32 node_ids = 1;
+}
+
+message FindSemanticClustersResponse {
+  repeated GraphCluster clusters = 1;
+}
+
+message MetadataValue {
+  oneof kind {
+    string string_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+    bool bool_value = 4;
+  }
+}
+
+enum EventType {
+  EVENT_UNKNOWN = 0;
+  VECTOR_INSERTED = 1;
+  VECTOR_DELETED = 2;
+}
+
+message EventSubscriptionRequest {
+  repeated EventType types = 1;
+  optional string collection = 2;
+}
+
+message VectorInsertedEvent {
+  uint32 id = 1;
+  string collection = 2;
+  uint64 logical_clock = 3;
+  string origin_node_id = 4;
+  map<string, string> metadata = 5;
+  map<string, MetadataValue> typed_metadata = 6;
+}
+
+message VectorDeletedEvent {
+  uint32 id = 1;
+  string collection = 2;
+  uint64 logical_clock = 3;
+  string origin_node_id = 4;
+}
+
+message EventMessage {
+  EventType type = 1;
+  oneof payload {
+    VectorInsertedEvent vector_inserted = 2;
+    VectorDeletedEvent vector_deleted = 3;
+  }
 }
 
 message Empty {}
@@ -162,4 +423,52 @@ message DigestResponse {
   uint64 state_hash = 2;
   repeated uint64 buckets = 3;
   uint64 count = 4;
+}
+
+// ─── Delta Sync Messages (Task 2.1) ───────────────────────────────────────
+
+message SyncHandshakeRequest {
+  string collection = 1;
+  // Client's current bucket hashes (256 entries)
+  repeated uint64 client_buckets = 2;
+  uint64 client_logical_clock = 3;
+  uint64 client_count = 4;
+}
+
+message DiffBucket {
+  uint32 bucket_index = 1;
+  uint64 server_hash = 2;
+  uint64 client_hash = 3;
+}
+
+message SyncHandshakeResponse {
+  // Which buckets differ between client and server
+  repeated DiffBucket diff_buckets = 1;
+  // Server's current logical clock
+  uint64 server_logical_clock = 2;
+  // Server's total vector count
+  uint64 server_count = 3;
+  // True if digests match perfectly (no sync needed)
+  bool in_sync = 4;
+}
+
+message SyncPullRequest {
+  string collection = 1;
+  // Which bucket indices to pull vectors from
+  repeated uint32 bucket_indices = 2;
+}
+
+// A single vector transferred during sync
+message SyncVectorData {
+  string collection = 1;
+  uint32 id = 2;
+  repeated double vector = 3;
+  map<string, string> metadata = 4;
+  uint32 bucket_index = 5;
+}
+
+message SyncPushResponse {
+  uint32 accepted = 1;
+  uint32 rejected = 2;
+  uint32 duplicates = 3;
 }

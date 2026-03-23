@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/InsertText.srv"
   "srv/SearchText.srv"
   "srv/Vectorize.srv"
+  "srv/Delete.srv"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

@@ -1,0 +1,18 @@
+{
+  "node": "n8n-nodes-hyperspacedb",
+  "nodeVersion": "1.0",
+  "codexVersion": "1.0",
+  "categories": ["Database", "AI"],
+  "resources": {
+    "credentialDocumentation": [
+      {
+        "url": "https://github.com/yarlabs/hyperspace-db#credentials"
+      }
+    ],
+    "primaryDocumentation": [
+      {
+        "url": "https://github.com/yarlabs/hyperspace-db"
+      }
+    ]
+  }
+}

@@ -84,8 +84,13 @@ client.rebuild_index(
 )
 ```
 
-#### Graph traversal methods
+#### `delete(id, collection="") -> bool`
+Removes a single vector by its ID.
 
+#### `analyze_delta_hyperbolicity(vectors, num_samples=1000) -> (float, str)`
+Analyzes a set of vectors to determine if they exhibit hyperbolic structure. Returns the Gromov delta and a recommended metric (`"lorentz"`, `"poincare"`, or `"l2"`).
+
+#### Graph traversal methods
 - `get_node(collection, id, layer=0)`
 - `get_neighbors(collection, id, layer=0, limit=64, offset=0)`
 - `get_concept_parents(collection, id, layer=0, limit=32)`

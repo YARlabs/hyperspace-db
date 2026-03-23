@@ -39,6 +39,9 @@ async function main() {
   await client.insert(1, [0.1, 0.2, 0.3], { source: "demo" }, collection);
   await client.insert(2, [0.2, 0.1, 0.4], { source: "demo" }, collection);
 
+  // Delete vector by ID
+  await client.delete(1);
+
   const results = await client.search([0.1, 0.2, 0.3], 5, collection);
   console.log(results);
 

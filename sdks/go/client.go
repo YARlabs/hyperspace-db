@@ -75,6 +75,26 @@ func (c *HyperspaceClient) Insert(ctx context.Context, id uint32, vector []float
 	return err
 }
 
+// BatchInsert pushes multiple vectors in a single request
+func (c *HyperspaceClient) BatchInsert(ctx context.Context, ids []uint32, vectors [][]float64, collection string) error {
+	if len(ids) != len(vectors) {
+		return fmt.Errorf("ids and vectors length mismatch")
+	}
+	protoVectors := make([]*pb.VectorData, len(ids))
+	for i := range ids {
+		protoVectors[i] = &pb.VectorData{
+			Id:     ids[i],
+			Vector: vectors[i],
+		}
+	}
+	req := &pb.BatchInsertRequest{
+		Collection: collection,
+		Vectors:    protoVectors,
+	}
+	_, err := c.client.BatchInsert(c.withContext(ctx), req)
+	return err
+}
+
 // InsertText pushes text to be vectorized and inserted on the server side
 func (c *HyperspaceClient) InsertText(ctx context.Context, id uint32, text string, collection string) error {
 	req := &pb.InsertTextRequest{
@@ -84,6 +104,22 @@ func (c *HyperspaceClient) InsertText(ctx context.Context, id uint32, text strin
 	}
 	_, err := c.client.InsertText(c.withContext(ctx), req)
 	return err
+}
+
+// Delete removes a single vector by ID
+func (c *HyperspaceClient) Delete(ctx context.Context, id uint32, collection string) error {
+	req := &pb.DeleteRequest{
+		Id:         id,
+		Collection: collection,
+	}
+	resp, err := c.client.Delete(c.withContext(ctx), req)
+	if err != nil {
+		return err
+	}
+	if !resp.Success {
+		return fmt.Errorf("deletion failed")
+	}
+	return nil
 }
 
 // Vectorize converts text to a dense vector using server-side embedding

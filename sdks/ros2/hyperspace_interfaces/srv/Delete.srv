@@ -1,0 +1,5 @@
+uint32 id
+string collection
+---
+bool success
+string message

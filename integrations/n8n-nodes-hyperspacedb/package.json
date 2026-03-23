@@ -1,0 +1,41 @@
+{
+  "name": "n8n-nodes-hyperspacedb",
+  "version": "3.0.0",
+  "description": "n8n community node for HyperspaceDB - high performance multi-geometry vector database",
+  "license": "MIT",
+  "author": {
+    "name": "Sergey Glukhota",
+    "email": "sergey@glukhota.com"
+  },
+  "keywords": [
+    "n8n-community-node-package",
+    "hyperspacedb",
+    "vectordb",
+    "hnsw",
+    "ai"
+  ],
+  "scripts": {
+    "build": "n8n-node build",
+    "dev": "n8n-node dev",
+    "lint": "n8n-node lint"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/HyperspacedbApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Hyperspacedb/Hyperspacedb.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@n8n/node-cli": "*",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

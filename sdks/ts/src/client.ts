@@ -149,6 +149,36 @@ export const HyperbolicMath = {
             mu = HyperbolicMath.projectToBall(mu, c);
         }
         return mu;
+    },
+    analyzeDeltaHyperbolicity(vectors: number[][], numSamples: number = 1000): { delta: number, recommendation: string } {
+        if (vectors.length < 4) return { delta: 0, recommendation: 'euclidean' };
+        
+        const l2Dist = (a: number[], b: number[]) => Math.sqrt(a.reduce((s, x, i) => s + (x - b[i]) ** 2, 0));
+        let maxDelta = 0;
+
+        for (let s = 0; s < numSamples; s++) {
+            const indices = new Set<number>();
+            while (indices.size < 4) indices.add(Math.floor(Math.random() * vectors.length));
+            const [i, j, k, l] = Array.from(indices);
+
+            const d_ij = l2Dist(vectors[i], vectors[j]);
+            const d_kl = l2Dist(vectors[k], vectors[l]);
+            const d_ik = l2Dist(vectors[i], vectors[k]);
+            const d_jl = l2Dist(vectors[j], vectors[l]);
+            const d_il = l2Dist(vectors[i], vectors[l]);
+            const d_jk = l2Dist(vectors[j], vectors[k]);
+
+            const s1 = d_ij + d_kl;
+            const s2 = d_ik + d_jl;
+            const s3 = d_il + d_jk;
+
+            const sums = [s1, s2, s3].sort((a, b) => b - a);
+            const delta = (sums[0] - sums[1]) / 2.0;
+            if (delta > maxDelta) maxDelta = delta;
+        }
+
+        const recommendation = maxDelta < 0.15 ? 'lorentz' : (maxDelta < 0.30 ? 'poincare' : 'l2');
+        return { delta: maxDelta, recommendation };
     }
 };
 
@@ -237,6 +267,19 @@ export class HyperspaceClient {
             this.client.deleteCollection(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
                 resolve(true);
+            });
+        });
+    }
+
+    public delete(id: number, collection: string = ''): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            const req = new hyperspace_pb.DeleteRequest();
+            req.setCollection(collection);
+            req.setId(id);
+
+            this.client.delete(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getSuccess());
             });
         });
     }

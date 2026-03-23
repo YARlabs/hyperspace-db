@@ -156,6 +156,46 @@ Reliability note:
 - stream consumers may lag under burst load; server now handles lagged broadcast reads without dropping the whole stream task;
 - tune `HS_EVENT_STREAM_BUFFER` for higher event fan-out pressure.
 
+#### `Delete`
+Removes a single vector from a collection by its external ID.
+
+```protobuf
+rpc Delete (DeleteRequest) returns (DeleteResponse);
+
+message DeleteRequest {
+  string collection = 1;
+  uint32 id = 2;
+}
+
+message DeleteResponse {
+  bool success = 1;
+}
+```
+
+### 🔁 Delta Sync Protocol
+Advanced synchronization for consistency verification and recovery.
+
+#### `SyncHandshake`
+Computes the difference between client and server states using Merkle-like bucket hashes.
+
+```protobuf
+rpc SyncHandshake (SyncHandshakeRequest) returns (SyncHandshakeResponse);
+```
+
+#### `SyncPull`
+Streams missing vectors from the server based on differing buckets.
+
+```protobuf
+rpc SyncPull (SyncPullRequest) returns (stream SyncVectorData);
+```
+
+#### `SyncPush`
+Streams client-side unique vectors to the server to achieve global consistency.
+
+```protobuf
+rpc SyncPush (stream SyncVectorData) returns (SyncPushResponse);
+```
+
 #### `MetadataValue` (Typed Metadata)
 ```protobuf
 message MetadataValue {

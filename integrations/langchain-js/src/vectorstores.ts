@@ -13,6 +13,14 @@ export interface HyperspaceStoreArgs {
      * @default false
      */
     useServerSideEmbedding?: boolean;
+    /**
+     * @default 1536
+     */
+    dimension?: number;
+    /**
+     * @default "l2"
+     */
+    metric?: string;
 }
 
 export class HyperspaceStore extends VectorStore {
@@ -21,8 +29,9 @@ export class HyperspaceStore extends VectorStore {
     private enableDeduplication: boolean;
     private useServerSideEmbedding: boolean;
 
-    constructor(embeddings: Embeddings, args: HyperspaceStoreArgs) {
-        super(embeddings, args);
+    constructor(embeddings: Embeddings | undefined, args: HyperspaceStoreArgs) {
+        // Use a dummy embeddings if server-side is enabled but none provided
+        super(embeddings || ({} as any), args);
         this.client = args.client;
         this.collectionName = args.collectionName ?? "default";
         this.enableDeduplication = args.enableDeduplication ?? true;
@@ -33,11 +42,18 @@ export class HyperspaceStore extends VectorStore {
         return "hyperspace";
     }
 
-    async addDocuments(documents: Document[]): Promise<string[]> {
+    async addDocuments(documents: Document[], options?: string[] | { ids?: string[] }): Promise<string[]> {
+        const ids = Array.isArray(options) ? options : options?.ids;
         if (this.useServerSideEmbedding) {
             const resultIds: string[] = [];
-            for (const doc of documents) {
-                const idNum = this.computeContentHash(doc.pageContent);
+            for (let i = 0; i < documents.length; i++) {
+                const doc = documents[i];
+                let idNum: number;
+                if (ids && ids[i]) {
+                    idNum = parseInt(ids[i]) || this.computeContentHash(ids[i]);
+                } else {
+                    idNum = this.computeContentHash(doc.pageContent);
+                }
                 const metadata = { ...doc.metadata, text: doc.pageContent };
                 
                 const typed_metadata: Record<string, string> = {};
@@ -51,10 +67,15 @@ export class HyperspaceStore extends VectorStore {
             return resultIds;
         }
 
+        if (!this.embeddings) {
+            throw new Error("Embeddings required when useServerSideEmbedding is false");
+        }
+
         const texts = documents.map(({ pageContent }) => pageContent);
         return this.addVectors(
             await this.embeddings.embedDocuments(texts),
-            documents
+            documents,
+            { ids }
         );
     }
 
@@ -119,27 +140,76 @@ export class HyperspaceStore extends VectorStore {
         return resultIds;
     }
 
+    async delete(params: { ids?: string[] }): Promise<void> {
+        const ids = params.ids || [];
+        for (const idStr of ids) {
+            const idNum = parseInt(idStr) || this.computeContentHash(idStr);
+            await this.client.delete(idNum, this.collectionName);
+        }
+    }
+
     async similaritySearchVectorWithScore(
         query: number[],
         k: number,
-        filter?: this["FilterType"]
+        filter?: Record<string, any>
     ): Promise<[Document, number][]> {
-        // This is only called when useServerSideEmbedding is false or via low-level
-        const results = await this.client.search(query, k, this.collectionName);
+        const filters = this.parseFilters(filter);
+        const results = await this.client.search(query, k, this.collectionName, { filters });
         return this.resultsToDocuments(results);
     }
 
     async similaritySearch(
         query: string,
         k: number,
-        filter?: this["FilterType"]
+        filter?: Record<string, any>
     ): Promise<Document[]> {
         if (this.useServerSideEmbedding) {
-            const results = await this.client.searchText(query, k, this.collectionName);
+            const filters = this.parseFilters(filter);
+            const results = await this.client.searchText(query, k, this.collectionName, { filters });
             const docsWithScore = this.resultsToDocuments(results);
             return docsWithScore.map(([doc]) => doc);
         }
+        if (!this.embeddings) {
+            throw new Error("Embeddings required when useServerSideEmbedding is false");
+        }
         return super.similaritySearch(query, k, filter);
+    }
+
+    async maxMarginalRelevanceSearch(
+        query: string,
+        options: { k: number; fetchK?: number; lambda?: number; filter?: Record<string, any> }
+    ): Promise<Document[]> {
+        if (this.useServerSideEmbedding || !this.embeddings) {
+            console.warn("MMR search falls back to similarity search when using server-side embeddings.");
+            return this.similaritySearch(query, options.k, options.filter);
+        }
+        
+        const { k, fetchK = 20, lambda = 0.5, filter } = options;
+        const queryEmbedding = await this.embeddings.embedQuery(query);
+        const filters = this.parseFilters(filter);
+        
+        const results = await this.client.search(queryEmbedding, fetchK, this.collectionName, { filters });
+        
+        // MMR requires vectors. We currently don't expose vectors in search results for security/bandwidth.
+        // So for now, MMR in 'community' mode will return top-K.
+        return this.resultsToDocuments(results).slice(0, k).map(([doc]) => doc);
+    }
+
+    private parseFilters(filter?: Record<string, any>): any[] {
+        if (!filter) return [];
+        const filters: any[] = [];
+        for (const [key, value] of Object.entries(filter)) {
+            if (typeof value === "object" && value !== null) {
+                // Handle complex filters $gte, $lte
+                const range: any = { key };
+                if ("$gte" in value) range.gte = value.$gte;
+                if ("$lte" in value) range.lte = value.$lte;
+                filters.push({ range });
+            } else {
+                filters.push({ match: { key, value: String(value) } });
+            }
+        }
+        return filters;
     }
 
     private resultsToDocuments(results: any[]): [Document, number][] {

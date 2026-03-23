@@ -11,7 +11,7 @@ OUT_DIR="$SCRIPT_DIR/src/langchain_hyperspace/generated"
 mkdir -p "$OUT_DIR"
 
 # Generate Python protobuf and gRPC code
-python -m grpc_tools.protoc \
+python3 -m grpc_tools.protoc \
     -I"$PROTO_DIR" \
     --python_out="$OUT_DIR" \
     --grpc_python_out="$OUT_DIR" \
