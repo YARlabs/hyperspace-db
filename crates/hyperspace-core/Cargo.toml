@@ -1,10 +1,11 @@
 [package]
 name = "hyperspace-core"
-version = "3.0.0"
+version = "3.0.1"
 edition = "2021"
 
 [dependencies]
 thiserror = { workspace = true }
+rand = "~0.8"
 serde = { workspace = true }
 async-trait = "0.1.89"
 wgpu = { version = "*", optional = true }
@@ -14,7 +15,6 @@ bytemuck = { version = "*", optional = true, features = ["derive"] }
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest.workspace = true
-rand = "~0.8"
 
 [[bench]]
 name = "metric_bench"

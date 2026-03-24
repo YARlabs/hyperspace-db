@@ -135,12 +135,13 @@ func (c *HyperspaceClient) Vectorize(ctx context.Context, text string, metric st
 	return resp.Vector, nil
 }
 
-// Search performs ANN lookup
-func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK uint32, collection string) ([]*pb.SearchResult, error) {
+// Search performs ANN lookup with optional geometric filters
+func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK uint32, collection string, filters []*pb.Filter) ([]*pb.SearchResult, error) {
 	req := &pb.SearchRequest{
 		Vector:     vector,
 		TopK:       topK,
 		Collection: collection,
+		Filters:    filters,
 	}
 
 	res, err := c.client.Search(c.withContext(ctx), req)

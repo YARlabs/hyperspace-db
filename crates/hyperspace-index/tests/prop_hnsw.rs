@@ -41,12 +41,8 @@ proptest! {
         for (i, vec_data) in vectors.iter().enumerate() {
             // Convert to fixed size array
             let coords: [f64; D] = vec_data.clone().try_into().expect("Vec len must be D");
-            let hv = HyperVector::new_unchecked(coords);
-
-            // Serialize struct to bytes
-            let bytes = hv.as_bytes();
-
-            let id = store.append(bytes).unwrap();
+            
+            let id = index.insert_to_storage(&coords).unwrap();
             let expected_id = u32::try_from(i).unwrap();
             assert_eq!(id, expected_id, "ID mismatch at index {i}");
 

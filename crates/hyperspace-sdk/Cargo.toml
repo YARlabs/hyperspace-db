@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-sdk"
-version = "3.0.2"
+version = "3.0.3"
 edition = "2021"
 description = "Official Rust SDK for HyperspaceDB gRPC API"
 readme = "README.md"

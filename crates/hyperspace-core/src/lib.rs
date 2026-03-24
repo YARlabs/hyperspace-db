@@ -13,6 +13,7 @@
 pub mod config;
 pub mod fuzzy;
 pub mod gpu;
+pub mod gromov;
 pub mod optim;
 pub mod region;
 pub mod vector;
@@ -76,6 +77,59 @@ pub enum FilterExpr {
         min_bounds: Vec<f64>,
         max_bounds: Vec<f64>,
     },
+    InBall {
+        center: Vec<f64>,
+        radius: f64,
+    },
+}
+
+impl FilterExpr {
+    pub fn check<const N: usize>(
+        &self,
+        vector: &HyperVector<N>,
+        metadata: &std::collections::HashMap<String, String>,
+    ) -> bool {
+        match self {
+            Self::Match { key, value } => metadata.get(key) == Some(value),
+            Self::Range { key, gte, lte } => {
+                if let Some(val_str) = metadata.get(key) {
+                    if let Ok(val) = val_str.parse::<f64>() {
+                        if let Some(g) = gte {
+                            if val < *g {
+                                return false;
+                            }
+                        }
+                        if let Some(l) = lte {
+                            if val > *l {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                }
+                false
+            }
+            Self::InCone {
+                axes,
+                apertures,
+                cen,
+            } => {
+                let region = region::ConeRegion::new(axes.clone(), apertures.clone(), *cen);
+                region.contains(vector)
+            }
+            Self::InBox {
+                min_bounds,
+                max_bounds,
+            } => {
+                let region = region::BoxRegion::new(min_bounds.clone(), max_bounds.clone());
+                region.contains(vector)
+            }
+            Self::InBall { center, radius } => {
+                let region = region::BallRegion::new(center.clone(), *radius);
+                region.contains(vector)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -202,9 +256,16 @@ pub trait Metric<const N: usize>: Send + Sync + 'static {
     fn name() -> &'static str;
     fn distance(a: &[f64; N], b: &[f64; N]) -> f64;
 
-    // Default valid verification (Euclidean accepts all)
+    // Default valid verification: ensure all dimensions are finite
     fn validate(vector: &[f64; N]) -> Result<(), String> {
-        let _ = vector;
+        for &val in vector {
+            if !val.is_finite() {
+                return Err(format!(
+                    "Vector contains non-finite values (NaN/Inf) for metric: {}",
+                    Self::name()
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -229,6 +290,11 @@ impl<const N: usize> Metric<N> for PoincareMetric {
     }
 
     fn validate(vector: &[f64; N]) -> Result<(), String> {
+        for &val in vector {
+            if !val.is_finite() {
+                return Err("Poincaré vector contains non-finite values (NaN/Inf)".to_string());
+            }
+        }
         let sq_norm: f64 = vector.iter().map(|&x| x * x).sum();
         if sq_norm >= 1.0 - 1e-9 {
             return Err("Vector must be strictly inside the Poincaré ball".to_string());

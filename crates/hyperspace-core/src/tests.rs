@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn test_vector_validation() {
+    let nan_vec = [f64::NAN, 0.0];
+    let inf_vec = [f64::INFINITY, 0.0];
+    let valid_vec = [0.1, 0.2];
+
+    assert!(EuclideanMetric::validate(&nan_vec).is_err());
+    assert!(EuclideanMetric::validate(&inf_vec).is_err());
+    assert!(EuclideanMetric::validate(&valid_vec).is_ok());
+
+    assert!(PoincareMetric::validate(&nan_vec).is_err());
+    assert!(PoincareMetric::validate(&inf_vec).is_err());
+    assert!(PoincareMetric::validate(&valid_vec).is_ok());
+}
+
+#[test]
 fn test_euclidean_distance() {
     let a = [1.0, 2.0, 3.0];
     let b = [4.0, 5.0, 6.0];

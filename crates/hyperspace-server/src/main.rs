@@ -194,6 +194,25 @@ fn build_filters(
                         lte,
                     });
                 }
+                hyperspace_proto::hyperspace::filter::Condition::InCone(c) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::InCone {
+                        axes: c.axes,
+                        apertures: c.apertures,
+                        cen: c.cen,
+                    });
+                }
+                hyperspace_proto::hyperspace::filter::Condition::InBox(b) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::InBox {
+                        min_bounds: b.min_bounds,
+                        max_bounds: b.max_bounds,
+                    });
+                }
+                hyperspace_proto::hyperspace::filter::Condition::InBall(b) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::InBall {
+                        center: b.center,
+                        radius: b.radius,
+                    });
+                }
             }
         }
     }
@@ -368,7 +387,8 @@ fn matches_filter_exprs(
                 }
             }
             hyperspace_core::FilterExpr::InCone { .. }
-            | hyperspace_core::FilterExpr::InBox { .. } => {
+            | hyperspace_core::FilterExpr::InBox { .. }
+            | hyperspace_core::FilterExpr::InBall { .. } => {
                 // Vector-based filters are evaluated during search index traversal,
                 // so we can't evaluate them purely on metadata. We assume match here.
             }
@@ -400,6 +420,25 @@ fn parse_graph_filters(
                         key: r.key,
                         gte,
                         lte,
+                    });
+                }
+                hyperspace_proto::hyperspace::filter::Condition::InCone(c) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::InCone {
+                        axes: c.axes,
+                        apertures: c.apertures,
+                        cen: c.cen,
+                    });
+                }
+                hyperspace_proto::hyperspace::filter::Condition::InBox(b) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::InBox {
+                        min_bounds: b.min_bounds,
+                        max_bounds: b.max_bounds,
+                    });
+                }
+                hyperspace_proto::hyperspace::filter::Condition::InBall(b) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::InBall {
+                        center: b.center,
+                        radius: b.radius,
                     });
                 }
             }
@@ -824,6 +863,25 @@ impl Database for HyperspaceService {
                                     key: r.key,
                                     gte,
                                     lte,
+                                });
+                            }
+                            hyperspace_proto::hyperspace::filter::Condition::InCone(c) => {
+                                complex_filters.push(hyperspace_core::FilterExpr::InCone {
+                                    axes: c.axes,
+                                    apertures: c.apertures,
+                                    cen: c.cen,
+                                });
+                            }
+                            hyperspace_proto::hyperspace::filter::Condition::InBox(b) => {
+                                complex_filters.push(hyperspace_core::FilterExpr::InBox {
+                                    min_bounds: b.min_bounds,
+                                    max_bounds: b.max_bounds,
+                                });
+                            }
+                            hyperspace_proto::hyperspace::filter::Condition::InBall(b) => {
+                                complex_filters.push(hyperspace_core::FilterExpr::InBall {
+                                    center: b.center,
+                                    radius: b.radius,
                                 });
                             }
                         }

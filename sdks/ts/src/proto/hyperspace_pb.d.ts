@@ -790,6 +790,21 @@ export class Filter extends jspb.Message {
     getRange(): Range | undefined;
     setRange(value?: Range): Filter;
 
+    hasInCone(): boolean;
+    clearInCone(): void;
+    getInCone(): InCone | undefined;
+    setInCone(value?: InCone): Filter;
+
+    hasInBox(): boolean;
+    clearInBox(): void;
+    getInBox(): InBox | undefined;
+    setInBox(value?: InBox): Filter;
+
+    hasInBall(): boolean;
+    clearInBall(): void;
+    getInBall(): InBall | undefined;
+    setInBall(value?: InBall): Filter;
+
     getConditionCase(): Filter.ConditionCase;
 
     serializeBinary(): Uint8Array;
@@ -806,12 +821,18 @@ export namespace Filter {
     export type AsObject = {
         match?: Match.AsObject,
         range?: Range.AsObject,
+        inCone?: InCone.AsObject,
+        inBox?: InBox.AsObject,
+        inBall?: InBall.AsObject,
     }
 
     export enum ConditionCase {
         CONDITION_NOT_SET = 0,
         MATCH = 1,
         RANGE = 2,
+        IN_CONE = 3,
+        IN_BOX = 4,
+        IN_BALL = 5,
     }
 
 }
@@ -880,6 +901,88 @@ export namespace Range {
         lte?: number,
         gteF64?: number,
         lteF64?: number,
+    }
+}
+
+export class InCone extends jspb.Message { 
+    clearAxesList(): void;
+    getAxesList(): Array<number>;
+    setAxesList(value: Array<number>): InCone;
+    addAxes(value: number, index?: number): number;
+    clearAperturesList(): void;
+    getAperturesList(): Array<number>;
+    setAperturesList(value: Array<number>): InCone;
+    addApertures(value: number, index?: number): number;
+    getCen(): number;
+    setCen(value: number): InCone;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): InCone.AsObject;
+    static toObject(includeInstance: boolean, msg: InCone): InCone.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: InCone, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): InCone;
+    static deserializeBinaryFromReader(message: InCone, reader: jspb.BinaryReader): InCone;
+}
+
+export namespace InCone {
+    export type AsObject = {
+        axesList: Array<number>,
+        aperturesList: Array<number>,
+        cen: number,
+    }
+}
+
+export class InBox extends jspb.Message { 
+    clearMinBoundsList(): void;
+    getMinBoundsList(): Array<number>;
+    setMinBoundsList(value: Array<number>): InBox;
+    addMinBounds(value: number, index?: number): number;
+    clearMaxBoundsList(): void;
+    getMaxBoundsList(): Array<number>;
+    setMaxBoundsList(value: Array<number>): InBox;
+    addMaxBounds(value: number, index?: number): number;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): InBox.AsObject;
+    static toObject(includeInstance: boolean, msg: InBox): InBox.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: InBox, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): InBox;
+    static deserializeBinaryFromReader(message: InBox, reader: jspb.BinaryReader): InBox;
+}
+
+export namespace InBox {
+    export type AsObject = {
+        minBoundsList: Array<number>,
+        maxBoundsList: Array<number>,
+    }
+}
+
+export class InBall extends jspb.Message { 
+    clearCenterList(): void;
+    getCenterList(): Array<number>;
+    setCenterList(value: Array<number>): InBall;
+    addCenter(value: number, index?: number): number;
+    getRadius(): number;
+    setRadius(value: number): InBall;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): InBall.AsObject;
+    static toObject(includeInstance: boolean, msg: InBall): InBall.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: InBall, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): InBall;
+    static deserializeBinaryFromReader(message: InBall, reader: jspb.BinaryReader): InBall;
+}
+
+export namespace InBall {
+    export type AsObject = {
+        centerList: Array<number>,
+        radius: number,
     }
 }
 

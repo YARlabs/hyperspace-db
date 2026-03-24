@@ -109,6 +109,31 @@ const results = await client.searchText("How to use HyperspaceDB?", 10, "coll", 
 });
 ```
 
+### Geometric Filters (New in v3.0)
+
+HyperspaceDB v3.0 introduces advanced spatial filters that run on the engine level:
+
+```ts
+// 1. Proximity Search (Ball)
+const ballFilter = {
+  inBall: { center: [0.1, 0.2, 0.3], radius: 0.5 }
+};
+
+// 2. Workspace Constraints (Box)
+const boxFilter = {
+  inBox: { minBounds: [-1, -1, -1], maxBounds: [1, 1, 1] }
+};
+
+// 3. Field of View / Angular Search (Cone)
+const coneFilter = {
+  inCone: { axes: [1.0, 0.0, 0.0], apertures: [0.5], cen: 0.01 }
+};
+
+const results = await client.search([0.1, 0.2, 0.3], 10, "coll", {
+  filters: [ballFilter, boxFilter]
+});
+```
+
 ### `searchBatch(vectors, topK, collection?)`
 
 Run multiple searches in one gRPC request to reduce RPC overhead.

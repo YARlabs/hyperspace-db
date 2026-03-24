@@ -47,7 +47,10 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
   </tr>
   <tr>
     <td>🎓 <b>Cognitive Math Engine</b></td>
-    <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, <b>Lorentz Hyperboloid</b> metrics, and <b>Wasserstein O(N) CFM</b>. Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the Native SDK. Evaluate datasets via <b>Gromov's Delta-Hyperbolicity</b>.</td>
+    <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, <b>Lorentz Hyperboloid</b> metrics, and <b>Wasserstein O(N) CFM</b>.
+    * **Advanced Geometric Filters**: Added `InBall`, `InBox`, and `InCone` filters to the core engine and gRPC/REST APIs.
+    * **Bitset-Based Pruning**: Implemented high-performance sequential filtering over spatial regions.
+Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the Native SDK. Evaluate datasets via <b>Gromov's Delta-Hyperbolicity</b>.</td>
   </tr>
   <tr>
     <td>📡 <b>Agentic Workflows</b></td>

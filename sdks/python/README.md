@@ -73,6 +73,29 @@ batch_results = client.search_batch(
 
 `search_batch` reduces per-request RPC overhead and should be preferred for high concurrency.
 
+## Geometric Filters (New in v3.0)
+
+HyperspaceDB v3.0 introduces advanced spatial filters that run on the engine level:
+
+```python
+# 1. Proximity Search (Ball)
+# Find vectors within radius 0.5 of the center
+ball_f = client.filter_ball(center=[0.1, 0.2, 0.3], radius=0.5)
+
+# 2. Workspace Constraints (Box)
+# Find vectors within an N-dimensional bounding box
+box_f = client.filter_box(min_bounds=[-1, -1, -1], max_bounds=[1, 1, 1])
+
+# 3. Field of View / Angular Search (Cone)
+# Based on ConE (Zhang & Wang, 2021)
+cone_f = client.filter_cone(axes=[1.0, 0.0, 0.0], apertures=[0.5], cen=0.01)
+
+results = client.search(
+    vector=[0.1, 0.2, 0.3],
+    filters=[ball_f, box_f] # Combine multiple filters
+)
+```
+
 ## API Summary
 
 ### Collection Operations

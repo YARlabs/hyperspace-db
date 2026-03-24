@@ -78,6 +78,41 @@ message SearchRequest {
   // Wasserstein 1D CDF O(N) distance
   optional bool use_wasserstein = 8;
 }
+
+#### Geometric Filters (New in v3.0)
+
+HyperspaceDB v3.0 introduces native spatial constraints. These run on the bitset level inside the engine and are significantly faster than application-level filtering.
+
+```protobuf
+message Filter {
+  oneof condition {
+    Match match = 1;
+    Range range = 2;
+    InCone in_cone = 3;
+    InBox in_box = 4;
+    InBall in_ball = 5;
+  }
+}
+
+// 1. Proximity Filter
+message InBall {
+  repeated double center = 1;
+  double radius = 2;
+}
+
+// 2. N-Dimensional Bounding Box
+message InBox {
+  repeated double min_bounds = 1;
+  repeated double max_bounds = 2;
+}
+
+// 3. Angular Cone (for ConE-style embeddings)
+message InCone {
+  repeated double axes = 1;      // Vector direction
+  repeated double apertures = 2; // Angular width (radians)
+  double cen = 3;                // Centrality offset
+}
+```
 ```
 
 `SearchResult` now includes both `metadata` and `typed_metadata`.

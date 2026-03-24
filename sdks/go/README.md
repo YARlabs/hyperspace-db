@@ -59,6 +59,50 @@ func main() {
 	log.Printf("Found %d vectors", len(results))
 }
 ```
+
+## Geometric Filters (New in v3.0)
+
+HyperspaceDB v3.0 introduces advanced spatial filters that run on the engine level:
+
+```go
+// 1. Proximity Search (Ball)
+ballFilter := &pb.Filter{
+    Condition: &pb.Filter_InBall{
+        InBall: &pb.InBall{
+            Center: []float64{0.1, 0.2, 0.3},
+            Radius: 0.5,
+        },
+    },
+}
+
+// 2. Workspace Constraints (Box)
+boxFilter := &pb.Filter{
+    Condition: &pb.Filter_InBox{
+        InBox: &pb.InBox{
+            MinBounds: []float64{-1, -1, -1},
+            MaxBounds: []float64{1, 1, 1},
+        },
+    },
+}
+
+// 3. Field of View / Angular Search (Cone)
+coneFilter := &pb.Filter{
+    Condition: &pb.Filter_InCone{
+        InCone: &pb.InCone{
+            Axes:      []float64{1.0, 0.0, 0.0},
+            Apertures: []float64{0.5},
+            Cen:       0.01,
+        },
+    },
+}
+
+req := &pb.SearchRequest{
+    Vector:  []float64{0.1, 0.2, 0.3},
+    TopK:    10,
+    Filters: []*pb.Filter{ballFilter, boxFilter},
+}
+res, err := client.Search(ctx, req)
+```
 ## Embedding Pipeline (Optional)
 
 HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can use its own backend independently.

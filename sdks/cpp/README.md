@@ -41,7 +41,24 @@ context.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 
 grpc::Status status = stub->Search(&context, request, &response);
 
-// 2. Insert Text (Server-Side Embedding)
+// 2. Geometric Filters (New in v3.0)
+hyperspace::SearchRequest geo_req;
+geo_req.set_collection("docs");
+
+// 2a. Ball Filter
+auto* f = geo_req.add_filters();
+auto* ball = f->mutable_in_ball();
+ball->add_center(0.1);
+ball->add_center(0.2);
+ball->set_radius(0.5);
+
+// 2b. Box Filter
+auto* f2 = geo_req.add_filters();
+auto* box = f2->mutable_in_box();
+box->add_min_bounds(-1.0);
+box->add_max_bounds(1.0);
+
+// 3. Insert Text (Server-Side Embedding)
 hyperspace::InsertTextRequest insert_req;
 insert_req.set_collection("docs");
 insert_req.set_id(1);
@@ -51,7 +68,7 @@ grpc::ClientContext insert_ctx;
 insert_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 status = stub->InsertText(&insert_ctx, insert_req, &insert_res);
 
-// 3. Vectorize Text
+// 4. Vectorize Text
 hyperspace::VectorizeRequest vec_req;
 vec_req.set_text("Hello!");
 vec_req.set_metric("cosine");
@@ -61,7 +78,7 @@ vec_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 status = stub->Vectorize(&vec_ctx, vec_req, &vec_res);
 // vec_res.vector() -> repeated double
 
-// 4. Search Text
+// 5. Search Text
 hyperspace::SearchTextRequest search_text_req;
 search_text_req.set_collection("docs");
 search_text_req.set_text("Is HyperspaceDB fast?");

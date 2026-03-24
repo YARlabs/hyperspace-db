@@ -242,6 +242,9 @@ message Filter {
   oneof condition {
     Match match = 1;
     Range range = 2;
+    InCone in_cone = 3;
+    InBox in_box = 4;
+    InBall in_ball = 5;
   }
 }
 
@@ -256,6 +259,22 @@ message Range {
   optional int64 lte = 3;
   optional double gte_f64 = 4;
   optional double lte_f64 = 5;
+}
+
+message InCone {
+  repeated double axes = 1;
+  repeated double apertures = 2;
+  double cen = 3;
+}
+
+message InBox {
+  repeated double min_bounds = 1;
+  repeated double max_bounds = 2;
+}
+
+message InBall {
+  repeated double center = 1;
+  double radius = 2;
 }
 
 message SearchResponse {

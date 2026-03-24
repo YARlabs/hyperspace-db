@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0-rc.3] - 2026-03-24
+
+### Added
+* **Geometric Search & Spatial Studio (Sprint B / Spatial AI LTS)**:
+    * **Advanced Geometric Filters**: Added `InBall`, `InBox`, and `InCone` filters to the core engine and gRPC/REST APIs.
+    * **Bitset-Based Pruning**: Implemented high-performance sequential filtering over spatial regions.
+    * **Spatial Studio Visuals**: Added Lasso selection and geometric region visualizers (Ball/Box/Cone) to the Poincaré Disk dashboard.
+    * **SDK Parity**:
+        * **Go**: Added `Search` with geometric filters support and `pb` regeneration.
+        * **Python**: Added `filter_ball`, `filter_box`, `filter_cone` helpers to `HyperspaceClient`.
+        * **TS**: Updated `search` options with geometric filter types and rebuilt SDK.
+        * **C++**: Updated README with gRPC examples for geometric filtering.
+    * **Documentation**: Full update of `api.md` and `math.md` with Geometric Search specifications.
+
+### Fixed
+* **Test Compatibility**: Fixed incorrect turbofish syntax in `hyperspace-core` unit tests.
+* **Clippy compliance**: Resolved redundant `map_or` and documentation formatting warnings.
+
 ## [3.0.0-rc.2] - 2026-03-21
 
 ### Added

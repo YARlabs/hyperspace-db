@@ -132,6 +132,11 @@ pub async fn start_http_server(
         .route("/api/collections/{name}/digest", get(get_collection_digest))
         .route("/api/collections/{name}/peek", get(peek_collection))
         .route("/api/collections/{name}/search", post(search_collection))
+        .route("/api/analyze/geometry", post(analyze_raw_geometry))
+        .route(
+            "/api/collections/{name}/analyze/geometry",
+            get(analyze_collection_geometry),
+        )
         .route("/api/collections/{name}/graph/node", get(graph_get_node))
         .route(
             "/api/collections/{name}/graph/neighbors",
@@ -586,6 +591,57 @@ async fn peek_collection(
     }
 }
 
+async fn analyze_collection_geometry(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        // Peek up to 500 vectors for analysis
+        let samples = col.peek(500);
+        let vectors: Vec<Vec<f64>> = samples.into_iter().map(|(_, v, _)| v).collect();
+
+        let (delta, recommendation) =
+            hyperspace_core::gromov::analyze_delta_hyperbolicity(&vectors, 1000);
+
+        Json(serde_json::json!({
+            "delta": delta,
+            "recommendation": recommendation,
+            "samples": vectors.len(),
+            "metric": col.metric_name()
+        }))
+        .into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn analyze_raw_geometry(Json(req): Json<AnalyzeRawGeometryReq>) -> impl IntoResponse {
+    if req.vectors.is_empty() {
+        return (StatusCode::BAD_REQUEST, "No vectors provided").into_response();
+    }
+
+    // Default to 1000 samples for analysis
+    let (delta, recommendation) =
+        hyperspace_core::gromov::analyze_delta_hyperbolicity(&req.vectors, 1000);
+
+    Json(serde_json::json!({
+        "delta": delta,
+        "recommendation": recommendation,
+        "samples": req.vectors.len()
+    }))
+    .into_response()
+}
+
+#[derive(serde::Deserialize)]
+pub struct AnalyzeRawGeometryReq {
+    pub vectors: Vec<Vec<f64>>,
+}
+
 #[derive(serde::Deserialize)]
 struct SearchReq {
     vector: Vec<f64>,
@@ -747,7 +803,8 @@ fn graph_match_filters(
                 }
             }
             hyperspace_core::FilterExpr::InCone { .. }
-            | hyperspace_core::FilterExpr::InBox { .. } => {
+            | hyperspace_core::FilterExpr::InBox { .. }
+            | hyperspace_core::FilterExpr::InBall { .. } => {
                 // Geometric filters are skipped in purely metadata-based graph traversal matching
             }
         }

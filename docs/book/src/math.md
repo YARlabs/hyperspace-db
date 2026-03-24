@@ -72,3 +72,27 @@ To keep core DB focused and still support geometry-heavy clients, SDKs include h
 Fréchet mean support is useful for reconsolidation workflows where multiple nearby hyperbolic embeddings should be merged into one robust centroid.
 
 These functions are useful for L-system growth, manifold transforms, and pre-insert vector shaping pipelines.
+
+## Geometric Search (Spatial Filters)
+
+HyperspaceDB v3.0 introduces native geometric predicates. Unlike metadata filters, these are based on the vector's position in the embedding space.
+
+### 1. The Ball Filter (Proximity)
+Mathematical definition: $\{ v \in \mathbb{D}^n \mid d(c, v) \le r \}$.
+Used for finding all entities within a semantic radius of a concept center $c$.
+
+### 2. The Box Filter (Constraints)
+Mathematical definition: $\{ v \in \mathbb{R}^n \mid \forall i, \min_i \le v_i \le \max_i \}$.
+Used for bounding reasoning to a specific workspace (e.g., "only consider nodes in the 1st quadrant").
+
+### 3. The Cone Filter (Angular Logic)
+Mathematical definition (Angular distance): $\{ v \in \mathbb{R}^n \mid \text{angle}(\text{axes}, v) \le \text{aperture} \}$.
+Inspired by **ConE (Zhang & Wang, 2021)**, this filter allows for modeling logical entailment and hierarchy-aware FOV.
+In HyperspaceDB, this is implemented as an $O(N)$ dot-product check against the aperture thresholds.
+
+## Performance: Sequential Bitset Pruning
+
+To ensure these filters don't slow down the engine, geometric intersection is performed efficiently during the candidate selection phase. We use a **Bitset Pruning** pattern:
+1.  Generate a bitset of candidates satisfying the geometric query.
+2.  Perform HNSW bitwise-AND intersection during the search phase.
+3.  This allows for $O(1)$ rejection of candidates outside the region of interest.
