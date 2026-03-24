@@ -43,25 +43,30 @@ export class HyperspaceStore extends VectorStore {
     }
 
     async addDocuments(documents: Document[], options?: string[] | { ids?: string[] }): Promise<string[]> {
+        if (!documents || !Array.isArray(documents) || documents.length === 0) {
+            return [];
+        }
+
         const ids = Array.isArray(options) ? options : options?.ids;
         if (this.useServerSideEmbedding) {
             const resultIds: string[] = [];
             for (let i = 0; i < documents.length; i++) {
                 const doc = documents[i];
+                if (!doc) continue;
                 let idNum: number;
                 if (ids && ids[i]) {
                     idNum = parseInt(ids[i]) || this.computeContentHash(ids[i]);
                 } else {
-                    idNum = this.computeContentHash(doc.pageContent);
+                    idNum = this.computeContentHash(doc.pageContent || "");
                 }
-                const metadata = { ...doc.metadata, text: doc.pageContent };
+                const metadata = { ...doc.metadata, text: doc.pageContent || "" };
                 
                 const typed_metadata: Record<string, string> = {};
                 for (const [key, value] of Object.entries(metadata)) {
                     typed_metadata[key] = String(value);
                 }
 
-                await this.client.insertText(doc.pageContent, idNum, typed_metadata, this.collectionName);
+                await this.client.insertText(doc.pageContent || "", idNum, typed_metadata, this.collectionName);
                 resultIds.push(idNum.toString());
             }
             return resultIds;
@@ -71,10 +76,10 @@ export class HyperspaceStore extends VectorStore {
             throw new Error("Embeddings required when useServerSideEmbedding is false");
         }
 
-        const texts = documents.map(({ pageContent }) => pageContent);
+        const texts = documents.filter(d => d).map(({ pageContent }) => pageContent || "");
         return this.addVectors(
             await this.embeddings.embedDocuments(texts),
-            documents,
+            documents.filter(d => d),
             { ids }
         );
     }
