@@ -1,15 +1,20 @@
 import {
-	createVectorStoreNode,
+    createVectorStoreNode,
 } from '@n8n/ai-utilities';
 import {
-	IExecuteFunctions,
-	INodeType,
-	INodeTypeDescription,
+    IExecuteFunctions,
+    INodeType,
+    INodeTypeDescription,
     ISupplyDataFunctions,
     SupplyData,
     INodeExecutionData,
+    ILoadOptionsFunctions,
+    INodePropertyOptions,
 } from 'n8n-workflow';
-import { getHyperspaceStore } from './HyperspaceDb.utils';
+import {
+    getHyperspaceClient,
+} from './HyperspaceDb.utils';
+import { HyperspaceStore } from './HyperspaceStore';
 
 export class HyperspaceDbVectorStore implements INodeType {
     description: INodeTypeDescription;
@@ -23,18 +28,22 @@ export class HyperspaceDbVectorStore implements INodeType {
                 name: 'hyperspaceDbVectorStore',
                 description: 'The world\'s first Hyperbolic Vector Database integration for Spatial AI',
                 icon: { light: 'file:hyperspacedb.svg', dark: 'file:hyperspacedb.dark.svg' } as any,
-                docsUrl: 'https://docs.hyperspace.systems',
+                docsUrl: 'https://docs.yar.ink',
                 categories: ['AI'],
                 subcategories: {
                     AI: ['Vector Stores', 'Root Nodes'],
                 },
+                credentials: [{ name: 'hyperspaceDbApi', required: true }],
             },
             sharedFields: [
                 {
                     displayName: 'Collection Name',
                     name: 'collectionName',
-                    type: 'string',
-                    default: 'default',
+                    type: 'options',
+                    typeOptions: {
+                        loadOptionsMethod: 'getCollections',
+                    },
+                    default: '',
                     required: true,
                 },
                 {
@@ -48,21 +57,41 @@ export class HyperspaceDbVectorStore implements INodeType {
                         { name: 'Euclidean (L2)', value: 'l2' },
                     ],
                     default: 'lorentz',
-                    description: 'The spatial metric used in your collection',
+                    description: 'The spatial metric used - should match your collection settings',
                 },
                 {
                     displayName: 'Dimension',
                     name: 'dimension',
                     type: 'number',
-                    default: 1536,
-                    description: 'Number of dimensions (OpenAI=1536, Hyperspace DEFAULT=1024)',
+                    default: 1024,
+                    description: 'Number of dimensions (should match your collection settings)',
                 },
             ],
             async getVectorStoreClient(context: IExecuteFunctions | ISupplyDataFunctions, _filter: any, _embeddings: any, itemIndex: number) {
-                return await getHyperspaceStore(context, itemIndex) as any;
+                const collectionName = context.getNodeParameter('collectionName', itemIndex) as string;
+                const metric = context.getNodeParameter('metric', itemIndex, 'lorentz') as string;
+                const dimension = context.getNodeParameter('dimension', itemIndex, 1024) as number;
+                
+                const client = await getHyperspaceClient(context);
+                return new HyperspaceStore(_embeddings, {
+                    client,
+                    collectionName,
+                    dimension,
+                    metric,
+                }) as any;
             },
             async populateVectorStore(context: IExecuteFunctions | ISupplyDataFunctions, _embeddings: any, documents: any[], itemIndex: number) {
-                const store = await getHyperspaceStore(context, itemIndex);
+                const collectionName = context.getNodeParameter('collectionName', itemIndex) as string;
+                const metric = context.getNodeParameter('metric', itemIndex, 'lorentz') as string;
+                const dimension = context.getNodeParameter('dimension', itemIndex, 1024) as number;
+
+                const client = await getHyperspaceClient(context);
+                const store = new HyperspaceStore(_embeddings, {
+                    client,
+                    collectionName,
+                    dimension,
+                    metric,
+                });
                 await store.addDocuments(documents);
             },
         });
@@ -73,4 +102,22 @@ export class HyperspaceDbVectorStore implements INodeType {
         this.execute = instance.execute;
         this.supplyData = instance.supplyData;
     }
+
+    methods = {
+        loadOptions: {
+            async getCollections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                try {
+                    const client = await getHyperspaceClient(this as any);
+                    const collections = await client.listCollections();
+                    return collections.map((name) => ({
+                        name,
+                        value: name,
+                    }));
+                } catch (error: any) {
+                    throw new Error(`Failed to load collections: ${error.message}`);
+                }
+            },
+        },
+    };
 }
+

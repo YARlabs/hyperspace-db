@@ -8,11 +8,16 @@ export interface HyperspaceNodeCredentials {
 	apiKey: string;
 }
 
+function cleanHost(host: string): string {
+    return host.replace(/^(http|https):\/\//, '').replace(/\/$/, '');
+}
+
 export async function getHyperspaceClient(
 	context: ISupplyDataFunctions | IExecuteFunctions,
 ): Promise<HyperspaceClient> {
 	const credentials = await context.getCredentials('hyperspaceDbApi') as any;
-	return new HyperspaceClient(`${credentials.host}:${credentials.port}`, credentials.apiKey) as any;
+    const host = cleanHost(credentials.host);
+	return new HyperspaceClient(`${host}:${credentials.port}`, credentials.apiKey) as any;
 }
 
 export async function getHyperspaceStore(
@@ -20,7 +25,8 @@ export async function getHyperspaceStore(
 	itemIndex: number,
 ): Promise<HyperspaceStore> {
 	const credentials = await context.getCredentials('hyperspaceDbApi') as any;
-    const client = new HyperspaceClient(`${credentials.host}:${credentials.port}`, credentials.apiKey);
+    const host = cleanHost(credentials.host);
+    const client = new HyperspaceClient(`${host}:${credentials.port}`, credentials.apiKey);
 	const collectionName = context.getNodeParameter('collectionName', itemIndex) as string;
 	const metric = context.getNodeParameter('metric', itemIndex) as string;
 	const dimension = context.getNodeParameter('dimension', itemIndex, 1024) as number;

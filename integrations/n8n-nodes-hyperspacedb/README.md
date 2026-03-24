@@ -1,56 +1,50 @@
 # n8n-nodes-hyperspacedb
 
 This is an n8n community node for [HyperspaceDB](https://github.com/yarlabs/hyperspace-db) — a high-performance, multi-geometry vector database designed for advanced Agentic AI and cognitive modeling.
+# HyperspaceDB n8n Integration
 
-## 🚀 Features
+The world's first Hyperbolic Vector Database integration for n8n. Build advanced Spatial AI workflows with native Poincaré and Lorentz geometry support.
 
-- **Multi-Geometry Support**: L2, Cosine, Poincaré, and Lorentz distances.
-- **Cognitive Graph Ops**: HNSW graph traversal, neighbors retrieval, and semantic clustering.
-- **Wait-Free Indexing**: Real-time vector insertions with optional background indexing.
-- **System Control**: Metrics, memory vacuuming, and instance status.
-- **[H] Branding**: Official cyan logo integration.
+## Features
 
-## 📦 Installation
+- **Hyperbolic & Euclidean Spaces**: Support for Lorentz, Poincaré, Cosine, and L2 metrics.
+- **Standalone Architecture**: No external LangChain library conflicts. Logic is internalized for stability.
+- **Auto-Syncing**: Automatically detects collection dimensions and metrics - no more manual configuration errors.
+- **Universal SDK**: Powered by the official `hyperspace-sdk-ts`.
+- **RAG Ready**: Seamlessly integrates with n8n AI Agent and Chains.
 
-Follow the [community nodes installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in n8n.
+## Nodes
 
-```bash
-npm install n8n-nodes-hyperspacedb
-```
+### 1. HyperspaceDB Vector Store
+The primary node for document storage and similarity search.
+- **Dynamic Collection Selection**: Select your database from a dropdown list.
+- **Zero-Config Metadata**: Dimensions and geometry are fetched automatically from the server.
 
-## 🛠️ Configuration
+### 2. HyperspaceDB Embeddings
+Server-side vectorization node.
+- **Geometry Matching**: Automatically matches the space of your target collection.
 
-### Default Ports
-- **REST API (n8n Node)**: `http://localhost:50050/api`
-- **gRPC API (SDK)**: `localhost:50051`
+### 3. HyperspaceDB (Standalone)
+Direct API access for management tasks:
+- Create/Delete Collections
+- Get Stats
+- Direct Vector/Text Insertion
+- Graph Traversals
 
-### Authentication
-The node requires an **API Key** (default: `I_LOVE_HYPERSPACEDB`) and a **Base URL**.
+## Installation
 
-## 🧩 Supported Operations
+Install via the n8n Community Nodes panel:
+`n8n-nodes-hyperspacedb`
 
-### Collection
-- **Get All**: List all managed collections.
-- **Create**: Setup new collections with geometry-specific dimensions.
-- **Get Stats**: Real-time telemetry (vector count, indexing queue).
-- **Delete**: Remove a collection and all its data.
-- **Rebuild Index**: Trigger Hot Vacuum optimization.
+## Credentials
 
-### Vector
-- **Insert**: Store vectors with numeric IDs and JSON metadata.
-- **Search**: Similarity search with top-k and optional Optimal Transport (Wasserstein).
+Requires `HyperspaceDB API` credentials:
+- **Host**: Your server address
+- **Port**: gRPC port (default 50051)
+- **API Key**: Your secure access key
 
-### Graph (Agentic AI)
-- **Get Node**: Retrieve node metadata and neighbors.
-- **Get Neighbors**: Explore vector proximity in the HNSW graph.
-- **Traverse**: BFS/DFS graph exploration.
-- **Find Clusters**: Automatic semantic region detection.
-
-### System
-- **Status**: Instance configuration and health.
-- **Metrics**: Performance metrics (RAM, CPU usage).
-- **Usage**: Detailed quota/usage report.
-- **Vacuum**: Force memory reclamation to the OS.
+---
+Built with ❤️ by the YARlabs.
 
 ## 🤝 SDK Integration
 This node works alongside the [hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts). While the n8n node uses the REST API (port 50050), the SDK provides full gRPC (port 50051) support for high-throughput applications.

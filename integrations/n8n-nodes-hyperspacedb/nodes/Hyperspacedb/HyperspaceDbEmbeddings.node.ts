@@ -4,6 +4,8 @@ import {
 	NodeConnectionTypes,
     ISupplyDataFunctions,
     SupplyData,
+    ILoadOptionsFunctions,
+    INodePropertyOptions,
 } from 'n8n-workflow';
 import { getHyperspaceClient } from './HyperspaceDb.utils';
 import { Embeddings, EmbeddingsParams } from '@langchain/core/embeddings';
@@ -61,6 +63,17 @@ export class HyperspaceDbEmbeddings implements INodeType {
 		credentials: [{ name: 'hyperspaceDbApi', required: true }],
 		properties: [
 			{
+				displayName: 'Collection Name',
+				name: 'collectionName',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getCollections',
+				},
+				default: '',
+				required: true,
+				description: 'The collection you are working with',
+			},
+			{
 				displayName: 'Model Geometry',
 				name: 'metric',
 				type: 'options',
@@ -89,4 +102,21 @@ export class HyperspaceDbEmbeddings implements INodeType {
             response: embeddings
         };
 	}
+
+	methods = {
+		loadOptions: {
+			async getCollections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				try {
+					const client = await getHyperspaceClient(this as any);
+					const collections = await client.listCollections();
+					return collections.map((name) => ({
+						name,
+						value: name,
+					}));
+				} catch (error: any) {
+					throw new Error(`Failed to load collections: ${error.message}`);
+				}
+			},
+		},
+	};
 }

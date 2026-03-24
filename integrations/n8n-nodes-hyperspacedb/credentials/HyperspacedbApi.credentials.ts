@@ -36,4 +36,25 @@ export class HyperspaceDbApi implements ICredentialType {
 			default: 'I_LOVE_HYPERSPACEDB',
 		},
 	];
+
+	// @ts-ignore: Custom gRPC test function (using legacy method name to avoid declarative URL validation)
+	async test(this: any): Promise<any> {
+		let host = this.getCredentialData('host') as string;
+		const port = this.getCredentialData('port') as number;
+		const apiKey = this.getCredentialData('apiKey') as string;
+
+		// Strip http:// or https:// if present
+		host = host.replace(/^(http|https):\/\//, '').replace(/\/$/, '');
+
+		const { HyperspaceClient } = await import('hyperspace-sdk-ts');
+		// Handle port as string or number for the SDK
+		const client = new HyperspaceClient(`${host}:${port}`, apiKey);
+
+		try {
+			await client.getDigest("");
+			return [{ json: { success: true } }];
+		} catch (error: any) {
+			throw new Error(`Connection failed: ${error.message}`);
+		}
+	}
 }
