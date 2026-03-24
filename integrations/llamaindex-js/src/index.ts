@@ -1,23 +1,26 @@
 import {
-  BaseVectorStore,
+  VectorStore,
   VectorStoreQuery,
   VectorStoreQueryResult,
   VectorStoreQueryMode,
 } from "llamaindex";
 import { HyperspaceClient } from "hyperspace-sdk-ts";
 
-export class HyperspaceVectorStore extends BaseVectorStore {
+export class HyperspaceVectorStore implements VectorStore {
   storesText: boolean = true;
-  private client: HyperspaceClient;
+  private _client: HyperspaceClient;
   private collectionName: string;
 
   constructor(config: {
     client: HyperspaceClient;
     collectionName: string;
   }) {
-    super();
-    this.client = config.client;
+    this._client = config.client;
     this.collectionName = config.collectionName;
+  }
+
+  client(): any {
+    return this._client;
   }
 
   async add(nodes: any[]): Promise<string[]> {
@@ -25,7 +28,7 @@ export class HyperspaceVectorStore extends BaseVectorStore {
       const metadata = node.metadata || {};
       const id = parseInt(node.id_) || Math.floor(Math.random() * 2**32);
       
-      await this.client.insert(id, node.embedding, metadata, this.collectionName);
+      await this._client.insert(node.embedding, id, metadata, this.collectionName);
     }
     return nodes.map((n) => n.id_);
   }
@@ -33,7 +36,7 @@ export class HyperspaceVectorStore extends BaseVectorStore {
   async delete(refDocId: string): Promise<void> {
     const id = parseInt(refDocId);
     if (!isNaN(id)) {
-      await this.client.delete(id, this.collectionName);
+      await this._client.delete(id, this.collectionName);
     }
   }
 
@@ -42,7 +45,7 @@ export class HyperspaceVectorStore extends BaseVectorStore {
       throw new Error("Only default query mode is supported");
     }
 
-    const results = await this.client.search(
+    const results = await this._client.search(
       query.queryEmbedding!,
       query.similarityTopK || 10,
       this.collectionName
@@ -53,7 +56,7 @@ export class HyperspaceVectorStore extends BaseVectorStore {
         id_: r.id.toString(),
         metadata: r.metadata,
         embedding: r.vector,
-      })),
+      } as any)),
       similarities: results.map((r: any) => r.score),
       ids: results.map((r: any) => r.id.toString()),
     };

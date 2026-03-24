@@ -1,6 +1,6 @@
 {
   "name": "hyperspace-sdk-ts",
-  "version": "3.0.0",
+  "version": "3.0.8",
   "description": "Official TypeScript SDK for HyperspaceDB gRPC API",
   "main": "dist/client.js",
   "types": "dist/client.d.ts",
@@ -20,10 +20,12 @@
   ],
   "author": "YARlabs",
   "license": "ISC",
-  "devDependencies": {
+  "dependencies": {
     "@grpc/grpc-js": "^1.14.3",
+    "google-protobuf": "^3.21.4"
+  },
+  "devDependencies": {
     "@types/node": "^25.2.0",
-    "google-protobuf": "^3.21.4",
     "grpc_tools_node_protoc_ts": "^5.3.3",
     "grpc-tools": "^1.13.1",
     "ts-node": "^10.9.2",

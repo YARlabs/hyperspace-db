@@ -206,7 +206,7 @@ class HyperspaceMcpServer {
           }
           case "hyperspace_insert_text": {
             const { collection, id, text, metadata } = z.object({ collection: z.string(), id: z.number(), text: z.string(), metadata: z.record(z.string(), z.string()).optional() }).parse(args);
-            await this.client.insertText(id, text, metadata, collection);
+            await this.client.insertText(text, id, metadata, collection);
             return { content: [{ type: "text", text: `Stored ${id} in ${collection}` }] };
           }
           case "hyperspace_graph_traverse": {

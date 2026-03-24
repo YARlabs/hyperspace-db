@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llama-index-vector-stores-hyperspace"
-version = "3.0.0"
+version = "3.0.1"
 description = "LlamaIndex integration for HyperspaceDB - Hyperbolic Vector Database"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -15,6 +15,7 @@ authors = [
 keywords = ["llama-index", "vector database", "embeddings", "AI", "RAG", "hyperbolic"]
 dependencies = [
     "llama-index-core>=0.10.0",
+    "hyperspacedb>=3.0.1",
     "grpcio>=1.60.0",
     "protobuf>=4.25.0",
     "numpy>=1.24.0",

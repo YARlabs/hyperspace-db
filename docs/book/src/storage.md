@@ -34,7 +34,7 @@ Using the `s3-tiering` feature, HyperspaceDB can offload cold chunks to an S3-co
 
 Each `.hyp` file is a flat array of fixed-size records. No headers, no metadata. Metadata is stored in the Index Snapshot or recovered from layout.
 
-### Zonal Quantization (v3.0 LTS)
+### Zonal Quantization (v3.0.1)
 
 For hyperbolic collections, HyperspaceDB automatically applies **Zonal Quantization (MOND theory)** to vectors.
 - Vectors near the origin ($||x|| < 0.5$) are tightly compressed as `i8` (`Core`).

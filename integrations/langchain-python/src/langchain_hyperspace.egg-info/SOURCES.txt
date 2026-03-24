@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/langchain_hyperspace/__init__.py
+src/langchain_hyperspace/client.py
+src/langchain_hyperspace/embeddings.py
+src/langchain_hyperspace/vectorstores.py
+src/langchain_hyperspace.egg-info/PKG-INFO
+src/langchain_hyperspace.egg-info/SOURCES.txt
+src/langchain_hyperspace.egg-info/dependency_links.txt
+src/langchain_hyperspace.egg-info/requires.txt
+src/langchain_hyperspace.egg-info/top_level.txt
+src/langchain_hyperspace/generated/__init__.py
+src/langchain_hyperspace/generated/hyperspace_pb2.py
+src/langchain_hyperspace/generated/hyperspace_pb2.pyi
+src/langchain_hyperspace/generated/hyperspace_pb2_grpc.py
+tests/test_vectorstore.py

@@ -44,8 +44,7 @@ class HyperspaceVectorStore(VectorStore):
         self.use_server_side_embedding = use_server_side_embedding
         
         self._client = HyperspaceClient(
-            host=host,
-            port=port,
+            host=f"{host}:{port}",
             api_key=api_key,
             user_id=user_id,
         )
@@ -166,7 +165,7 @@ class HyperspaceVectorStore(VectorStore):
         for id_str in ids:
             try:
                 id_num = int(id_str) if id_str.isdigit() else self._compute_content_hash(id_str)
-                self._client.delete(self.collection_name, id_num)
+                self._client.delete(id=id_num, collection=self.collection_name)
             except Exception as e:
                 logger.error(f"Failed to delete {id_str}: {e}")
                 success = False

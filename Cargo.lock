@@ -1814,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "prost",
  "tonic",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "hf-hub",

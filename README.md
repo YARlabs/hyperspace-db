@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v3.0.0-rc.1** | **The World's First Spatial AI Engine.**
+**v3.0** | **The World's First Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -34,7 +34,7 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v3.0 LTS)
+## 🚀 Core Pillars (v3.0)
 
 <table>
   <tr>
@@ -76,7 +76,7 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## ⚡ 1 Million Vectors Benchmark (v3.0.0 LTS)
+## ⚡ 1 Million Vectors Benchmark (v3.0)
  
 We pushed **HyperspaceDB v3.0** to the limit with a **1 Million Vector Dataset**.
 The results define a new standard for performance and efficiency.
@@ -298,7 +298,7 @@ HS_EMBED_POINCARE_DIM=128
 
 Direct Search from SDK:
 ```python
-# Server-side text-to-vector search (v3.0.0-rc.1)
+# Server-side text-to-vector search (v3.0.1)
 results = client.search_text("Find similar robotics docs", top_k=5)
 ```
 
@@ -462,7 +462,7 @@ Open a new terminal to monitor the database:
 ### 3. Use Python SDK
 
 ```bash
-pip install hyperspacedb==3.0.0
+pip install hyperspacedb==3.0.1
 ```
 
 ```python
@@ -686,19 +686,19 @@ docker run -d \
 
 ---
 
-## 📦 SDKs (v3.0.0 LTS)
+## 📦 SDKs (v3.0.1)
 
 Official 1st-party drivers with full Delta Sync, Cognitive Math, and Event Subscriptions:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3.0.0 |
-| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3.0.0 |
-| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3.0.0 |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` (In-Browser Embedded Engine) | ✅ v3.0.0 |
-| 🐹 **Go** | `sdks/go` | ✅ v3.0.0 |
-| 🎯 **Dart/Flutter** | `sdks/dart` (Mobile Offline-First) | ✅ v3.0.0 |
-| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` (Hardware/Native) | ✅ v3.0.0 |
+| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3.0.1 |
+| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3.0.1 |
+| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3.0.1 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` (In-Browser Embedded Engine) | ✅ v3.0.1 |
+| 🐹 **Go** | `sdks/go` | ✅ v3.0.1 |
+| 🎯 **Dart/Flutter** | `sdks/dart` (Mobile Offline-First) | ✅ v3.0.1 |
+| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` (Hardware/Native) | ✅ v3.0.1 |
 
 ---
 

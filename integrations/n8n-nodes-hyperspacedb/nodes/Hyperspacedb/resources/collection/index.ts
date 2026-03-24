@@ -15,87 +15,45 @@ export const collectionDescription: INodeProperties[] = [
 		},
 		options: [
 			{
-				name: 'Get Many',
-				value: 'getAll',
-				action: 'Get all collections',
+				name: 'List',
+				value: 'list',
+				action: 'List all collections',
 				description: 'Retrieve a list of all collections',
-				routing: {
-					request: {
-						method: 'GET',
-						url: '/collections',
-					},
-				},
 			},
 			{
 				name: 'Create',
 				value: 'create',
 				action: 'Create a collection',
 				description: 'Create a new collection with specified dimension and metric',
-				routing: {
-					request: {
-						method: 'POST',
-						url: '/collections',
-					},
-				},
 			},
 			{
 				name: 'Get Stats',
 				value: 'getStats',
 				action: 'Get collection stats',
 				description: 'Retrieve statistics for a specific collection',
-				routing: {
-					request: {
-						method: 'GET',
-						url: '=/collections/{{$parameter["collectionName"]}}/stats',
-					},
-				},
 			},
 			{
 				name: 'Delete',
 				value: 'delete',
 				action: 'Delete a collection',
 				description: 'Delete an existing collection',
-				routing: {
-					request: {
-						method: 'DELETE',
-						url: '=/collections/{{$parameter["collectionName"]}}',
-					},
-				},
-			},
-			{
-				name: 'Rebuild Index',
-				value: 'rebuild',
-				action: 'Rebuild collection index',
-				description: 'Trigger an optimization (Hot Vacuum) on a collection',
-				routing: {
-					request: {
-						method: 'POST',
-						url: '=/collections/{{$parameter["collectionName"]}}/rebuild',
-					},
-				},
 			},
 		],
-		default: 'getAll',
+		default: 'list',
 	},
 	{
 		displayName: 'Collection Name',
-		name: 'collectionName',
+		name: 'name',
 		type: 'string',
 		required: true,
 		displayOptions: {
 			show: {
 				resource: ['collection'],
-				operation: ['create', 'getStats', 'delete', 'rebuild'],
+				operation: ['create', 'getStats', 'delete'],
 			},
 		},
 		default: '',
 		description: 'The name of the collection',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'name',
-			},
-		},
 	},
 	{
 		displayName: 'Dimension',
@@ -108,22 +66,16 @@ export const collectionDescription: INodeProperties[] = [
 				operation: ['create'],
 			},
 		},
-		default: 128,
-		description: 'The number of dimensions in the vector',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'dimension',
-			},
-		},
+		default: 1024,
+		description: 'Number of dimensions (e.g. 1536 for OpenAI, 1024 for Hyperspace DEFAULT)',
 	},
 	{
 		displayName: 'Metric',
 		name: 'metric',
 		type: 'options',
 		options: [
-			{ name: 'L2 (Euclidean)', value: 'l2' },
 			{ name: 'Cosine', value: 'cosine' },
+			{ name: 'L2 (Euclidean)', value: 'l2' },
 			{ name: 'Poincare', value: 'poincare' },
 			{ name: 'Lorentz', value: 'lorentz' },
 		],
@@ -134,13 +86,7 @@ export const collectionDescription: INodeProperties[] = [
 				operation: ['create'],
 			},
 		},
-		default: 'l2',
-		description: 'The distance metric to use',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'metric',
-			},
-		},
+		default: 'cosine',
+		description: 'Distance metric to use',
 	},
 ];

@@ -15,28 +15,28 @@ export const vectorDescription: INodeProperties[] = [
 		},
 		options: [
 			{
-				name: 'Insert',
+				name: 'Insert Vector',
 				value: 'insert',
-				action: 'Insert a vector',
-				description: 'Insert a new vector into a collection',
-				routing: {
-					request: {
-						method: 'POST',
-						url: '=/collections/{{$parameter["collectionName"]}}/insert',
-					},
-				},
+				action: 'Insert a raw vector',
+				description: 'Insert a new raw vector into a collection',
 			},
 			{
-				name: 'Search',
+				name: 'Insert Text (Auto-embed)',
+				value: 'insertText',
+				action: 'Insert text with auto-embedding',
+				description: 'Insert text that will be automatically vectorized by the server',
+			},
+			{
+				name: 'Search Vector',
 				value: 'search',
-				action: 'Search vectors',
-				description: 'Perform a vector similarity search',
-				routing: {
-					request: {
-						method: 'POST',
-						url: '=/collections/{{$parameter["collectionName"]}}/search',
-					},
-				},
+				action: 'Search by raw vector',
+				description: 'Perform a raw vector similarity search',
+			},
+			{
+				name: 'Search Text (Auto-embed)',
+				value: 'searchText',
+				action: 'Search by natural language',
+				description: 'Search using a text query that will be vectorized by the server',
 			},
 		],
 		default: 'insert',
@@ -55,46 +55,47 @@ export const vectorDescription: INodeProperties[] = [
 		description: 'The name of the collection to interact with',
 	},
 	{
-		displayName: 'Vector ID',
+		displayName: 'ID (Numeric)',
 		name: 'vectorId',
 		type: 'number',
 		required: true,
 		displayOptions: {
 			show: {
 				resource: ['vector'],
-				operation: ['insert'],
+				operation: ['insert', 'insertText'],
 			},
 		},
 		default: 0,
-		description: 'The unique numeric ID for the vector',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'id',
-			},
-		},
+		description: 'The unique numeric ID for the entry',
 	},
 	{
-		displayName: 'Vector Data (JS Array or String)',
+		displayName: 'Text Content',
+		name: 'textContent',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['vector'],
+				operation: ['insertText', 'searchText'],
+			},
+		},
+		default: '',
+		description: 'The text content to be vectorized and stored/searched',
+	},
+	{
+		displayName: 'Vector Data (JS Array)',
 		name: 'vectorData',
 		type: 'string',
 		required: true,
 		displayOptions: {
 			show: {
 				resource: ['vector'],
+				operation: ['insert', 'search'],
 			},
 		},
 		default: '',
 		placeholder: '[0.1, 0.2, 0.3, ...]',
-		description: 'The vector embedding as a JSON array',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'vector',
-				// We might need to transform this from string to array if user passes string
-                                // In declarative style, transformation is done via expressions or custom methods
-			},
-		},
+		description: 'The raw vector embedding as a JSON array',
 	},
 	{
 		displayName: 'Metadata',
@@ -103,17 +104,11 @@ export const vectorDescription: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['vector'],
-				operation: ['insert'],
+				operation: ['insert', 'insertText'],
 			},
 		},
 		default: '{}',
 		description: 'Optional metadata as a JSON object',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'metadata',
-			},
-		},
 	},
 	{
 		displayName: 'Top K',
@@ -122,35 +117,10 @@ export const vectorDescription: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['vector'],
-				operation: ['search'],
+				operation: ['search', 'searchText'],
 			},
 		},
 		default: 10,
 		description: 'The number of results to return',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'top_k',
-			},
-		},
-	},
-        {
-		displayName: 'Use Wasserstein',
-		name: 'useWasserstein',
-		type: 'boolean',
-		displayOptions: {
-			show: {
-				resource: ['vector'],
-				operation: ['search'],
-			},
-		},
-		default: false,
-		description: 'Whether to use Optimal Transport distance (Wasserstein HNSW)',
-		routing: {
-			send: {
-				type: 'body',
-				property: 'use_wasserstein',
-			},
-		},
 	},
 ];

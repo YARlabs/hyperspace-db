@@ -2,7 +2,7 @@
 
 [![MCP](https://img.shields.io/badge/MCP-Protocol-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
-[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v3.5-cyan)](https://github.com/yarlabs/hyperspace-db)
+[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v3.0-cyan)](https://github.com/yarlabs/hyperspace-db)
 
 The **HyperspaceDB MCP Server** acts as a high-performance cognitive bridge, enabling Large Language Models (LLMs) to interact with **HyperspaceDB** — a multi-geometry vector database designed for advanced AI memory and spatial computing.
 
@@ -35,12 +35,11 @@ Track and manage the model's internal reasoning stability.
 - Node.js 18+
 - Running instance of [HyperspaceDB](https://github.com/yarlabs/hyperspace-db) (default: `localhost:50051`)
 
-### 1. Build from Source
+### 1. Run directly with npx (Recommended)
+You don't need to install anything. Just run:
+
 ```bash
-git clone https://github.com/yarlabs/hyperspace-db.git
-cd integrations/mcp-hyperspacedb
-npm install
-npm run build
+npx mcp-hyperspacedb
 ```
 
 ### 2. Configuration for MCP Hosts
@@ -51,8 +50,8 @@ Add the following to your MCP configuration file (e.g., `claude_desktop_config.j
 {
   "mcpServers": {
     "hyperspacedb": {
-      "command": "node",
-      "args": ["/path/to/mcp-hyperspacedb/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "mcp-hyperspacedb"],
       "env": {
         "HYPERSPACE_HOST": "localhost:50051",
         "HYPERSPACE_API_KEY": "I_LOVE_HYPERSPACEDB"

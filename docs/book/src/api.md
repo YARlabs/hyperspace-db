@@ -244,7 +244,7 @@ message VacuumFilterQuery {
 
 Use this API for pruning cycles when you need to rebuild an index and drop low-value vectors in one server-side operation.
 
-#### `TriggerReconsolidation` (v3.0 LTS)
+#### `TriggerReconsolidation` (v3.0.1)
 Trigger AI Sleep Mode (Riemannian SGD / Flow Matching) directly on the engine to algorithmically shift vectors.
 
 ```protobuf
@@ -257,7 +257,7 @@ message ReconsolidationRequest {
 }
 ```
 
-#### `InsertText` (v3.0-rc.1)
+#### `InsertText` (v3.0.1)
 Inserts raw text to be embedded and stored on the server.
 
 ```protobuf
@@ -271,7 +271,7 @@ message InsertTextRequest {
 }
 ```
 
-#### `Vectorize` (v3.0-rc.1)
+#### `Vectorize` (v3.0.1)
 Converts text to a vector using the server's embedding engine.
 
 ```protobuf
@@ -287,7 +287,7 @@ message VectorizeResponse {
 }
 ```
 
-#### `SearchText` (v3.0-rc.1)
+#### `SearchText` (v3.0.1)
 Searches the collection using a text query.
 
 ```protobuf

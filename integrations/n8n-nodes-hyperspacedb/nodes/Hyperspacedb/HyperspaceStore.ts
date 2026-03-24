@@ -14,11 +14,11 @@ export interface HyperspaceStoreArgs {
      */
     useServerSideEmbedding?: boolean;
     /**
-     * @default 1536
+     * @default 1024
      */
     dimension?: number;
     /**
-     * @default "l2"
+     * @default "lorentz"
      */
     metric?: string;
 }
@@ -87,9 +87,8 @@ export class HyperspaceStore extends VectorStore {
         const ids = options?.ids || [];
         const resultIds: string[] = [];
         const metadatas = options?.metadatas || documents.map((d) => d.metadata);
-        const idsToInsert: number[] = [];
-        const vectorsToInsert: number[][] = [];
-        const metadatasToInsert: Record<string, string>[] = [];
+        
+        const itemsToInsert: { id: number; vector: number[]; metadata: Record<string, string> }[] = [];
 
         for (let i = 0; i < vectors.length; i++) {
             const text = documents[i].pageContent;
@@ -115,21 +114,17 @@ export class HyperspaceStore extends VectorStore {
                 idStr = idNum.toString();
             }
 
-            idsToInsert.push(idNum);
-            vectorsToInsert.push(vector);
-            metadatasToInsert.push(fullMetadata);
+            itemsToInsert.push({
+                id: idNum,
+                vector: vector,
+                metadata: fullMetadata
+            });
             resultIds.push(idStr);
         }
 
-        const items = idsToInsert.map((idNum, idx) => ({
-            id: idNum,
-            vector: vectorsToInsert[idx],
-            metadata: metadatasToInsert[idx]
-        }));
-
         try {
             await this.client.batchInsert(
-                items,
+                itemsToInsert,
                 this.collectionName
             );
         } catch (e) {
@@ -180,18 +175,14 @@ export class HyperspaceStore extends VectorStore {
         options: { k: number; fetchK?: number; lambda?: number; filter?: Record<string, any> }
     ): Promise<Document[]> {
         if (this.useServerSideEmbedding || !this.embeddings) {
-            console.warn("MMR search falls back to similarity search when using server-side embeddings.");
             return this.similaritySearch(query, options.k, options.filter);
         }
         
-        const { k, fetchK = 20, lambda = 0.5, filter } = options;
+        const { k, fetchK = 20, filter } = options;
         const queryEmbedding = await this.embeddings.embedQuery(query);
         const filters = this.parseFilters(filter);
         
         const results = await this.client.search(queryEmbedding, fetchK, this.collectionName, { filters });
-        
-        // MMR requires vectors. We currently don't expose vectors in search results for security/bandwidth.
-        // So for now, MMR in 'community' mode will return top-K.
         return this.resultsToDocuments(results).slice(0, k).map(([doc]) => doc);
     }
 
@@ -200,7 +191,6 @@ export class HyperspaceStore extends VectorStore {
         const filters: any[] = [];
         for (const [key, value] of Object.entries(filter)) {
             if (typeof value === "object" && value !== null) {
-                // Handle complex filters $gte, $lte
                 const range: any = { key };
                 if ("$gte" in value) range.gte = value.$gte;
                 if ("$lte" in value) range.lte = value.$lte;
@@ -230,25 +220,5 @@ export class HyperspaceStore extends VectorStore {
     private computeContentHash(text: string): number {
         const hash = crypto.createHash("sha256").update(text).digest();
         return hash.readUInt32BE(0);
-    }
-
-    static async fromTexts(
-        texts: string[],
-        metadatas: object[] | object,
-        embeddings: Embeddings,
-        dbConfig: HyperspaceStoreArgs
-    ): Promise<HyperspaceStore> {
-        const docs: Document[] = [];
-        for (let i = 0; i < texts.length; i += 1) {
-            const metadata = Array.isArray(metadatas) ? metadatas[i] : metadatas;
-            const newDoc = new Document({
-                pageContent: texts[i],
-                metadata,
-            });
-            docs.push(newDoc);
-        }
-        const store = new HyperspaceStore(embeddings, dbConfig);
-        await store.addDocuments(docs);
-        return store;
     }
 }

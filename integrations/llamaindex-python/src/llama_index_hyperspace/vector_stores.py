@@ -14,10 +14,6 @@ from llama_index.core.vector_stores.utils import (
     node_to_metadata_dict,
 )
 
-# Import the official Hyperspace SDK
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../sdks/python")))
 from hyperspace.client import HyperspaceClient
 
 logger = logging.getLogger(__name__)

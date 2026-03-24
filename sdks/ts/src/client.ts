@@ -271,6 +271,17 @@ export class HyperspaceClient {
         });
     }
 
+    public listCollections(): Promise<string[]> {
+        return new Promise((resolve, reject) => {
+            const req = new Empty();
+
+            this.client.listCollections(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getCollectionsList());
+            });
+        });
+    }
+
     public delete(id: number, collection: string = ''): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new hyperspace_pb.DeleteRequest();
@@ -285,8 +296,8 @@ export class HyperspaceClient {
     }
 
     public insert(
-        id: number,
         vector: number[] | Float32Array | Float64Array,
+        id: number,
         meta?: { [key: string]: string },
         collection: string = '',
         durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL,
@@ -294,8 +305,8 @@ export class HyperspaceClient {
     ): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new InsertRequest();
-            req.setId(id);
             req.setVectorList(HyperspaceClient.toVectorList(vector));
+            req.setId(id);
             if (meta) {
                 const map = req.getMetadataMap();
                 for (const k in meta) map.set(k, meta[k]);
@@ -317,16 +328,16 @@ export class HyperspaceClient {
     }
 
     public insertText(
-        id: number,
         text: string,
+        id: number,
         meta?: { [key: string]: string },
         collection: string = '',
         durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL
     ): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new InsertTextRequest();
-            req.setId(id);
             req.setText(text);
+            req.setId(id);
             if (meta) {
                 const map = req.getMetadataMap();
                 for (const k in meta) map.set(k, meta[k]);

@@ -47,9 +47,9 @@ export class YARLabsEmbeddings extends Embeddings {
                 // the architecture is not standard BERT/DistilBERT.
                 
                 this.pipe = await pipeline("feature-extraction", this.modelName, {
-                    device: this.device as any,
+                    device: this.device,
                     local_files_only: this.localOnly,
-                });
+                } as any);
             } catch (err) {
                 console.error("Failed to load @xenova/transformers or the model. This model might be custom and require specific ONNX implementation.");
                 throw err;

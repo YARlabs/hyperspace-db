@@ -101,7 +101,7 @@ class HyperspaceClient:
         except grpc.RpcError:
             return {}
 
-    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+    def insert(self, vector: List[float] = None, id: int = None, document: str = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if vector is None and document is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -131,7 +131,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def insert_text(self, id: int, text: str, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+    def insert_text(self, text: str, id: int = None, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         req = hyperspace_pb2.InsertTextRequest(
             id=id,
             text=text,

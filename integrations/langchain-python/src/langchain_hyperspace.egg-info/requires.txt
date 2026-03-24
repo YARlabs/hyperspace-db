@@ -1,0 +1,16 @@
+langchain-core>=0.1.0
+grpcio>=1.60.0
+protobuf>=4.25.0
+numpy>=1.24.0
+
+[dev]
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+mypy>=1.6.0
+ruff>=0.1.0
+grpcio-tools>=1.60.0
+
+[yarlabs]
+torch>=2.0.0
+transformers>=4.30.0

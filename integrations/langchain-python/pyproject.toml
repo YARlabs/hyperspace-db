@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "langchain-hyperspace"
-version = "3.0.0"
+version = "3.0.1"
 description = "LangChain integration for HyperspaceDB - Hyperbolic Vector Database with Edge-Cloud Federation"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -63,10 +63,10 @@ target-version = ['py38', 'py39', 'py310', 'py311']
 
 [tool.ruff]
 line-length = 100
-target-version = "py38"
+target-version = "3.0.1"
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.0.1"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
