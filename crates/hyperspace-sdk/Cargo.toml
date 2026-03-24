@@ -1,10 +1,14 @@
 [package]
 name = "hyperspace-sdk"
-version = "3.0.3"
+version = "3.0.4"
 edition = "2021"
+authors = ["YARlabs <hi@yar.ink>"]
 description = "Official Rust SDK for HyperspaceDB gRPC API"
+homepage = "https://yar.ink"
+repository = "https://github.com/YARlabs/hyperspace-db"
+documentation = "https://yar.ink/docs"
+license = "Apache-2.0"
 readme = "README.md"
-license = "AGPL-3.0-only"
 keywords = ["vector-database", "ann", "grpc", "hnsw", "hyperspace"]
 categories = ["database", "api-bindings"]
 

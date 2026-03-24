@@ -1,11 +1,13 @@
 {
   "name": "llamaindex-hyperspace",
-  "version": "3.0.4",
+  "version": "3.0.6",
   "description": "LlamaIndex integration for HyperspaceDB",
+  "homepage": "https://yar.ink",
+  "author": "YARlabs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "hyperspace-sdk-ts": "^3.0.8",
+    "hyperspace-sdk-ts": "^3.0.9",
     "llamaindex": "^0.1.0"
   },
   "devDependencies": {

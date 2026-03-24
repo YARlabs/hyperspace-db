@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hyperspacedb",
-  "version": "3.1.11",
+  "version": "3.1.13",
   "description": "HyperspaceDB integration for n8n (Standalone, AI Vector Store and Embeddings)",
   "keywords": [
     "n8n-community-node-package",
@@ -11,8 +11,8 @@
     "hyperbolic"
   ],
   "license": "Apache-2.0",
-  "homepage": "https://hyperspace.systems",
-  "author": "HyperspaceDB Team",
+  "homepage": "https://yar.ink",
+  "author": "YARlabs",
   "repository": {
     "type": "git",
     "url": "https://github.com/YARlabs/hyperspace-db.git"
@@ -23,7 +23,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "hyperspace-sdk-ts": "^3.0.8",
+    "hyperspace-sdk-ts": "^3.0.9",
     "@langchain/core": "^0.3.36",
     "uuid": "^9.0.0"
   },

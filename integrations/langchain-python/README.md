@@ -242,9 +242,9 @@ See the [examples/](examples/) directory for complete examples:
 
 ## Documentation
 
-- [HyperspaceDB Documentation](https://hyperspacedb.io/docs)
+- [HyperspaceDB Documentation](https://yar.ink/docs)
 - [LangChain Documentation](https://python.langchain.com/docs)
-- [API Reference](https://hyperspacedb.io/docs/api)
+- [API Reference](https://yar.ink/docs/api)
 
 ## Performance
 

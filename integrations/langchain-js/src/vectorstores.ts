@@ -200,11 +200,20 @@ export class HyperspaceStore extends VectorStore {
         const filters: any[] = [];
         for (const [key, value] of Object.entries(filter)) {
             if (typeof value === "object" && value !== null) {
-                // Handle complex filters $gte, $lte
-                const range: any = { key };
-                if ("$gte" in value) range.gte = value.$gte;
-                if ("$lte" in value) range.lte = value.$lte;
-                filters.push({ range });
+                // Handle spatial filters
+                if ("$in_ball" in value) {
+                    filters.push({ ball: { key, ...(value.$in_ball as any) } });
+                } else if ("$in_box" in value) {
+                    filters.push({ box: { key, ...(value.$in_box as any) } });
+                } else if ("$in_cone" in value) {
+                    filters.push({ cone: { key, ...(value.$in_cone as any) } });
+                } else {
+                    // Standard range filters $gte, $lte
+                    const range: any = { key };
+                    if ("$gte" in value) range.gte = value.$gte;
+                    if ("$lte" in value) range.lte = value.$lte;
+                    filters.push({ range });
+                }
             } else {
                 filters.push({ match: { key, value: String(value) } });
             }

@@ -1,4 +1,5 @@
 langchain-core>=0.1.0
+hyperspacedb>=3.0.3
 grpcio>=1.60.0
 protobuf>=4.25.0
 numpy>=1.24.0

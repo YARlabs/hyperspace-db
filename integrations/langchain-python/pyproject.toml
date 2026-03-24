@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "langchain-hyperspace"
-version = "3.0.1"
+version = "3.0.3"
 description = "LangChain integration for HyperspaceDB - Hyperbolic Vector Database with Edge-Cloud Federation"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -29,6 +29,7 @@ classifiers = [
 
 dependencies = [
     "langchain-core>=0.1.0",
+    "hyperspacedb>=3.0.3",
     "grpcio>=1.60.0",
     "protobuf>=4.25.0",
     "numpy>=1.24.0",
@@ -49,10 +50,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/hyperspace-db"
-Documentation = "https://hyperspacedb.io/docs"
-Repository = "https://github.com/yourusername/hyperspace-db"
-"Bug Tracker" = "https://github.com/yourusername/hyperspace-db/issues"
+Homepage = "https://github.com/YARlabs/hyperspace-db"
+Documentation = "https://yar.ink/docs"
+Repository = "https://github.com/YARlabs/hyperspace-db"
+"Bug Tracker" = "https://github.com/YARlabs/hyperspace-db/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
