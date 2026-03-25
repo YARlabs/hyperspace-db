@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hyperspacedb",
-  "version": "3.1.13",
+  "version": "3.1.21",
   "description": "HyperspaceDB integration for n8n (Standalone, AI Vector Store and Embeddings)",
   "keywords": [
     "n8n-community-node-package",
@@ -25,11 +25,11 @@
   "dependencies": {
     "hyperspace-sdk-ts": "^3.0.9",
     "@langchain/core": "^0.3.36",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "n8n-workflow": "^1.76.0",
+    "@n8n/ai-utilities": "^0.3.0"
   },
   "devDependencies": {
-    "n8n-workflow": "^1.76.0",
-    "@n8n/ai-utilities": "^0.3.0",
     "n8n-node": "^0.23.0",
     "typescript": "^5.0.0"
   },
@@ -40,7 +40,7 @@
       "dist/nodes/HyperspaceDb/HyperspaceDbVectorStore.node.js"
     ],
     "credentials": [
-      "dist/credentials/HyperspaceDbApi.credentials.js"
+      "dist/credentials/HyperspacedbApi.credentials.js"
     ]
   },
   "files": [

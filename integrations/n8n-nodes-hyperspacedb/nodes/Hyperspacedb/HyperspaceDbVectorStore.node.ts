@@ -18,18 +18,8 @@ import {
 } from './HyperspaceDb.utils';
 import { HyperspaceStore } from './HyperspaceStore';
 
-/**
- * FIX FOR n8n Community Nodes `processedDocuments.map is not a function` error.
- * n8n executes community nodes in an isolated VM context. This causes `instanceof` 
- * checks to fail when comparing objects created by core n8n nodes (like Default Data Loader) 
- * against the classes loaded in the community node. We override the `Symbol.hasInstance` 
- * to use Duck Typing so that internal `processDocuments.js` succeeds.
- */
 const duckTypeCheck = (instance: any) => 
     instance && typeof instance === 'object' && 'processItem' in instance && 'processAll' in instance;
-
-Object.defineProperty(N8nBinaryLoader, Symbol.hasInstance, { value: duckTypeCheck });
-Object.defineProperty(N8nJsonLoader, Symbol.hasInstance, { value: duckTypeCheck });
 
 const VectorStoreNodeClass = createVectorStoreNode({
     meta: {
@@ -108,6 +98,16 @@ const VectorStoreNodeClass = createVectorStoreNode({
 export class HyperspaceDbVectorStore extends VectorStoreNodeClass {
     constructor() {
         super();
+        /**
+         * FIX FOR n8n Community Nodes `processedDocuments.map is not a function` error.
+         * Apply overrides during instantiation to avoid global module loading failures.
+         */
+        if (N8nBinaryLoader && !N8nBinaryLoader[Symbol.hasInstance]) {
+            Object.defineProperty(N8nBinaryLoader, Symbol.hasInstance, { value: duckTypeCheck, configurable: true });
+        }
+        if (N8nJsonLoader && !N8nJsonLoader[Symbol.hasInstance]) {
+            Object.defineProperty(N8nJsonLoader, Symbol.hasInstance, { value: duckTypeCheck, configurable: true });
+        }
         this.description.usableAsTool = true;
     }
 

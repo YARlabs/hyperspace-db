@@ -3,7 +3,7 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class HyperspaceDbApi implements ICredentialType {
+export class HyperspacedbApi implements ICredentialType {
 	name = 'hyperspaceDbApi';
 
 	displayName = 'HyperspaceDB API';
