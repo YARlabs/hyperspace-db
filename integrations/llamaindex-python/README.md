@@ -1,18 +1,3 @@
-Metadata-Version: 2.4
-Name: llama-index-vector-stores-hyperspace
-Version: 3.0.5
-Summary: LlamaIndex integration for HyperspaceDB - Hyperbolic Vector Database
-Author-email: YARlabs <hi@yar.ink>
-License: Apache-2.0
-Keywords: llama-index,vector database,embeddings,AI,RAG,hyperbolic
-Requires-Python: >=3.8
-Description-Content-Type: text/markdown
-Requires-Dist: llama-index-core>=0.10.0
-Requires-Dist: hyperspacedb>=3.0.3
-Requires-Dist: grpcio>=1.60.0
-Requires-Dist: protobuf>=4.25.0
-Requires-Dist: numpy>=1.24.0
-
 # LlamaIndex Hyperspace Integration: Spatial AI Memory Infrastructure
 
 [![PyPI Version](https://img.shields.io/pypi/v/llama-index-vector-stores-hyperspace?style=for-the-badge)](https://pypi.org/project/llama-index-vector-stores-hyperspace/)

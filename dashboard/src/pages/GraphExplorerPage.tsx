@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -54,6 +54,51 @@ export function GraphExplorerPage() {
         }
     }
 
+    // Stable Layout Memo
+    const nodesWithPositions = useMemo(() => {
+        const nodesData = Array.isArray(neighbors.data?.data) ? neighbors.data.data : (neighbors.data?.data?.neighbors || [])
+        const count = nodesData.length
+        if (count === 0) return []
+
+        return nodesData.map((node: any, i: number) => {
+            let lx, ly;
+            const angle = (Math.PI * 2 * i) / count
+            
+            if (vizMode === "poincare") {
+                const weight = (1 - (i / count)) * 0.8 + 0.1
+                const mag = 1 - Math.exp(-weight)
+                lx = Math.cos(angle) * mag
+                ly = Math.sin(angle) * mag
+            } else {
+                // Stable deterministic distribution instead of Math.random()
+                const hash = Math.abs(Math.sin(i * 123.456 + 78.91))
+                const spread = 0.4 + hash * 0.6
+                lx = Math.cos(angle * 1.3 + i) * spread
+                ly = Math.sin(angle * 0.7 + i) * spread
+            }
+            return { lx, ly, id: node.id, data: node }
+        })
+    }, [neighbors.data, vizMode])
+
+    // Update internal ref for hit-testing based on current canvas size
+    useEffect(() => {
+        const canvas = canvasRef.current
+        if (!canvas || !nodesWithPositions.length) return
+        const rect = canvas.getBoundingClientRect()
+        const width = rect.width
+        const height = rect.height
+        const cx = width / 2
+        const cy = height / 2
+        const r = Math.min(width, height) / 2 * 0.8
+
+        nodePositions.current = nodesWithPositions.map((p: any) => ({
+            x: cx + p.lx * r,
+            y: cy + p.ly * r,
+            id: p.id,
+            data: p.data
+        }))
+    }, [nodesWithPositions])
+
     // Render Canvas Logic
     useEffect(() => {
         const canvas = canvasRef.current
@@ -61,11 +106,18 @@ export function GraphExplorerPage() {
         const ctx = canvas.getContext("2d")
         if (!ctx) return
 
-        // High DPI Support
+        // High DPI Support - only update size if changed to avoid flicker
         const dpr = window.devicePixelRatio || 1
         const rect = canvas.getBoundingClientRect()
-        canvas.width = rect.width * dpr
-        canvas.height = rect.height * dpr
+        const desiredW = Math.round(rect.width * dpr)
+        const desiredH = Math.round(rect.height * dpr)
+        
+        if (canvas.width !== desiredW || canvas.height !== desiredH) {
+            canvas.width = desiredW
+            canvas.height = desiredH
+        }
+        
+        ctx.setTransform(1, 0, 0, 1, 0, 0) // Reset scale
         ctx.scale(dpr, dpr)
 
         const width = rect.width
@@ -76,18 +128,15 @@ export function GraphExplorerPage() {
 
         ctx.clearRect(0, 0, width, height)
 
-        const nodesData = Array.isArray(neighbors.data?.data) ? neighbors.data.data : (neighbors.data?.data?.neighbors || [])
-        const count = nodesData.length
-        const positions: any[] = []
-
-        if (count === 0) {
+        if (nodesWithPositions.length === 0) {
             ctx.fillStyle = "#3f3f46" 
             ctx.font = "12px monospace"
             ctx.textAlign = "center"
             ctx.fillText("No vectors in view", cx, cy)
-            nodePositions.current = []
             return
         }
+
+        const positions = nodePositions.current
 
         // Poincaré Boundary
         if (vizMode === "poincare") {
@@ -97,25 +146,6 @@ export function GraphExplorerPage() {
             ctx.lineWidth = 1
             ctx.stroke()
         }
-
-        // Layout Nodes
-        nodesData.forEach((node: any, i: number) => {
-            let nx, ny;
-            const angle = (Math.PI * 2 * i) / count
-            
-            if (vizMode === "poincare") {
-                const weight = (1 - (i / count)) * 0.8 + 0.1
-                const distRadius = Math.min(r * 0.95, Math.max(r * 0.1, r * (1 - Math.exp(-weight))))
-                nx = cx + Math.cos(angle) * distRadius
-                ny = cy + Math.sin(angle) * distRadius
-            } else {
-                const spread = r * (0.4 + Math.random() * 0.6)
-                nx = cx + Math.cos(angle * 1.3 + i) * spread
-                ny = cy + Math.sin(angle * 0.7 + i) * spread
-            }
-            positions.push({ x: nx, y: ny, id: node.id, data: node })
-        })
-        nodePositions.current = positions
 
         // Connections
         positions.forEach(pos => {
@@ -140,8 +170,8 @@ export function GraphExplorerPage() {
 
         // Nodes
         positions.forEach(pos => {
-            const isHovered = hoveredNode?.id === pos.id
-            const isSelected = selectedNode?.id === pos.id
+            const isHovered = hoveredNode?.id === pos.id || (pos.data && hoveredNode?.id === pos.data.id)
+            const isSelected = selectedNode?.id === pos.id || (pos.data && selectedNode?.id === pos.data.id)
             
             ctx.beginPath()
             ctx.arc(pos.x, pos.y, isSelected ? 6 : (isHovered ? 5 : 3), 0, 2 * Math.PI)
@@ -164,21 +194,30 @@ export function GraphExplorerPage() {
         ctx.fillStyle = "#10b981"
         ctx.fill()
 
-    }, [neighbors.data, vizMode, hoveredNode, selectedNode])
+    }, [nodesWithPositions, vizMode, hoveredNode, selectedNode])
 
-    const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const getHitAt = (clientX: number, clientY: number) => {
         const canvas = canvasRef.current
-        if (!canvas) return
+        if (!canvas) return null
         const rect = canvas.getBoundingClientRect()
-        const mouseX = e.clientX - rect.left
-        const mouseY = e.clientY - rect.top
+        const mouseX = clientX - rect.left
+        const mouseY = clientY - rect.top
 
-        const hit = nodePositions.current.find(pos => {
+        return nodePositions.current.find(pos => {
             const dx = pos.x - mouseX
             const dy = pos.y - mouseY
-            return Math.sqrt(dx*dx + dy*dy) < 10
+            return Math.sqrt(dx*dx + dy*dy) < 14 // Increased hit radius for easier selection
         })
+    }
+
+    const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        const hit = getHitAt(e.clientX, e.clientY)
         setHoveredNode(hit ? hit.data : null)
+    }
+
+    const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        const hit = getHitAt(e.clientX, e.clientY)
+        setSelectedNode(hit ? hit.data : null)
     }
 
     return (
@@ -248,7 +287,7 @@ export function GraphExplorerPage() {
                         <canvas
                             ref={canvasRef}
                             onMouseMove={handleMouseMove}
-                            onClick={() => setSelectedNode(hoveredNode)}
+                            onClick={handleCanvasClick}
                             className="w-full h-full cursor-crosshair"
                         />
                     </div>

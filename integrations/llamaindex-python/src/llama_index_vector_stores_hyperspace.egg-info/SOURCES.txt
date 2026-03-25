@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 src/llama_index_hyperspace/__init__.py
 src/llama_index_hyperspace/vector_stores.py

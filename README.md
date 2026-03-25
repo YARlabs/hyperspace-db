@@ -689,19 +689,50 @@ docker run -d \
 
 ---
 
-## 📦 SDKs (v3.0.1)
+## 🔌 AI Integrations
+
+HyperspaceDB is ready for the modern AI stack with official high-level integrations:
+
+| Integration | Language | status | Install |
+| --- | --- | --- | --- |
+| 🦜 **LangChain** | Python | ✅ v3 | [pip install langchain-hyperspace](https://pypi.org/project/langchain-hyperspace/) |
+| 🦜 **LangChain** | TS/JS | ✅ v3 | [npm install langchain-hyperspace](https://www.npmjs.com/package/langchain-hyperspace) |
+| 🦙 **LlamaIndex** | Python | ✅ v3 | [pip install llama-index-vector-stores-hyperspace](https://pypi.org/project/llama-index-vector-stores-hyperspace/) |
+| 🦙 **LlamaIndex** | TS/JS | ✅ v3 | [npm install llamaindex-hyperspace](https://www.npmjs.com/package/llamaindex-hyperspace) |
+| 🔗 **n8n** | No-Code | ✅ v3 | [Community Node: n8n-nodes-hyperspacedb](https://www.npmjs.com/package/n8n-nodes-hyperspacedb) |
+
+---
+
+## 🛠️ Model Context Protocol (MCP)
+
+Connect HyperspaceDB directly to **Claude Desktop**, **Cursor**, or any MCP-compliant agent to give them a high-performance spatial memory.
+
+```bash
+# Start MCP server via npx
+npx mcp-hyperspacedb@latest
+```
+
+**Available Tools:**
+* `hyperspace_search_text`: Semantic search via natural language.
+* `hyperspace_insert_text`: Store facts and memories with auto-vectorization.
+* `hyperspace_graph_traverse`: Cross-reference and reasoning via graph paths.
+* `hyperspace_analyze_geometry`: Analyze if your prompt/data is hyperbolic or Euclidean.
+
+---
+
+## 📦 SDKs (v3.0.x)
 
 Official 1st-party drivers with full Delta Sync, Cognitive Math, and Event Subscriptions:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3.0.1 |
-| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3.0.1 |
-| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3.0.1 |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` (In-Browser Embedded Engine) | ✅ v3.0.1 |
-| 🐹 **Go** | `sdks/go` | ✅ v3.0.1 |
-| 🎯 **Dart/Flutter** | `sdks/dart` (Mobile Offline-First) | ✅ v3.0.1 |
-| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` (Hardware/Native) | ✅ v3.0.1 |
+| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3 |
+| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3 |
+| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` (In-Browser Embedded Engine) | ✅ v3 |
+| 🐹 **Go** | `sdks/go` | ✅ v3 |
+| 🎯 **Dart/Flutter** | `sdks/dart` (Mobile Offline-First) | ✅ v3 |
+| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` (Hardware/Native) | ✅ v3 |
 
 ---
 

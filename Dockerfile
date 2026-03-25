@@ -7,10 +7,19 @@ COPY dashboard/ .
 RUN npm run build
 
 # === Stage 2: Rust Builder ===
-FROM rustlang/rust:nightly AS builder
+# We use a specific Debian-based image to match runtime GLIBC
+FROM rustlang/rust:nightly-bookworm AS builder
 
-# Install protobuf compiler
-RUN apt-get update && apt-get install -y protobuf-compiler cmake clang build-essential pkg-config
+# Install build dependencies including g++ for C++ linking (required by ONNX Runtime)
+RUN apt-get update && apt-get install -y \
+    protobuf-compiler \
+    cmake \
+    clang \
+    g++ \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . .
@@ -21,10 +30,8 @@ COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 RUN rm -f rust-toolchain.toml
 
 # Build Release
-# WARNING: 'native' optimizes for the BUILD machine's CPU. 
-# If build & run machines differ significantly, this may cause crashes.
-# For public images, use '-C target-cpu=x86-64-v3' instead.
-ENV RUSTFLAGS="-C target-cpu=native"
+# We set linker to g++ to automatically resolve C++ dependencies (required by ort)
+ENV RUSTFLAGS="-C linker=g++"
 RUN cargo build --release --workspace --features nightly-simd
 
 # Strip binaries to reduce size
@@ -32,9 +39,10 @@ RUN strip target/release/hyperspace-server
 RUN strip target/release/hyperspace-cli
 
 # === Stage 3: Runtime ===
+# Match exactly the builder's OS version
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates openssl && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN useradd -m -u 1000 -U -s /bin/sh -d /app hyperspace
