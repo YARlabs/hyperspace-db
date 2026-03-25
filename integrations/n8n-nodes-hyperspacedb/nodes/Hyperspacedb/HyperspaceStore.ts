@@ -60,7 +60,7 @@ export class HyperspaceStore extends VectorStore {
                     idNum = this.computeContentHash(doc.pageContent || "");
                 }
                 const metadata = { ...doc.metadata, text: doc.pageContent || "" };
-                
+
                 const typed_metadata: Record<string, string> = {};
                 for (const [key, value] of Object.entries(metadata)) {
                     typed_metadata[key] = String(value);
@@ -92,7 +92,7 @@ export class HyperspaceStore extends VectorStore {
         const ids = options?.ids || [];
         const resultIds: string[] = [];
         const metadatas = options?.metadatas || documents.map((d) => d.metadata);
-        
+
         const itemsToInsert: { id: number; vector: number[]; metadata: Record<string, string> }[] = [];
 
         for (let i = 0; i < vectors.length; i++) {
@@ -182,11 +182,11 @@ export class HyperspaceStore extends VectorStore {
         if (this.useServerSideEmbedding || !this.embeddings) {
             return this.similaritySearch(query, options.k, options.filter);
         }
-        
+
         const { k, fetchK = 20, filter } = options;
         const queryEmbedding = await this.embeddings.embedQuery(query);
         const filters = this.parseFilters(filter);
-        
+
         const results = await this.client.search(queryEmbedding, fetchK, this.collectionName, { filters });
         return this.resultsToDocuments(results).slice(0, k).map(([doc]) => doc);
     }
@@ -196,10 +196,20 @@ export class HyperspaceStore extends VectorStore {
         const filters: any[] = [];
         for (const [key, value] of Object.entries(filter)) {
             if (typeof value === "object" && value !== null) {
-                const range: any = { key };
-                if ("$gte" in value) range.gte = value.$gte;
-                if ("$lte" in value) range.lte = value.$lte;
-                filters.push({ range });
+                // Handle spatial filters first
+                if ("$in_ball" in value) {
+                    filters.push({ ball: { key, ...(value.$in_ball as any) } });
+                } else if ("$in_box" in value) {
+                    filters.push({ box: { key, ...(value.$in_box as any) } });
+                } else if ("$in_cone" in value) {
+                    filters.push({ cone: { key, ...(value.$in_cone as any) } });
+                } else {
+                    // Regular range filters
+                    const range: any = { key };
+                    if ("$gte" in value) range.gte = value.$gte;
+                    if ("$lte" in value) range.lte = value.$lte;
+                    filters.push({ range });
+                }
             } else {
                 filters.push({ match: { key, value: String(value) } });
             }
