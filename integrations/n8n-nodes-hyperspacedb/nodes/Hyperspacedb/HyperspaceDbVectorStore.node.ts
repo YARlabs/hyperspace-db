@@ -5,13 +5,11 @@ import {
 } from '@n8n/ai-utilities';
 import {
     IExecuteFunctions,
-    INodeType,
-    INodeTypeDescription,
     ISupplyDataFunctions,
-    SupplyData,
-    INodeExecutionData,
     ILoadOptionsFunctions,
     INodePropertyOptions,
+    INodeType,
+    INodeTypeDescription,
 } from 'n8n-workflow';
 import {
     getHyperspaceClient,
@@ -65,7 +63,7 @@ const VectorStoreNodeClass = createVectorStoreNode({
                 { name: 'Cosine Similarity', value: 'cosine' },
                 { name: 'Euclidean (L2)', value: 'l2' },
             ],
-            default: 'cosine',
+            default: 'lorentz',
             description: 'The spatial metric used - should match your collection settings',
         },
         {
@@ -105,14 +103,10 @@ const VectorStoreNodeClass = createVectorStoreNode({
     },
 });
 
-export class HyperspaceDbVectorStore extends VectorStoreNodeClass {
-    constructor() {
-        super();
-        this.description.usableAsTool = true;
-    }
+export class HyperspaceDbVectorStore extends (VectorStoreNodeClass as any) implements INodeType {
+    declare description: INodeTypeDescription;
 
-    // @ts-ignore: n8n type definition for methods in createVectorStoreNode is missing loadOptions
-    methods: any = {
+    methods = {
         loadOptions: {
             async getCollections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
                 try {
@@ -128,5 +122,12 @@ export class HyperspaceDbVectorStore extends VectorStoreNodeClass {
             },
         },
     };
+
+    constructor() {
+        super();
+        this.description.usableAsTool = true;
+    }
 }
+
+
 
