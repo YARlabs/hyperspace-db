@@ -2,37 +2,37 @@ import {
 	INodeType,
 	INodeTypeDescription,
 	NodeConnectionTypes,
-    ISupplyDataFunctions,
-    SupplyData,
-    ILoadOptionsFunctions,
-    INodePropertyOptions,
+	ISupplyDataFunctions,
+	SupplyData,
+	ILoadOptionsFunctions,
+	INodePropertyOptions,
 } from 'n8n-workflow';
-import { getHyperspaceClient } from './HyperspaceDb.utils';
+import { getHyperspaceClient } from './hyperspacedb-utils';
 import { Embeddings, EmbeddingsParams } from '@langchain/core/embeddings';
 
 // LangChain wrapper for Hyperspace Server-side embeddings
 class HyperspaceEmbeddings extends Embeddings {
-    private client: any;
-    private metric: string;
+	private client: any;
+	private metric: string;
 
-    constructor(fields: EmbeddingsParams & { client: any; metric: string }) {
-        super(fields);
-        this.client = fields.client;
-        this.metric = fields.metric;
-    }
+	constructor(fields: EmbeddingsParams & { client: any; metric: string }) {
+		super(fields);
+		this.client = fields.client;
+		this.metric = fields.metric;
+	}
 
-    async embedDocuments(documents: string[]): Promise<number[][]> {
-        const result: number[][] = [];
-        for (const text of documents) {
-            const vector = await this.client.vectorize(text, this.metric);
-            result.push(vector);
-        }
-        return result;
-    }
+	async embedDocuments(documents: string[]): Promise<number[][]> {
+		const result: number[][] = [];
+		for (const text of documents) {
+			const vector = await this.client.vectorize(text, this.metric);
+			result.push(vector);
+		}
+		return result;
+	}
 
-    async embedQuery(document: string): Promise<number[]> {
-        return await this.client.vectorize(document, this.metric);
-    }
+	async embedQuery(document: string): Promise<number[]> {
+		return await this.client.vectorize(document, this.metric);
+	}
 }
 
 export class HyperspaceDbEmbeddings implements INodeType {
@@ -60,7 +60,7 @@ export class HyperspaceDbEmbeddings implements INodeType {
 				type: NodeConnectionTypes.AiEmbedding,
 			},
 		],
-		credentials: [{ name: 'hyperspaceDbApi', required: true }],
+		credentials: [{ name: 'hyperspacedbApi', required: true }],
 		properties: [
 			{
 				displayName: 'Collection Name',
@@ -94,13 +94,13 @@ export class HyperspaceDbEmbeddings implements INodeType {
 		const client = await getHyperspaceClient(this);
 
 		const embeddings = new HyperspaceEmbeddings({
-            client,
-            metric,
-        });
+			client,
+			metric,
+		});
 
-        return {
-            response: embeddings
-        };
+		return {
+			response: embeddings
+		};
 	}
 
 	methods = {
@@ -120,3 +120,7 @@ export class HyperspaceDbEmbeddings implements INodeType {
 		},
 	};
 }
+
+// @ts-ignore
+exports.HyperspaceDbEmbeddings = HyperspaceDbEmbeddings;
+

@@ -1,25 +1,17 @@
 import {
     createVectorStoreNode,
-    N8nBinaryLoader,
-    N8nJsonLoader,
 } from '@n8n/ai-utilities';
 import {
     IExecuteFunctions,
     INodeType,
-    INodeTypeDescription,
     ISupplyDataFunctions,
-    SupplyData,
-    INodeExecutionData,
     ILoadOptionsFunctions,
     INodePropertyOptions,
 } from 'n8n-workflow';
 import {
     getHyperspaceClient,
-} from './HyperspaceDb.utils';
-import { HyperspaceStore } from './HyperspaceStore';
-
-const duckTypeCheck = (instance: any) => 
-    instance && typeof instance === 'object' && 'processItem' in instance && 'processAll' in instance;
+} from './hyperspacedb-utils';
+import { HyperspaceStore } from './hyperspace-store';
 
 const VectorStoreNodeClass = createVectorStoreNode({
     meta: {
@@ -27,12 +19,12 @@ const VectorStoreNodeClass = createVectorStoreNode({
         name: 'hyperspaceDbVectorStore',
         description: 'The world\'s first Hyperbolic Vector Database integration for Spatial AI',
         icon: { light: 'file:hyperspacedb.svg', dark: 'file:hyperspacedb.dark.svg' } as any,
-        docsUrl: 'https://docs.yar.ink',
+        docsUrl: 'https://yar.ink/docs',
         categories: ['AI'],
         subcategories: {
             AI: ['Vector Stores', 'Root Nodes'],
         },
-        credentials: [{ name: 'hyperspaceDbApi', required: true }],
+        credentials: [{ name: 'hyperspacedbApi', required: true }],
     },
     sharedFields: [
         {
@@ -70,7 +62,7 @@ const VectorStoreNodeClass = createVectorStoreNode({
         const collectionName = context.getNodeParameter('collectionName', itemIndex) as string;
         const metric = context.getNodeParameter('metric', itemIndex, 'lorentz') as string;
         const dimension = context.getNodeParameter('dimension', itemIndex, 1024) as number;
-        
+
         const client = await getHyperspaceClient(context);
         return new HyperspaceStore(_embeddings, {
             client,
@@ -98,16 +90,6 @@ const VectorStoreNodeClass = createVectorStoreNode({
 export class HyperspaceDbVectorStore extends VectorStoreNodeClass {
     constructor() {
         super();
-        /**
-         * FIX FOR n8n Community Nodes `processedDocuments.map is not a function` error.
-         * Apply overrides during instantiation to avoid global module loading failures.
-         */
-        if (N8nBinaryLoader && !N8nBinaryLoader[Symbol.hasInstance]) {
-            Object.defineProperty(N8nBinaryLoader, Symbol.hasInstance, { value: duckTypeCheck, configurable: true });
-        }
-        if (N8nJsonLoader && !N8nJsonLoader[Symbol.hasInstance]) {
-            Object.defineProperty(N8nJsonLoader, Symbol.hasInstance, { value: duckTypeCheck, configurable: true });
-        }
         this.description.usableAsTool = true;
     }
 
@@ -130,3 +112,5 @@ export class HyperspaceDbVectorStore extends VectorStoreNodeClass {
     };
 }
 
+// @ts-ignore
+exports.HyperspaceDbVectorStore = HyperspaceDbVectorStore;

@@ -5,13 +5,13 @@ import {
 	INodeTypeDescription,
 	NodeConnectionTypes,
 } from 'n8n-workflow';
-import { getHyperspaceClient } from './HyperspaceDb.utils';
+import { getHyperspaceClient } from './hyperspacedb-utils';
 import { collectionDescription } from './resources/collection';
 import { vectorDescription } from './resources/vector';
 import { systemDescription } from './resources/system';
 import { graphDescription } from './resources/graph';
 
-export class HyperspaceDb implements INodeType {
+export class Hyperspacedb implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'HyperspaceDB',
 		name: 'hyperspaceDb',
@@ -26,7 +26,7 @@ export class HyperspaceDb implements INodeType {
 		usableAsTool: true,
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
-		credentials: [{ name: 'hyperspaceDbApi', required: true }],
+		credentials: [{ name: 'hyperspacedbApi', required: true }],
 		properties: [
 			{
 				displayName: 'Resource',
@@ -117,14 +117,14 @@ export class HyperspaceDb implements INodeType {
 						const collections = await client.listCollections();
 						returnData.push({ json: { collections } });
 					} else if (operation === 'getStats') {
-                        const name = this.getNodeParameter('name', i) as string;
-                        const stats = await client.getDigest(name);
-                        returnData.push({ json: stats });
-                    } else if (operation === 'delete') {
-                        const name = this.getNodeParameter('name', i) as string;
-                        await client.deleteCollection(name);
-                        returnData.push({ json: { success: true, collection: name } });
-                    }
+						const name = this.getNodeParameter('name', i) as string;
+						const stats = await client.getDigest(name);
+						returnData.push({ json: stats });
+					} else if (operation === 'delete') {
+						const name = this.getNodeParameter('name', i) as string;
+						await client.deleteCollection(name);
+						returnData.push({ json: { success: true, collection: name } });
+					}
 				} else if (resource === 'system') {
 					if (operation === 'getStatus') {
 						const status = await client.getDigest("");
@@ -143,3 +143,7 @@ export class HyperspaceDb implements INodeType {
 		return [returnData];
 	}
 }
+
+// @ts-ignore
+exports.Hyperspacedb = Hyperspacedb;
+

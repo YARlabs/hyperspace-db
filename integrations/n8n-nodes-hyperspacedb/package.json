@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hyperspacedb",
-  "version": "3.1.21",
+  "version": "3.1.32",
   "description": "HyperspaceDB integration for n8n (Standalone, AI Vector Store and Embeddings)",
   "keywords": [
     "n8n-community-node-package",
@@ -10,37 +10,42 @@
     "langchain",
     "hyperbolic"
   ],
-  "license": "Apache-2.0",
+  "license": "MIT",
   "homepage": "https://yar.ink",
-  "author": "YARlabs",
+  "author": {
+    "name": "YARlabs",
+    "email": "hi@yar.ink"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/YARlabs/hyperspace-db.git"
   },
-  "main": "dist/nodes/HyperspaceDb/HyperspaceDb.node.js",
+  "main": "dist/nodes/HyperspaceDb/Hyperspacedb.node.js",
   "scripts": {
     "build": "n8n-node build",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "hyperspace-sdk-ts": "^3.0.9",
-    "@langchain/core": "^0.3.36",
-    "uuid": "^9.0.0",
-    "n8n-workflow": "^1.76.0",
-    "@n8n/ai-utilities": "^0.3.0"
+    "hyperspace-sdk-ts": "^3.0.9"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*",
+    "@n8n/ai-utilities": "*"
   },
   "devDependencies": {
+    "@n8n/ai-utilities": "^0.3.0",
+    "n8n-workflow": "^1.18.0",
     "n8n-node": "^0.23.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.2.2"
   },
   "n8n": {
     "nodes": [
-      "dist/nodes/HyperspaceDb/HyperspaceDb.node.js",
-      "dist/nodes/HyperspaceDb/HyperspaceDbEmbeddings.node.js",
-      "dist/nodes/HyperspaceDb/HyperspaceDbVectorStore.node.js"
+      "dist/nodes/hyperspacedb/hyperspacedb.node.js",
+      "dist/nodes/hyperspacedb/hyperspacedb-embeddings.node.js",
+      "dist/nodes/hyperspacedb/hyperspacedb-vector-store.node.js"
     ],
     "credentials": [
-      "dist/credentials/HyperspacedbApi.credentials.js"
+      "dist/credentials/hyperspacedb-api.credentials.js"
     ]
   },
   "files": [
