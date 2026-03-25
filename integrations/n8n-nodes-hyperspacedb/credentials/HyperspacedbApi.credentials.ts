@@ -4,11 +4,11 @@ import type {
 } from 'n8n-workflow';
 
 export class HyperspacedbApi implements ICredentialType {
-	name = 'hyperspaceDbApi';
+	name = 'hyperspacedbApi';
 
 	displayName = 'HyperspaceDB API';
 
-	documentationUrl = 'https://docs.hyperspace.systems';
+	documentationUrl = 'https://yar.ink/docs';
 
 	properties: INodeProperties[] = [
 		{

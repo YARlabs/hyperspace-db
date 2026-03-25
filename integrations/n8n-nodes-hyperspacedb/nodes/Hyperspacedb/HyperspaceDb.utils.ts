@@ -15,7 +15,7 @@ function cleanHost(host: string): string {
 export async function getHyperspaceClient(
 	context: ISupplyDataFunctions | IExecuteFunctions,
 ): Promise<HyperspaceClient> {
-	const credentials = await context.getCredentials('hyperspaceDbApi') as any;
+	const credentials = await context.getCredentials('hyperspacedbApi') as any;
     const host = cleanHost(credentials.host);
 	return new HyperspaceClient(`${host}:${credentials.port}`, credentials.apiKey) as any;
 }
@@ -24,7 +24,7 @@ export async function getHyperspaceStore(
 	context: ISupplyDataFunctions | IExecuteFunctions,
 	itemIndex: number,
 ): Promise<HyperspaceStore> {
-	const credentials = await context.getCredentials('hyperspaceDbApi') as any;
+	const credentials = await context.getCredentials('hyperspacedbApi') as any;
     const host = cleanHost(credentials.host);
     const client = new HyperspaceClient(`${host}:${credentials.port}`, credentials.apiKey);
 	const collectionName = context.getNodeParameter('collectionName', itemIndex) as string;

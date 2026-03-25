@@ -1,3 +1,28 @@
 <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 5x5 Transparent-Checkered Background (Dark) -->
+  <g id="checkerboard">
+    <!-- Row 1: x, _, x, _, x (where x is Dark Grey) -->
+    <rect x="0" y="0" width="8" height="8" fill="#222222"/>
+    <rect x="16" y="0" width="8" height="8" fill="#222222"/>
+    <rect x="32" y="0" width="8" height="8" fill="#222222"/>
+
+    <!-- Row 2: _, x, _, x, _ -->
+    <rect x="8" y="8" width="8" height="8" fill="#222222"/>
+    <rect x="24" y="8" width="8" height="8" fill="#222222"/>
+
+    <!-- Row 3: x, _, x, _, x -->
+    <rect x="0" y="16" width="8" height="8" fill="#222222"/>
+    <rect x="16" y="16" width="8" height="8" fill="#222222"/>
+    <rect x="32" y="16" width="8" height="8" fill="#222222"/>
+
+    <!-- Row 4: _, x, _, x, _ -->
+    <rect x="8" y="24" width="8" height="8" fill="#222222"/>
+    <rect x="24" y="24" width="8" height="8" fill="#222222"/>
+
+    <!-- Row 5: x, _, x, _, x -->
+    <rect x="0" y="32" width="8" height="8" fill="#222222"/>
+    <rect x="16" y="32" width="8" height="8" fill="#222222"/>
+    <rect x="32" y="32" width="8" height="8" fill="#222222"/>
+  </g>
   <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="22" fill="#00FFFF">[H]</text>
 </svg>
