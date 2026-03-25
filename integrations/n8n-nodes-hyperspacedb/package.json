@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hyperspacedb",
-  "version": "3.1.45",
+  "version": "3.0.10",
   "description": "HyperspaceDB integration for n8n (Vector Store, Embeddings, API)",
   "keywords": [
     "n8n-community-node-package",
@@ -23,15 +23,15 @@
   },
   "dependencies": {
     "hyperspace-sdk-ts": "^3.0.9",
-    "@langchain/core": "^1.1.36",
+    "@langchain/core": "^1.1.31",
     "@n8n/ai-utilities": "^0.7.1",
-    "uuid": "^13.0.0"
+    "uuid": "^9.0.0"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
   },
   "devDependencies": {
-    "n8n-workflow": "^1.120.10",
+    "n8n-workflow": "^1.76.0",
     "@n8n/node-cli": "latest",
     "typescript": "^5.0.0"
   },
