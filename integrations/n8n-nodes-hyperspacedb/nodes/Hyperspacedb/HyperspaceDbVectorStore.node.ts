@@ -74,6 +74,22 @@ const VectorStoreNodeClass = createVectorStoreNode({
             description: 'Number of dimensions (should match your collection settings)',
         },
     ],
+    retrieveFields: [
+        {
+            displayName: 'Name',
+            name: 'toolName',
+            type: 'string',
+            default: 'hyperspace_vector_store',
+            required: true,
+            description: 'Name of the vector store tool for the AI Agent',
+            placeholder: 'e.g. company_knowledge_base',
+            displayOptions: {
+                show: {
+                    mode: ['retrieve-as-tool'],
+                },
+            },
+        },
+    ],
     async getVectorStoreClient(context: IExecuteFunctions | ISupplyDataFunctions, _filter: any, _embeddings: any, itemIndex: number) {
         const collectionName = context.getNodeParameter('collectionName', itemIndex) as string;
         const metric = context.getNodeParameter('metric', itemIndex, 'lorentz') as string;
