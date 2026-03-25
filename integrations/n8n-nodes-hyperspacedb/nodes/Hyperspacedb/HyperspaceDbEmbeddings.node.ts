@@ -5,15 +5,18 @@ import {
 	ISupplyDataFunctions,
 	SupplyData,
 } from 'n8n-workflow';
+import {
+	getHyperspaceClient,
+} from './HyperspaceDb.utils';
 
 class HS_Embeddings {
-	constructor(private client: any, private metric: string) {}
-	async embedDocuments(docs: string[]) {
-		const res = [];
-		for (const t of docs) res.push(await this.client.vectorize(t, this.metric));
-		return res;
-	}
-	async embedQuery(t: string) { return await this.client.vectorize(t, this.metric); }
+    constructor(private client: any, private metric: string) {}
+    async embedDocuments(docs: string[]) {
+        const res = [];
+        for (const t of docs) res.push(await this.client.vectorize(t, this.metric));
+        return res;
+    }
+    async embedQuery(t: string) { return await this.client.vectorize(t, this.metric); }
 }
 
 export class HyperspaceDbEmbeddings implements INodeType {
@@ -28,13 +31,25 @@ export class HyperspaceDbEmbeddings implements INodeType {
 		inputs: [],
 		outputs: [{ displayName: 'Embeddings', maxConnections: 1, type: NodeConnectionTypes.AiEmbedding }],
 		credentials: [{ name: 'hyperspacedbApi', required: true }],
-		properties: [{ displayName: 'Metric', name: 'metric', type: 'string', default: 'lorentz' }],
+		properties: [
+			{
+				displayName: 'Metric / Geometry',
+				name: 'metric',
+				type: 'options',
+				options: [
+					{ name: 'Lorentz (Hyperbolic)', value: 'lorentz' },
+					{ name: 'Poincaré (Hyperbolic)', value: 'poincare' },
+					{ name: 'Cosine Similarity', value: 'cosine' },
+					{ name: 'Euclidean (L2)', value: 'l2' },
+				],
+				default: 'lorentz',
+				description: 'The spatial metric used for embeddings',
+			},
+		],
 	};
 	async supplyData(this: ISupplyDataFunctions, i: number): Promise<SupplyData> {
-        const credentials = await this.getCredentials('hyperspacedbApi') as any;
-        const { HyperspaceClient } = require('hyperspace-sdk-ts');
-        const host = credentials.host.replace(/^(http|https):\/\//, '').replace(/\/$/, '');
-        const client = new HyperspaceClient(`${host}:${credentials.port}`, credentials.apiKey) as any;
+        const client = await getHyperspaceClient(this);
 		return { response: new HS_Embeddings(client, this.getNodeParameter('metric', i) as string) };
 	}
 }
+
