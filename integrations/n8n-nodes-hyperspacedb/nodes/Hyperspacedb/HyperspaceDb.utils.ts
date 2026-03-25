@@ -28,7 +28,7 @@ export async function getHyperspaceStore(
     const host = cleanHost(credentials.host);
     const client = new HyperspaceClient(`${host}:${credentials.port}`, credentials.apiKey);
 	const collectionName = context.getNodeParameter('collectionName', itemIndex) as string;
-	const metric = context.getNodeParameter('metric', itemIndex) as 'lorentz' | 'poincare' | 'cosine' | 'l2';
+	const metric = context.getNodeParameter('metric', itemIndex) as string;
 	const dimension = context.getNodeParameter('dimension', itemIndex, 1024) as number;
     
 	const embeddings = await context.getInputConnectionData(NodeConnectionTypes.AiEmbedding, itemIndex);
