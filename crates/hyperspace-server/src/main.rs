@@ -2324,7 +2324,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("[H] HyperspaceDB Server v3.0.0");
+    println!("[H] HyperspaceDB Server v3");
     hyperspace_core::check_simd();
 
     dotenv::dotenv().ok();

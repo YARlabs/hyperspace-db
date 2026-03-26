@@ -17,9 +17,10 @@ docs/
 *.md
 !README.md
 
-# Examples
+# Examples & Benchmarks
 examples/
-benchmarks/BENCHMARK_RESULTS.md
+benchmarks/
+integrations/
 
 # Data
 data/
@@ -46,3 +47,4 @@ Thumbs.db
 
 # Test
 tests/
+

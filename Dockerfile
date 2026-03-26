@@ -7,31 +7,39 @@ COPY dashboard/ .
 RUN npm run build
 
 # === Stage 2: Rust Builder ===
-# We use a specific Debian-based image to match runtime GLIBC
-FROM rustlang/rust:nightly-bookworm AS builder
+# We use Ubuntu 24.04 to get GLIBC 2.39+ (required by newest ORT binaries for __isoc23 symbols)
+FROM ubuntu:24.04 AS builder
 
-# Install build dependencies including g++ for C++ linking (required by ONNX Runtime)
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
     protobuf-compiler \
     cmake \
     clang \
-    g++ \
-    build-essential \
+    lld \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Rust nightly
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 WORKDIR /app
+
+# Remove toolchain and cargo config to avoid conflicts with build environment
 COPY . .
+RUN rm -f rust-toolchain.toml .cargo/config.toml
+
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Remove toolchain file
-RUN rm -f rust-toolchain.toml
-
 # Build Release
-# We set linker to g++ to automatically resolve C++ dependencies (required by ort)
-ENV RUSTFLAGS="-C linker=g++"
+# We use clang++ as linker for better C++ compatibility with 'ort'
+ENV CC=clang
+ENV CXX=clang++
+ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
 RUN cargo build --release --workspace --features nightly-simd
 
 # Strip binaries to reduce size
@@ -39,13 +47,19 @@ RUN strip target/release/hyperspace-server
 RUN strip target/release/hyperspace-cli
 
 # === Stage 3: Runtime ===
-# Match exactly the builder's OS version
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
-RUN apt-get update && apt-get install -y ca-certificates openssl && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    openssl \
+    libstdc++6 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
-RUN useradd -m -u 1000 -U -s /bin/sh -d /app hyperspace
+RUN useradd -m -u 1001 -U -s /bin/sh -d /app hyperspace
+
 
 WORKDIR /app
 
@@ -60,6 +74,7 @@ RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
 USER hyperspace
 
 ENV RUST_LOG=info
+ENV HS_DATA_DIR=/app/data
 
 # Label the image
 LABEL org.opencontainers.image.source=https://github.com/yarlabs/hyperspace-db
@@ -70,3 +85,4 @@ EXPOSE 50050
 
 # Default command
 CMD ["hyperspace-server"]
+
