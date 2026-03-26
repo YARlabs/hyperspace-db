@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Distributed Replication - HyperspaceDB Documentation</title>
+        <title>Model Context Protocol (MCP) - HyperspaceDB Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -90,7 +90,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="wasm.html"><strong aria-hidden="true">5.</strong> WebAssembly (WASM)</a></li><li class="chapter-item expanded "><a href="integrations.html"><strong aria-hidden="true">6.</strong> Integrations (LangChain & n8n)</a></li><li class="chapter-item expanded "><a href="mcp.html"><strong aria-hidden="true">7.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">8.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">9.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="embeddings.html"><strong aria-hidden="true">10.</strong> Embedding Service</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">11.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html" class="active"><strong aria-hidden="true">11.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">11.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">11.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="lorentz_quantization.html"><strong aria-hidden="true">11.4.</strong> Lorentz SQ8 & GPU</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">11.5.</strong> Security & Auth</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">11.6.</strong> S3 Cloud Tiering</a></li><li class="chapter-item expanded "><a href="durability.html"><strong aria-hidden="true">11.7.</strong> Data Safety & Durability</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">12.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">13.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">14.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">15.</strong> Zero-Copy HNSW</a></li><li class="chapter-item expanded "><a href="gpu_roadmap.html"><strong aria-hidden="true">16.</strong> GPU Acceleration Roadmap</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><a href="benchmarks.html">Evaluation & Benchmarks</a></li><li class="chapter-item expanded affix "><li class="part-title">Getting Started</li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">1.</strong> Installation</a></li><li class="chapter-item expanded "><a href="quickstart.html"><strong aria-hidden="true">2.</strong> Quick Start</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="python.html"><strong aria-hidden="true">3.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="rust.html"><strong aria-hidden="true">4.</strong> Rust SDK</a></li><li class="chapter-item expanded "><a href="wasm.html"><strong aria-hidden="true">5.</strong> WebAssembly (WASM)</a></li><li class="chapter-item expanded "><a href="integrations.html"><strong aria-hidden="true">6.</strong> Integrations (LangChain & n8n)</a></li><li class="chapter-item expanded "><a href="mcp.html" class="active"><strong aria-hidden="true">7.</strong> Model Context Protocol (MCP)</a></li><li class="chapter-item expanded "><a href="api.html"><strong aria-hidden="true">8.</strong> gRPC API</a></li><li class="chapter-item expanded "><a href="usage.html"><strong aria-hidden="true">9.</strong> Server Configuration</a></li><li class="chapter-item expanded "><a href="embeddings.html"><strong aria-hidden="true">10.</strong> Embedding Service</a></li><li class="chapter-item expanded "><a href="features.html"><strong aria-hidden="true">11.</strong> Advanced Features</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="distributed.html"><strong aria-hidden="true">11.1.</strong> Distributed Replication</a></li><li class="chapter-item expanded "><a href="hybrid.html"><strong aria-hidden="true">11.2.</strong> Hybrid Search</a></li><li class="chapter-item expanded "><a href="quantization.html"><strong aria-hidden="true">11.3.</strong> Binary Quantization</a></li><li class="chapter-item expanded "><a href="lorentz_quantization.html"><strong aria-hidden="true">11.4.</strong> Lorentz SQ8 & GPU</a></li><li class="chapter-item expanded "><a href="security.html"><strong aria-hidden="true">11.5.</strong> Security & Auth</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">11.6.</strong> S3 Cloud Tiering</a></li><li class="chapter-item expanded "><a href="durability.html"><strong aria-hidden="true">11.7.</strong> Data Safety & Durability</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Architecture & Internals</li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">12.</strong> System Overview</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">13.</strong> Storage Format</a></li><li class="chapter-item expanded "><a href="math.html"><strong aria-hidden="true">14.</strong> The Mathematics</a></li><li class="chapter-item expanded "><a href="hnsw.html"><strong aria-hidden="true">15.</strong> Zero-Copy HNSW</a></li><li class="chapter-item expanded "><a href="gpu_roadmap.html"><strong aria-hidden="true">16.</strong> GPU Acceleration Roadmap</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -178,120 +178,17 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="-federated-clustering-v12"><a class="header" href="#-federated-clustering-v12">🤝 Federated Clustering (v1.2)</a></h1>
-<p>HyperspaceDB v1.2 introduces a <strong>Federated Leader-Follower</strong> architecture. This goes beyond simple read-replication, introducing <code>Node Identity</code>, <code>Logical Clocks</code>, and <code>Topology Awareness</code> to support future Edge-Cloud synchronization scenarios.</p>
-<h2 id="concepts"><a class="header" href="#concepts">Concepts</a></h2>
-<h3 id="node-identity"><a class="header" href="#node-identity">Node Identity</a></h3>
-<p>Every node in the cluster is assigned a persistent, unique UUID (<code>node_id</code>) upon first startup. This ID is used to track the origin of write operations in the replication log.</p>
-<h3 id="roles"><a class="header" href="#roles">Roles</a></h3>
-<ul>
-<li><strong>Leader</strong> (Coordinator):
-<ul>
-<li>Accepts Writes (<code>Insert</code>, <code>Delete</code>, <code>CreateCollection</code>).</li>
-<li>Manages the Cluster Topology.</li>
-<li>Streams WAL events to connected Followers.</li>
-</ul>
-</li>
-<li><strong>Follower</strong> (Replica):
-<ul>
-<li>Read-Only.</li>
-<li>Replicates state from the Leader in real-time.</li>
-<li>Can be promoted to Leader if needed.</li>
-</ul>
-</li>
-<li><strong>Edge Node</strong> (Planned v1.4):
-<ul>
-<li>Offline-first node that accumulates writes and syncs via Merkle Trees when online.</li>
-</ul>
-</li>
-</ul>
-<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
-<h3 id="leader"><a class="header" href="#leader">Leader</a></h3>
-<p>Simply start the server. By default, it assumes the <strong>Leader</strong> role.</p>
-<pre><code class="language-bash">./hyperspace-server --port 50051
-</code></pre>
-<h3 id="follower"><a class="header" href="#follower">Follower</a></h3>
-<p>Start with <code>--role follower</code> and point to the leader's URL.</p>
-<pre><code class="language-bash">./hyperspace-server --port 50052 --role follower --leader http://127.0.0.1:50051
-</code></pre>
-<h2 id="monitoring-topology"><a class="header" href="#monitoring-topology">Monitoring Topology</a></h2>
-<p>You can inspect the cluster state via the HTTP API on the Dashboard port (default <code>50050</code>).</p>
-<p><strong>Request:</strong></p>
-<pre><code class="language-bash">curl http://localhost:50050/api/cluster/status
-</code></pre>
-<p><strong>Response:</strong></p>
-<pre><code class="language-json">{
-  &quot;node_id&quot;: &quot;e8b37fde-6c60-427f-8a09-47103c2da80e&quot;,
-  &quot;role&quot;: &quot;Leader&quot;,
-  &quot;upstream_peer&quot;: null,
-  &quot;downstream_peers&quot;: [],
-  &quot;logical_clock&quot;: 1234
-}
-</code></pre>
-<p>This JSON response tells you:</p>
-<ul>
-<li>The node's unique ID.</li>
-<li>Its current role.</li>
-<li>Who it is following (if Follower).</li>
-<li>Who is following it (if Leader).</li>
-<li>The current logical timestamp of its database state.</li>
-</ul>
-<hr />
-<h2 id="edge-to-edge-gossip-swarm-v30"><a class="header" href="#edge-to-edge-gossip-swarm-v30">Edge-to-Edge Gossip Swarm (v3.0)</a></h2>
-<p>Beyond centralized replication, v3.0 introduces a decentralized <strong>Peer-to-Peer UDP Swarm</strong> network. This feature is crucial for robotics and offline-first autonomous agents.</p>
-<h3 id="features"><a class="header" href="#features">Features</a></h3>
-<ul>
-<li><strong>Zero-Configuration Topology</strong>: Nodes broadcast heartbeat logs via UDP (<code>tokio::net::UdpSocket</code>).</li>
-<li><strong>Self-Healing</strong>: Unresponsive nodes (TTL &gt; 30s) are automatically dropped from the registry.</li>
-<li><strong>Auto-Discovery</strong>: Swarm nodes discover each other and exchange <code>Logical Clocks</code> and <code>Collection Digests</code> for the Merkle Delta Sync.</li>
-</ul>
-<h3 id="swarm-configuration"><a class="header" href="#swarm-configuration">Swarm Configuration</a></h3>
-<p>Add these variables to your environment or <code>.env</code> file to start joining the global Swarm:</p>
-<pre><code class="language-bash"># Enable the Gossip listener on the specified local port
-HS_GOSSIP_PORT=7946
-
-# Bootstrapping nodes to connect to
-HS_GOSSIP_PEERS=192.168.1.10:7946,192.168.1.11:7946
-</code></pre>
-<h3 id="swarm-state-monitoring"><a class="header" href="#swarm-state-monitoring">Swarm State Monitoring</a></h3>
-<p>You can monitor the active mesh structure from the dashboard UI or standard HTTP:</p>
-<p><strong>Request:</strong></p>
-<pre><code class="language-bash">curl http://localhost:50050/api/swarm/peers
-</code></pre>
-<p><strong>Response:</strong></p>
-<pre><code class="language-json">{
-  &quot;gossip_enabled&quot;: true,
-  &quot;peer_count&quot;: 1,
-  &quot;peers&quot;: [
-    {
-      &quot;node_id&quot;: &quot;a92jfe...&quot;,
-      &quot;addr&quot;: &quot;192.168.1.10:50050&quot;,
-      &quot;http_port&quot;: 50050,
-      &quot;role&quot;: &quot;Leader&quot;,
-      &quot;logical_clock&quot;: 4200,
-      &quot;collections&quot;: [
-        {
-          &quot;name&quot;: &quot;vision_system&quot;,
-          &quot;state_hash&quot;: 6712399120,
-          &quot;vector_count&quot;: 500
-        }
-      ],
-      &quot;last_seen_secs&quot;: 1729384910,
-      &quot;healthy&quot;: true
-    }
-  ]
-}
-</code></pre>
+                        <h1 id="model-context-protocol-mcp"><a class="header" href="#model-context-protocol-mcp">Model Context Protocol (MCP)</a></h1>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="features.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="integrations.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="hybrid.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="api.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -301,11 +198,11 @@ HS_GOSSIP_PEERS=192.168.1.10:7946,192.168.1.11:7946
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="features.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="integrations.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="hybrid.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="api.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
