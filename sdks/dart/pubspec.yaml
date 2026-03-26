@@ -1,6 +1,7 @@
 name: hyperspacedb
 description: Official Dart/Flutter SDK for HyperspaceDB. A hyper-fast, lock-free Vector Database built in Rust.
-version: 2.2.1
+version: 3.1.0
+
 publish_to: none
 
 environment:

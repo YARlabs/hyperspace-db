@@ -177,11 +177,20 @@ class HyperspaceMcpServer {
           }
         },
         {
-          name: "hyperspace_get_stats",
-          description: "Get database cluster health, logical clock, and vector volume.",
+          name: "hyperspace_list_collections",
+          description: "List all active collections with their metadata (dimension, metric, count).",
           inputSchema: {
             type: "object",
-            properties: { collection: { type: "string" } }
+            properties: {}
+          }
+        },
+        {
+          name: "hyperspace_get_stats",
+          description: "Get detailed statistics and logical clock for a specific collection.",
+          inputSchema: {
+            type: "object",
+            properties: { collection: { type: "string" } },
+            required: ["collection"]
           }
         }
       ]
@@ -191,7 +200,12 @@ class HyperspaceMcpServer {
       const { name, arguments: args } = request.params;
       try {
         switch (name) {
+          case "hyperspace_list_collections": {
+            const res = await this.client.listCollections();
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
           case "hyperspace_search_text": {
+
             const { collection, text, top_k } = z.object({ collection: z.string(), text: z.string(), top_k: z.number().optional() }).parse(args);
             const res = await this.client.searchText(text, top_k || 5, collection);
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };

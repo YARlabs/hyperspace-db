@@ -12,7 +12,7 @@ Welcome to the HyperspaceDB C++ SDK. This SDK provides gRPC generated clients an
 
 ## Generated Protobufs
 
-All protobufs (`hyperspace.pb.h` / `hyperspace.grpc.pb.h`) are pre-generated and located in the `proto/` directory. They sync perfectly with HyperspaceDB server `v3.0.0-alpha.2`.
+All protobufs (`hyperspace.pb.h` / `hyperspace.grpc.pb.h`) are pre-generated and located in the `proto/` directory. They sync perfectly with HyperspaceDB server `v3.1.0`.
 
 ## Using the SDK
 
@@ -87,7 +87,21 @@ hyperspace::SearchResponse search_text_res;
 grpc::ClientContext search_text_ctx;
 search_text_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 status = stub->SearchText(&search_text_ctx, search_text_req, &search_text_res);
+
+// 6. List Collections with Metadata
+hyperspace::Empty list_req;
+hyperspace::ListCollectionsResponse list_res;
+grpc::ClientContext list_ctx;
+list_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
+status = stub->ListCollections(&list_ctx, list_req, &list_res);
+for (const auto& col : list_res.collections()) {
+    std::cout << "Collection: " << col.name() 
+              << ", Count: " << col.count() 
+              << ", Dim: " << col.dimension() 
+              << ", Metric: " << col.metric() << std::endl;
+}
 ```
+
 ## Embedding Pipeline (Optional)
 
 HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can use its own backend.

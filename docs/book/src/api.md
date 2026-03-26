@@ -30,6 +30,39 @@ Drops a collection and all its data.
 rpc DeleteCollection (DeleteCollectionRequest) returns (StatusResponse);
 ```
 
+#### `ListCollections`
+Retrieves all active collections for the current tenant, including their metadata.
+
+```protobuf
+rpc ListCollections (Empty) returns (ListCollectionsResponse);
+
+message ListCollectionsResponse {
+  repeated CollectionSummary collections = 1;
+}
+
+message CollectionSummary {
+  string name = 1;
+  uint64 count = 2;
+  uint32 dimension = 3;
+  string metric = 4;
+}
+```
+
+#### `GetCollectionStats`
+Returns real-time statistics for a single collection.
+
+```protobuf
+rpc GetCollectionStats (CollectionStatsRequest) returns (CollectionStatsResponse);
+
+message CollectionStatsResponse {
+  uint64 count = 1;
+  uint32 dimension = 2;
+  string metric = 3;
+  uint64 indexing_queue = 4;
+}
+```
+
+
 ### Vector Operations
 
 #### `Insert`

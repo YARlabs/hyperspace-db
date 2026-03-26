@@ -17,7 +17,22 @@ export class HyperspaceVectorStore implements VectorStore {
   }) {
     this._client = config.client;
     this.collectionName = config.collectionName;
+    this._ensureCollection();
   }
+
+  private async _ensureCollection() {
+    try {
+      const collections = (await this._client.listCollections()) as any[];
+      const existing = collections.find(c => c.name === this.collectionName);
+      if (existing) {
+        console.log(`Using existing collection ${this.collectionName}: ${existing.dimension}d, ${existing.metric}`);
+      }
+
+    } catch (e) {
+      // Ignore
+    }
+  }
+
 
   client(): any {
     return this._client;

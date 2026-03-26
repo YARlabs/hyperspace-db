@@ -1,6 +1,6 @@
 # HyperspaceDB Python SDK
 
-Official Python client for HyperspaceDB gRPC API (v3.0.0-alpha.2).
+Official Python client for HyperspaceDB gRPC API v3.
 
 The SDK is designed for production services and benchmark tooling:
 - collection management
@@ -102,8 +102,9 @@ results = client.search(
 
 - `create_collection(name, dimension, metric) -> bool`
 - `delete_collection(name) -> bool`
-- `list_collections() -> list[str]`
-- `get_collection_stats(name) -> dict`
+- `list_collections() -> list[dict]`  # [{"name": str, "count": int, "dimension": int, "metric": str}]
+- `get_collection_stats(name) -> dict`  # {"count": int, "dimension": int, "metric": str, "indexing_queue": int}
+
 
 ### Data Operations
 

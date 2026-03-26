@@ -160,8 +160,17 @@ fn draw_collections(f: &mut Frame, app: &App, area: Rect) {
     let items: Vec<Line> = app
         .collections_list
         .iter()
-        .map(|c| Line::from(Span::raw(c)))
+        .map(|c| {
+            Line::from(vec![
+                Span::styled(format!("{:<30}", c.name), Style::default().fg(Color::Cyan)),
+                Span::raw(format!(
+                    " | Dim: {:<5} | Metric: {:<10} | Count: {}",
+                    c.dimension, c.metric, c.count
+                )),
+            ])
+        })
         .collect();
+
 
     let list = Paragraph::new(items).block(
         Block::default()

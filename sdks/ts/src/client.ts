@@ -19,8 +19,10 @@ import {
     EventMessage,
     VectorizeRequest,
     InsertTextRequest,
-    SearchTextRequest
+    SearchTextRequest,
+    CollectionSummary as ProtoCollectionSummary
 } from './proto/hyperspace_pb';
+
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
 
 export * as CognitiveMath from './math';
@@ -38,6 +40,13 @@ export interface SearchResult {
     distance: number;
     metadata: { [key: string]: string };
     typedMetadata: { [key: string]: TypedMetadataValue };
+}
+
+export interface CollectionInfo {
+    name: string;
+    count: number;
+    dimension: number;
+    metric: string;
 }
 
 export interface GraphNode {
@@ -271,13 +280,19 @@ export class HyperspaceClient {
         });
     }
 
-    public listCollections(): Promise<string[]> {
+    public listCollections(): Promise<CollectionInfo[]> {
         return new Promise((resolve, reject) => {
             const req = new Empty();
 
             this.client.listCollections(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
-                resolve(resp.getCollectionsList());
+                const list = (resp.getCollectionsList() as any as ProtoCollectionSummary[]).map(c => ({
+                    name: c.getName(),
+                    count: c.getCount(),
+                    dimension: c.getDimension(),
+                    metric: c.getMetric()
+                }));
+                resolve(list);
             });
         });
     }

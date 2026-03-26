@@ -113,9 +113,17 @@ message DeleteCollectionRequest {
   string name = 1;
 }
 
-message ListCollectionsResponse {
-  repeated string collections = 1;
+message CollectionSummary {
+  string name = 1;
+  uint64 count = 2;
+  uint32 dimension = 3;
+  string metric = 4;
 }
+
+message ListCollectionsResponse {
+  repeated CollectionSummary collections = 1;
+}
+
 
 message CollectionStatsRequest {
   string name = 1;

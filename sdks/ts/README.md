@@ -1,6 +1,6 @@
 # HyperspaceDB TypeScript SDK
 
-Official TypeScript client for HyperspaceDB gRPC API (v3.0.0-alpha.2).
+Official TypeScript client for HyperspaceDB gRPC API v3.1.0.
 
 Use this SDK for:
 - collection lifecycle management
@@ -68,6 +68,19 @@ Create a new collection.
 ### `deleteCollection(name)`
 
 Delete collection and all its data.
+
+### `listCollections()`
+
+Retrieve all active collections for the current tenant.
+Returns `Promise<CollectionInfo[]>`.
+
+```ts
+const collections = await client.listCollections();
+for (const col of collections) {
+  console.log(`${col.name}: dim=${col.dimension}, metric=${col.metric}, count=${col.count}`);
+}
+```
+
 
 ### `insert(id, vector, meta?, collection?, durability?)`
 

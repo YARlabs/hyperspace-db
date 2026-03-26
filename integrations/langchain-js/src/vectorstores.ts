@@ -36,7 +36,25 @@ export class HyperspaceStore extends VectorStore {
         this.collectionName = args.collectionName ?? "default";
         this.enableDeduplication = args.enableDeduplication ?? true;
         this.useServerSideEmbedding = args.useServerSideEmbedding ?? false;
+        
+        this._ensureCollection(args.dimension, args.metric);
     }
+
+    private async _ensureCollection(desiredDim?: number, desiredMetric?: string) {
+        try {
+            const collections = await this.client.listCollections();
+            const existing = collections.find(c => c.name === this.collectionName);
+            if (existing) {
+                 // Auto-populate properties if they were not explicitly locked in the store
+                 console.log(`Using existing collection ${this.collectionName}: ${existing.dimension}d, ${existing.metric}`);
+            } else if (desiredDim && desiredMetric) {
+                await this.client.createCollection(this.collectionName, desiredDim, desiredMetric);
+            }
+        } catch (e) {
+            console.error("Failed to check/create collection", e);
+        }
+    }
+
 
     _vectorstoreType(): string {
         return "hyperspace";

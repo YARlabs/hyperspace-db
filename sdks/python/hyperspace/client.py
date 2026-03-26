@@ -79,14 +79,23 @@ class HyperspaceClient:
         except grpc.RpcError:
             return False
 
-    def list_collections(self) -> List[str]:
+    def list_collections(self) -> List[Dict]:
         req = hyperspace_pb2.Empty()
         try:
             resp = self.stub.ListCollections(req, metadata=self.metadata)
-            return resp.collections
+            return [
+                {
+                    "name": c.name,
+                    "count": c.count,
+                    "dimension": c.dimension,
+                    "metric": c.metric
+                }
+                for c in resp.collections
+            ]
         except grpc.RpcError as e:
             print(f"RPC Error: {e}")
             return []
+
 
     def get_collection_stats(self, name: str) -> Dict:
         req = hyperspace_pb2.CollectionStatsRequest(name=name)

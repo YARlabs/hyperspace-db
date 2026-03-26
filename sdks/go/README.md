@@ -2,7 +2,7 @@
 
 Official Go client for the **HyperspaceDB** gRPC API. 
 
-This SDK features pre-generated protocol buffers (`proto/`) to interact directly with the high-performance HyperspaceDB server (`v3.0.0-alpha.2`). It is tailored for high-concurrency event-streaming systems, CDC syncs, and microservices managing hyperspatial graph databases.
+This SDK features pre-generated protocol buffers (`proto/`) to interact directly with the high-performance HyperspaceDB server (`v3.1.0`). It is tailored for high-concurrency event-streaming systems, CDC syncs, and microservices managing hyperspatial graph databases.
 
 ## Integration
 
@@ -57,7 +57,16 @@ func main() {
 	}
 
 	log.Printf("Found %d vectors", len(results))
+
+	// List collections with metadata
+	collections, err := client.ListCollections(ctx)
+	if err == nil {
+		for _, col := range collections {
+			log.Printf("Collection: %s, Count: %d, Dim: %d, Metric: %s", col.Name, col.Count, col.Dimension, col.Metric)
+		}
+	}
 }
+
 ```
 
 ## Geometric Filters (New in v3.0)

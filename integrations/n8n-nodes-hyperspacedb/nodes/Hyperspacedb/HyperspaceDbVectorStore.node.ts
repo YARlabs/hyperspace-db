@@ -57,21 +57,23 @@ const VectorStoreNodeClass = createVectorStoreNode({
             displayName: 'Metric / Geometry',
             name: 'metric',
             type: 'options',
-            options: [
-                { name: 'Lorentz (Hyperbolic)', value: 'lorentz' },
-                { name: 'Poincaré (Hyperbolic)', value: 'poincare' },
-                { name: 'Cosine Similarity', value: 'cosine' },
-                { name: 'Euclidean (L2)', value: 'l2' },
-            ],
+            typeOptions: {
+                loadOptionsMethod: 'getCollectionMetric',
+                loadOptionsDependsOn: ['collectionName'],
+            },
             default: 'lorentz',
-            description: 'The spatial metric used - should match your collection settings',
+            description: 'The spatial metric used - auto-fetched from collection',
         },
         {
             displayName: 'Dimension',
             name: 'dimension',
-            type: 'number',
+            type: 'options',
+            typeOptions: {
+                loadOptionsMethod: 'getCollectionDimension',
+                loadOptionsDependsOn: ['collectionName'],
+            },
             default: 1024,
-            description: 'Number of dimensions (should match your collection settings)',
+            description: 'Number of dimensions - auto-fetched from collection',
         },
     ],
     retrieveFields: [
@@ -127,13 +129,55 @@ export class HyperspaceDbVectorStore extends (VectorStoreNodeClass as any) imple
             async getCollections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
                 try {
                     const client = await getHyperspaceClient(this as any);
-                    const collections = await client.listCollections();
-                    return collections.map((name) => ({
-                        name,
-                        value: name,
+                    const collections = (await client.listCollections()) as any[];
+                    return collections.map((col) => ({
+                        name: `${col.name} (dim: ${col.dimension}, metric: ${col.metric})`,
+                        value: col.name,
                     }));
                 } catch (error: any) {
                     throw new Error(`Failed to load collections: ${error.message}`);
+                }
+            },
+            async getCollectionMetric(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                try {
+                    const collectionName = this.getCurrentNodeParameter('collectionName') as string;
+                    if (!collectionName) {
+                        return [
+                            { name: 'Lorentz (Hyperbolic)', value: 'lorentz' },
+                            { name: 'Poincaré (Hyperbolic)', value: 'poincare' },
+                            { name: 'Cosine Similarity', value: 'cosine' },
+                            { name: 'Euclidean (L2)', value: 'l2' },
+                        ];
+                    }
+                    const client = await getHyperspaceClient(this as any);
+                    const collections = (await client.listCollections()) as any[];
+                    const col = collections.find((c) => c.name === collectionName);
+                    if (col) {
+                        return [{ name: col.metric, value: col.metric }];
+                    }
+                    return [
+                        { name: 'Lorentz (Hyperbolic)', value: 'lorentz' },
+                        { name: 'Poincaré (Hyperbolic)', value: 'poincare' },
+                        { name: 'Cosine Similarity', value: 'cosine' },
+                        { name: 'Euclidean (L2)', value: 'l2' },
+                    ];
+                } catch (error: any) {
+                    return [{ name: 'lorentz', value: 'lorentz' }];
+                }
+            },
+            async getCollectionDimension(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                try {
+                    const collectionName = this.getCurrentNodeParameter('collectionName') as string;
+                    if (!collectionName) return [{ name: '1024', value: 1024 }];
+                    const client = await getHyperspaceClient(this as any);
+                    const collections = (await client.listCollections()) as any[];
+                    const col = collections.find((c) => c.name === collectionName);
+                    if (col) {
+                        return [{ name: String(col.dimension), value: col.dimension }];
+                    }
+                    return [{ name: '1024', value: 1024 }];
+                } catch (error: any) {
+                    return [{ name: '1024', value: 1024 }];
                 }
             },
         },

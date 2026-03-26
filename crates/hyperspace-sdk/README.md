@@ -13,7 +13,7 @@ This crate provides:
 
 ```toml
 [dependencies]
-hyperspace-sdk = "3.0.0-alpha.2"
+hyperspace-sdk = "3.1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -83,8 +83,10 @@ The crate converts to protocol `f64` once per call.
 ## API Surface (Core)
 
 - `Client::connect`
-- `create_collection`, `delete_collection`, `list_collections`
+- `create_collection`, `delete_collection`
+- `list_collections` (returns `Vec<CollectionSummary>` with name, count, dimension, and metric)
 - `insert`, `insert_f32`
+
 - `insert_text` (server-side vectorization and storage)
 - `vectorize` (convert text to vector on server)
 - `search`, `search_f32`, `search_advanced`

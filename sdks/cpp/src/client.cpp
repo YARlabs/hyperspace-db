@@ -32,6 +32,26 @@ bool HyperspaceClient::CreateCollection(const std::string& name, int dimension, 
     return status.ok();
 }
 
+std::vector<CollectionSummary> HyperspaceClient::ListCollections() {
+    hyperspace_grpc::Empty request;
+    hyperspace_grpc::ListCollectionsResponse response;
+    ClientContext context;
+    if (!app_id_.empty()) {
+        context.AddMetadata("x-api-key", app_id_);
+    }
+
+    Status status = stub_->ListCollections(&context, request, &response);
+    std::vector<CollectionSummary> output;
+    if (status.ok()) {
+        output.reserve(response.collections_size());
+        for (const auto& c : response.collections()) {
+            output.push_back({c.name(), (uint64_t)c.count(), (uint32_t)c.dimension(), c.metric()});
+        }
+    }
+    return output;
+}
+
+
 bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection) {
     hyperspace_grpc::InsertRequest request;
     request.set_id(id);

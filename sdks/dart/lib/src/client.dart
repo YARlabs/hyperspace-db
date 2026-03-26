@@ -43,6 +43,13 @@ class HyperspaceClient {
     return resp.status.isNotEmpty;
   }
 
+  Future<List<CollectionSummary>> listCollections() async {
+    final req = Empty();
+    final resp = await _stub.listCollections(req);
+    return resp.collections;
+  }
+
+
   Future<bool> insert(int id, List<double> vector, {String collection = ''}) async {
     final req = InsertRequest(
       id: id,

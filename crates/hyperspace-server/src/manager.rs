@@ -476,6 +476,26 @@ impl CollectionManager {
         list
     }
 
+    pub async fn list_detailed(
+        &self,
+        user_id: &str,
+    ) -> Vec<hyperspace_proto::hyperspace::CollectionSummary> {
+        let names = self.list(user_id);
+        let mut summaries = Vec::new();
+        for name in names {
+            if let Some(col) = self.get(user_id, &name).await {
+                summaries.push(hyperspace_proto::hyperspace::CollectionSummary {
+                    name: name.clone(),
+                    count: col.count() as u64,
+                    dimension: col.dimension() as u32,
+                    metric: col.metric_name().to_string(),
+                });
+            }
+        }
+        summaries
+    }
+
+
     pub fn list_all(&self) -> Vec<String> {
         self.collections
             .iter()

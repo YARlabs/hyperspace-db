@@ -23,7 +23,8 @@ pub struct App {
     pub current_tab: CurrentTab,
     pub should_quit: bool,
     pub stats: SystemStats,
-    pub collections_list: Vec<String>,
+    pub collections_list: Vec<hyperspace_proto::hyperspace::CollectionSummary>,
+
     pub logs: Vec<String>,
 }
 

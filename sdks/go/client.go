@@ -51,7 +51,6 @@ func (c *HyperspaceClient) withContext(ctx context.Context) context.Context {
 	return ctx
 }
 
-// CreateCollection initializes a new vector space
 func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, dimension uint32, metric string) error {
 	req := &pb.CreateCollectionRequest{
 		Name:      name,
@@ -62,6 +61,17 @@ func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, di
 	_, err := c.client.CreateCollection(c.withContext(ctx), req)
 	return err
 }
+
+// ListCollections retrieves all active collections for the current tenant
+func (c *HyperspaceClient) ListCollections(ctx context.Context) ([]*pb.CollectionSummary, error) {
+	req := &pb.Empty{}
+	resp, err := c.client.ListCollections(c.withContext(ctx), req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Collections, nil
+}
+
 
 // Insert pushes a new vector into the database
 func (c *HyperspaceClient) Insert(ctx context.Context, id uint32, vector []float64, collection string) error {

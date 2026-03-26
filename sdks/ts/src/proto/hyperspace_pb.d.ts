@@ -248,11 +248,40 @@ export namespace DeleteCollectionRequest {
     }
 }
 
+export class CollectionSummary extends jspb.Message { 
+    getName(): string;
+    setName(value: string): CollectionSummary;
+    getCount(): number;
+    setCount(value: number): CollectionSummary;
+    getDimension(): number;
+    setDimension(value: number): CollectionSummary;
+    getMetric(): string;
+    setMetric(value: string): CollectionSummary;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): CollectionSummary.AsObject;
+    static toObject(includeInstance: boolean, msg: CollectionSummary): CollectionSummary.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: CollectionSummary, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): CollectionSummary;
+    static deserializeBinaryFromReader(message: CollectionSummary, reader: jspb.BinaryReader): CollectionSummary;
+}
+
+export namespace CollectionSummary {
+    export type AsObject = {
+        name: string,
+        count: number,
+        dimension: number,
+        metric: string,
+    }
+}
+
 export class ListCollectionsResponse extends jspb.Message { 
     clearCollectionsList(): void;
-    getCollectionsList(): Array<string>;
-    setCollectionsList(value: Array<string>): ListCollectionsResponse;
-    addCollections(value: string, index?: number): string;
+    getCollectionsList(): Array<CollectionSummary>;
+    setCollectionsList(value: Array<CollectionSummary>): ListCollectionsResponse;
+    addCollections(value?: CollectionSummary, index?: number): CollectionSummary;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): ListCollectionsResponse.AsObject;
@@ -266,7 +295,7 @@ export class ListCollectionsResponse extends jspb.Message {
 
 export namespace ListCollectionsResponse {
     export type AsObject = {
-        collectionsList: Array<string>,
+        collectionsList: Array<CollectionSummary.AsObject>,
     }
 }
 

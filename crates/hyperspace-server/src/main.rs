@@ -554,9 +554,10 @@ impl Database for HyperspaceService {
         _request: Request<Empty>,
     ) -> Result<Response<ListCollectionsResponse>, Status> {
         let user_id = get_user_id(&_request);
-        let list = self.manager.list(&user_id);
-        Ok(Response::new(ListCollectionsResponse { collections: list }))
+        let collections = self.manager.list_detailed(&user_id).await;
+        Ok(Response::new(ListCollectionsResponse { collections }))
     }
+
 
     async fn get_collection_stats(
         &self,
@@ -565,15 +566,14 @@ impl Database for HyperspaceService {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
         if let Some(col) = self.manager.get(&user_id, &req.name).await {
-            // TODO: Extend Collection trait to expose dimension and metric.
-            // For now return dummy or count.
             Ok(Response::new(CollectionStatsResponse {
                 count: col.count() as u64,
-                dimension: 0, // TODO: Expose from trait
-                metric: "unknown".into(),
+                dimension: col.dimension() as u32,
+                metric: col.metric_name().to_string(),
                 indexing_queue: col.queue_size(),
             }))
         } else {
+
             Err(Status::not_found("Collection not found"))
         }
     }

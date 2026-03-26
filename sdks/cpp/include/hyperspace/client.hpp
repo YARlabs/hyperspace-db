@@ -17,6 +17,13 @@ struct SearchResult {
     double score;
 };
 
+struct CollectionSummary {
+    std::string name;
+    uint64_t count;
+    uint32_t dimension;
+    std::string metric;
+};
+
 class HyperspaceClient {
 public:
     HyperspaceClient(const std::string& endpoint, const std::string& app_id = "");
@@ -24,6 +31,8 @@ public:
 
     // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
     bool CreateCollection(const std::string& name, int dimension, const std::string& metric = "cosine");
+    std::vector<CollectionSummary> ListCollections();
+
     bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "");
     bool InsertText(uint32_t id, const std::string& text, const std::string& collection = "");
     bool Delete(uint32_t id, const std::string& collection = "");

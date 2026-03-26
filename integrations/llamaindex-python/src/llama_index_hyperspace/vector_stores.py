@@ -50,6 +50,17 @@ class HyperspaceVectorStore(VectorStore):
             api_key=api_key,
             user_id=user_id
         )
+        self._ensure_collection()
+
+    def _ensure_collection(self) -> None:
+        try:
+            collections = self._client.list_collections()
+            existing = next((c for c in collections if c["name"] == self._collection_name), None)
+            if existing:
+                logger.info(f"Using existing collection {self._collection_name}: {existing['dimension']}d, {existing['metric']}")
+        except Exception:
+            pass
+
 
     @property
     def client(self) -> Any:

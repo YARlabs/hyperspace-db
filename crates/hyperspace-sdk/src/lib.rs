@@ -1,11 +1,11 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
-    BatchInsertRequest, BatchSearchRequest, DurabilityLevel, EventMessage,
+    BatchInsertRequest, BatchSearchRequest, CollectionSummary, DurabilityLevel, EventMessage,
     EventSubscriptionRequest, EventType, FindSemanticClustersRequest, FindSemanticClustersResponse,
     GetConceptParentsRequest, GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse,
     GetNodeRequest, GraphNode, InsertRequest, InsertTextRequest, SearchRequest, SearchResponse,
-    SearchResult, SearchTextRequest, TraverseRequest, TraverseResponse, VectorData,
-    VectorizeRequest, VectorizeResponse,
+    SearchResult, SearchResult as ResultItem, SearchTextRequest, TraverseRequest, TraverseResponse,
+    VectorData, VectorizeRequest, VectorizeResponse,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -120,15 +120,16 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
-    /// Lists all collections.
+    /// Lists all collections with their metadata (dimension, metric, count).
     ///
     /// # Errors
     /// Returns error on network failure.
-    pub async fn list_collections(&mut self) -> Result<Vec<String>, tonic::Status> {
+    pub async fn list_collections(&mut self) -> Result<Vec<CollectionSummary>, tonic::Status> {
         let req = hyperspace_proto::hyperspace::Empty {};
         let resp = self.inner.list_collections(req).await?;
         Ok(resp.into_inner().collections)
     }
+
 
     /// Gets statistics for a collection.
     ///

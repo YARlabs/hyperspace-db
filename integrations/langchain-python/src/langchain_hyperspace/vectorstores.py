@@ -57,13 +57,23 @@ class HyperspaceVectorStore(VectorStore):
 
     def _ensure_collection(self) -> None:
         try:
-            self._client.create_collection(
-                self.collection_name, 
-                dimension=self.dimension, 
-                metric=self.metric
-            )
+            # Try to fetch existing collection metadata to avoid mismatch
+            collections = self._client.list_collections()
+            existing = next((c for c in collections if c["name"] == self.collection_name), None)
+            
+            if existing:
+                self.dimension = int(existing["dimension"])
+                self.metric = str(existing["metric"])
+                logger.info(f"Using existing collection {self.collection_name}: {self.dimension}d, {self.metric}")
+            else:
+                self._client.create_collection(
+                    self.collection_name, 
+                    dimension=self.dimension, 
+                    metric=self.metric
+                )
         except Exception as e:
-            logger.debug(f"Collection creation skipped: {e}")
+            logger.debug(f"Collection creation/fetching skipped: {e}")
+
 
     def _compute_content_hash(self, text: str) -> int:
         hash_bytes = hashlib.sha256(text.encode("utf-8")).digest()

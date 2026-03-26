@@ -72,7 +72,7 @@ fn run_app<B: ratatui::backend::Backend>(
     client: &DatabaseClient<Channel>,
 ) -> io::Result<()> {
     // List Collections Thread
-    let (tx_col, mut rx_col) = tokio::sync::mpsc::channel::<Vec<String>>(1);
+    let (tx_col, mut rx_col) = tokio::sync::mpsc::channel::<Vec<hyperspace_proto::hyperspace::CollectionSummary>>(1);
     let mut client_col = client.clone();
     tokio::spawn(async move {
         loop {
