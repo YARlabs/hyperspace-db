@@ -171,7 +171,6 @@ fn draw_collections(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-
     let list = Paragraph::new(items).block(
         Block::default()
             .title("Active Collections")

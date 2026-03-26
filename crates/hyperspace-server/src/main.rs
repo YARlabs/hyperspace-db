@@ -558,7 +558,6 @@ impl Database for HyperspaceService {
         Ok(Response::new(ListCollectionsResponse { collections }))
     }
 
-
     async fn get_collection_stats(
         &self,
         request: Request<CollectionStatsRequest>,
@@ -573,7 +572,6 @@ impl Database for HyperspaceService {
                 indexing_queue: col.queue_size(),
             }))
         } else {
-
             Err(Status::not_found("Collection not found"))
         }
     }

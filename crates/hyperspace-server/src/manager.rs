@@ -495,7 +495,6 @@ impl CollectionManager {
         summaries
     }
 
-
     pub fn list_all(&self) -> Vec<String> {
         self.collections
             .iter()

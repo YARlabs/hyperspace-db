@@ -465,7 +465,7 @@ Open a new terminal to monitor the database:
 ### 3. Use Python SDK
 
 ```bash
-pip install hyperspacedb==3.0.1
+pip install hyperspacedb==3.1.0
 ```
 
 ```python

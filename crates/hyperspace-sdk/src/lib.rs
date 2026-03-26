@@ -130,7 +130,6 @@ impl Client {
         Ok(resp.into_inner().collections)
     }
 
-
     /// Gets statistics for a collection.
     ///
     /// # Errors

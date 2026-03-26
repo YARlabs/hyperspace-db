@@ -119,7 +119,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let nodes_count = self.nodes.count();
         let mut snapshot_nodes = Vec::with_capacity(nodes_count);
 
-        for (_, node) in self.nodes.iter() {
+        for (_, node) in &self.nodes {
             let mut layers = Vec::new();
             for layer_lock in &node.layers {
                 layers.push(layer_lock.read().clone());
@@ -142,9 +142,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let mut numeric_vec = Vec::new();
         for item in &self.metadata.numeric {
             let mut inner_vec = Vec::new();
-            for entry in item.value().iter() {
+            for entry in item.value() {
                 let mut buf = Vec::new();
-                entry.value().read().serialize_into(&mut buf).map_err(|e| e.to_string())?;
+                entry
+                    .value()
+                    .read()
+                    .serialize_into(&mut buf)
+                    .map_err(|e| e.to_string())?;
                 inner_vec.push((*entry.key(), buf));
             }
             numeric_vec.push((item.key().clone(), inner_vec));
@@ -375,7 +379,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let nodes_count = self.nodes.count();
         let mut snapshot_nodes = Vec::with_capacity(nodes_count);
-        for (_, node) in self.nodes.iter() {
+        for (_, node) in &self.nodes {
             let mut layers = Vec::new();
             for layer in &node.layers {
                 layers.push(layer.read().clone());
@@ -398,9 +402,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let mut numeric_vec = Vec::new();
         for item in &self.metadata.numeric {
             let mut inner_vec = Vec::new();
-            for entry in item.value().iter() {
+            for entry in item.value() {
                 let mut buf = Vec::new();
-                entry.value().read().serialize_into(&mut buf).map_err(|e| e.to_string())?;
+                entry
+                    .value()
+                    .read()
+                    .serialize_into(&mut buf)
+                    .map_err(|e| e.to_string())?;
                 inner_vec.push((*entry.key(), buf));
             }
             numeric_vec.push((item.key().clone(), inner_vec));
@@ -741,20 +749,16 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         });
         // If geometric: snapshot + release lock immediately to unblock concurrent deletes.
         // If not: hold the read guard for the duration (zero-copy, just an atomic ref-count).
-        let deleted_owned: Option<RoaringBitmap>;
-        let deleted_guard;
-        let deleted: &RoaringBitmap;
-        if has_geometric {
-            deleted_owned = Some(self.metadata.deleted.read().clone());
-            deleted = deleted_owned.as_ref().unwrap();
-            deleted_guard = None::<parking_lot::RwLockReadGuard<'_, RoaringBitmap>>;
+        let (deleted_owned, deleted_guard) = if has_geometric {
+            (Some(self.metadata.deleted.read().clone()), None)
         } else {
-            deleted_guard = Some(self.metadata.deleted.read());
-            deleted_owned = None;
-            deleted = deleted_guard.as_deref().unwrap();
-        }
-        let _ = &deleted_guard; // keep alive
-        let _ = &deleted_owned; // keep alive
+            (None, Some(self.metadata.deleted.read()))
+        };
+        let deleted = if let Some(ref owned) = deleted_owned {
+            owned
+        } else {
+            deleted_guard.as_deref().unwrap()
+        };
 
         let mut bitmap: Option<RoaringBitmap> = None;
 
@@ -825,7 +829,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     }
                     apply_mask(&range_union);
                 }
-                FilterExpr::InBox { min_bounds, max_bounds } => {
+                FilterExpr::InBox {
+                    min_bounds,
+                    max_bounds,
+                } => {
                     let count = self.count_nodes() as u32;
                     let region = hyperspace_core::region::BoxRegion::new(
                         min_bounds.clone(),
@@ -838,10 +845,16 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         .filter(|&i| region.contains(&self.get_vector(i)))
                         .collect();
                     let box_match: RoaringBitmap = ids.into_iter().collect();
-                    if box_match.is_empty() { return Some(RoaringBitmap::new()); }
+                    if box_match.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
                     apply_mask(&box_match);
                 }
-                FilterExpr::InCone { axes, apertures, cen } => {
+                FilterExpr::InCone {
+                    axes,
+                    apertures,
+                    cen,
+                } => {
                     let count = self.count_nodes() as u32;
                     let region = hyperspace_core::region::ConeRegion::new(
                         axes.clone(),
@@ -855,7 +868,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         .filter(|&i| region.contains(&self.get_vector(i)))
                         .collect();
                     let cone_match: RoaringBitmap = ids.into_iter().collect();
-                    if cone_match.is_empty() { return Some(RoaringBitmap::new()); }
+                    if cone_match.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
                     apply_mask(&cone_match);
                 }
                 FilterExpr::InBall { center, radius } => {
@@ -868,7 +883,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         .filter(|&i| region.contains(&self.get_vector(i)))
                         .collect();
                     let ball_match: RoaringBitmap = ids.into_iter().collect();
-                    if ball_match.is_empty() { return Some(RoaringBitmap::new()); }
+                    if ball_match.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
                     apply_mask(&ball_match);
                 }
             }
@@ -969,7 +986,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     if (curr_node as usize) >= nodes_count {
                         break;
                     }
-                    let Some(node) = self.nodes.get(curr_node as usize) else { break };
+                    let Some(node) = self.nodes.get(curr_node as usize) else {
+                        break;
+                    };
                     if node.layers.len() <= level {
                         break;
                     }
@@ -1235,7 +1254,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
 
                 // LOCK-FREE: boxcar get()
-                let Some(node) = self.nodes.get(cand.id as usize) else { continue };
+                let Some(node) = self.nodes.get(cand.id as usize) else {
+                    continue;
+                };
                 if node.layers.is_empty() {
                     continue;
                 }
@@ -1347,7 +1368,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
 
                 // LOCK-FREE: boxcar get()
-                let Some(node) = self.nodes.get(cand.id as usize) else { continue };
+                let Some(node) = self.nodes.get(cand.id as usize) else {
+                    continue;
+                };
                 if node.layers.len() <= level {
                     continue;
                 }
@@ -1584,16 +1607,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let new_id = {
             let _g = self.append_lock.lock();
             let id = self.storage.append(&q_bytes)?;
-            
+
             let new_level = self.random_level();
             let mut layers = Vec::with_capacity(new_level + 1);
             for _ in 0..=new_level {
                 layers.push(RwLock::new(Vec::new()));
             }
-            let pushed_id = self.nodes.push(Node {
-                id,
-                layers,
-            });
+            let pushed_id = self.nodes.push(Node { id, layers });
             debug_assert_eq!(id as usize, pushed_id);
             id
         };
@@ -1738,8 +1758,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 if self.nodes.get(curr_obj as usize).is_none() {
                     break;
                 }
-                let Some(node) = self.nodes.get(curr_obj as usize) else { break };
-                if node.layers.len() <= level { break; }
+                let Some(node) = self.nodes.get(curr_obj as usize) else {
+                    break;
+                };
+                if node.layers.len() <= level {
+                    break;
+                }
                 let best_n = {
                     let neighbors = node.layers[level].read();
                     let mut best = None;
@@ -1831,8 +1855,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     fn add_link(&self, src: NodeId, dst: NodeId, level: usize) {
         // LOCK-FREE node access via boxcar::Vec
-        let Some(node) = self.nodes.get(src as usize) else { return };
-        if node.layers.len() <= level { return; }
+        let Some(node) = self.nodes.get(src as usize) else {
+            return;
+        };
+        if node.layers.len() <= level {
+            return;
+        }
         let mut links = node.layers[level].write();
         // FIX #4: Remove O(M) linear scan. prune_connections handles dedup when len > m_max.
         links.push(dst);
@@ -1841,8 +1869,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     fn prune_connections(&self, node_id: NodeId, level: usize, max_links: usize) {
         // 1. Snapshot current links (LOCK-FREE boxcar get + inner read lock)
         let initial_links: Vec<u32> = {
-            let Some(node) = self.nodes.get(node_id as usize) else { return };
-            if node.layers.len() <= level { return; }
+            let Some(node) = self.nodes.get(node_id as usize) else {
+                return;
+            };
+            if node.layers.len() <= level {
+                return;
+            }
             node.layers[level].read().clone()
         };
 
@@ -1860,7 +1892,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let mut keepers = self.select_neighbors(&node_vec, heap, max_links);
 
         // 3. Atomic update merge (Write per-slot only, no global lock)
-        let Some(node) = self.nodes.get(node_id as usize) else { return };
+        let Some(node) = self.nodes.get(node_id as usize) else {
+            return;
+        };
         let mut links_lock = node.layers[level].write();
 
         // RACE CONDITION CHECK:
@@ -1894,7 +1928,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     /// Converts the dense HNSW base layer into a Spatial Navigable Graph (SNG).
     /// Prevents excessive page faults on NVMe when searching evicted cold chunks.
     pub fn optimize_as_sng(&self, alpha: f64) {
-        println!("🔧 Optimizing HNSW Graph -> Spatial Navigable Graph (DiskANN) with alpha={alpha}");
+        println!(
+            "🔧 Optimizing HNSW Graph -> Spatial Navigable Graph (DiskANN) with alpha={alpha}"
+        );
         let num_nodes = self.count_nodes() as u32;
 
         for i in 0..num_nodes {
@@ -2002,7 +2038,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             return Err(format!("Start node {start_id} not found"));
         };
         if start.layers.len() <= layer {
-            return Err(format!("Layer {layer} is out of bounds for node {start_id}"));
+            return Err(format!(
+                "Layer {layer} is out of bounds for node {start_id}"
+            ));
         }
         let deleted = self.metadata.deleted.read();
         if deleted.contains(start_id) {
@@ -2015,15 +2053,22 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         queue.push_back((start_id, 0usize));
         visited.insert(start_id);
 
-
         while let Some((node_id, depth)) = queue.pop_front() {
             out.push(node_id);
-            if out.len() >= max_nodes { break; }
-            if depth >= max_depth { continue; }
+            if out.len() >= max_nodes {
+                break;
+            }
+            if depth >= max_depth {
+                continue;
+            }
             if let Some(node) = self.nodes.get(node_id as usize) {
-                if node.layers.len() <= layer { continue; }
+                if node.layers.len() <= layer {
+                    continue;
+                }
                 for &next in node.layers[layer].read().iter() {
-                    if deleted.contains(next) { continue; }
+                    if deleted.contains(next) {
+                        continue;
+                    }
                     if visited.insert(next) {
                         queue.push_back((next, depth + 1));
                     }
@@ -2065,8 +2110,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
             while let Some((curr, _)) = queue.pop_front() {
                 component.push(curr);
-                if component.len() >= max_nodes { break; }
-                let Some(curr_node) = self.nodes.get(curr as usize) else { continue };
+                if component.len() >= max_nodes {
+                    break;
+                }
+                let Some(curr_node) = self.nodes.get(curr as usize) else {
+                    continue;
+                };
                 if curr_node.layers.len() <= layer {
                     continue;
                 }
@@ -2263,10 +2312,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
         };
 
-        let global_docs = self
-            .nodes
-            .count()
-            .saturating_sub(deleted.len() as usize);
+        let global_docs = self.nodes.count().saturating_sub(deleted.len() as usize);
         let total_docs = global_docs.max(1) as f64;
         let avgdl = if global_docs == 0 {
             1.0
@@ -2282,7 +2328,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             let Some(doc_freqs) = self.metadata.term_doc_freq.get(token) else {
                 continue;
             };
-            
+
             let df = self
                 .metadata
                 .token_df
