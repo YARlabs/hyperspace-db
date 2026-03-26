@@ -115,7 +115,7 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v3.0-alpha.1**: ✅ **Federated Swarm Protocol & Graph Diagnostics**. Connecting independent HyperspaceDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers. Also added AI Sleep Mode / Memory Reconsolidation. *Completed.*
 * **v3.0-alpha.2**: ✅ **Multi-Geometry Benchmark & SDK Sync**. Graph Diagnostics in SDK, Multi-Geometry Search API, Wasserstein metric (native O(N) 1D), dependency pruning. *Completed.*
 * **v3.0-alpha.3**: ✅ **Anisotropic SQ8 & Per-Geometry Embedding System**. ScaNN-inspired coordinate-descent quantization for Cosine/L2 (+5.3% / +3.8% Recall@10). Full embedding service with Local ONNX, HuggingFace Hub, and 6 remote API providers. Documentation overhaul. *Completed.*
-* **v3.0-LTS** *(planned)*: **Validation Layer & Batch ONNX Inference**. Strict NaN/Infinity filtering at gRPC ingress. Batch inference pipeline for `InsertBatch`. Gate Check: fuzzy testing with malformed vectors.
-* **v3.1**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
+* **v3.0.1**: ✅ **Lock-Free HNSW & Discovery Service**. Migration to `boxcar` for true concurrent inserts. Rich Metadata API for automatic integration discovery (n8n, LangChain). *Completed.*
+* **v3.2**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
 
 Join us in pushing the boundaries of hyperbolic vector search!
