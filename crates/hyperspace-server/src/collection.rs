@@ -1648,8 +1648,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     // Updated peek to use index_link
-    fn peek(&self, limit: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
-        let items = self.index_link.load().peek(limit);
+    fn peek(&self, limit: usize, offset: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
+        let items = self.index_link.load().peek(limit, offset);
         items
             .into_iter()
             .map(|(internal_id, vec, meta)| {

@@ -561,6 +561,40 @@ impl CollectionManager {
         Ok(())
     }
 
+    pub fn get_user_usage(&self, user_id: &str) -> UserUsage {
+        let prefix = format!("{user_id}_");
+        let mut usage = UserUsage::default();
+
+        // 1. Scan memory for active collections vector count
+        for entry in self.collections.iter() {
+            if entry.key().starts_with(&prefix) {
+                usage.vector_count += entry.value().collection.count();
+                usage.collection_count += 1;
+            }
+        }
+
+        // 2. Scan disk for all user directories (including cold ones)
+        if let Ok(entries) = std::fs::read_dir(&self.base_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name.starts_with(&prefix) {
+                            usage.disk_usage_bytes += calculate_dir_size(&path).unwrap_or(0);
+                            
+                            // If this collection wasn't found in memory during step 1, 
+                            // it means it's an idle collection on disk.
+                            if !self.collections.contains_key(name) {
+                                usage.collection_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        usage
+    }
+
     pub fn get_usage_report(&self) -> std::collections::HashMap<String, UserUsage> {
         let mut report = std::collections::HashMap::new();
 

@@ -1779,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -1810,7 +1810,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "boxcar",
  "crossbeam-skiplist",
@@ -1861,7 +1861,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "3.0.1"
+version = "3.0.3"
 dependencies = [
  "arc-swap",
  "async-trait",

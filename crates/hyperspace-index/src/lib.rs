@@ -1026,11 +1026,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     pub fn peek(
         &self,
         limit: usize,
+        offset: usize,
     ) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)> {
         // FIX #6: Hold a single lock-free count (boxcar) for the entire loop.
         let max_len = self.nodes.count();
 
         let mut result = Vec::with_capacity(limit);
+        let mut skipped = 0;
 
         // FIX #6: Hold a single read-lock for the entire loop instead of acquiring it per-iteration.
         let deleted = self.metadata.deleted.read();
@@ -1041,6 +1043,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             let id = id as u32;
 
             if deleted.contains(id) {
+                continue;
+            }
+
+            if skipped < offset {
+                skipped += 1;
                 continue;
             }
 

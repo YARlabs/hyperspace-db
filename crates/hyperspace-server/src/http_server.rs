@@ -37,8 +37,12 @@ async fn validate_api_key(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // 1. Check Trusted Header (SaaS / Kong)
-    // Clone header value to avoid holding immutable borrow
+    let mut ctx = RequestContext {
+        user_id: "anonymous".to_string(),
+        is_admin: false,
+    };
+
+    // 1. Extract User Identity (for Multi-tenancy)
     let user_id_header = request
         .headers()
         .get("x-hyperspace-user-id")
@@ -46,46 +50,46 @@ async fn validate_api_key(
         .map(std::string::ToString::to_string);
 
     if let Some(uid) = user_id_header {
-        request.extensions_mut().insert(RequestContext {
-            user_id: uid,
-            is_admin: false,
-        });
-        return Ok(next.run(request).await);
+        ctx.user_id = uid;
     }
 
-    // Auth is skipped for static files (except if we want to enforce user context?)
-    if !request.uri().path().starts_with("/api/") && request.uri().path() != "/metrics" {
-        return Ok(next.run(request).await);
-    }
-
+    // 2. Validate API Key (for Administrative Access)
     if let Some(expected) = expected_hash {
-        match request.headers().get("x-api-key") {
-            Some(key) => {
-                if let Ok(key_str) = key.to_str() {
-                    let mut hasher = Sha256::new();
-                    hasher.update(key_str.as_bytes());
-                    let hash = hex::encode(hasher.finalize());
+        if let Some(key) = request.headers().get("x-api-key") {
+            if let Ok(key_str) = key.to_str() {
+                let mut hasher = Sha256::new();
+                hasher.update(key_str.as_bytes());
+                let hash = hex::encode(hasher.finalize());
 
-                    if hash == expected {
-                        request.extensions_mut().insert(RequestContext {
-                            user_id: "default_admin".to_string(),
-                            is_admin: true,
-                        });
-                        return Ok(next.run(request).await);
+                if hash == expected {
+                    ctx.is_admin = true;
+                    // If no explicit user ID, admin acts as "default_admin"
+                    if ctx.user_id == "anonymous" {
+                        ctx.user_id = "default_admin".to_string();
                     }
                 }
-                Err(StatusCode::UNAUTHORIZED)
             }
-            None => Err(StatusCode::UNAUTHORIZED),
+        }
+        
+        // 3. Enforce Auth for API endpoints
+        let path = request.uri().path();
+        if path.starts_with("/api/") || path == "/metrics" {
+            // If neither valid API key nor valid x-hyperspace-user-id was provided
+            if !ctx.is_admin && ctx.user_id == "anonymous" {
+                return Err(StatusCode::UNAUTHORIZED);
+            }
         }
     } else {
-        // No Auth configured (Dev mode)
-        request.extensions_mut().insert(RequestContext {
-            user_id: "anonymous".to_string(),
-            is_admin: true,
-        });
-        Ok(next.run(request).await)
+        // No Auth configured in environment (Dev mode)
+        ctx.is_admin = true;
+        if ctx.user_id == "anonymous" {
+            ctx.user_id = "anonymous".to_string();
+        }
     }
+
+    // Auth is skipped for static files by default unless handled above
+    request.extensions_mut().insert(ctx);
+    Ok(next.run(request).await)
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -433,7 +437,7 @@ async fn get_status(
 
     Json(serde_json::json!({
         "status": "ONLINE",
-        "version": "3.0.0",
+        "version": env!("CARGO_PKG_VERSION"),
         "uptime": uptime_str,
         "config": {
             "dimension": dim,
@@ -454,38 +458,48 @@ async fn get_metrics(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if !ctx.is_admin {
-        return (StatusCode::FORBIDDEN, "Admin access required").into_response();
+    if ctx.is_admin && ctx.user_id == "default_admin" {
+        // --- Full Administrative Metrics ---
+        let total_vecs = manager.total_vector_count();
+        let disk_usage_bytes = calculate_dir_size("./data").unwrap_or(0);
+        let disk_usage_mb = (disk_usage_bytes as f64 / 1_048_576.0).round() as u64;
+
+        let sys = manager.system.lock();
+        let current_pid = Pid::from_u32(std::process::id());
+        let (ram_usage_mb, cpu_usage_percent) = if let Some(process) = sys.process(current_pid) {
+            let ram = (process.memory() as f64 / 1_048_576.0).round() as u64;
+            let cpu = process.cpu_usage().round() as u64;
+            (ram, cpu)
+        } else {
+            (0, 0)
+        };
+
+        let (active_count, idle_count) = manager.get_collection_counts();
+
+        return Json(serde_json::json!({
+            "total_vectors": total_vecs,
+            "active_collections": active_count,
+            "idle_collections": idle_count,
+            "total_collections": active_count + idle_count,
+            "ram_usage_mb": ram_usage_mb,
+            "cpu_usage_percent": cpu_usage_percent,
+            "disk_usage_mb": disk_usage_mb,
+            "is_admin": true
+        })).into_response();
     }
 
-    let total_vecs = manager.total_vector_count();
-
-    // Calculate disk usage from data directory
-    let disk_usage_bytes = calculate_dir_size("./data").unwrap_or(0);
-    let disk_usage_mb = (disk_usage_bytes as f64 / 1_048_576.0).round() as u64;
-
-    // Get real system metrics from persistent manager state
-    let sys = manager.system.lock();
-    let current_pid = Pid::from_u32(std::process::id());
-
-    let (ram_usage_mb, cpu_usage_percent) = if let Some(process) = sys.process(current_pid) {
-        let ram = (process.memory() as f64 / 1_048_576.0).round() as u64;
-        let cpu = process.cpu_usage().round() as u64;
-        (ram, cpu)
-    } else {
-        (0, 0)
-    };
-
-    let (active_count, idle_count) = manager.get_collection_counts();
+    // --- Isolated SaaS User Metrics ---
+    let usage = manager.get_user_usage(&ctx.user_id);
+    let disk_usage_mb = (usage.disk_usage_bytes as f64 / 1_048_576.0).round() as u64;
 
     Json(serde_json::json!({
-        "total_vectors": total_vecs,
-        "active_collections": active_count,
-        "idle_collections": idle_count,
-        "total_collections": active_count + idle_count,
-        "ram_usage_mb": ram_usage_mb,
-        "cpu_usage_percent": cpu_usage_percent,
+        "total_vectors": usage.vector_count,
+        "total_collections": usage.collection_count,
+        "active_collections": usage.collection_count, // For SaaS we treat all as active/available
         "disk_usage_mb": disk_usage_mb,
+        "ram_usage_mb": null, // Hidden for SaaS
+        "cpu_usage_percent": null, // Hidden for SaaS
+        "is_admin": false
     }))
     .into_response()
 }
@@ -570,6 +584,7 @@ fn calculate_dir_size(path: &str) -> std::io::Result<u64> {
 #[derive(serde::Deserialize)]
 struct PeekParams {
     limit: Option<usize>,
+    offset: Option<usize>,
 }
 
 async fn peek_collection(
@@ -582,9 +597,10 @@ async fn peek_collection(
     Extension(ctx): Extension<RequestContext>,
     Query(params): Query<PeekParams>,
 ) -> impl IntoResponse {
-    let limit = params.limit.unwrap_or(50).min(100);
+    let limit = params.limit.unwrap_or(50).min(250);
+    let offset = params.offset.unwrap_or(0);
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
-        let items = col.peek(limit);
+        let items = col.peek(limit, offset);
         Json(items).into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
@@ -602,7 +618,7 @@ async fn analyze_collection_geometry(
 ) -> impl IntoResponse {
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
         // Peek up to 500 vectors for analysis
-        let samples = col.peek(500);
+        let samples = col.peek(500, 0);
         let vectors: Vec<Vec<f64>> = samples.into_iter().map(|(_, v, _)| v).collect();
 
         let (delta, recommendation) =
@@ -1337,6 +1353,7 @@ async fn get_swarm_peers(
         peers: Vec<crate::gossip::PeerInfo>,
         peer_count: usize,
         gossip_enabled: bool,
+        replication_enabled: bool,
     }
 
     let registry_opt = registry.as_ref();
@@ -1348,11 +1365,16 @@ async fn get_swarm_peers(
         (vec![], false)
     };
 
+    // Need to get replication status from state
+    let replication_enabled = std::env::var("HS_REPLICATION_ALLOWED")
+        .unwrap_or_else(|_| "true".to_string()) == "true";
+
     let count = peers.len();
     Json(SwarmStatus {
         peers,
         peer_count: count,
         gossip_enabled,
+        replication_enabled,
     })
     .into_response()
 }

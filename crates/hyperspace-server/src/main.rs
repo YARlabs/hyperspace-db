@@ -80,6 +80,18 @@ struct Args {
     /// Leader address (if follower)
     #[arg(long)]
     leader: Option<String>,
+
+    /// User ID for multi-tenant replication (if follower)
+    #[arg(long)]
+    user_id: Option<String>,
+
+    /// Unique Node ID for this instance
+    #[arg(long)]
+    node_id: Option<String>,
+
+    /// Allow outgoing replication streams?
+    #[arg(long, default_value = "false", env = "HS_REPLICATION_ALLOWED")]
+    replication_allowed: bool,
 }
 
 #[derive(Clone)]
@@ -130,6 +142,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[derive(Clone)]
 struct ClientAuthInterceptor {
     api_key: String,
+    user_id: Option<String>,
 }
 
 fn default_ef_search() -> usize {
@@ -481,6 +494,12 @@ impl Interceptor for ClientAuthInterceptor {
             .parse()
             .map_err(|_| Status::invalid_argument("Invalid API Key format"))?;
         request.metadata_mut().insert("x-api-key", token);
+
+        if let Some(uid) = &self.user_id {
+            if let Ok(uid_meta) = uid.parse() {
+                request.metadata_mut().insert("x-hyperspace-user-id", uid_meta);
+            }
+        }
         Ok(request)
     }
 }
@@ -499,6 +518,7 @@ pub struct HyperspaceService {
     manager: Arc<CollectionManager>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     role: String,
+    replication_allowed: bool,
     #[cfg(feature = "embed")]
     vectorizer: Option<Arc<MultiVectorizer>>,
 }
@@ -1468,6 +1488,10 @@ impl Database for HyperspaceService {
         &self,
         request: Request<hyperspace_proto::hyperspace::ReplicationRequest>,
     ) -> Result<Response<Self::ReplicateStream>, Status> {
+        if !self.replication_allowed {
+            return Err(Status::permission_denied("Replication export is disabled on this node. Set HS_REPLICATION_ALLOWED=true to enable."));
+        }
+
         if self.role == "follower" {
             return Err(Status::failed_precondition(
                 "I am a follower, cannot replicate from me",
@@ -1952,6 +1976,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                         Ok(channel) => {
                             let interceptor = ClientAuthInterceptor {
                                 api_key: api_key_for_client.clone().unwrap_or_default(),
+                                user_id: args.user_id.clone(),
                             };
                             let mut client = DatabaseClient::with_interceptor(channel, interceptor);
 
@@ -2272,10 +2297,22 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         }
     });
 
+    let node_id = args.node_id.clone().unwrap_or_else(|| {
+        uuid::Uuid::new_v4().to_string()
+    });
+
+    println!("⚡ Local Node ID: {node_id}");
+    if args.replication_allowed {
+        println!("📡 Replication: [ENABLED] (Accepting outgoing streams)");
+    } else {
+        println!("🔒 Replication: [DISABLED] (Outgoing streams blocked)");
+    }
+
     let service = HyperspaceService {
         manager,
         replication_tx,
         role: args.role,
+        replication_allowed: args.replication_allowed,
         #[cfg(feature = "embed")]
         vectorizer,
     };

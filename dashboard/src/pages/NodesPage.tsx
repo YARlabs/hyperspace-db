@@ -206,6 +206,31 @@ export function NodesPage() {
                         ></div>
 
                         <div className="z-10 flex flex-col items-center gap-12 w-full px-8 py-12 h-full overflow-y-auto">
+                            {/* Status Header */}
+                            <div className="flex flex-col items-center gap-4 text-center shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <Router className="h-6 w-6 text-primary" />
+                                    <h2 className="text-xl font-bold">Replication Distribution</h2>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {swarm?.replication_enabled ? (
+                                        <Badge variant="default" className="bg-green-500/10 text-green-500 border-green-500/20">
+                                            <CheckCircle2 className="w-3 h-3 mr-1" /> Active
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="destructive" className="bg-red-500/10 text-red-500 border-red-500/20">
+                                            <XCircle className="w-3 h-3 mr-1" /> Exports Disabled
+                                        </Badge>
+                                    )}
+                                </div>
+                                {!swarm?.replication_enabled && (
+                                    <p className="text-xs text-red-400 max-w-md mx-auto bg-red-400/5 p-3 rounded-lg border border-red-400/10">
+                                        Server-to-server replication exports are currently secured. 
+                                        Followers cannot stream data from this node. 
+                                        Set <code className="bg-red-400/10 px-1 rounded text-[10px]">HS_REPLICATION_ALLOWED=true</code> to re-enable.
+                                    </p>
+                                )}
+                            </div>
 
                             {/* Upstream (Leader) */}
                             {cluster?.role === 'Follower' && (

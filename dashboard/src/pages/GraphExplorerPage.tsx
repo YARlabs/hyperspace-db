@@ -21,7 +21,7 @@ export function GraphExplorerPage() {
     const [selectedNode, setSelectedNode] = useState<any>(null)
     const [analysis, setAnalysis] = useState<any>(null)
 
-    const nodePositions = useRef<any[]>([]) 
+    const nodePositions = useRef<any[]>([])
     const canvasRef = useRef<HTMLCanvasElement>(null)
 
     const { data: collections } = useQuery({
@@ -63,7 +63,7 @@ export function GraphExplorerPage() {
         return nodesData.map((node: any, i: number) => {
             let lx, ly;
             const angle = (Math.PI * 2 * i) / count
-            
+
             if (vizMode === "poincare") {
                 const weight = (1 - (i / count)) * 0.8 + 0.1
                 const mag = 1 - Math.exp(-weight)
@@ -111,12 +111,12 @@ export function GraphExplorerPage() {
         const rect = canvas.getBoundingClientRect()
         const desiredW = Math.round(rect.width * dpr)
         const desiredH = Math.round(rect.height * dpr)
-        
+
         if (canvas.width !== desiredW || canvas.height !== desiredH) {
             canvas.width = desiredW
             canvas.height = desiredH
         }
-        
+
         ctx.setTransform(1, 0, 0, 1, 0, 0) // Reset scale
         ctx.scale(dpr, dpr)
 
@@ -129,7 +129,7 @@ export function GraphExplorerPage() {
         ctx.clearRect(0, 0, width, height)
 
         if (nodesWithPositions.length === 0) {
-            ctx.fillStyle = "#3f3f46" 
+            ctx.fillStyle = "#3f3f46"
             ctx.font = "12px monospace"
             ctx.textAlign = "center"
             ctx.fillText("No vectors in view", cx, cy)
@@ -172,14 +172,14 @@ export function GraphExplorerPage() {
         positions.forEach(pos => {
             const isHovered = hoveredNode?.id === pos.id || (pos.data && hoveredNode?.id === pos.data.id)
             const isSelected = selectedNode?.id === pos.id || (pos.data && selectedNode?.id === pos.data.id)
-            
+
             ctx.beginPath()
             ctx.arc(pos.x, pos.y, isSelected ? 6 : (isHovered ? 5 : 3), 0, 2 * Math.PI)
-            
+
             if (isSelected) ctx.fillStyle = "#f59e0b"
             else if (isHovered) ctx.fillStyle = "#f43f5e"
             else ctx.fillStyle = "rgba(59, 130, 246, 0.5)"
-            
+
             ctx.fill()
             if (isSelected || isHovered) {
                 ctx.strokeStyle = "white"
@@ -206,7 +206,7 @@ export function GraphExplorerPage() {
         return nodePositions.current.find(pos => {
             const dx = pos.x - mouseX
             const dy = pos.y - mouseY
-            return Math.sqrt(dx*dx + dy*dy) < 14 // Increased hit radius for easier selection
+            return Math.sqrt(dx * dx + dy * dy) < 14 // Increased hit radius for easier selection
         })
     }
 
@@ -228,7 +228,7 @@ export function GraphExplorerPage() {
                     <p className="text-muted-foreground">Spatial manifold traversal and geometric analysis.</p>
                 </div>
                 <div className="flex items-center gap-4">
-                     <Tabs value={vizMode} onValueChange={(v: any) => setVizMode(v)} className="w-[300px]">
+                    <Tabs value={vizMode} onValueChange={(v: any) => setVizMode(v)} className="w-[300px]">
                         <TabsList className="grid w-full grid-cols-2 bg-zinc-900 border border-white/5">
                             <TabsTrigger value="poincare"><Orbit className="w-4 h-4 mr-2" /> Poincaré</TabsTrigger>
                             <TabsTrigger value="euclidean"><Network className="w-4 h-4 mr-2" /> Euclidean</TabsTrigger>
@@ -339,8 +339,8 @@ export function GraphExplorerPage() {
                         </CardHeader>
                         <CardContent className="p-6">
                             {!analysis ? (
-                                <Button 
-                                    variant="outline" 
+                                <Button
+                                    variant="outline"
                                     className="w-full border-primary/20 text-primary hover:bg-primary/5 rounded-xl"
                                     onClick={() => analyze.mutate()}
                                     disabled={!collection || analyze.isPending}
