@@ -1863,7 +1863,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "3.0.4"
+version = "3.0.3"
 dependencies = [
  "arc-swap",
  "async-trait",

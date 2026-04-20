@@ -2401,7 +2401,13 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("[H] HyperspaceDB Server v3");
+    let version = env!("CARGO_PKG_VERSION");
+    println!("\x1b[36m");
+    println!(r"█▀▀  █║  █║  ▀▀█  [H] HyperspaceDB v{version}");");
+    println!(r"█    █║  █║    █  🦺 Dashboard: http://localhost:50050");
+    println!(r"█    █████║    █  🚀 SaaS: https://yar.ink");
+    println!(r"█▄▄  █║  █║  ▄▄█  ⭐ Star: https://github.com/YARlabs/hyperspace-db");
+    println!("\x1b[0m");
     hyperspace_core::check_simd();
 
     dotenv::dotenv().ok();
