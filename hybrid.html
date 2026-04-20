@@ -178,36 +178,67 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="-hybrid-search"><a class="header" href="#-hybrid-search">🧠 Hybrid Search</a></h1>
-<p>HyperspaceDB combines <strong>Hyperbolic Vector Search</strong> with <strong>Lexical (Keyword) Search</strong> to provide the best of both worlds.</p>
-<p>This is powered by <strong>Reciprocal Rank Fusion (RRF)</strong>, which normalizes scores from both engines and merges them.</p>
+                        <h1 id="-hybrid-search-bm25--rrf"><a class="header" href="#-hybrid-search-bm25--rrf">🧠 Hybrid Search (BM25 + RRF)</a></h1>
+<p>HyperspaceDB combines <strong>Hyperbolic Vector Search</strong> with state-of-the-art <strong>BM25 Lexical Ranking</strong> to deliver maximum retrieval accuracy.</p>
 <h2 id="conceptual-flow"><a class="header" href="#conceptual-flow">Conceptual Flow</a></h2>
 <ol>
-<li><strong>Vector Search</strong>: Finds semantically similar items (e.g. &quot;smartphone&quot; finds &quot;iPhone&quot;).</li>
-<li><strong>Keyword Search</strong>: Finds exact token matches in metadata (e.g. &quot;iphone&quot; finds items with &quot;iphone&quot; in title).</li>
-<li><strong>RRF Fusion</strong>: <code>Score = 1/(k + rank_vec) + 1/(k + rank_lex)</code>.</li>
+<li><strong>Semantic Branch (Dense)</strong>: Finds conceptually similar items using HNSW (L2, Cosine, Poincaré).</li>
+<li><strong>Lexical Branch (Sparse)</strong>: Finds exact token matches using a BM25-optimized inverted index.</li>
+<li><strong>Fusion Layer</strong>: Scores from both branches are fused using <strong>Reciprocal Rank Fusion (RRF)</strong> or <strong>Linear Weighted Fusion</strong>.</li>
 </ol>
+<p><code>RRF Score = 1/(k + rank_vec) + 1/(k + rank_lex)</code> (where <code>k</code> defaults to 60).</p>
+<h2 id="bm25-options"><a class="header" href="#bm25-options">BM25 Options</a></h2>
+<p>You can tune the lexical scavenger by providing a <code>bm25</code> configuration:</p>
+<ul>
+<li><code>method</code>: <code>&quot;bm25&quot;</code> (classic), <code>&quot;bm25plus&quot;</code> (recommended for long docs), <code>&quot;lucene&quot;</code>, <code>&quot;atire&quot;</code>.</li>
+<li><code>k1</code>: Term frequency saturation (default 1.2).</li>
+<li><code>b</code>: Length normalization impact (default 0.75).</li>
+<li><code>language</code>: Stemmer choice (e.g. <code>&quot;english&quot;</code>, <code>&quot;russian&quot;</code>).</li>
+</ul>
 <h2 id="api-usage"><a class="header" href="#api-usage">API Usage</a></h2>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <pre><code class="language-python">results = client.search(
     vector=query_vector,
+    hybrid_query=&quot;apple macbook air&quot;,
+    hybrid_alpha=0.7,  # 70% vector weight
     top_k=10,
-    hybrid_query=&quot;apple macbook&quot;,  # Lexical query
-    hybrid_alpha=0.5               # Balance factor (default 60.0 in RRF usually, but exposed as alpha here)
+    bm25={
+        &quot;method&quot;: &quot;bm25plus&quot;,
+        &quot;language&quot;: &quot;english&quot;
+    }
 )
+</code></pre>
+<h3 id="typescript"><a class="header" href="#typescript">TypeScript</a></h3>
+<pre><code class="language-ts">const results = await client.search(vector, 10, &quot;collection&quot;, {
+  hybridQuery: &quot;apple macbook&quot;,
+  hybridAlpha: 0.7,
+  bm25: { method: &quot;bm25plus&quot; }
+});
 </code></pre>
 <h3 id="rust"><a class="header" href="#rust">Rust</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let results = client.search_advanced(
-    query_vector,
-    10,
-    vec![], 
-    Some((&quot;apple macbook&quot;.to_string(), 0.5))
-).await?;
+</span>let results = client.search(SearchRequest {
+    collection: &quot;docs&quot;.into(),
+    vector: query_vector,
+    top_k: 10,
+    hybrid_query: Some(&quot;macbook&quot;.into()),
+    hybrid_alpha: Some(0.7),
+    bm25_options: Some(Bm25Options {
+        method: &quot;bm25plus&quot;.into(),
+        ..Default::default()
+    }),
+    ..Default::default()
+}).await?;
 <span class="boring">}</span></code></pre></pre>
 <h2 id="tokenization"><a class="header" href="#tokenization">Tokenization</a></h2>
-<p>Currently, all string metadata values are automatically tokenized (split by whitespace, lowercase, alphanumeric) and indexed in an inverted index.</p>
+<p>The engine uses a built-in multi-lingual tokenizer that performs:</p>
+<ul>
+<li>Case folding (lower-casing).</li>
+<li>Alpha-numeric filtering.</li>
+<li>Stop-word removal (optional).</li>
+<li>Language-specific stemming based on <code>bm25_options.language</code>.</li>
+</ul>
 
                     </main>
 

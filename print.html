@@ -361,88 +361,74 @@ print(batch)
 <p>Install from PyPI:</p>
 <pre><code class="language-bash">pip install hyperspacedb
 </code></pre>
-<h2 id="client-side-vectorization-fat-client"><a class="header" href="#client-side-vectorization-fat-client">Client-Side Vectorization (Fat Client)</a></h2>
-<p>The SDK supports built-in embedding generation using popular providers (OpenAI, Cohere, etc.). This allows you to insert and search using raw text.</p>
-<h3 id="installation-with-extras"><a class="header" href="#installation-with-extras">Installation with Extras</a></h3>
-<pre><code class="language-bash"># Install with OpenAI support
-pip install &quot;.[openai]&quot;
+<h2 id="quick-start-1"><a class="header" href="#quick-start-1">Quick Start</a></h2>
+<pre><code class="language-python">from hyperspace import HyperspaceClient
 
-# Install with All embedders support
-pip install &quot;.[all]&quot;
-</code></pre>
-<h3 id="usage"><a class="header" href="#usage">Usage</a></h3>
-<pre><code class="language-python">from hyperspace import HyperspaceClient, OpenAIEmbedder
+client = HyperspaceClient(&quot;localhost:50051&quot;, api_key=&quot;KEY&quot;)
 
-# 1. Init with Embedder
-embedder = OpenAIEmbedder(api_key=&quot;sk-...&quot;)
-client = HyperspaceClient(embedder=embedder)
+# 1. Insert (id comes first)
+client.insert(1, [0.1, 0.2], metadata={&quot;tag&quot;: &quot;demo&quot;}, collection=&quot;docs&quot;)
 
-# 2. Insert Document
-client.insert(id=1, document=&quot;HyperspaceDB supports Hyperbolic geometry.&quot;, metadata={&quot;tag&quot;: &quot;math&quot;})
-
-# 3. Search by Text
-results = client.search(query_text=&quot;non-euclidean geometry&quot;, top_k=5)
+# 2. Hybrid Search (Semantic + BM25)
+results = client.search(
+    vector=[0.1, 0.2],
+    hybrid_query=&quot;autonomous robotics&quot;,
+    hybrid_alpha=0.7,
+    collection=&quot;docs&quot;
+)
 </code></pre>
 <h2 id="reference"><a class="header" href="#reference">Reference</a></h2>
 <h3 id="hyperspaceclient"><a class="header" href="#hyperspaceclient"><code>HyperspaceClient</code></a></h3>
-<pre><code class="language-python">class HyperspaceClient(host=&quot;localhost:50051&quot;, api_key=None, embedder=None)
+<pre><code class="language-python">class HyperspaceClient(host=&quot;localhost:50051&quot;, api_key=None, embedder=None, user_id=None)
 </code></pre>
 <ul>
-<li><code>embedder</code>: Instance of <code>BaseEmbedder</code> subclass.</li>
-</ul>
-<h3 id="supported-embedders"><a class="header" href="#supported-embedders">Supported Embedders</a></h3>
-<ul>
-<li><code>OpenAIEmbedder</code></li>
-<li><code>OpenRouterEmbedder</code></li>
-<li><code>CohereEmbedder</code></li>
-<li><code>VoyageEmbedder</code></li>
-<li><code>GoogleEmbedder</code></li>
-<li><code>SentenceTransformerEmbedder</code> (Local models)</li>
+<li><code>embedder</code>: Instance of <code>BaseEmbedder</code> subclass for client-side vectorization.</li>
+<li><code>user_id</code>: Tenant identifier for multi-tenancy.</li>
 </ul>
 <h3 id="methods"><a class="header" href="#methods">Methods</a></h3>
-<h4 id="insertid-vectornone-documentnone-metadatanone---bool"><a class="header" href="#insertid-vectornone-documentnone-metadatanone---bool"><code>insert(id, vector=None, document=None, metadata=None) -&gt; bool</code></a></h4>
+<h4 id="insertid-vectornone-documentnone-metadatanone-typed_metadatanone-collection-durabilitydurabilitydefault---bool"><a class="header" href="#insertid-vectornone-documentnone-metadatanone-typed_metadatanone-collection-durabilitydurabilitydefault---bool"><code>insert(id, vector=None, document=None, metadata=None, typed_metadata=None, collection=&quot;&quot;, durability=Durability.DEFAULT) -&gt; bool</code></a></h4>
 <ul>
 <li><code>id</code> (int): Unique identifier (u32).</li>
 <li><code>vector</code> (List[float]): The embedding.</li>
-<li><code>document</code> (str): Raw text to embed (requires configured embedder).</li>
-<li><strong>Note</strong>: Provide either <code>vector</code> OR <code>document</code>.</li>
+<li><code>document</code> (str): Raw text to embed (requires client-side embedder).</li>
+<li><code>typed_metadata</code>: Dict with values of type <code>str</code>, <code>int</code>, <code>float</code>, or <code>bool</code>.</li>
 </ul>
-<h4 id="searchvectornone-query_textnone-top_k10----listdict"><a class="header" href="#searchvectornone-query_textnone-top_k10----listdict"><code>search(vector=None, query_text=None, top_k=10, ...) -&gt; List[dict]</code></a></h4>
+<h4 id="insert_textid-text-metadatanone-collection-durabilitydurabilitydefault---bool"><a class="header" href="#insert_textid-text-metadatanone-collection-durabilitydurabilitydefault---bool"><code>insert_text(id, text, metadata=None, collection=&quot;&quot;, durability=Durability.DEFAULT) -&gt; bool</code></a></h4>
+<p>Server-side vectorization: inserts raw text to be embedded by the database.</p>
+<h4 id="searchvectornone-query_textnone-top_k10-filternone-filtersnone-hybrid_querynone-hybrid_alphanone-bm25none-collection---listdict"><a class="header" href="#searchvectornone-query_textnone-top_k10-filternone-filtersnone-hybrid_querynone-hybrid_alphanone-bm25none-collection---listdict"><code>search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, bm25=None, collection=&quot;&quot;) -&gt; List[dict]</code></a></h4>
 <ul>
-<li><code>vector</code> (List[float]): Query vector.</li>
-<li><code>query_text</code> (str): Raw text query.</li>
+<li><code>vector</code>: Query vector.</li>
+<li><code>query_text</code>: Text to embed client-side (if <code>vector</code> is <code>None</code>).</li>
+<li><code>hybrid_query</code>: Lexical query for BM25.</li>
+<li><code>hybrid_alpha</code>: Weight fusion factor [0, 1].</li>
+<li><code>bm25</code>: Configuration dict (<code>method</code>, <code>language</code>, <code>k1</code>, <code>b</code>).</li>
 </ul>
+<h4 id="search_texttext-top_k10-filternone-filtersnone-hybrid_alphanone-bm25none-collection---listdict"><a class="header" href="#search_texttext-top_k10-filternone-filtersnone-hybrid_alphanone-bm25none-collection---listdict"><code>search_text(text, top_k=10, filter=None, filters=None, hybrid_alpha=None, bm25=None, collection=&quot;&quot;) -&gt; List[dict]</code></a></h4>
+<p>Server-side vectorization search.</p>
 <h4 id="search_batchvectors-top_k10-collection---listlistdict"><a class="header" href="#search_batchvectors-top_k10-collection---listlistdict"><code>search_batch(vectors, top_k=10, collection=&quot;&quot;) -&gt; List[List[dict]]</code></a></h4>
-<p>Batch search API that sends multiple <code>SearchRequest</code> objects in one gRPC call.</p>
+<p>Multi-query batch search.</p>
+<h4 id="trigger_reconsolidationcollection-target_vector-learning_rate---bool"><a class="header" href="#trigger_reconsolidationcollection-target_vector-learning_rate---bool"><code>trigger_reconsolidation(collection, target_vector, learning_rate) -&gt; bool</code></a></h4>
+<p>Traces a Riemannian SGD path on the engine (AI Sleep Mode).</p>
 <h4 id="rebuild_indexcollection-filter_querynone---bool"><a class="header" href="#rebuild_indexcollection-filter_querynone---bool"><code>rebuild_index(collection, filter_query=None) -&gt; bool</code></a></h4>
-<p>Supports metadata-aware pruning during rebuild:</p>
-<pre><code class="language-python">client.rebuild_index(
-    &quot;docs_py&quot;,
-    filter_query={&quot;key&quot;: &quot;energy&quot;, &quot;op&quot;: &quot;lt&quot;, &quot;value&quot;: 0.1},
-)
+<p>Supports metadata-aware pruning:</p>
+<pre><code class="language-python">client.rebuild_index(&quot;docs&quot;, filter_query={&quot;key&quot;: &quot;age&quot;, &quot;op&quot;: &quot;gt&quot;, &quot;value&quot;: 30.0})
 </code></pre>
-<h4 id="deleteid-collection---bool"><a class="header" href="#deleteid-collection---bool"><code>delete(id, collection=&quot;&quot;) -&gt; bool</code></a></h4>
-<p>Removes a single vector by its ID.</p>
 <h4 id="analyze_delta_hyperbolicityvectors-num_samples1000---float-str"><a class="header" href="#analyze_delta_hyperbolicityvectors-num_samples1000---float-str"><code>analyze_delta_hyperbolicity(vectors, num_samples=1000) -&gt; (float, str)</code></a></h4>
-<p>Analyzes a set of vectors to determine if they exhibit hyperbolic structure. Returns the Gromov delta and a recommended metric (<code>&quot;lorentz&quot;</code>, <code>&quot;poincare&quot;</code>, or <code>&quot;l2&quot;</code>).</p>
-<h4 id="graph-traversal-methods"><a class="header" href="#graph-traversal-methods">Graph traversal methods</a></h4>
-<ul>
-<li><code>get_node(collection, id, layer=0)</code></li>
-<li><code>get_neighbors(collection, id, layer=0, limit=64, offset=0)</code></li>
-<li><code>get_concept_parents(collection, id, layer=0, limit=32)</code></li>
-<li><code>traverse(collection, start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None)</code></li>
-<li><code>find_semantic_clusters(collection, layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000)</code></li>
-</ul>
-<h4 id="hyperbolic-math-utilities"><a class="header" href="#hyperbolic-math-utilities">Hyperbolic math utilities</a></h4>
-<pre><code class="language-python">from hyperspace import (
+<p>Gromov's delta analysis for metric recommendation.</p>
+<h3 id="hyperbolic--cognitive-math"><a class="header" href="#hyperbolic--cognitive-math">Hyperbolic &amp; Cognitive Math</a></h3>
+<pre><code class="language-python">from hyperspace.math import (
     mobius_add,
     exp_map,
     log_map,
-    parallel_transport,
-    riemannian_gradient,
     frechet_mean,
+    local_entropy,
+    lyapunov_convergence,
 )
 </code></pre>
+<ul>
+<li><code>local_entropy</code>: Detects hallucination/dispersion.</li>
+<li><code>lyapunov_convergence</code>: Verifies COT stability.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="rust-sdk"><a class="header" href="#rust-sdk">Rust SDK</a></h1>
 <p>For low-latency applications, connect directly using the Rust SDK.</p>
 <h2 id="installation-2"><a class="header" href="#installation-2">Installation</a></h2>
@@ -451,7 +437,7 @@ results = client.search(query_text=&quot;non-euclidean geometry&quot;, top_k=5)
 hyperspace-sdk = &quot;2.2.1&quot;
 tokio = { version = &quot;1&quot;, features = [&quot;full&quot;] }
 </code></pre>
-<h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust">use hyperspace_sdk::Client;
 use std::collections::HashMap;
 
@@ -539,7 +525,7 @@ async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
     )
     .await?;
 <span class="boring">}</span></code></pre></pre>
-<h2 id="hyperbolic-math-utilities-1"><a class="header" href="#hyperbolic-math-utilities-1">Hyperbolic Math Utilities</a></h2>
+<h2 id="hyperbolic-math-utilities"><a class="header" href="#hyperbolic-math-utilities">Hyperbolic Math Utilities</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use hyperspace_sdk::math::{
@@ -636,8 +622,20 @@ message SearchRequest {
   // Hybrid search
   optional string hybrid_query = 6;
   optional float hybrid_alpha = 7;
+  // BM25 Lexical Options
+  optional Bm25Options bm25_options = 9;
   // Wasserstein 1D CDF O(N) distance
   optional bool use_wasserstein = 8;
+}
+
+message Bm25Options {
+  string method = 1;          // &quot;bm25&quot;, &quot;bm25plus&quot;, &quot;lucene&quot;, &quot;atire&quot;
+  float k1 = 2;               // default 1.2
+  float b = 3;                // default 0.75
+  float delta = 4;            // default 1.0 (for bm25plus)
+  string language = 5;        // &quot;english&quot;, &quot;russian&quot;, etc.
+  uint32 ngrams = 6;          // 1 (unigram), 2 (bigram)
+  string fusion_method = 7;   // &quot;rrf&quot; (default), &quot;linear&quot;
 }
 
 #### Geometric Filters (New in v3.0)
@@ -855,6 +853,8 @@ message SearchTextRequest {
   string text = 2;
   uint32 top_k = 3;
   repeated Filter filters = 4;
+  optional float hybrid_alpha = 5;
+  optional Bm25Options bm25_options = 6;
 }
 </code></pre>
 <hr />
@@ -1153,36 +1153,67 @@ HS_GOSSIP_PEERS=192.168.1.10:7946,192.168.1.11:7946
   ]
 }
 </code></pre>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="-hybrid-search"><a class="header" href="#-hybrid-search">🧠 Hybrid Search</a></h1>
-<p>HyperspaceDB combines <strong>Hyperbolic Vector Search</strong> with <strong>Lexical (Keyword) Search</strong> to provide the best of both worlds.</p>
-<p>This is powered by <strong>Reciprocal Rank Fusion (RRF)</strong>, which normalizes scores from both engines and merges them.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="-hybrid-search-bm25--rrf"><a class="header" href="#-hybrid-search-bm25--rrf">🧠 Hybrid Search (BM25 + RRF)</a></h1>
+<p>HyperspaceDB combines <strong>Hyperbolic Vector Search</strong> with state-of-the-art <strong>BM25 Lexical Ranking</strong> to deliver maximum retrieval accuracy.</p>
 <h2 id="conceptual-flow"><a class="header" href="#conceptual-flow">Conceptual Flow</a></h2>
 <ol>
-<li><strong>Vector Search</strong>: Finds semantically similar items (e.g. &quot;smartphone&quot; finds &quot;iPhone&quot;).</li>
-<li><strong>Keyword Search</strong>: Finds exact token matches in metadata (e.g. &quot;iphone&quot; finds items with &quot;iphone&quot; in title).</li>
-<li><strong>RRF Fusion</strong>: <code>Score = 1/(k + rank_vec) + 1/(k + rank_lex)</code>.</li>
+<li><strong>Semantic Branch (Dense)</strong>: Finds conceptually similar items using HNSW (L2, Cosine, Poincaré).</li>
+<li><strong>Lexical Branch (Sparse)</strong>: Finds exact token matches using a BM25-optimized inverted index.</li>
+<li><strong>Fusion Layer</strong>: Scores from both branches are fused using <strong>Reciprocal Rank Fusion (RRF)</strong> or <strong>Linear Weighted Fusion</strong>.</li>
 </ol>
+<p><code>RRF Score = 1/(k + rank_vec) + 1/(k + rank_lex)</code> (where <code>k</code> defaults to 60).</p>
+<h2 id="bm25-options"><a class="header" href="#bm25-options">BM25 Options</a></h2>
+<p>You can tune the lexical scavenger by providing a <code>bm25</code> configuration:</p>
+<ul>
+<li><code>method</code>: <code>&quot;bm25&quot;</code> (classic), <code>&quot;bm25plus&quot;</code> (recommended for long docs), <code>&quot;lucene&quot;</code>, <code>&quot;atire&quot;</code>.</li>
+<li><code>k1</code>: Term frequency saturation (default 1.2).</li>
+<li><code>b</code>: Length normalization impact (default 0.75).</li>
+<li><code>language</code>: Stemmer choice (e.g. <code>&quot;english&quot;</code>, <code>&quot;russian&quot;</code>).</li>
+</ul>
 <h2 id="api-usage"><a class="header" href="#api-usage">API Usage</a></h2>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <pre><code class="language-python">results = client.search(
     vector=query_vector,
+    hybrid_query=&quot;apple macbook air&quot;,
+    hybrid_alpha=0.7,  # 70% vector weight
     top_k=10,
-    hybrid_query=&quot;apple macbook&quot;,  # Lexical query
-    hybrid_alpha=0.5               # Balance factor (default 60.0 in RRF usually, but exposed as alpha here)
+    bm25={
+        &quot;method&quot;: &quot;bm25plus&quot;,
+        &quot;language&quot;: &quot;english&quot;
+    }
 )
+</code></pre>
+<h3 id="typescript"><a class="header" href="#typescript">TypeScript</a></h3>
+<pre><code class="language-ts">const results = await client.search(vector, 10, &quot;collection&quot;, {
+  hybridQuery: &quot;apple macbook&quot;,
+  hybridAlpha: 0.7,
+  bm25: { method: &quot;bm25plus&quot; }
+});
 </code></pre>
 <h3 id="rust"><a class="header" href="#rust">Rust</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let results = client.search_advanced(
-    query_vector,
-    10,
-    vec![], 
-    Some((&quot;apple macbook&quot;.to_string(), 0.5))
-).await?;
+</span>let results = client.search(SearchRequest {
+    collection: &quot;docs&quot;.into(),
+    vector: query_vector,
+    top_k: 10,
+    hybrid_query: Some(&quot;macbook&quot;.into()),
+    hybrid_alpha: Some(0.7),
+    bm25_options: Some(Bm25Options {
+        method: &quot;bm25plus&quot;.into(),
+        ..Default::default()
+    }),
+    ..Default::default()
+}).await?;
 <span class="boring">}</span></code></pre></pre>
 <h2 id="tokenization"><a class="header" href="#tokenization">Tokenization</a></h2>
-<p>Currently, all string metadata values are automatically tokenized (split by whitespace, lowercase, alphanumeric) and indexed in an inverted index.</p>
+<p>The engine uses a built-in multi-lingual tokenizer that performs:</p>
+<ul>
+<li>Case folding (lower-casing).</li>
+<li>Alpha-numeric filtering.</li>
+<li>Stop-word removal (optional).</li>
+<li>Language-specific stemming based on <code>bm25_options.language</code>.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="-vector-quantization"><a class="header" href="#-vector-quantization">📉 Vector Quantization</a></h1>
 <p>HyperspaceDB supports multiple storage modes to balance <strong>Precision vs Memory vs Speed</strong>.
 All modes operate transparently — no SDK changes required.</p>
