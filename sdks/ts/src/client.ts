@@ -63,6 +63,16 @@ export interface VacuumFilter {
     value: number;
 }
 
+export interface Bm25Options {
+    method?: "bm25plus" | "bm25l" | "robertson" | "lucene" | "atire";
+    k1?: number;
+    b?: number;
+    delta?: number;
+    language?: string;
+    ngrams?: number;
+    fusionMethod?: "rrf" | "weighted";
+}
+
 export type EventTypeName = 'insert' | 'delete';
 export interface SubscribeOptions {
     types?: EventTypeName[];
@@ -311,8 +321,8 @@ export class HyperspaceClient {
     }
 
     public insert(
-        vector: number[] | Float32Array | Float64Array,
         id: number,
+        vector: number[] | Float32Array | Float64Array,
         meta?: { [key: string]: string },
         collection: string = '',
         durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL,
@@ -343,8 +353,8 @@ export class HyperspaceClient {
     }
 
     public insertText(
-        text: string,
         id: number,
+        text: string,
         meta?: { [key: string]: string },
         collection: string = '',
         durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL
@@ -425,7 +435,8 @@ export class HyperspaceClient {
         options?: {
             filters?: Filter[],
             hybridQuery?: string,
-            hybridAlpha?: number
+            hybridAlpha?: number,
+            bm25?: Bm25Options
         }
     ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
@@ -462,6 +473,20 @@ export class HyperspaceClient {
 
             if (options?.hybridQuery) req.setHybridQuery(options.hybridQuery);
             if (options?.hybridAlpha !== undefined) req.setHybridAlpha(options.hybridAlpha);
+            
+            if (options?.bm25) {
+                // @ts-ignore: Bm25Options might not be in generated proto yet
+                const bm25Msg = new (hyperspace_pb as any).Bm25Options();
+                if (options.bm25.method !== undefined) bm25Msg.setMethod(options.bm25.method);
+                if (options.bm25.k1 !== undefined) bm25Msg.setK1(options.bm25.k1);
+                if (options.bm25.b !== undefined) bm25Msg.setB(options.bm25.b);
+                if (options.bm25.delta !== undefined) bm25Msg.setDelta(options.bm25.delta);
+                if (options.bm25.language !== undefined) bm25Msg.setLanguage(options.bm25.language);
+                if (options.bm25.ngrams !== undefined) bm25Msg.setNgrams(options.bm25.ngrams);
+                if (options.bm25.fusionMethod !== undefined) bm25Msg.setFusionMethod(options.bm25.fusionMethod);
+                // @ts-ignore
+                req.setBm25Options(bm25Msg);
+            }
 
             this.client.search(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
@@ -490,7 +515,9 @@ export class HyperspaceClient {
         topK: number,
         collection: string = '',
         options?: {
-            filters?: Filter[]
+            filters?: Filter[],
+            bm25?: Bm25Options,
+            hybridAlpha?: number
         }
     ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
@@ -523,6 +550,24 @@ export class HyperspaceClient {
                     return pf;
                 });
                 req.setFiltersList(protoFilters);
+            }
+
+            if (options?.bm25) {
+                // @ts-ignore
+                const bm25Msg = new (hyperspace_pb as any).Bm25Options();
+                if (options.bm25.method !== undefined) bm25Msg.setMethod(options.bm25.method);
+                if (options.bm25.k1 !== undefined) bm25Msg.setK1(options.bm25.k1);
+                if (options.bm25.b !== undefined) bm25Msg.setB(options.bm25.b);
+                if (options.bm25.delta !== undefined) bm25Msg.setDelta(options.bm25.delta);
+                if (options.bm25.language !== undefined) bm25Msg.setLanguage(options.bm25.language);
+                if (options.bm25.ngrams !== undefined) bm25Msg.setNgrams(options.bm25.ngrams);
+                if (options.bm25.fusionMethod !== undefined) bm25Msg.setFusionMethod(options.bm25.fusionMethod);
+                // @ts-ignore
+                req.setBm25Options(bm25Msg);
+            }
+            if (options?.hybridAlpha !== undefined) {
+                // @ts-ignore
+                req.setHybridAlpha(options.hybridAlpha);
             }
 
             this.client.searchText(req, this.metadata, (err, resp) => {

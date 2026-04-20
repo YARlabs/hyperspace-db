@@ -148,9 +148,18 @@ impl HyperspaceDB {
         }
 
         macro_rules! search_impl {
-            ($idx:expr) => {
-                $idx.search(vector, k, 100, &HashMap::new(), &[], None, None, false)
-            };
+            ($idx:expr) => {{
+                let params = hyperspace_core::SearchParams {
+                    top_k: k,
+                    ef_search: 100,
+                    hybrid_query: None,
+                    hybrid_alpha: None,
+                    use_wasserstein: false,
+                    bm25_options: None,
+                    fusion_method: None,
+                };
+                $idx.search(vector, &HashMap::new(), &[], &params)
+            }};
         }
 
         let results = match &self.index {

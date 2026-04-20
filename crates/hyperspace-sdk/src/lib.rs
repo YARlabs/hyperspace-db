@@ -346,6 +346,7 @@ impl Client {
             hybrid_alpha: None,
             use_wasserstein: false,
             collection: collection.unwrap_or_default(),
+            bm25_options: None,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -374,6 +375,7 @@ impl Client {
         text: String,
         top_k: u32,
         collection: Option<String>,
+        bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         let req = SearchTextRequest {
             text,
@@ -381,6 +383,8 @@ impl Client {
             collection: collection.unwrap_or_default(),
             filter: std::collections::HashMap::new(),
             filters: vec![],
+            bm25_options,
+            hybrid_alpha: None,
         };
         let resp = self.inner.search_text(req).await?;
         Ok(resp.into_inner().results)
@@ -405,6 +409,7 @@ impl Client {
             hybrid_alpha: None,
             use_wasserstein: true,
             collection: collection.unwrap_or_default(),
+            bm25_options: None,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -432,6 +437,7 @@ impl Client {
                 hybrid_alpha: None,
                 use_wasserstein: false,
                 collection: collection_name.clone(),
+                bm25_options: None,
             })
             .collect();
 
@@ -485,6 +491,7 @@ impl Client {
                 hybrid_alpha: None,
                 use_wasserstein: false,
                 collection: col_name.clone(),
+                bm25_options: None,
             })
             .collect();
 
@@ -509,6 +516,7 @@ impl Client {
         top_k: u32,
         filters: Vec<hyperspace_proto::hyperspace::Filter>,
         hybrid: Option<(String, f32)>,
+        bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
         collection: Option<String>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         let (hybrid_query, hybrid_alpha) = match hybrid {
@@ -525,9 +533,34 @@ impl Client {
             hybrid_alpha,
             use_wasserstein: false,
             collection: collection.unwrap_or_default(),
+            bm25_options,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
+    }
+
+    /// High-level hybrid search combining vector (semantic) and lexical (BM25) ranking.
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_hybrid(
+        &mut self,
+        vector: Vec<f64>,
+        text: String,
+        alpha: f32, // 1.0 = Pure Vector, 0.0 = Pure BM25
+        top_k: u32,
+        collection: Option<String>,
+        bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
+        self.search_advanced(
+            vector,
+            top_k,
+            vec![],
+            Some((text, alpha)),
+            bm25_options,
+            collection,
+        )
+        .await
     }
 
     /// Deletes a vector by ID.

@@ -20,6 +20,8 @@ pub mod vector;
 pub mod wasserstein;
 
 pub use config::GlobalConfig;
+pub mod bm25;
+pub use bm25::*;
 use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 
 #[cfg(feature = "nightly-simd")]
@@ -139,6 +141,8 @@ pub struct SearchParams {
     pub hybrid_query: Option<String>,
     pub hybrid_alpha: Option<f32>,
     pub use_wasserstein: bool,
+    pub bm25_options: Option<crate::bm25::Bm25Params>,
+    pub fusion_method: Option<String>,
 }
 
 pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>);
@@ -214,8 +218,11 @@ pub trait Collection: Send + Sync + 'static {
         let _ = filter;
         self.optimize().await
     }
-    fn peek(&self, limit: usize, offset: usize)
-        -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
+    fn peek(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
     /// Returns all vectors belonging to the given sync buckets (id % 256 == `bucket_index`).
     /// Used by Delta Sync (Task 2.1) to transfer only changed partitions.
     fn peek_buckets(

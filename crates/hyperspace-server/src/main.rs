@@ -173,6 +173,37 @@ fn range_bounds_f64(r: &hyperspace_proto::hyperspace::Range) -> (Option<f64>, Op
     (gte, lte)
 }
 
+fn parse_bm25_options(
+    opts: &hyperspace_proto::hyperspace::Bm25Options,
+) -> hyperspace_core::bm25::Bm25Params {
+    let mut params = hyperspace_core::bm25::Bm25Params::default();
+    if let Some(m) = &opts.method {
+        params.method = match m.to_lowercase().as_str() {
+            "robertson" => hyperspace_core::bm25::Bm25Method::Robertson,
+            "lucene" => hyperspace_core::bm25::Bm25Method::Lucene,
+            "atire" => hyperspace_core::bm25::Bm25Method::Atire,
+            "bm25l" => hyperspace_core::bm25::Bm25Method::Bm25l,
+            _ => hyperspace_core::bm25::Bm25Method::Bm25Plus,
+        };
+    }
+    if let Some(k1) = opts.k1 {
+        params.k1 = k1;
+    }
+    if let Some(b) = opts.b {
+        params.b = b;
+    }
+    if let Some(delta) = opts.delta {
+        params.delta = delta;
+    }
+    if let Some(lang) = &opts.language {
+        params.language.clone_from(lang);
+    }
+    if let Some(ngrams) = opts.ngrams {
+        params.ngrams = ngrams as u8;
+    }
+    params
+}
+
 fn build_filters(
     req: SearchRequest,
 ) -> (
@@ -236,6 +267,8 @@ fn build_filters(
         hybrid_query: req.hybrid_query,
         hybrid_alpha: req.hybrid_alpha,
         use_wasserstein: req.use_wasserstein,
+        bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
+        fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
     };
 
     (col_name, req.vector, exact_filter, complex_filters, params)
@@ -497,7 +530,9 @@ impl Interceptor for ClientAuthInterceptor {
 
         if let Some(uid) = &self.user_id {
             if let Ok(uid_meta) = uid.parse() {
-                request.metadata_mut().insert("x-hyperspace-user-id", uid_meta);
+                request
+                    .metadata_mut()
+                    .insert("x-hyperspace-user-id", uid_meta);
             }
         }
         Ok(request)
@@ -912,6 +947,8 @@ impl Database for HyperspaceService {
                     hybrid_query: None,
                     hybrid_alpha: None,
                     use_wasserstein: false,
+                    bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
+                    fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
                 };
 
                 if let Some(col) = self.manager.get(&user_id, &col_name).await {
@@ -1143,6 +1180,8 @@ impl Database for HyperspaceService {
                     hybrid_query: None,
                     hybrid_alpha: None,
                     use_wasserstein: false,
+                    bm25_options: None,
+                    fusion_method: None,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();
@@ -1190,6 +1229,8 @@ impl Database for HyperspaceService {
                     hybrid_query: None,
                     hybrid_alpha: None,
                     use_wasserstein: false,
+                    bm25_options: None,
+                    fusion_method: None,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();
@@ -2297,9 +2338,10 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         }
     });
 
-    let node_id = args.node_id.clone().unwrap_or_else(|| {
-        uuid::Uuid::new_v4().to_string()
-    });
+    let node_id = args
+        .node_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     println!("⚡ Local Node ID: {node_id}");
     if args.replication_allowed {

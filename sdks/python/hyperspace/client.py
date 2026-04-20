@@ -110,7 +110,7 @@ class HyperspaceClient:
         except grpc.RpcError:
             return {}
 
-    def insert(self, vector: List[float] = None, id: int = None, document: str = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if vector is None and document is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -140,7 +140,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def insert_text(self, text: str, id: int = None, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+    def insert_text(self, id: int, text: str, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         req = hyperspace_pb2.InsertTextRequest(
             id=id,
             text=text,
@@ -224,16 +224,15 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, collection: str = "") -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "") -> List[Dict]:
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
             # For pure vector search using text query
             vector = self.embedder.encode(query_text)
             
-            # Auto-enable hybrid if not specified but meaningful?
-            if hybrid_query is None and hybrid_alpha is not None:
-                 hybrid_query = query_text
+        if hybrid_query is None and hybrid_alpha is not None and query_text is not None:
+             hybrid_query = query_text
         
         if vector is None:
              raise ValueError("Either 'vector' or 'query_text' must be provided.")
@@ -277,6 +276,18 @@ class HyperspaceClient:
             req.hybrid_query = hybrid_query
         if hybrid_alpha is not None:
             req.hybrid_alpha = hybrid_alpha
+            
+        if bm25 is not None:
+            bm25_msg = hyperspace_pb2.Bm25Options()
+            if "method" in bm25: bm25_msg.method = bm25["method"]
+            if "k1" in bm25: bm25_msg.k1 = bm25["k1"]
+            if "b" in bm25: bm25_msg.b = bm25["b"]
+            if "delta" in bm25: bm25_msg.delta = bm25["delta"]
+            if "language" in bm25: bm25_msg.language = bm25["language"]
+            if "ngrams" in bm25: bm25_msg.ngrams = bm25["ngrams"]
+            if "fusion_method" in bm25: bm25_msg.fusion_method = bm25["fusion_method"]
+            req.bm25_options.CopyFrom(bm25_msg)
+            
         try:
             resp = self.stub.Search(req, metadata=self.metadata)
             return [
@@ -292,7 +303,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return []
 
-    def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, collection: str = "") -> List[Dict]:
+    def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "") -> List[Dict]:
         proto_filters = []
         if filters:
             for f in filters:
@@ -327,6 +338,20 @@ class HyperspaceClient:
             req.filter.update(filter)
         if proto_filters:
             req.filters.extend(proto_filters)
+            
+        if hybrid_alpha is not None:
+            req.hybrid_alpha = hybrid_alpha
+            
+        if bm25 is not None:
+            bm25_msg = hyperspace_pb2.Bm25Options()
+            if "method" in bm25: bm25_msg.method = bm25["method"]
+            if "k1" in bm25: bm25_msg.k1 = bm25["k1"]
+            if "b" in bm25: bm25_msg.b = bm25["b"]
+            if "delta" in bm25: bm25_msg.delta = bm25["delta"]
+            if "language" in bm25: bm25_msg.language = bm25["language"]
+            if "ngrams" in bm25: bm25_msg.ngrams = bm25["ngrams"]
+            if "fusion_method" in bm25: bm25_msg.fusion_method = bm25["fusion_method"]
+            req.bm25_options.CopyFrom(bm25_msg)
             
         try:
             resp = self.stub.SearchText(req, metadata=self.metadata)

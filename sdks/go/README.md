@@ -49,14 +49,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Insert failed: %v", err)
 	}
-
-	// Search text
-	results, err := client.SearchText(ctx, "How is HyperspaceDB?", 5, collection)
+    
+	// Hybrid Search (Semantic + BM25 Lexical)
+	results, err := client.SearchText(ctx, "What is HyperspaceDB?", 5, collection, 0.7, &pb.Bm25Options{
+		Method:   "bm25plus",
+		Language: "english",
+	})
 	if err != nil {
 		log.Fatalf("Search failed: %v", err)
 	}
 
-	log.Printf("Found %d vectors", len(results))
+	log.Printf("Found %d vectors via hybrid search", len(results))
 
 	// List collections with metadata
 	collections, err := client.ListCollections(ctx)

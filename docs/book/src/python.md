@@ -10,34 +10,23 @@ Install from PyPI:
 pip install hyperspacedb
 ```
 
-## Client-Side Vectorization (Fat Client)
-
-The SDK supports built-in embedding generation using popular providers (OpenAI, Cohere, etc.). This allows you to insert and search using raw text.
-
-### Installation with Extras
-
-```bash
-# Install with OpenAI support
-pip install ".[openai]"
-
-# Install with All embedders support
-pip install ".[all]"
-```
-
-### Usage
+## Quick Start
 
 ```python
-from hyperspace import HyperspaceClient, OpenAIEmbedder
+from hyperspace import HyperspaceClient
 
-# 1. Init with Embedder
-embedder = OpenAIEmbedder(api_key="sk-...")
-client = HyperspaceClient(embedder=embedder)
+client = HyperspaceClient("localhost:50051", api_key="KEY")
 
-# 2. Insert Document
-client.insert(id=1, document="HyperspaceDB supports Hyperbolic geometry.", metadata={"tag": "math"})
+# 1. Insert (id comes first)
+client.insert(1, [0.1, 0.2], metadata={"tag": "demo"}, collection="docs")
 
-# 3. Search by Text
-results = client.search(query_text="non-euclidean geometry", top_k=5)
+# 2. Hybrid Search (Semantic + BM25)
+results = client.search(
+    vector=[0.1, 0.2],
+    hybrid_query="autonomous robotics",
+    hybrid_alpha=0.7,
+    collection="docs"
+)
 ```
 
 ## Reference
@@ -45,68 +34,60 @@ results = client.search(query_text="non-euclidean geometry", top_k=5)
 ### `HyperspaceClient`
 
 ```python
-class HyperspaceClient(host="localhost:50051", api_key=None, embedder=None)
+class HyperspaceClient(host="localhost:50051", api_key=None, embedder=None, user_id=None)
 ```
 
-*   `embedder`: Instance of `BaseEmbedder` subclass.
-
-### Supported Embedders
-
-*   `OpenAIEmbedder`
-*   `OpenRouterEmbedder`
-*   `CohereEmbedder`
-*   `VoyageEmbedder`
-*   `GoogleEmbedder`
-*   `SentenceTransformerEmbedder` (Local models)
+- `embedder`: Instance of `BaseEmbedder` subclass for client-side vectorization.
+- `user_id`: Tenant identifier for multi-tenancy.
 
 ### Methods
 
-#### `insert(id, vector=None, document=None, metadata=None) -> bool`
+#### `insert(id, vector=None, document=None, metadata=None, typed_metadata=None, collection="", durability=Durability.DEFAULT) -> bool`
 *   `id` (int): Unique identifier (u32).
 *   `vector` (List[float]): The embedding.
-*   `document` (str): Raw text to embed (requires configured embedder).
-*   **Note**: Provide either `vector` OR `document`.
+*   `document` (str): Raw text to embed (requires client-side embedder).
+*   `typed_metadata`: Dict with values of type `str`, `int`, `float`, or `bool`.
 
-#### `search(vector=None, query_text=None, top_k=10, ...) -> List[dict]`
-*   `vector` (List[float]): Query vector.
-*   `query_text` (str): Raw text query.
+#### `insert_text(id, text, metadata=None, collection="", durability=Durability.DEFAULT) -> bool`
+Server-side vectorization: inserts raw text to be embedded by the database.
+
+#### `search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, bm25=None, collection="") -> List[dict]`
+- `vector`: Query vector.
+- `query_text`: Text to embed client-side (if `vector` is `None`).
+- `hybrid_query`: Lexical query for BM25.
+- `hybrid_alpha`: Weight fusion factor [0, 1].
+- `bm25`: Configuration dict (`method`, `language`, `k1`, `b`).
+
+#### `search_text(text, top_k=10, filter=None, filters=None, hybrid_alpha=None, bm25=None, collection="") -> List[dict]`
+Server-side vectorization search.
 
 #### `search_batch(vectors, top_k=10, collection="") -> List[List[dict]]`
-Batch search API that sends multiple `SearchRequest` objects in one gRPC call.
+Multi-query batch search.
+
+#### `trigger_reconsolidation(collection, target_vector, learning_rate) -> bool`
+Traces a Riemannian SGD path on the engine (AI Sleep Mode).
 
 #### `rebuild_index(collection, filter_query=None) -> bool`
-Supports metadata-aware pruning during rebuild:
-
+Supports metadata-aware pruning:
 ```python
-client.rebuild_index(
-    "docs_py",
-    filter_query={"key": "energy", "op": "lt", "value": 0.1},
-)
+client.rebuild_index("docs", filter_query={"key": "age", "op": "gt", "value": 30.0})
 ```
 
-#### `delete(id, collection="") -> bool`
-Removes a single vector by its ID.
-
 #### `analyze_delta_hyperbolicity(vectors, num_samples=1000) -> (float, str)`
-Analyzes a set of vectors to determine if they exhibit hyperbolic structure. Returns the Gromov delta and a recommended metric (`"lorentz"`, `"poincare"`, or `"l2"`).
+Gromov's delta analysis for metric recommendation.
 
-#### Graph traversal methods
-- `get_node(collection, id, layer=0)`
-- `get_neighbors(collection, id, layer=0, limit=64, offset=0)`
-- `get_concept_parents(collection, id, layer=0, limit=32)`
-- `traverse(collection, start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None)`
-- `find_semantic_clusters(collection, layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000)`
-
-#### Hyperbolic math utilities
+### Hyperbolic & Cognitive Math
 
 ```python
-from hyperspace import (
+from hyperspace.math import (
     mobius_add,
     exp_map,
     log_map,
-    parallel_transport,
-    riemannian_gradient,
     frechet_mean,
+    local_entropy,
+    lyapunov_convergence,
 )
 ```
+- `local_entropy`: Detects hallucination/dispersion.
+- `lyapunov_convergence`: Verifies COT stability.
 

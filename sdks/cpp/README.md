@@ -88,6 +88,24 @@ grpc::ClientContext search_text_ctx;
 search_text_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 status = stub->SearchText(&search_text_ctx, search_text_req, &search_text_res);
 
+// 7. Hybrid Search (Lexical + Vector)
+hyperspace::SearchRequest hybrid_req;
+hybrid_req.set_collection("docs");
+hybrid_req.add_vector(0.12); // Semantic vector
+hybrid_req.set_hybrid_query("quantum computing"); // Lexical query
+hybrid_req.set_hybrid_alpha(0.7); // 70% vector weight
+hybrid_req.set_top_k(10);
+
+// Optional: BM25 configuration
+auto* bm25 = hybrid_req.mutable_bm25_options();
+bm25->set_method("bm25plus");
+bm25->set_language("english");
+
+hyperspace::SearchResponse hybrid_res;
+grpc::ClientContext hybrid_ctx;
+hybrid_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
+status = stub->Search(&hybrid_ctx, hybrid_req, &hybrid_res);
+
 // 6. List Collections with Metadata
 hyperspace::Empty list_req;
 hyperspace::ListCollectionsResponse list_res;

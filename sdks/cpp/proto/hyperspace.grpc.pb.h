@@ -87,6 +87,20 @@ class Database final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::InsertResponse>> PrepareAsyncInsertText(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::InsertResponse>>(PrepareAsyncInsertTextRaw(context, request, cq));
     }
+    virtual ::grpc::Status Vectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::hyperspace::VectorizeResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VectorizeResponse>> AsyncVectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VectorizeResponse>>(AsyncVectorizeRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VectorizeResponse>> PrepareAsyncVectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VectorizeResponse>>(PrepareAsyncVectorizeRaw(context, request, cq));
+    }
+    virtual ::grpc::Status SearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::hyperspace::SearchResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>> AsyncSearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>>(AsyncSearchTextRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>> PrepareAsyncSearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>>(PrepareAsyncSearchTextRaw(context, request, cq));
+    }
     // Delete vectors
     virtual ::grpc::Status Delete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::hyperspace::DeleteResponse* response) = 0;
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::DeleteResponse>> AsyncDelete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::grpc::CompletionQueue* cq) {
@@ -110,6 +124,14 @@ class Database final {
     }
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::BatchSearchResponse>> PrepareAsyncSearchBatch(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::BatchSearchResponse>>(PrepareAsyncSearchBatchRaw(context, request, cq));
+    }
+    // Multi-Geometry Search (v3.0)
+    virtual ::grpc::Status SearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::hyperspace::SearchMultiCollectionResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchMultiCollectionResponse>> AsyncSearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchMultiCollectionResponse>>(AsyncSearchMultiCollectionRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchMultiCollectionResponse>> PrepareAsyncSearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchMultiCollectionResponse>>(PrepareAsyncSearchMultiCollectionRaw(context, request, cq));
     }
     // Graph Traversal API (v2.3)
     virtual ::grpc::Status GetNode(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest& request, ::hyperspace::GraphNode* response) = 0;
@@ -269,6 +291,10 @@ class Database final {
       virtual void BatchInsert(::grpc::ClientContext* context, const ::hyperspace::BatchInsertRequest* request, ::hyperspace::InsertResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
       virtual void InsertText(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest* request, ::hyperspace::InsertResponse* response, std::function<void(::grpc::Status)>) = 0;
       virtual void InsertText(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest* request, ::hyperspace::InsertResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      virtual void Vectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest* request, ::hyperspace::VectorizeResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void Vectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest* request, ::hyperspace::VectorizeResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      virtual void SearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest* request, ::hyperspace::SearchResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void SearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest* request, ::hyperspace::SearchResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
       // Delete vectors
       virtual void Delete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest* request, ::hyperspace::DeleteResponse* response, std::function<void(::grpc::Status)>) = 0;
       virtual void Delete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest* request, ::hyperspace::DeleteResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
@@ -278,6 +304,9 @@ class Database final {
       // Batch Search (ANN)
       virtual void SearchBatch(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest* request, ::hyperspace::BatchSearchResponse* response, std::function<void(::grpc::Status)>) = 0;
       virtual void SearchBatch(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest* request, ::hyperspace::BatchSearchResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      // Multi-Geometry Search (v3.0)
+      virtual void SearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest* request, ::hyperspace::SearchMultiCollectionResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void SearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest* request, ::hyperspace::SearchMultiCollectionResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
       // Graph Traversal API (v2.3)
       virtual void GetNode(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest* request, ::hyperspace::GraphNode* response, std::function<void(::grpc::Status)>) = 0;
       virtual void GetNode(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest* request, ::hyperspace::GraphNode* response, ::grpc::ClientUnaryReactor* reactor) = 0;
@@ -336,12 +365,18 @@ class Database final {
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::InsertResponse>* PrepareAsyncBatchInsertRaw(::grpc::ClientContext* context, const ::hyperspace::BatchInsertRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::InsertResponse>* AsyncInsertTextRaw(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::InsertResponse>* PrepareAsyncInsertTextRaw(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VectorizeResponse>* AsyncVectorizeRaw(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VectorizeResponse>* PrepareAsyncVectorizeRaw(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>* AsyncSearchTextRaw(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>* PrepareAsyncSearchTextRaw(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::DeleteResponse>* AsyncDeleteRaw(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::DeleteResponse>* PrepareAsyncDeleteRaw(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>* AsyncSearchRaw(::grpc::ClientContext* context, const ::hyperspace::SearchRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchResponse>* PrepareAsyncSearchRaw(::grpc::ClientContext* context, const ::hyperspace::SearchRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::BatchSearchResponse>* AsyncSearchBatchRaw(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::BatchSearchResponse>* PrepareAsyncSearchBatchRaw(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchMultiCollectionResponse>* AsyncSearchMultiCollectionRaw(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::SearchMultiCollectionResponse>* PrepareAsyncSearchMultiCollectionRaw(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::GraphNode>* AsyncGetNodeRaw(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::GraphNode>* PrepareAsyncGetNodeRaw(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::GetNeighborsResponse>* AsyncGetNeighborsRaw(::grpc::ClientContext* context, const ::hyperspace::GetNeighborsRequest& request, ::grpc::CompletionQueue* cq) = 0;
@@ -434,6 +469,20 @@ class Database final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::InsertResponse>> PrepareAsyncInsertText(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::InsertResponse>>(PrepareAsyncInsertTextRaw(context, request, cq));
     }
+    ::grpc::Status Vectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::hyperspace::VectorizeResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VectorizeResponse>> AsyncVectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VectorizeResponse>>(AsyncVectorizeRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VectorizeResponse>> PrepareAsyncVectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VectorizeResponse>>(PrepareAsyncVectorizeRaw(context, request, cq));
+    }
+    ::grpc::Status SearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::hyperspace::SearchResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>> AsyncSearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>>(AsyncSearchTextRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>> PrepareAsyncSearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>>(PrepareAsyncSearchTextRaw(context, request, cq));
+    }
     ::grpc::Status Delete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::hyperspace::DeleteResponse* response) override;
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::DeleteResponse>> AsyncDelete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::DeleteResponse>>(AsyncDeleteRaw(context, request, cq));
@@ -454,6 +503,13 @@ class Database final {
     }
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::BatchSearchResponse>> PrepareAsyncSearchBatch(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::BatchSearchResponse>>(PrepareAsyncSearchBatchRaw(context, request, cq));
+    }
+    ::grpc::Status SearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::hyperspace::SearchMultiCollectionResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchMultiCollectionResponse>> AsyncSearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchMultiCollectionResponse>>(AsyncSearchMultiCollectionRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchMultiCollectionResponse>> PrepareAsyncSearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchMultiCollectionResponse>>(PrepareAsyncSearchMultiCollectionRaw(context, request, cq));
     }
     ::grpc::Status GetNode(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest& request, ::hyperspace::GraphNode* response) override;
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::GraphNode>> AsyncGetNode(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest& request, ::grpc::CompletionQueue* cq) {
@@ -601,12 +657,18 @@ class Database final {
       void BatchInsert(::grpc::ClientContext* context, const ::hyperspace::BatchInsertRequest* request, ::hyperspace::InsertResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
       void InsertText(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest* request, ::hyperspace::InsertResponse* response, std::function<void(::grpc::Status)>) override;
       void InsertText(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest* request, ::hyperspace::InsertResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void Vectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest* request, ::hyperspace::VectorizeResponse* response, std::function<void(::grpc::Status)>) override;
+      void Vectorize(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest* request, ::hyperspace::VectorizeResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void SearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest* request, ::hyperspace::SearchResponse* response, std::function<void(::grpc::Status)>) override;
+      void SearchText(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest* request, ::hyperspace::SearchResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
       void Delete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest* request, ::hyperspace::DeleteResponse* response, std::function<void(::grpc::Status)>) override;
       void Delete(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest* request, ::hyperspace::DeleteResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
       void Search(::grpc::ClientContext* context, const ::hyperspace::SearchRequest* request, ::hyperspace::SearchResponse* response, std::function<void(::grpc::Status)>) override;
       void Search(::grpc::ClientContext* context, const ::hyperspace::SearchRequest* request, ::hyperspace::SearchResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
       void SearchBatch(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest* request, ::hyperspace::BatchSearchResponse* response, std::function<void(::grpc::Status)>) override;
       void SearchBatch(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest* request, ::hyperspace::BatchSearchResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void SearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest* request, ::hyperspace::SearchMultiCollectionResponse* response, std::function<void(::grpc::Status)>) override;
+      void SearchMultiCollection(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest* request, ::hyperspace::SearchMultiCollectionResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
       void GetNode(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest* request, ::hyperspace::GraphNode* response, std::function<void(::grpc::Status)>) override;
       void GetNode(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest* request, ::hyperspace::GraphNode* response, ::grpc::ClientUnaryReactor* reactor) override;
       void GetNeighbors(::grpc::ClientContext* context, const ::hyperspace::GetNeighborsRequest* request, ::hyperspace::GetNeighborsResponse* response, std::function<void(::grpc::Status)>) override;
@@ -661,12 +723,18 @@ class Database final {
     ::grpc::ClientAsyncResponseReader< ::hyperspace::InsertResponse>* PrepareAsyncBatchInsertRaw(::grpc::ClientContext* context, const ::hyperspace::BatchInsertRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::InsertResponse>* AsyncInsertTextRaw(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::InsertResponse>* PrepareAsyncInsertTextRaw(::grpc::ClientContext* context, const ::hyperspace::InsertTextRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::VectorizeResponse>* AsyncVectorizeRaw(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::VectorizeResponse>* PrepareAsyncVectorizeRaw(::grpc::ClientContext* context, const ::hyperspace::VectorizeRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>* AsyncSearchTextRaw(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>* PrepareAsyncSearchTextRaw(::grpc::ClientContext* context, const ::hyperspace::SearchTextRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::DeleteResponse>* AsyncDeleteRaw(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::DeleteResponse>* PrepareAsyncDeleteRaw(::grpc::ClientContext* context, const ::hyperspace::DeleteRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>* AsyncSearchRaw(::grpc::ClientContext* context, const ::hyperspace::SearchRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchResponse>* PrepareAsyncSearchRaw(::grpc::ClientContext* context, const ::hyperspace::SearchRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::BatchSearchResponse>* AsyncSearchBatchRaw(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::BatchSearchResponse>* PrepareAsyncSearchBatchRaw(::grpc::ClientContext* context, const ::hyperspace::BatchSearchRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchMultiCollectionResponse>* AsyncSearchMultiCollectionRaw(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::SearchMultiCollectionResponse>* PrepareAsyncSearchMultiCollectionRaw(::grpc::ClientContext* context, const ::hyperspace::SearchMultiCollectionRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::GraphNode>* AsyncGetNodeRaw(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::GraphNode>* PrepareAsyncGetNodeRaw(::grpc::ClientContext* context, const ::hyperspace::GetNodeRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::GetNeighborsResponse>* AsyncGetNeighborsRaw(::grpc::ClientContext* context, const ::hyperspace::GetNeighborsRequest& request, ::grpc::CompletionQueue* cq) override;
@@ -713,9 +781,12 @@ class Database final {
     const ::grpc::internal::RpcMethod rpcmethod_Insert_;
     const ::grpc::internal::RpcMethod rpcmethod_BatchInsert_;
     const ::grpc::internal::RpcMethod rpcmethod_InsertText_;
+    const ::grpc::internal::RpcMethod rpcmethod_Vectorize_;
+    const ::grpc::internal::RpcMethod rpcmethod_SearchText_;
     const ::grpc::internal::RpcMethod rpcmethod_Delete_;
     const ::grpc::internal::RpcMethod rpcmethod_Search_;
     const ::grpc::internal::RpcMethod rpcmethod_SearchBatch_;
+    const ::grpc::internal::RpcMethod rpcmethod_SearchMultiCollection_;
     const ::grpc::internal::RpcMethod rpcmethod_GetNode_;
     const ::grpc::internal::RpcMethod rpcmethod_GetNeighbors_;
     const ::grpc::internal::RpcMethod rpcmethod_GetConceptParents_;
@@ -749,12 +820,16 @@ class Database final {
     virtual ::grpc::Status Insert(::grpc::ServerContext* context, const ::hyperspace::InsertRequest* request, ::hyperspace::InsertResponse* response);
     virtual ::grpc::Status BatchInsert(::grpc::ServerContext* context, const ::hyperspace::BatchInsertRequest* request, ::hyperspace::InsertResponse* response);
     virtual ::grpc::Status InsertText(::grpc::ServerContext* context, const ::hyperspace::InsertTextRequest* request, ::hyperspace::InsertResponse* response);
+    virtual ::grpc::Status Vectorize(::grpc::ServerContext* context, const ::hyperspace::VectorizeRequest* request, ::hyperspace::VectorizeResponse* response);
+    virtual ::grpc::Status SearchText(::grpc::ServerContext* context, const ::hyperspace::SearchTextRequest* request, ::hyperspace::SearchResponse* response);
     // Delete vectors
     virtual ::grpc::Status Delete(::grpc::ServerContext* context, const ::hyperspace::DeleteRequest* request, ::hyperspace::DeleteResponse* response);
     // Search (ANN)
     virtual ::grpc::Status Search(::grpc::ServerContext* context, const ::hyperspace::SearchRequest* request, ::hyperspace::SearchResponse* response);
     // Batch Search (ANN)
     virtual ::grpc::Status SearchBatch(::grpc::ServerContext* context, const ::hyperspace::BatchSearchRequest* request, ::hyperspace::BatchSearchResponse* response);
+    // Multi-Geometry Search (v3.0)
+    virtual ::grpc::Status SearchMultiCollection(::grpc::ServerContext* context, const ::hyperspace::SearchMultiCollectionRequest* request, ::hyperspace::SearchMultiCollectionResponse* response);
     // Graph Traversal API (v2.3)
     virtual ::grpc::Status GetNode(::grpc::ServerContext* context, const ::hyperspace::GetNodeRequest* request, ::hyperspace::GraphNode* response);
     virtual ::grpc::Status GetNeighbors(::grpc::ServerContext* context, const ::hyperspace::GetNeighborsRequest* request, ::hyperspace::GetNeighborsResponse* response);
@@ -924,12 +999,52 @@ class Database final {
     }
   };
   template <class BaseClass>
+  class WithAsyncMethod_Vectorize : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_Vectorize() {
+      ::grpc::Service::MarkMethodAsync(7);
+    }
+    ~WithAsyncMethod_Vectorize() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Vectorize(::grpc::ServerContext* /*context*/, const ::hyperspace::VectorizeRequest* /*request*/, ::hyperspace::VectorizeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestVectorize(::grpc::ServerContext* context, ::hyperspace::VectorizeRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::VectorizeResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(7, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_SearchText : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_SearchText() {
+      ::grpc::Service::MarkMethodAsync(8);
+    }
+    ~WithAsyncMethod_SearchText() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchText(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchTextRequest* /*request*/, ::hyperspace::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestSearchText(::grpc::ServerContext* context, ::hyperspace::SearchTextRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::SearchResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(8, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
   class WithAsyncMethod_Delete : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Delete() {
-      ::grpc::Service::MarkMethodAsync(7);
+      ::grpc::Service::MarkMethodAsync(9);
     }
     ~WithAsyncMethod_Delete() override {
       BaseClassMustBeDerivedFromService(this);
@@ -940,7 +1055,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestDelete(::grpc::ServerContext* context, ::hyperspace::DeleteRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::DeleteResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(7, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(9, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -949,7 +1064,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Search() {
-      ::grpc::Service::MarkMethodAsync(8);
+      ::grpc::Service::MarkMethodAsync(10);
     }
     ~WithAsyncMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -960,7 +1075,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearch(::grpc::ServerContext* context, ::hyperspace::SearchRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::SearchResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(8, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(10, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -969,7 +1084,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_SearchBatch() {
-      ::grpc::Service::MarkMethodAsync(9);
+      ::grpc::Service::MarkMethodAsync(11);
     }
     ~WithAsyncMethod_SearchBatch() override {
       BaseClassMustBeDerivedFromService(this);
@@ -980,7 +1095,27 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearchBatch(::grpc::ServerContext* context, ::hyperspace::BatchSearchRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::BatchSearchResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(9, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(11, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_SearchMultiCollection : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_SearchMultiCollection() {
+      ::grpc::Service::MarkMethodAsync(12);
+    }
+    ~WithAsyncMethod_SearchMultiCollection() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchMultiCollection(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchMultiCollectionRequest* /*request*/, ::hyperspace::SearchMultiCollectionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestSearchMultiCollection(::grpc::ServerContext* context, ::hyperspace::SearchMultiCollectionRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::SearchMultiCollectionResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(12, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -989,7 +1124,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_GetNode() {
-      ::grpc::Service::MarkMethodAsync(10);
+      ::grpc::Service::MarkMethodAsync(13);
     }
     ~WithAsyncMethod_GetNode() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1000,7 +1135,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetNode(::grpc::ServerContext* context, ::hyperspace::GetNodeRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::GraphNode>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(10, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(13, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1009,7 +1144,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_GetNeighbors() {
-      ::grpc::Service::MarkMethodAsync(11);
+      ::grpc::Service::MarkMethodAsync(14);
     }
     ~WithAsyncMethod_GetNeighbors() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1020,7 +1155,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetNeighbors(::grpc::ServerContext* context, ::hyperspace::GetNeighborsRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::GetNeighborsResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(11, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(14, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1029,7 +1164,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_GetConceptParents() {
-      ::grpc::Service::MarkMethodAsync(12);
+      ::grpc::Service::MarkMethodAsync(15);
     }
     ~WithAsyncMethod_GetConceptParents() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1040,7 +1175,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetConceptParents(::grpc::ServerContext* context, ::hyperspace::GetConceptParentsRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::GetConceptParentsResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(12, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(15, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1049,7 +1184,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Traverse() {
-      ::grpc::Service::MarkMethodAsync(13);
+      ::grpc::Service::MarkMethodAsync(16);
     }
     ~WithAsyncMethod_Traverse() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1060,7 +1195,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTraverse(::grpc::ServerContext* context, ::hyperspace::TraverseRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::TraverseResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(13, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(16, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1069,7 +1204,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_FindSemanticClusters() {
-      ::grpc::Service::MarkMethodAsync(14);
+      ::grpc::Service::MarkMethodAsync(17);
     }
     ~WithAsyncMethod_FindSemanticClusters() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1080,7 +1215,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestFindSemanticClusters(::grpc::ServerContext* context, ::hyperspace::FindSemanticClustersRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::FindSemanticClustersResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(14, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(17, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1089,7 +1224,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Monitor() {
-      ::grpc::Service::MarkMethodAsync(15);
+      ::grpc::Service::MarkMethodAsync(18);
     }
     ~WithAsyncMethod_Monitor() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1100,7 +1235,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestMonitor(::grpc::ServerContext* context, ::hyperspace::MonitorRequest* request, ::grpc::ServerAsyncWriter< ::hyperspace::SystemStats>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(15, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(18, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1109,7 +1244,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_TriggerSnapshot() {
-      ::grpc::Service::MarkMethodAsync(16);
+      ::grpc::Service::MarkMethodAsync(19);
     }
     ~WithAsyncMethod_TriggerSnapshot() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1120,7 +1255,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTriggerSnapshot(::grpc::ServerContext* context, ::hyperspace::Empty* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::StatusResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(16, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(19, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1129,7 +1264,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_TriggerVacuum() {
-      ::grpc::Service::MarkMethodAsync(17);
+      ::grpc::Service::MarkMethodAsync(20);
     }
     ~WithAsyncMethod_TriggerVacuum() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1140,7 +1275,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTriggerVacuum(::grpc::ServerContext* context, ::hyperspace::Empty* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::StatusResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(17, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(20, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1149,7 +1284,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_TriggerReconsolidation() {
-      ::grpc::Service::MarkMethodAsync(18);
+      ::grpc::Service::MarkMethodAsync(21);
     }
     ~WithAsyncMethod_TriggerReconsolidation() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1160,7 +1295,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTriggerReconsolidation(::grpc::ServerContext* context, ::hyperspace::ReconsolidationRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::StatusResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(18, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(21, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1169,7 +1304,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Configure() {
-      ::grpc::Service::MarkMethodAsync(19);
+      ::grpc::Service::MarkMethodAsync(22);
     }
     ~WithAsyncMethod_Configure() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1180,7 +1315,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestConfigure(::grpc::ServerContext* context, ::hyperspace::ConfigUpdate* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::StatusResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(19, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(22, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1189,7 +1324,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Replicate() {
-      ::grpc::Service::MarkMethodAsync(20);
+      ::grpc::Service::MarkMethodAsync(23);
     }
     ~WithAsyncMethod_Replicate() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1200,7 +1335,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestReplicate(::grpc::ServerContext* context, ::hyperspace::ReplicationRequest* request, ::grpc::ServerAsyncWriter< ::hyperspace::ReplicationLog>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(20, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(23, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1209,7 +1344,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_SubscribeToEvents() {
-      ::grpc::Service::MarkMethodAsync(21);
+      ::grpc::Service::MarkMethodAsync(24);
     }
     ~WithAsyncMethod_SubscribeToEvents() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1220,7 +1355,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSubscribeToEvents(::grpc::ServerContext* context, ::hyperspace::EventSubscriptionRequest* request, ::grpc::ServerAsyncWriter< ::hyperspace::EventMessage>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(21, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(24, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1229,7 +1364,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_GetDigest() {
-      ::grpc::Service::MarkMethodAsync(22);
+      ::grpc::Service::MarkMethodAsync(25);
     }
     ~WithAsyncMethod_GetDigest() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1240,7 +1375,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetDigest(::grpc::ServerContext* context, ::hyperspace::DigestRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::DigestResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(22, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(25, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1249,7 +1384,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_RebuildIndex() {
-      ::grpc::Service::MarkMethodAsync(23);
+      ::grpc::Service::MarkMethodAsync(26);
     }
     ~WithAsyncMethod_RebuildIndex() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1260,7 +1395,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestRebuildIndex(::grpc::ServerContext* context, ::hyperspace::RebuildIndexRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::StatusResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(23, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(26, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1269,7 +1404,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_SyncHandshake() {
-      ::grpc::Service::MarkMethodAsync(24);
+      ::grpc::Service::MarkMethodAsync(27);
     }
     ~WithAsyncMethod_SyncHandshake() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1280,7 +1415,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSyncHandshake(::grpc::ServerContext* context, ::hyperspace::SyncHandshakeRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::SyncHandshakeResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(24, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(27, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1289,7 +1424,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_SyncPull() {
-      ::grpc::Service::MarkMethodAsync(25);
+      ::grpc::Service::MarkMethodAsync(28);
     }
     ~WithAsyncMethod_SyncPull() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1300,7 +1435,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSyncPull(::grpc::ServerContext* context, ::hyperspace::SyncPullRequest* request, ::grpc::ServerAsyncWriter< ::hyperspace::SyncVectorData>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(25, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(28, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1309,7 +1444,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_SyncPush() {
-      ::grpc::Service::MarkMethodAsync(26);
+      ::grpc::Service::MarkMethodAsync(29);
     }
     ~WithAsyncMethod_SyncPush() override {
       BaseClassMustBeDerivedFromService(this);
@@ -1320,10 +1455,10 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSyncPush(::grpc::ServerContext* context, ::grpc::ServerAsyncReader< ::hyperspace::SyncPushResponse, ::hyperspace::SyncVectorData>* reader, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncClientStreaming(26, context, reader, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncClientStreaming(29, context, reader, new_call_cq, notification_cq, tag);
     }
   };
-  typedef WithAsyncMethod_CreateCollection<WithAsyncMethod_DeleteCollection<WithAsyncMethod_ListCollections<WithAsyncMethod_GetCollectionStats<WithAsyncMethod_Insert<WithAsyncMethod_BatchInsert<WithAsyncMethod_InsertText<WithAsyncMethod_Delete<WithAsyncMethod_Search<WithAsyncMethod_SearchBatch<WithAsyncMethod_GetNode<WithAsyncMethod_GetNeighbors<WithAsyncMethod_GetConceptParents<WithAsyncMethod_Traverse<WithAsyncMethod_FindSemanticClusters<WithAsyncMethod_Monitor<WithAsyncMethod_TriggerSnapshot<WithAsyncMethod_TriggerVacuum<WithAsyncMethod_TriggerReconsolidation<WithAsyncMethod_Configure<WithAsyncMethod_Replicate<WithAsyncMethod_SubscribeToEvents<WithAsyncMethod_GetDigest<WithAsyncMethod_RebuildIndex<WithAsyncMethod_SyncHandshake<WithAsyncMethod_SyncPull<WithAsyncMethod_SyncPush<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > AsyncService;
+  typedef WithAsyncMethod_CreateCollection<WithAsyncMethod_DeleteCollection<WithAsyncMethod_ListCollections<WithAsyncMethod_GetCollectionStats<WithAsyncMethod_Insert<WithAsyncMethod_BatchInsert<WithAsyncMethod_InsertText<WithAsyncMethod_Vectorize<WithAsyncMethod_SearchText<WithAsyncMethod_Delete<WithAsyncMethod_Search<WithAsyncMethod_SearchBatch<WithAsyncMethod_SearchMultiCollection<WithAsyncMethod_GetNode<WithAsyncMethod_GetNeighbors<WithAsyncMethod_GetConceptParents<WithAsyncMethod_Traverse<WithAsyncMethod_FindSemanticClusters<WithAsyncMethod_Monitor<WithAsyncMethod_TriggerSnapshot<WithAsyncMethod_TriggerVacuum<WithAsyncMethod_TriggerReconsolidation<WithAsyncMethod_Configure<WithAsyncMethod_Replicate<WithAsyncMethod_SubscribeToEvents<WithAsyncMethod_GetDigest<WithAsyncMethod_RebuildIndex<WithAsyncMethod_SyncHandshake<WithAsyncMethod_SyncPull<WithAsyncMethod_SyncPush<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > AsyncService;
   template <class BaseClass>
   class WithCallbackMethod_CreateCollection : public BaseClass {
    private:
@@ -1514,18 +1649,72 @@ class Database final {
       ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::InsertTextRequest* /*request*/, ::hyperspace::InsertResponse* /*response*/)  { return nullptr; }
   };
   template <class BaseClass>
+  class WithCallbackMethod_Vectorize : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_Vectorize() {
+      ::grpc::Service::MarkMethodCallback(7,
+          new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::VectorizeRequest, ::hyperspace::VectorizeResponse>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::hyperspace::VectorizeRequest* request, ::hyperspace::VectorizeResponse* response) { return this->Vectorize(context, request, response); }));}
+    void SetMessageAllocatorFor_Vectorize(
+        ::grpc::MessageAllocator< ::hyperspace::VectorizeRequest, ::hyperspace::VectorizeResponse>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(7);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::VectorizeRequest, ::hyperspace::VectorizeResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_Vectorize() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Vectorize(::grpc::ServerContext* /*context*/, const ::hyperspace::VectorizeRequest* /*request*/, ::hyperspace::VectorizeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* Vectorize(
+      ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::VectorizeRequest* /*request*/, ::hyperspace::VectorizeResponse* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithCallbackMethod_SearchText : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_SearchText() {
+      ::grpc::Service::MarkMethodCallback(8,
+          new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::SearchTextRequest, ::hyperspace::SearchResponse>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::hyperspace::SearchTextRequest* request, ::hyperspace::SearchResponse* response) { return this->SearchText(context, request, response); }));}
+    void SetMessageAllocatorFor_SearchText(
+        ::grpc::MessageAllocator< ::hyperspace::SearchTextRequest, ::hyperspace::SearchResponse>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(8);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::SearchTextRequest, ::hyperspace::SearchResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_SearchText() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchText(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchTextRequest* /*request*/, ::hyperspace::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* SearchText(
+      ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::SearchTextRequest* /*request*/, ::hyperspace::SearchResponse* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
   class WithCallbackMethod_Delete : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_Delete() {
-      ::grpc::Service::MarkMethodCallback(7,
+      ::grpc::Service::MarkMethodCallback(9,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::DeleteRequest, ::hyperspace::DeleteResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::DeleteRequest* request, ::hyperspace::DeleteResponse* response) { return this->Delete(context, request, response); }));}
     void SetMessageAllocatorFor_Delete(
         ::grpc::MessageAllocator< ::hyperspace::DeleteRequest, ::hyperspace::DeleteResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(7);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(9);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::DeleteRequest, ::hyperspace::DeleteResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1546,13 +1735,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_Search() {
-      ::grpc::Service::MarkMethodCallback(8,
+      ::grpc::Service::MarkMethodCallback(10,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::SearchRequest, ::hyperspace::SearchResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::SearchRequest* request, ::hyperspace::SearchResponse* response) { return this->Search(context, request, response); }));}
     void SetMessageAllocatorFor_Search(
         ::grpc::MessageAllocator< ::hyperspace::SearchRequest, ::hyperspace::SearchResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(8);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(10);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::SearchRequest, ::hyperspace::SearchResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1573,13 +1762,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_SearchBatch() {
-      ::grpc::Service::MarkMethodCallback(9,
+      ::grpc::Service::MarkMethodCallback(11,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::BatchSearchRequest, ::hyperspace::BatchSearchResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::BatchSearchRequest* request, ::hyperspace::BatchSearchResponse* response) { return this->SearchBatch(context, request, response); }));}
     void SetMessageAllocatorFor_SearchBatch(
         ::grpc::MessageAllocator< ::hyperspace::BatchSearchRequest, ::hyperspace::BatchSearchResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(9);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(11);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::BatchSearchRequest, ::hyperspace::BatchSearchResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1595,18 +1784,45 @@ class Database final {
       ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::BatchSearchRequest* /*request*/, ::hyperspace::BatchSearchResponse* /*response*/)  { return nullptr; }
   };
   template <class BaseClass>
+  class WithCallbackMethod_SearchMultiCollection : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_SearchMultiCollection() {
+      ::grpc::Service::MarkMethodCallback(12,
+          new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::SearchMultiCollectionRequest, ::hyperspace::SearchMultiCollectionResponse>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::hyperspace::SearchMultiCollectionRequest* request, ::hyperspace::SearchMultiCollectionResponse* response) { return this->SearchMultiCollection(context, request, response); }));}
+    void SetMessageAllocatorFor_SearchMultiCollection(
+        ::grpc::MessageAllocator< ::hyperspace::SearchMultiCollectionRequest, ::hyperspace::SearchMultiCollectionResponse>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(12);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::SearchMultiCollectionRequest, ::hyperspace::SearchMultiCollectionResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_SearchMultiCollection() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchMultiCollection(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchMultiCollectionRequest* /*request*/, ::hyperspace::SearchMultiCollectionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* SearchMultiCollection(
+      ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::SearchMultiCollectionRequest* /*request*/, ::hyperspace::SearchMultiCollectionResponse* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
   class WithCallbackMethod_GetNode : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_GetNode() {
-      ::grpc::Service::MarkMethodCallback(10,
+      ::grpc::Service::MarkMethodCallback(13,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::GetNodeRequest, ::hyperspace::GraphNode>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::GetNodeRequest* request, ::hyperspace::GraphNode* response) { return this->GetNode(context, request, response); }));}
     void SetMessageAllocatorFor_GetNode(
         ::grpc::MessageAllocator< ::hyperspace::GetNodeRequest, ::hyperspace::GraphNode>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(10);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(13);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::GetNodeRequest, ::hyperspace::GraphNode>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1627,13 +1843,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_GetNeighbors() {
-      ::grpc::Service::MarkMethodCallback(11,
+      ::grpc::Service::MarkMethodCallback(14,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::GetNeighborsRequest, ::hyperspace::GetNeighborsResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::GetNeighborsRequest* request, ::hyperspace::GetNeighborsResponse* response) { return this->GetNeighbors(context, request, response); }));}
     void SetMessageAllocatorFor_GetNeighbors(
         ::grpc::MessageAllocator< ::hyperspace::GetNeighborsRequest, ::hyperspace::GetNeighborsResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(11);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(14);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::GetNeighborsRequest, ::hyperspace::GetNeighborsResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1654,13 +1870,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_GetConceptParents() {
-      ::grpc::Service::MarkMethodCallback(12,
+      ::grpc::Service::MarkMethodCallback(15,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::GetConceptParentsRequest, ::hyperspace::GetConceptParentsResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::GetConceptParentsRequest* request, ::hyperspace::GetConceptParentsResponse* response) { return this->GetConceptParents(context, request, response); }));}
     void SetMessageAllocatorFor_GetConceptParents(
         ::grpc::MessageAllocator< ::hyperspace::GetConceptParentsRequest, ::hyperspace::GetConceptParentsResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(12);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(15);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::GetConceptParentsRequest, ::hyperspace::GetConceptParentsResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1681,13 +1897,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_Traverse() {
-      ::grpc::Service::MarkMethodCallback(13,
+      ::grpc::Service::MarkMethodCallback(16,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::TraverseRequest, ::hyperspace::TraverseResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::TraverseRequest* request, ::hyperspace::TraverseResponse* response) { return this->Traverse(context, request, response); }));}
     void SetMessageAllocatorFor_Traverse(
         ::grpc::MessageAllocator< ::hyperspace::TraverseRequest, ::hyperspace::TraverseResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(13);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(16);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::TraverseRequest, ::hyperspace::TraverseResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1708,13 +1924,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_FindSemanticClusters() {
-      ::grpc::Service::MarkMethodCallback(14,
+      ::grpc::Service::MarkMethodCallback(17,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::FindSemanticClustersRequest, ::hyperspace::FindSemanticClustersResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::FindSemanticClustersRequest* request, ::hyperspace::FindSemanticClustersResponse* response) { return this->FindSemanticClusters(context, request, response); }));}
     void SetMessageAllocatorFor_FindSemanticClusters(
         ::grpc::MessageAllocator< ::hyperspace::FindSemanticClustersRequest, ::hyperspace::FindSemanticClustersResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(14);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(17);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::FindSemanticClustersRequest, ::hyperspace::FindSemanticClustersResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1735,7 +1951,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_Monitor() {
-      ::grpc::Service::MarkMethodCallback(15,
+      ::grpc::Service::MarkMethodCallback(18,
           new ::grpc::internal::CallbackServerStreamingHandler< ::hyperspace::MonitorRequest, ::hyperspace::SystemStats>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::MonitorRequest* request) { return this->Monitor(context, request); }));
@@ -1757,13 +1973,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_TriggerSnapshot() {
-      ::grpc::Service::MarkMethodCallback(16,
+      ::grpc::Service::MarkMethodCallback(19,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::Empty, ::hyperspace::StatusResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::StatusResponse* response) { return this->TriggerSnapshot(context, request, response); }));}
     void SetMessageAllocatorFor_TriggerSnapshot(
         ::grpc::MessageAllocator< ::hyperspace::Empty, ::hyperspace::StatusResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(16);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(19);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::Empty, ::hyperspace::StatusResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1784,13 +2000,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_TriggerVacuum() {
-      ::grpc::Service::MarkMethodCallback(17,
+      ::grpc::Service::MarkMethodCallback(20,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::Empty, ::hyperspace::StatusResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::StatusResponse* response) { return this->TriggerVacuum(context, request, response); }));}
     void SetMessageAllocatorFor_TriggerVacuum(
         ::grpc::MessageAllocator< ::hyperspace::Empty, ::hyperspace::StatusResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(17);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(20);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::Empty, ::hyperspace::StatusResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1811,13 +2027,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_TriggerReconsolidation() {
-      ::grpc::Service::MarkMethodCallback(18,
+      ::grpc::Service::MarkMethodCallback(21,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::ReconsolidationRequest, ::hyperspace::StatusResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::ReconsolidationRequest* request, ::hyperspace::StatusResponse* response) { return this->TriggerReconsolidation(context, request, response); }));}
     void SetMessageAllocatorFor_TriggerReconsolidation(
         ::grpc::MessageAllocator< ::hyperspace::ReconsolidationRequest, ::hyperspace::StatusResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(18);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(21);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::ReconsolidationRequest, ::hyperspace::StatusResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1838,13 +2054,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_Configure() {
-      ::grpc::Service::MarkMethodCallback(19,
+      ::grpc::Service::MarkMethodCallback(22,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::ConfigUpdate, ::hyperspace::StatusResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::ConfigUpdate* request, ::hyperspace::StatusResponse* response) { return this->Configure(context, request, response); }));}
     void SetMessageAllocatorFor_Configure(
         ::grpc::MessageAllocator< ::hyperspace::ConfigUpdate, ::hyperspace::StatusResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(19);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(22);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::ConfigUpdate, ::hyperspace::StatusResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1865,7 +2081,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_Replicate() {
-      ::grpc::Service::MarkMethodCallback(20,
+      ::grpc::Service::MarkMethodCallback(23,
           new ::grpc::internal::CallbackServerStreamingHandler< ::hyperspace::ReplicationRequest, ::hyperspace::ReplicationLog>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::ReplicationRequest* request) { return this->Replicate(context, request); }));
@@ -1887,7 +2103,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_SubscribeToEvents() {
-      ::grpc::Service::MarkMethodCallback(21,
+      ::grpc::Service::MarkMethodCallback(24,
           new ::grpc::internal::CallbackServerStreamingHandler< ::hyperspace::EventSubscriptionRequest, ::hyperspace::EventMessage>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::EventSubscriptionRequest* request) { return this->SubscribeToEvents(context, request); }));
@@ -1909,13 +2125,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_GetDigest() {
-      ::grpc::Service::MarkMethodCallback(22,
+      ::grpc::Service::MarkMethodCallback(25,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::DigestRequest, ::hyperspace::DigestResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::DigestRequest* request, ::hyperspace::DigestResponse* response) { return this->GetDigest(context, request, response); }));}
     void SetMessageAllocatorFor_GetDigest(
         ::grpc::MessageAllocator< ::hyperspace::DigestRequest, ::hyperspace::DigestResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(22);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(25);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::DigestRequest, ::hyperspace::DigestResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1936,13 +2152,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_RebuildIndex() {
-      ::grpc::Service::MarkMethodCallback(23,
+      ::grpc::Service::MarkMethodCallback(26,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::RebuildIndexRequest, ::hyperspace::StatusResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::RebuildIndexRequest* request, ::hyperspace::StatusResponse* response) { return this->RebuildIndex(context, request, response); }));}
     void SetMessageAllocatorFor_RebuildIndex(
         ::grpc::MessageAllocator< ::hyperspace::RebuildIndexRequest, ::hyperspace::StatusResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(23);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(26);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::RebuildIndexRequest, ::hyperspace::StatusResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1963,13 +2179,13 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_SyncHandshake() {
-      ::grpc::Service::MarkMethodCallback(24,
+      ::grpc::Service::MarkMethodCallback(27,
           new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::SyncHandshakeRequest, ::hyperspace::SyncHandshakeResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::SyncHandshakeRequest* request, ::hyperspace::SyncHandshakeResponse* response) { return this->SyncHandshake(context, request, response); }));}
     void SetMessageAllocatorFor_SyncHandshake(
         ::grpc::MessageAllocator< ::hyperspace::SyncHandshakeRequest, ::hyperspace::SyncHandshakeResponse>* allocator) {
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(24);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(27);
       static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::SyncHandshakeRequest, ::hyperspace::SyncHandshakeResponse>*>(handler)
               ->SetMessageAllocator(allocator);
     }
@@ -1990,7 +2206,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_SyncPull() {
-      ::grpc::Service::MarkMethodCallback(25,
+      ::grpc::Service::MarkMethodCallback(28,
           new ::grpc::internal::CallbackServerStreamingHandler< ::hyperspace::SyncPullRequest, ::hyperspace::SyncVectorData>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::hyperspace::SyncPullRequest* request) { return this->SyncPull(context, request); }));
@@ -2012,7 +2228,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithCallbackMethod_SyncPush() {
-      ::grpc::Service::MarkMethodCallback(26,
+      ::grpc::Service::MarkMethodCallback(29,
           new ::grpc::internal::CallbackClientStreamingHandler< ::hyperspace::SyncVectorData, ::hyperspace::SyncPushResponse>(
             [this](
                    ::grpc::CallbackServerContext* context, ::hyperspace::SyncPushResponse* response) { return this->SyncPush(context, response); }));
@@ -2028,7 +2244,7 @@ class Database final {
     virtual ::grpc::ServerReadReactor< ::hyperspace::SyncVectorData>* SyncPush(
       ::grpc::CallbackServerContext* /*context*/, ::hyperspace::SyncPushResponse* /*response*/)  { return nullptr; }
   };
-  typedef WithCallbackMethod_CreateCollection<WithCallbackMethod_DeleteCollection<WithCallbackMethod_ListCollections<WithCallbackMethod_GetCollectionStats<WithCallbackMethod_Insert<WithCallbackMethod_BatchInsert<WithCallbackMethod_InsertText<WithCallbackMethod_Delete<WithCallbackMethod_Search<WithCallbackMethod_SearchBatch<WithCallbackMethod_GetNode<WithCallbackMethod_GetNeighbors<WithCallbackMethod_GetConceptParents<WithCallbackMethod_Traverse<WithCallbackMethod_FindSemanticClusters<WithCallbackMethod_Monitor<WithCallbackMethod_TriggerSnapshot<WithCallbackMethod_TriggerVacuum<WithCallbackMethod_TriggerReconsolidation<WithCallbackMethod_Configure<WithCallbackMethod_Replicate<WithCallbackMethod_SubscribeToEvents<WithCallbackMethod_GetDigest<WithCallbackMethod_RebuildIndex<WithCallbackMethod_SyncHandshake<WithCallbackMethod_SyncPull<WithCallbackMethod_SyncPush<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > CallbackService;
+  typedef WithCallbackMethod_CreateCollection<WithCallbackMethod_DeleteCollection<WithCallbackMethod_ListCollections<WithCallbackMethod_GetCollectionStats<WithCallbackMethod_Insert<WithCallbackMethod_BatchInsert<WithCallbackMethod_InsertText<WithCallbackMethod_Vectorize<WithCallbackMethod_SearchText<WithCallbackMethod_Delete<WithCallbackMethod_Search<WithCallbackMethod_SearchBatch<WithCallbackMethod_SearchMultiCollection<WithCallbackMethod_GetNode<WithCallbackMethod_GetNeighbors<WithCallbackMethod_GetConceptParents<WithCallbackMethod_Traverse<WithCallbackMethod_FindSemanticClusters<WithCallbackMethod_Monitor<WithCallbackMethod_TriggerSnapshot<WithCallbackMethod_TriggerVacuum<WithCallbackMethod_TriggerReconsolidation<WithCallbackMethod_Configure<WithCallbackMethod_Replicate<WithCallbackMethod_SubscribeToEvents<WithCallbackMethod_GetDigest<WithCallbackMethod_RebuildIndex<WithCallbackMethod_SyncHandshake<WithCallbackMethod_SyncPull<WithCallbackMethod_SyncPush<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > CallbackService;
   typedef CallbackService ExperimentalCallbackService;
   template <class BaseClass>
   class WithGenericMethod_CreateCollection : public BaseClass {
@@ -2150,12 +2366,46 @@ class Database final {
     }
   };
   template <class BaseClass>
+  class WithGenericMethod_Vectorize : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_Vectorize() {
+      ::grpc::Service::MarkMethodGeneric(7);
+    }
+    ~WithGenericMethod_Vectorize() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Vectorize(::grpc::ServerContext* /*context*/, const ::hyperspace::VectorizeRequest* /*request*/, ::hyperspace::VectorizeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_SearchText : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_SearchText() {
+      ::grpc::Service::MarkMethodGeneric(8);
+    }
+    ~WithGenericMethod_SearchText() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchText(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchTextRequest* /*request*/, ::hyperspace::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
   class WithGenericMethod_Delete : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Delete() {
-      ::grpc::Service::MarkMethodGeneric(7);
+      ::grpc::Service::MarkMethodGeneric(9);
     }
     ~WithGenericMethod_Delete() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2172,7 +2422,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Search() {
-      ::grpc::Service::MarkMethodGeneric(8);
+      ::grpc::Service::MarkMethodGeneric(10);
     }
     ~WithGenericMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2189,7 +2439,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_SearchBatch() {
-      ::grpc::Service::MarkMethodGeneric(9);
+      ::grpc::Service::MarkMethodGeneric(11);
     }
     ~WithGenericMethod_SearchBatch() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2201,12 +2451,29 @@ class Database final {
     }
   };
   template <class BaseClass>
+  class WithGenericMethod_SearchMultiCollection : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_SearchMultiCollection() {
+      ::grpc::Service::MarkMethodGeneric(12);
+    }
+    ~WithGenericMethod_SearchMultiCollection() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchMultiCollection(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchMultiCollectionRequest* /*request*/, ::hyperspace::SearchMultiCollectionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
   class WithGenericMethod_GetNode : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_GetNode() {
-      ::grpc::Service::MarkMethodGeneric(10);
+      ::grpc::Service::MarkMethodGeneric(13);
     }
     ~WithGenericMethod_GetNode() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2223,7 +2490,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_GetNeighbors() {
-      ::grpc::Service::MarkMethodGeneric(11);
+      ::grpc::Service::MarkMethodGeneric(14);
     }
     ~WithGenericMethod_GetNeighbors() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2240,7 +2507,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_GetConceptParents() {
-      ::grpc::Service::MarkMethodGeneric(12);
+      ::grpc::Service::MarkMethodGeneric(15);
     }
     ~WithGenericMethod_GetConceptParents() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2257,7 +2524,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Traverse() {
-      ::grpc::Service::MarkMethodGeneric(13);
+      ::grpc::Service::MarkMethodGeneric(16);
     }
     ~WithGenericMethod_Traverse() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2274,7 +2541,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_FindSemanticClusters() {
-      ::grpc::Service::MarkMethodGeneric(14);
+      ::grpc::Service::MarkMethodGeneric(17);
     }
     ~WithGenericMethod_FindSemanticClusters() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2291,7 +2558,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Monitor() {
-      ::grpc::Service::MarkMethodGeneric(15);
+      ::grpc::Service::MarkMethodGeneric(18);
     }
     ~WithGenericMethod_Monitor() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2308,7 +2575,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_TriggerSnapshot() {
-      ::grpc::Service::MarkMethodGeneric(16);
+      ::grpc::Service::MarkMethodGeneric(19);
     }
     ~WithGenericMethod_TriggerSnapshot() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2325,7 +2592,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_TriggerVacuum() {
-      ::grpc::Service::MarkMethodGeneric(17);
+      ::grpc::Service::MarkMethodGeneric(20);
     }
     ~WithGenericMethod_TriggerVacuum() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2342,7 +2609,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_TriggerReconsolidation() {
-      ::grpc::Service::MarkMethodGeneric(18);
+      ::grpc::Service::MarkMethodGeneric(21);
     }
     ~WithGenericMethod_TriggerReconsolidation() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2359,7 +2626,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Configure() {
-      ::grpc::Service::MarkMethodGeneric(19);
+      ::grpc::Service::MarkMethodGeneric(22);
     }
     ~WithGenericMethod_Configure() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2376,7 +2643,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Replicate() {
-      ::grpc::Service::MarkMethodGeneric(20);
+      ::grpc::Service::MarkMethodGeneric(23);
     }
     ~WithGenericMethod_Replicate() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2393,7 +2660,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_SubscribeToEvents() {
-      ::grpc::Service::MarkMethodGeneric(21);
+      ::grpc::Service::MarkMethodGeneric(24);
     }
     ~WithGenericMethod_SubscribeToEvents() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2410,7 +2677,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_GetDigest() {
-      ::grpc::Service::MarkMethodGeneric(22);
+      ::grpc::Service::MarkMethodGeneric(25);
     }
     ~WithGenericMethod_GetDigest() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2427,7 +2694,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_RebuildIndex() {
-      ::grpc::Service::MarkMethodGeneric(23);
+      ::grpc::Service::MarkMethodGeneric(26);
     }
     ~WithGenericMethod_RebuildIndex() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2444,7 +2711,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_SyncHandshake() {
-      ::grpc::Service::MarkMethodGeneric(24);
+      ::grpc::Service::MarkMethodGeneric(27);
     }
     ~WithGenericMethod_SyncHandshake() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2461,7 +2728,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_SyncPull() {
-      ::grpc::Service::MarkMethodGeneric(25);
+      ::grpc::Service::MarkMethodGeneric(28);
     }
     ~WithGenericMethod_SyncPull() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2478,7 +2745,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_SyncPush() {
-      ::grpc::Service::MarkMethodGeneric(26);
+      ::grpc::Service::MarkMethodGeneric(29);
     }
     ~WithGenericMethod_SyncPush() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2630,12 +2897,52 @@ class Database final {
     }
   };
   template <class BaseClass>
+  class WithRawMethod_Vectorize : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_Vectorize() {
+      ::grpc::Service::MarkMethodRaw(7);
+    }
+    ~WithRawMethod_Vectorize() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Vectorize(::grpc::ServerContext* /*context*/, const ::hyperspace::VectorizeRequest* /*request*/, ::hyperspace::VectorizeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestVectorize(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(7, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_SearchText : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_SearchText() {
+      ::grpc::Service::MarkMethodRaw(8);
+    }
+    ~WithRawMethod_SearchText() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchText(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchTextRequest* /*request*/, ::hyperspace::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestSearchText(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(8, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
   class WithRawMethod_Delete : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Delete() {
-      ::grpc::Service::MarkMethodRaw(7);
+      ::grpc::Service::MarkMethodRaw(9);
     }
     ~WithRawMethod_Delete() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2646,7 +2953,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestDelete(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(7, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(9, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2655,7 +2962,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Search() {
-      ::grpc::Service::MarkMethodRaw(8);
+      ::grpc::Service::MarkMethodRaw(10);
     }
     ~WithRawMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2666,7 +2973,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearch(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(8, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(10, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2675,7 +2982,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_SearchBatch() {
-      ::grpc::Service::MarkMethodRaw(9);
+      ::grpc::Service::MarkMethodRaw(11);
     }
     ~WithRawMethod_SearchBatch() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2686,7 +2993,27 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearchBatch(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(9, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(11, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_SearchMultiCollection : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_SearchMultiCollection() {
+      ::grpc::Service::MarkMethodRaw(12);
+    }
+    ~WithRawMethod_SearchMultiCollection() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchMultiCollection(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchMultiCollectionRequest* /*request*/, ::hyperspace::SearchMultiCollectionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestSearchMultiCollection(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(12, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2695,7 +3022,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_GetNode() {
-      ::grpc::Service::MarkMethodRaw(10);
+      ::grpc::Service::MarkMethodRaw(13);
     }
     ~WithRawMethod_GetNode() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2706,7 +3033,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetNode(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(10, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(13, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2715,7 +3042,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_GetNeighbors() {
-      ::grpc::Service::MarkMethodRaw(11);
+      ::grpc::Service::MarkMethodRaw(14);
     }
     ~WithRawMethod_GetNeighbors() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2726,7 +3053,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetNeighbors(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(11, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(14, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2735,7 +3062,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_GetConceptParents() {
-      ::grpc::Service::MarkMethodRaw(12);
+      ::grpc::Service::MarkMethodRaw(15);
     }
     ~WithRawMethod_GetConceptParents() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2746,7 +3073,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetConceptParents(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(12, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(15, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2755,7 +3082,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Traverse() {
-      ::grpc::Service::MarkMethodRaw(13);
+      ::grpc::Service::MarkMethodRaw(16);
     }
     ~WithRawMethod_Traverse() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2766,7 +3093,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTraverse(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(13, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(16, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2775,7 +3102,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_FindSemanticClusters() {
-      ::grpc::Service::MarkMethodRaw(14);
+      ::grpc::Service::MarkMethodRaw(17);
     }
     ~WithRawMethod_FindSemanticClusters() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2786,7 +3113,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestFindSemanticClusters(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(14, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(17, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2795,7 +3122,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Monitor() {
-      ::grpc::Service::MarkMethodRaw(15);
+      ::grpc::Service::MarkMethodRaw(18);
     }
     ~WithRawMethod_Monitor() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2806,7 +3133,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestMonitor(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncWriter< ::grpc::ByteBuffer>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(15, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(18, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2815,7 +3142,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_TriggerSnapshot() {
-      ::grpc::Service::MarkMethodRaw(16);
+      ::grpc::Service::MarkMethodRaw(19);
     }
     ~WithRawMethod_TriggerSnapshot() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2826,7 +3153,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTriggerSnapshot(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(16, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(19, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2835,7 +3162,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_TriggerVacuum() {
-      ::grpc::Service::MarkMethodRaw(17);
+      ::grpc::Service::MarkMethodRaw(20);
     }
     ~WithRawMethod_TriggerVacuum() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2846,7 +3173,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTriggerVacuum(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(17, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(20, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2855,7 +3182,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_TriggerReconsolidation() {
-      ::grpc::Service::MarkMethodRaw(18);
+      ::grpc::Service::MarkMethodRaw(21);
     }
     ~WithRawMethod_TriggerReconsolidation() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2866,7 +3193,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestTriggerReconsolidation(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(18, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(21, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2875,7 +3202,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Configure() {
-      ::grpc::Service::MarkMethodRaw(19);
+      ::grpc::Service::MarkMethodRaw(22);
     }
     ~WithRawMethod_Configure() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2886,7 +3213,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestConfigure(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(19, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(22, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2895,7 +3222,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Replicate() {
-      ::grpc::Service::MarkMethodRaw(20);
+      ::grpc::Service::MarkMethodRaw(23);
     }
     ~WithRawMethod_Replicate() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2906,7 +3233,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestReplicate(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncWriter< ::grpc::ByteBuffer>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(20, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(23, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2915,7 +3242,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_SubscribeToEvents() {
-      ::grpc::Service::MarkMethodRaw(21);
+      ::grpc::Service::MarkMethodRaw(24);
     }
     ~WithRawMethod_SubscribeToEvents() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2926,7 +3253,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSubscribeToEvents(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncWriter< ::grpc::ByteBuffer>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(21, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(24, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2935,7 +3262,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_GetDigest() {
-      ::grpc::Service::MarkMethodRaw(22);
+      ::grpc::Service::MarkMethodRaw(25);
     }
     ~WithRawMethod_GetDigest() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2946,7 +3273,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetDigest(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(22, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(25, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2955,7 +3282,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_RebuildIndex() {
-      ::grpc::Service::MarkMethodRaw(23);
+      ::grpc::Service::MarkMethodRaw(26);
     }
     ~WithRawMethod_RebuildIndex() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2966,7 +3293,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestRebuildIndex(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(23, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(26, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2975,7 +3302,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_SyncHandshake() {
-      ::grpc::Service::MarkMethodRaw(24);
+      ::grpc::Service::MarkMethodRaw(27);
     }
     ~WithRawMethod_SyncHandshake() override {
       BaseClassMustBeDerivedFromService(this);
@@ -2986,7 +3313,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSyncHandshake(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(24, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(27, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -2995,7 +3322,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_SyncPull() {
-      ::grpc::Service::MarkMethodRaw(25);
+      ::grpc::Service::MarkMethodRaw(28);
     }
     ~WithRawMethod_SyncPull() override {
       BaseClassMustBeDerivedFromService(this);
@@ -3006,7 +3333,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSyncPull(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncWriter< ::grpc::ByteBuffer>* writer, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncServerStreaming(25, context, request, writer, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncServerStreaming(28, context, request, writer, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -3015,7 +3342,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_SyncPush() {
-      ::grpc::Service::MarkMethodRaw(26);
+      ::grpc::Service::MarkMethodRaw(29);
     }
     ~WithRawMethod_SyncPush() override {
       BaseClassMustBeDerivedFromService(this);
@@ -3026,7 +3353,7 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSyncPush(::grpc::ServerContext* context, ::grpc::ServerAsyncReader< ::grpc::ByteBuffer, ::grpc::ByteBuffer>* reader, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncClientStreaming(26, context, reader, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncClientStreaming(29, context, reader, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -3184,12 +3511,56 @@ class Database final {
       ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
   };
   template <class BaseClass>
+  class WithRawCallbackMethod_Vectorize : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_Vectorize() {
+      ::grpc::Service::MarkMethodRawCallback(7,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Vectorize(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_Vectorize() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Vectorize(::grpc::ServerContext* /*context*/, const ::hyperspace::VectorizeRequest* /*request*/, ::hyperspace::VectorizeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* Vectorize(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithRawCallbackMethod_SearchText : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_SearchText() {
+      ::grpc::Service::MarkMethodRawCallback(8,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->SearchText(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_SearchText() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchText(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchTextRequest* /*request*/, ::hyperspace::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* SearchText(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
   class WithRawCallbackMethod_Delete : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_Delete() {
-      ::grpc::Service::MarkMethodRawCallback(7,
+      ::grpc::Service::MarkMethodRawCallback(9,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Delete(context, request, response); }));
@@ -3211,7 +3582,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_Search() {
-      ::grpc::Service::MarkMethodRawCallback(8,
+      ::grpc::Service::MarkMethodRawCallback(10,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Search(context, request, response); }));
@@ -3233,7 +3604,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_SearchBatch() {
-      ::grpc::Service::MarkMethodRawCallback(9,
+      ::grpc::Service::MarkMethodRawCallback(11,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->SearchBatch(context, request, response); }));
@@ -3250,12 +3621,34 @@ class Database final {
       ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
   };
   template <class BaseClass>
+  class WithRawCallbackMethod_SearchMultiCollection : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_SearchMultiCollection() {
+      ::grpc::Service::MarkMethodRawCallback(12,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->SearchMultiCollection(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_SearchMultiCollection() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status SearchMultiCollection(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchMultiCollectionRequest* /*request*/, ::hyperspace::SearchMultiCollectionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* SearchMultiCollection(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
   class WithRawCallbackMethod_GetNode : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_GetNode() {
-      ::grpc::Service::MarkMethodRawCallback(10,
+      ::grpc::Service::MarkMethodRawCallback(13,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->GetNode(context, request, response); }));
@@ -3277,7 +3670,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_GetNeighbors() {
-      ::grpc::Service::MarkMethodRawCallback(11,
+      ::grpc::Service::MarkMethodRawCallback(14,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->GetNeighbors(context, request, response); }));
@@ -3299,7 +3692,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_GetConceptParents() {
-      ::grpc::Service::MarkMethodRawCallback(12,
+      ::grpc::Service::MarkMethodRawCallback(15,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->GetConceptParents(context, request, response); }));
@@ -3321,7 +3714,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_Traverse() {
-      ::grpc::Service::MarkMethodRawCallback(13,
+      ::grpc::Service::MarkMethodRawCallback(16,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Traverse(context, request, response); }));
@@ -3343,7 +3736,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_FindSemanticClusters() {
-      ::grpc::Service::MarkMethodRawCallback(14,
+      ::grpc::Service::MarkMethodRawCallback(17,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->FindSemanticClusters(context, request, response); }));
@@ -3365,7 +3758,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_Monitor() {
-      ::grpc::Service::MarkMethodRawCallback(15,
+      ::grpc::Service::MarkMethodRawCallback(18,
           new ::grpc::internal::CallbackServerStreamingHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const::grpc::ByteBuffer* request) { return this->Monitor(context, request); }));
@@ -3387,7 +3780,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_TriggerSnapshot() {
-      ::grpc::Service::MarkMethodRawCallback(16,
+      ::grpc::Service::MarkMethodRawCallback(19,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->TriggerSnapshot(context, request, response); }));
@@ -3409,7 +3802,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_TriggerVacuum() {
-      ::grpc::Service::MarkMethodRawCallback(17,
+      ::grpc::Service::MarkMethodRawCallback(20,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->TriggerVacuum(context, request, response); }));
@@ -3431,7 +3824,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_TriggerReconsolidation() {
-      ::grpc::Service::MarkMethodRawCallback(18,
+      ::grpc::Service::MarkMethodRawCallback(21,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->TriggerReconsolidation(context, request, response); }));
@@ -3453,7 +3846,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_Configure() {
-      ::grpc::Service::MarkMethodRawCallback(19,
+      ::grpc::Service::MarkMethodRawCallback(22,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Configure(context, request, response); }));
@@ -3475,7 +3868,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_Replicate() {
-      ::grpc::Service::MarkMethodRawCallback(20,
+      ::grpc::Service::MarkMethodRawCallback(23,
           new ::grpc::internal::CallbackServerStreamingHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const::grpc::ByteBuffer* request) { return this->Replicate(context, request); }));
@@ -3497,7 +3890,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_SubscribeToEvents() {
-      ::grpc::Service::MarkMethodRawCallback(21,
+      ::grpc::Service::MarkMethodRawCallback(24,
           new ::grpc::internal::CallbackServerStreamingHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const::grpc::ByteBuffer* request) { return this->SubscribeToEvents(context, request); }));
@@ -3519,7 +3912,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_GetDigest() {
-      ::grpc::Service::MarkMethodRawCallback(22,
+      ::grpc::Service::MarkMethodRawCallback(25,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->GetDigest(context, request, response); }));
@@ -3541,7 +3934,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_RebuildIndex() {
-      ::grpc::Service::MarkMethodRawCallback(23,
+      ::grpc::Service::MarkMethodRawCallback(26,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->RebuildIndex(context, request, response); }));
@@ -3563,7 +3956,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_SyncHandshake() {
-      ::grpc::Service::MarkMethodRawCallback(24,
+      ::grpc::Service::MarkMethodRawCallback(27,
           new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->SyncHandshake(context, request, response); }));
@@ -3585,7 +3978,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_SyncPull() {
-      ::grpc::Service::MarkMethodRawCallback(25,
+      ::grpc::Service::MarkMethodRawCallback(28,
           new ::grpc::internal::CallbackServerStreamingHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, const::grpc::ByteBuffer* request) { return this->SyncPull(context, request); }));
@@ -3607,7 +4000,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawCallbackMethod_SyncPush() {
-      ::grpc::Service::MarkMethodRawCallback(26,
+      ::grpc::Service::MarkMethodRawCallback(29,
           new ::grpc::internal::CallbackClientStreamingHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
                    ::grpc::CallbackServerContext* context, ::grpc::ByteBuffer* response) { return this->SyncPush(context, response); }));
@@ -3813,12 +4206,66 @@ class Database final {
     virtual ::grpc::Status StreamedInsertText(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::InsertTextRequest,::hyperspace::InsertResponse>* server_unary_streamer) = 0;
   };
   template <class BaseClass>
+  class WithStreamedUnaryMethod_Vectorize : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_Vectorize() {
+      ::grpc::Service::MarkMethodStreamed(7,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::hyperspace::VectorizeRequest, ::hyperspace::VectorizeResponse>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::hyperspace::VectorizeRequest, ::hyperspace::VectorizeResponse>* streamer) {
+                       return this->StreamedVectorize(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_Vectorize() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status Vectorize(::grpc::ServerContext* /*context*/, const ::hyperspace::VectorizeRequest* /*request*/, ::hyperspace::VectorizeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedVectorize(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::VectorizeRequest,::hyperspace::VectorizeResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_SearchText : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_SearchText() {
+      ::grpc::Service::MarkMethodStreamed(8,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::hyperspace::SearchTextRequest, ::hyperspace::SearchResponse>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::hyperspace::SearchTextRequest, ::hyperspace::SearchResponse>* streamer) {
+                       return this->StreamedSearchText(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_SearchText() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status SearchText(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchTextRequest* /*request*/, ::hyperspace::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedSearchText(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::SearchTextRequest,::hyperspace::SearchResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
   class WithStreamedUnaryMethod_Delete : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Delete() {
-      ::grpc::Service::MarkMethodStreamed(7,
+      ::grpc::Service::MarkMethodStreamed(9,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::DeleteRequest, ::hyperspace::DeleteResponse>(
             [this](::grpc::ServerContext* context,
@@ -3845,7 +4292,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Search() {
-      ::grpc::Service::MarkMethodStreamed(8,
+      ::grpc::Service::MarkMethodStreamed(10,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::SearchRequest, ::hyperspace::SearchResponse>(
             [this](::grpc::ServerContext* context,
@@ -3872,7 +4319,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_SearchBatch() {
-      ::grpc::Service::MarkMethodStreamed(9,
+      ::grpc::Service::MarkMethodStreamed(11,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::BatchSearchRequest, ::hyperspace::BatchSearchResponse>(
             [this](::grpc::ServerContext* context,
@@ -3894,12 +4341,39 @@ class Database final {
     virtual ::grpc::Status StreamedSearchBatch(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::BatchSearchRequest,::hyperspace::BatchSearchResponse>* server_unary_streamer) = 0;
   };
   template <class BaseClass>
+  class WithStreamedUnaryMethod_SearchMultiCollection : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_SearchMultiCollection() {
+      ::grpc::Service::MarkMethodStreamed(12,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::hyperspace::SearchMultiCollectionRequest, ::hyperspace::SearchMultiCollectionResponse>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::hyperspace::SearchMultiCollectionRequest, ::hyperspace::SearchMultiCollectionResponse>* streamer) {
+                       return this->StreamedSearchMultiCollection(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_SearchMultiCollection() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status SearchMultiCollection(::grpc::ServerContext* /*context*/, const ::hyperspace::SearchMultiCollectionRequest* /*request*/, ::hyperspace::SearchMultiCollectionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedSearchMultiCollection(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::SearchMultiCollectionRequest,::hyperspace::SearchMultiCollectionResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
   class WithStreamedUnaryMethod_GetNode : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_GetNode() {
-      ::grpc::Service::MarkMethodStreamed(10,
+      ::grpc::Service::MarkMethodStreamed(13,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::GetNodeRequest, ::hyperspace::GraphNode>(
             [this](::grpc::ServerContext* context,
@@ -3926,7 +4400,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_GetNeighbors() {
-      ::grpc::Service::MarkMethodStreamed(11,
+      ::grpc::Service::MarkMethodStreamed(14,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::GetNeighborsRequest, ::hyperspace::GetNeighborsResponse>(
             [this](::grpc::ServerContext* context,
@@ -3953,7 +4427,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_GetConceptParents() {
-      ::grpc::Service::MarkMethodStreamed(12,
+      ::grpc::Service::MarkMethodStreamed(15,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::GetConceptParentsRequest, ::hyperspace::GetConceptParentsResponse>(
             [this](::grpc::ServerContext* context,
@@ -3980,7 +4454,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Traverse() {
-      ::grpc::Service::MarkMethodStreamed(13,
+      ::grpc::Service::MarkMethodStreamed(16,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::TraverseRequest, ::hyperspace::TraverseResponse>(
             [this](::grpc::ServerContext* context,
@@ -4007,7 +4481,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_FindSemanticClusters() {
-      ::grpc::Service::MarkMethodStreamed(14,
+      ::grpc::Service::MarkMethodStreamed(17,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::FindSemanticClustersRequest, ::hyperspace::FindSemanticClustersResponse>(
             [this](::grpc::ServerContext* context,
@@ -4034,7 +4508,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_TriggerSnapshot() {
-      ::grpc::Service::MarkMethodStreamed(16,
+      ::grpc::Service::MarkMethodStreamed(19,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::Empty, ::hyperspace::StatusResponse>(
             [this](::grpc::ServerContext* context,
@@ -4061,7 +4535,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_TriggerVacuum() {
-      ::grpc::Service::MarkMethodStreamed(17,
+      ::grpc::Service::MarkMethodStreamed(20,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::Empty, ::hyperspace::StatusResponse>(
             [this](::grpc::ServerContext* context,
@@ -4088,7 +4562,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_TriggerReconsolidation() {
-      ::grpc::Service::MarkMethodStreamed(18,
+      ::grpc::Service::MarkMethodStreamed(21,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::ReconsolidationRequest, ::hyperspace::StatusResponse>(
             [this](::grpc::ServerContext* context,
@@ -4115,7 +4589,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Configure() {
-      ::grpc::Service::MarkMethodStreamed(19,
+      ::grpc::Service::MarkMethodStreamed(22,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::ConfigUpdate, ::hyperspace::StatusResponse>(
             [this](::grpc::ServerContext* context,
@@ -4142,7 +4616,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_GetDigest() {
-      ::grpc::Service::MarkMethodStreamed(22,
+      ::grpc::Service::MarkMethodStreamed(25,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::DigestRequest, ::hyperspace::DigestResponse>(
             [this](::grpc::ServerContext* context,
@@ -4169,7 +4643,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_RebuildIndex() {
-      ::grpc::Service::MarkMethodStreamed(23,
+      ::grpc::Service::MarkMethodStreamed(26,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::RebuildIndexRequest, ::hyperspace::StatusResponse>(
             [this](::grpc::ServerContext* context,
@@ -4196,7 +4670,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_SyncHandshake() {
-      ::grpc::Service::MarkMethodStreamed(24,
+      ::grpc::Service::MarkMethodStreamed(27,
         new ::grpc::internal::StreamedUnaryHandler<
           ::hyperspace::SyncHandshakeRequest, ::hyperspace::SyncHandshakeResponse>(
             [this](::grpc::ServerContext* context,
@@ -4217,14 +4691,14 @@ class Database final {
     // replace default version of method with streamed unary
     virtual ::grpc::Status StreamedSyncHandshake(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::SyncHandshakeRequest,::hyperspace::SyncHandshakeResponse>* server_unary_streamer) = 0;
   };
-  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<Service > > > > > > > > > > > > > > > > > > > > > > StreamedUnaryService;
+  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<Service > > > > > > > > > > > > > > > > > > > > > > > > > StreamedUnaryService;
   template <class BaseClass>
   class WithSplitStreamingMethod_Monitor : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithSplitStreamingMethod_Monitor() {
-      ::grpc::Service::MarkMethodStreamed(15,
+      ::grpc::Service::MarkMethodStreamed(18,
         new ::grpc::internal::SplitServerStreamingHandler<
           ::hyperspace::MonitorRequest, ::hyperspace::SystemStats>(
             [this](::grpc::ServerContext* context,
@@ -4251,7 +4725,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithSplitStreamingMethod_Replicate() {
-      ::grpc::Service::MarkMethodStreamed(20,
+      ::grpc::Service::MarkMethodStreamed(23,
         new ::grpc::internal::SplitServerStreamingHandler<
           ::hyperspace::ReplicationRequest, ::hyperspace::ReplicationLog>(
             [this](::grpc::ServerContext* context,
@@ -4278,7 +4752,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithSplitStreamingMethod_SubscribeToEvents() {
-      ::grpc::Service::MarkMethodStreamed(21,
+      ::grpc::Service::MarkMethodStreamed(24,
         new ::grpc::internal::SplitServerStreamingHandler<
           ::hyperspace::EventSubscriptionRequest, ::hyperspace::EventMessage>(
             [this](::grpc::ServerContext* context,
@@ -4305,7 +4779,7 @@ class Database final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithSplitStreamingMethod_SyncPull() {
-      ::grpc::Service::MarkMethodStreamed(25,
+      ::grpc::Service::MarkMethodStreamed(28,
         new ::grpc::internal::SplitServerStreamingHandler<
           ::hyperspace::SyncPullRequest, ::hyperspace::SyncVectorData>(
             [this](::grpc::ServerContext* context,
@@ -4327,7 +4801,7 @@ class Database final {
     virtual ::grpc::Status StreamedSyncPull(::grpc::ServerContext* context, ::grpc::ServerSplitStreamer< ::hyperspace::SyncPullRequest,::hyperspace::SyncVectorData>* server_split_streamer) = 0;
   };
   typedef WithSplitStreamingMethod_Monitor<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithSplitStreamingMethod_SyncPull<Service > > > > SplitStreamedService;
-  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithSplitStreamingMethod_Monitor<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithSplitStreamingMethod_SyncPull<Service > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedService;
+  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithSplitStreamingMethod_Monitor<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithSplitStreamingMethod_SyncPull<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedService;
 };
 
 }  // namespace hyperspace

@@ -196,6 +196,47 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         config.set_ef_search(ef_search_env);
         config.set_m(m_env);
 
+        let bm25_method = std::env::var("HS_BM25_METHOD")
+            .unwrap_or_else(|_| "bm25plus".to_string())
+            .to_lowercase();
+        let method = match bm25_method.as_str() {
+            "robertson" => hyperspace_core::bm25::Bm25Method::Robertson,
+            "lucene" => hyperspace_core::bm25::Bm25Method::Lucene,
+            "atire" => hyperspace_core::bm25::Bm25Method::Atire,
+            "bm25l" => hyperspace_core::bm25::Bm25Method::Bm25l,
+            _ => hyperspace_core::bm25::Bm25Method::Bm25Plus,
+        };
+        let k1 = std::env::var("HS_BM25_K1")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1.2);
+        let b = std::env::var("HS_BM25_B")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.75);
+        let delta = std::env::var("HS_BM25_DELTA")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.5);
+        let language = std::env::var("HS_BM25_LANGUAGE").unwrap_or_else(|_| "english".to_string());
+        let ngrams = std::env::var("HS_BM25_NGRAMS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1);
+        let fusion_method = std::env::var("HS_FUSION_METHOD")
+            .unwrap_or_else(|_| "rrf".to_string())
+            .to_lowercase();
+        config.set_fusion_method(fusion_method);
+
+        config.set_bm25_params(hyperspace_core::bm25::Bm25Params {
+            method,
+            k1,
+            b,
+            delta,
+            language,
+            ngrams,
+        });
+
         let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
         let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
@@ -1320,8 +1361,6 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(4)
             .max(1);
-        let hybrid_query = params.hybrid_query.clone();
-        let hybrid_alpha = params.hybrid_alpha;
         let use_wasserstein = params.use_wasserstein;
         let filters_owned = (!filters.is_empty()).then(|| filters.clone());
         let complex_filters_owned = (!complex_filters.is_empty()).then(|| complex_filters.to_vec());
@@ -1341,6 +1380,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         if use_blocking {
             // Convert to owned only when entering blocking task
             let processed_query = processed_query_cow.into_owned();
+            let mut search_params_owned = params.clone();
             tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let index = index_link.load();
@@ -1355,16 +1395,12 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     top_k
                 };
 
-                // === 1. Search the hot MemTable (in-RAM HNSW) ===
+                search_params_owned.top_k = search_k;
                 let mem_results = index.search(
                     &processed_query,
-                    search_k,
-                    ef_search,
                     filters_ref,
                     complex_filters_ref,
-                    hybrid_query.as_deref(),
-                    hybrid_alpha,
-                    use_wasserstein,
+                    &search_params_owned,
                 );
 
                 // === 2. Search cold chunks via MetaRouter (disk mmap) ===
@@ -1484,16 +1520,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
 
             // === 1. Search the hot MemTable (in-RAM HNSW) ===
-            let mem_results = index.search(
-                &processed_query,
-                top_k,
-                ef_search,
-                filters_ref,
-                complex_filters_ref,
-                hybrid_query.as_deref(),
-                hybrid_alpha,
-                use_wasserstein,
-            );
+            let mem_results =
+                index.search(&processed_query, filters_ref, complex_filters_ref, params);
 
             // === 2. Search cold chunks (skip for small queries - assume hot data) ===
             // Skip chunk search for small top_k to reduce latency

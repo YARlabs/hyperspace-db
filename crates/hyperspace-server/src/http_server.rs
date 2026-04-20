@@ -70,7 +70,7 @@ async fn validate_api_key(
                 }
             }
         }
-        
+
         // 3. Enforce Auth for API endpoints
         let path = request.uri().path();
         if path.starts_with("/api/") || path == "/metrics" {
@@ -485,7 +485,8 @@ async fn get_metrics(
             "cpu_usage_percent": cpu_usage_percent,
             "disk_usage_mb": disk_usage_mb,
             "is_admin": true
-        })).into_response();
+        }))
+        .into_response();
     }
 
     // --- Isolated SaaS User Metrics ---
@@ -861,6 +862,8 @@ async fn search_collection(
             hybrid_query: None,
             hybrid_alpha: None,
             use_wasserstein: payload.use_wasserstein.unwrap_or(false),
+            bm25_options: None,
+            fusion_method: None,
         };
         match col
             .search(
@@ -1366,8 +1369,8 @@ async fn get_swarm_peers(
     };
 
     // Need to get replication status from state
-    let replication_enabled = std::env::var("HS_REPLICATION_ALLOWED")
-        .unwrap_or_else(|_| "true".to_string()) == "true";
+    let replication_enabled =
+        std::env::var("HS_REPLICATION_ALLOWED").unwrap_or_else(|_| "true".to_string()) == "true";
 
     let count = peers.len();
     Json(SwarmStatus {

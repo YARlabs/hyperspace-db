@@ -54,7 +54,7 @@ Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the N
   </tr>
   <tr>
     <td>📡 <b>Agentic Workflows</b></td>
-    <td>Trigger <b>Memory Reconsolidation</b> via Flow Matching natively to shift paradigms. Connect CDC Streams via <code>subscribe_to_events</code> to trigger secondary models the millisecond a vector is stored.</td>
+    <td>Trigger <b>Memory Reconsolidation</b> via Flow Matching natively to shift paradigms. Connect CDC Streams via <code>subscribe_to_events</code> to trigger secondary models. <b>Hybrid Search (BM25)</b> now supports RRF fusion for state-of-the-art lexical + semantic retrieval.</td>
   </tr>
   <tr>
     <td>🧹 <b>Metadata-Driven Pruning</b></td>
@@ -245,17 +245,21 @@ tribunal = TribunalContext(client, collection_name="knowledge_graph")
 score = tribunal.evaluate_claim(concept_a_id=12, concept_b_id=45)
 ```
 
-## 🧠 Hybrid Search (RRF)
+## 🧠 Hybrid Search (BM25 + RRF)
 
-Combine the power of Hyperbolic Embeddings with traditional Keyword Search.
+Combine the power of Hyperbolic Embeddings with advanced BM25 lexical ranking.
 
 ```python
-# Search for semantic similarity AND keyword match (e.g. "iphone")
+# Search for semantic similarity AND keyword match (e.g. "iPhone 15")
 results = client.search(
     vector=[0.1]*8, 
     top_k=5, 
-    hybrid_query="iphone", 
-    hybrid_alpha=0.3
+    hybrid_query="iPhone 15", 
+    hybrid_alpha=0.7,  # 70% vector, 30% lexical
+    bm25={
+        "method": "bm25plus",
+        "language": "english"
+    }
 )
 ```
 
@@ -720,19 +724,19 @@ npx mcp-hyperspacedb@latest
 
 ---
 
-## 📦 SDKs (v3.0.x)
+## 📦 SDKs (v3.0.x Milestone)
 
-Official 1st-party drivers with full Delta Sync, Cognitive Math, and Event Subscriptions:
+Official 1st-party drivers with full **Functional Parity**, Delta Sync, and Cognitive Math:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3 |
-| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3 |
-| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3 |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` (In-Browser Embedded Engine) | ✅ v3 |
-| 🐹 **Go** | `sdks/go` | ✅ v3 |
-| 🎯 **Dart/Flutter** | `sdks/dart` (Mobile Offline-First) | ✅ v3 |
-| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` (Hardware/Native) | ✅ v3 |
+| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3.* |
+| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3.* |
+| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3.* |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v3.* |
+| 🐹 **Go** | `sdks/go` | ✅ v3.* |
+| 🎯 **Dart/Flutter** | `sdks/dart` | ✅ v3.* |
+| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v3.* |
 
 ---
 

@@ -219,6 +219,18 @@ message SearchTextRequest {
   uint32 top_k = 3;
   map<string, string> filter = 4;
   repeated Filter filters = 5;
+  optional Bm25Options bm25_options = 6;
+  optional float hybrid_alpha = 7;
+}
+
+message Bm25Options {
+  optional string method = 1; 
+  optional float k1 = 2;
+  optional float b = 3;
+  optional float delta = 4;
+  optional string language = 5;
+  optional uint32 ngrams = 6;
+  optional string fusion_method = 7; 
 }
 
 
@@ -244,6 +256,7 @@ message SearchRequest {
   optional string hybrid_query = 6;
   optional float hybrid_alpha = 7;
   bool use_wasserstein = 8;
+  optional Bm25Options bm25_options = 9;
 }
 
 message Filter {

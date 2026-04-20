@@ -1,15 +1,23 @@
+# 🧠 Hybrid Search (BM25 + RRF)
 
-# 🧠 Hybrid Search
-
-HyperspaceDB combines **Hyperbolic Vector Search** with **Lexical (Keyword) Search** to provide the best of both worlds.
-
-This is powered by **Reciprocal Rank Fusion (RRF)**, which normalizes scores from both engines and merges them.
+HyperspaceDB combines **Hyperbolic Vector Search** with state-of-the-art **BM25 Lexical Ranking** to deliver maximum retrieval accuracy.
 
 ## Conceptual Flow
 
-1. **Vector Search**: Finds semantically similar items (e.g. "smartphone" finds "iPhone").
-2. **Keyword Search**: Finds exact token matches in metadata (e.g. "iphone" finds items with "iphone" in title).
-3. **RRF Fusion**: `Score = 1/(k + rank_vec) + 1/(k + rank_lex)`.
+1. **Semantic Branch (Dense)**: Finds conceptually similar items using HNSW (L2, Cosine, Poincaré).
+2. **Lexical Branch (Sparse)**: Finds exact token matches using a BM25-optimized inverted index.
+3. **Fusion Layer**: Scores from both branches are fused using **Reciprocal Rank Fusion (RRF)** or **Linear Weighted Fusion**.
+
+`RRF Score = 1/(k + rank_vec) + 1/(k + rank_lex)` (where `k` defaults to 60).
+
+## BM25 Options
+
+You can tune the lexical scavenger by providing a `bm25` configuration:
+
+- `method`: `"bm25"` (classic), `"bm25plus"` (recommended for long docs), `"lucene"`, `"atire"`.
+- `k1`: Term frequency saturation (default 1.2).
+- `b`: Length normalization impact (default 0.75).
+- `language`: Stemmer choice (e.g. `"english"`, `"russian"`).
 
 ## API Usage
 
@@ -18,23 +26,47 @@ This is powered by **Reciprocal Rank Fusion (RRF)**, which normalizes scores fro
 ```python
 results = client.search(
     vector=query_vector,
+    hybrid_query="apple macbook air",
+    hybrid_alpha=0.7,  # 70% vector weight
     top_k=10,
-    hybrid_query="apple macbook",  # Lexical query
-    hybrid_alpha=0.5               # Balance factor (default 60.0 in RRF usually, but exposed as alpha here)
+    bm25={
+        "method": "bm25plus",
+        "language": "english"
+    }
 )
+```
+
+### TypeScript
+
+```ts
+const results = await client.search(vector, 10, "collection", {
+  hybridQuery: "apple macbook",
+  hybridAlpha: 0.7,
+  bm25: { method: "bm25plus" }
+});
 ```
 
 ### Rust
 
 ```rust
-let results = client.search_advanced(
-    query_vector,
-    10,
-    vec![], 
-    Some(("apple macbook".to_string(), 0.5))
-).await?;
+let results = client.search(SearchRequest {
+    collection: "docs".into(),
+    vector: query_vector,
+    top_k: 10,
+    hybrid_query: Some("macbook".into()),
+    hybrid_alpha: Some(0.7),
+    bm25_options: Some(Bm25Options {
+        method: "bm25plus".into(),
+        ..Default::default()
+    }),
+    ..Default::default()
+}).await?;
 ```
 
 ## Tokenization
 
-Currently, all string metadata values are automatically tokenized (split by whitespace, lowercase, alphanumeric) and indexed in an inverted index.
+The engine uses a built-in multi-lingual tokenizer that performs:
+- Case folding (lower-casing).
+- Alpha-numeric filtering.
+- Stop-word removal (optional).
+- Language-specific stemming based on `bm25_options.language`.

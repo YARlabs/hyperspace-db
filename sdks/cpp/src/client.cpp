@@ -144,13 +144,20 @@ std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const s
     return output;
 }
 
-std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection) {
+std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha) {
     hyperspace_grpc::SearchRequest request;
     request.set_top_k(top_k);
     request.set_collection(collection);
 
     for (double v : vector) {
         request.add_vector(v);
+    }
+    
+    if (!hybrid_query.empty()) {
+        request.set_hybrid_query(hybrid_query);
+    }
+    if (hybrid_alpha != 0.0f) {
+        request.set_hybrid_alpha(hybrid_alpha);
     }
 
     google::protobuf::Arena arena;
@@ -226,11 +233,15 @@ std::vector<std::vector<SearchResult>> HyperspaceClient::SearchBatch(const std::
     return output;
 }
 
-std::vector<SearchResult> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection) {
+std::vector<SearchResult> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection, float hybrid_alpha) {
     hyperspace_grpc::SearchTextRequest request;
     request.set_text(text);
     request.set_top_k(top_k);
     request.set_collection(collection);
+    
+    if (hybrid_alpha != 0.0f) {
+        request.set_hybrid_alpha(hybrid_alpha);
+    }
 
     google::protobuf::Arena arena;
     auto* response = google::protobuf::Arena::CreateMessage<hyperspace_grpc::SearchResponse>(&arena);

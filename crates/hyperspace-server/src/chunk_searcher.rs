@@ -86,17 +86,17 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
         storage_f32,
     )?;
 
-    // Search inside the loaded chunk.
-    let results = chunk_index.search(
-        query,
-        k,
+    let params = hyperspace_core::SearchParams {
+        top_k: k,
         ef_search,
-        filters,
-        complex_filters,
-        None, // hybrid_query not supported on chunk level (applied only on MemTable)
-        None, // hybrid_alpha
+        hybrid_query: None,
+        hybrid_alpha: None,
         use_wasserstein,
-    );
+        bm25_options: None,
+        fusion_method: None,
+    };
+
+    let results = chunk_index.search(query, filters, complex_filters, &params);
 
     Ok(results)
 }

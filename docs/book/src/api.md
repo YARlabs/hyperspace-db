@@ -108,8 +108,20 @@ message SearchRequest {
   // Hybrid search
   optional string hybrid_query = 6;
   optional float hybrid_alpha = 7;
+  // BM25 Lexical Options
+  optional Bm25Options bm25_options = 9;
   // Wasserstein 1D CDF O(N) distance
   optional bool use_wasserstein = 8;
+}
+
+message Bm25Options {
+  string method = 1;          // "bm25", "bm25plus", "lucene", "atire"
+  float k1 = 2;               // default 1.2
+  float b = 3;                // default 0.75
+  float delta = 4;            // default 1.0 (for bm25plus)
+  string language = 5;        // "english", "russian", etc.
+  uint32 ngrams = 6;          // 1 (unigram), 2 (bigram)
+  string fusion_method = 7;   // "rrf" (default), "linear"
 }
 
 #### Geometric Filters (New in v3.0)
@@ -366,6 +378,8 @@ message SearchTextRequest {
   string text = 2;
   uint32 top_k = 3;
   repeated Filter filters = 4;
+  optional float hybrid_alpha = 5;
+  optional Bm25Options bm25_options = 6;
 }
 ```
 

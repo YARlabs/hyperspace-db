@@ -145,13 +145,31 @@ func (c *HyperspaceClient) Vectorize(ctx context.Context, text string, metric st
 	return resp.Vector, nil
 }
 
-// Search performs ANN lookup with optional geometric filters
-func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK uint32, collection string, filters []*pb.Filter) ([]*pb.SearchResult, error) {
+// SearchParams contains optional parameters for advanced vector search
+type SearchParams struct {
+	Filters      []*pb.Filter
+	HybridQuery  string
+	HybridAlpha  float32
+	BM25Options  *pb.Bm25Options
+}
+
+// Search performs ANN lookup with optional geometric filters, BM25 factors, and hybrid ranking
+func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK uint32, collection string, params *SearchParams) ([]*pb.SearchResult, error) {
 	req := &pb.SearchRequest{
 		Vector:     vector,
 		TopK:       topK,
 		Collection: collection,
-		Filters:    filters,
+	}
+
+	if params != nil {
+		req.Filters = params.Filters
+		if params.HybridQuery != "" {
+			req.HybridQuery = &params.HybridQuery
+		}
+		if params.HybridAlpha != 0 {
+			req.HybridAlpha = &params.HybridAlpha
+		}
+		req.Bm25Options = params.BM25Options
 	}
 
 	res, err := c.client.Search(c.withContext(ctx), req)
@@ -162,13 +180,18 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 	return res.Results, nil
 }
 
-// SearchText performs ANN lookup using text input (vectorized on server)
-func (c *HyperspaceClient) SearchText(ctx context.Context, text string, topK uint32, collection string) ([]*pb.SearchResult, error) {
+// SearchText performs ANN lookup using text input (vectorized on server) or BM25 lexical ranking
+func (c *HyperspaceClient) SearchText(ctx context.Context, text string, topK uint32, collection string, hybridAlpha float32, bm25 *pb.Bm25Options) ([]*pb.SearchResult, error) {
 	req := &pb.SearchTextRequest{
 		Text:       text,
 		TopK:       topK,
 		Collection: collection,
 	}
+	if hybridAlpha != 0 {
+		req.HybridAlpha = &hybridAlpha
+	}
+	req.Bm25Options = bm25
+
 	res, err := c.client.SearchText(c.withContext(ctx), req)
 	if err != nil {
 		return nil, err

@@ -70,6 +70,50 @@ let responses = client.search_batch(
 
 Each entry in `responses` corresponds to one query vector.
 
+## Hybrid & Lexical Search (BM25)
+
+HyperspaceDB supports advanced BM25 lexical ranking and hybrid fusion.
+
+### 1. Pure Lexical Search
+Use `search_text` without serving a vector. You can optionally configure BM25 parameters:
+
+```rust
+use hyperspace_proto::hyperspace::Bm25Options;
+
+let bm25_config = Bm25Options {
+    method: Some("bm25plus".to_string()),
+    k1: Some(1.2),
+    b: Some(0.75),
+    language: Some("english".to_string()),
+    ..Default::default()
+};
+
+let results = client.search_text(
+    "hyperspatial retrieval".to_string(),
+    10,
+    Some("docs".to_string()),
+    Some(bm25_config),
+).await?;
+```
+
+### 2. Hybrid Search
+Combine semantic vector search with BM25 lexical ranking using `search_hybrid`.
+
+```rust
+let vector = vec![0.1, -0.2, 0.5];
+let text = "quantum computing".to_string();
+let alpha = 0.7; // weighting: 70% vector, 30% lexical
+
+let results = client.search_hybrid(
+    vector,
+    text,
+    alpha,
+    10,
+    Some("docs".to_string()),
+    None, // Use collection defaults for BM25
+).await?;
+```
+
 ## f32 Helpers
 
 When your app keeps Euclidean vectors in `f32`, use conversion helpers:
@@ -90,7 +134,8 @@ The crate converts to protocol `f64` once per call.
 - `insert_text` (server-side vectorization and storage)
 - `vectorize` (convert text to vector on server)
 - `search`, `search_f32`, `search_advanced`
-- `search_text` (search with text input, vectorized on server)
+- `search_text` (lexical search, vectorized on server)
+- `search_hybrid` (combined lexical + vector search)
 - `search_batch`, `search_batch_f32`, `search_wasserstein`, `search_multi_collection`
 - `delete`
 - `configure`

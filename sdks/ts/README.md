@@ -147,6 +147,27 @@ const results = await client.search([0.1, 0.2, 0.3], 10, "coll", {
 });
 ```
 
+### Hybrid & Lexical Search (BM25)
+
+HyperspaceDB supports combined lexical and vector ranking.
+
+```ts
+// Hybrid Search (Semantic Vector + BM25 Lexical)
+const results = await client.search([0.1, -0.2, 0.5], 10, "coll", {
+  hybridQuery: "hybrid search implementation",
+  hybridAlpha: 0.7, // 70% vector weight
+  bm25: {
+    method: "bm25plus",
+    language: "english"
+  }
+});
+
+// Or Pure Lexical Search via searchText
+const lexicalResults = await client.searchText("full-text query", 10, "coll", {
+  bm25: { method: "lucene" }
+});
+```
+
 ### `searchBatch(vectors, topK, collection?)`
 
 Run multiple searches in one gRPC request to reduce RPC overhead.

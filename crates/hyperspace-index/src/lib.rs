@@ -8,6 +8,9 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::cast_possible_truncation)]
 
+pub mod stopwords;
+pub mod tokenizer;
+
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
 use rand::Rng;
@@ -910,26 +913,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     pub fn search(
         &self,
         query: &[f64],
-        k: usize,
-        ef_search: usize,
         filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
-        hybrid_query: Option<&str>,
-        hybrid_alpha: Option<f32>,
-        use_wasserstein: bool,
+        params: &hyperspace_core::SearchParams,
     ) -> Vec<(NodeId, f64)> {
         // If hybrid query is present, we use RRF Fusion
-        if let Some(text) = hybrid_query {
-            return self.search_hybrid(
-                query,
-                k,
-                ef_search,
-                filter,
-                complex_filters,
-                text,
-                hybrid_alpha.unwrap_or(60.0),
-                use_wasserstein,
-            );
+        if let Some(text) = params.hybrid_query.as_deref() {
+            return self.search_hybrid(query, filter, complex_filters, text, params);
         }
 
         let allowed_bitmap = self.build_allowed_bitmap(filter, complex_filters);
@@ -1006,10 +996,15 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         }
 
         // 2. Local search phase: Layer 0 with Filter
-        let mut candidates =
-            self.search_layer0(curr_node, &q_vec, k, ef_search, allowed_bitmap.as_ref());
+        let mut candidates = self.search_layer0(
+            curr_node,
+            &q_vec,
+            params.top_k,
+            params.ef_search,
+            allowed_bitmap.as_ref(),
+        );
 
-        if use_wasserstein {
+        if params.use_wasserstein {
             for cand in &mut candidates {
                 let vec = self.get_vector(cand.0);
                 cand.1 =
@@ -1017,7 +1012,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
             candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             // Ensure we keep only top k
-            candidates.truncate(k);
+            candidates.truncate(params.top_k);
         }
 
         candidates
@@ -2171,29 +2166,52 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         level
     }
 
-    fn tokenize(text: &str) -> Vec<String> {
-        let mut tokens = Vec::new();
-        for word in text.split_whitespace() {
-            let mut buf = String::with_capacity(word.len());
-            for c in word.chars() {
-                if c.is_alphanumeric() {
-                    for lc in c.to_lowercase() {
-                        buf.push(lc);
-                    }
+    fn get_tokenizer(
+        language: &str,
+    ) -> dashmap::mapref::one::Ref<'static, String, crate::tokenizer::Tokenizer> {
+        static TOKENIZERS: std::sync::OnceLock<
+            dashmap::DashMap<String, crate::tokenizer::Tokenizer>,
+        > = std::sync::OnceLock::new();
+
+        let map = TOKENIZERS.get_or_init(dashmap::DashMap::new);
+        if !map.contains_key(language) {
+            let tok = crate::tokenizer::Tokenizer::builder()
+                .language(language)
+                .build()
+                .unwrap_or_else(|_| crate::tokenizer::Tokenizer::default());
+            map.insert(language.to_string(), tok);
+        }
+        map.get(language).unwrap()
+    }
+
+    fn tokenize(text: &str, config: &GlobalConfig) -> Vec<String> {
+        let params = config.get_bm25_params();
+        let mut tokens = Self::get_tokenizer(&params.language).tokenize(text);
+
+        if params.ngrams > 1 {
+            let limit = params.ngrams as usize;
+            let unigrams = tokens.clone();
+            for n in 2..=limit {
+                for window in unigrams.windows(n) {
+                    tokens.push(window.join("_"));
                 }
-            }
-            if !buf.is_empty() {
-                tokens.push(buf);
             }
         }
         tokens
     }
 
-    fn build_doc_term_stats(meta: &HashMap<String, String>) -> (HashMap<String, u16>, u32) {
+    fn build_doc_term_stats(
+        meta: &HashMap<String, String>,
+        config: &GlobalConfig,
+    ) -> (HashMap<String, u16>, u32) {
         let mut term_freq = HashMap::new();
         let mut doc_len: u32 = 0;
-        for value in meta.values() {
-            for token in Self::tokenize(value) {
+
+        for (key, value) in meta {
+            if key.starts_with("__hs_") {
+                continue;
+            }
+            for token in Self::tokenize(value, config) {
                 doc_len = doc_len.saturating_add(1);
                 let entry = term_freq.entry(token).or_insert(0_u16);
                 *entry = (*entry).saturating_add(1_u16);
@@ -2209,7 +2227,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 .fetch_sub(u64::from(old_len), Ordering::Relaxed);
         }
         if let Some(old_meta) = self.metadata.forward.get(&id) {
-            let (term_freq, _) = Self::build_doc_term_stats(old_meta.value());
+            let (term_freq, _) = Self::build_doc_term_stats(old_meta.value(), &self.config);
             for token in term_freq.keys() {
                 let token_key = format!("_txt:{token}");
                 if let Some(mut bitmap) = self.metadata.inverted.get_mut(&token_key) {
@@ -2232,7 +2250,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     fn upsert_doc_lexical_stats(&self, id: NodeId, meta: &HashMap<String, String>) {
         self.remove_doc_lexical_stats(id);
-        let (term_freq, doc_len) = Self::build_doc_term_stats(meta);
+        let (term_freq, doc_len) = Self::build_doc_term_stats(meta, &self.config);
         self.metadata.doc_token_len.insert(id, doc_len);
         self.metadata
             .total_token_len
@@ -2264,36 +2282,27 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     }
 
     // RRF Fusion Logic
-    #[allow(clippy::too_many_arguments)]
     fn search_hybrid(
         &self,
         query: &[f64],
-        k: usize,
-        ef_search: usize,
         filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
         text: &str,
-        alpha: f32,
-        use_wasserstein: bool,
+        params: &hyperspace_core::SearchParams,
     ) -> Vec<(NodeId, f64)> {
         // 1. Get Vector Search Results (Semantic) -> Top K*2 for recall
         // We reuse the basic search but with NO hybrid query to avoid recursion
-        let vec_k = k * 2;
-        let vector_results = self.search(
-            query,
-            vec_k,
-            ef_search,
-            filter,
-            complex_filters,
-            None,
-            None,
-            use_wasserstein,
-        );
+        let vec_k = params.top_k * 2;
+        let mut inner_params = params.clone();
+        inner_params.hybrid_query = None;
+        inner_params.top_k = vec_k;
+
+        let vector_results = self.search(query, filter, complex_filters, &inner_params);
 
         // 2. BM25 lexical ranking over the same filtered space.
-        let tokens = Self::tokenize(text);
+        let tokens = Self::tokenize(text, &self.config);
         if tokens.is_empty() {
-            return vector_results.into_iter().take(k).collect();
+            return vector_results.into_iter().take(params.top_k).collect();
         }
         let mut uniq_tokens = std::collections::HashSet::new();
         for token in tokens {
@@ -2327,59 +2336,119 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             self.metadata.total_token_len.load(Ordering::Relaxed) as f64 / total_docs
         }
         .max(1.0);
-        let k1 = 1.2_f64;
-        let b = 0.75_f64;
+        let bm25_params = params
+            .bm25_options
+            .clone()
+            .unwrap_or_else(|| self.config.get_bm25_params());
 
-        let mut keyword_scores: HashMap<u32, f64> = HashMap::new();
-        for token in &uniq_tokens {
-            let Some(doc_freqs) = self.metadata.term_doc_freq.get(token) else {
-                continue;
-            };
+        let keyword_scores = uniq_tokens
+            .into_par_iter()
+            .fold(HashMap::new, |mut acc, token| {
+                if let Some(doc_freqs) = self.metadata.term_doc_freq.get(&token) {
+                    let df = self
+                        .metadata
+                        .token_df
+                        .get(&token)
+                        .map_or_else(|| doc_freqs.value().len() as u32, |v| *v)
+                        .max(1);
 
-            let df = self
-                .metadata
-                .token_df
-                .get(token)
-                .map_or_else(|| doc_freqs.len() as f64, |v| f64::from(*v))
-                .max(1.0);
-            let idf = (((total_docs - df + 0.5) / (df + 0.5)) + 1.0).ln();
+                    for &(id, tf) in doc_freqs.value() {
+                        if !is_allowed(id) {
+                            continue;
+                        }
+                        let tf_f32 = f32::from(tf);
+                        let dl = self
+                            .metadata
+                            .doc_token_len
+                            .get(&id)
+                            .map_or(0.0, |v| *v as f32)
+                            .max(1.0);
 
-            for &(id, tf) in doc_freqs.iter() {
-                if !is_allowed(id) {
-                    continue;
+                        let score = f64::from(hyperspace_core::bm25::score(
+                            bm25_params.method,
+                            tf_f32,
+                            dl,
+                            avgdl as f32,
+                            global_docs as u32, // Note: not total_docs (f64)
+                            df,
+                            bm25_params.k1,
+                            bm25_params.b,
+                            bm25_params.delta,
+                        ));
+
+                        *acc.entry(id).or_insert(0.0) += score;
+                    }
                 }
-                let tf = f64::from(tf);
-                let dl = self
-                    .metadata
-                    .doc_token_len
-                    .get(&id)
-                    .map_or(0.0, |v| f64::from(*v))
-                    .max(1.0);
-                let denom = tf + k1 * (1.0 - b + b * (dl / avgdl));
-                let score = idf * (tf * (k1 + 1.0) / denom);
-                *keyword_scores.entry(id).or_insert(0.0) += score;
-            }
-        }
+                acc
+            })
+            .reduce(HashMap::new, |mut a, b| {
+                for (k, v) in b {
+                    *a.entry(k).or_insert(0.0) += v;
+                }
+                a
+            });
 
         let mut keyword_results: Vec<(u32, f64)> = keyword_scores.into_iter().collect();
         keyword_results.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-        // 3. RRF Fusion
-        // RRF_score = 1 / (alpha + rank_vec) + 1 / (alpha + rank_key)
-
+        // 3. Fusion
         let mut final_scores: std::collections::HashMap<u32, f32> =
             std::collections::HashMap::new();
 
-        // Process Vector Ranks (1-based)
-        for (rank, (id, _dist)) in vector_results.iter().enumerate() {
-            let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
-            *final_scores.entry(*id).or_default() += rrf;
-        }
+        let fusion_method = params
+            .fusion_method
+            .clone()
+            .unwrap_or_else(|| self.config.get_fusion_method());
+        let alpha = params.hybrid_alpha.unwrap_or(60.0);
 
-        // Process Keyword Ranks
-        for (rank, (id, _score)) in keyword_results.iter().enumerate() {
-            let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
-            *final_scores.entry(*id).or_default() += rrf;
+        if fusion_method == "weighted" {
+            let v_min = vector_results
+                .iter()
+                .map(|&(_, d)| d)
+                .fold(f64::INFINITY, f64::min);
+            let v_max = vector_results
+                .iter()
+                .map(|&(_, d)| d)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let v_range = (v_max - v_min).max(1e-9);
+
+            let k_min = keyword_results
+                .iter()
+                .map(|&(_, s)| s)
+                .fold(f64::INFINITY, f64::min);
+            let k_max = keyword_results
+                .iter()
+                .map(|&(_, s)| s)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let k_range = (k_max - k_min).max(1e-9);
+
+            let vec_alpha = alpha.clamp(0.0, 1.0);
+            let key_alpha = 1.0 - vec_alpha;
+
+            // Distance: smaller is better -> inverted normalized score [0, 1]
+            for (id, dist) in &vector_results {
+                let norm_score = 1.0 - ((dist - v_min) / v_range);
+                *final_scores.entry(*id).or_default() += (norm_score as f32) * vec_alpha;
+            }
+
+            // BM25: larger is better -> normalized score [0, 1]
+            for (id, score) in &keyword_results {
+                let norm_score = (score - k_min) / k_range;
+                *final_scores.entry(*id).or_default() += (norm_score as f32) * key_alpha;
+            }
+        } else {
+            // RRF Fusion (Default)
+            // Process Vector Ranks (1-based)
+            for (rank, (id, _dist)) in vector_results.iter().enumerate() {
+                let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
+                *final_scores.entry(*id).or_default() += rrf;
+            }
+
+            // Process Keyword Ranks
+            for (rank, (id, _score)) in keyword_results.iter().enumerate() {
+                let rrf = 1.0 / (alpha + (rank as f32 + 1.0));
+                *final_scores.entry(*id).or_default() += rrf;
+            }
         }
 
         // Sort Final
@@ -2397,7 +2466,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // Limit to K
         final_ranking
             .into_iter()
-            .take(k)
+            .take(params.top_k)
             .map(|(id, score)| (id, f64::from(10.0 - score)))
             .collect()
     }

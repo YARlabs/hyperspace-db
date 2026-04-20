@@ -97,6 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             hybrid_query: None,
             hybrid_alpha: None,
             use_wasserstein: false,
+            bm25_options: None,
         })
         .await?;
 

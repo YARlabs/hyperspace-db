@@ -213,12 +213,12 @@ async fn test_delta_sync() {
     // Phase 4: Transfer vectors from dirty buckets
     // Build sets of IDs each node already has (to skip duplicates)
     let b_existing_ids: std::collections::HashSet<u32> = col_b
-        .peek(col_b.count().max(1))
+        .peek(col_b.count().max(1), 0)
         .into_iter()
         .map(|(id, _, _)| id)
         .collect();
     let a_existing_ids: std::collections::HashSet<u32> = col_a
-        .peek(col_a.count().max(1))
+        .peek(col_a.count().max(1), 0)
         .into_iter()
         .map(|(id, _, _)| id)
         .collect();

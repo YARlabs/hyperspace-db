@@ -39,6 +39,7 @@ collection = "docs_py"
 client.delete_collection(collection)
 client.create_collection(collection, dimension=3, metric="cosine")
 
+# id is now the first argument
 client.insert(
     id=1,
     vector=[0.1, 0.2, 0.3],
@@ -72,6 +73,47 @@ batch_results = client.search_batch(
 ```
 
 `search_batch` reduces per-request RPC overhead and should be preferred for high concurrency.
+
+## Hybrid & Lexical Search (BM25)
+
+HyperspaceDB supports advanced BM25 lexical ranking and hybrid fusion.
+
+### 1. Pure Lexical Search (BM25)
+Use `search_text` for full-text search. You can explicitly set BM25 scoring parameters:
+
+```python
+results = client.search_text(
+    text="quantum leap",
+    top_k=10,
+    collection="docs",
+    bm25_options={
+        "method": "bm25plus",
+        "k1": 1.2,
+        "b": 0.75,
+        "language": "english"
+    }
+)
+```
+
+### 2. Hybrid Search
+Combine semantic vector results with lexical ranking. You can provide a pre-computed `vector` and a `hybrid_query` for lexical matching:
+
+```python
+results = client.search(
+    vector=[0.1, 0.2, 0.3],
+    hybrid_query="quantum computing",
+    hybrid_alpha=0.7, # 70% vector weight, 30% lexical
+    top_k=10,
+    collection="docs"
+)
+
+# Or if using query_text for auto-embedding:
+results = client.search(
+    query_text="quantum computing",
+    hybrid_alpha=0.7,
+    collection="docs"
+)
+```
 
 ## Geometric Filters (New in v3.0)
 
@@ -108,16 +150,21 @@ results = client.search(
 
 ### Data Operations
 
-- `insert(id, vector=None, document=None, metadata=None, collection="", durability=Durability.DEFAULT) -> bool`
+- `insert(id, vector=None, document=None, metadata=None, typed_metadata=None, collection="", durability=Durability.DEFAULT) -> bool`
 - `insert_text(id, text, metadata=None, collection="", durability=Durability.DEFAULT) -> bool`
 - `vectorize(text, metric="l2") -> list[float]`
-- `batch_insert(vectors, ids, metadatas=None, collection="", durability=Durability.DEFAULT) -> bool`
-- `search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, collection="") -> list[dict]`
-- `search_text(text, top_k=10, filters=None, collection="") -> list[dict]`
+- `batch_insert(vectors, ids, metadatas=None, typed_metadatas=None, collection="", durability=Durability.DEFAULT) -> bool`
+- `search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, bm25=None, collection="") -> list[dict]`
+- `search_text(text, top_k=10, filter=None, filters=None, hybrid_alpha=None, bm25=None, collection="") -> list[dict]`
 - `search_batch(vectors, top_k=10, collection="") -> list[list[dict]]`
-- `search_wasserstein(vector, top_k=10, collection="") -> list[dict]`
 - `search_multi_collection(vector, collections, top_k=10) -> dict[str, list[dict]]`
 - `search_multi_collection_text(text, collections, top_k=10) -> dict[str, list[dict]]`
+- `delete(id, collection="") -> bool`
+- `get_node(id, layer=0, collection="") -> dict`
+- `get_neighbors(id, layer=0, limit=64, offset=0, collection="") -> list[dict]`
+- `get_concept_parents(id, layer=0, limit=32, collection="") -> list[dict]`
+- `traverse(start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None, collection="") -> list[dict]`
+- `find_semantic_clusters(layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000, collection="") -> list[list[int]]`
 
 For `filters` with `type="range"`, decimal thresholds are supported (`gte_f64/lte_f64` in gRPC payload are set automatically for non-integer values).
 
@@ -129,6 +176,9 @@ For `filters` with `type="range"`, decimal thresholds are supported (`gte_f64/lt
 - `configure(ef_search=None, ef_construction=None, collection="") -> bool`
 - `trigger_reconsolidation(collection, target_vector, learning_rate) -> bool`
 - `subscribe_to_events(types=None, collection=None) -> Iterator[dict]`
+- `get_digest(collection="") -> dict`
+- `sync_handshake(collection, client_buckets, client_logical_clock=0, client_count=0) -> dict`
+- `sync_pull(collection, bucket_indices) -> Iterator[dict]`
 
 `filter_query` example:
 ```python

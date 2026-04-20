@@ -94,8 +94,8 @@ private:
         const std::shared_ptr<hyperspace_interfaces::srv::SearchText::Request> request,
         std::shared_ptr<hyperspace_interfaces::srv::SearchText::Response> response)
     {
-        RCLCPP_INFO(this->get_logger(), "Searching for '%s' in [%s]", request->query.c_str(), request->collection.c_str());
-        auto results = client_->SearchText(request->query, request->top_k, request->collection);
+        RCLCPP_INFO(this->get_logger(), "Searching for '%s' in [%s] (Alpha: %f)", request->query.c_str(), request->collection.c_str(), request->hybrid_alpha);
+        auto results = client_->SearchText(request->query, request->top_k, request->collection, request->hybrid_alpha);
         
         for (const auto& r : results) {
             hyperspace_interfaces::msg::SearchResult msg;

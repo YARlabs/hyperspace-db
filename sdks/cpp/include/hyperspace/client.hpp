@@ -38,9 +38,9 @@ public:
     bool Delete(uint32_t id, const std::string& collection = "");
     bool BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection = "");
     std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
-    std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "");
+    std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0);
     std::vector<std::vector<SearchResult>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
-    std::vector<SearchResult> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "");
+    std::vector<SearchResult> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0);
     
     // Sync API signatures
     bool SyncHandshake(const std::string& collection, const std::vector<uint64_t>& client_buckets, uint64_t client_logical_clock, uint64_t client_count, std::vector<uint32_t>& out_diff_buckets);

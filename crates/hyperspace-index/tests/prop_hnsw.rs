@@ -59,7 +59,16 @@ proptest! {
         for (i, vec) in vectors.iter().enumerate() {
             let empty_filter = HashMap::new();
             // Use ef=200 to ensure we find it if it's there
-            let results = index.search(vec, 1, 200, &empty_filter, &[], None, None, false);
+            let search_params = hyperspace_core::SearchParams {
+                top_k: 1,
+                ef_search: 200,
+                hybrid_query: None,
+                hybrid_alpha: None,
+                use_wasserstein: false,
+                bm25_options: None,
+                fusion_method: None,
+            };
+            let results = index.search(vec, &empty_filter, &[], &search_params);
 
             if let Some((_id, dist)) = results.first() {
                 assert!(*dist < 1e-4, "Search for inserted vector {i} failed. Dist: {dist}");

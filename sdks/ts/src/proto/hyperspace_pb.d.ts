@@ -670,6 +670,16 @@ export class SearchTextRequest extends jspb.Message {
     setFiltersList(value: Array<Filter>): SearchTextRequest;
     addFilters(value?: Filter, index?: number): Filter;
 
+    hasBm25Options(): boolean;
+    clearBm25Options(): void;
+    getBm25Options(): Bm25Options | undefined;
+    setBm25Options(value?: Bm25Options): SearchTextRequest;
+
+    hasHybridAlpha(): boolean;
+    clearHybridAlpha(): void;
+    getHybridAlpha(): number | undefined;
+    setHybridAlpha(value: number): SearchTextRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchTextRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchTextRequest): SearchTextRequest.AsObject;
@@ -688,6 +698,67 @@ export namespace SearchTextRequest {
 
         filterMap: Array<[string, string]>,
         filtersList: Array<Filter.AsObject>,
+        bm25Options?: Bm25Options.AsObject,
+        hybridAlpha?: number,
+    }
+}
+
+export class Bm25Options extends jspb.Message { 
+
+    hasMethod(): boolean;
+    clearMethod(): void;
+    getMethod(): string | undefined;
+    setMethod(value: string): Bm25Options;
+
+    hasK1(): boolean;
+    clearK1(): void;
+    getK1(): number | undefined;
+    setK1(value: number): Bm25Options;
+
+    hasB(): boolean;
+    clearB(): void;
+    getB(): number | undefined;
+    setB(value: number): Bm25Options;
+
+    hasDelta(): boolean;
+    clearDelta(): void;
+    getDelta(): number | undefined;
+    setDelta(value: number): Bm25Options;
+
+    hasLanguage(): boolean;
+    clearLanguage(): void;
+    getLanguage(): string | undefined;
+    setLanguage(value: string): Bm25Options;
+
+    hasNgrams(): boolean;
+    clearNgrams(): void;
+    getNgrams(): number | undefined;
+    setNgrams(value: number): Bm25Options;
+
+    hasFusionMethod(): boolean;
+    clearFusionMethod(): void;
+    getFusionMethod(): string | undefined;
+    setFusionMethod(value: string): Bm25Options;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Bm25Options.AsObject;
+    static toObject(includeInstance: boolean, msg: Bm25Options): Bm25Options.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: Bm25Options, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): Bm25Options;
+    static deserializeBinaryFromReader(message: Bm25Options, reader: jspb.BinaryReader): Bm25Options;
+}
+
+export namespace Bm25Options {
+    export type AsObject = {
+        method?: string,
+        k1?: number,
+        b?: number,
+        delta?: number,
+        language?: string,
+        ngrams?: number,
+        fusionMethod?: string,
     }
 }
 
@@ -783,6 +854,11 @@ export class SearchRequest extends jspb.Message {
     getUseWasserstein(): boolean;
     setUseWasserstein(value: boolean): SearchRequest;
 
+    hasBm25Options(): boolean;
+    clearBm25Options(): void;
+    getBm25Options(): Bm25Options | undefined;
+    setBm25Options(value?: Bm25Options): SearchRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchRequest): SearchRequest.AsObject;
@@ -804,6 +880,7 @@ export namespace SearchRequest {
         hybridQuery?: string,
         hybridAlpha?: number,
         useWasserstein: boolean,
+        bm25Options?: Bm25Options.AsObject,
     }
 }
 

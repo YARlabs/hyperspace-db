@@ -24,6 +24,12 @@ pub struct GlobalConfig {
 
     /// Whether to apply expensive Anisotropic Coordinate Descent refinement during quantization
     pub anisotropic_refinement: AtomicBool,
+
+    /// BM25 scoring parameters
+    pub bm25_params: std::sync::RwLock<crate::bm25::Bm25Params>,
+
+    /// Fusion method ("rrf" or "weighted")
+    pub fusion_method: std::sync::RwLock<String>,
 }
 
 impl GlobalConfig {
@@ -36,6 +42,8 @@ impl GlobalConfig {
             m: AtomicUsize::new(16),
             gossip_enabled: AtomicBool::new(false),
             anisotropic_refinement: AtomicBool::new(true), // Default to true for quality, but can be disabled for speed
+            bm25_params: std::sync::RwLock::new(crate::bm25::Bm25Params::default()),
+            fusion_method: std::sync::RwLock::new("rrf".to_string()),
         }
     }
 
@@ -99,6 +107,26 @@ impl GlobalConfig {
 
     pub fn dec_active(&self) {
         self.active_indexing.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn get_bm25_params(&self) -> crate::bm25::Bm25Params {
+        self.bm25_params.read().unwrap().clone()
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn set_bm25_params(&self, params: crate::bm25::Bm25Params) {
+        *self.bm25_params.write().unwrap() = params;
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn get_fusion_method(&self) -> String {
+        self.fusion_method.read().unwrap().clone()
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn set_fusion_method(&self, method: String) {
+        *self.fusion_method.write().unwrap() = method;
     }
 }
 

@@ -5,23 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0-rc.3] - 2026-03-24
+## [3.1.0] - 2026-04-18
 
 ### Added
-* **Geometric Search & Spatial Studio (Sprint B / Spatial AI LTS)**:
-    * **Advanced Geometric Filters**: Added `InBall`, `InBox`, and `InCone` filters to the core engine and gRPC/REST APIs.
-    * **Bitset-Based Pruning**: Implemented high-performance sequential filtering over spatial regions.
-    * **Spatial Studio Visuals**: Added Lasso selection and geometric region visualizers (Ball/Box/Cone) to the Poincaré Disk dashboard.
-    * **SDK Parity**:
-        * **Go**: Added `Search` with geometric filters support and `pb` regeneration.
-        * **Python**: Added `filter_ball`, `filter_box`, `filter_cone` helpers to `HyperspaceClient`.
-        * **TS**: Updated `search` options with geometric filter types and rebuilt SDK.
-        * **C++**: Updated README with gRPC examples for geometric filtering.
-    * **Documentation**: Full update of `api.md` and `math.md` with Geometric Search specifications.
+* **BM25 Lexical Upgrade (Sprint 13 / Stability Release)**:
+    * **Native BM25 Scoring**: Integrated BM25 algorithm into the core index, supporting `k1`, `b`, and `delta` parameters.
+    * **Hybrid Search Fusion**: Full support for RRF (Reciprocal Rank Fusion) and Linear Weighted Fusion to merge vector and keyword results.
+    * **New Proto Messages**: Added `Bm25Options` to `SearchRequest` and `SearchTextRequest`.
+    * **SDK Parity Milestone**:
+        * **TypeScript**: Standardized `insert` argument order. Added `Bm25Options` and full geometric search support.
+        * **Python**: Synchronized `HyperspaceClient` signatures. Added support for `hybrid_query` and full `BM25` configuration.
+        * **Go**: Regenerated protos and updated `SearchText` to support `BM25`.
+        * **C++**: Updated gRPC bindings and documentation for hybrid and geometric search.
+    * **Documentation**: Unified all SDK READMEs and updated the official book with Hybrid Search specifications.
 
 ### Fixed
-* **Test Compatibility**: Fixed incorrect turbofish syntax in `hyperspace-core` unit tests.
-* **Clippy compliance**: Resolved redundant `map_or` and documentation formatting warnings.
+* **SDK Inconsistency**: Fixed `insert` argument order in Python and TS SDKs to match the `(id, vector, ...)` convention used in Rust and Go.
+* **Hybrid Search Logic**: Resolved issues where `query_text` and `hybrid_query` were ambiguous in client-side embedding flows.
+* **Environment Integrity**: Improved AVX2/NEON detection in `hyperspace-core`.
 
 ## [3.0.0-rc.2] - 2026-03-21
 

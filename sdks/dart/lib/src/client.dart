@@ -85,22 +85,42 @@ class HyperspaceClient {
     return resp.vector;
   }
 
-  Future<List<SearchResult>> search(List<double> vector, int topK, {String collection = ''}) async {
+  Future<List<SearchResult>> search(
+    List<double> vector, 
+    int topK, {
+    String collection = '', 
+    String? hybridQuery, 
+    double? hybridAlpha,
+    Bm25Options? bm25Options,
+  }) async {
     final req = SearchRequest(
       vector: vector,
       topK: topK,
       collection: collection,
     );
+    if (hybridQuery != null) req.hybridQuery = hybridQuery;
+    if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
+    if (bm25Options != null) req.bm25Options = bm25Options;
+
     final resp = await _stub.search(req);
     return resp.results;
   }
 
-  Future<List<SearchResult>> searchText(String text, int topK, {String collection = ''}) async {
+  Future<List<SearchResult>> searchText(
+    String text, 
+    int topK, {
+    String collection = '', 
+    double? hybridAlpha,
+    Bm25Options? bm25Options,
+  }) async {
     final req = SearchTextRequest(
       text: text,
       topK: topK,
       collection: collection,
     );
+    if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
+    if (bm25Options != null) req.bm25Options = bm25Options;
+
     final resp = await _stub.searchText(req);
     return resp.results;
   }

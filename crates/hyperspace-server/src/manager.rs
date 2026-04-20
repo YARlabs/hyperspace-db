@@ -581,8 +581,8 @@ impl CollectionManager {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if name.starts_with(&prefix) {
                             usage.disk_usage_bytes += calculate_dir_size(&path).unwrap_or(0);
-                            
-                            // If this collection wasn't found in memory during step 1, 
+
+                            // If this collection wasn't found in memory during step 1,
                             // it means it's an idle collection on disk.
                             if !self.collections.contains_key(name) {
                                 usage.collection_count += 1;
