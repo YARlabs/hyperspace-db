@@ -8,6 +8,7 @@ import { DataExplorerPage } from "./pages/DataExplorerPage"
 import { GraphExplorerPage } from "./pages/GraphExplorerPage"
 import { NodesPage } from "./pages/NodesPage"
 import { SettingsPage } from "./pages/SettingsPage"
+import { MigrationPage } from "./pages/MigrationPage"
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="/explorer" element={<DataExplorerPage />} />
           <Route path="/graph" element={<GraphExplorerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/migration" element={<MigrationPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

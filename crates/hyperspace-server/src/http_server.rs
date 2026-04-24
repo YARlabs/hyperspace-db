@@ -4,10 +4,13 @@ use axum::{
     extract::{Extension, Path, Query, Request, State},
     http::{StatusCode, Uri},
     middleware::{self, Next},
-    response::{Html, IntoResponse, Response},
+    response::{sse::Event, sse::Sse, Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use hyperspace_proto::hyperspace::EventMessage;
+use tokio::sync::broadcast;
+use tokio_stream::StreamExt;
 use hyperspace_core::SearchParams;
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
@@ -111,6 +114,7 @@ pub async fn start_http_server(
     port: u16,
     embedding_info: Option<EmbeddingInfo>,
     peer_registry: Option<PeerRegistry>,
+    replication_tx: broadcast::Sender<EventMessage>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Get API key hash if set
     let api_key_hash = std::env::var("HYPERSPACE_API_KEY").ok().map(|key| {
@@ -169,6 +173,8 @@ pub async fn start_http_server(
         )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
         .route("/api/admin/usage", get(get_usage_report_http))
+        .route("/api/admin/migration/status", get(get_migration_service_status))
+        .route("/api/admin/migration/start", post(start_migration_service))
         // Delta Sync HTTP API (Task 2.1 — for WASM and REST clients)
         .route(
             "/api/collections/{name}/sync/handshake",
@@ -177,15 +183,16 @@ pub async fn start_http_server(
         .route("/api/collections/{name}/sync/pull", post(sync_pull_http))
         // P2P Swarm API (Task 3.4) — Gossip peer registry
         .route("/api/swarm/peers", get(get_swarm_peers))
+        .route("/api/admin/migration/start", post(start_migration_service))
+        .route("/api/admin/trajectory/stream", get(stream_trajectory_sse))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
         ))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
-        // Pass PeerRegistry as an Extension so all handlers can opt-in without
-        // changing the 3-tuple State type.
         .layer(axum::Extension(Arc::new(peer_registry)))
+        .layer(axum::Extension(replication_tx))
         .with_state((manager, start_time, embedding_state));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
@@ -1380,4 +1387,42 @@ async fn get_swarm_peers(
         replication_enabled,
     })
     .into_response()
+}
+
+async fn get_migration_service_status() -> impl IntoResponse {
+    let is_alive = std::net::TcpStream::connect("127.0.0.1:3001").is_ok();
+    Json(serde_json::json!({ "active": is_alive }))
+}
+
+async fn start_migration_service() -> impl IntoResponse {
+    if std::net::TcpStream::connect("127.0.0.1:3001").is_ok() {
+        return (StatusCode::OK, "Service already running").into_response();
+    }
+
+    let service_dir = "./dashboard/service";
+    let node_modules = std::path::Path::new(service_dir).join("node_modules");
+
+    // 1. If node_modules is missing, try to install
+    if !node_modules.exists() {
+        println!("📦 node_modules missing in migration service. Running npm install...");
+        let install_status = std::process::Command::new("npm")
+            .arg("install")
+            .current_dir(service_dir)
+            .status();
+
+        if let Err(e) = install_status {
+            return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to run npm install: {e}")).into_response();
+        }
+    }
+
+    // 2. Spawn node process
+    let status = std::process::Command::new("npm")
+        .args(["start"])
+        .current_dir(service_dir)
+        .spawn();
+
+    match status {
+        Ok(_) => (StatusCode::ACCEPTED, "Starting migration service...").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to start: {e}")).into_response(),
+    }
 }

@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom"
-import { LayoutDashboard, Database, Search, Settings, Network } from "lucide-react"
+import { LayoutDashboard, Database, Search, Settings, Network, ArrowUpRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function DashboardLayout() {
@@ -22,6 +22,7 @@ export function DashboardLayout() {
                     <NavItem to="/nodes" icon={Network} label="Cluster Nodes" />
                     <NavItem to="/explorer" icon={Search} label="Data Explorer" />
                     <NavItem to="/graph" icon={Network} label="Graph Explorer" />
+                    <NavItem to="/migration" icon={ArrowUpRight} label="Migration" />
                     <NavItem to="/settings" icon={Settings} label="Settings" />
                 </nav>
 
