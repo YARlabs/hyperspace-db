@@ -56,14 +56,18 @@ export class HyperspaceVectorStore implements VectorStore {
   }
 
   async query(query: VectorStoreQuery): Promise<VectorStoreQueryResult> {
-    if (query.mode !== VectorStoreQueryMode.DEFAULT) {
-      throw new Error("Only default query mode is supported");
+    if (query.mode !== VectorStoreQueryMode.DEFAULT && query.mode !== VectorStoreQueryMode.HYBRID) {
+      throw new Error("Only default and hybrid query modes are supported");
     }
 
     const results = await this._client.search(
       query.queryEmbedding!,
       query.similarityTopK || 10,
-      this.collectionName
+      this.collectionName,
+      {
+        hybridAlpha: query.mode === VectorStoreQueryMode.HYBRID ? (query.alpha ?? 0.5) : undefined,
+        hybridQuery: query.mode === VectorStoreQueryMode.HYBRID ? query.queryStr : undefined,
+      }
     );
 
     return {

@@ -8,7 +8,7 @@ namespace hyperspace {
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
-using hyperspace_grpc::Database;
+using ::hyperspace::Database;
 
 HyperspaceClient::HyperspaceClient(const std::string& endpoint, const std::string& app_id)
     : app_id_(app_id) {
@@ -17,12 +17,12 @@ HyperspaceClient::HyperspaceClient(const std::string& endpoint, const std::strin
 }
 
 bool HyperspaceClient::CreateCollection(const std::string& name, int dimension, const std::string& metric) {
-    hyperspace_grpc::CreateCollectionRequest request;
+    ::hyperspace::CreateCollectionRequest request;
     request.set_name(name);
     request.set_dimension(dimension);
     request.set_metric(metric);
 
-    hyperspace_grpc::StatusResponse response;
+    ::hyperspace::StatusResponse response;
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
@@ -33,8 +33,8 @@ bool HyperspaceClient::CreateCollection(const std::string& name, int dimension, 
 }
 
 std::vector<CollectionSummary> HyperspaceClient::ListCollections() {
-    hyperspace_grpc::Empty request;
-    hyperspace_grpc::ListCollectionsResponse response;
+    ::hyperspace::Empty request;
+    ::hyperspace::ListCollectionsResponse response;
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
@@ -53,7 +53,7 @@ std::vector<CollectionSummary> HyperspaceClient::ListCollections() {
 
 
 bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection) {
-    hyperspace_grpc::InsertRequest request;
+    ::hyperspace::InsertRequest request;
     request.set_id(id);
     request.set_collection(collection);
     
@@ -61,7 +61,7 @@ bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, co
         request.add_vector(v);
     }
 
-    hyperspace_grpc::InsertResponse response;
+    ::hyperspace::InsertResponse response;
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
@@ -72,12 +72,12 @@ bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, co
 }
 
 bool HyperspaceClient::InsertText(uint32_t id, const std::string& text, const std::string& collection) {
-    hyperspace_grpc::InsertTextRequest request;
+    ::hyperspace::InsertTextRequest request;
     request.set_id(id);
     request.set_text(text);
     request.set_collection(collection);
 
-    hyperspace_grpc::InsertResponse response;
+    ::hyperspace::InsertResponse response;
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
@@ -88,11 +88,11 @@ bool HyperspaceClient::InsertText(uint32_t id, const std::string& text, const st
 }
 
 bool HyperspaceClient::Delete(uint32_t id, const std::string& collection) {
-    hyperspace_grpc::DeleteRequest request;
+    ::hyperspace::DeleteRequest request;
     request.set_id(id);
     request.set_collection(collection);
 
-    hyperspace_grpc::DeleteResponse response;
+    ::hyperspace::DeleteResponse response;
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
@@ -105,7 +105,7 @@ bool HyperspaceClient::Delete(uint32_t id, const std::string& collection) {
 bool HyperspaceClient::BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection) {
     if (ids.size() != vectors.size()) return false;
     
-    hyperspace_grpc::BatchInsertRequest request;
+    ::hyperspace::BatchInsertRequest request;
     request.set_collection(collection);
     
     for (size_t i = 0; i < ids.size(); ++i) {
@@ -116,7 +116,7 @@ bool HyperspaceClient::BatchInsert(const std::vector<uint32_t>& ids, const std::
         }
     }
 
-    hyperspace_grpc::InsertResponse response;
+    ::hyperspace::InsertResponse response;
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
@@ -126,11 +126,11 @@ bool HyperspaceClient::BatchInsert(const std::vector<uint32_t>& ids, const std::
 }
 
 std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const std::string& metric) {
-    hyperspace_grpc::VectorizeRequest request;
+    ::hyperspace::VectorizeRequest request;
     request.set_text(text);
     request.set_metric(metric);
 
-    hyperspace_grpc::VectorizeResponse response;
+    ::hyperspace::VectorizeResponse response;
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
@@ -144,8 +144,8 @@ std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const s
     return output;
 }
 
-std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha) {
-    hyperspace_grpc::SearchRequest request;
+std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Options* bm25) {
+    ::hyperspace::SearchRequest request;
     request.set_top_k(top_k);
     request.set_collection(collection);
 
@@ -159,9 +159,18 @@ std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& ve
     if (hybrid_alpha != 0.0f) {
         request.set_hybrid_alpha(hybrid_alpha);
     }
+    
+    if (bm25) {
+        auto* proto_bm25 = request.mutable_bm25_options();
+        proto_bm25->set_method(bm25->method);
+        proto_bm25->set_k1(bm25->k1);
+        proto_bm25->set_b(bm25->b);
+        proto_bm25->set_delta(bm25->delta);
+        proto_bm25->set_language(bm25->language);
+    }
 
     google::protobuf::Arena arena;
-    auto* response = google::protobuf::Arena::CreateMessage<hyperspace_grpc::SearchResponse>(&arena);
+    auto* response = google::protobuf::Arena::CreateMessage<::hyperspace::SearchResponse>(&arena);
 
     ClientContext context;
     if (!app_id_.empty()) {
@@ -177,13 +186,14 @@ std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& ve
             SearchResult s;
             s.id = res.id();
             s.score = res.distance();
+            s.distance = res.distance();
             
             for (double v : res.vector()) {
                 s.vector.push_back(v);
             }
 
-            for (const auto& [k, v] : res.metadata()) {
-                s.metadata[k] = v;
+            for (auto const& it : res.metadata()) {
+                s.metadata[it.first] = it.second;
             }
             output.push_back(s);
         }
@@ -193,7 +203,7 @@ std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& ve
 }
 
 std::vector<std::vector<SearchResult>> HyperspaceClient::SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k, const std::string& collection) {
-    hyperspace_grpc::BatchSearchRequest request;
+    ::hyperspace::BatchSearchRequest request;
     for (const auto& v : vectors) {
         auto* s = request.add_searches();
         s->set_top_k(top_k);
@@ -202,7 +212,7 @@ std::vector<std::vector<SearchResult>> HyperspaceClient::SearchBatch(const std::
     }
 
     google::protobuf::Arena arena;
-    auto* response = google::protobuf::Arena::CreateMessage<hyperspace_grpc::BatchSearchResponse>(&arena);
+    auto* response = google::protobuf::Arena::CreateMessage<::hyperspace::BatchSearchResponse>(&arena);
 
     ClientContext context;
     if (!app_id_.empty()) {
@@ -221,9 +231,10 @@ std::vector<std::vector<SearchResult>> HyperspaceClient::SearchBatch(const std::
                 SearchResult s;
                 s.id = res.id();
                 s.score = res.distance();
+                s.distance = res.distance();
                 for (double val : res.vector()) s.vector.push_back(val);
-                for (const auto& [k, v] : res.metadata()) {
-                    s.metadata[k] = v;
+                for (auto const& it : res.metadata()) {
+                    s.metadata[it.first] = it.second;
                 }
                 sub_results.push_back(s);
             }
@@ -233,8 +244,8 @@ std::vector<std::vector<SearchResult>> HyperspaceClient::SearchBatch(const std::
     return output;
 }
 
-std::vector<SearchResult> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection, float hybrid_alpha) {
-    hyperspace_grpc::SearchTextRequest request;
+std::vector<SearchResult> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection, float hybrid_alpha, const Bm25Options* bm25) {
+    ::hyperspace::SearchTextRequest request;
     request.set_text(text);
     request.set_top_k(top_k);
     request.set_collection(collection);
@@ -243,8 +254,17 @@ std::vector<SearchResult> HyperspaceClient::SearchText(const std::string& text, 
         request.set_hybrid_alpha(hybrid_alpha);
     }
 
+    if (bm25) {
+        auto* proto_bm25 = request.mutable_bm25_options();
+        proto_bm25->set_method(bm25->method);
+        proto_bm25->set_k1(bm25->k1);
+        proto_bm25->set_b(bm25->b);
+        proto_bm25->set_delta(bm25->delta);
+        proto_bm25->set_language(bm25->language);
+    }
+
     google::protobuf::Arena arena;
-    auto* response = google::protobuf::Arena::CreateMessage<hyperspace_grpc::SearchResponse>(&arena);
+    auto* response = google::protobuf::Arena::CreateMessage<::hyperspace::SearchResponse>(&arena);
 
     ClientContext context;
     if (!app_id_.empty()) {
@@ -260,9 +280,10 @@ std::vector<SearchResult> HyperspaceClient::SearchText(const std::string& text, 
             SearchResult s;
             s.id = res.id();
             s.score = res.distance();
+            s.distance = res.distance();
             
-            for (const auto& [k, v] : res.metadata()) {
-                s.metadata[k] = v;
+            for (auto const& it : res.metadata()) {
+                s.metadata[it.first] = it.second;
             }
             output.push_back(s);
         }

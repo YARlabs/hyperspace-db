@@ -73,13 +73,21 @@ class HyperspaceMcpServer {
         // --- DATA PLANE TOOLS ---
         {
           name: "hyperspace_search_text",
-          description: "Search for semanticly similar information using natural language query.",
+          description: "Search for semanticly similar information using natural language query. Supports hybrid search (BM25 + Semantic).",
           inputSchema: {
             type: "object",
             properties: {
               collection: { type: "string" },
               text: { type: "string" },
-              top_k: { type: "number", default: 5 }
+              top_k: { type: "number", default: 5 },
+              hybrid_alpha: { type: "number", description: "Weight for hybrid search fusion (0.0 = lexical only, 1.0 = semantic only). Default: 0.5" },
+              bm25_options: {
+                type: "object",
+                properties: {
+                  method: { type: "string", description: "BM25 method (bm25, bm25plus, lucene, atire)" },
+                  language: { type: "string", description: "Stemmer language (english, russian, etc.)" },
+                }
+              }
             },
             required: ["collection", "text"]
           }
@@ -205,9 +213,20 @@ class HyperspaceMcpServer {
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
           }
           case "hyperspace_search_text": {
-
-            const { collection, text, top_k } = z.object({ collection: z.string(), text: z.string(), top_k: z.number().optional() }).parse(args);
-            const res = await this.client.searchText(text, top_k || 5, collection);
+            const { collection, text, top_k, hybrid_alpha, bm25_options } = z.object({
+              collection: z.string(),
+              text: z.string(),
+              top_k: z.number().optional(),
+              hybrid_alpha: z.number().optional(),
+              bm25_options: z.object({
+                method: z.string().optional(),
+                language: z.string().optional(),
+              }).optional()
+            }).parse(args);
+            const res = await this.client.searchText(text, top_k || 5, collection, {
+              hybridAlpha: hybrid_alpha,
+              bm25: bm25_options as any
+            });
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
           }
           case "hyperspace_search_wasserstein": {

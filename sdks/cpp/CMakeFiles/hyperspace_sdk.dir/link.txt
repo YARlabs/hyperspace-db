@@ -1,0 +1,2 @@
+/usr/bin/ar qc libhyperspace_sdk.a CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o
+/usr/bin/ranlib libhyperspace_sdk.a

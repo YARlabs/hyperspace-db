@@ -130,10 +130,18 @@ class HyperspaceVectorStore(VectorStore):
              # Process filters into Hyperspace format if needed
              pass
 
+        mode = query.mode or "default"
+        if mode == "hybrid":
+             alpha = query.alpha if query.alpha is not None else 0.5
+        else:
+             alpha = None
+
         results = self._client.search(
             vector=query.query_embedding,
             top_k=query.similarity_top_k,
-            collection=self._collection_name
+            collection=self._collection_name,
+            hybrid_alpha=alpha,
+            hybrid_query=query.query_str if mode == "hybrid" else None
         )
 
         nodes = []

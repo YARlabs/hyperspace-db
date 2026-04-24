@@ -138,13 +138,27 @@ class HyperspaceVectorStore(VectorStore):
         filter: Optional[dict] = None,
         **kwargs: Any,
     ) -> List[Tuple[Document, float]]:
+        hybrid_alpha = kwargs.get("hybrid_alpha")
+        hybrid_query = kwargs.get("hybrid_query")
+
         if self.use_server_side_embedding:
-            hits = self._client.search_text(text=query, top_k=k, collection=self.collection_name)
+            hits = self._client.search_text(
+                text=query, 
+                top_k=k, 
+                collection=self.collection_name, 
+                hybrid_alpha=hybrid_alpha
+            )
         else:
             if self._embedding_function is None:
                 raise ValueError("Embedding function is required")
             embedding = self._embedding_function.embed_query(query)
-            hits = self._client.search(vector=embedding, top_k=k, collection=self.collection_name)
+            hits = self._client.search(
+                vector=embedding, 
+                top_k=k, 
+                collection=self.collection_name, 
+                hybrid_alpha=hybrid_alpha,
+                hybrid_query=hybrid_query
+            )
         
         return self._parse_hits(hits)
 

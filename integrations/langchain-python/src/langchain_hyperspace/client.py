@@ -64,16 +64,19 @@ class HyperspaceClient:
         res = self._stub.BatchInsert(req, metadata=self._get_metadata())
         return res.success
 
-    def search(self, vector: List[float], top_k: int, collection: str, filters: List[Any] = None) -> List[Any]:
+    def search(self, vector: List[float], top_k: int, collection: str, filters: List[Any] = None, hybrid_alpha: float = None, hybrid_query: str = None) -> List[Any]:
         req = hyperspace_pb2.SearchRequest(collection=collection, vector=vector, top_k=top_k)
-        if filters:
-             # Logic to add filters to the req
-             pass
+        if hybrid_alpha is not None:
+            req.hybrid_alpha = hybrid_alpha
+        if hybrid_query is not None:
+            req.hybrid_query = hybrid_query
         res = self._stub.Search(req, metadata=self._get_metadata())
         return res.results
 
-    def search_text(self, text: str, top_k: int, collection: str) -> List[Any]:
+    def search_text(self, text: str, top_k: int, collection: str, hybrid_alpha: float = None) -> List[Any]:
         req = hyperspace_pb2.SearchTextRequest(collection=collection, text=text, top_k=top_k)
+        if hybrid_alpha is not None:
+            req.hybrid_alpha = hybrid_alpha
         res = self._stub.SearchText(req, metadata=self._get_metadata())
         return res.results
 

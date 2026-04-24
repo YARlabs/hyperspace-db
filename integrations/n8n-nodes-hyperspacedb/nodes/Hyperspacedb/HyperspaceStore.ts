@@ -66,7 +66,7 @@ export class HyperspaceStore extends VectorStore {
                     typed_metadata[key] = String(value);
                 }
 
-                await this.client.insertText(doc.pageContent || "", idNum, typed_metadata, this.collectionName);
+                await (this.client as any).insertText(idNum, doc.pageContent || "", typed_metadata, this.collectionName);
                 resultIds.push(idNum.toString());
             }
             return resultIds;
@@ -151,21 +151,30 @@ export class HyperspaceStore extends VectorStore {
     async similaritySearchVectorWithScore(
         query: number[],
         k: number,
-        filter?: Record<string, any>
+        filter?: Record<string, any> & { hybridAlpha?: number; hybridQuery?: string }
     ): Promise<[Document, number][]> {
-        const filters = this.parseFilters(filter);
-        const results = await this.client.search(query, k, this.collectionName, { filters });
+        const { hybridAlpha, hybridQuery, ...cleanFilter } = filter || {};
+        const filters = this.parseFilters(Object.keys(cleanFilter).length ? cleanFilter : undefined);
+        const results = await this.client.search(query, k, this.collectionName, { 
+            filters,
+            hybridAlpha,
+            hybridQuery
+        } as any);
         return this.resultsToDocuments(results);
     }
 
     async similaritySearch(
         query: string,
         k: number,
-        filter?: Record<string, any>
+        filter?: Record<string, any> & { hybridAlpha?: number; hybridQuery?: string }
     ): Promise<Document[]> {
         if (this.useServerSideEmbedding) {
-            const filters = this.parseFilters(filter);
-            const results = await this.client.searchText(query, k, this.collectionName, { filters });
+            const { hybridAlpha, hybridQuery, ...cleanFilter } = filter || {};
+            const filters = this.parseFilters(Object.keys(cleanFilter).length ? cleanFilter : undefined);
+            const results = await this.client.searchText(query, k, this.collectionName, { 
+                filters,
+                hybridAlpha
+            } as any);
             const docsWithScore = this.resultsToDocuments(results);
             return docsWithScore.map(([doc]) => doc);
         }

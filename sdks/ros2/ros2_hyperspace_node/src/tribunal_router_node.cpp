@@ -84,7 +84,7 @@ private:
         const std::shared_ptr<hyperspace_interfaces::srv::InsertText::Request> request,
         std::shared_ptr<hyperspace_interfaces::srv::InsertText::Response> response)
     {
-        RCLCPP_INFO(this->get_logger(), "Inserting Text [ID: %d] into [%s]", request->id, request->collection.c_str());
+        RCLCPP_INFO(this->get_logger(), "Inserting Text [ID: %u] into [%s]", request->id, request->collection.c_str());
         bool ok = client_->InsertText(request->id, request->text, request->collection);
         response->success = ok;
         response->message = ok ? "Successfully inserted." : "Failed to insert into HyperspaceDB.";
@@ -94,16 +94,22 @@ private:
         const std::shared_ptr<hyperspace_interfaces::srv::SearchText::Request> request,
         std::shared_ptr<hyperspace_interfaces::srv::SearchText::Response> response)
     {
-        RCLCPP_INFO(this->get_logger(), "Searching for '%s' in [%s] (Alpha: %f)", request->query.c_str(), request->collection.c_str(), request->hybrid_alpha);
-        auto results = client_->SearchText(request->query, request->top_k, request->collection, request->hybrid_alpha);
+        RCLCPP_INFO(this->get_logger(), "Searching for '%s' in [%s] (Alpha: %f, BM25: %s)", 
+                   request->query.c_str(), request->collection.c_str(), request->hybrid_alpha, request->bm25_method.c_str());
+        
+        hyperspace::Bm25Options bm25;
+        if (!request->bm25_method.empty()) bm25.method = request->bm25_method;
+        if (!request->bm25_language.empty()) bm25.language = request->bm25_language;
+
+        auto results = client_->SearchText(request->query, request->top_k, request->collection, request->hybrid_alpha, &bm25);
         
         for (const auto& r : results) {
             hyperspace_interfaces::msg::SearchResult msg;
             msg.id = r.id;
             msg.distance = r.score;
-            for (const auto& [k, v] : r.metadata) {
-                msg.metadata_keys.push_back(k);
-                msg.metadata_values.push_back(v);
+            for (auto const& it : r.metadata) {
+                msg.metadata_keys.push_back(it.first);
+                msg.metadata_values.push_back(it.second);
             }
             response->results.push_back(msg);
         }

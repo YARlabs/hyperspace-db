@@ -1,9 +1,10 @@
 #pragma once
 
-#include <string>
+#include <cstdint>
+#include <cmath>
+#include <unordered_map>
 #include <vector>
 #include <memory>
-#include <unordered_map>
 #include <grpcpp/grpcpp.h>
 #include "hyperspace.grpc.pb.h"
 #include <google/protobuf/arena.h>
@@ -15,6 +16,7 @@ struct SearchResult {
     std::unordered_map<std::string, std::string> metadata;
     std::vector<double> vector;
     double score;
+    double distance; // Alias for score
 };
 
 struct CollectionSummary {
@@ -22,6 +24,14 @@ struct CollectionSummary {
     uint64_t count;
     uint32_t dimension;
     std::string metric;
+};
+
+struct Bm25Options {
+    std::string method = "bm25plus";
+    float k1 = 1.2f;
+    float b = 0.75f;
+    float delta = 1.0f;
+    std::string language = "english";
 };
 
 class HyperspaceClient {
@@ -38,9 +48,9 @@ public:
     bool Delete(uint32_t id, const std::string& collection = "");
     bool BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection = "");
     std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
-    std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0);
+    std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Options* bm25 = nullptr);
     std::vector<std::vector<SearchResult>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
-    std::vector<SearchResult> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0);
+    std::vector<SearchResult> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0, const Bm25Options* bm25 = nullptr);
     
     // Sync API signatures
     bool SyncHandshake(const std::string& collection, const std::vector<uint64_t>& client_buckets, uint64_t client_logical_clock, uint64_t client_count, std::vector<uint32_t>& out_diff_buckets);
@@ -48,7 +58,7 @@ public:
     bool SyncPush(const std::string& collection);
 
 private:
-    std::unique_ptr<hyperspace_grpc::Database::Stub> stub_;
+    std::unique_ptr<::hyperspace::Database::Stub> stub_;
     std::string app_id_;
 };
 
