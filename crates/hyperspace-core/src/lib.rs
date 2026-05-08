@@ -17,6 +17,8 @@ pub mod gromov;
 pub mod optim;
 pub mod region;
 pub mod vector;
+pub mod hybrid;
+pub use hybrid::Hybrid801Metric;
 pub mod wasserstein;
 
 pub use config::GlobalConfig;
@@ -36,6 +38,8 @@ pub fn check_simd() {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod hybrid_tests;
 
 pub type HyperFloat = f64;
 
@@ -44,6 +48,7 @@ pub enum QuantizationMode {
     None,
     ScalarI8,
     Binary,
+    AsymmetricHybrid801,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -143,6 +148,7 @@ pub struct SearchParams {
     pub use_wasserstein: bool,
     pub bm25_options: Option<crate::bm25::Bm25Params>,
     pub fusion_method: Option<String>,
+    pub mrl_dimension: Option<usize>,
 }
 
 pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>);

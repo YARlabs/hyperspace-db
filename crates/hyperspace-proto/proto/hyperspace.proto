@@ -106,7 +106,15 @@ enum QuantizationMode {
 message CreateCollectionRequest {
   string name = 1;
   uint32 dimension = 2;
-  string metric = 3; // "cosine", "l2", "poincare"
+  string metric = 3; // "cosine", "l2", "poincare", "hybrid"
+  repeated CollectionComponent components = 4;
+}
+
+message CollectionComponent {
+  string space = 1; // "lorentz", "euclidean", "mrl"
+  uint32 dimension = 2;
+  string metric = 3; // "minkowski", "cosine", "l2"
+  optional float weight = 4; // alpha weight for this component
 }
 
 message DeleteCollectionRequest {
@@ -257,6 +265,7 @@ message SearchRequest {
   optional float hybrid_alpha = 7;
   bool use_wasserstein = 8;
   optional Bm25Options bm25_options = 9;
+  optional uint32 mrl_dimension = 10;
 }
 
 message Filter {
@@ -408,6 +417,7 @@ enum EventType {
   EVENT_UNKNOWN = 0;
   VECTOR_INSERTED = 1;
   VECTOR_DELETED = 2;
+  TRAJECTORY_STEP = 3;
 }
 
 message EventSubscriptionRequest {
@@ -424,6 +434,14 @@ message VectorInsertedEvent {
   map<string, MetadataValue> typed_metadata = 6;
 }
 
+message TrajectoryStepEvent {
+  uint32 id = 1;
+  string collection = 2;
+  float x = 3;
+  float y = 4;
+  map<string, string> metadata = 5;
+}
+
 message VectorDeletedEvent {
   uint32 id = 1;
   string collection = 2;
@@ -436,6 +454,7 @@ message EventMessage {
   oneof payload {
     VectorInsertedEvent vector_inserted = 2;
     VectorDeletedEvent vector_deleted = 3;
+    TrajectoryStepEvent trajectory_step = 4;
   }
 }
 

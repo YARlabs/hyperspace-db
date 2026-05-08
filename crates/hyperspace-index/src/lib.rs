@@ -962,7 +962,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             None
         };
 
-        let mut curr_dist = self.dist_upper(entry_node, &q_vec, query_klein.as_ref());
+        let mut curr_dist = self.dist_upper(entry_node, &q_vec, query_klein.as_ref(), params.mrl_dimension);
         let mut curr_node = entry_node;
 
         // 1. Zoom-in phase: Greedy search from top to layer 1.
@@ -984,7 +984,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     }
                     let neighbors = node.layers[level].read();
                     for &neighbor in neighbors.iter() {
-                        let d = self.dist_upper(neighbor, &q_vec, query_klein.as_ref());
+                        let d = self.dist_upper(neighbor, &q_vec, query_klein.as_ref(), params.mrl_dimension);
                         if d < curr_dist {
                             curr_dist = d;
                             curr_node = neighbor;
@@ -1002,7 +1002,16 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             params.top_k,
             params.ef_search,
             allowed_bitmap.as_ref(),
+            params.mrl_dimension,
         );
+
+        // MRL Reranking: If we used truncated search, we must recalculate full distance for the results.
+        if params.mrl_dimension.is_some() {
+            for cand in &mut candidates {
+                cand.1 = self.dist(cand.0, &q_vec); // Recalculate with full 801D
+            }
+            candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        }
 
         if params.use_wasserstein {
             for cand in &mut candidates {
@@ -1086,6 +1095,10 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     // Distance calculation helper
     #[inline]
     fn dist(&self, node_id: NodeId, query: &HyperVector<N>) -> f64 {
+        self.dist_mrl(node_id, query, None)
+    }
+
+    fn dist_mrl(&self, node_id: NodeId, query: &HyperVector<N>, mrl_dim: Option<usize>) -> f64 {
         // Defensive: Check bounds to avoid casting fallback/misaligned bytes during swaps
         if node_id as usize >= self.storage.count() {
             return f64::MAX;
@@ -1096,6 +1109,20 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             QuantizationMode::ScalarI8 => {
                 let q = QuantizedHyperVector::<N>::from_bytes(bytes);
                 M::distance_quantized(q, query)
+            }
+            QuantizationMode::AsymmetricHybrid801 => {
+                // Specialized hybrid path
+                if N != 801 {
+                    panic!("AsymmetricHybrid801 quantization mode is only supported for 801-dimensional vectors");
+                }
+                let q = crate::hybrid::Hybrid801QuantizedVector::from_bytes(bytes);
+                if let Some(dim) = mrl_dim {
+                    q.distance_mrl(unsafe { std::mem::transmute(query) }, dim)
+                } else {
+                    let d_lor = q.lorentz_distance_to_float(unsafe { std::mem::transmute(query) });
+                    let d_euc = q.euclidean_distance_sq_to_float(unsafe { std::mem::transmute(query) });
+                    d_lor + d_euc
+                }
             }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::<N>::from_bytes(bytes);
@@ -1114,14 +1141,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         }
     }
 
-    // Distance calculation helper specifically for upper routing layers
-    // It takes an optional `query_klein` buffer to perform fast euclidean chord distance in Klein mode.
-    #[inline]
     fn dist_upper(
         &self,
         node_id: NodeId,
         query: &HyperVector<N>,
         query_klein: Option<&HyperVector<N>>,
+        mrl_dim: Option<usize>,
     ) -> f64 {
         if let Some(qk) = query_klein {
             // Defensive: Check bounds
@@ -1137,7 +1162,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             let v = HyperVector::<N>::from_bytes(bytes);
             return v.to_klein().klein_chord_distance_sq(qk);
         }
-        self.dist(node_id, query)
+        self.dist_mrl(node_id, query, mrl_dim)
     }
 
     fn filtered_bruteforce_threshold() -> u64 {
@@ -1182,6 +1207,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         k: usize,
         ef: usize,
         allowed: Option<&RoaringBitmap>,
+        mrl_dim: Option<usize>,
     ) -> Vec<(NodeId, f64)> {
         // LOCK-FREE: boxcar::Vec — no global read lock needed.
         // Each node access is a lock-free O(1) lookup.
@@ -1231,7 +1257,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 results.reserve(ef_capacity - results.capacity());
             }
 
-            let d = self.dist(start_node, query);
+            let d = self.dist_mrl(start_node, query, mrl_dim);
             let first = Candidate {
                 id: start_node,
                 distance: d,
@@ -1269,7 +1295,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         continue;
                     }
 
-                    let dist = self.dist(neighbor, query);
+                    let dist = self.dist_mrl(neighbor, query, mrl_dim);
 
                     let mut add_to_candidates = true;
                     if let Some(std::cmp::Reverse(worst)) = results.peek() {
@@ -1349,7 +1375,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 results.reserve(ef_capacity - results.capacity());
             }
 
-            let d = self.dist_upper(start_node, query, query_klein);
+            let d = self.dist_upper(start_node, query, query_klein, None);
             let first = Candidate {
                 id: start_node,
                 distance: d,
@@ -1383,7 +1409,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         continue;
                     }
 
-                    let dist = self.dist_upper(neighbor, query, query_klein);
+                    let dist = self.dist_upper(neighbor, query, query_klein, None);
 
                     if results.len() < ef || dist < curr_worst {
                         let c = Candidate {
@@ -1533,6 +1559,25 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     v.clone()
                 }
             }
+            QuantizationMode::AsymmetricHybrid801 => {
+                if N != 801 {
+                    panic!("AsymmetricHybrid801 requires N=801");
+                }
+                let q = crate::hybrid::Hybrid801QuantizedVector::from_bytes(bytes);
+                let mut coords = [0.0; N];
+                // Reconstruction
+                for i in 0..33 {
+                    coords[i] = f64::from(q.lorentz[i]);
+                }
+                const SCALE_INV: f64 = 1.0 / 127.0;
+                for i in 0..768 {
+                    coords[33 + i] = f64::from(q.euclidean[i]) * SCALE_INV;
+                }
+                HyperVector {
+                    coords,
+                    alpha: f64::from(q.alpha),
+                }
+            }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::<N>::from_bytes(bytes);
                 let mut coords = [0.0; N];
@@ -1588,6 +1633,16 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 };
                 q_bytes = q.as_bytes().to_vec();
                 0 // Placeholder, we assign ID under lock below
+            }
+            QuantizationMode::AsymmetricHybrid801 => {
+                if N != 801 {
+                    return Err("AsymmetricHybrid801 requires dimension 801".into());
+                }
+                let q = crate::hybrid::Hybrid801QuantizedVector::from_float(
+                    unsafe { std::mem::transmute(&q_vec_full) }
+                );
+                q_bytes = q.as_bytes().to_vec();
+                0
             }
             QuantizationMode::None if self.storage_f32 => {
                 let v32 = HyperVectorF32::from_float64(&q_vec_full);
@@ -1744,7 +1799,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         };
 
         let mut curr_dist = if (entry_point as usize) < self.nodes.count() {
-            self.dist_upper(curr_obj, &q_vec, query_klein.as_ref())
+            self.dist_upper(curr_obj, &q_vec, query_klein.as_ref(), None)
         } else {
             f64::MAX
         };
@@ -1770,7 +1825,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     let neighbors = node.layers[level].read();
                     let mut best = None;
                     for &n in neighbors.iter() {
-                        let d = self.dist_upper(n, &q_vec, query_klein.as_ref());
+                        let d = self.dist_upper(n, &q_vec, query_klein.as_ref(), None);
                         if d < curr_dist {
                             curr_dist = d;
                             best = Some(n);

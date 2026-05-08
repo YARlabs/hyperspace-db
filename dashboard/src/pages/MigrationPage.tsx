@@ -20,7 +20,13 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { api } from "@/lib/api"
+import { 
+    api,
+    getMigrationEngineStatus, 
+    startMigrationService, 
+    startMigrationTask, 
+    getMigrationTaskStatus 
+} from "@/lib/api"
 
 // --- Types ---
 
@@ -62,8 +68,8 @@ export function MigrationPage() {
 
     const checkServiceStatus = async () => {
         try {
-            const res = await api.get("/admin/migration/status");
-            setIsServiceActive(res.data.active);
+            const data = await getMigrationEngineStatus();
+            setIsServiceActive(data.active);
         } catch {
             setIsServiceActive(false);
         }
@@ -74,17 +80,20 @@ export function MigrationPage() {
     const activateService = async () => {
         setIsActivating(true);
         try {
-            await api.post("/admin/migration/start");
+            await startMigrationService();
             // npm install might take time, poll until ready
             let attempts = 0;
             const check = setInterval(async () => {
                 attempts++;
-                const active = await api.get("/admin/migration/status").then(r => r.data.active);
-                if (active) {
-                    setIsServiceActive(true);
-                    setIsActivating(false);
-                    clearInterval(check);
-                }
+                try {
+                    const data = await getMigrationEngineStatus();
+                    if (data.active) {
+                        setIsServiceActive(true);
+                        setIsActivating(false);
+                        clearInterval(check);
+                    }
+                } catch (e) {}
+                
                 if (attempts > 20) { // 1 min timeout
                     setIsActivating(false);
                     clearInterval(check);
@@ -174,13 +183,13 @@ export function MigrationPage() {
         addLog(`Initiating migration on server...`, 'info');
         
         try {
-            const res = await api.post("http://localhost:3001/api/migration/start", {
+            const data = await startMigrationTask({
                 ...config,
                 hyperspaceUrl: window.location.origin.replace('5173', '50051') // Heuristic for local setup
             });
             
-            setMigrationId(res.data.migrationId);
-            addLog(`Migration task ${res.data.migrationId} started in background.`, 'success');
+            setMigrationId(data.migrationId);
+            addLog(`Migration task ${data.migrationId} started in background.`, 'success');
         } catch (err: any) {
             addLog(`Failed to start migration: ${err.message}`, 'error');
             setIsRunning(false);
@@ -193,8 +202,7 @@ export function MigrationPage() {
 
         const interval = setInterval(async () => {
             try {
-                const res = await api.get(`http://localhost:3001/api/migration/status/${migrationId}`);
-                const data = res.data;
+                const data = await getMigrationTaskStatus(migrationId);
                 
                 setProgress(Math.round((data.migratedVectors / (data.totalVectors || 1)) * 100));
                 setStats({ current: data.migratedVectors, total: data.totalVectors });

@@ -1838,6 +1838,7 @@ name = "hyperspace-proto"
 version = "3.1.1"
 dependencies = [
  "prost",
+ "serde",
  "tonic",
  "tonic-build",
 ]
@@ -1866,6 +1867,7 @@ name = "hyperspace-server"
 version = "3.0.3"
 dependencies = [
  "arc-swap",
+ "async-stream",
  "async-trait",
  "axum 0.8.8",
  "clap",
@@ -1888,6 +1890,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sysinfo",
+ "tempfile",
  "tikv-jemalloc-ctl",
  "tikv-jemallocator",
  "tokio",

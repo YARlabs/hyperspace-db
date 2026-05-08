@@ -33,6 +33,8 @@ tikv-jemalloc-ctl = "0.6"
 uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true
 async-trait = "0.1.89"
+async-stream = "0.3.5"
+tempfile = "3.10"
 futures = "0.3.32"
 ordered-float = "3"
 hyperspace-tiering = { workspace = true, optional = true }

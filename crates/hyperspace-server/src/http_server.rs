@@ -185,6 +185,7 @@ pub async fn start_http_server(
         .route("/api/swarm/peers", get(get_swarm_peers))
         .route("/api/admin/migration/start", post(start_migration_service))
         .route("/api/admin/trajectory/stream", get(stream_trajectory_sse))
+        .route("/api/admin/trajectory/history", get(get_trajectory_history_http))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -593,6 +594,7 @@ fn calculate_dir_size(path: &str) -> std::io::Result<u64> {
 struct PeekParams {
     limit: Option<usize>,
     offset: Option<usize>,
+    until_clock: Option<u64>,
 }
 
 async fn peek_collection(
@@ -673,6 +675,7 @@ struct SearchReq {
     filter: Option<HashMap<String, String>>,
     filters: Option<Vec<HttpFilter>>,
     use_wasserstein: Option<bool>,
+    mrl_dimension: Option<usize>,
 }
 
 #[derive(serde::Deserialize)]
@@ -871,6 +874,7 @@ async fn search_collection(
             use_wasserstein: payload.use_wasserstein.unwrap_or(false),
             bm25_options: None,
             fusion_method: None,
+            mrl_dimension: payload.mrl_dimension,
         };
         match col
             .search(
@@ -1425,4 +1429,37 @@ async fn start_migration_service() -> impl IntoResponse {
         Ok(_) => (StatusCode::ACCEPTED, "Starting migration service...").into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to start: {e}")).into_response(),
     }
+}
+
+static TRAJECTORY_HISTORY: OnceLock<tokio::sync::RwLock<Vec<serde_json::Value>>> = OnceLock::new();
+
+fn get_trajectory_history() -> &'static tokio::sync::RwLock<Vec<serde_json::Value>> {
+    TRAJECTORY_HISTORY.get_or_init(|| tokio::sync::RwLock::new(Vec::with_capacity(1000)))
+}
+
+async fn stream_trajectory_sse(
+    Extension(tx): Extension<broadcast::Sender<EventMessage>>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>> {
+    let mut rx = tx.subscribe();
+
+    let stream = async_stream::stream! {
+        while let Ok(msg) = rx.recv().await {
+            // Save to history as JSON Value
+            if let Ok(json) = serde_json::to_value(&msg) {
+                let mut history = get_trajectory_history().write().await;
+                if history.len() >= 1000 { history.remove(0); }
+                history.push(json);
+            }
+
+            let json_str = serde_json::to_string(&msg).unwrap_or_default();
+            yield Ok(Event::default().data(json_str));
+        }
+    };
+
+    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+}
+
+async fn get_trajectory_history_http() -> impl IntoResponse {
+    let history = get_trajectory_history().read().await;
+    Json(history.clone())
 }

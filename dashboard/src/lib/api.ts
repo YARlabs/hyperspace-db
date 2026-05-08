@@ -35,3 +35,28 @@ export const fetchStatus = async () => {
     }
 }
 
+export const fetchTrajectoryHistory = async () => {
+    const res = await api.get("/admin/trajectory/history")
+    return res.data
+}
+
+export const startMigrationService = async () => {
+    const res = await api.post("/admin/migration/start")
+    return res.data
+}
+
+export const getMigrationEngineStatus = async () => {
+    const res = await api.get("/admin/migration/status")
+    return res.data
+}
+
+export const startMigrationTask = async (config: any) => {
+    const res = await api.post("/admin/migration/task", config)
+    return res.data
+}
+
+export const getMigrationTaskStatus = async (taskId: string) => {
+    const res = await api.get(`/admin/migration/task/${taskId}`)
+    return res.data
+}
+

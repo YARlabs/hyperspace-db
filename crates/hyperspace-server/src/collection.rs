@@ -248,6 +248,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             hyperspace_core::QuantizationMode::Binary => {
                 hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
             }
+            hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
+                hyperspace_core::hybrid::Hybrid801QuantizedVector::SIZE
+            }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
                     hyperspace_core::vector::HyperVectorF32::<N>::SIZE
@@ -740,6 +743,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             }
             hyperspace_core::QuantizationMode::Binary => {
                 hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
+            }
+            hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
+                hyperspace_core::hybrid::Hybrid801QuantizedVector::SIZE
             }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
@@ -1611,6 +1617,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 }
                 hyperspace_core::QuantizationMode::Binary => {
                     hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
+                }
+                hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
+                    hyperspace_core::hybrid::Hybrid801QuantizedVector::SIZE
                 }
                 hyperspace_core::QuantizationMode::None => {
                     hyperspace_core::vector::HyperVector::<N>::SIZE

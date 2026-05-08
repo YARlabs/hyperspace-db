@@ -9,6 +9,7 @@ import { GraphExplorerPage } from "./pages/GraphExplorerPage"
 import { NodesPage } from "./pages/NodesPage"
 import { SettingsPage } from "./pages/SettingsPage"
 import { MigrationPage } from "./pages/MigrationPage"
+import { TrajectoryPage } from "./pages/TrajectoryPage"
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
           <Route path="/graph" element={<GraphExplorerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/migration" element={<MigrationPage />} />
+          <Route path="/trajectory" element={<TrajectoryPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,9 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
 use hyperspace_core::VacuumFilterQuery;
-use hyperspace_core::{Collection, CosineMetric, EuclideanMetric, LorentzMetric, PoincareMetric};
+use hyperspace_core::{
+    Collection, CosineMetric, EuclideanMetric, Hybrid801Metric, LorentzMetric, PoincareMetric,
+};
 use hyperspace_proto::hyperspace::{
     replication_log, CreateCollectionOp, DeleteCollectionOp, ReplicationLog,
 };
@@ -74,6 +76,7 @@ pub struct CollectionManager {
     // Stores entries with metadata (e.g., access time).
     collections: Arc<DashMap<String, CollectionEntry>>,
     replication_tx: broadcast::Sender<ReplicationLog>,
+    pub event_tx: broadcast::Sender<hyperspace_proto::hyperspace::EventMessage>,
     pub cluster_state: Arc<RwLock<ClusterState>>,
     pub system: Arc<Mutex<System>>,
 }
@@ -90,7 +93,11 @@ impl CollectionManager {
         format!("{user_id}_{collection_name}")
     }
 
-    pub fn new(base_path: PathBuf, replication_tx: broadcast::Sender<ReplicationLog>) -> Self {
+    pub fn new(
+        base_path: PathBuf,
+        replication_tx: broadcast::Sender<ReplicationLog>,
+        event_tx: broadcast::Sender<hyperspace_proto::hyperspace::EventMessage>,
+    ) -> Self {
         // Try load cluster state
         let state_path = base_path.join("cluster.json");
         let state = if state_path.exists() {
@@ -164,6 +171,7 @@ impl CollectionManager {
             base_path,
             collections,
             replication_tx,
+            event_tx,
             cluster_state: Arc::new(RwLock::new(state)),
             system,
         }
@@ -271,6 +279,9 @@ impl CollectionManager {
             (65, "lorentz") => inst!(65, LorentzMetric),
             (128, "lorentz") => inst!(128, LorentzMetric),
             (129, "lorentz") => inst!(129, LorentzMetric),
+
+            // Hybrid (Lorentz + Euclidean)
+            (801, "hybrid") => inst!(801, Hybrid801Metric),
 
             _ => {
                 return Err(format!(
@@ -673,6 +684,7 @@ impl CollectionMetadata {
         match self.quantization.as_str() {
             "binary" => hyperspace_core::QuantizationMode::Binary,
             "none" => hyperspace_core::QuantizationMode::None,
+            "asymmetric_hybrid_801" => hyperspace_core::QuantizationMode::AsymmetricHybrid801,
             _ => hyperspace_core::QuantizationMode::ScalarI8,
         }
     }

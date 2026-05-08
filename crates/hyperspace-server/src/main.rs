@@ -27,6 +27,7 @@ mod http_server;
 mod manager;
 mod meta_router;
 mod sync;
+mod wave;
 #[cfg(test)]
 mod tests;
 use manager::CollectionManager;
@@ -269,6 +270,7 @@ fn build_filters(
         use_wasserstein: req.use_wasserstein,
         bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
         fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
+        mrl_dimension: req.mrl_dimension.map(|d| d as usize),
     };
 
     (col_name, req.vector, exact_filter, complex_filters, params)
@@ -1040,19 +1042,34 @@ impl Database for HyperspaceService {
                 .await
             {
                 Ok(res) => {
-                    let output = res
-                        .into_iter()
+                    let output = res.iter()
                         .map(|(id, dist, meta)| {
-                            let typed_metadata = extract_typed_metadata(&meta);
-                            let metadata = strip_internal_metadata(&meta);
+                            let typed_metadata = extract_typed_metadata(meta);
+                            let metadata = strip_internal_metadata(meta);
                             SearchResult {
-                                id,
-                                distance: dist,
+                                id: *id,
+                                distance: *dist,
                                 metadata,
                                 typed_metadata,
                             }
                         })
                         .collect();
+                    
+                    // Broadcast to dashboard
+                    if let Some(first) = res.first() {
+                        use hyperspace_proto::hyperspace::{EventMessage, EventType, TrajectoryStepEvent, event_message::Payload};
+                        let _ = self.manager.event_tx.send(EventMessage {
+                            r#type: EventType::TrajectoryStep as i32,
+                            payload: Some(Payload::TrajectoryStep(TrajectoryStepEvent {
+                                id: first.0,
+                                collection: col_name,
+                                x: first.2.get("_x").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0),
+                                y: first.2.get("_y").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0),
+                                metadata: first.2.clone(),
+                            })),
+                        });
+                    }
+
                     Ok(Response::new(SearchResponse { results: output }))
                 }
                 Err(e) => Err(Status::internal(e)),
@@ -1969,8 +1986,12 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         .max(64);
     println!("⚙️ Event Stream Buffer: {event_buffer}");
     let (replication_tx, _) = broadcast::channel(event_buffer);
-
-    let manager = Arc::new(CollectionManager::new(data_dir, replication_tx.clone()));
+    let (event_tx, _) = broadcast::channel(event_buffer);
+    let manager = Arc::new(CollectionManager::new(
+        data_dir,
+        replication_tx.clone(),
+        event_tx.clone(),
+    ));
 
     // Load existing
     println!("Loading collections...");
@@ -2332,7 +2353,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let http_mgr = manager.clone();
     tokio::spawn(async move {
         if let Err(e) =
-            http_server::start_http_server(http_mgr, http_port, embedding_info, peer_registry).await
+            http_server::start_http_server(http_mgr, http_port, embedding_info, peer_registry, event_tx.clone()).await
         {
             eprintln!("HTTP Server panicked: {e}");
         }
@@ -2403,7 +2424,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let version = env!("CARGO_PKG_VERSION");
     println!("\x1b[36m");
-    println!(r"█▀▀  █║  █║  ▀▀█  [H] HyperspaceDB v{version}");");
+    println!(r"█▀▀  █║  █║  ▀▀█  [H] HyperspaceDB v{version}");
     println!(r"█    █║  █║    █  🦺 Dashboard: http://localhost:50050");
     println!(r"█    █████║    █  🚀 SaaS: https://yar.ink");
     println!(r"█▄▄  █║  █║  ▄▄█  ⭐ Star: https://github.com/YARlabs/hyperspace-db");

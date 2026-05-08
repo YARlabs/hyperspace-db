@@ -17,7 +17,8 @@ async fn test_rebuild_and_queue() {
     println!("Test dir: {tmp_dir:?}");
 
     let (tx, _rx) = broadcast::channel(100);
-    let manager = CollectionManager::new(tmp_dir.clone(), tx);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
 
     // 1. Create Collection
     let col_name = "test_rebuild";
@@ -94,7 +95,8 @@ async fn test_vacuum() {
     fs::create_dir_all(&tmp_dir).unwrap();
 
     let (tx, _rx) = broadcast::channel(100);
-    let manager = CollectionManager::new(tmp_dir.clone(), tx);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
 
     manager
         .create_collection("default_admin", "vac_col", 64, "l2")
@@ -124,8 +126,10 @@ async fn test_delta_sync() {
 
     let (tx_a, _) = broadcast::channel(100);
     let (tx_b, _) = broadcast::channel(100);
-    let manager_a = CollectionManager::new(dir_a.clone(), tx_a);
-    let manager_b = CollectionManager::new(dir_b.clone(), tx_b);
+    let (etx_a, _) = broadcast::channel(100);
+    let (etx_b, _) = broadcast::channel(100);
+    let manager_a = CollectionManager::new(dir_a.clone(), tx_a, etx_a);
+    let manager_b = CollectionManager::new(dir_b.clone(), tx_b, etx_b);
 
     let col_name = "sync_col";
     let dim = 64;

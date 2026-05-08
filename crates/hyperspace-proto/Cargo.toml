@@ -9,6 +9,7 @@ repository = "https://github.com/yarlabs/hyperspacedb"
 [dependencies]
 tonic = "0.10"
 prost = "0.12"
+serde = { version = "1.0", features = ["derive"] }
 
 [build-dependencies]
 tonic-build = "0.10"
