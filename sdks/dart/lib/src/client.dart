@@ -92,6 +92,8 @@ class HyperspaceClient {
     String? hybridQuery, 
     double? hybridAlpha,
     Bm25Options? bm25Options,
+    int? mrlDimension,
+    bool? useWasserstein,
   }) async {
     final req = SearchRequest(
       vector: vector,
@@ -101,6 +103,8 @@ class HyperspaceClient {
     if (hybridQuery != null) req.hybridQuery = hybridQuery;
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
     if (bm25Options != null) req.bm25Options = bm25Options;
+    if (mrlDimension != null) req.mrlDimension = mrlDimension;
+    if (useWasserstein != null) req.useWasserstein = useWasserstein;
 
     final resp = await _stub.search(req);
     return resp.results;
@@ -147,6 +151,99 @@ class HyperspaceClient {
   Future<SyncPushResponse> syncPush(Stream<SyncVectorData> vectors) {
     return _stub.syncPush(vectors);
   }
+
+  Future<CollectionStatsResponse> getCollectionStats(String name) {
+    final req = CollectionStatsRequest(name: name);
+    return _stub.getCollectionStats(req);
+  }
+
+  Future<bool> exists(String name) async {
+    try {
+      await getCollectionStats(name);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> updateCollection(String name) async {
+    final req = ConfigUpdate(collection: name);
+    final resp = await _stub.configure(req);
+    return resp.status == 'success';
+  }
+
+  Future<bool> createSnapshot() async {
+    final resp = await _stub.triggerSnapshot(Empty());
+    return resp.status == 'success';
+  }
+
+  Future<bool> vacuum() async {
+    final resp = await _stub.triggerVacuum(Empty());
+    return resp.status == 'success';
+  }
+
+  Stream<MonitorResponse> getMetrics() {
+    return _stub.monitor(MonitorRequest());
+  }
+
+  Future<SearchMultiCollectionResponse> searchMultiCollection(List<String> collections, List<double> query, {int topK = 10}) {
+    final req = SearchMultiCollectionRequest(
+      collections: collections,
+      vector: query,
+      topK: topK,
+    );
+    return _stub.searchMultiCollection(req);
+  }
+
+  // Graph API
+  Future<GraphNode> getNode(String collection, int id, int layer) {
+    final req = GetNodeRequest(collection: collection, id: id, layer: layer);
+    return _stub.getNode(req);
+  }
+
+  Future<GetNeighborsResponse> getNeighbors(String collection, int id, int layer, {int limit = 10, int offset = 0}) {
+    final req = GetNeighborsRequest(collection: collection, id: id, layer: layer, limit: limit, offset: offset);
+    return _stub.getNeighbors(req);
+  }
+
+  Future<TraverseResponse> traverse(TraverseRequest req) {
+    return _stub.traverse(req);
+  }
+
+  Future<FindSemanticClustersResponse> findSemanticClusters(FindSemanticClustersRequest req) {
+    return _stub.findSemanticClusters(req);
+  }
+
+  // Admin & Sync API
+  Future<bool> rebuildIndex(String name) async {
+    final req = RebuildIndexRequest(name: name);
+    final resp = await _stub.rebuildIndex(req);
+    return resp.status == 'success';
+  }
+
+  Future<DigestResponse> getDigest(String collection) {
+    final req = DigestRequest(collection: collection);
+    return _stub.getDigest(req);
+  }
+
+  Stream<EventMessage> subscribeToEvents(List<EventType> types, {String? collection}) {
+    final req = EventSubscriptionRequest(
+      types: types.map((t) => t.value).toList(),
+      collection: collection,
+    );
+    return _stub.subscribeToEvents(req);
+  }
+
+  Future<bool> triggerReconsolidation(String collection, List<double> target, double lr) async {
+    final req = ReconsolidationRequest(
+      collection: collection,
+      targetVector: target,
+      learningRate: lr,
+    );
+    final resp = await _stub.triggerReconsolidation(req);
+    return resp.status == 'success';
+  }
+
 
   /// Calculates Gromov Delta-hyperbolicity of a dataset.
   /// Used for geometric analytics.

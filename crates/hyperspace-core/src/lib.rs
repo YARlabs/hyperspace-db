@@ -88,6 +88,9 @@ pub enum FilterExpr {
         center: Vec<f64>,
         radius: f64,
     },
+    And(Vec<FilterExpr>),
+    Or(Vec<FilterExpr>),
+    Not(Box<FilterExpr>),
 }
 
 impl FilterExpr {
@@ -135,6 +138,35 @@ impl FilterExpr {
                 let region = region::BallRegion::new(center.clone(), *radius);
                 region.contains(vector)
             }
+            Self::And(conds) => conds.iter().all(|c| c.check(vector, metadata)),
+            Self::Or(conds)  => conds.iter().any(|c| c.check(vector, metadata)),
+            Self::Not(cond)  => !cond.check(vector, metadata),
+        }
+    }
+
+    /// Metadata-only check (no vector). Geometric filters (`InCone`, `InBall`, `InBox`)
+    /// are skipped (return `true`) because vector data is unavailable in scroll context.
+    pub fn check_meta(
+        &self,
+        metadata: &std::collections::HashMap<String, String>,
+    ) -> bool {
+        match self {
+            Self::Match { key, value } => metadata.get(key) == Some(value),
+            Self::Range { key, gte, lte } => {
+                if let Some(val_str) = metadata.get(key) {
+                    if let Ok(val) = val_str.parse::<f64>() {
+                        if let Some(g) = gte { if val < *g { return false; } }
+                        if let Some(l) = lte { if val > *l { return false; } }
+                        return true;
+                    }
+                }
+                false
+            }
+            // Geometric filters need vector data; pass-through in meta-only context.
+            Self::InCone { .. } | Self::InBox { .. } | Self::InBall { .. } => true,
+            Self::And(conds) => conds.iter().all(|c| c.check_meta(metadata)),
+            Self::Or(conds)  => conds.iter().any(|c| c.check_meta(metadata)),
+            Self::Not(cond)  => !cond.check_meta(metadata),
         }
     }
 }
@@ -263,6 +295,59 @@ pub trait Collection: Send + Sync + 'static {
     ) -> Result<Vec<Vec<u32>>, String>;
     fn metadata_by_id(&self, id: u32) -> std::collections::HashMap<String, String>;
     fn quantization_mode(&self) -> QuantizationMode;
+
+    /// Fetch raw point data for a given list of IDs. Returns (id, vector, metadata) tuples.
+    fn get_points(
+        &self,
+        ids: &[u32],
+    ) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)> {
+        // Default: use peek and filter by requested IDs
+        let id_set: std::collections::HashSet<u32> = ids.iter().copied().collect();
+        self.peek(self.count().max(1), 0)
+            .into_iter()
+            .filter(|(id, _, _)| id_set.contains(id))
+            .collect()
+    }
+
+    /// Patch-update a point's metadata without touching the vector.
+    fn update_payload(
+        &self,
+        id: u32,
+        patch: std::collections::HashMap<String, String>,
+    ) -> Result<(), String>;
+
+    /// Iterate over all points, optionally filtered, for data export / Explorer.
+    fn scroll(
+        &self,
+        limit: usize,
+        offset: usize,
+        filters: &[FilterExpr],
+    ) -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)> {
+        // Default implementation using peek + in-memory filter.
+        self.peek(self.count().max(1), 0)
+            .into_iter()
+            .skip(offset)
+            .filter(|(_, vec, meta)| {
+                // Build a dummy HyperVector-like slice for geometric checks.
+                // We pass the slice to check(); for geometric filters this is best-effort.
+                filters.iter().all(|f| {
+                    // For metadata-only filters (Match/Range/And/Or/Not)
+                    // we can evaluate without a typed HyperVector.
+                    // Geometric filters return true by default on unknown vectors.
+                    f.check_meta(meta)
+                })
+            })
+            .take(limit)
+            .collect()
+    }
+
+    /// Count points matching a set of filters.
+    fn count_filtered(&self, filters: &[FilterExpr]) -> usize {
+        if filters.is_empty() {
+            return self.count();
+        }
+        self.scroll(usize::MAX, 0, filters).len()
+    }
 }
 
 pub trait Metric<const N: usize>: Send + Sync + 'static {

@@ -4,5 +4,7 @@ string collection
 float32 hybrid_alpha
 string bm25_method
 string bm25_language
+string filters_json
 ---
-SearchResult[] results
+hyperspace_interfaces/SearchResult[] results
+

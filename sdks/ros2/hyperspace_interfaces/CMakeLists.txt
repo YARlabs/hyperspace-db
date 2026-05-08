@@ -10,11 +10,23 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SearchResult.msg"
+  "msg/SystemStats.msg"
   "srv/NavigateToAttractor.srv"
   "srv/InsertText.srv"
   "srv/SearchText.srv"
+  "srv/Search.srv"
   "srv/Vectorize.srv"
   "srv/Delete.srv"
+  "srv/GetCollectionStats.srv"
+  "srv/Exists.srv"
+  "srv/UpdateCollection.srv"
+  "srv/CreateSnapshot.srv"
+  "srv/Vacuum.srv"
+  "srv/SearchMultiCollection.srv"
+  "srv/GetNode.srv"
+  "srv/GetNeighbors.srv"
+  "srv/RebuildIndex.srv"
+  "srv/TriggerReconsolidation.srv"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

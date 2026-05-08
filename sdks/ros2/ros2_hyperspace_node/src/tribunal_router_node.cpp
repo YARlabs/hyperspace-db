@@ -4,7 +4,19 @@
 #include <hyperspace_interfaces/srv/search_text.hpp>
 #include <hyperspace_interfaces/srv/vectorize.hpp>
 #include <hyperspace_interfaces/srv/delete.hpp>
+#include <hyperspace_interfaces/srv/get_collection_stats.hpp>
+#include <hyperspace_interfaces/srv/exists.hpp>
+#include <hyperspace_interfaces/srv/update_collection.hpp>
+#include <hyperspace_interfaces/srv/create_snapshot.hpp>
+#include <hyperspace_interfaces/srv/vacuum.hpp>
+#include <hyperspace_interfaces/srv/search_multi_collection.hpp>
+#include <hyperspace_interfaces/srv/search.hpp>
+#include <hyperspace_interfaces/srv/get_node.hpp>
+#include <hyperspace_interfaces/srv/get_neighbors.hpp>
+#include <hyperspace_interfaces/srv/rebuild_index.hpp>
+#include <hyperspace_interfaces/srv/trigger_reconsolidation.hpp>
 #include <hyperspace_interfaces/msg/search_result.hpp>
+#include <hyperspace_interfaces/msg/system_stats.hpp>
 
 #include <hyperspace/client.hpp>
 #include <hyperspace/math.hpp>
@@ -51,6 +63,67 @@ public:
         delete_service_ = this->create_service<hyperspace_interfaces::srv::Delete>(
             "hyperspace/delete",
             std::bind(&TribunalRouterNode::handle_delete, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        stats_service_ = this->create_service<hyperspace_interfaces::srv::GetCollectionStats>(
+            "hyperspace/get_collection_stats",
+            std::bind(&TribunalRouterNode::handle_get_collection_stats, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        exists_service_ = this->create_service<hyperspace_interfaces::srv::Exists>(
+            "hyperspace/exists",
+            std::bind(&TribunalRouterNode::handle_exists, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        update_collection_service_ = this->create_service<hyperspace_interfaces::srv::UpdateCollection>(
+            "hyperspace/update_collection",
+            std::bind(&TribunalRouterNode::handle_update_collection, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        snapshot_service_ = this->create_service<hyperspace_interfaces::srv::CreateSnapshot>(
+            "hyperspace/create_snapshot",
+            std::bind(&TribunalRouterNode::handle_create_snapshot, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        vacuum_service_ = this->create_service<hyperspace_interfaces::srv::Vacuum>(
+            "hyperspace/vacuum",
+            std::bind(&TribunalRouterNode::handle_vacuum, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        search_multi_service_ = this->create_service<hyperspace_interfaces::srv::SearchMultiCollection>(
+            "hyperspace/search_multi_collection",
+            std::bind(&TribunalRouterNode::handle_search_multi, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        search_vector_service_ = this->create_service<hyperspace_interfaces::srv::Search>(
+            "hyperspace/search",
+            std::bind(&TribunalRouterNode::handle_search, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        get_node_service_ = this->create_service<hyperspace_interfaces::srv::GetNode>(
+            "hyperspace/get_node",
+            std::bind(&TribunalRouterNode::handle_get_node, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        get_neighbors_service_ = this->create_service<hyperspace_interfaces::srv::GetNeighbors>(
+            "hyperspace/get_neighbors",
+            std::bind(&TribunalRouterNode::handle_get_neighbors, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        rebuild_index_service_ = this->create_service<hyperspace_interfaces::srv::RebuildIndex>(
+            "hyperspace/rebuild_index",
+            std::bind(&TribunalRouterNode::handle_rebuild_index, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        reconsolidation_service_ = this->create_service<hyperspace_interfaces::srv::TriggerReconsolidation>(
+            "hyperspace/trigger_reconsolidation",
+            std::bind(&TribunalRouterNode::handle_trigger_reconsolidation, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        metrics_pub_ = this->create_publisher<hyperspace_interfaces::msg::SystemStats>("hyperspace/metrics", 10);
+        metrics_timer_ = this->create_wall_timer(
+            std::chrono::seconds(5),
+            std::bind(&TribunalRouterNode::publish_metrics, this)
         );
 
         RCLCPP_INFO(this->get_logger(), "Hyperspace ROS2 Node [Tribunal Router] v3.5 is ONLINE.");
@@ -101,6 +174,8 @@ private:
         if (!request->bm25_method.empty()) bm25.method = request->bm25_method;
         if (!request->bm25_language.empty()) bm25.language = request->bm25_language;
 
+        // In a real implementation we would parse filters_json here.
+        // For now, passing standard search parameters.
         auto results = client_->SearchText(request->query, request->top_k, request->collection, request->hybrid_alpha, &bm25);
         
         for (const auto& r : results) {
@@ -134,13 +209,176 @@ private:
         response->message = ok ? "Deleted successfully." : "Deletion failed.";
     }
 
+    void handle_get_collection_stats(
+        const std::shared_ptr<hyperspace_interfaces::srv::GetCollectionStats::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::GetCollectionStats::Response> response)
+    {
+        hyperspace::CollectionStats stats;
+        bool ok = client_->GetCollectionStats(request->collection, stats);
+        response->success = ok;
+        if (ok) {
+            response->count = stats.count;
+            response->dimension = stats.dimension;
+            response->metric = stats.metric;
+            response->indexing_queue = stats.indexing_queue;
+        } else {
+            response->message = "Failed to get stats";
+        }
+    }
+
+    void handle_exists(
+        const std::shared_ptr<hyperspace_interfaces::srv::Exists::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::Exists::Response> response)
+    {
+        response->exists = client_->Exists(request->collection);
+    }
+
+    void handle_update_collection(
+        const std::shared_ptr<hyperspace_interfaces::srv::UpdateCollection::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::UpdateCollection::Response> response)
+    {
+        bool ok = client_->UpdateCollection(request->collection);
+        response->success = ok;
+    }
+
+    void handle_create_snapshot(
+        const std::shared_ptr<hyperspace_interfaces::srv::CreateSnapshot::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::CreateSnapshot::Response> response)
+    {
+        (void)request;
+        response->success = client_->CreateSnapshot();
+    }
+
+    void handle_vacuum(
+        const std::shared_ptr<hyperspace_interfaces::srv::Vacuum::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::Vacuum::Response> response)
+    {
+        (void)request;
+        response->success = client_->Vacuum();
+    }
+
+    void handle_search_multi(
+        const std::shared_ptr<hyperspace_interfaces::srv::SearchMultiCollection::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::SearchMultiCollection::Response> response)
+    {
+        std::vector<std::string> cols;
+        for (const auto& c : request->collections) cols.push_back(c);
+        std::vector<double> vec;
+        for (double v : request->vector) vec.push_back(v);
+
+        auto results = client_->SearchMultiCollection(cols, vec, request->top_k, request->mrl_dimension, request->use_wasserstein);
+        for (const auto& kv : results) {
+            for (const auto& r : kv.second) {
+                hyperspace_interfaces::msg::SearchResult msg;
+                msg.id = r.id;
+                msg.distance = r.score;
+                for (auto const& it : r.metadata) {
+                    msg.metadata_keys.push_back(it.first);
+                    msg.metadata_values.push_back(it.second);
+                }
+                response->collection_names.push_back(kv.first);
+                response->results.push_back(msg);
+            }
+        }
+    }
+
+    void handle_search(
+        const std::shared_ptr<hyperspace_interfaces::srv::Search::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::Search::Response> response)
+    {
+        std::vector<double> vec;
+        for (double v : request->vector) vec.push_back(v);
+
+        auto results = client_->Search(vec, request->top_k, request->collection, request->hybrid_alpha, request->hybrid_query, request->mrl_dimension, request->use_wasserstein);
+        for (const auto& r : results) {
+            hyperspace_interfaces::msg::SearchResult msg;
+            msg.id = r.id;
+            msg.distance = r.score;
+            for (auto const& it : r.metadata) {
+                msg.metadata_keys.push_back(it.first);
+                msg.metadata_values.push_back(it.second);
+            }
+            response->results.push_back(msg);
+        }
+        response->success = true;
+    }
+
+    void handle_get_node(
+        const std::shared_ptr<hyperspace_interfaces::srv::GetNode::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::GetNode::Response> response)
+    {
+        hyperspace::GraphNode node;
+        bool ok = client_->GetNode(request->collection, request->id, request->layer, node);
+        response->success = ok;
+        if (ok) {
+            response->id = node.id;
+            response->layer = node.layer;
+            for (uint32_t n : node.neighbors) response->neighbors.push_back(n);
+            // Simulating metadata_json for now
+            response->metadata_json = "{}";
+        }
+    }
+
+    void handle_get_neighbors(
+        const std::shared_ptr<hyperspace_interfaces::srv::GetNeighbors::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::GetNeighbors::Response> response)
+    {
+        hyperspace::GetNeighborsResponse res;
+        bool ok = client_->GetNeighbors(request->collection, request->id, request->layer, request->limit, request->offset, res);
+        response->success = ok;
+        if (ok) {
+            for (const auto& n : res.neighbors) response->ids.push_back(n.id);
+        }
+    }
+
+    void handle_rebuild_index(
+        const std::shared_ptr<hyperspace_interfaces::srv::RebuildIndex::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::RebuildIndex::Response> response)
+    {
+        response->success = client_->RebuildIndex(request->name);
+    }
+
+    void handle_trigger_reconsolidation(
+        const std::shared_ptr<hyperspace_interfaces::srv::TriggerReconsolidation::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::TriggerReconsolidation::Response> response)
+    {
+        std::vector<double> target;
+        for (double v : request->target_vector) target.push_back(v);
+        response->success = client_->TriggerReconsolidation(request->collection, target, request->learning_rate);
+    }
+
+    void publish_metrics() {
+        // Monitor stream is tricky to bridge to topic directly in one call, 
+        // normally we would keep the stream open. For simplicity, we just use the stats we have.
+        hyperspace_interfaces::msg::SystemStats msg;
+        // In a real implementation, we would pull this from client_->Monitor()
+        // Here we just provide placeholder/partial data for parity
+        msg.total_collections = 1; 
+        msg.total_vectors = 0;
+        metrics_pub_->publish(msg);
+    }
+
     std::unique_ptr<hyperspace::HyperspaceClient> client_;
     
     rclcpp::Service<hyperspace_interfaces::srv::NavigateToAttractor>::SharedPtr navigate_service_;
     rclcpp::Service<hyperspace_interfaces::srv::InsertText>::SharedPtr insert_service_;
     rclcpp::Service<hyperspace_interfaces::srv::SearchText>::SharedPtr search_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::Search>::SharedPtr search_vector_service_;
     rclcpp::Service<hyperspace_interfaces::srv::Vectorize>::SharedPtr vectorize_service_;
     rclcpp::Service<hyperspace_interfaces::srv::Delete>::SharedPtr delete_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::GetCollectionStats>::SharedPtr stats_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::Exists>::SharedPtr exists_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::UpdateCollection>::SharedPtr update_collection_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::CreateSnapshot>::SharedPtr snapshot_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::Vacuum>::SharedPtr vacuum_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::SearchMultiCollection>::SharedPtr search_multi_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::GetNode>::SharedPtr get_node_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::GetNeighbors>::SharedPtr get_neighbors_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::RebuildIndex>::SharedPtr rebuild_index_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::TriggerReconsolidation>::SharedPtr reconsolidation_service_;
+
+    rclcpp::Publisher<hyperspace_interfaces::msg::SystemStats>::SharedPtr metrics_pub_;
+    rclcpp::TimerBase::SharedPtr metrics_timer_;
 };
 
 int main(int argc, char **argv) {

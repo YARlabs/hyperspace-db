@@ -18,6 +18,13 @@ service Database {
 
   // Delete vectors
   rpc Delete (DeleteRequest) returns (DeleteResponse);
+  
+  // Extended Data Ops
+  rpc GetPoints (GetPointsRequest) returns (GetPointsResponse);
+  rpc UpdatePayload (UpdatePayloadRequest) returns (StatusResponse);
+  rpc Scroll (ScrollRequest) returns (ScrollResponse);
+  rpc Count (CountRequest) returns (CountResponse);
+  
   // Search (ANN)
   rpc Search (SearchRequest) returns (SearchResponse);
   // Batch Search (ANN)
@@ -55,6 +62,9 @@ service Database {
   rpc SyncPull (SyncPullRequest) returns (stream SyncVectorData);
   // Step 3 (optional): Client pushes its unique vectors to the server.
   rpc SyncPush (stream SyncVectorData) returns (SyncPushResponse);
+  
+  // Health Status
+  rpc HealthCheck (Empty) returns (HealthCheckResponse);
 }
 
 message ReplicationRequest {
@@ -255,6 +265,46 @@ message DeleteResponse {
   bool success = 1;
 }
 
+message GetPointsRequest {
+  string collection = 1;
+  repeated uint32 ids = 2;
+}
+
+message GetPointsResponse {
+  repeated VectorData points = 1;
+}
+
+message UpdatePayloadRequest {
+  string collection = 1;
+  uint32 id = 2;
+  map<string, string> metadata = 3;
+  map<string, MetadataValue> typed_metadata = 4;
+}
+
+message ScrollRequest {
+  string collection = 1;
+  uint32 limit = 2;
+  uint32 offset = 3;
+  repeated Filter filters = 4;
+}
+
+message ScrollResponse {
+  repeated VectorData points = 1;
+}
+
+message CountRequest {
+  string collection = 1;
+  repeated Filter filters = 2;
+}
+
+message CountResponse {
+  uint64 count = 1;
+}
+
+message HealthCheckResponse {
+  string status = 1;
+}
+
 message SearchRequest {
   string collection = 1;
   repeated double vector = 2;
@@ -275,7 +325,22 @@ message Filter {
     InCone in_cone = 3;
     InBox in_box = 4;
     InBall in_ball = 5;
+    FilterAnd and_op = 6;
+    FilterOr or_op = 7;
+    FilterNot not_op = 8;
   }
+}
+
+message FilterAnd {
+  repeated Filter conditions = 1;
+}
+
+message FilterOr {
+  repeated Filter conditions = 1;
+}
+
+message FilterNot {
+  Filter condition = 1;
 }
 
 message Match {

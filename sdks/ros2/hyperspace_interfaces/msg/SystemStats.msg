@@ -1,0 +1,6 @@
+uint32 total_collections
+uint64 total_vectors
+float32 qps
+float32 cpu_usage
+float32 ram_usage_mb
+float32 latency_p99_ms

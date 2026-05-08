@@ -209,6 +209,10 @@ export class CreateCollectionRequest extends jspb.Message {
     setDimension(value: number): CreateCollectionRequest;
     getMetric(): string;
     setMetric(value: string): CreateCollectionRequest;
+    clearComponentsList(): void;
+    getComponentsList(): Array<CollectionComponent>;
+    setComponentsList(value: Array<CollectionComponent>): CreateCollectionRequest;
+    addComponents(value?: CollectionComponent, index?: number): CollectionComponent;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CreateCollectionRequest.AsObject;
@@ -225,6 +229,39 @@ export namespace CreateCollectionRequest {
         name: string,
         dimension: number,
         metric: string,
+        componentsList: Array<CollectionComponent.AsObject>,
+    }
+}
+
+export class CollectionComponent extends jspb.Message { 
+    getSpace(): string;
+    setSpace(value: string): CollectionComponent;
+    getDimension(): number;
+    setDimension(value: number): CollectionComponent;
+    getMetric(): string;
+    setMetric(value: string): CollectionComponent;
+
+    hasWeight(): boolean;
+    clearWeight(): void;
+    getWeight(): number | undefined;
+    setWeight(value: number): CollectionComponent;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): CollectionComponent.AsObject;
+    static toObject(includeInstance: boolean, msg: CollectionComponent): CollectionComponent.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: CollectionComponent, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): CollectionComponent;
+    static deserializeBinaryFromReader(message: CollectionComponent, reader: jspb.BinaryReader): CollectionComponent;
+}
+
+export namespace CollectionComponent {
+    export type AsObject = {
+        space: string,
+        dimension: number,
+        metric: string,
+        weight?: number,
     }
 }
 
@@ -859,6 +896,11 @@ export class SearchRequest extends jspb.Message {
     getBm25Options(): Bm25Options | undefined;
     setBm25Options(value?: Bm25Options): SearchRequest;
 
+    hasMrlDimension(): boolean;
+    clearMrlDimension(): void;
+    getMrlDimension(): number | undefined;
+    setMrlDimension(value: number): SearchRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchRequest): SearchRequest.AsObject;
@@ -881,6 +923,7 @@ export namespace SearchRequest {
         hybridAlpha?: number,
         useWasserstein: boolean,
         bm25Options?: Bm25Options.AsObject,
+        mrlDimension?: number,
     }
 }
 
@@ -1676,6 +1719,40 @@ export namespace VectorInsertedEvent {
     }
 }
 
+export class TrajectoryStepEvent extends jspb.Message { 
+    getId(): number;
+    setId(value: number): TrajectoryStepEvent;
+    getCollection(): string;
+    setCollection(value: string): TrajectoryStepEvent;
+    getX(): number;
+    setX(value: number): TrajectoryStepEvent;
+    getY(): number;
+    setY(value: number): TrajectoryStepEvent;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): TrajectoryStepEvent.AsObject;
+    static toObject(includeInstance: boolean, msg: TrajectoryStepEvent): TrajectoryStepEvent.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: TrajectoryStepEvent, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): TrajectoryStepEvent;
+    static deserializeBinaryFromReader(message: TrajectoryStepEvent, reader: jspb.BinaryReader): TrajectoryStepEvent;
+}
+
+export namespace TrajectoryStepEvent {
+    export type AsObject = {
+        id: number,
+        collection: string,
+        x: number,
+        y: number,
+
+        metadataMap: Array<[string, string]>,
+    }
+}
+
 export class VectorDeletedEvent extends jspb.Message { 
     getId(): number;
     setId(value: number): VectorDeletedEvent;
@@ -1719,6 +1796,11 @@ export class EventMessage extends jspb.Message {
     getVectorDeleted(): VectorDeletedEvent | undefined;
     setVectorDeleted(value?: VectorDeletedEvent): EventMessage;
 
+    hasTrajectoryStep(): boolean;
+    clearTrajectoryStep(): void;
+    getTrajectoryStep(): TrajectoryStepEvent | undefined;
+    setTrajectoryStep(value?: TrajectoryStepEvent): EventMessage;
+
     getPayloadCase(): EventMessage.PayloadCase;
 
     serializeBinary(): Uint8Array;
@@ -1736,12 +1818,14 @@ export namespace EventMessage {
         type: EventType,
         vectorInserted?: VectorInsertedEvent.AsObject,
         vectorDeleted?: VectorDeletedEvent.AsObject,
+        trajectoryStep?: TrajectoryStepEvent.AsObject,
     }
 
     export enum PayloadCase {
         PAYLOAD_NOT_SET = 0,
         VECTOR_INSERTED = 2,
         VECTOR_DELETED = 3,
+        TRAJECTORY_STEP = 4,
     }
 
 }
@@ -2071,4 +2155,5 @@ export enum EventType {
     EVENT_UNKNOWN = 0,
     VECTOR_INSERTED = 1,
     VECTOR_DELETED = 2,
+    TRAJECTORY_STEP = 3,
 }

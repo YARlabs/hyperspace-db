@@ -36,18 +36,18 @@ use manager::CollectionManager;
 use hyperspace_embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
-    metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
-    CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CreateCollectionRequest,
-    DeleteCollectionRequest, DeleteRequest, DeleteResponse, DiffBucket, DigestRequest,
-    DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
+    CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CountRequest, CountResponse,
+    CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DiffBucket,
+    DigestRequest, DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
     FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
     GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
-    GraphCluster, GraphNode, InsertRequest, InsertResponse, InsertTextRequest,
-    ListCollectionsResponse, MetadataValue, MonitorRequest, SearchMultiCollectionRequest,
+    GetPointsRequest, GetPointsResponse, GraphCluster, GraphNode, HealthCheckResponse,
+    InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse, MetadataValue,
+    MonitorRequest, ScrollRequest, ScrollResponse, SearchMultiCollectionRequest,
     SearchMultiCollectionResponse, SearchRequest, SearchResponse, SearchResult, SearchTextRequest,
     SyncHandshakeRequest, SyncHandshakeResponse, SyncPullRequest, SyncPushResponse, SyncVectorData,
-    SystemStats, TraverseRequest, TraverseResponse, VectorDeletedEvent, VectorInsertedEvent,
-    VectorizeRequest, VectorizeResponse,
+    SystemStats, TraverseRequest, TraverseResponse, UpdatePayloadRequest, VectorData,
+    VectorDeletedEvent, VectorInsertedEvent, VectorizeRequest, VectorizeResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
@@ -205,6 +205,51 @@ fn parse_bm25_options(
     params
 }
 
+/// Convert a slice of proto `Filter` messages to `FilterExpr` values.
+/// Handles basic conditions and recursive logical combinators (And/Or/Not).
+fn proto_filter_to_expr(f: Filter) -> Option<hyperspace_core::FilterExpr> {
+    use hyperspace_proto::hyperspace::filter::Condition;
+    match f.condition? {
+        Condition::Match(m) => Some(hyperspace_core::FilterExpr::Match {
+            key: m.key,
+            value: m.value,
+        }),
+        Condition::Range(r) => {
+            let (gte, lte) = range_bounds_f64(&r);
+            Some(hyperspace_core::FilterExpr::Range { key: r.key, gte, lte })
+        }
+        Condition::InCone(c) => Some(hyperspace_core::FilterExpr::InCone {
+            axes: c.axes,
+            apertures: c.apertures,
+            cen: c.cen,
+        }),
+        Condition::InBox(b) => Some(hyperspace_core::FilterExpr::InBox {
+            min_bounds: b.min_bounds,
+            max_bounds: b.max_bounds,
+        }),
+        Condition::InBall(b) => Some(hyperspace_core::FilterExpr::InBall {
+            center: b.center,
+            radius: b.radius,
+        }),
+        Condition::AndOp(and) => {
+            let conds: Vec<_> = and.conditions.into_iter().filter_map(proto_filter_to_expr).collect();
+            if conds.is_empty() { None } else { Some(hyperspace_core::FilterExpr::And(conds)) }
+        }
+        Condition::OrOp(or) => {
+            let conds: Vec<_> = or.conditions.into_iter().filter_map(proto_filter_to_expr).collect();
+            if conds.is_empty() { None } else { Some(hyperspace_core::FilterExpr::Or(conds)) }
+        }
+        Condition::NotOp(not) => {
+            let inner = proto_filter_to_expr(*not.condition?)?;
+            Some(hyperspace_core::FilterExpr::Not(Box::new(inner)))
+        }
+    }
+}
+
+fn parse_complex_filters(filters: &[Filter]) -> Vec<hyperspace_core::FilterExpr> {
+    filters.iter().cloned().filter_map(proto_filter_to_expr).collect()
+}
+
 fn build_filters(
     req: SearchRequest,
 ) -> (
@@ -221,46 +266,7 @@ fn build_filters(
     };
 
     let exact_filter = req.filter.into_iter().collect();
-    let mut complex_filters = Vec::new();
-    for f in req.filters {
-        if let Some(cond) = f.condition {
-            match cond {
-                hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
-                    complex_filters.push(hyperspace_core::FilterExpr::Match {
-                        key: m.key,
-                        value: m.value,
-                    });
-                }
-                hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
-                    let (gte, lte) = range_bounds_f64(&r);
-                    complex_filters.push(hyperspace_core::FilterExpr::Range {
-                        key: r.key,
-                        gte,
-                        lte,
-                    });
-                }
-                hyperspace_proto::hyperspace::filter::Condition::InCone(c) => {
-                    complex_filters.push(hyperspace_core::FilterExpr::InCone {
-                        axes: c.axes,
-                        apertures: c.apertures,
-                        cen: c.cen,
-                    });
-                }
-                hyperspace_proto::hyperspace::filter::Condition::InBox(b) => {
-                    complex_filters.push(hyperspace_core::FilterExpr::InBox {
-                        min_bounds: b.min_bounds,
-                        max_bounds: b.max_bounds,
-                    });
-                }
-                hyperspace_proto::hyperspace::filter::Condition::InBall(b) => {
-                    complex_filters.push(hyperspace_core::FilterExpr::InBall {
-                        center: b.center,
-                        radius: b.radius,
-                    });
-                }
-            }
-        }
-    }
+    let complex_filters = parse_complex_filters(&req.filters);
 
     let params = hyperspace_core::SearchParams {
         top_k: req.top_k as usize,
@@ -1968,6 +1974,109 @@ impl Database for HyperspaceService {
             accepted,
             rejected,
             duplicates,
+        }))
+    }
+
+    // --- Extended Data Ops ---
+
+    async fn get_points(
+        &self,
+        request: Request<GetPointsRequest>,
+    ) -> Result<Response<GetPointsResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
+
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+            let ids: Vec<u32> = req.ids.iter().copied().collect();
+            let points = col.get_points(&ids);
+            let proto_points = points.into_iter().map(|(id, vector, meta)| VectorData {
+                id,
+                vector,
+                metadata: meta,
+                typed_metadata: Default::default(),
+            }).collect();
+            Ok(Response::new(GetPointsResponse { points: proto_points }))
+        } else {
+            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+        }
+    }
+
+    async fn update_payload(
+        &self,
+        request: Request<UpdatePayloadRequest>,
+    ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        if self.role == "follower" {
+            return Err(Status::permission_denied("Followers are read-only"));
+        }
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
+
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+            let patch = merge_metadata(
+                req.metadata.into_iter().collect(),
+                req.typed_metadata.into_iter().collect(),
+            );
+            match col.update_payload(req.id, patch) {
+                Ok(()) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
+                    status: format!("Payload for id={} updated.", req.id),
+                })),
+                Err(e) => Err(Status::not_found(e)),
+            }
+        } else {
+            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+        }
+    }
+
+    async fn scroll(
+        &self,
+        request: Request<ScrollRequest>,
+    ) -> Result<Response<ScrollResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
+        let limit = if req.limit == 0 { 100 } else { req.limit as usize };
+        let offset = req.offset as usize;
+
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+            let filters = parse_complex_filters(&req.filters);
+            let points = col.scroll(limit, offset, &filters);
+            let proto_points = points.into_iter().map(|(id, vector, meta)| VectorData {
+                id,
+                vector,
+                metadata: meta,
+                typed_metadata: Default::default(),
+            }).collect();
+            Ok(Response::new(ScrollResponse { points: proto_points }))
+        } else {
+            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+        }
+    }
+
+    async fn count(
+        &self,
+        request: Request<CountRequest>,
+    ) -> Result<Response<CountResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
+
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+            let filters = parse_complex_filters(&req.filters);
+            let count = col.count_filtered(&filters) as u64;
+            Ok(Response::new(CountResponse { count }))
+        } else {
+            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+        }
+    }
+
+    async fn health_check(
+        &self,
+        _request: Request<hyperspace_proto::hyperspace::Empty>,
+    ) -> Result<Response<HealthCheckResponse>, Status> {
+        Ok(Response::new(HealthCheckResponse {
+            status: "SERVING".to_string(),
         }))
     }
 }

@@ -1,0 +1,8 @@
+string collection
+---
+uint64 count
+uint32 dimension
+string metric
+uint64 indexing_queue
+bool success
+string message

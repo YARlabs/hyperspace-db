@@ -1,0 +1,4 @@
+string collection
+---
+bool exists
+string message

@@ -1,0 +1,11 @@
+float64[] vector
+uint32 top_k
+string collection
+string filters_json
+float32 hybrid_alpha
+string hybrid_query
+uint32 mrl_dimension
+bool use_wasserstein
+---
+hyperspace_interfaces/SearchResult[] results
+bool success

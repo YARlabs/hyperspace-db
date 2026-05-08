@@ -336,6 +336,8 @@ impl Client {
         vector: Vec<f64>,
         top_k: u32,
         collection: Option<String>,
+        mrl_dimension: Option<u32>,
+        use_wasserstein: bool,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         let req = SearchRequest {
             vector,
@@ -344,9 +346,10 @@ impl Client {
             filters: vec![],
             hybrid_query: None,
             hybrid_alpha: None,
-            use_wasserstein: false,
+            use_wasserstein,
             collection: collection.unwrap_or_default(),
             bm25_options: None,
+            mrl_dimension,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -361,9 +364,17 @@ impl Client {
         vector: &[f32],
         top_k: u32,
         collection: Option<String>,
+        mrl_dimension: Option<u32>,
+        use_wasserstein: bool,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
-        self.search(Self::vec_f32_to_f64(vector), top_k, collection)
-            .await
+        self.search(
+            Self::vec_f32_to_f64(vector),
+            top_k,
+            collection,
+            mrl_dimension,
+            use_wasserstein,
+        )
+        .await
     }
 
     /// Searches using text that will be vectorized on the server side.
@@ -410,6 +421,7 @@ impl Client {
             use_wasserstein: true,
             collection: collection.unwrap_or_default(),
             bm25_options: None,
+            mrl_dimension: None,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -438,6 +450,7 @@ impl Client {
                 use_wasserstein: false,
                 collection: collection_name.clone(),
                 bm25_options: None,
+                mrl_dimension: None,
             })
             .collect();
 
@@ -492,6 +505,7 @@ impl Client {
                 use_wasserstein: false,
                 collection: col_name.clone(),
                 bm25_options: None,
+                mrl_dimension: None,
             })
             .collect();
 
@@ -534,6 +548,7 @@ impl Client {
             use_wasserstein: false,
             collection: collection.unwrap_or_default(),
             bm25_options,
+            mrl_dimension: None,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -793,6 +808,31 @@ impl Client {
         stream: impl tonic::IntoStreamingRequest<Message = hyperspace_proto::hyperspace::SyncVectorData>,
     ) -> Result<hyperspace_proto::hyperspace::SyncPushResponse, tonic::Status> {
         let resp = self.inner.sync_push(stream).await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Triggers a snapshot of the database.
+    pub async fn trigger_snapshot(&mut self) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::Empty {};
+        let resp = self.inner.trigger_snapshot(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
+    /// Checks if a collection exists.
+    pub async fn exists(&mut self, name: String) -> Result<bool, tonic::Status> {
+        match self.get_collection_stats(name).await {
+            Ok(_) => Ok(true),
+            Err(s) if s.code() == tonic::Code::NotFound => Ok(false),
+            Err(s) => Err(s),
+        }
+    }
+
+    /// Streams system metrics.
+    pub async fn monitor(
+        &mut self,
+    ) -> Result<tonic::Streaming<hyperspace_proto::hyperspace::SystemStats>, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::MonitorRequest {};
+        let resp = self.inner.monitor(req).await?;
         Ok(resp.into_inner())
     }
 

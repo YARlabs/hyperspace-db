@@ -1,0 +1,11 @@
+string[] collections
+float64[] vector
+uint32 top_k
+uint32 mrl_dimension
+bool use_wasserstein
+
+---
+# We can't easily return a complex map structure in ROS2 without custom msgs
+# For simplicity, returning a flat list with an extra field for collection name
+string[] collection_names
+hyperspace_interfaces/SearchResult[] results

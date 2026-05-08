@@ -147,10 +147,12 @@ func (c *HyperspaceClient) Vectorize(ctx context.Context, text string, metric st
 
 // SearchParams contains optional parameters for advanced vector search
 type SearchParams struct {
-	Filters      []*pb.Filter
-	HybridQuery  string
-	HybridAlpha  float32
-	BM25Options  *pb.Bm25Options
+	Filters        []*pb.Filter
+	HybridQuery    string
+	HybridAlpha    float32
+	BM25Options    *pb.Bm25Options
+	MrlDimension   uint32
+	UseWasserstein bool
 }
 
 // Search performs ANN lookup with optional geometric filters, BM25 factors, and hybrid ranking
@@ -168,6 +170,12 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 		}
 		if params.HybridAlpha != 0 {
 			req.HybridAlpha = &params.HybridAlpha
+		}
+		if params.MrlDimension != 0 {
+			req.MrlDimension = &params.MrlDimension
+		}
+		if params.UseWasserstein {
+			req.UseWasserstein = &params.UseWasserstein
 		}
 		req.Bm25Options = params.BM25Options
 	}
@@ -226,3 +234,109 @@ func (c *HyperspaceClient) SyncPull(ctx context.Context, collection string, buck
 func (c *HyperspaceClient) SyncPush(ctx context.Context) (pb.Database_SyncPushClient, error) {
 	return c.client.SyncPush(c.withContext(ctx))
 }
+
+func (c *HyperspaceClient) GetCollectionStats(ctx context.Context, name string) (*pb.CollectionStatsResponse, error) {
+	req := &pb.CollectionStatsRequest{Name: name}
+	return c.client.GetCollectionStats(c.withContext(ctx), req)
+}
+
+func (c *HyperspaceClient) Exists(ctx context.Context, name string) (bool, error) {
+	_, err := c.GetCollectionStats(ctx, name)
+	if err != nil {
+		// Just relying on error string since we might not have grpc codes imported directly
+		return false, nil
+	}
+	return true, nil
+}
+
+func (c *HyperspaceClient) UpdateCollection(ctx context.Context, name string) error {
+	req := &pb.ConfigUpdate{Collection: name}
+	_, err := c.client.Configure(c.withContext(ctx), req)
+	return err
+}
+
+func (c *HyperspaceClient) CreateSnapshot(ctx context.Context) error {
+	_, err := c.client.TriggerSnapshot(c.withContext(ctx), &pb.Empty{})
+	return err
+}
+
+func (c *HyperspaceClient) Vacuum(ctx context.Context) error {
+	_, err := c.client.TriggerVacuum(c.withContext(ctx), &pb.Empty{})
+	return err
+}
+
+func (c *HyperspaceClient) GetMetrics(ctx context.Context) (pb.Database_MonitorClient, error) {
+	req := &pb.MonitorRequest{}
+	return c.client.Monitor(c.withContext(ctx), req)
+}
+
+func (c *HyperspaceClient) SearchMultiCollection(ctx context.Context, collections []string, query []float64, topK uint32) (*pb.SearchMultiCollectionResponse, error) {
+	req := &pb.SearchMultiCollectionRequest{
+		Collections: collections,
+		Vector:      query,
+		TopK:        topK,
+	}
+	return c.client.SearchMultiCollection(c.withContext(ctx), req)
+}
+
+// Graph API
+func (c *HyperspaceClient) GetNode(ctx context.Context, id uint32, layer uint32, collection string) (*pb.GraphNode, error) {
+	req := &pb.GetNodeRequest{
+		Collection: collection,
+		Id:         id,
+		Layer:      layer,
+	}
+	return c.client.GetNode(c.withContext(ctx), req)
+}
+
+func (c *HyperspaceClient) GetNeighbors(ctx context.Context, id uint32, layer uint32, limit uint32, offset uint32, collection string) (*pb.GetNeighborsResponse, error) {
+	req := &pb.GetNeighborsRequest{
+		Collection: collection,
+		Id:         id,
+		Layer:      layer,
+		Limit:      limit,
+		Offset:     offset,
+	}
+	return c.client.GetNeighbors(c.withContext(ctx), req)
+}
+
+func (c *HyperspaceClient) Traverse(ctx context.Context, req *pb.TraverseRequest) (*pb.TraverseResponse, error) {
+	return c.client.Traverse(c.withContext(ctx), req)
+}
+
+func (c *HyperspaceClient) FindSemanticClusters(ctx context.Context, req *pb.FindSemanticClustersRequest) (*pb.FindSemanticClustersResponse, error) {
+	return c.client.FindSemanticClusters(c.withContext(ctx), req)
+}
+
+// Admin & Sync API
+func (c *HyperspaceClient) RebuildIndex(ctx context.Context, name string) error {
+	req := &pb.RebuildIndexRequest{Name: name}
+	_, err := c.client.RebuildIndex(c.withContext(ctx), req)
+	return err
+}
+
+func (c *HyperspaceClient) GetDigest(ctx context.Context, collection string) (*pb.DigestResponse, error) {
+	req := &pb.DigestRequest{Collection: collection}
+	return c.client.GetDigest(c.withContext(ctx), req)
+}
+
+func (c *HyperspaceClient) SubscribeToEvents(ctx context.Context, types []pb.EventType, collection string) (pb.Database_SubscribeToEventsClient, error) {
+	req := &pb.EventSubscriptionRequest{
+		Collection: &collection,
+	}
+	for _, t := range types {
+		req.Types = append(req.Types, int32(t))
+	}
+	return c.client.SubscribeToEvents(c.withContext(ctx), req)
+}
+
+func (c *HyperspaceClient) TriggerReconsolidation(ctx context.Context, collection string, target []float64, lr float64) error {
+	req := &pb.ReconsolidationRequest{
+		Collection:   collection,
+		TargetVector: target,
+		LearningRate: lr,
+	}
+	_, err := c.client.TriggerReconsolidation(c.withContext(ctx), req)
+	return err
+}
+

@@ -1772,6 +1772,17 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let internal_id = self.to_internal_id(id);
         self.index_link.load().metadata_by_id(internal_id)
     }
+
+    fn update_payload(
+        &self,
+        id: u32,
+        patch: std::collections::HashMap<String, String>,
+    ) -> Result<(), String> {
+        let internal_id = self.to_internal_id(id);
+        self.index_link
+            .load()
+            .update_payload_metadata(internal_id, patch)
+    }
 }
 
 impl<const N: usize, M: Metric<N>> Drop for CollectionImpl<N, M> {

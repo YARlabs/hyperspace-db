@@ -1,0 +1,8 @@
+uint32 id
+uint32 layer
+uint32 limit
+uint32 offset
+string collection
+---
+uint32[] ids
+bool success

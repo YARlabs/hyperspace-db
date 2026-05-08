@@ -1,0 +1,9 @@
+uint32 id
+uint32 layer
+string collection
+---
+uint32 id
+uint32 layer
+uint32[] neighbors
+string metadata_json
+bool success

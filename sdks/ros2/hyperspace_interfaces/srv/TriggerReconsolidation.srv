@@ -1,0 +1,5 @@
+string collection
+float64[] target_vector
+float64 learning_rate
+---
+bool success

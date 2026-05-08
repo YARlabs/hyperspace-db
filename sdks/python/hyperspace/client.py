@@ -224,7 +224,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "") -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "") -> List[Dict]:
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -262,6 +262,25 @@ class HyperspaceClient:
                     proto_filters.append(hyperspace_pb2.Filter(
                         range=hyperspace_pb2.Range(**kwargs)
                     ))
+                elif f.get("type") == "in_cone":
+                    c = hyperspace_pb2.InCone(
+                        axes=f.get("axes", []),
+                        apertures=f.get("apertures", []),
+                        cen=f.get("cen", [0.0])[0]
+                    )
+                    proto_filters.append(hyperspace_pb2.Filter(in_cone=c))
+                elif f.get("type") == "in_ball":
+                    b = hyperspace_pb2.InBall(
+                        center=f.get("center", []),
+                        radius=f.get("radius", 0.0)
+                    )
+                    proto_filters.append(hyperspace_pb2.Filter(in_ball=b))
+                elif f.get("type") == "in_box":
+                    b = hyperspace_pb2.InBox(
+                        min_bounds=f.get("min_bounds", []),
+                        max_bounds=f.get("max_bounds", [])
+                    )
+                    proto_filters.append(hyperspace_pb2.Filter(in_box=b))
 
         req = hyperspace_pb2.SearchRequest(
             vector=vector,
@@ -276,6 +295,10 @@ class HyperspaceClient:
             req.hybrid_query = hybrid_query
         if hybrid_alpha is not None:
             req.hybrid_alpha = hybrid_alpha
+        if mrl_dimension is not None:
+            req.mrl_dimension = mrl_dimension
+        if use_wasserstein is not None:
+            req.use_wasserstein = use_wasserstein
             
         if bm25 is not None:
             bm25_msg = hyperspace_pb2.Bm25Options()
@@ -328,6 +351,25 @@ class HyperspaceClient:
                     proto_filters.append(hyperspace_pb2.Filter(
                         range=hyperspace_pb2.Range(**kwargs)
                     ))
+                elif f.get("type") == "in_cone":
+                    c = hyperspace_pb2.InCone(
+                        axes=f.get("axes", []),
+                        apertures=f.get("apertures", []),
+                        cen=f.get("cen", [0.0])[0]
+                    )
+                    proto_filters.append(hyperspace_pb2.Filter(in_cone=c))
+                elif f.get("type") == "in_ball":
+                    b = hyperspace_pb2.InBall(
+                        center=f.get("center", []),
+                        radius=f.get("radius", 0.0)
+                    )
+                    proto_filters.append(hyperspace_pb2.Filter(in_ball=b))
+                elif f.get("type") == "in_box":
+                    b = hyperspace_pb2.InBox(
+                        min_bounds=f.get("min_bounds", []),
+                        max_bounds=f.get("max_bounds", [])
+                    )
+                    proto_filters.append(hyperspace_pb2.Filter(in_box=b))
 
         req = hyperspace_pb2.SearchTextRequest(
             text=text,
@@ -669,9 +711,73 @@ class HyperspaceClient:
         except grpc.RpcError as e:
             print(f"RPC Error in sync_pull: {e}")
 
+    def exists(self, name: str) -> bool:
+        try:
+            self.get_collection_stats(name)
+            return True
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.NOT_FOUND or "not found" in str(e).lower():
+                return False
+            raise
+
+    def get_metrics(self) -> Iterator[Dict]:
+        req = hyperspace_pb2.MonitorRequest()
+        try:
+            stream = self.stub.Monitor(req, metadata=self.metadata)
+            for ev in stream:
+                yield {
+                    "total_collections": ev.total_collections,
+                    "total_vectors": ev.total_vectors,
+                    "qps": ev.qps,
+                    "cpu_usage": ev.cpu_usage,
+                    "ram_usage_mb": ev.ram_usage_mb,
+                    "latency_p99_ms": ev.latency_p99_ms
+                }
+        except grpc.RpcError as e:
+            print(f"RPC Error in get_metrics: {e}")
+            return
+
+    def search_multi_collection(self, query: List[float], collections: List[str], top_k: int = 10) -> Dict[str, List[Dict]]:
+        req = hyperspace_pb2.SearchMultiCollectionRequest(
+            collections=collections,
+            vector=self._normalize_vector(query),
+            top_k=top_k
+        )
+        try:
+            resp = self.stub.SearchMultiCollection(req, metadata=self.metadata)
+            result = {}
+            for col_name, search_resp in resp.responses.items():
+                result[col_name] = [
+                    {
+                        "id": r.id,
+                        "distance": r.distance,
+                        "metadata": (dict(r.metadata) if r.metadata else {}),
+                        "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {}
+                    }
+                    for r in search_resp.results
+                ]
+            return result
+        except grpc.RpcError as e:
+            print(f"RPC Error in search_multi_collection: {e}")
+            return {}
+
     def search_multi_collection_text(self, text: str, collections: List[str], top_k: int = 10) -> Dict[str, List[Dict]]:
         vector = self.vectorize(text)
         return self.search_multi_collection(vector, collections, top_k)
+
+    def trigger_reconsolidation(self, collection: str, target_vector: List[float], learning_rate: float = 0.01) -> bool:
+        req = hyperspace_pb2.ReconsolidationRequest(
+            collection=collection,
+            target_vector=self._normalize_vector(target_vector),
+            learning_rate=learning_rate
+        )
+        try:
+            self.stub.TriggerReconsolidation(req, metadata=self.metadata)
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error in trigger_reconsolidation: {e}")
+            return False
+
 
     def close(self):
         self.channel.close()

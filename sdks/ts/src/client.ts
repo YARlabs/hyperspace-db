@@ -20,7 +20,13 @@ import {
     VectorizeRequest,
     InsertTextRequest,
     SearchTextRequest,
-    CollectionSummary as ProtoCollectionSummary
+    CollectionSummary as ProtoCollectionSummary,
+    CollectionStatsRequest,
+    ConfigUpdate,
+    QuantizationConfig,
+    QuantizationMode,
+    SearchMultiCollectionRequest,
+    MonitorRequest
 } from './proto/hyperspace_pb';
 
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
@@ -33,6 +39,9 @@ export type TypedMetadataValue = string | number | boolean;
 export interface Filter {
     match?: { key: string, value: string };
     range?: { key: string, gte?: number, lte?: number };
+    inCone?: { axes: number[], apertures: number[], cen: number[] };
+    inBall?: { center: number[], radius: number };
+    inBox?: { minBounds: number[], maxBounds: number[] };
 }
 
 export interface SearchResult {
@@ -47,6 +56,27 @@ export interface CollectionInfo {
     count: number;
     dimension: number;
     metric: string;
+}
+
+export interface CollectionStats {
+    count: number;
+    dimension: number;
+    metric: string;
+    indexingQueue: number;
+}
+
+export interface SystemMetrics {
+    cpuUsage: number;
+    ramUsageMb: number;
+    totalVectors: number;
+    activeCollections: number;
+    uptimeSeconds: number;
+    networkRxBytes: number;
+    networkTxBytes: number;
+}
+
+export interface CollectionConfig {
+    quantizationMode?: 'NONE' | 'SCALAR_I8';
 }
 
 export interface GraphNode {
@@ -436,7 +466,9 @@ export class HyperspaceClient {
             filters?: Filter[],
             hybridQuery?: string,
             hybridAlpha?: number,
-            bm25?: Bm25Options
+            bm25?: Bm25Options,
+            mrlDimension?: number,
+            useWasserstein?: boolean
         }
     ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
@@ -465,6 +497,22 @@ export class HyperspaceClient {
                             else r.setLteF64(f.range.lte);
                         }
                         pf.setRange(r);
+                    } else if (f.inCone) {
+                        const c = new hyperspace_pb.InCone();
+                        c.setAxesList(f.inCone.axes);
+                        c.setAperturesList(f.inCone.apertures);
+                        c.setCen(f.inCone.cen[0] || 0);
+                        pf.setInCone(c);
+                    } else if (f.inBall) {
+                        const b = new hyperspace_pb.InBall();
+                        b.setCenterList(f.inBall.center);
+                        b.setRadius(f.inBall.radius);
+                        pf.setInBall(b);
+                    } else if (f.inBox) {
+                        const b = new hyperspace_pb.InBox();
+                        b.setMinBoundsList(f.inBox.minBounds);
+                        b.setMaxBoundsList(f.inBox.maxBounds);
+                        pf.setInBox(b);
                     }
                     return pf;
                 });
@@ -473,6 +521,8 @@ export class HyperspaceClient {
 
             if (options?.hybridQuery) req.setHybridQuery(options.hybridQuery);
             if (options?.hybridAlpha !== undefined) req.setHybridAlpha(options.hybridAlpha);
+            if (options?.mrlDimension !== undefined) req.setMrlDimension(options.mrlDimension);
+            if (options?.useWasserstein !== undefined) req.setUseWasserstein(options.useWasserstein);
             
             if (options?.bm25) {
                 // @ts-ignore: Bm25Options might not be in generated proto yet
@@ -546,6 +596,22 @@ export class HyperspaceClient {
                             else r.setLteF64(f.range.lte);
                         }
                         pf.setRange(r);
+                    } else if (f.inCone) {
+                        const c = new hyperspace_pb.InCone();
+                        c.setAxesList(f.inCone.axes);
+                        c.setAperturesList(f.inCone.apertures);
+                        c.setCen(f.inCone.cen[0] || 0);
+                        pf.setInCone(c);
+                    } else if (f.inBall) {
+                        const b = new hyperspace_pb.InBall();
+                        b.setCenterList(f.inBall.center);
+                        b.setRadius(f.inBall.radius);
+                        pf.setInBall(b);
+                    } else if (f.inBox) {
+                        const b = new hyperspace_pb.InBox();
+                        b.setMinBoundsList(f.inBox.minBounds);
+                        b.setMaxBoundsList(f.inBox.maxBounds);
+                        pf.setInBox(b);
                     }
                     return pf;
                 });
@@ -912,6 +978,105 @@ export class HyperspaceClient {
         }
         return stream;
     }
+
+    public getCollectionStats(name: string): Promise<CollectionStats> {
+        return new Promise((resolve, reject) => {
+            const req = new CollectionStatsRequest();
+            req.setName(name);
+
+            this.client.getCollectionStats(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve({
+                    count: resp.getCount(),
+                    dimension: resp.getDimension(),
+                    metric: resp.getMetric(),
+                    indexingQueue: resp.getIndexingQueue()
+                });
+            });
+        });
+    }
+
+    public async exists(name: string): Promise<boolean> {
+        try {
+            await this.getCollectionStats(name);
+            return true;
+        } catch (e: any) {
+            if (e.code === grpc.status.NOT_FOUND || (e.message && e.message.includes('not found'))) {
+                return false;
+            }
+            throw e;
+        }
+    }
+
+    public updateCollection(name: string, config: CollectionConfig): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            const req = new ConfigUpdate();
+            req.setCollection(name);
+
+            this.client.configure(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus() === 'success');
+            });
+        });
+    }
+
+    public createSnapshot(): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            this.client.triggerSnapshot(new Empty(), this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus() === 'success');
+            });
+        });
+    }
+
+    public vacuum(): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            this.client.triggerVacuum(new Empty(), this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus() === 'success');
+            });
+        });
+    }
+
+    public getMetrics(onData: (data: any) => void, onError?: (err: Error) => void): grpc.ClientReadableStream<any> {
+        const req = new MonitorRequest();
+        const stream = this.client.monitor(req, this.metadata);
+        stream.on('data', onData);
+        if (onError) {
+            stream.on('error', onError);
+        }
+        return stream;
+    }
+
+    public searchMultiCollection(collections: string[], query: number[]): Promise<any> {
+        return new Promise((resolve, reject) => {
+            const req = new SearchMultiCollectionRequest();
+            req.setCollectionsList(collections);
+            req.setVectorList(HyperspaceClient.toVectorList(query));
+            req.setTopK(10);
+
+            this.client.searchMultiCollection(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.toObject());
+            });
+        });
+    }
+
+    public triggerReconsolidation(collection: string, targetVector: number[], learningRate: number = 0.01): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            // @ts-ignore
+            const req = new (hyperspace_pb as any).ReconsolidationRequest();
+            req.setCollection(collection);
+            req.setTargetVectorList(targetVector);
+            req.setLearningRate(learningRate);
+
+            this.client.triggerReconsolidation(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus() === 'success');
+            });
+        });
+    }
+
 
     public close() {
         this.client.close();

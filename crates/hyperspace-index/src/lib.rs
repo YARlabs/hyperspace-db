@@ -747,7 +747,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let has_geometric = complex_filters.iter().any(|f| {
             matches!(
                 f,
-                FilterExpr::InBall { .. } | FilterExpr::InBox { .. } | FilterExpr::InCone { .. }
+                FilterExpr::InBall { .. }
+                    | FilterExpr::InBox { .. }
+                    | FilterExpr::InCone { .. }
+                    | FilterExpr::And(_)
+                    | FilterExpr::Or(_)
+                    | FilterExpr::Not(_)
             )
         });
         // If geometric: snapshot + release lock immediately to unblock concurrent deletes.
@@ -890,6 +895,47 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         return Some(RoaringBitmap::new());
                     }
                     apply_mask(&ball_match);
+                }
+                FilterExpr::And(conditions) => {
+                    // Evaluate each sub-condition independently and AND (intersect) the bitmaps.
+                    let empty_exact = std::collections::HashMap::new();
+                    for cond in conditions {
+                        if let Some(sub_bm) = self.build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond)) {
+                            apply_mask(&sub_bm);
+                        } else {
+                            return Some(RoaringBitmap::new());
+                        }
+                    }
+                }
+                FilterExpr::Or(conditions) => {
+                    // Evaluate each sub-condition independently and OR (union) the bitmaps.
+                    let empty_exact = std::collections::HashMap::new();
+                    let mut union = RoaringBitmap::new();
+                    for cond in conditions {
+                        if let Some(sub_bm) = self.build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond)) {
+                            union |= sub_bm;
+                        }
+                    }
+                    if union.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
+                    apply_mask(&union);
+                }
+                FilterExpr::Not(cond) => {
+                    // NOT = all active nodes MINUS nodes matching the inner condition.
+                    let count = self.count_nodes() as u32;
+                    let all_active: RoaringBitmap = (0..count)
+                        .filter(|&i| !deleted.contains(i))
+                        .collect();
+                    let empty_exact = std::collections::HashMap::new();
+                    let excluded = self
+                        .build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond))
+                        .unwrap_or_default();
+                    let not_bm = all_active - excluded;
+                    if not_bm.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
+                    apply_mask(&not_bm);
                 }
             }
         }
@@ -1723,6 +1769,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 let b = BinaryHyperVector::from_float(&q_vec_full);
                 self.storage.update(id, b.as_bytes())?;
             }
+            QuantizationMode::AsymmetricHybrid801 => {
+                // AsymmetricHybrid801 stores the Euclidean portion as ScalarI8.
+                let q = QuantizedHyperVector::from_float(
+                    &q_vec_full,
+                    self.config.is_anisotropic_enabled(),
+                );
+                self.storage.update(id, q.as_bytes())?;
+            }
         }
         Ok(id)
     }
@@ -2202,6 +2256,23 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             .forward
             .get(&id)
             .map_or_else(std::collections::HashMap::new, |m| m.clone())
+    }
+
+    /// Merge a metadata patch into an existing node without modifying the vector or graph.
+    /// Returns `Err` if `id` does not exist.
+    pub fn update_payload_metadata(
+        &self,
+        id: NodeId,
+        patch: std::collections::HashMap<String, String>,
+    ) -> Result<(), String> {
+        if let Some(mut entry) = self.metadata.forward.get_mut(&id) {
+            for (k, v) in patch {
+                entry.insert(k, v);
+            }
+            Ok(())
+        } else {
+            Err(format!("Node {id} not found"))
+        }
     }
 
     pub fn storage_stats(&self) -> (usize, usize) {
