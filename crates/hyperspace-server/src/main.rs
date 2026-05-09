@@ -36,6 +36,7 @@ use manager::CollectionManager;
 use hyperspace_embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
+    metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
     CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CountRequest, CountResponse,
     CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DiffBucket,
     DigestRequest, DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
@@ -446,6 +447,24 @@ fn matches_filter_exprs(
                 // Vector-based filters are evaluated during search index traversal,
                 // so we can't evaluate them purely on metadata. We assume match here.
             }
+            hyperspace_core::FilterExpr::And(conds) => {
+                let empty_exact = std::collections::HashMap::new();
+                if !conds.iter().all(|c| matches_filter_exprs(metadata, &empty_exact, std::slice::from_ref(c))) {
+                    return false;
+                }
+            }
+            hyperspace_core::FilterExpr::Or(conds) => {
+                let empty_exact = std::collections::HashMap::new();
+                if !conds.iter().any(|c| matches_filter_exprs(metadata, &empty_exact, std::slice::from_ref(c))) {
+                    return false;
+                }
+            }
+            hyperspace_core::FilterExpr::Not(cond) => {
+                let empty_exact = std::collections::HashMap::new();
+                if matches_filter_exprs(metadata, &empty_exact, std::slice::from_ref(cond)) {
+                    return false;
+                }
+            }
         }
     }
     true
@@ -494,6 +513,14 @@ fn parse_graph_filters(
                         center: b.center,
                         radius: b.radius,
                     });
+                }
+                // Delegate logical combinators to the shared parser
+                cond => {
+                    use hyperspace_proto::hyperspace::filter::Condition;
+                    let f = Filter { condition: Some(cond) };
+                    if let Some(expr) = proto_filter_to_expr(f) {
+                        complex_filters.push(expr);
+                    }
                 }
             }
         }
@@ -628,11 +655,15 @@ impl Database for HyperspaceService {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
         if let Some(col) = self.manager.get(&user_id, &req.name).await {
+            let usage = col.get_usage();
             Ok(Response::new(CollectionStatsResponse {
                 count: col.count() as u64,
                 dimension: col.dimension() as u32,
                 metric: col.metric_name().to_string(),
                 indexing_queue: col.queue_size(),
+                disk_usage_bytes: usage.disk_usage_bytes,
+                ram_usage_bytes: usage.ram_usage_bytes,
+                active_tasks: usage.active_indexing_tasks,
             }))
         } else {
             Err(Status::not_found("Collection not found"))
@@ -945,6 +976,13 @@ impl Database for HyperspaceService {
                                     radius: b.radius,
                                 });
                             }
+                            // Delegate logical combinators (And/Or/Not) to shared parser
+                            cond => {
+                                let f = Filter { condition: Some(cond) };
+                                if let Some(expr) = proto_filter_to_expr(f) {
+                                    complex_filters.push(expr);
+                                }
+                            }
                         }
                     }
                 }
@@ -955,6 +993,7 @@ impl Database for HyperspaceService {
                     hybrid_query: None,
                     hybrid_alpha: None,
                     use_wasserstein: false,
+                    mrl_dimension: None,
                     bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
                     fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
                 };
@@ -1203,6 +1242,7 @@ impl Database for HyperspaceService {
                     hybrid_query: None,
                     hybrid_alpha: None,
                     use_wasserstein: false,
+                    mrl_dimension: None,
                     bm25_options: None,
                     fusion_method: None,
                 };
@@ -1252,6 +1292,7 @@ impl Database for HyperspaceService {
                     hybrid_query: None,
                     hybrid_alpha: None,
                     use_wasserstein: false,
+                    mrl_dimension: None,
                     bm25_options: None,
                     fusion_method: None,
                 };
@@ -1769,8 +1810,6 @@ impl Database for HyperspaceService {
         &self,
         request: Request<ConfigUpdate>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        // TODO: Update config for specific collection
-        // ConfigUpdate now has `collection` field.
         let user_id = get_user_id(&request);
         let req = request.into_inner();
         let col_name = if req.collection.is_empty() {
@@ -1779,17 +1818,23 @@ impl Database for HyperspaceService {
             req.collection
         };
 
-        if self.manager.get(&user_id, &col_name).await.is_none() {
-            return Err(Status::not_found(format!(
+        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+            let update = hyperspace_core::CollectionConfigUpdate {
+                ef_search: req.ef_search.map(|v| v as usize),
+                ef_construction: req.ef_construction.map(|v| v as usize),
+                m: req.m.map(|v| v as usize),
+            };
+            match col.update_config(update) {
+                Ok(()) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
+                    status: format!("Configuration updated for '{}'", col_name),
+                })),
+                Err(e) => Err(Status::internal(e)),
+            }
+        } else {
+            Err(Status::not_found(format!(
                 "Collection '{col_name}' not found"
-            )));
+            )))
         }
-        // Not implemented on trait yet.
-        Ok(Response::new(
-            hyperspace_proto::hyperspace::StatusResponse {
-                status: "Dynamic config not yet implemented for collections".into(),
-            },
-        ))
     }
 
     // ─── Delta Sync RPCs (Task 2.1) ─────────────────────────────────────────

@@ -29,6 +29,10 @@ const (
 	Database_Vectorize_FullMethodName              = "/hyperspace.Database/Vectorize"
 	Database_SearchText_FullMethodName             = "/hyperspace.Database/SearchText"
 	Database_Delete_FullMethodName                 = "/hyperspace.Database/Delete"
+	Database_GetPoints_FullMethodName              = "/hyperspace.Database/GetPoints"
+	Database_UpdatePayload_FullMethodName          = "/hyperspace.Database/UpdatePayload"
+	Database_Scroll_FullMethodName                 = "/hyperspace.Database/Scroll"
+	Database_Count_FullMethodName                  = "/hyperspace.Database/Count"
 	Database_Search_FullMethodName                 = "/hyperspace.Database/Search"
 	Database_SearchBatch_FullMethodName            = "/hyperspace.Database/SearchBatch"
 	Database_SearchMultiCollection_FullMethodName  = "/hyperspace.Database/SearchMultiCollection"
@@ -49,6 +53,7 @@ const (
 	Database_SyncHandshake_FullMethodName          = "/hyperspace.Database/SyncHandshake"
 	Database_SyncPull_FullMethodName               = "/hyperspace.Database/SyncPull"
 	Database_SyncPush_FullMethodName               = "/hyperspace.Database/SyncPush"
+	Database_HealthCheck_FullMethodName            = "/hyperspace.Database/HealthCheck"
 )
 
 // DatabaseClient is the client API for Database service.
@@ -68,6 +73,11 @@ type DatabaseClient interface {
 	SearchText(ctx context.Context, in *SearchTextRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	// Delete vectors
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	// Extended Data Ops
+	GetPoints(ctx context.Context, in *GetPointsRequest, opts ...grpc.CallOption) (*GetPointsResponse, error)
+	UpdatePayload(ctx context.Context, in *UpdatePayloadRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	Scroll(ctx context.Context, in *ScrollRequest, opts ...grpc.CallOption) (*ScrollResponse, error)
+	Count(ctx context.Context, in *CountRequest, opts ...grpc.CallOption) (*CountResponse, error)
 	// Search (ANN)
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	// Batch Search (ANN)
@@ -101,6 +111,8 @@ type DatabaseClient interface {
 	SyncPull(ctx context.Context, in *SyncPullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SyncVectorData], error)
 	// Step 3 (optional): Client pushes its unique vectors to the server.
 	SyncPush(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[SyncVectorData, SyncPushResponse], error)
+	// Health Status
+	HealthCheck(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
 
 type databaseClient struct {
@@ -205,6 +217,46 @@ func (c *databaseClient) Delete(ctx context.Context, in *DeleteRequest, opts ...
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteResponse)
 	err := c.cc.Invoke(ctx, Database_Delete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) GetPoints(ctx context.Context, in *GetPointsRequest, opts ...grpc.CallOption) (*GetPointsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPointsResponse)
+	err := c.cc.Invoke(ctx, Database_GetPoints_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) UpdatePayload(ctx context.Context, in *UpdatePayloadRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, Database_UpdatePayload_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) Scroll(ctx context.Context, in *ScrollRequest, opts ...grpc.CallOption) (*ScrollResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ScrollResponse)
+	err := c.cc.Invoke(ctx, Database_Scroll_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) Count(ctx context.Context, in *CountRequest, opts ...grpc.CallOption) (*CountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CountResponse)
+	err := c.cc.Invoke(ctx, Database_Count_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -450,6 +502,16 @@ func (c *databaseClient) SyncPush(ctx context.Context, opts ...grpc.CallOption) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Database_SyncPushClient = grpc.ClientStreamingClient[SyncVectorData, SyncPushResponse]
 
+func (c *databaseClient) HealthCheck(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthCheckResponse)
+	err := c.cc.Invoke(ctx, Database_HealthCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabaseServer is the server API for Database service.
 // All implementations must embed UnimplementedDatabaseServer
 // for forward compatibility.
@@ -467,6 +529,11 @@ type DatabaseServer interface {
 	SearchText(context.Context, *SearchTextRequest) (*SearchResponse, error)
 	// Delete vectors
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
+	// Extended Data Ops
+	GetPoints(context.Context, *GetPointsRequest) (*GetPointsResponse, error)
+	UpdatePayload(context.Context, *UpdatePayloadRequest) (*StatusResponse, error)
+	Scroll(context.Context, *ScrollRequest) (*ScrollResponse, error)
+	Count(context.Context, *CountRequest) (*CountResponse, error)
 	// Search (ANN)
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// Batch Search (ANN)
@@ -500,6 +567,8 @@ type DatabaseServer interface {
 	SyncPull(*SyncPullRequest, grpc.ServerStreamingServer[SyncVectorData]) error
 	// Step 3 (optional): Client pushes its unique vectors to the server.
 	SyncPush(grpc.ClientStreamingServer[SyncVectorData, SyncPushResponse]) error
+	// Health Status
+	HealthCheck(context.Context, *Empty) (*HealthCheckResponse, error)
 	mustEmbedUnimplementedDatabaseServer()
 }
 
@@ -539,6 +608,18 @@ func (UnimplementedDatabaseServer) SearchText(context.Context, *SearchTextReques
 }
 func (UnimplementedDatabaseServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedDatabaseServer) GetPoints(context.Context, *GetPointsRequest) (*GetPointsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetPoints not implemented")
+}
+func (UnimplementedDatabaseServer) UpdatePayload(context.Context, *UpdatePayloadRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdatePayload not implemented")
+}
+func (UnimplementedDatabaseServer) Scroll(context.Context, *ScrollRequest) (*ScrollResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Scroll not implemented")
+}
+func (UnimplementedDatabaseServer) Count(context.Context, *CountRequest) (*CountResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Count not implemented")
 }
 func (UnimplementedDatabaseServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Search not implemented")
@@ -599,6 +680,9 @@ func (UnimplementedDatabaseServer) SyncPull(*SyncPullRequest, grpc.ServerStreami
 }
 func (UnimplementedDatabaseServer) SyncPush(grpc.ClientStreamingServer[SyncVectorData, SyncPushResponse]) error {
 	return status.Error(codes.Unimplemented, "method SyncPush not implemented")
+}
+func (UnimplementedDatabaseServer) HealthCheck(context.Context, *Empty) (*HealthCheckResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
 }
 func (UnimplementedDatabaseServer) mustEmbedUnimplementedDatabaseServer() {}
 func (UnimplementedDatabaseServer) testEmbeddedByValue()                  {}
@@ -797,6 +881,78 @@ func _Database_Delete_Handler(srv interface{}, ctx context.Context, dec func(int
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseServer).Delete(ctx, req.(*DeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_GetPoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPointsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).GetPoints(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_GetPoints_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).GetPoints(ctx, req.(*GetPointsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_UpdatePayload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePayloadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).UpdatePayload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_UpdatePayload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).UpdatePayload(ctx, req.(*UpdatePayloadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_Scroll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ScrollRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).Scroll(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_Scroll_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).Scroll(ctx, req.(*ScrollRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_Count_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).Count(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_Count_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).Count(ctx, req.(*CountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1122,6 +1278,24 @@ func _Database_SyncPush_Handler(srv interface{}, stream grpc.ServerStream) error
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Database_SyncPushServer = grpc.ClientStreamingServer[SyncVectorData, SyncPushResponse]
 
+func _Database_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).HealthCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_HealthCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).HealthCheck(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Database_ServiceDesc is the grpc.ServiceDesc for Database service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1168,6 +1342,22 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _Database_Delete_Handler,
+		},
+		{
+			MethodName: "GetPoints",
+			Handler:    _Database_GetPoints_Handler,
+		},
+		{
+			MethodName: "UpdatePayload",
+			Handler:    _Database_UpdatePayload_Handler,
+		},
+		{
+			MethodName: "Scroll",
+			Handler:    _Database_Scroll_Handler,
+		},
+		{
+			MethodName: "Count",
+			Handler:    _Database_Count_Handler,
 		},
 		{
 			MethodName: "Search",
@@ -1228,6 +1418,10 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncHandshake",
 			Handler:    _Database_SyncHandshake_Handler,
+		},
+		{
+			MethodName: "HealthCheck",
+			Handler:    _Database_HealthCheck_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

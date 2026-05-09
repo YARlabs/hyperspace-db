@@ -1,11 +1,12 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
-    BatchInsertRequest, BatchSearchRequest, CollectionSummary, DurabilityLevel, EventMessage,
-    EventSubscriptionRequest, EventType, FindSemanticClustersRequest, FindSemanticClustersResponse,
-    GetConceptParentsRequest, GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse,
-    GetNodeRequest, GraphNode, InsertRequest, InsertTextRequest, SearchRequest, SearchResponse,
-    SearchResult, SearchResult as ResultItem, SearchTextRequest, TraverseRequest, TraverseResponse,
-    VectorData, VectorizeRequest, VectorizeResponse,
+    BatchInsertRequest, BatchSearchRequest, CollectionSummary, CountRequest, DurabilityLevel,
+    EventMessage, EventSubscriptionRequest, EventType, FindSemanticClustersRequest,
+    FindSemanticClustersResponse, GetConceptParentsRequest, GetConceptParentsResponse,
+    GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GetPointsRequest, GraphNode,
+    InsertRequest, InsertTextRequest, ScrollRequest, SearchRequest, SearchResponse, SearchResult,
+    SearchResult as ResultItem, SearchTextRequest, TraverseRequest, TraverseResponse,
+    UpdatePayloadRequest, VectorData, VectorizeRequest, VectorizeResponse,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -105,6 +106,7 @@ impl Client {
             name,
             dimension,
             metric,
+            components: vec![],
         };
         let resp = self.inner.create_collection(req).await?;
         Ok(resp.into_inner().status)
@@ -825,6 +827,76 @@ impl Client {
             Err(s) if s.code() == tonic::Code::NotFound => Ok(false),
             Err(s) => Err(s),
         }
+    }
+
+    /// Bulk retrieval of vectors by ID.
+    pub async fn get_points(
+        &mut self,
+        ids: Vec<u32>,
+        collection: String,
+    ) -> Result<Vec<hyperspace_proto::hyperspace::VectorData>, tonic::Status> {
+        let req = GetPointsRequest {
+            ids,
+            collection,
+        };
+        let resp = self.inner.get_points(req).await?;
+        Ok(resp.into_inner().points)
+    }
+
+    /// Thread-safe metadata patching without re-indexing.
+    pub async fn update_payload(
+        &mut self,
+        id: u32,
+        metadata: std::collections::HashMap<String, String>,
+        collection: String,
+    ) -> Result<String, tonic::Status> {
+        let req = UpdatePayloadRequest {
+            id,
+            metadata,
+            collection,
+            typed_metadata: std::collections::HashMap::new(),
+        };
+        let resp = self.inner.update_payload(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
+    /// Pagination/iteration for database scanning.
+    pub async fn scroll(
+        &mut self,
+        limit: u32,
+        offset: u32,
+        filters: Vec<hyperspace_proto::hyperspace::Filter>,
+        collection: String,
+    ) -> Result<Vec<hyperspace_proto::hyperspace::VectorData>, tonic::Status> {
+        let req = ScrollRequest {
+            limit,
+            offset,
+            filters,
+            collection,
+        };
+        let resp = self.inner.scroll(req).await?;
+        Ok(resp.into_inner().points)
+    }
+
+    /// Filtered counting of points.
+    pub async fn count(
+        &mut self,
+        filters: Vec<hyperspace_proto::hyperspace::Filter>,
+        collection: String,
+    ) -> Result<u64, tonic::Status> {
+        let req = CountRequest {
+            filters,
+            collection,
+        };
+        let resp = self.inner.count(req).await?;
+        Ok(resp.into_inner().count)
+    }
+
+    /// Operational status monitoring.
+    pub async fn health_check(&mut self) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::Empty {};
+        let resp = self.inner.health_check(req).await?;
+        Ok(resp.into_inner().status)
     }
 
     /// Streams system metrics.

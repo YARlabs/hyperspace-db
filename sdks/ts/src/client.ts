@@ -26,7 +26,14 @@ import {
     QuantizationConfig,
     QuantizationMode,
     SearchMultiCollectionRequest,
-    MonitorRequest
+    MonitorRequest,
+    GetPointsRequest,
+    UpdatePayloadRequest,
+    ScrollRequest,
+    CountRequest,
+    HealthCheckResponse,
+    Bm25Options as ProtoBm25Options,
+    ReconsolidationRequest
 } from './proto/hyperspace_pb';
 
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
@@ -42,6 +49,9 @@ export interface Filter {
     inCone?: { axes: number[], apertures: number[], cen: number[] };
     inBall?: { center: number[], radius: number };
     inBox?: { minBounds: number[], maxBounds: number[] };
+    and?: Filter[];
+    or?: Filter[];
+    not?: Filter;
 }
 
 export interface SearchResult {
@@ -63,6 +73,9 @@ export interface CollectionStats {
     dimension: number;
     metric: string;
     indexingQueue: number;
+    diskUsageBytes: number;
+    ramUsageBytes: number;
+    activeTasks: number;
 }
 
 export interface SystemMetrics {
@@ -77,6 +90,9 @@ export interface SystemMetrics {
 
 export interface CollectionConfig {
     quantizationMode?: 'NONE' | 'SCALAR_I8';
+    efSearch?: number;
+    efConstruction?: number;
+    m?: number;
 }
 
 export interface GraphNode {
@@ -270,6 +286,57 @@ export class HyperspaceClient {
             }
         });
         return out;
+    }
+
+    private toProtoFilter(f: Filter): hyperspace_pb.Filter {
+        const pf = new hyperspace_pb.Filter();
+        if (f.match) {
+            const m = new hyperspace_pb.Match();
+            m.setKey(f.match.key);
+            m.setValue(f.match.value);
+            pf.setMatch(m);
+        } else if (f.range) {
+            const r = new hyperspace_pb.Range();
+            r.setKey(f.range.key);
+            if (f.range.gte !== undefined) {
+                if (Number.isInteger(f.range.gte)) r.setGte(f.range.gte);
+                else r.setGteF64(f.range.gte);
+            }
+            if (f.range.lte !== undefined) {
+                if (Number.isInteger(f.range.lte)) r.setLte(f.range.lte);
+                else r.setLteF64(f.range.lte);
+            }
+            pf.setRange(r);
+        } else if (f.inCone) {
+            const c = new hyperspace_pb.InCone();
+            c.setAxesList(f.inCone.axes);
+            c.setAperturesList(f.inCone.apertures);
+            c.setCen(f.inCone.cen[0] || 0);
+            pf.setInCone(c);
+        } else if (f.inBall) {
+            const b = new hyperspace_pb.InBall();
+            b.setCenterList(f.inBall.center);
+            b.setRadius(f.inBall.radius);
+            pf.setInBall(b);
+        } else if (f.inBox) {
+            const b = new hyperspace_pb.InBox();
+            b.setMinBoundsList(f.inBox.minBounds);
+            b.setMaxBoundsList(f.inBox.maxBounds);
+            pf.setInBox(b);
+        } else if (f.and) {
+            const andOp = new hyperspace_pb.FilterAnd();
+            andOp.setConditionsList(f.and.map(cond => this.toProtoFilter(cond)));
+            pf.setAndOp(andOp);
+        } else if (f.or) {
+            const orOp = new hyperspace_pb.FilterOr();
+            orOp.setConditionsList(f.or.map(cond => this.toProtoFilter(cond)));
+            pf.setOrOp(orOp);
+        } else if (f.not) {
+            const notOp = new hyperspace_pb.FilterNot();
+            notOp.setCondition(this.toProtoFilter(f.not));
+            pf.setNotOp(notOp);
+        }
+        return pf;
     }
 
     constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string) {
@@ -478,45 +545,7 @@ export class HyperspaceClient {
             req.setCollection(collection);
 
             if (options?.filters) {
-                const protoFilters = options.filters.map(f => {
-                    const pf = new hyperspace_pb.Filter();
-                    if (f.match) {
-                        const m = new hyperspace_pb.Match();
-                        m.setKey(f.match.key);
-                        m.setValue(f.match.value);
-                        pf.setMatch(m);
-                    } else if (f.range) {
-                        const r = new hyperspace_pb.Range();
-                        r.setKey(f.range.key);
-                        if (f.range.gte !== undefined) {
-                            if (Number.isInteger(f.range.gte)) r.setGte(f.range.gte);
-                            else r.setGteF64(f.range.gte);
-                        }
-                        if (f.range.lte !== undefined) {
-                            if (Number.isInteger(f.range.lte)) r.setLte(f.range.lte);
-                            else r.setLteF64(f.range.lte);
-                        }
-                        pf.setRange(r);
-                    } else if (f.inCone) {
-                        const c = new hyperspace_pb.InCone();
-                        c.setAxesList(f.inCone.axes);
-                        c.setAperturesList(f.inCone.apertures);
-                        c.setCen(f.inCone.cen[0] || 0);
-                        pf.setInCone(c);
-                    } else if (f.inBall) {
-                        const b = new hyperspace_pb.InBall();
-                        b.setCenterList(f.inBall.center);
-                        b.setRadius(f.inBall.radius);
-                        pf.setInBall(b);
-                    } else if (f.inBox) {
-                        const b = new hyperspace_pb.InBox();
-                        b.setMinBoundsList(f.inBox.minBounds);
-                        b.setMaxBoundsList(f.inBox.maxBounds);
-                        pf.setInBox(b);
-                    }
-                    return pf;
-                });
-                req.setFiltersList(protoFilters);
+                req.setFiltersList(options.filters.map(f => this.toProtoFilter(f)));
             }
 
             if (options?.hybridQuery) req.setHybridQuery(options.hybridQuery);
@@ -525,8 +554,7 @@ export class HyperspaceClient {
             if (options?.useWasserstein !== undefined) req.setUseWasserstein(options.useWasserstein);
             
             if (options?.bm25) {
-                // @ts-ignore: Bm25Options might not be in generated proto yet
-                const bm25Msg = new (hyperspace_pb as any).Bm25Options();
+                const bm25Msg = new ProtoBm25Options();
                 if (options.bm25.method !== undefined) bm25Msg.setMethod(options.bm25.method);
                 if (options.bm25.k1 !== undefined) bm25Msg.setK1(options.bm25.k1);
                 if (options.bm25.b !== undefined) bm25Msg.setB(options.bm25.b);
@@ -534,7 +562,6 @@ export class HyperspaceClient {
                 if (options.bm25.language !== undefined) bm25Msg.setLanguage(options.bm25.language);
                 if (options.bm25.ngrams !== undefined) bm25Msg.setNgrams(options.bm25.ngrams);
                 if (options.bm25.fusionMethod !== undefined) bm25Msg.setFusionMethod(options.bm25.fusionMethod);
-                // @ts-ignore
                 req.setBm25Options(bm25Msg);
             }
 
@@ -577,50 +604,11 @@ export class HyperspaceClient {
             req.setCollection(collection);
 
             if (options?.filters) {
-                const protoFilters = options.filters.map(f => {
-                    const pf = new hyperspace_pb.Filter();
-                    if (f.match) {
-                        const m = new hyperspace_pb.Match();
-                        m.setKey(f.match.key);
-                        m.setValue(f.match.value);
-                        pf.setMatch(m);
-                    } else if (f.range) {
-                        const r = new hyperspace_pb.Range();
-                        r.setKey(f.range.key);
-                        if (f.range.gte !== undefined) {
-                            if (Number.isInteger(f.range.gte)) r.setGte(f.range.gte);
-                            else r.setGteF64(f.range.gte);
-                        }
-                        if (f.range.lte !== undefined) {
-                            if (Number.isInteger(f.range.lte)) r.setLte(f.range.lte);
-                            else r.setLteF64(f.range.lte);
-                        }
-                        pf.setRange(r);
-                    } else if (f.inCone) {
-                        const c = new hyperspace_pb.InCone();
-                        c.setAxesList(f.inCone.axes);
-                        c.setAperturesList(f.inCone.apertures);
-                        c.setCen(f.inCone.cen[0] || 0);
-                        pf.setInCone(c);
-                    } else if (f.inBall) {
-                        const b = new hyperspace_pb.InBall();
-                        b.setCenterList(f.inBall.center);
-                        b.setRadius(f.inBall.radius);
-                        pf.setInBall(b);
-                    } else if (f.inBox) {
-                        const b = new hyperspace_pb.InBox();
-                        b.setMinBoundsList(f.inBox.minBounds);
-                        b.setMaxBoundsList(f.inBox.maxBounds);
-                        pf.setInBox(b);
-                    }
-                    return pf;
-                });
-                req.setFiltersList(protoFilters);
+                req.setFiltersList(options.filters.map(f => this.toProtoFilter(f)));
             }
 
             if (options?.bm25) {
-                // @ts-ignore
-                const bm25Msg = new (hyperspace_pb as any).Bm25Options();
+                const bm25Msg = new ProtoBm25Options();
                 if (options.bm25.method !== undefined) bm25Msg.setMethod(options.bm25.method);
                 if (options.bm25.k1 !== undefined) bm25Msg.setK1(options.bm25.k1);
                 if (options.bm25.b !== undefined) bm25Msg.setB(options.bm25.b);
@@ -628,11 +616,9 @@ export class HyperspaceClient {
                 if (options.bm25.language !== undefined) bm25Msg.setLanguage(options.bm25.language);
                 if (options.bm25.ngrams !== undefined) bm25Msg.setNgrams(options.bm25.ngrams);
                 if (options.bm25.fusionMethod !== undefined) bm25Msg.setFusionMethod(options.bm25.fusionMethod);
-                // @ts-ignore
                 req.setBm25Options(bm25Msg);
             }
             if (options?.hybridAlpha !== undefined) {
-                // @ts-ignore
                 req.setHybridAlpha(options.hybridAlpha);
             }
 
@@ -850,29 +836,7 @@ export class HyperspaceClient {
                 }
             }
             if (options?.filters) {
-                const protoFilters = options.filters.map(f => {
-                    const pf = new hyperspace_pb.Filter();
-                    if (f.match) {
-                        const m = new hyperspace_pb.Match();
-                        m.setKey(f.match.key);
-                        m.setValue(f.match.value);
-                        pf.setMatch(m);
-                    } else if (f.range) {
-                        const r = new hyperspace_pb.Range();
-                        r.setKey(f.range.key);
-                        if (f.range.gte !== undefined) {
-                            if (Number.isInteger(f.range.gte)) r.setGte(f.range.gte);
-                            else r.setGteF64(f.range.gte);
-                        }
-                        if (f.range.lte !== undefined) {
-                            if (Number.isInteger(f.range.lte)) r.setLte(f.range.lte);
-                            else r.setLteF64(f.range.lte);
-                        }
-                        pf.setRange(r);
-                    }
-                    return pf;
-                });
-                req.setFiltersList(protoFilters);
+                req.setFiltersList(options.filters.map(f => this.toProtoFilter(f)));
             }
 
             this.client.traverse(req, this.metadata, (err, resp) => {
@@ -990,7 +954,10 @@ export class HyperspaceClient {
                     count: resp.getCount(),
                     dimension: resp.getDimension(),
                     metric: resp.getMetric(),
-                    indexingQueue: resp.getIndexingQueue()
+                    indexingQueue: resp.getIndexingQueue(),
+                    diskUsageBytes: resp.getDiskUsageBytes(),
+                    ramUsageBytes: resp.getRamUsageBytes(),
+                    activeTasks: resp.getActiveTasks()
                 });
             });
         });
@@ -1012,10 +979,13 @@ export class HyperspaceClient {
         return new Promise((resolve, reject) => {
             const req = new ConfigUpdate();
             req.setCollection(name);
+            if (config.efSearch !== undefined) req.setEfSearch(config.efSearch);
+            if (config.efConstruction !== undefined) req.setEfConstruction(config.efConstruction);
+            if (config.m !== undefined) req.setM(config.m);
 
             this.client.configure(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
-                resolve(resp.getStatus() === 'success');
+                resolve(resp.getStatus() === 'success' || (!!resp.getStatus() && resp.getStatus().includes('updated')));
             });
         });
     }
@@ -1064,8 +1034,7 @@ export class HyperspaceClient {
 
     public triggerReconsolidation(collection: string, targetVector: number[], learningRate: number = 0.01): Promise<boolean> {
         return new Promise((resolve, reject) => {
-            // @ts-ignore
-            const req = new (hyperspace_pb as any).ReconsolidationRequest();
+            const req = new ReconsolidationRequest();
             req.setCollection(collection);
             req.setTargetVectorList(targetVector);
             req.setLearningRate(learningRate);

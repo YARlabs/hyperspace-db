@@ -61,6 +61,50 @@ class HyperspaceClient:
             mv.string_value = str(value)
         return mv
 
+    def _to_proto_filter(self, f: Dict) -> hyperspace_pb2.Filter:
+        pf = hyperspace_pb2.Filter()
+        # Support both 'type' field and direct key check
+        f_type = f.get("type")
+        
+        if f_type == "match" or "match" in f:
+            match_data = f.get("match", f)
+            pf.match.key = match_data["key"]
+            pf.match.value = str(match_data["value"])
+        elif f_type == "range" or "range" in f:
+            range_data = f.get("range", f)
+            pf.range.key = range_data["key"]
+            if "gte" in range_data:
+                val = range_data["gte"]
+                if isinstance(val, int): pf.range.gte = val
+                else: pf.range.gte_f64 = float(val)
+            if "lte" in range_data:
+                val = range_data["lte"]
+                if isinstance(val, int): pf.range.lte = val
+                else: pf.range.lte_f64 = float(val)
+        elif f_type == "in_cone" or "in_cone" in f:
+            cone_data = f.get("in_cone", f)
+            pf.in_cone.axes.extend(cone_data.get("axes", []))
+            pf.in_cone.apertures.extend(cone_data.get("apertures", []))
+            pf.in_cone.cen = cone_data.get("cen", [0.0])[0] if isinstance(cone_data.get("cen"), list) else float(cone_data.get("cen", 0.0))
+        elif f_type == "in_ball" or "in_ball" in f:
+            ball_data = f.get("in_ball", f)
+            pf.in_ball.center.extend(ball_data.get("center", []))
+            pf.in_ball.radius = float(ball_data.get("radius", 0.0))
+        elif f_type == "in_box" or "in_box" in f:
+            box_data = f.get("in_box", f)
+            pf.in_box.min_bounds.extend(box_data.get("min_bounds", []))
+            pf.in_box.max_bounds.extend(box_data.get("max_bounds", []))
+        elif f_type == "and" or "and" in f:
+            and_data = f.get("and", []) if "and" in f else f.get("conditions", [])
+            pf.and_op.conditions.extend([self._to_proto_filter(cond) for cond in and_data])
+        elif f_type == "or" or "or" in f:
+            or_data = f.get("or", []) if "or" in f else f.get("conditions", [])
+            pf.or_op.conditions.extend([self._to_proto_filter(cond) for cond in or_data])
+        elif f_type == "not" or "not" in f:
+            not_data = f.get("not") if "not" in f else f.get("condition")
+            pf.not_op.condition.CopyFrom(self._to_proto_filter(not_data))
+        return pf
+
     # ... (create/delete/list unchanged) ...
 
     def create_collection(self, name: str, dimension: int, metric: str) -> bool:
@@ -105,10 +149,24 @@ class HyperspaceClient:
                 "count": resp.count,
                 "dimension": resp.dimension,
                 "metric": resp.metric,
-                "indexing_queue": resp.indexing_queue
+                "indexing_queue": resp.indexing_queue,
+                "disk_usage_bytes": resp.disk_usage_bytes,
+                "ram_usage_bytes": resp.ram_usage_bytes,
+                "active_tasks": resp.active_tasks
             }
         except grpc.RpcError:
             return {}
+
+    def configure(self, collection: str, ef_search: Optional[int] = None, ef_construction: Optional[int] = None, m: Optional[int] = None) -> bool:
+        req = hyperspace_pb2.ConfigUpdate(collection=collection)
+        if ef_search is not None: req.ef_search = ef_search
+        if ef_construction is not None: req.ef_construction = ef_construction
+        if m is not None: req.m = m
+        try:
+            resp = self.stub.Configure(req, metadata=self.metadata)
+            return "success" in resp.status.lower() or "updated" in resp.status.lower()
+        except grpc.RpcError:
+            return False
 
     def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if vector is None and document is not None:
@@ -238,49 +296,7 @@ class HyperspaceClient:
              raise ValueError("Either 'vector' or 'query_text' must be provided.")
         vector = self._normalize_vector(vector)
 
-        proto_filters = []
-        if filters:
-            for f in filters:
-                if f.get("type") == "match":
-                    proto_filters.append(hyperspace_pb2.Filter(
-                        match=hyperspace_pb2.Match(key=f["key"], value=f["value"])
-                    ))
-                elif f.get("type") == "range":
-                    kwargs = {"key": f["key"]}
-                    if "gte" in f:
-                        gte_val = f["gte"]
-                        if isinstance(gte_val, int):
-                            kwargs["gte"] = int(gte_val)
-                        else:
-                            kwargs["gte_f64"] = float(gte_val)
-                    if "lte" in f:
-                        lte_val = f["lte"]
-                        if isinstance(lte_val, int):
-                            kwargs["lte"] = int(lte_val)
-                        else:
-                            kwargs["lte_f64"] = float(lte_val)
-                    proto_filters.append(hyperspace_pb2.Filter(
-                        range=hyperspace_pb2.Range(**kwargs)
-                    ))
-                elif f.get("type") == "in_cone":
-                    c = hyperspace_pb2.InCone(
-                        axes=f.get("axes", []),
-                        apertures=f.get("apertures", []),
-                        cen=f.get("cen", [0.0])[0]
-                    )
-                    proto_filters.append(hyperspace_pb2.Filter(in_cone=c))
-                elif f.get("type") == "in_ball":
-                    b = hyperspace_pb2.InBall(
-                        center=f.get("center", []),
-                        radius=f.get("radius", 0.0)
-                    )
-                    proto_filters.append(hyperspace_pb2.Filter(in_ball=b))
-                elif f.get("type") == "in_box":
-                    b = hyperspace_pb2.InBox(
-                        min_bounds=f.get("min_bounds", []),
-                        max_bounds=f.get("max_bounds", [])
-                    )
-                    proto_filters.append(hyperspace_pb2.Filter(in_box=b))
+        proto_filters = [self._to_proto_filter(f) for f in filters] if filters else []
 
         req = hyperspace_pb2.SearchRequest(
             vector=vector,
@@ -327,49 +343,7 @@ class HyperspaceClient:
             return []
 
     def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "") -> List[Dict]:
-        proto_filters = []
-        if filters:
-            for f in filters:
-                if f.get("type") == "match":
-                    proto_filters.append(hyperspace_pb2.Filter(
-                        match=hyperspace_pb2.Match(key=f["key"], value=f["value"])
-                    ))
-                elif f.get("type") == "range":
-                    kwargs = {"key": f["key"]}
-                    if "gte" in f:
-                        gte_val = f["gte"]
-                        if isinstance(gte_val, int):
-                            kwargs["gte"] = int(gte_val)
-                        else:
-                            kwargs["gte_f64"] = float(gte_val)
-                    if "lte" in f:
-                        lte_val = f["lte"]
-                        if isinstance(lte_val, int):
-                            kwargs["lte"] = int(lte_val)
-                        else:
-                            kwargs["lte_f64"] = float(lte_val)
-                    proto_filters.append(hyperspace_pb2.Filter(
-                        range=hyperspace_pb2.Range(**kwargs)
-                    ))
-                elif f.get("type") == "in_cone":
-                    c = hyperspace_pb2.InCone(
-                        axes=f.get("axes", []),
-                        apertures=f.get("apertures", []),
-                        cen=f.get("cen", [0.0])[0]
-                    )
-                    proto_filters.append(hyperspace_pb2.Filter(in_cone=c))
-                elif f.get("type") == "in_ball":
-                    b = hyperspace_pb2.InBall(
-                        center=f.get("center", []),
-                        radius=f.get("radius", 0.0)
-                    )
-                    proto_filters.append(hyperspace_pb2.Filter(in_ball=b))
-                elif f.get("type") == "in_box":
-                    b = hyperspace_pb2.InBox(
-                        min_bounds=f.get("min_bounds", []),
-                        max_bounds=f.get("max_bounds", [])
-                    )
-                    proto_filters.append(hyperspace_pb2.Filter(in_box=b))
+        proto_filters = [self._to_proto_filter(f) for f in filters] if filters else []
 
         req = hyperspace_pb2.SearchTextRequest(
             text=text,
@@ -787,6 +761,66 @@ class HyperspaceClient:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    def get_points(self, ids: List[int], collection: str = "") -> List[Dict]:
+        req = hyperspace_pb2.GetPointsRequest(ids=ids, collection=collection)
+        try:
+            resp = self.stub.GetPoints(req, metadata=self.metadata)
+            return [
+                {
+                    "id": p.id,
+                    "vector": list(p.vector),
+                    "metadata": dict(p.metadata),
+                    "typed_metadata": dict(p.typed_metadata)
+                }
+                for p in resp.points
+            ]
+        except grpc.RpcError:
+            return []
+
+    def update_payload(self, id: int, metadata: Dict[str, str], collection: str = "") -> bool:
+        req = hyperspace_pb2.UpdatePayloadRequest(id=id, metadata=metadata, collection=collection)
+        try:
+            resp = self.stub.UpdatePayload(req, metadata=self.metadata)
+            return resp.code == 0
+        except grpc.RpcError:
+            return False
+
+    def scroll(self, limit: int, offset: int = 0, filters: Optional[List[Dict]] = None, collection: str = "") -> List[Dict]:
+        req = hyperspace_pb2.ScrollRequest(limit=limit, offset=offset, collection=collection)
+        if filters:
+            req.filters.extend([self._to_proto_filter(f) for f in filters])
+        try:
+            resp = self.stub.Scroll(req, metadata=self.metadata)
+            return [
+                {
+                    "id": p.id,
+                    "vector": list(p.vector),
+                    "metadata": dict(p.metadata),
+                    "typed_metadata": dict(p.typed_metadata)
+                }
+                for p in resp.points
+            ]
+        except grpc.RpcError:
+            return []
+
+    def count(self, filters: Optional[List[Dict]] = None, collection: str = "") -> int:
+        req = hyperspace_pb2.CountRequest(collection=collection)
+        if filters:
+            req.filters.extend([self._to_proto_filter(f) for f in filters])
+        try:
+            resp = self.stub.Count(req, metadata=self.metadata)
+            return resp.count
+        except grpc.RpcError:
+            return 0
+
+    def health_check(self) -> str:
+        req = hyperspace_pb2.Empty()
+        try:
+            resp = self.stub.HealthCheck(req, metadata=self.metadata)
+            return resp.status
+        except grpc.RpcError:
+            return "unreachable"
 
 def analyze_delta_hyperbolicity(vectors: List[List[float]], num_samples: int = 1000) -> (float, str):
     """

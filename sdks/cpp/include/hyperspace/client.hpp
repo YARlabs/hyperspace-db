@@ -11,15 +11,15 @@
 
 namespace hyperspace {
 
-struct SearchResult {
+struct SearchResultRec {
     uint32_t id;
     std::unordered_map<std::string, std::string> metadata;
-    std::vector<double> vector;
+    std::unordered_map<std::string, ::hyperspace::MetadataValue> typed_metadata;
     double score;
     double distance; // Alias for score
 };
 
-struct CollectionSummary {
+struct CollectionSummaryRec {
     std::string name;
     uint64_t count;
     uint32_t dimension;
@@ -31,9 +31,12 @@ struct CollectionStats {
     uint32_t dimension;
     std::string metric;
     uint64_t indexing_queue;
+    uint64_t disk_usage_bytes;
+    uint64_t ram_usage_bytes;
+    uint64_t active_tasks;
 };
 
-struct Bm25Options {
+struct Bm25Params {
     std::string method = "bm25plus";
     float k1 = 1.2f;
     float b = 0.75f;
@@ -48,22 +51,22 @@ public:
 
     // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
     bool CreateCollection(const std::string& name, int dimension, const std::string& metric = "cosine");
-    std::vector<CollectionSummary> ListCollections();
+    std::vector<CollectionSummaryRec> ListCollections();
 
     bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "");
     bool InsertText(uint32_t id, const std::string& text, const std::string& collection = "");
     bool Delete(uint32_t id, const std::string& collection = "");
     bool BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection = "");
     std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
-    std::vector<SearchResult> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Options* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false);
-    std::vector<std::vector<SearchResult>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
-    std::vector<SearchResult> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0, const Bm25Options* bm25 = nullptr);
-    std::unordered_map<std::string, std::vector<SearchResult>> SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k = 10);
+    std::vector<SearchResultRec> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false);
+    std::vector<std::vector<SearchResultRec>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
+    std::vector<SearchResultRec> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr);
+    std::unordered_map<std::string, std::vector<SearchResultRec>> SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k = 10);
     
     // Admin & Ops API
     bool GetCollectionStats(const std::string& name, CollectionStats& stats_out);
     bool Exists(const std::string& name);
-    bool UpdateCollection(const std::string& name);
+    bool UpdateCollection(const std::string& name, uint32_t ef_search = 0, uint32_t ef_construction = 0, uint32_t m = 0);
     bool CreateSnapshot();
     bool Vacuum();
     bool RebuildIndex(const std::string& name);
@@ -80,8 +83,15 @@ public:
     
     // Sync API signatures
     bool SyncHandshake(const std::string& collection, const std::vector<uint64_t>& client_buckets, uint64_t client_logical_clock, uint64_t client_count, std::vector<uint32_t>& out_diff_buckets);
-    bool SyncPull(const std::string& collection, const std::vector<uint32_t>& bucket_indices);
-    bool SyncPush(const std::string& collection);
+    std::unique_ptr<::grpc::ClientReader<::hyperspace::SyncVectorData>> SyncPull(const std::string& collection, const std::vector<uint32_t>& bucket_indices);
+    std::unique_ptr<::grpc::ClientWriter<::hyperspace::SyncVectorData>> SyncPush(::hyperspace::SyncPushResponse* resp_out);
+
+    // Advanced Data Ops
+    std::vector<::hyperspace::VectorData> GetPoints(const std::vector<uint32_t>& ids, const std::string& collection = "");
+    bool UpdatePayload(uint32_t id, const std::unordered_map<std::string, std::string>& metadata, const std::unordered_map<std::string, ::hyperspace::MetadataValue>& typed_metadata = {}, const std::string& collection = "");
+    std::vector<::hyperspace::VectorData> Scroll(uint32_t limit, uint32_t offset = 0, const std::vector<::hyperspace::Filter>& filters = {}, const std::string& collection = "");
+    uint64_t Count(const std::vector<::hyperspace::Filter>& filters = {}, const std::string& collection = "");
+    std::string HealthCheck();
 
 private:
     std::unique_ptr<::hyperspace::Database::Stub> stub_;

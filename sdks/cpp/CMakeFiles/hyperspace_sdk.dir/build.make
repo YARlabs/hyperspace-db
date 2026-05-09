@@ -86,17 +86,49 @@ CMakeFiles/hyperspace_sdk.dir/src/client.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/hyperspace_sdk.dir/src/client.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/src/client.cpp -o CMakeFiles/hyperspace_sdk.dir/src/client.cpp.s
 
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o: CMakeFiles/hyperspace_sdk.dir/flags.make
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o: proto/hyperspace.pb.cc
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o: CMakeFiles/hyperspace_sdk.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o -MF CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o.d -o CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o -c /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.pb.cc
+
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.pb.cc > CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.i
+
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.pb.cc -o CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.s
+
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o: CMakeFiles/hyperspace_sdk.dir/flags.make
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o: proto/hyperspace.grpc.pb.cc
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o: CMakeFiles/hyperspace_sdk.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o -MF CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o.d -o CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o -c /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.grpc.pb.cc
+
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.grpc.pb.cc > CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.i
+
+CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.grpc.pb.cc -o CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.s
+
 # Object files for target hyperspace_sdk
 hyperspace_sdk_OBJECTS = \
-"CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o"
+"CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o" \
+"CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o" \
+"CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o"
 
 # External object files for target hyperspace_sdk
 hyperspace_sdk_EXTERNAL_OBJECTS =
 
 libhyperspace_sdk.a: CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o
+libhyperspace_sdk.a: CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o
+libhyperspace_sdk.a: CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o
 libhyperspace_sdk.a: CMakeFiles/hyperspace_sdk.dir/build.make
 libhyperspace_sdk.a: CMakeFiles/hyperspace_sdk.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX static library libhyperspace_sdk.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX static library libhyperspace_sdk.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/hyperspace_sdk.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/hyperspace_sdk.dir/link.txt --verbose=$(VERBOSE)
 

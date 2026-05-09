@@ -157,6 +157,7 @@ impl HyperspaceDB {
                     use_wasserstein: false,
                     bm25_options: None,
                     fusion_method: None,
+                    mrl_dimension: None,
                 };
                 $idx.search(vector, &HashMap::new(), &[], &params)
             }};

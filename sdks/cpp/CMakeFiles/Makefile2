@@ -85,12 +85,12 @@ clean: CMakeFiles/hyperspace_sdk.dir/clean
 CMakeFiles/hyperspace_sdk.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=1,2 "Built target hyperspace_sdk"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=1,2,3,4 "Built target hyperspace_sdk"
 .PHONY : CMakeFiles/hyperspace_sdk.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/hyperspace_sdk.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/hyperspace_sdk.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles 0
 .PHONY : CMakeFiles/hyperspace_sdk.dir/rule
@@ -102,7 +102,7 @@ hyperspace_sdk: CMakeFiles/hyperspace_sdk.dir/rule
 # codegen rule for target.
 CMakeFiles/hyperspace_sdk.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=1,2 "Finished codegen for target hyperspace_sdk"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/CMakeFiles --progress-num=1,2,3,4 "Finished codegen for target hyperspace_sdk"
 .PHONY : CMakeFiles/hyperspace_sdk.dir/codegen
 
 # clean rule for target.

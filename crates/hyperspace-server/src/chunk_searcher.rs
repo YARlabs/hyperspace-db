@@ -68,6 +68,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
     let element_size = match mode {
         QuantizationMode::ScalarI8 => hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE,
         QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<N>::SIZE,
+        QuantizationMode::AsymmetricHybrid801 => hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE,
         QuantizationMode::None => {
             if storage_f32 {
                 hyperspace_core::vector::HyperVectorF32::<N>::SIZE
@@ -94,6 +95,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
         use_wasserstein,
         bm25_options: None,
         fusion_method: None,
+        mrl_dimension: None,
     };
 
     let results = chunk_index.search(query, filters, complex_filters, &params);

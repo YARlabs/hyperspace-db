@@ -56,6 +56,7 @@ func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, di
 		Name:      name,
 		Dimension: dimension,
 		Metric:    metric,
+		Components: []*pb.CollectionComponent{},
 	}
 
 	_, err := c.client.CreateCollection(c.withContext(ctx), req)
@@ -175,7 +176,7 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 			req.MrlDimension = &params.MrlDimension
 		}
 		if params.UseWasserstein {
-			req.UseWasserstein = &params.UseWasserstein
+			req.UseWasserstein = params.UseWasserstein
 		}
 		req.Bm25Options = params.BM25Options
 	}
@@ -325,7 +326,7 @@ func (c *HyperspaceClient) SubscribeToEvents(ctx context.Context, types []pb.Eve
 		Collection: &collection,
 	}
 	for _, t := range types {
-		req.Types = append(req.Types, int32(t))
+		req.Types = append(req.Types, t)
 	}
 	return c.client.SubscribeToEvents(c.withContext(ctx), req)
 }
@@ -340,3 +341,60 @@ func (c *HyperspaceClient) TriggerReconsolidation(ctx context.Context, collectio
 	return err
 }
 
+func (c *HyperspaceClient) GetPoints(ctx context.Context, ids []uint32, collection string) ([]*pb.VectorData, error) {
+	req := &pb.GetPointsRequest{
+		Ids:        ids,
+		Collection: collection,
+	}
+	resp, err := c.client.GetPoints(c.withContext(ctx), req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Points, nil
+}
+
+func (c *HyperspaceClient) UpdatePayload(ctx context.Context, id uint32, metadata map[string]string, collection string) error {
+	req := &pb.UpdatePayloadRequest{
+		Id:            id,
+		Metadata:      metadata,
+		Collection:    collection,
+		TypedMetadata: make(map[string]*pb.MetadataValue),
+	}
+	_, err := c.client.UpdatePayload(c.withContext(ctx), req)
+	return err
+}
+
+func (c *HyperspaceClient) Scroll(ctx context.Context, limit uint32, offset uint32, filters []*pb.Filter, collection string) ([]*pb.VectorData, error) {
+	req := &pb.ScrollRequest{
+		Limit:      limit,
+		Offset:     offset,
+		Filters:    filters,
+		Collection: collection,
+	}
+	resp, err := c.client.Scroll(c.withContext(ctx), req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Points, nil
+}
+
+func (c *HyperspaceClient) Count(ctx context.Context, filters []*pb.Filter, collection string) (uint64, error) {
+	req := &pb.CountRequest{
+		Filters:    filters,
+		Collection: collection,
+	}
+	resp, err := c.client.Count(c.withContext(ctx), req)
+	if err != nil {
+		return 0, err
+	}
+	return resp.Count, nil
+}
+
+func (c *HyperspaceClient) HealthCheck(ctx context.Context) (string, error) {
+	req := &pb.Empty{}
+	resp, err := c.client.HealthCheck(c.withContext(ctx), req)
+	if err != nil {
+		return "", err
+	}
+	return resp.Status, nil
+}

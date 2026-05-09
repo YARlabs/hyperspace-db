@@ -1,8 +1,61 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:grpc/grpc.dart';
-import 'generated/hyperspace.pbgrpc.dart';
-import 'generated/hyperspace.pb.dart';
+import 'generated/hyperspace.pbgrpc.dart' hide Filter;
+import 'generated/hyperspace.pb.dart' as pb;
+import 'package:fixnum/fixnum.dart';
+
+/// Helper for building complex filters in HyperspaceDB.
+class Filter {
+  final pb.Filter _proto;
+  Filter(this._proto);
+
+  static Filter match(String key, String value) {
+    final f = pb.Filter()..match = (Match()..key = key..value = value);
+    return Filter(f);
+  }
+
+  static Filter range(String key, {num? gte, num? lte}) {
+    final r = Range()..key = key;
+    if (gte != null) {
+      if (gte is int) r.gte = Int64(gte); else r.gteF64 = gte.toDouble();
+    }
+    if (lte != null) {
+      if (lte is int) r.lte = Int64(lte); else r.lteF64 = lte.toDouble();
+    }
+    return Filter(pb.Filter()..range = r);
+  }
+
+  static Filter inCone(List<double> axes, List<double> apertures, double cen) {
+    final c = InCone()..axes.addAll(axes)..apertures.addAll(apertures)..cen = cen;
+    return Filter(pb.Filter()..inCone = c);
+  }
+
+  static Filter inBall(List<double> center, double radius) {
+    final b = InBall()..center.addAll(center)..radius = radius;
+    return Filter(pb.Filter()..inBall = b);
+  }
+
+  static Filter inBox(List<double> minBounds, List<double> maxBounds) {
+    final b = InBox()..minBounds.addAll(minBounds)..maxBounds.addAll(maxBounds);
+    return Filter(pb.Filter()..inBox = b);
+  }
+
+  static Filter and(List<Filter> filters) {
+    final a = FilterAnd()..conditions.addAll(filters.map((f) => f._proto));
+    return Filter(pb.Filter()..andOp = a);
+  }
+
+  static Filter or(List<Filter> filters) {
+    final o = FilterOr()..conditions.addAll(filters.map((f) => f._proto));
+    return Filter(pb.Filter()..orOp = o);
+  }
+
+  static Filter not(Filter filter) {
+    final n = FilterNot()..condition = filter._proto;
+    return Filter(pb.Filter()..notOp = n);
+  }
+}
 
 class HyperspaceClient {
   final ClientChannel _channel;
@@ -25,6 +78,22 @@ class HyperspaceClient {
       if (tenantId != null) 'x-hyperspace-user-id': tenantId!,
     };
     return CallOptions(metadata: metadata);
+  }
+
+  MetadataValue _toProtoMetadataValue(dynamic value) {
+    final mv = MetadataValue();
+    if (value is String) {
+      mv.stringValue = value;
+    } else if (value is int) {
+      mv.intValue = Int64(value);
+    } else if (value is double) {
+      mv.doubleValue = value;
+    } else if (value is bool) {
+      mv.boolValue = value;
+    } else {
+      mv.stringValue = value.toString();
+    }
+    return mv;
   }
 
   Future<void> close() async {
@@ -50,14 +119,52 @@ class HyperspaceClient {
   }
 
 
-  Future<bool> insert(int id, List<double> vector, {String collection = ''}) async {
+  Future<bool> insert(int id, List<double> vector, {
+    String collection = '', 
+    Map<String, String>? metadata,
+    Map<String, dynamic>? typedMetadata,
+  }) async {
     final req = InsertRequest(
       id: id,
       vector: vector,
       collection: collection,
     );
+    if (metadata != null) req.metadata.addAll(metadata);
+    if (typedMetadata != null) {
+      typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
+    }
     final resp = await _stub.insert(req);
     return resp.success;
+  }
+
+  Future<bool> batchInsert(List<Map<String, dynamic>> points, {String collection = ''}) async {
+    final req = BatchInsertRequest(collection: collection);
+    for (var p in points) {
+      final vd = VectorData(
+        id: p['id'] as int,
+        vector: p['vector'] as List<double>,
+      );
+      if (p['metadata'] != null) vd.metadata.addAll(Map<String, String>.from(p['metadata']));
+      if (p['typedMetadata'] != null) {
+        (p['typedMetadata'] as Map<String, dynamic>).forEach((k, v) => vd.typedMetadata[k] = _toProtoMetadataValue(v));
+      }
+      req.vectors.add(vd);
+    }
+    final resp = await _stub.batchInsert(req);
+    return resp.success;
+  }
+
+  Future<List<VectorData>> getPoints(List<int> ids, {String collection = ''}) async {
+    final req = GetPointsRequest(collection: collection, ids: ids);
+    final resp = await _stub.getPoints(req);
+    return resp.points;
+  }
+
+  Future<bool> updatePayload(int id, Map<String, dynamic> typedMetadata, {String collection = ''}) async {
+    final req = UpdatePayloadRequest(collection: collection, id: id);
+    typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
+    final resp = await _stub.updatePayload(req);
+    return resp.status == 'success';
   }
 
   Future<bool> delete(int id, {String collection = ''}) async {
@@ -94,6 +201,8 @@ class HyperspaceClient {
     Bm25Options? bm25Options,
     int? mrlDimension,
     bool? useWasserstein,
+    Map<String, String>? filter,
+    List<Filter>? filters,
   }) async {
     final req = SearchRequest(
       vector: vector,
@@ -105,9 +214,20 @@ class HyperspaceClient {
     if (bm25Options != null) req.bm25Options = bm25Options;
     if (mrlDimension != null) req.mrlDimension = mrlDimension;
     if (useWasserstein != null) req.useWasserstein = useWasserstein;
+    if (filter != null) req.filter.addAll(filter);
+    if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
 
     final resp = await _stub.search(req);
     return resp.results;
+  }
+
+  Future<List<List<SearchResult>>> searchBatch(List<List<double>> vectors, int topK, {String collection = ''}) async {
+    final req = BatchSearchRequest();
+    for (var v in vectors) {
+      req.searches.add(SearchRequest(vector: v, topK: topK, collection: collection));
+    }
+    final resp = await _stub.searchBatch(req);
+    return resp.responses.map((r) => r.results).toList();
   }
 
   Future<List<SearchResult>> searchText(
@@ -116,6 +236,8 @@ class HyperspaceClient {
     String collection = '', 
     double? hybridAlpha,
     Bm25Options? bm25Options,
+    Map<String, String>? filter,
+    List<Filter>? filters,
   }) async {
     final req = SearchTextRequest(
       text: text,
@@ -124,6 +246,8 @@ class HyperspaceClient {
     );
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
     if (bm25Options != null) req.bm25Options = bm25Options;
+    if (filter != null) req.filter.addAll(filter);
+    if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
 
     final resp = await _stub.searchText(req);
     return resp.results;
@@ -166,10 +290,35 @@ class HyperspaceClient {
     }
   }
 
-  Future<bool> updateCollection(String name) async {
+  Future<bool> updateCollection(String name, {int? efSearch, int? efConstruction, int? m}) async {
     final req = ConfigUpdate(collection: name);
+    if (efSearch != null) req.efSearch = efSearch;
+    if (efConstruction != null) req.efConstruction = efConstruction;
+    if (m != null) req.m = m;
     final resp = await _stub.configure(req);
-    return resp.status == 'success';
+    return resp.status.contains('success') || resp.status.contains('updated');
+  }
+
+  Future<ScrollResponse> scroll(String collection, {int limit = 100, int offset = 0, List<Filter>? filters}) async {
+    final req = ScrollRequest(collection: collection, limit: limit, offset: offset);
+    if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
+    return _stub.scroll(req);
+  }
+
+  Future<int> count(String collection, {List<Filter>? filters}) async {
+    final req = CountRequest(collection: collection);
+    if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
+    final resp = await _stub.count(req);
+    return resp.count.toInt();
+  }
+
+  Future<bool> healthCheck() async {
+    try {
+      final resp = await _stub.healthCheck(Empty());
+      return resp.status == 'ready';
+    } catch (e) {
+      return false;
+    }
   }
 
   Future<bool> createSnapshot() async {
@@ -182,7 +331,7 @@ class HyperspaceClient {
     return resp.status == 'success';
   }
 
-  Stream<MonitorResponse> getMetrics() {
+  Stream<SystemStats> getMetrics() {
     return _stub.monitor(MonitorRequest());
   }
 
@@ -228,7 +377,7 @@ class HyperspaceClient {
 
   Stream<EventMessage> subscribeToEvents(List<EventType> types, {String? collection}) {
     final req = EventSubscriptionRequest(
-      types: types.map((t) => t.value).toList(),
+      types: types,
       collection: collection,
     );
     return _stub.subscribeToEvents(req);

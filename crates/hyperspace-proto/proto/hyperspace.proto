@@ -152,6 +152,9 @@ message CollectionStatsResponse {
   uint32 dimension = 2;
   string metric = 3;
   uint64 indexing_queue = 4;
+  uint64 disk_usage_bytes = 5;
+  uint64 ram_usage_bytes = 6;
+  uint64 active_tasks = 7;
 }
 
 message RebuildIndexRequest {
@@ -163,6 +166,7 @@ message ConfigUpdate {
   string collection = 1; 
   optional uint32 ef_search = 2;
   optional uint32 ef_construction = 3;
+  optional uint32 m = 4;
 }
 
 message VacuumFilterQuery {

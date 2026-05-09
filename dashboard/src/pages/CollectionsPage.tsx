@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api, fetchStatus } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Plus, Trash2, MoreHorizontal, Database, Search } from "lucide-react"
+import { Plus, Trash2, MoreHorizontal, Database, Search, HardDrive, Cpu, Settings2, BarChart3 } from "lucide-react"
+import { getCollectionStats, updateCollectionConfig } from "@/lib/api"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -102,6 +103,7 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                         <DropdownMenuItem onClick={() => navigate(`/explorer?collection=${name}`)}>
                             <Search className="mr-2 h-4 w-4" /> Inspect Data
                         </DropdownMenuItem>
+                        <CollectionStatsDialog collectionName={name} />
                         <DropdownMenuItem disabled>
                             Export Snapshot
                         </DropdownMenuItem>
@@ -255,6 +257,141 @@ function CreateCollectionDialog() {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+    )
+}
+
+function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
+    const [open, setOpen] = useState(false)
+    const queryClient = useQueryClient()
+
+    const { data: stats, isLoading } = useQuery({
+        queryKey: ['stats', collectionName],
+        queryFn: () => getCollectionStats(collectionName),
+        enabled: open,
+        refetchInterval: 5000
+    })
+
+    const configMutation = useMutation({
+        mutationFn: (config: any) => updateCollectionConfig(collectionName, config),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['stats', collectionName] })
+            alert("Configuration updated!")
+        }
+    })
+
+    const formatBytes = (bytes: number) => {
+        if (!bytes) return "0 B"
+        const k = 1024
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+        const i = Math.floor(Math.log(bytes) / Math.log(k))
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setOpen(true); }}>
+                    <BarChart3 className="mr-2 h-4 w-4" /> Resource & Config
+                </DropdownMenuItem>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px] bg-zinc-950 border-white/10">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Database className="h-5 w-5 text-primary" />
+                        {collectionName} — Performance Stats
+                    </DialogTitle>
+                    <DialogDescription>Real-time resource usage and HNSW tuning.</DialogDescription>
+                </DialogHeader>
+
+                {isLoading ? (
+                    <div className="py-10 flex flex-col items-center justify-center gap-3">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        <span className="text-xs text-muted-foreground">Gathering telemetry...</span>
+                    </div>
+                ) : stats && (
+                    <div className="space-y-6 py-4">
+                        {/* Resource Grid */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 rounded-lg bg-zinc-900 border border-white/5 space-y-1">
+                                <div className="flex items-center gap-2 text-zinc-400">
+                                    <HardDrive className="h-3 w-3" />
+                                    <span className="text-[10px] uppercase font-bold tracking-wider">Disk Usage</span>
+                                </div>
+                                <div className="text-xl font-mono font-bold text-blue-400">
+                                    {formatBytes(stats.usage?.disk_bytes)}
+                                </div>
+                            </div>
+                            <div className="p-4 rounded-lg bg-zinc-900 border border-white/5 space-y-1">
+                                <div className="flex items-center gap-2 text-zinc-400">
+                                    <Cpu className="h-3 w-3" />
+                                    <span className="text-[10px] uppercase font-bold tracking-wider">RAM (Est.)</span>
+                                </div>
+                                <div className="text-xl font-mono font-bold text-purple-400">
+                                    {formatBytes(stats.usage?.ram_bytes)}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Config Editor */}
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-zinc-400 border-b border-white/5 pb-2">
+                                <Settings2 className="h-4 w-4" />
+                                <h4 className="text-sm font-semibold">HNSW Configuration (Dynamic)</h4>
+                            </div>
+
+                            <ConfigField 
+                                label="EF Search" 
+                                description="Search depth (Hot-patchable)" 
+                                value={stats.indexing_queue > 0 ? "Indexing..." : "Current: " + (stats.ef_search || 100)}
+                                onSave={(val) => configMutation.mutate({ ef_search: parseInt(val) })}
+                            />
+                            
+                            <ConfigField 
+                                label="EF Construction" 
+                                description="Build quality for NEW points" 
+                                value="Current: " + (stats.ef_construction || 100)
+                                onSave={(val) => configMutation.mutate({ ef_construction: parseInt(val) })}
+                            />
+
+                            <ConfigField 
+                                label="M (Max Connections)" 
+                                description="Graph degree (Requires Rebuild if changed)" 
+                                value="Current: " + (stats.m || 16)
+                                onSave={(val) => configMutation.mutate({ m: parseInt(val) })}
+                            />
+                        </div>
+
+                        <div className="p-3 rounded bg-blue-500/5 border border-blue-500/20 text-[10px] text-blue-400 leading-relaxed">
+                            <strong>Tip:</strong> Increasing EF Search improves recall but adds latency. 
+                            Changes to M and EF Construction only affect vectors inserted AFTER the change.
+                        </div>
+                    </div>
+                )}
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function ConfigField({ label, description, value, onSave }: any) {
+    const [inputValue, setInputValue] = useState("")
+
+    return (
+        <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+                <div className="text-sm font-medium">{label}</div>
+                <div className="text-[11px] text-muted-foreground">{description}</div>
+                <div className="text-[10px] font-mono text-zinc-500 mt-0.5">{value}</div>
+            </div>
+            <div className="flex items-center gap-2">
+                <Input 
+                    className="h-8 w-20 text-xs bg-zinc-900 border-white/10" 
+                    placeholder="New val" 
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                />
+                <Button variant="outline" size="sm" className="h-8 px-2 text-[10px]" onClick={() => onSave(inputValue)}>Set</Button>
+            </div>
+        </div>
     )
 }
 

@@ -26,13 +26,57 @@ const token = localStorage.getItem("hyperspace_api_key")
 if (token) setAuthToken(token)
 
 export const fetchStatus = async () => {
-    try {
-        const res = await api.get("/status")
-        return res.data
-    } catch {
-        const res = await api.get("/cluster/status")
-        return res.data
-    }
+    const res = await api.get("/status")
+    return res.data
+}
+
+export const fetchHealth = async () => {
+    const res = await api.get("/health")
+    return res.data
+}
+
+export const fetchCollections = async () => {
+    const res = await api.get("/collections")
+    return res.data
+}
+
+export const searchCollection = async (name: string, payload: any) => {
+    const res = await api.post(`/collections/${name}/search`, payload)
+    return res.data
+}
+
+export const searchBatch = async (name: string, payload: any) => {
+    const res = await api.post(`/collections/${name}/search/batch`, payload)
+    return res.data
+}
+
+export const searchMulti = async (payload: any) => {
+    const res = await api.post(`/search/multi`, payload)
+    return res.data
+}
+
+export const scrollCollection = async (name: string, payload: any) => {
+    const res = await api.post(`/collections/${name}/scroll`, payload)
+    return res.data
+}
+
+export const countFiltered = async (name: string, payload: any) => {
+    const res = await api.post(`/collections/${name}/count`, payload)
+    return res.data
+}
+
+export const updatePayload = async (name: string, id: number, metadata: any) => {
+    const res = await api.post(`/collections/${name}/payload`, { id, metadata })
+    return res.data
+}
+
+export const getCollectionStats = (name: string) => api.get(`/collections/${name}/stats`).then(r => r.data)
+
+export const updateCollectionConfig = (name: string, config: any) => api.patch(`/collections/${name}/config`, config)
+
+export const getPoints = async (name: string, ids: number[]) => {
+    const res = await api.get(`/collections/${name}/points`, { params: { ids: ids.join(',') } })
+    return res.data
 }
 
 export const fetchTrajectoryHistory = async () => {

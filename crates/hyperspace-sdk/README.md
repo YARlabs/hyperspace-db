@@ -6,8 +6,11 @@ This crate provides:
 - authenticated gRPC client
 - collection management
 - insert/search APIs
+- recursive logical filters (`AND`, `OR`, `NOT`)
+- bulk point management (`get_points`, `update_payload`, `scroll`, `count`)
 - high-throughput `search_batch`
 - `f32` helper methods for Euclidean workloads (`insert_f32`, `search_f32`, `search_batch_f32`)
+- system health monitoring (`health_check`)
 
 ## Installation
 
@@ -132,6 +135,11 @@ The crate converts to protocol `f64` once per call.
 - `insert`, `insert_f32`
 
 - `insert_text` (server-side vectorization and storage)
+- `get_points` (bulk point retrieval)
+- `update_payload` (metadata patching)
+- `scroll` (paginated scanning)
+- `count` (filtered point counting)
+- `health_check` (server status)
 - `vectorize` (convert text to vector on server)
 - `search`, `search_f32`, `search_advanced`
 - `search_text` (lexical search, vectorized on server)

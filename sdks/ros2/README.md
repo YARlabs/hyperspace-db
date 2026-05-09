@@ -7,7 +7,12 @@ This package provides a bridge between HyperspaceDB and the ROS2 environment, al
 - `hyperspace/insert_text`: Vectorize and store text in the database.
 - `hyperspace/search_text`: Unified search with support for hybrid ranking.
 - `hyperspace/vectorize`: Get raw vector for a string.
+- `hyperspace/get_points`: Retrieve multiple points by ID.
+- `hyperspace/update_payload`: Patch metadata for an entry.
+- `hyperspace/scroll`: Paginated retrieval of stored vectors.
+- `hyperspace/count`: Count entries with specific filters.
 - `hyperspace/delete`: Remove entry by ID.
+- `hyperspace/health_check`: Monitor connection to the database.
 - `evaluate_claim_and_navigate`: Perform Riemannian evaluation of a "thought" vector relative to context and calculate next velocity.
 
 ## Hybrid Search Usage

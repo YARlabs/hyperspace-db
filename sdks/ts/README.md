@@ -8,6 +8,12 @@ Use this SDK for:
 - high-throughput batched search (`searchBatch`)
 - bulk insertion (`batchInsert`)
 - advanced filtering and hybrid search
+- recursive logical filters (`AND`, `OR`, `NOT`)
+- bulk point retrieval (`getPoints`)
+- metadata updates (`updatePayload`)
+- paginated scanning (`scroll`)
+- filtered point counting (`count`)
+- health monitoring (`healthCheck`)
 - typed metadata (`string | number | boolean`)
 - graph traversal APIs (`getNode`, `getNeighbors`, `getConceptParents`, `traverse`, `findSemanticClusters`)
 - rebuild with metadata pruning (`rebuildIndexWithFilter`)
@@ -145,7 +151,49 @@ const coneFilter = {
 const results = await client.search([0.1, 0.2, 0.3], 10, "coll", {
   filters: [ballFilter, boxFilter]
 });
+
+// 4. Recursive Logical Filters
+const logicFilter = {
+  and: [
+    { match: { key: "status", value: "active" } },
+    { or: [
+        { range: { key: "score", gte: 0.8 } },
+        { match: { key: "priority", value: "high" } }
+      ]
+    }
+  ]
+};
 ```
+
+### `getPoints(ids, collection?)`
+
+Retrieve multiple points by their IDs.
+Returns `Promise<Point[]>`.
+
+### `updatePayload(id, metadata, collection?)`
+
+Patch metadata for an existing point.
+```ts
+await client.updatePayload(1, { status: "processed", tags: "updated" });
+```
+
+### `scroll(limit?, offset?, filters?, collection?)`
+
+Paginated retrieval of points with optional filtering.
+```ts
+const points = await client.scroll(50, 0, [{ match: { key: "category", value: "news" } }]);
+```
+
+### `count(filters?, collection?)`
+
+Count points matching filters.
+```ts
+const total = await client.count([{ range: { key: "price", lte: 100 } }]);
+```
+
+### `healthCheck()`
+
+Check server connectivity. Returns `"ONLINE"` or throws.
 
 ### Hybrid & Lexical Search (BM25)
 

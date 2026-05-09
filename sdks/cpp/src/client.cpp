@@ -1,7 +1,6 @@
 #include <hyperspace/client.hpp>
 #include <grpcpp/grpcpp.h>
 #include "hyperspace.grpc.pb.h"
-#include <google/protobuf/arena.h>
 
 namespace hyperspace {
 
@@ -32,7 +31,7 @@ bool HyperspaceClient::CreateCollection(const std::string& name, int dimension, 
     return status.ok();
 }
 
-std::vector<CollectionSummary> HyperspaceClient::ListCollections() {
+std::vector<CollectionSummaryRec> HyperspaceClient::ListCollections() {
     ::hyperspace::Empty request;
     ::hyperspace::ListCollectionsResponse response;
     ClientContext context;
@@ -41,7 +40,7 @@ std::vector<CollectionSummary> HyperspaceClient::ListCollections() {
     }
 
     Status status = stub_->ListCollections(&context, request, &response);
-    std::vector<CollectionSummary> output;
+    std::vector<CollectionSummaryRec> output;
     if (status.ok()) {
         output.reserve(response.collections_size());
         for (const auto& c : response.collections()) {
@@ -51,15 +50,11 @@ std::vector<CollectionSummary> HyperspaceClient::ListCollections() {
     return output;
 }
 
-
 bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection) {
     ::hyperspace::InsertRequest request;
     request.set_id(id);
     request.set_collection(collection);
-    
-    for (double v : vector) {
-        request.add_vector(v);
-    }
+    for (double v : vector) request.add_vector(v);
 
     ::hyperspace::InsertResponse response;
     ClientContext context;
@@ -103,17 +98,12 @@ bool HyperspaceClient::Delete(uint32_t id, const std::string& collection) {
 }
 
 bool HyperspaceClient::BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection) {
-    if (ids.size() != vectors.size()) return false;
-    
     ::hyperspace::BatchInsertRequest request;
     request.set_collection(collection);
-    
     for (size_t i = 0; i < ids.size(); ++i) {
         auto* v = request.add_vectors();
         v->set_id(ids[i]);
-        for (double val : vectors[i]) {
-            v->add_vector(val);
-        }
+        for (double val : vectors[i]) v->add_vector(val);
     }
 
     ::hyperspace::InsertResponse response;
@@ -121,6 +111,7 @@ bool HyperspaceClient::BatchInsert(const std::vector<uint32_t>& ids, const std::
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
     }
+
     Status status = stub_->BatchInsert(&context, request, &response);
     return status.ok() && response.success();
 }
@@ -139,77 +130,50 @@ std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const s
     Status status = stub_->Vectorize(&context, request, &response);
     std::vector<double> output;
     if (status.ok()) {
-        output.assign(response.vector().begin(), response.vector().end());
+        for (double v : response.vector()) output.push_back(v);
     }
     return output;
 }
 
-std::vector<SearchResult> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Options* bm25, uint32_t mrl_dimension, bool use_wasserstein) {
+std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein) {
     ::hyperspace::SearchRequest request;
-    request.set_top_k(top_k);
     request.set_collection(collection);
-
-    for (double v : vector) {
-        request.add_vector(v);
-    }
-    
-    if (!hybrid_query.empty()) {
-        request.set_hybrid_query(hybrid_query);
-    }
-    if (hybrid_alpha != 0.0f) {
-        request.set_hybrid_alpha(hybrid_alpha);
-    }
-    
+    request.set_top_k(top_k);
+    for (double v : vector) request.add_vector(v);
+    if (!hybrid_query.empty()) request.set_hybrid_query(hybrid_query);
+    if (hybrid_alpha != 0.0f) request.set_hybrid_alpha(hybrid_alpha);
     if (bm25) {
-        auto* proto_bm25 = request.mutable_bm25_options();
-        proto_bm25->set_method(bm25->method);
-        proto_bm25->set_k1(bm25->k1);
-        proto_bm25->set_b(bm25->b);
-        proto_bm25->set_delta(bm25->delta);
-        proto_bm25->set_language(bm25->language);
+        auto* p = request.mutable_bm25_options();
+        p->set_method(bm25->method);
+        p->set_k1(bm25->k1);
+        p->set_b(bm25->b);
+        p->set_delta(bm25->delta);
+        p->set_language(bm25->language);
     }
-    
-    if (mrl_dimension != 0) {
-        request.set_mrl_dimension(mrl_dimension);
-    }
-    if (use_wasserstein) {
-        request.set_use_wasserstein(use_wasserstein);
-    }
+    if (mrl_dimension != 0) request.set_mrl_dimension(mrl_dimension);
+    request.set_use_wasserstein(use_wasserstein);
 
-    google::protobuf::Arena arena;
-    auto* response = google::protobuf::Arena::CreateMessage<::hyperspace::SearchResponse>(&arena);
-
+    ::hyperspace::SearchResponse response;
     ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
+    if (!app_id_.empty()) context.AddMetadata("x-api-key", app_id_);
 
-    Status status = stub_->Search(&context, request, response);
-    std::vector<SearchResult> output;
-
+    Status status = stub_->Search(&context, request, &response);
+    std::vector<SearchResultRec> output;
     if (status.ok()) {
-        output.reserve(response->results_size());
-        for (const auto& res : response->results()) {
-            SearchResult s;
+        for (const auto& res : response.results()) {
+            SearchResultRec s;
             s.id = res.id();
             s.score = res.distance();
             s.distance = res.distance();
-            
-            for (double v : res.vector()) {
-                s.vector.push_back(v);
-            }
-
-            for (auto const& it : res.metadata()) {
-                s.metadata[it.first] = it.second;
-            }
+            for (auto const& it : res.metadata()) s.metadata[it.first] = it.second;
+            for (auto const& it : res.typed_metadata()) s.typed_metadata[it.first] = it.second;
             output.push_back(s);
         }
     }
-
     return output;
 }
 
-std::vector<std::vector<SearchResult>> HyperspaceClient::SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k, const std::string& collection) {
+std::vector<std::vector<SearchResultRec>> HyperspaceClient::SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k, const std::string& collection) {
     ::hyperspace::BatchSearchRequest request;
     for (const auto& v : vectors) {
         auto* s = request.add_searches();
@@ -218,273 +182,373 @@ std::vector<std::vector<SearchResult>> HyperspaceClient::SearchBatch(const std::
         for (double val : v) s->add_vector(val);
     }
 
-    google::protobuf::Arena arena;
-    auto* response = google::protobuf::Arena::CreateMessage<::hyperspace::BatchSearchResponse>(&arena);
-
+    ::hyperspace::BatchSearchResponse response;
     ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
+    if (!app_id_.empty()) context.AddMetadata("x-api-key", app_id_);
 
-    Status status = stub_->SearchBatch(&context, request, response);
-    std::vector<std::vector<SearchResult>> output;
-
+    Status status = stub_->SearchBatch(&context, request, &response);
+    std::vector<std::vector<SearchResultRec>> output;
     if (status.ok()) {
-        output.reserve(response->responses_size());
-        for (const auto& search_resp : response->responses()) {
-            std::vector<SearchResult> sub_results;
-            sub_results.reserve(search_resp.results_size());
+        for (const auto& search_resp : response.responses()) {
+            std::vector<SearchResultRec> sub;
             for (const auto& res : search_resp.results()) {
-                SearchResult s;
+                SearchResultRec s;
                 s.id = res.id();
                 s.score = res.distance();
                 s.distance = res.distance();
-                for (double val : res.vector()) s.vector.push_back(val);
-                for (auto const& it : res.metadata()) {
-                    s.metadata[it.first] = it.second;
-                }
-                sub_results.push_back(s);
+                for (auto const& it : res.metadata()) s.metadata[it.first] = it.second;
+                for (auto const& it : res.typed_metadata()) s.typed_metadata[it.first] = it.second;
+                sub.push_back(s);
             }
-            output.push_back(sub_results);
+            output.push_back(sub);
         }
     }
     return output;
 }
 
-std::vector<SearchResult> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection, float hybrid_alpha, const Bm25Options* bm25) {
+std::vector<SearchResultRec> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection, float hybrid_alpha, const Bm25Params* bm25) {
     ::hyperspace::SearchTextRequest request;
     request.set_text(text);
     request.set_top_k(top_k);
     request.set_collection(collection);
-    
-    if (hybrid_alpha != 0.0f) {
-        request.set_hybrid_alpha(hybrid_alpha);
-    }
-
+    if (hybrid_alpha != 0.0f) request.set_hybrid_alpha(hybrid_alpha);
     if (bm25) {
-        auto* proto_bm25 = request.mutable_bm25_options();
-        proto_bm25->set_method(bm25->method);
-        proto_bm25->set_k1(bm25->k1);
-        proto_bm25->set_b(bm25->b);
-        proto_bm25->set_delta(bm25->delta);
-        proto_bm25->set_language(bm25->language);
+        auto* p = request.mutable_bm25_options();
+        p->set_method(bm25->method);
+        p->set_k1(bm25->k1);
+        p->set_b(bm25->b);
+        p->set_delta(bm25->delta);
+        p->set_language(bm25->language);
     }
 
-    google::protobuf::Arena arena;
-    auto* response = google::protobuf::Arena::CreateMessage<::hyperspace::SearchResponse>(&arena);
-
+    ::hyperspace::SearchResponse response;
     ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
+    if (!app_id_.empty()) context.AddMetadata("x-api-key", app_id_);
 
-    Status status = stub_->SearchText(&context, request, response);
-    std::vector<SearchResult> output;
-
+    Status status = stub_->SearchText(&context, request, &response);
+    std::vector<SearchResultRec> output;
     if (status.ok()) {
-        output.reserve(response->results_size());
-        for (const auto& res : response->results()) {
-            SearchResult s;
+        for (const auto& res : response.results()) {
+            SearchResultRec s;
             s.id = res.id();
             s.score = res.distance();
             s.distance = res.distance();
-            
-            for (auto const& it : res.metadata()) {
-                s.metadata[it.first] = it.second;
-            }
+            for (auto const& it : res.metadata()) s.metadata[it.first] = it.second;
+            for (auto const& it : res.typed_metadata()) s.typed_metadata[it.first] = it.second;
             output.push_back(s);
         }
     }
-
     return output;
 }
 
-} // namespace hyperspace
-
-std::unordered_map<std::string, std::vector<SearchResult>> HyperspaceClient::SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k) {
+std::unordered_map<std::string, std::vector<SearchResultRec>> HyperspaceClient::SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k) {
     ::hyperspace::SearchMultiCollectionRequest request;
-    for (const auto& c : collections) {
-        request.add_collections(c);
-    }
-    for (double v : query) {
-        request.add_vector(v);
-    }
+    for (const auto& c : collections) request.add_collections(c);
+    for (double v : query) request.add_vector(v);
     request.set_top_k(top_k);
 
     ::hyperspace::SearchMultiCollectionResponse response;
     ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
+    if (!app_id_.empty()) context.AddMetadata("x-api-key", app_id_);
 
     Status status = stub_->SearchMultiCollection(&context, request, &response);
-    std::unordered_map<std::string, std::vector<SearchResult>> output;
-
+    std::unordered_map<std::string, std::vector<SearchResultRec>> output;
     if (status.ok()) {
         for (const auto& it : response.responses()) {
-            std::vector<SearchResult> sub_results;
-            sub_results.reserve(it.second.results_size());
+            std::vector<SearchResultRec> sub;
             for (const auto& res : it.second.results()) {
-                SearchResult s;
+                SearchResultRec s;
                 s.id = res.id();
                 s.score = res.distance();
                 s.distance = res.distance();
-                for (auto const& meta_it : res.metadata()) {
-                    s.metadata[meta_it.first] = meta_it.second;
-                }
-                sub_results.push_back(s);
+                for (auto const& m : res.metadata()) s.metadata[m.first] = m.second;
+                for (auto const& m : res.typed_metadata()) s.typed_metadata[m.first] = m.second;
+                sub.push_back(s);
             }
-            output[it.first] = sub_results;
+            output[it.first] = sub;
         }
     }
     return output;
+}
+
+bool HyperspaceClient::UpdateCollection(const std::string& name, uint32_t ef_search, uint32_t ef_construction, uint32_t m) {
+    ::hyperspace::ConfigUpdate request;
+    request.set_collection(name);
+    if (ef_search != 0) request.set_ef_search(ef_search);
+    if (ef_construction != 0) request.set_ef_construction(ef_construction);
+    if (m != 0) request.set_m(m);
+
+    ::hyperspace::StatusResponse response;
+    ClientContext context;
+    if (!app_id_.empty()) context.AddMetadata("x-api-key", app_id_);
+
+    Status status = stub_->Configure(&context, request, &response);
+    return status.ok();
 }
 
 bool HyperspaceClient::GetCollectionStats(const std::string& name, CollectionStats& stats_out) {
     ::hyperspace::CollectionStatsRequest request;
     request.set_name(name);
-    
     ::hyperspace::CollectionStatsResponse response;
     ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-
+    if (!app_id_.empty()) context.AddMetadata("x-api-key", app_id_);
     Status status = stub_->GetCollectionStats(&context, request, &response);
     if (status.ok()) {
         stats_out.count = response.count();
         stats_out.dimension = response.dimension();
         stats_out.metric = response.metric();
         stats_out.indexing_queue = response.indexing_queue();
+        stats_out.disk_usage_bytes = response.disk_usage_bytes();
+        stats_out.ram_usage_bytes = response.ram_usage_bytes();
+        stats_out.active_tasks = response.active_tasks();
         return true;
     }
     return false;
 }
 
 bool HyperspaceClient::Exists(const std::string& name) {
-    CollectionStats dummy;
-    return GetCollectionStats(name, dummy);
-}
-
-bool HyperspaceClient::UpdateCollection(const std::string& name) {
-    ::hyperspace::ConfigUpdate request;
-    request.set_collection(name);
-    ::hyperspace::StatusResponse response;
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->Configure(&context, request, &response);
-    return status.ok() && response.status() == "success";
+    CollectionStats s;
+    return GetCollectionStats(name, s);
 }
 
 bool HyperspaceClient::CreateSnapshot() {
-    ::hyperspace::Empty request;
-    ::hyperspace::StatusResponse response;
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->TriggerSnapshot(&context, request, &response);
-    return status.ok() && response.status() == "success";
+    ::hyperspace::Empty req;
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->TriggerSnapshot(&ctx, req, &resp).ok();
 }
 
 bool HyperspaceClient::Vacuum() {
-    ::hyperspace::Empty request;
-    ::hyperspace::StatusResponse response;
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->TriggerVacuum(&context, request, &response);
-    return status.ok() && response.status() == "success";
+    ::hyperspace::Empty req;
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->TriggerVacuum(&ctx, req, &resp).ok();
 }
 
 bool HyperspaceClient::RebuildIndex(const std::string& name) {
-    ::hyperspace::RebuildIndexRequest request;
-    request.set_name(name);
-    ::hyperspace::StatusResponse response;
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->RebuildIndex(&context, request, &response);
-    return status.ok() && response.status() == "success";
+    ::hyperspace::RebuildIndexRequest req;
+    req.set_name(name);
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->RebuildIndex(&ctx, req, &resp).ok();
 }
 
-bool HyperspaceClient::TriggerReconsolidation(const std::string& collection, const std::vector<double>& target, double lr) {
-    ::hyperspace::ReconsolidationRequest request;
-    request.set_collection(collection);
-    for (double v : target) request.add_target_vector(v);
-    request.set_learning_rate(lr);
-    ::hyperspace::StatusResponse response;
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->TriggerReconsolidation(&context, request, &response);
-    return status.ok() && response.status() == "success";
+bool HyperspaceClient::TriggerReconsolidation(const std::string& col, const std::vector<double>& target, double lr) {
+    ::hyperspace::ReconsolidationRequest req;
+    req.set_collection(col);
+    for (double v : target) req.add_target_vector(v);
+    req.set_learning_rate(lr);
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->TriggerReconsolidation(&ctx, req, &resp).ok();
 }
 
-bool HyperspaceClient::GetNode(const std::string& collection, uint32_t id, uint32_t layer, ::hyperspace::GraphNode& node_out) {
-    ::hyperspace::GetNodeRequest request;
-    request.set_collection(collection);
-    request.set_id(id);
-    request.set_layer(layer);
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->GetNode(&context, request, &node_out);
-    return status.ok();
+bool HyperspaceClient::GetNode(const std::string& col, uint32_t id, uint32_t layer, ::hyperspace::GraphNode& node_out) {
+    ::hyperspace::GetNodeRequest req;
+    req.set_collection(col);
+    req.set_id(id);
+    req.set_layer(layer);
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->GetNode(&ctx, req, &node_out).ok();
 }
 
-bool HyperspaceClient::GetNeighbors(const std::string& collection, uint32_t id, uint32_t layer, uint32_t limit, uint32_t offset, ::hyperspace::GetNeighborsResponse& resp_out) {
-    ::hyperspace::GetNeighborsRequest request;
-    request.set_collection(collection);
-    request.set_id(id);
-    request.set_layer(layer);
-    request.set_limit(limit);
-    request.set_offset(offset);
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->GetNeighbors(&context, request, &resp_out);
-    return status.ok();
+bool HyperspaceClient::GetNeighbors(const std::string& col, uint32_t id, uint32_t layer, uint32_t limit, uint32_t offset, ::hyperspace::GetNeighborsResponse& resp_out) {
+    ::hyperspace::GetNeighborsRequest req;
+    req.set_collection(col);
+    req.set_id(id);
+    req.set_layer(layer);
+    req.set_limit(limit);
+    req.set_offset(offset);
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->GetNeighbors(&ctx, req, &resp_out).ok();
 }
 
-bool HyperspaceClient::GetDigest(const std::string& collection, ::hyperspace::DigestResponse& resp_out) {
-    ::hyperspace::DigestRequest request;
-    request.set_collection(collection);
-    ClientContext context;
-    if (!app_id_.empty()) {
-        context.AddMetadata("x-api-key", app_id_);
-    }
-    Status status = stub_->GetDigest(&context, request, &resp_out);
-    return status.ok();
+bool HyperspaceClient::GetDigest(const std::string& col, ::hyperspace::DigestResponse& resp_out) {
+    ::hyperspace::DigestRequest req;
+    req.set_collection(col);
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->GetDigest(&ctx, req, &resp_out).ok();
 }
 
 std::unique_ptr<::grpc::ClientReader<::hyperspace::SystemStats>> HyperspaceClient::Monitor() {
-    ::hyperspace::MonitorRequest request;
-    auto context = std::make_unique<ClientContext>();
-    if (!app_id_.empty()) {
-        context->AddMetadata("x-api-key", app_id_);
-    }
-    // Note: Caller must manage context lifetime if we returned a reader that depends on it.
-    // In this simplified implementation, we return the reader but context management is tricky.
-    return stub_->Monitor(context.get(), request);
+    ::hyperspace::MonitorRequest req;
+    auto ctx = std::make_unique<ClientContext>();
+    if (!app_id_.empty()) ctx->AddMetadata("x-api-key", app_id_);
+    return stub_->Monitor(ctx.get(), req);
 }
 
-std::unique_ptr<::grpc::ClientReader<::hyperspace::EventMessage>> HyperspaceClient::SubscribeToEvents(const std::vector<::hyperspace::EventType>& types, const std::string& collection) {
-    ::hyperspace::EventSubscriptionRequest request;
-    if (!collection.empty()) request.set_collection(collection);
-    for (auto t : types) request.add_types(static_cast<int32_t>(t));
-    auto context = std::make_unique<ClientContext>();
-    if (!app_id_.empty()) {
-        context->AddMetadata("x-api-key", app_id_);
-    }
-    return stub_->SubscribeToEvents(context.get(), request);
+std::unique_ptr<::grpc::ClientReader<::hyperspace::EventMessage>> HyperspaceClient::SubscribeToEvents(const std::vector<::hyperspace::EventType>& types, const std::string& col) {
+    ::hyperspace::EventSubscriptionRequest req;
+    if (!col.empty()) req.set_collection(col);
+    for (auto t : types) req.add_types(t);
+    auto ctx = std::make_unique<ClientContext>();
+    if (!app_id_.empty()) ctx->AddMetadata("x-api-key", app_id_);
+    return stub_->SubscribeToEvents(ctx.get(), req);
 }
 
+std::vector<::hyperspace::VectorData> HyperspaceClient::GetPoints(const std::vector<uint32_t>& ids, const std::string& col) {
+    ::hyperspace::GetPointsRequest req;
+    req.set_collection(col);
+    for (uint32_t id : ids) req.add_ids(id);
+    ::hyperspace::GetPointsResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->GetPoints(&ctx, req, &resp);
+    std::vector<::hyperspace::VectorData> out;
+    if (s.ok()) {
+        for (const auto& p : resp.points()) out.push_back(p);
+    }
+    return out;
+}
 
+bool HyperspaceClient::UpdatePayload(uint32_t id, const std::unordered_map<std::string, std::string>& meta, const std::unordered_map<std::string, ::hyperspace::MetadataValue>& typed_meta, const std::string& col) {
+    ::hyperspace::UpdatePayloadRequest req;
+    req.set_id(id);
+    req.set_collection(col);
+    auto* m = req.mutable_metadata();
+    for (const auto& [k, v] : meta) (*m)[k] = v;
+    auto* tm = req.mutable_typed_metadata();
+    for (const auto& [k, v] : typed_meta) (*tm)[k] = v;
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->UpdatePayload(&ctx, req, &resp).ok();
+}
+
+std::vector<::hyperspace::VectorData> HyperspaceClient::Scroll(uint32_t limit, uint32_t offset, const std::vector<::hyperspace::Filter>& filters, const std::string& col) {
+    ::hyperspace::ScrollRequest req;
+    req.set_collection(col);
+    req.set_limit(limit);
+    req.set_offset(offset);
+    for (const auto& f : filters) *req.add_filters() = f;
+    ::hyperspace::ScrollResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->Scroll(&ctx, req, &resp);
+    std::vector<::hyperspace::VectorData> out;
+    if (s.ok()) {
+        for (const auto& p : resp.points()) out.push_back(p);
+    }
+    return out;
+}
+
+uint64_t HyperspaceClient::Count(const std::vector<::hyperspace::Filter>& filters, const std::string& col) {
+    ::hyperspace::CountRequest req;
+    req.set_collection(col);
+    for (const auto& f : filters) *req.add_filters() = f;
+    ::hyperspace::CountResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->Count(&ctx, req, &resp);
+    if (s.ok()) return resp.count();
+    return 0;
+}
+
+bool HyperspaceClient::Exists(const std::string& name) {
+    CollectionStats stats;
+    return GetCollectionStats(name, stats);
+}
+
+bool HyperspaceClient::RebuildIndex(const std::string& name) {
+    ::hyperspace::RebuildIndexRequest req;
+    req.set_name(name);
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->RebuildIndex(&ctx, req, &resp).ok();
+}
+
+bool HyperspaceClient::TriggerReconsolidation(const std::string& collection, const std::vector<double>& target, double lr) {
+    ::hyperspace::ReconsolidationRequest req;
+    req.set_collection(collection);
+    for (double v : target) req.add_target_vector(v);
+    req.set_learning_rate(lr);
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->TriggerReconsolidation(&ctx, req, &resp).ok();
+}
+
+bool HyperspaceClient::GetNode(const std::string& collection, uint32_t id, uint32_t layer, ::hyperspace::GraphNode& node_out) {
+    ::hyperspace::GetNodeRequest req;
+    req.set_collection(collection);
+    req.set_id(id);
+    req.set_layer(layer);
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->GetNode(&ctx, req, &node_out);
+    return s.ok();
+}
+
+bool HyperspaceClient::GetNeighbors(const std::string& collection, uint32_t id, uint32_t layer, uint32_t limit, uint32_t offset, ::hyperspace::GetNeighborsResponse& resp_out) {
+    ::hyperspace::GetNeighborsRequest req;
+    req.set_collection(collection);
+    req.set_id(id);
+    req.set_layer(layer);
+    req.set_limit(limit);
+    req.set_offset(offset);
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->GetNeighbors(&ctx, req, &resp_out);
+    return s.ok();
+}
+
+bool HyperspaceClient::GetDigest(const std::string& collection, ::hyperspace::DigestResponse& resp_out) {
+    ::hyperspace::DigestRequest req;
+    req.set_collection(collection);
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->GetDigest(&ctx, req, &resp_out);
+    return s.ok();
+}
+
+bool HyperspaceClient::SyncHandshake(const std::string& collection, const std::vector<uint64_t>& client_buckets, uint64_t client_logical_clock, uint64_t client_count, std::vector<uint32_t>& out_diff_buckets) {
+    ::hyperspace::SyncHandshakeRequest req;
+    req.set_collection(collection);
+    for (uint64_t b : client_buckets) req.add_client_buckets(b);
+    req.set_client_logical_clock(client_logical_clock);
+    req.set_client_count(client_count);
+    ::hyperspace::SyncHandshakeResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->SyncHandshake(&ctx, req, &resp);
+    if (s.ok()) {
+        for (uint32_t b : resp.diff_buckets()) out_diff_buckets.push_back(b);
+        return true;
+    }
+    return false;
+}
+
+std::unique_ptr<::grpc::ClientReader<::hyperspace::SyncVectorData>> HyperspaceClient::SyncPull(const std::string& collection, const std::vector<uint32_t>& bucket_indices) {
+    ::hyperspace::SyncPullRequest req;
+    req.set_collection(collection);
+    for (uint32_t idx : bucket_indices) req.add_bucket_indices(idx);
+    auto ctx = std::make_unique<ClientContext>();
+    if (!app_id_.empty()) ctx->AddMetadata("x-api-key", app_id_);
+    return stub_->SyncPull(ctx.get(), req);
+}
+
+std::unique_ptr<::grpc::ClientWriter<::hyperspace::SyncVectorData>> HyperspaceClient::SyncPush(::hyperspace::SyncPushResponse* resp_out) {
+    auto ctx = std::make_unique<ClientContext>();
+    if (!app_id_.empty()) ctx->AddMetadata("x-api-key", app_id_);
+    return stub_->SyncPush(ctx.get(), resp_out); 
+}
+
+std::string HyperspaceClient::HealthCheck() {
+    ::hyperspace::Empty req;
+    ::hyperspace::HealthCheckResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    Status s = stub_->HealthCheck(&ctx, req, &resp);
+    if (s.ok()) return resp.status();
+    return "unreachable";
+}
+
+} // namespace hyperspace

@@ -6,6 +6,9 @@ The SDK is designed for production services and benchmark tooling:
 - collection management
 - single and batch insert
 - single and batch vector search
+- recursive logical filters (`AND`, `OR`, `NOT`)
+- bulk data management (`get_points`, `update_payload`, `scroll`, `count`)
+- system health monitoring (`health_check`)
 - graph traversal API methods
 - optional embedder integrations
 - multi-tenant metadata headers
@@ -136,6 +139,44 @@ results = client.search(
     vector=[0.1, 0.2, 0.3],
     filters=[ball_f, box_f] # Combine multiple filters
 )
+
+# 4. Recursive Logical Filters
+and_f = client.filter_and([
+    client.filter_match("status", "active"),
+    client.filter_or([
+        client.filter_range("score", gte=0.8),
+        client.filter_match("priority", "high")
+    ])
+])
+```
+
+## Advanced Data Operations
+
+### Bulk Retrieval (`get_points`)
+```python
+points = client.get_points(ids=[1, 2, 3], collection="docs")
+```
+
+### Metadata Updates (`update_payload`)
+```python
+client.update_payload(id=1, metadata={"status": "archived"}, collection="docs")
+```
+
+### Paginated Scanning (`scroll`)
+```python
+# Iteratively retrieve points with filters
+for points in client.scroll(limit=100, filters=[and_f], collection="docs"):
+    process(points)
+```
+
+### Point Counting (`count`)
+```python
+total = client.count(filters=[client.filter_match("category", "ai")], collection="docs")
+```
+
+### Health Check
+```python
+status = client.health_check() # Returns "ONLINE"
 ```
 
 ## API Summary

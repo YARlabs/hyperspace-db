@@ -1,6 +1,8 @@
 import { Outlet, NavLink } from "react-router-dom"
-import { LayoutDashboard, Database, Search, Settings, Network, ArrowUpRight, Waves } from "lucide-react"
+import { LayoutDashboard, Database, Search, Settings, Network, ArrowUpRight, Waves, Activity } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useQuery } from "@tanstack/react-query"
+import { api } from "@/lib/api"
 
 export function DashboardLayout() {
     return (
@@ -28,8 +30,9 @@ export function DashboardLayout() {
                 </nav>
 
                 <div className="p-4 border-t border-border/50">
-                    <div className="text-xs text-muted-foreground">
-                        <p>Version 3.0</p>
+                    <HealthIndicator />
+                    <div className="text-xs text-muted-foreground mt-4">
+                        <p>Version 3.1.0</p>
                         <p className="opacity-50">Local Control Plane</p>
                     </div>
                 </div>
@@ -69,5 +72,31 @@ function NavItem({ to, icon: Icon, label, badge, disabled }: any) {
             <span>{label}</span>
             {badge && <span className="ml-auto text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-semibold">{badge}</span>}
         </NavLink>
+    )
+}
+function HealthIndicator() {
+    const { data, isError } = useQuery({
+        queryKey: ['health'],
+        queryFn: () => api.get("/health").then(r => r.data),
+        refetchInterval: 10000,
+    })
+
+    const status = data?.status || (isError ? "OFFLINE" : "CONNECTING")
+    const isOnline = status === "ONLINE"
+
+    return (
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-950/50 border border-white/5">
+            <div className={cn(
+                "h-2 w-2 rounded-full animate-pulse",
+                isOnline ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"
+            )} />
+            <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">System Status</span>
+                <span className={cn("text-xs font-medium", isOnline ? "text-green-400" : "text-red-400")}>
+                    {status}
+                </span>
+            </div>
+            <Activity className="ml-auto h-3 w-3 text-zinc-600" />
+        </div>
     )
 }

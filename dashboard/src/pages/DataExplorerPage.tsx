@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSearchParams } from "react-router-dom"
-import { Code, Play, AlertCircle } from "lucide-react"
+import { Code, Play, AlertCircle, ChevronLeft, ChevronRight, Edit3, Hash } from "lucide-react"
+import { scrollCollection, countFiltered, updatePayload } from "@/lib/api"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 
 export function DataExplorerPage() {
     const [searchParams, setSearchParams] = useSearchParams()
@@ -82,51 +84,158 @@ export function DataExplorerPage() {
 }
 
 function RawDataView({ collection }: { collection: string }) {
+    const [page, setPage] = useState(0)
+    const [limit] = useState(50)
+    const [isEditing, setIsEditing] = useState<any>(null)
+    const queryClient = useQueryClient()
+
     const { data: items, isLoading } = useQuery({
-        queryKey: ['peek', collection],
-        queryFn: () => api.get(`/collections/${collection}/peek?limit=50`).then(r => r.data),
+        queryKey: ['scroll', collection, page],
+        queryFn: () => scrollCollection(collection, { limit, offset: page * limit }),
         enabled: !!collection
     })
 
-    if (isLoading) return <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+    const { data: countData } = useQuery({
+        queryKey: ['count', collection],
+        queryFn: () => countFiltered(collection, {}),
+        enabled: !!collection
+    })
+
+    const totalCount = countData?.count || 0
 
     return (
-        <Card className="h-full flex flex-col">
-            <CardHeader>
-                <CardTitle>Recent Vectors (Last 50)</CardTitle>
-                <CardDescription>Verify your data ingestion pipeline</CardDescription>
+        <Card className="h-full flex flex-col bg-zinc-950/40 border-white/5">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div>
+                    <CardTitle>Vector Scanner</CardTitle>
+                    <CardDescription>
+                        Displaying {page * limit + 1}-{Math.min((page + 1) * limit, totalCount)} of {totalCount} vectors
+                    </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= totalCount}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent className="flex-1 overflow-auto">
-                <div className="rounded-md border">
+                <div className="rounded-md border border-white/5">
                     <Table>
-                        <TableHeader>
-                            <TableRow>
+                        <TableHeader className="bg-zinc-900/50">
+                            <TableRow className="border-white/5">
                                 <TableHead className="w-[80px]">ID</TableHead>
                                 <TableHead>Vector (Prefix)</TableHead>
                                 <TableHead>Metadata</TableHead>
+                                <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {!items || items.length === 0 ? (
-                                <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No vectors found (or index empty)</TableCell></TableRow>
+                            {isLoading ? (
+                                <TableRow><TableCell colSpan={4} className="text-center h-24"><div className="animate-pulse">Loading data plane...</div></TableCell></TableRow>
+                            ) : (!items || items.length === 0) ? (
+                                <TableRow><TableCell colSpan={4} className="text-center h-24 text-muted-foreground">No vectors found</TableCell></TableRow>
                             ) : (
-                                items.map(([id, vec, meta]: any) => (
-                                    <TableRow key={id}>
-                                        <TableCell className="font-mono text-xs">{id}</TableCell>
-                                        <TableCell className="font-mono text-xs text-muted-foreground">
-                                            [{vec?.slice(0, 5).map((n: number) => n.toFixed(4)).join(", ")}...]
-                                        </TableCell>
-                                        <TableCell>
-                                            <pre className="text-[10px] text-muted-foreground">{JSON.stringify(meta, null, 2)}</pre>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
+                                items.map((item: any) => {
+                                    // Handle both [id, vec, meta] and {id, vector, metadata} formats
+                                    const id = Array.isArray(item) ? item[0] : item.id;
+                                    const vec = Array.isArray(item) ? item[1] : item.vector;
+                                    const meta = Array.isArray(item) ? item[2] : (item.metadata || {});
+                                    const typedMeta = item.typed_metadata || {};
+
+                                    return (
+                                        <TableRow key={id} className="border-white/5 hover:bg-white/5">
+                                            <TableCell className="font-mono text-xs text-zinc-400">{id}</TableCell>
+                                            <TableCell className="font-mono text-[10px] text-zinc-500">
+                                                [{vec?.slice(0, 4).map((n: number) => n.toFixed(3)).join(", ")}...]
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {Object.entries(meta).map(([k, v]: any) => (
+                                                        <Badge key={k} variant="secondary" className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/20">
+                                                            {k}: {v}
+                                                        </Badge>
+                                                    ))}
+                                                    {Object.entries(typedMeta).map(([k, v]: any) => (
+                                                        <Badge key={k} variant="secondary" className="text-[9px] bg-purple-500/10 text-purple-400 border-purple-500/20">
+                                                            <Hash className="w-2 h-2 mr-1" /> {k}: {JSON.stringify(v)}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-white" onClick={() => setIsEditing({ id, meta, typedMeta })}>
+                                                    <Edit3 className="h-3 w-3" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })
                             )}
                         </TableBody>
                     </Table>
                 </div>
             </CardContent>
+            {isEditing && (
+                <MetadataEditorDialog 
+                    open={!!isEditing} 
+                    onOpenChange={(open) => !open && setIsEditing(null)}
+                    point={isEditing}
+                    collection={collection}
+                    onSuccess={() => {
+                        queryClient.invalidateQueries({ queryKey: ['scroll', collection] })
+                    }}
+                />
+            )}
         </Card>
+    )
+}
+
+function MetadataEditorDialog({ open, onOpenChange, point, collection, onSuccess }: any) {
+    const [metadata, setMetadata] = useState<string>(JSON.stringify(point.meta, null, 2))
+    const queryClient = useQueryClient()
+
+    const mutation = useMutation({
+        mutationFn: (data: any) => updatePayload(collection, point.id, data),
+        onSuccess: () => {
+            onOpenChange(false)
+            onSuccess()
+        }
+    })
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-[425px] bg-zinc-950 border-white/10">
+                <DialogHeader>
+                    <DialogTitle>Edit Metadata: Point {point.id}</DialogTitle>
+                    <DialogDescription>Update metadata for this vector node. Currently supports legacy string-map format.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Metadata (JSON Object)</Label>
+                        <textarea
+                            className="flex min-h-[200px] w-full rounded-md border border-white/10 bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-300"
+                            value={metadata}
+                            onChange={(e) => setMetadata(e.target.value)}
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} className="border-white/10">Cancel</Button>
+                    <Button onClick={() => {
+                        try {
+                            mutation.mutate(JSON.parse(metadata))
+                        } catch (e) {
+                            alert("Invalid JSON")
+                        }
+                    }} disabled={mutation.isPending}>
+                        {mutation.isPending ? "Updating..." : "Save Changes"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
 
@@ -134,21 +243,25 @@ function SearchPlayground({ collection }: { collection: string }) {
     const [vectorInput, setVectorInput] = useState("[0.1, 0.2, 0.3]")
     const [topK, setTopK] = useState("5")
     const [exactFilterJson, setExactFilterJson] = useState("{}")
-    const [complexFiltersJson, setComplexFiltersJson] = useState("[]")
-    const [res, setRes] = useState<any>(null)
-    const [error, setError] = useState("")
-    const [graphRes, setGraphRes] = useState<any>(null)
-    const [startId, setStartId] = useState("1")
-    const [graphLayer, setGraphLayer] = useState("0")
-    const [graphDepth, setGraphDepth] = useState("2")
     const [graphNodes, setGraphNodes] = useState("128")
+    const [isMultiSearch, setIsMultiSearch] = useState(false)
+    const [multiCollections, setMultiCollections] = useState<string[]>([collection])
+
+    const { data: allCollections } = useQuery({
+        queryKey: ['collections'],
+        queryFn: () => api.get("/collections").then(r => r.data)
+    })
 
     const searchMutation = useMutation({
-        mutationFn: (payload: any) => api.post(`/collections/${collection}/search`, payload),
+        mutationFn: (payload: any) => {
+            if (isMultiSearch) {
+                return api.post(`/search/multi`, { ...payload, collections: multiCollections })
+            }
+            return api.post(`/collections/${collection}/search`, payload)
+        },
         onSuccess: (data) => {
             const payload = data.data
-            const normalized = Array.isArray(payload) ? payload : (payload?.results || [])
-            setRes(normalized)
+            setRes(payload)
             setError("")
         },
         onError: (err: any) => { setError(err.message || "Search Failed"); setRes(null) }
@@ -234,10 +347,39 @@ function SearchPlayground({ collection }: { collection: string }) {
                                 <Input id="topk" value={topK} onChange={(e) => setTopK(e.target.value)} />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="collection">Collection</Label>
-                                <Input id="collection" value={collection} disabled />
+                                <Label htmlFor="collection">Collection Context</Label>
+                                <div className="flex gap-2">
+                                    <Input id="collection" value={collection} disabled className="flex-1" />
+                                    <Button variant="outline" size="sm" onClick={() => setIsMultiSearch(!isMultiSearch)}>
+                                        {isMultiSearch ? "Single" : "Multi"}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
+                        {isMultiSearch && (
+                            <div className="p-3 rounded border border-blue-500/20 bg-blue-500/5 space-y-2">
+                                <Label className="text-[10px] uppercase text-blue-400">Target Collections (Multi-Search)</Label>
+                                <div className="flex flex-wrap gap-2">
+                                    {allCollections?.map((c: any) => {
+                                        const name = typeof c === 'string' ? c : c.name
+                                        const active = multiCollections.includes(name)
+                                        return (
+                                            <Badge 
+                                                key={name} 
+                                                variant={active ? "default" : "outline"} 
+                                                className="cursor-pointer"
+                                                onClick={() => {
+                                                    if (active) setMultiCollections(multiCollections.filter(n => n !== name))
+                                                    else setMultiCollections([...multiCollections, name])
+                                                }}
+                                            >
+                                                {name}
+                                            </Badge>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
                         <div className="grid w-full gap-2">
                             <Label htmlFor="vector">Vector JSON</Label>
                             <textarea
@@ -277,29 +419,21 @@ function SearchPlayground({ collection }: { collection: string }) {
                     </CardHeader>
                     <CardContent>
                         {res ? (
-                            <div className="rounded-md border">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>ID</TableHead>
-                                            <TableHead>Distance</TableHead>
-                                            <TableHead>Metadata</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {res.map((r: any) => (
-                                            <TableRow key={r.id}>
-                                                <TableCell className="font-mono">{r.id}</TableCell>
-                                                <TableCell className="font-mono text-green-400 font-bold">{Number(r.distance).toFixed(6)}</TableCell>
-                                                <TableCell className="align-top">
-                                                    <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap">
-{JSON.stringify({ metadata: r.metadata || {}, typed_metadata: r.typed_metadata || {} }, null, 2)}
-                                                    </pre>
-                                                </TableCell>
-                                            </TableRow>
+                            <div className="rounded-md border border-white/5 overflow-hidden">
+                                {isMultiSearch ? (
+                                    <div className="p-4 space-y-6">
+                                        {Object.entries(res).map(([colName, results]: any) => (
+                                            <div key={colName} className="space-y-2">
+                                                <h4 className="text-xs font-bold text-blue-400 uppercase tracking-widest px-2">{colName}</h4>
+                                                <div className="rounded border border-white/5 bg-white/5">
+                                                    <ResultsTable results={results} />
+                                                </div>
+                                            </div>
                                         ))}
-                                    </TableBody>
-                                </Table>
+                                    </div>
+                                ) : (
+                                    <ResultsTable results={Array.isArray(res) ? res : (res.results || [])} />
+                                )}
                             </div>
                         ) : (
                             <div className="flex h-[200px] items-center justify-center text-muted-foreground text-sm flex-col gap-2">
@@ -383,5 +517,39 @@ function SearchPlayground({ collection }: { collection: string }) {
                 </Card>
             </TabsContent>
         </Tabs>
+    )
+}
+
+function ResultsTable({ results }: { results: any[] }) {
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow className="border-white/5 bg-zinc-900/50">
+                    <TableHead>ID</TableHead>
+                    <TableHead>Score</TableHead>
+                    <TableHead>Metadata</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {results.map((r: any) => (
+                    <TableRow key={r.id} className="border-white/5 hover:bg-white/5">
+                        <TableCell className="font-mono text-xs">{r.id}</TableCell>
+                        <TableCell className="font-mono text-green-400 font-bold text-xs">{(1 - Number(r.distance)).toFixed(4)}</TableCell>
+                        <TableCell className="align-top">
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                {Object.entries(r.metadata || {}).map(([k, v]: any) => (
+                                    <Badge key={k} variant="outline" className="text-[9px] border-white/10 text-zinc-400">{k}: {v}</Badge>
+                                ))}
+                                {Object.entries(r.typed_metadata || {}).map(([k, v]: any) => (
+                                    <Badge key={k} variant="outline" className="text-[9px] border-purple-500/30 text-purple-400">
+                                        <Hash className="w-2 h-2 mr-1" /> {k}
+                                    </Badge>
+                                ))}
+                            </div>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
     )
 }

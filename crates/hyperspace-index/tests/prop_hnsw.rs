@@ -67,6 +67,7 @@ proptest! {
                 use_wasserstein: false,
                 bm25_options: None,
                 fusion_method: None,
+                mrl_dimension: None,
             };
             let results = index.search(vec, &empty_filter, &[], &search_params);
 

@@ -365,6 +365,12 @@ export class CollectionStatsResponse extends jspb.Message {
     setMetric(value: string): CollectionStatsResponse;
     getIndexingQueue(): number;
     setIndexingQueue(value: number): CollectionStatsResponse;
+    getDiskUsageBytes(): number;
+    setDiskUsageBytes(value: number): CollectionStatsResponse;
+    getRamUsageBytes(): number;
+    setRamUsageBytes(value: number): CollectionStatsResponse;
+    getActiveTasks(): number;
+    setActiveTasks(value: number): CollectionStatsResponse;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CollectionStatsResponse.AsObject;
@@ -382,6 +388,9 @@ export namespace CollectionStatsResponse {
         dimension: number,
         metric: string,
         indexingQueue: number,
+        diskUsageBytes: number,
+        ramUsageBytes: number,
+        activeTasks: number,
     }
 }
 
@@ -425,6 +434,11 @@ export class ConfigUpdate extends jspb.Message {
     getEfConstruction(): number | undefined;
     setEfConstruction(value: number): ConfigUpdate;
 
+    hasM(): boolean;
+    clearM(): void;
+    getM(): number | undefined;
+    setM(value: number): ConfigUpdate;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): ConfigUpdate.AsObject;
     static toObject(includeInstance: boolean, msg: ConfigUpdate): ConfigUpdate.AsObject;
@@ -440,6 +454,7 @@ export namespace ConfigUpdate {
         collection: string,
         efSearch?: number,
         efConstruction?: number,
+        m?: number,
     }
 }
 
@@ -862,6 +877,204 @@ export namespace DeleteResponse {
     }
 }
 
+export class GetPointsRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): GetPointsRequest;
+    clearIdsList(): void;
+    getIdsList(): Array<number>;
+    setIdsList(value: Array<number>): GetPointsRequest;
+    addIds(value: number, index?: number): number;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetPointsRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: GetPointsRequest): GetPointsRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetPointsRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetPointsRequest;
+    static deserializeBinaryFromReader(message: GetPointsRequest, reader: jspb.BinaryReader): GetPointsRequest;
+}
+
+export namespace GetPointsRequest {
+    export type AsObject = {
+        collection: string,
+        idsList: Array<number>,
+    }
+}
+
+export class GetPointsResponse extends jspb.Message { 
+    clearPointsList(): void;
+    getPointsList(): Array<VectorData>;
+    setPointsList(value: Array<VectorData>): GetPointsResponse;
+    addPoints(value?: VectorData, index?: number): VectorData;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetPointsResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: GetPointsResponse): GetPointsResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetPointsResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetPointsResponse;
+    static deserializeBinaryFromReader(message: GetPointsResponse, reader: jspb.BinaryReader): GetPointsResponse;
+}
+
+export namespace GetPointsResponse {
+    export type AsObject = {
+        pointsList: Array<VectorData.AsObject>,
+    }
+}
+
+export class UpdatePayloadRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): UpdatePayloadRequest;
+    getId(): number;
+    setId(value: number): UpdatePayloadRequest;
+
+    getMetadataMap(): jspb.Map<string, string>;
+    clearMetadataMap(): void;
+
+    getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
+    clearTypedMetadataMap(): void;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): UpdatePayloadRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: UpdatePayloadRequest): UpdatePayloadRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: UpdatePayloadRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): UpdatePayloadRequest;
+    static deserializeBinaryFromReader(message: UpdatePayloadRequest, reader: jspb.BinaryReader): UpdatePayloadRequest;
+}
+
+export namespace UpdatePayloadRequest {
+    export type AsObject = {
+        collection: string,
+        id: number,
+
+        metadataMap: Array<[string, string]>,
+
+        typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
+    }
+}
+
+export class ScrollRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): ScrollRequest;
+    getLimit(): number;
+    setLimit(value: number): ScrollRequest;
+    getOffset(): number;
+    setOffset(value: number): ScrollRequest;
+    clearFiltersList(): void;
+    getFiltersList(): Array<Filter>;
+    setFiltersList(value: Array<Filter>): ScrollRequest;
+    addFilters(value?: Filter, index?: number): Filter;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ScrollRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: ScrollRequest): ScrollRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ScrollRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ScrollRequest;
+    static deserializeBinaryFromReader(message: ScrollRequest, reader: jspb.BinaryReader): ScrollRequest;
+}
+
+export namespace ScrollRequest {
+    export type AsObject = {
+        collection: string,
+        limit: number,
+        offset: number,
+        filtersList: Array<Filter.AsObject>,
+    }
+}
+
+export class ScrollResponse extends jspb.Message { 
+    clearPointsList(): void;
+    getPointsList(): Array<VectorData>;
+    setPointsList(value: Array<VectorData>): ScrollResponse;
+    addPoints(value?: VectorData, index?: number): VectorData;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ScrollResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: ScrollResponse): ScrollResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ScrollResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ScrollResponse;
+    static deserializeBinaryFromReader(message: ScrollResponse, reader: jspb.BinaryReader): ScrollResponse;
+}
+
+export namespace ScrollResponse {
+    export type AsObject = {
+        pointsList: Array<VectorData.AsObject>,
+    }
+}
+
+export class CountRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): CountRequest;
+    clearFiltersList(): void;
+    getFiltersList(): Array<Filter>;
+    setFiltersList(value: Array<Filter>): CountRequest;
+    addFilters(value?: Filter, index?: number): Filter;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): CountRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: CountRequest): CountRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: CountRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): CountRequest;
+    static deserializeBinaryFromReader(message: CountRequest, reader: jspb.BinaryReader): CountRequest;
+}
+
+export namespace CountRequest {
+    export type AsObject = {
+        collection: string,
+        filtersList: Array<Filter.AsObject>,
+    }
+}
+
+export class CountResponse extends jspb.Message { 
+    getCount(): number;
+    setCount(value: number): CountResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): CountResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: CountResponse): CountResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: CountResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): CountResponse;
+    static deserializeBinaryFromReader(message: CountResponse, reader: jspb.BinaryReader): CountResponse;
+}
+
+export namespace CountResponse {
+    export type AsObject = {
+        count: number,
+    }
+}
+
+export class HealthCheckResponse extends jspb.Message { 
+    getStatus(): string;
+    setStatus(value: string): HealthCheckResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): HealthCheckResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: HealthCheckResponse): HealthCheckResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: HealthCheckResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): HealthCheckResponse;
+    static deserializeBinaryFromReader(message: HealthCheckResponse, reader: jspb.BinaryReader): HealthCheckResponse;
+}
+
+export namespace HealthCheckResponse {
+    export type AsObject = {
+        status: string,
+    }
+}
+
 export class SearchRequest extends jspb.Message { 
     getCollection(): string;
     setCollection(value: string): SearchRequest;
@@ -954,6 +1167,21 @@ export class Filter extends jspb.Message {
     getInBall(): InBall | undefined;
     setInBall(value?: InBall): Filter;
 
+    hasAndOp(): boolean;
+    clearAndOp(): void;
+    getAndOp(): FilterAnd | undefined;
+    setAndOp(value?: FilterAnd): Filter;
+
+    hasOrOp(): boolean;
+    clearOrOp(): void;
+    getOrOp(): FilterOr | undefined;
+    setOrOp(value?: FilterOr): Filter;
+
+    hasNotOp(): boolean;
+    clearNotOp(): void;
+    getNotOp(): FilterNot | undefined;
+    setNotOp(value?: FilterNot): Filter;
+
     getConditionCase(): Filter.ConditionCase;
 
     serializeBinary(): Uint8Array;
@@ -973,6 +1201,9 @@ export namespace Filter {
         inCone?: InCone.AsObject,
         inBox?: InBox.AsObject,
         inBall?: InBall.AsObject,
+        andOp?: FilterAnd.AsObject,
+        orOp?: FilterOr.AsObject,
+        notOp?: FilterNot.AsObject,
     }
 
     export enum ConditionCase {
@@ -982,8 +1213,78 @@ export namespace Filter {
         IN_CONE = 3,
         IN_BOX = 4,
         IN_BALL = 5,
+        AND_OP = 6,
+        OR_OP = 7,
+        NOT_OP = 8,
     }
 
+}
+
+export class FilterAnd extends jspb.Message { 
+    clearConditionsList(): void;
+    getConditionsList(): Array<Filter>;
+    setConditionsList(value: Array<Filter>): FilterAnd;
+    addConditions(value?: Filter, index?: number): Filter;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): FilterAnd.AsObject;
+    static toObject(includeInstance: boolean, msg: FilterAnd): FilterAnd.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: FilterAnd, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): FilterAnd;
+    static deserializeBinaryFromReader(message: FilterAnd, reader: jspb.BinaryReader): FilterAnd;
+}
+
+export namespace FilterAnd {
+    export type AsObject = {
+        conditionsList: Array<Filter.AsObject>,
+    }
+}
+
+export class FilterOr extends jspb.Message { 
+    clearConditionsList(): void;
+    getConditionsList(): Array<Filter>;
+    setConditionsList(value: Array<Filter>): FilterOr;
+    addConditions(value?: Filter, index?: number): Filter;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): FilterOr.AsObject;
+    static toObject(includeInstance: boolean, msg: FilterOr): FilterOr.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: FilterOr, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): FilterOr;
+    static deserializeBinaryFromReader(message: FilterOr, reader: jspb.BinaryReader): FilterOr;
+}
+
+export namespace FilterOr {
+    export type AsObject = {
+        conditionsList: Array<Filter.AsObject>,
+    }
+}
+
+export class FilterNot extends jspb.Message { 
+
+    hasCondition(): boolean;
+    clearCondition(): void;
+    getCondition(): Filter | undefined;
+    setCondition(value?: Filter): FilterNot;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): FilterNot.AsObject;
+    static toObject(includeInstance: boolean, msg: FilterNot): FilterNot.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: FilterNot, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): FilterNot;
+    static deserializeBinaryFromReader(message: FilterNot, reader: jspb.BinaryReader): FilterNot;
+}
+
+export namespace FilterNot {
+    export type AsObject = {
+        condition?: Filter.AsObject,
+    }
 }
 
 export class Match extends jspb.Message { 

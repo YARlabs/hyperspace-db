@@ -210,6 +210,20 @@ pub struct VacuumFilterQuery {
     pub value: f64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CollectionUsage {
+    pub disk_usage_bytes: u64,
+    pub ram_usage_bytes: u64,
+    pub active_indexing_tasks: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CollectionConfigUpdate {
+    pub ef_search: Option<usize>,
+    pub ef_construction: Option<usize>,
+    pub m: Option<usize>,
+}
+
 #[async_trait::async_trait]
 pub trait Collection: Send + Sync + 'static {
     fn name(&self) -> &str;
@@ -248,6 +262,9 @@ pub trait Collection: Send + Sync + 'static {
     fn state_hash(&self) -> u64;
     fn buckets(&self) -> Vec<u64>; // New method
     fn queue_size(&self) -> u64; // Indexing queue size for eventual consistency
+    fn quantization_mode(&self) -> crate::QuantizationMode;
+    fn get_usage(&self) -> CollectionUsage;
+    fn update_config(&self, config: CollectionConfigUpdate) -> Result<(), String>;
     async fn optimize(&self) -> Result<(), String> {
         // Default: No-op for collections lacking optimization support.
         Ok(())

@@ -15,7 +15,10 @@ go get github.com/yarlabs/hyperspace-sdk-go
 ## Features
 
 - **Vector Searching**: High-performance Batched searches spanning Poincare, Lorentz, Cosine, L2, and Wasserstein cross-feature metrics (`SearchRequest.UseWasserstein`).
+- **Data Operations**: Bulk point retrieval (`GetPoints`), metadata patching (`UpdatePayload`), paginated scanning (`Scroll`), and filtered counting (`Count`).
+- **Recursive Filtering**: Complex logical expressions (`AND`, `OR`, `NOT`) in filters.
 - **Memory Reconsolidation (Sleep Mode)**: Optimize datasets using `TriggerReconsolidation` directly inside your database from microservices.
+- **System Health**: Active server monitoring via `HealthCheck`.
 - **CDC Streaming**: React to structural topology changes in real time through `SubscribeToEvents`/Event Streams.
 - **Graph Traversal APIs**: Access direct paths via `GetNeighbors` and perform node clustering.
 

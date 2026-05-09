@@ -5,8 +5,11 @@ Welcome to the HyperspaceDB C++ SDK. This SDK provides gRPC generated clients an
 ## Features
 
 - **Blazing Fast gRPC Client**: Direct byte-level access to HyperspaceDB (`Insert`, `BatchInsert`, `Search`, `SearchBatch`).
+- **Advanced Data Ops**: Bulk point retrieval (`GetPoints`), metadata patching (`UpdatePayload`), paginated scanning (`Scroll`), and filtered counting (`Count`).
+- **Recursive Filtering**: Full support for complex logical expressions (`AND`, `OR`, `NOT`) in filters.
 - **Graph Traversal APIs**: Uncover semantic structures using `GetNode`, `GetNeighbors`, and `Traverse`.
 - **Memory Reconsolidation**: Trigger `TriggerReconsolidation` to start the AI Sleep Mode flow matching optimization directly within the database.
+- **System Health**: Active server monitoring via `HealthCheck`.
 - **Cross-Feature Metric**: Search geometries using standard metrics as well as the newly integrated $1D$ O(N) Wasserstein CDF distance (`use_wasserstein = true`).
 - **Differential Sync**: Delta-sync methods for synchronizing decentralized edge databases.
 

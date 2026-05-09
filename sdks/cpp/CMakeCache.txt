@@ -451,7 +451,7 @@ CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
 //Details about finding OpenSSL
 FIND_PACKAGE_MESSAGE_DETAILS_OpenSSL:INTERNAL=[/opt/homebrew/lib/libcrypto.dylib][/opt/homebrew/include][ ][v3.6.2()]
 //Details about finding Protobuf
-FIND_PACKAGE_MESSAGE_DETAILS_Protobuf:INTERNAL=[/opt/homebrew/lib/libprotobuf.dylib][/opt/homebrew/include][v6.33.4()]
+FIND_PACKAGE_MESSAGE_DETAILS_Protobuf:INTERNAL=[/opt/homebrew/lib/libprotobuf.dylib][/opt/homebrew/include][v7.34.1()]
 //Details about finding Threads
 FIND_PACKAGE_MESSAGE_DETAILS_Threads:INTERNAL=[TRUE][v()]
 //Details about finding ZLIB

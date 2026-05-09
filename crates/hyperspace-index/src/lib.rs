@@ -33,6 +33,7 @@ use std::sync::Arc;
 use hyperspace_core::vector::{
     BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector,
 };
+use hyperspace_core::hybrid::Hybrid801QuantizedVector;
 use hyperspace_core::QuantizationMode;
 use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_store::VectorStore;
@@ -1161,7 +1162,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 if N != 801 {
                     panic!("AsymmetricHybrid801 quantization mode is only supported for 801-dimensional vectors");
                 }
-                let q = crate::hybrid::Hybrid801QuantizedVector::from_bytes(bytes);
+                let q = Hybrid801QuantizedVector::from_bytes(bytes);
                 if let Some(dim) = mrl_dim {
                     q.distance_mrl(unsafe { std::mem::transmute(query) }, dim)
                 } else {
@@ -1609,7 +1610,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 if N != 801 {
                     panic!("AsymmetricHybrid801 requires N=801");
                 }
-                let q = crate::hybrid::Hybrid801QuantizedVector::from_bytes(bytes);
+                let q = Hybrid801QuantizedVector::from_bytes(bytes);
                 let mut coords = [0.0; N];
                 // Reconstruction
                 for i in 0..33 {
@@ -1684,7 +1685,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 if N != 801 {
                     return Err("AsymmetricHybrid801 requires dimension 801".into());
                 }
-                let q = crate::hybrid::Hybrid801QuantizedVector::from_float(
+                let q = Hybrid801QuantizedVector::from_float(
                     unsafe { std::mem::transmute(&q_vec_full) }
                 );
                 q_bytes = q.as_bytes().to_vec();

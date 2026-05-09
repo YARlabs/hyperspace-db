@@ -84,6 +84,26 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.DeleteRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.DeleteResponse.FromString,
                 _registered_method=True)
+        self.GetPoints = channel.unary_unary(
+                '/hyperspace.Database/GetPoints',
+                request_serializer=hyperspace__pb2.GetPointsRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.GetPointsResponse.FromString,
+                _registered_method=True)
+        self.UpdatePayload = channel.unary_unary(
+                '/hyperspace.Database/UpdatePayload',
+                request_serializer=hyperspace__pb2.UpdatePayloadRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.Scroll = channel.unary_unary(
+                '/hyperspace.Database/Scroll',
+                request_serializer=hyperspace__pb2.ScrollRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.ScrollResponse.FromString,
+                _registered_method=True)
+        self.Count = channel.unary_unary(
+                '/hyperspace.Database/Count',
+                request_serializer=hyperspace__pb2.CountRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.CountResponse.FromString,
+                _registered_method=True)
         self.Search = channel.unary_unary(
                 '/hyperspace.Database/Search',
                 request_serializer=hyperspace__pb2.SearchRequest.SerializeToString,
@@ -184,6 +204,11 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.SyncVectorData.SerializeToString,
                 response_deserializer=hyperspace__pb2.SyncPushResponse.FromString,
                 _registered_method=True)
+        self.HealthCheck = channel.unary_unary(
+                '/hyperspace.Database/HealthCheck',
+                request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                response_deserializer=hyperspace__pb2.HealthCheckResponse.FromString,
+                _registered_method=True)
 
 
 class DatabaseServicer(object):
@@ -248,6 +273,31 @@ class DatabaseServicer(object):
     def Delete(self, request, context):
         """Delete vectors
         """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPoints(self, request, context):
+        """Extended Data Ops
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdatePayload(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Scroll(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Count(self, request, context):
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -385,6 +435,13 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def HealthCheck(self, request, context):
+        """Health Status
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -437,6 +494,26 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.Delete,
                     request_deserializer=hyperspace__pb2.DeleteRequest.FromString,
                     response_serializer=hyperspace__pb2.DeleteResponse.SerializeToString,
+            ),
+            'GetPoints': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPoints,
+                    request_deserializer=hyperspace__pb2.GetPointsRequest.FromString,
+                    response_serializer=hyperspace__pb2.GetPointsResponse.SerializeToString,
+            ),
+            'UpdatePayload': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdatePayload,
+                    request_deserializer=hyperspace__pb2.UpdatePayloadRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'Scroll': grpc.unary_unary_rpc_method_handler(
+                    servicer.Scroll,
+                    request_deserializer=hyperspace__pb2.ScrollRequest.FromString,
+                    response_serializer=hyperspace__pb2.ScrollResponse.SerializeToString,
+            ),
+            'Count': grpc.unary_unary_rpc_method_handler(
+                    servicer.Count,
+                    request_deserializer=hyperspace__pb2.CountRequest.FromString,
+                    response_serializer=hyperspace__pb2.CountResponse.SerializeToString,
             ),
             'Search': grpc.unary_unary_rpc_method_handler(
                     servicer.Search,
@@ -537,6 +614,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.SyncPush,
                     request_deserializer=hyperspace__pb2.SyncVectorData.FromString,
                     response_serializer=hyperspace__pb2.SyncPushResponse.SerializeToString,
+            ),
+            'HealthCheck': grpc.unary_unary_rpc_method_handler(
+                    servicer.HealthCheck,
+                    request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.HealthCheckResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -809,6 +891,114 @@ class Database(object):
             '/hyperspace.Database/Delete',
             hyperspace__pb2.DeleteRequest.SerializeToString,
             hyperspace__pb2.DeleteResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPoints(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/GetPoints',
+            hyperspace__pb2.GetPointsRequest.SerializeToString,
+            hyperspace__pb2.GetPointsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdatePayload(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/UpdatePayload',
+            hyperspace__pb2.UpdatePayloadRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Scroll(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Scroll',
+            hyperspace__pb2.ScrollRequest.SerializeToString,
+            hyperspace__pb2.ScrollResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Count(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Count',
+            hyperspace__pb2.CountRequest.SerializeToString,
+            hyperspace__pb2.CountResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -1349,6 +1539,33 @@ class Database(object):
             '/hyperspace.Database/SyncPush',
             hyperspace__pb2.SyncVectorData.SerializeToString,
             hyperspace__pb2.SyncPushResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def HealthCheck(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/HealthCheck',
+            hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.HealthCheckResponse.FromString,
             options,
             channel_credentials,
             insecure,

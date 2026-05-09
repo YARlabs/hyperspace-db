@@ -8,6 +8,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.grpc.pb.cc" "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o" "gcc" "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o.d"
+  "/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto/hyperspace.pb.cc" "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o" "gcc" "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o.d"
   "/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/src/client.cpp" "CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o" "gcc" "CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o.d"
   )
 

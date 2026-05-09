@@ -70,6 +70,28 @@ function deserialize_hyperspace_ConfigUpdate(buffer_arg) {
   return hyperspace_pb.ConfigUpdate.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_CountRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.CountRequest)) {
+    throw new Error('Expected argument of type hyperspace.CountRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_CountRequest(buffer_arg) {
+  return hyperspace_pb.CountRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_CountResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.CountResponse)) {
+    throw new Error('Expected argument of type hyperspace.CountResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_CountResponse(buffer_arg) {
+  return hyperspace_pb.CountResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_CreateCollectionRequest(arg) {
   if (!(arg instanceof hyperspace_pb.CreateCollectionRequest)) {
     throw new Error('Expected argument of type hyperspace.CreateCollectionRequest');
@@ -246,6 +268,28 @@ function deserialize_hyperspace_GetNodeRequest(buffer_arg) {
   return hyperspace_pb.GetNodeRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_GetPointsRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.GetPointsRequest)) {
+    throw new Error('Expected argument of type hyperspace.GetPointsRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetPointsRequest(buffer_arg) {
+  return hyperspace_pb.GetPointsRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetPointsResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.GetPointsResponse)) {
+    throw new Error('Expected argument of type hyperspace.GetPointsResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetPointsResponse(buffer_arg) {
+  return hyperspace_pb.GetPointsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_GraphNode(arg) {
   if (!(arg instanceof hyperspace_pb.GraphNode)) {
     throw new Error('Expected argument of type hyperspace.GraphNode');
@@ -255,6 +299,17 @@ function serialize_hyperspace_GraphNode(arg) {
 
 function deserialize_hyperspace_GraphNode(buffer_arg) {
   return hyperspace_pb.GraphNode.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_HealthCheckResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.HealthCheckResponse)) {
+    throw new Error('Expected argument of type hyperspace.HealthCheckResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_HealthCheckResponse(buffer_arg) {
+  return hyperspace_pb.HealthCheckResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_InsertRequest(arg) {
@@ -354,6 +409,28 @@ function serialize_hyperspace_ReplicationRequest(arg) {
 
 function deserialize_hyperspace_ReplicationRequest(buffer_arg) {
   return hyperspace_pb.ReplicationRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_ScrollRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.ScrollRequest)) {
+    throw new Error('Expected argument of type hyperspace.ScrollRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_ScrollRequest(buffer_arg) {
+  return hyperspace_pb.ScrollRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_ScrollResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.ScrollResponse)) {
+    throw new Error('Expected argument of type hyperspace.ScrollResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_ScrollResponse(buffer_arg) {
+  return hyperspace_pb.ScrollResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_SearchMultiCollectionRequest(arg) {
@@ -510,6 +587,17 @@ function deserialize_hyperspace_TraverseResponse(buffer_arg) {
   return hyperspace_pb.TraverseResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_UpdatePayloadRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.UpdatePayloadRequest)) {
+    throw new Error('Expected argument of type hyperspace.UpdatePayloadRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_UpdatePayloadRequest(buffer_arg) {
+  return hyperspace_pb.UpdatePayloadRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_VectorizeRequest(arg) {
   if (!(arg instanceof hyperspace_pb.VectorizeRequest)) {
     throw new Error('Expected argument of type hyperspace.VectorizeRequest');
@@ -646,6 +734,51 @@ delete: {
     requestDeserialize: deserialize_hyperspace_DeleteRequest,
     responseSerialize: serialize_hyperspace_DeleteResponse,
     responseDeserialize: deserialize_hyperspace_DeleteResponse,
+  },
+  // Extended Data Ops
+getPoints: {
+    path: '/hyperspace.Database/GetPoints',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.GetPointsRequest,
+    responseType: hyperspace_pb.GetPointsResponse,
+    requestSerialize: serialize_hyperspace_GetPointsRequest,
+    requestDeserialize: deserialize_hyperspace_GetPointsRequest,
+    responseSerialize: serialize_hyperspace_GetPointsResponse,
+    responseDeserialize: deserialize_hyperspace_GetPointsResponse,
+  },
+  updatePayload: {
+    path: '/hyperspace.Database/UpdatePayload',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.UpdatePayloadRequest,
+    responseType: hyperspace_pb.StatusResponse,
+    requestSerialize: serialize_hyperspace_UpdatePayloadRequest,
+    requestDeserialize: deserialize_hyperspace_UpdatePayloadRequest,
+    responseSerialize: serialize_hyperspace_StatusResponse,
+    responseDeserialize: deserialize_hyperspace_StatusResponse,
+  },
+  scroll: {
+    path: '/hyperspace.Database/Scroll',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.ScrollRequest,
+    responseType: hyperspace_pb.ScrollResponse,
+    requestSerialize: serialize_hyperspace_ScrollRequest,
+    requestDeserialize: deserialize_hyperspace_ScrollRequest,
+    responseSerialize: serialize_hyperspace_ScrollResponse,
+    responseDeserialize: deserialize_hyperspace_ScrollResponse,
+  },
+  count: {
+    path: '/hyperspace.Database/Count',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.CountRequest,
+    responseType: hyperspace_pb.CountResponse,
+    requestSerialize: serialize_hyperspace_CountRequest,
+    requestDeserialize: deserialize_hyperspace_CountRequest,
+    responseSerialize: serialize_hyperspace_CountResponse,
+    responseDeserialize: deserialize_hyperspace_CountResponse,
   },
   // Search (ANN)
 search: {
@@ -879,6 +1012,18 @@ syncPush: {
     requestDeserialize: deserialize_hyperspace_SyncVectorData,
     responseSerialize: serialize_hyperspace_SyncPushResponse,
     responseDeserialize: deserialize_hyperspace_SyncPushResponse,
+  },
+  // Health Status
+healthCheck: {
+    path: '/hyperspace.Database/HealthCheck',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.Empty,
+    responseType: hyperspace_pb.HealthCheckResponse,
+    requestSerialize: serialize_hyperspace_Empty,
+    requestDeserialize: deserialize_hyperspace_Empty,
+    responseSerialize: serialize_hyperspace_HealthCheckResponse,
+    responseDeserialize: deserialize_hyperspace_HealthCheckResponse,
   },
 };
 

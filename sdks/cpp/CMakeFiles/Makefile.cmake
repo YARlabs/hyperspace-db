@@ -61,6 +61,7 @@ set(CMAKE_MAKEFILE_DEPENDS
   "/opt/homebrew/share/cmake/Modules/FindPackageHandleStandardArgs.cmake"
   "/opt/homebrew/share/cmake/Modules/FindPackageMessage.cmake"
   "/opt/homebrew/share/cmake/Modules/FindPkgConfig.cmake"
+  "/opt/homebrew/share/cmake/Modules/FindProtobuf.cmake"
   "/opt/homebrew/share/cmake/Modules/FindThreads.cmake"
   "/opt/homebrew/share/cmake/Modules/FindZLIB.cmake"
   "/opt/homebrew/share/cmake/Modules/Internal/CMakeCLinkerInformation.cmake"

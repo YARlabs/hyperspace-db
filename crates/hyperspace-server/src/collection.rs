@@ -890,6 +890,54 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         self.root_hash.load(Ordering::Relaxed)
     }
 
+    fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
+        self.mode
+    }
+
+    fn get_usage(&self) -> hyperspace_core::CollectionUsage {
+        let mut disk_usage = 0;
+        if let Ok(entries) = std::fs::read_dir(&self.data_dir) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    disk_usage += meta.len();
+                }
+            }
+        }
+
+        let count = self.index_link.load().count();
+        let dim = N;
+        let element_size = match self.mode {
+            hyperspace_core::QuantizationMode::ScalarI8 => 1,
+            hyperspace_core::QuantizationMode::Binary => 1, // simplified
+            hyperspace_core::QuantizationMode::AsymmetricHybrid801 => 1,
+            hyperspace_core::QuantizationMode::None => 8, // f64
+        };
+
+        // Estimate RAM: Vectors + Graph Topology (approx M neighbors per node * 4 bytes)
+        let m = self.config.get_m();
+        let graph_ram = count as u64 * m as u64 * 4;
+        let vector_ram = count as u64 * dim as u64 * element_size as u64;
+
+        hyperspace_core::CollectionUsage {
+            disk_usage_bytes: disk_usage,
+            ram_usage_bytes: graph_ram + vector_ram,
+            active_indexing_tasks: self.config.active_indexing.load(Ordering::Relaxed),
+        }
+    }
+
+    fn update_config(&self, update: hyperspace_core::CollectionConfigUpdate) -> Result<(), String> {
+        if let Some(ef_s) = update.ef_search {
+            self.config.set_ef_search(ef_s);
+        }
+        if let Some(ef_c) = update.ef_construction {
+            self.config.set_ef_construction(ef_c);
+        }
+        if let Some(m) = update.m {
+            self.config.set_m(m);
+        }
+        Ok(())
+    }
+
     fn buckets(&self) -> Vec<u64> {
         self.buckets
             .iter()
