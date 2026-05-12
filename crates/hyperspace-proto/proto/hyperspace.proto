@@ -201,6 +201,10 @@ message InsertRequest {
 
   DurabilityLevel durability = 7;
   map<string, MetadataValue> typed_metadata = 8;
+  // Sidecar Payload Storage (v3.2): heavy documents stored on disk, NOT in RAM.
+  // The payload is zstd-compressed and written to the chunk file's Payload Layer.
+  // It is NEVER loaded into memory during HNSW traversal.
+  optional bytes payload = 9;
 }
 
 message VectorData {
@@ -243,6 +247,7 @@ message SearchTextRequest {
   repeated Filter filters = 5;
   optional Bm25Options bm25_options = 6;
   optional float hybrid_alpha = 7;
+  bool include_payload = 8;
 }
 
 message Bm25Options {
@@ -320,6 +325,10 @@ message SearchRequest {
   bool use_wasserstein = 8;
   optional Bm25Options bm25_options = 9;
   optional uint32 mrl_dimension = 10;
+  // Sidecar Payload Storage (v3.2): if true, the server performs lazy disk I/O
+  // ONLY for the final Top-K results to attach their stored payload blobs.
+  // Default is false — zero extra I/O for standard searches.
+  bool include_payload = 11;
 }
 
 message Filter {
@@ -403,6 +412,10 @@ message SearchResult {
   double distance = 2;
   map<string, string> metadata = 3;
   map<string, MetadataValue> typed_metadata = 4;
+  // Sidecar Payload Storage (v3.2): populated ONLY when include_payload=true
+  // in the SearchRequest AND the vector was inserted with a payload.
+  // The bytes are the original uncompressed payload — decompression is server-side.
+  optional bytes payload = 5;
 }
 
 message GetNodeRequest {

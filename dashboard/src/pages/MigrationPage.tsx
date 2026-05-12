@@ -3,7 +3,6 @@ import {
     Database, 
     ArrowRight, 
     CheckCircle2, 
-    AlertCircle, 
     Loader2, 
     Terminal, 
     History,
@@ -16,16 +15,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { 
-    api,
     getMigrationEngineStatus, 
     startMigrationService, 
     startMigrationTask, 
-    getMigrationTaskStatus 
+    getMigrationTaskStatus
 } from "@/lib/api"
 
 // --- Types ---
@@ -47,6 +44,7 @@ interface LogEntry {
     message: string;
 }
 
+
 // --- Icons for sources ---
 const SourceIcons: Record<SourceType, any> = {
     qdrant: () => <div className="bg-blue-500/10 p-2 rounded"><Database className="h-6 w-6 text-blue-500" /></div>,
@@ -60,7 +58,6 @@ const SourceIcons: Record<SourceType, any> = {
 export function MigrationPage() {
     const [isServiceActive, setIsServiceActive] = useState<boolean | null>(null);
     const [step, setStep] = useState(1);
-    // ... rest of state
     
     useEffect(() => {
         checkServiceStatus();
@@ -81,7 +78,6 @@ export function MigrationPage() {
         setIsActivating(true);
         try {
             await startMigrationService();
-            // npm install might take time, poll until ready
             let attempts = 0;
             const check = setInterval(async () => {
                 attempts++;
@@ -94,7 +90,7 @@ export function MigrationPage() {
                     }
                 } catch (e) {}
                 
-                if (attempts > 20) { // 1 min timeout
+                if (attempts > 20) { 
                     setIsActivating(false);
                     clearInterval(check);
                 }

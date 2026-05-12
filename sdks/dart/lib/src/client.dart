@@ -5,6 +5,16 @@ import 'generated/hyperspace.pbgrpc.dart' hide Filter;
 import 'generated/hyperspace.pb.dart' as pb;
 import 'package:fixnum/fixnum.dart';
 
+/// Extension to support Sidecar Payload Storage (v3.2) without requiring immediate stub regeneration
+extension SearchResultPayload on pb.SearchResult {
+  List<int>? get payload {
+    if (hasField(5)) {
+      return getField(5) as List<int>;
+    }
+    return null;
+  }
+}
+
 /// Helper for building complex filters in HyperspaceDB.
 class Filter {
   final pb.Filter _proto;
@@ -123,6 +133,7 @@ class HyperspaceClient {
     String collection = '', 
     Map<String, String>? metadata,
     Map<String, dynamic>? typedMetadata,
+    List<int>? payload,
   }) async {
     final req = InsertRequest(
       id: id,
@@ -133,6 +144,7 @@ class HyperspaceClient {
     if (typedMetadata != null) {
       typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
     }
+    if (payload != null) req.setField(9, payload); // Use dynamic field to bypass stub issue
     final resp = await _stub.insert(req);
     return resp.success;
   }
@@ -198,6 +210,7 @@ class HyperspaceClient {
     String collection = '', 
     String? hybridQuery, 
     double? hybridAlpha,
+    bool includePayload = false,
     Bm25Options? bm25Options,
     int? mrlDimension,
     bool? useWasserstein,
@@ -209,6 +222,7 @@ class HyperspaceClient {
       topK: topK,
       collection: collection,
     );
+    if (includePayload) req.setField(11, includePayload); // Bypass stub issue
     if (hybridQuery != null) req.hybridQuery = hybridQuery;
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
     if (bm25Options != null) req.bm25Options = bm25Options;
@@ -238,12 +252,14 @@ class HyperspaceClient {
     Bm25Options? bm25Options,
     Map<String, String>? filter,
     List<Filter>? filters,
+    bool includePayload = false,
   }) async {
     final req = SearchTextRequest(
       text: text,
       topK: topK,
       collection: collection,
     );
+    if (includePayload) req.setField(8, includePayload); // Bypass stub issue
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
     if (bm25Options != null) req.bm25Options = bm25Options;
     if (filter != null) req.filter.addAll(filter);

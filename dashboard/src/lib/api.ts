@@ -40,6 +40,11 @@ export const fetchCollections = async () => {
     return res.data
 }
 
+export const insertVector = async (name: string, data: any) => {
+    const res = await api.post(`/collections/${name}/insert`, data)
+    return res.data
+}
+
 export const searchCollection = async (name: string, payload: any) => {
     const res = await api.post(`/collections/${name}/search`, payload)
     return res.data

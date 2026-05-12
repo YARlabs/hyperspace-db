@@ -5,13 +5,14 @@ use axum::{
     http::{StatusCode, Uri},
     middleware::{self, Next},
     response::{sse::Event, sse::Sse, Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use hyperspace_proto::hyperspace::EventMessage;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use hyperspace_core::SearchParams;
+use base64::prelude::*;
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -765,6 +766,7 @@ struct SearchReq {
     filters: Option<Vec<HttpFilter>>,
     use_wasserstein: Option<bool>,
     mrl_dimension: Option<usize>,
+    include_payload: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1006,6 +1008,7 @@ async fn search_collection(
             bm25_options: None,
             fusion_method: None,
             mrl_dimension: payload.mrl_dimension,
+            include_payload: payload.include_payload.unwrap_or(false),
         };
         match col
             .search(
@@ -1019,13 +1022,15 @@ async fn search_collection(
             Ok(res) => {
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
-                    .map(|(id, dist, meta)| {
+                    .map(|(id, dist, meta, payload)| {
                         let (metadata, typed_metadata) = parse_typed_metadata(meta);
+                        let payload_b64 = payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
                         serde_json::json!({
                             "id": id,
                             "distance": dist,
                             "metadata": metadata,
-                            "typed_metadata": typed_metadata
+                            "typed_metadata": typed_metadata,
+                            "payload": payload_b64
                         })
                     })
                     .collect();
@@ -1206,13 +1211,15 @@ async fn search_multi_http(
             if let Ok(res) = col.search(&payload.vector, &HashMap::new(), &[], &params).await {
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
-                    .map(|(id, dist, meta)| {
+                    .map(|(id, dist, meta, payload)| {
                         let (metadata, typed_metadata) = parse_typed_metadata(meta);
+                        let payload_b64 = payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
                         serde_json::json!({
                             "id": id,
                             "distance": dist,
                             "metadata": metadata,
-                            "typed_metadata": typed_metadata
+                            "typed_metadata": typed_metadata,
+                            "payload": payload_b64
                         })
                     })
                     .collect();
@@ -1255,13 +1262,15 @@ async fn search_batch_http(
             {
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
-                    .map(|(id, dist, meta)| {
+                    .map(|(id, dist, meta, payload)| {
                         let (metadata, typed_metadata) = parse_typed_metadata(meta);
+                        let payload_b64 = payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
                         serde_json::json!({
                             "id": id,
                             "distance": dist,
                             "metadata": metadata,
-                            "typed_metadata": typed_metadata
+                            "typed_metadata": typed_metadata,
+                            "payload": payload_b64
                         })
                     })
                     .collect();

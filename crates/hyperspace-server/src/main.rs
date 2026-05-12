@@ -278,6 +278,8 @@ fn build_filters(
         bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
         fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
         mrl_dimension: req.mrl_dimension.map(|d| d as usize),
+        // Sidecar Payload Storage (v3.2): opt-in lazy disk I/O
+        include_payload: req.include_payload,
     };
 
     (col_name, req.vector, exact_filter, complex_filters, params)
@@ -720,6 +722,19 @@ impl Database for HyperspaceService {
             {
                 return Err(Status::internal(e));
             }
+
+            // Sidecar Payload Storage (v3.2): if the client included a payload blob,
+            // write it to disk AFTER the vector is safely inserted.
+            // Empty/absent payloads are silently ignored.
+            if let Some(payload_bytes) = req.payload {
+                if !payload_bytes.is_empty() {
+                    if let Err(e) = col.insert_payload(req.id, payload_bytes).await {
+                        // Non-fatal: vector is already in the index, just log
+                        eprintln!("\u{26a0}\u{fe0f}  insert_payload failed for id={}: {e}", req.id);
+                    }
+                }
+            }
+
             Ok(Response::new(InsertResponse { success: true }))
         } else {
             Err(Status::not_found(format!(
@@ -991,11 +1006,12 @@ impl Database for HyperspaceService {
                     top_k: req.top_k as usize,
                     ef_search: default_ef_search(),
                     hybrid_query: None,
-                    hybrid_alpha: None,
+                    hybrid_alpha: req.hybrid_alpha,
                     use_wasserstein: false,
                     mrl_dimension: None,
                     bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
                     fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
+                    include_payload: req.include_payload,
                 };
 
                 if let Some(col) = self.manager.get(&user_id, &col_name).await {
@@ -1006,7 +1022,7 @@ impl Database for HyperspaceService {
                         Ok(res) => {
                             let output = res
                                 .into_iter()
-                                .map(|(id, dist, meta)| {
+                                .map(|(id, dist, meta, payload)| {
                                     let typed_metadata = extract_typed_metadata(&meta);
                                     let metadata = strip_internal_metadata(&meta);
                                     SearchResult {
@@ -1014,6 +1030,7 @@ impl Database for HyperspaceService {
                                         distance: dist,
                                         metadata,
                                         typed_metadata,
+                                        payload,
                                     }
                                 })
                                 .collect();
@@ -1088,7 +1105,7 @@ impl Database for HyperspaceService {
             {
                 Ok(res) => {
                     let output = res.iter()
-                        .map(|(id, dist, meta)| {
+                        .map(|(id, dist, meta, payload)| {
                             let typed_metadata = extract_typed_metadata(meta);
                             let metadata = strip_internal_metadata(meta);
                             SearchResult {
@@ -1096,6 +1113,8 @@ impl Database for HyperspaceService {
                                 distance: *dist,
                                 metadata,
                                 typed_metadata,
+                                // Sidecar Payload Storage (v3.2): attach blob only if present
+                                payload: payload.clone(),
                             }
                         })
                         .collect();
@@ -1148,7 +1167,7 @@ impl Database for HyperspaceService {
                     .map_err(Status::internal)?;
                 let results = res
                     .into_iter()
-                    .map(|(id, dist, meta)| {
+                    .map(|(id, dist, meta, _payload)| {
                         let typed_metadata = extract_typed_metadata(&meta);
                         let metadata = strip_internal_metadata(&meta);
                         SearchResult {
@@ -1156,6 +1175,7 @@ impl Database for HyperspaceService {
                             distance: dist,
                             metadata,
                             typed_metadata,
+                            payload: None,
                         }
                     })
                     .collect();
@@ -1188,7 +1208,7 @@ impl Database for HyperspaceService {
 
                 let results = res
                     .into_iter()
-                    .map(|(id, dist, meta)| {
+                    .map(|(id, dist, meta, _payload)| {
                         let typed_metadata = extract_typed_metadata(&meta);
                         let metadata = strip_internal_metadata(&meta);
                         SearchResult {
@@ -1196,6 +1216,7 @@ impl Database for HyperspaceService {
                             distance: dist,
                             metadata,
                             typed_metadata,
+                            payload: None,
                         }
                     })
                     .collect();
@@ -1245,6 +1266,7 @@ impl Database for HyperspaceService {
                     mrl_dimension: None,
                     bm25_options: None,
                     fusion_method: None,
+                    include_payload: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();
@@ -1254,7 +1276,7 @@ impl Database for HyperspaceService {
                     .map_err(Status::internal)?;
                 let results = res
                     .into_iter()
-                    .map(|(id, dist, meta)| {
+                    .map(|(id, dist, meta, _payload)| {
                         let typed_metadata = extract_typed_metadata(&meta);
                         let metadata = strip_internal_metadata(&meta);
                         SearchResult {
@@ -1262,6 +1284,7 @@ impl Database for HyperspaceService {
                             distance: dist,
                             metadata,
                             typed_metadata,
+                            payload: None,
                         }
                     })
                     .collect();
@@ -1295,6 +1318,7 @@ impl Database for HyperspaceService {
                     mrl_dimension: None,
                     bm25_options: None,
                     fusion_method: None,
+                    include_payload: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();
@@ -1304,7 +1328,7 @@ impl Database for HyperspaceService {
                     .map_err(Status::internal)?;
                 let results = res
                     .into_iter()
-                    .map(|(id, dist, meta)| {
+                    .map(|(id, dist, meta, _payload)| {
                         let typed_metadata = extract_typed_metadata(&meta);
                         let metadata = strip_internal_metadata(&meta);
                         SearchResult {
@@ -1312,6 +1336,7 @@ impl Database for HyperspaceService {
                             distance: dist,
                             metadata,
                             typed_metadata,
+                            payload: None,
                         }
                     })
                     .collect();

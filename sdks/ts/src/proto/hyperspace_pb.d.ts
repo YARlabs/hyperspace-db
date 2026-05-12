@@ -534,6 +534,13 @@ export class InsertRequest extends jspb.Message {
     getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
     clearTypedMetadataMap(): void;
 
+    hasPayload(): boolean;
+    clearPayload(): void;
+    getPayload(): Uint8Array | string;
+    getPayload_asU8(): Uint8Array;
+    getPayload_asB64(): string;
+    setPayload(value: Uint8Array | string): InsertRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): InsertRequest.AsObject;
     static toObject(includeInstance: boolean, msg: InsertRequest): InsertRequest.AsObject;
@@ -556,6 +563,7 @@ export namespace InsertRequest {
         durability: DurabilityLevel,
 
         typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
+        payload: Uint8Array | string,
     }
 }
 
@@ -731,6 +739,8 @@ export class SearchTextRequest extends jspb.Message {
     clearHybridAlpha(): void;
     getHybridAlpha(): number | undefined;
     setHybridAlpha(value: number): SearchTextRequest;
+    getIncludePayload(): boolean;
+    setIncludePayload(value: boolean): SearchTextRequest;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchTextRequest.AsObject;
@@ -752,6 +762,7 @@ export namespace SearchTextRequest {
         filtersList: Array<Filter.AsObject>,
         bm25Options?: Bm25Options.AsObject,
         hybridAlpha?: number,
+        includePayload: boolean,
     }
 }
 
@@ -1113,6 +1124,8 @@ export class SearchRequest extends jspb.Message {
     clearMrlDimension(): void;
     getMrlDimension(): number | undefined;
     setMrlDimension(value: number): SearchRequest;
+    getIncludePayload(): boolean;
+    setIncludePayload(value: boolean): SearchRequest;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
@@ -1137,6 +1150,7 @@ export namespace SearchRequest {
         useWasserstein: boolean,
         bm25Options?: Bm25Options.AsObject,
         mrlDimension?: number,
+        includePayload: boolean,
     }
 }
 
@@ -1566,6 +1580,13 @@ export class SearchResult extends jspb.Message {
     getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
     clearTypedMetadataMap(): void;
 
+    hasPayload(): boolean;
+    clearPayload(): void;
+    getPayload(): Uint8Array | string;
+    getPayload_asU8(): Uint8Array;
+    getPayload_asB64(): string;
+    setPayload(value: Uint8Array | string): SearchResult;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchResult.AsObject;
     static toObject(includeInstance: boolean, msg: SearchResult): SearchResult.AsObject;
@@ -1584,6 +1605,7 @@ export namespace SearchResult {
         metadataMap: Array<[string, string]>,
 
         typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
+        payload: Uint8Array | string,
     }
 }
 

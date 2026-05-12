@@ -50,11 +50,14 @@ std::vector<CollectionSummaryRec> HyperspaceClient::ListCollections() {
     return output;
 }
 
-bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection) {
+bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection, const std::vector<uint8_t>& payload) {
     ::hyperspace::InsertRequest request;
     request.set_id(id);
     request.set_collection(collection);
     for (double v : vector) request.add_vector(v);
+    if (!payload.empty()) {
+        request.set_payload(payload.data(), payload.size());
+    }
 
     ::hyperspace::InsertResponse response;
     ClientContext context;
@@ -135,7 +138,7 @@ std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const s
     return output;
 }
 
-std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein) {
+std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein, bool include_payload) {
     ::hyperspace::SearchRequest request;
     request.set_collection(collection);
     request.set_top_k(top_k);
@@ -152,6 +155,7 @@ std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>&
     }
     if (mrl_dimension != 0) request.set_mrl_dimension(mrl_dimension);
     request.set_use_wasserstein(use_wasserstein);
+    request.set_include_payload(include_payload);
 
     ::hyperspace::SearchResponse response;
     ClientContext context;
@@ -167,6 +171,9 @@ std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>&
             s.distance = res.distance();
             for (auto const& it : res.metadata()) s.metadata[it.first] = it.second;
             for (auto const& it : res.typed_metadata()) s.typed_metadata[it.first] = it.second;
+            if (!res.payload().empty()) {
+                s.payload.assign(res.payload().begin(), res.payload().end());
+            }
             output.push_back(s);
         }
     }

@@ -343,21 +343,21 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                 label="EF Search" 
                                 description="Search depth (Hot-patchable)" 
                                 value={stats.indexing_queue > 0 ? "Indexing..." : "Current: " + (stats.ef_search || 100)}
-                                onSave={(val) => configMutation.mutate({ ef_search: parseInt(val) })}
+                                onSave={(val: string) => configMutation.mutate({ ef_search: parseInt(val) })}
                             />
                             
                             <ConfigField 
                                 label="EF Construction" 
                                 description="Build quality for NEW points" 
-                                value="Current: " + (stats.ef_construction || 100)
-                                onSave={(val) => configMutation.mutate({ ef_construction: parseInt(val) })}
+                                value={"Current: " + (stats.ef_construction || 100)}
+                                onSave={(val: string) => configMutation.mutate({ ef_construction: parseInt(val) })}
                             />
 
                             <ConfigField 
                                 label="M (Max Connections)" 
                                 description="Graph degree (Requires Rebuild if changed)" 
-                                value="Current: " + (stats.m || 16)
-                                onSave={(val) => configMutation.mutate({ m: parseInt(val) })}
+                                value={"Current: " + (stats.m || 16)}
+                                onSave={(val: string) => configMutation.mutate({ m: parseInt(val) })}
                             />
                         </div>
 

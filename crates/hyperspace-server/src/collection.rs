@@ -10,7 +10,7 @@ use hyperspace_core::{
 };
 use hyperspace_index::HnswIndex;
 use hyperspace_proto::hyperspace::{replication_log, InsertOp, ReplicationLog};
-use hyperspace_store::{wal::Wal, VectorStore};
+use hyperspace_store::{wal::Wal, PayloadStore, VectorStore, DEFAULT_ZSTD_LEVEL};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -72,6 +72,10 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     max_ram_bytes: u64,
     // List of rotated WAL segments waiting to be flushed into a chunk (Task 8.1)
     pending_wal_flushes: Arc<tokio::sync::Mutex<Vec<PathBuf>>>,
+    // ── Sidecar Payload Storage (v3.2) ───────────────────────────────────────
+    // Stores heavy document blobs on disk. The index (16 bytes/entry) lives in RAM;
+    // the bytes NEVER touch RAM during HNSW traversal. Reads use pread + spawn_blocking.
+    payload_store: Arc<PayloadStore>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -692,6 +696,26 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             initial_root_hash ^= b.load(Ordering::Relaxed);
         }
 
+        // ── Open Sidecar Payload Storage (v3.2) ──────────────────────────────────────
+        // Lives in the same data_dir as VectorStore. payloads.hyp is strictly disk-only;
+        // payload_index.hyp is the tiny in-RAM index (16 bytes/entry).
+        let zstd_level = std::env::var("HS_PAYLOAD_ZSTD_LEVEL")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(DEFAULT_ZSTD_LEVEL);
+        let payload_store = match PayloadStore::open(&data_dir, zstd_level) {
+            Ok(ps) => {
+                println!("📦 Payload Store: opened (zstd level {zstd_level})");
+                Arc::new(ps)
+            }
+            Err(e) => {
+                eprintln!("⚠️  Payload Store: failed to open ({e}), payload writes will be no-ops");
+                // Fall back to a temp-dir store that won't persist but won't crash either.
+                let tmp = std::env::temp_dir().join(format!("hs_payload_{}", uuid::Uuid::new_v4()));
+                Arc::new(PayloadStore::open(&tmp, zstd_level).expect("fallback payload store"))
+            }
+        };
+
         Ok(Self {
             name,
             node_id,
@@ -718,6 +742,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             storage_mode,
             max_ram_bytes,
             pending_wal_flushes,
+            payload_store,
         })
     }
 
@@ -1408,6 +1433,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         // Move only the required fields to avoid cloning whole params struct.
         let top_k = params.top_k;
         let ef_search = params.ef_search;
+        let include_payload = params.include_payload;
         let rerank_enabled = std::env::var("HS_RERANK_ENABLED")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
         let rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
@@ -1435,7 +1461,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Convert to owned only when entering blocking task
             let processed_query = processed_query_cow.into_owned();
             let mut search_params_owned = params.clone();
-            tokio::task::spawn_blocking(move || {
+            let pre_payload = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let index = index_link.load();
                 let include_metadata = index.has_nonempty_metadata();
@@ -1534,6 +1560,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 };
 
                 // Fetch metadata and convert IDs inside blocking worker.
+                // Payload fetch happens AFTER spawn_blocking returns (lazy I/O).
                 reranked_internal
                     .into_iter()
                     .take(top_k)
@@ -1557,10 +1584,33 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
                         (user_id, dist, meta)
                     })
-                    .collect::<Vec<SearchResult>>()
+                    .collect::<Vec<(u32, f64, HashMap<String, String>)>>()
             })
             .await
-            .map_err(|e| format!("Search task failed: {e}"))
+            .map_err(|e| format!("Search task failed: {e}"))?;
+
+            // === Step 3: Lazy Payload Fetch (v3.2) ==============================
+            // Only executed when include_payload=true AND after Top-K is decided.
+            // Zero disk I/O on the default (include_payload=false) path.
+            if include_payload {
+                let top_k_ids: Vec<u32> = pre_payload.iter().map(|(id, _, _)| *id).collect();
+                let payloads = PayloadStore::fetch_many(
+                    Arc::clone(&self.payload_store),
+                    &top_k_ids,
+                )
+                .await;
+
+                Ok(pre_payload
+                    .into_iter()
+                    .zip(payloads)
+                    .map(|((id, dist, meta), payload)| (id, dist, meta, payload))
+                    .collect())
+            } else {
+                Ok(pre_payload
+                    .into_iter()
+                    .map(|(id, dist, meta)| (id, dist, meta, None))
+                    .collect())
+            }
         } else {
             // Quick Win: Inline search for small top_k - avoid spawn_blocking overhead
             // Still need to convert Cow to owned for HNSW search
@@ -1581,7 +1631,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Skip chunk search for small top_k to reduce latency
 
             // === 3. Convert results ===
-            let results: Vec<SearchResult> = mem_results
+            let raw_results: Vec<(u32, f64, HashMap<String, String>)> = mem_results
                 .into_iter()
                 .take(top_k)
                 .map(|(internal_id, dist)| {
@@ -1606,7 +1656,27 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 })
                 .collect();
 
-            Ok(results)
+            // === Step 3: Lazy Payload Fetch (v3.2) — inline path ================
+            if include_payload {
+                let ids: Vec<u32> = raw_results.iter().map(|(id, _, _)| *id).collect();
+                let payloads = PayloadStore::fetch_many(
+                    Arc::clone(&self.payload_store),
+                    &ids,
+                )
+                .await;
+                let results: Vec<SearchResult> = raw_results
+                    .into_iter()
+                    .zip(payloads)
+                    .map(|((id, dist, meta), payload)| (id, dist, meta, payload))
+                    .collect();
+                Ok(results)
+            } else {
+                let results: Vec<SearchResult> = raw_results
+                    .into_iter()
+                    .map(|(id, dist, meta)| (id, dist, meta, None))
+                    .collect();
+                Ok(results)
+            }
         }
     }
 
@@ -1625,7 +1695,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let filter_for_vacuum = filter.clone();
 
         // Run heavy lifting in blocking thread
-        let (new_index_arc, temp_dir, new_snap_path) = tokio::task::spawn_blocking(move || {
+        let (new_index_arc, temp_dir, new_snap_path, all_survived_data) = tokio::task::spawn_blocking(move || {
             use hyperspace_core::config::GlobalConfig;
             use hyperspace_store::VectorStore;
             use std::path::PathBuf;
@@ -1639,7 +1709,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let count = all_data.len();
 
             if count == 0 {
-                return Ok((None, PathBuf::new(), PathBuf::new())); // Nothing to do
+                return Ok((None, PathBuf::new(), PathBuf::new(), Vec::new())); // Nothing to do
             }
 
             // 2. Setup "Turbo Mode"
@@ -1690,7 +1760,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 return Err(e.clone());
             }
 
-            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path))
+            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path, all_data))
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -1698,7 +1768,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         if let Some(new_index) = new_index_arc {
             // 5. Hot Swap
             {
-                println!("🔄 Swapping indexes in memory...");
+                println!("\u{1f504} Swapping indexes in memory...");
                 self.index_link.store(new_index);
             }
 
@@ -1708,8 +1778,46 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             std::fs::rename(&new_snap_path, &snap_path).map_err(|e| e.to_string())?;
             std::fs::remove_dir_all(&temp_dir).ok();
 
+            // === Step 4: Payload Compaction (v3.2) ================================
+            // Build a new PayloadStore in a temp directory, copying only the payloads
+            // for vectors that survived the vacuum filter. Deleted vectors are skipped,
+            // their disk bytes are NOT copied into the new file.
+            let old_payload_store = Arc::clone(&self.payload_store);
+            let new_payload_dir = self.data_dir.join(format!("payload_compact_{}", uuid::Uuid::new_v4()));
+            let zstd_level = old_payload_store.zstd_level();
+            match PayloadStore::open(&new_payload_dir, zstd_level) {
+                Ok(new_payload_store) => {
+                    // compact_copy_from skips deleted (None) slots automatically
+                    for (user_id, _, _) in &all_survived_data {
+                        let _ = new_payload_store.compact_copy_from(&old_payload_store, *user_id as u32);
+                    }
+                    // Flush the new index before atomically replacing
+                    // Swap the payload store pointer on the Arc — we do this via directory rename
+                    let final_payload_dir = self.data_dir.clone();
+                    let old_payloads = final_payload_dir.join("payloads.hyp");
+                    let old_index = final_payload_dir.join("payload_index.hyp");
+                    let new_payloads = new_payload_dir.join("payloads.hyp");
+                    let new_index_file = new_payload_dir.join("payload_index.hyp");
+                    // Atomic rename: new files replace old files
+                    if new_payloads.exists() {
+                        if old_payloads.exists() { let _ = std::fs::remove_file(&old_payloads); }
+                        let _ = std::fs::rename(&new_payloads, &old_payloads);
+                    }
+                    if new_index_file.exists() {
+                        if old_index.exists() { let _ = std::fs::remove_file(&old_index); }
+                        let _ = std::fs::rename(&new_index_file, &old_index);
+                    }
+                    let _ = std::fs::remove_dir_all(&new_payload_dir);
+                    println!("\u{2728} Payload Store compacted: {} surviving payloads.", all_survived_data.len());
+                }
+                Err(e) => {
+                    eprintln!("\u{26a0}\u{fe0f}  Payload Store compaction failed: {e}. Original store unchanged.");
+                    let _ = std::fs::remove_dir_all(&new_payload_dir);
+                }
+            }
+
             println!(
-                "✨ Vacuum Complete in {:?}. Recall upgraded.",
+                "\u{2728} Vacuum Complete in {:?}. Recall upgraded.",
                 start.elapsed()
             );
         }
@@ -1726,10 +1834,6 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
     fn dimension(&self) -> usize {
         N
-    }
-
-    fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
-        self.mode
     }
 
     // Updated peek to use index_link
@@ -1830,6 +1934,27 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         self.index_link
             .load()
             .update_payload_metadata(internal_id, patch)
+    }
+
+    /// Write a heavy payload blob to the disk-only Payload Layer.
+    /// Called AFTER a successful insert(). The blob is zstd-compressed before
+    /// touching disk. ZERO bytes of payload content are kept in RAM after return.
+    async fn insert_payload(&self, id: u32, payload: Vec<u8>) -> Result<(), String> {
+        let store = Arc::clone(&self.payload_store);
+        tokio::task::spawn_blocking(move || {
+            store
+                .insert(id, &payload)
+                .map_err(|e| format!("PayloadStore insert error: {e}"))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking panicked: {e}"))?
+    }
+
+    /// Fetch decompressed payloads for final Top-K IDs via lazy disk I/O.
+    /// Each ID is read concurrently on the blocking thread pool. Zero disk I/O
+    /// for IDs with no stored payload (returns None at that index).
+    async fn fetch_payloads(&self, ids: &[u32]) -> Vec<Option<Vec<u8>>> {
+        PayloadStore::fetch_many(Arc::clone(&self.payload_store), ids).await
     }
 }
 

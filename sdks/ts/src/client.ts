@@ -59,6 +59,7 @@ export interface SearchResult {
     distance: number;
     metadata: { [key: string]: string };
     typedMetadata: { [key: string]: TypedMetadataValue };
+    payload?: Uint8Array; // Sidecar Payload Storage (v3.2)
 }
 
 export interface CollectionInfo {
@@ -423,7 +424,8 @@ export class HyperspaceClient {
         meta?: { [key: string]: string },
         collection: string = '',
         durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL,
-        typedMetadata?: { [key: string]: TypedMetadataValue }
+        typedMetadata?: { [key: string]: TypedMetadataValue },
+        payload?: Uint8Array // Sidecar Payload Storage (v3.2)
     ): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new InsertRequest();
@@ -441,6 +443,9 @@ export class HyperspaceClient {
             req.setOriginNodeId('');
             req.setLogicalClock(0);
             req.setDurability(durability);
+            if (payload) {
+                req.setPayload(payload);
+            }
 
             this.client.insert(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
@@ -535,7 +540,8 @@ export class HyperspaceClient {
             hybridAlpha?: number,
             bm25?: Bm25Options,
             mrlDimension?: number,
-            useWasserstein?: boolean
+            useWasserstein?: boolean,
+            includePayload?: boolean
         }
     ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
@@ -552,6 +558,7 @@ export class HyperspaceClient {
             if (options?.hybridAlpha !== undefined) req.setHybridAlpha(options.hybridAlpha);
             if (options?.mrlDimension !== undefined) req.setMrlDimension(options.mrlDimension);
             if (options?.useWasserstein !== undefined) req.setUseWasserstein(options.useWasserstein);
+            if (options?.includePayload !== undefined) req.setIncludePayload(options.includePayload);
             
             if (options?.bm25) {
                 const bm25Msg = new ProtoBm25Options();
@@ -579,7 +586,8 @@ export class HyperspaceClient {
                         id: r.getId(),
                         distance: r.getDistance(),
                         metadata: meta,
-                        typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap())
+                        typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap()),
+                        payload: r.getPayload_asU8()
                     };
                 });
                 resolve(results);
@@ -594,7 +602,8 @@ export class HyperspaceClient {
         options?: {
             filters?: Filter[],
             bm25?: Bm25Options,
-            hybridAlpha?: number
+            hybridAlpha?: number,
+            includePayload?: boolean
         }
     ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
@@ -621,6 +630,9 @@ export class HyperspaceClient {
             if (options?.hybridAlpha !== undefined) {
                 req.setHybridAlpha(options.hybridAlpha);
             }
+            if (options?.includePayload !== undefined) {
+                req.setIncludePayload(options.includePayload);
+            }
 
             this.client.searchText(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
@@ -636,7 +648,8 @@ export class HyperspaceClient {
                         id: r.getId(),
                         distance: r.getDistance(),
                         metadata: meta,
-                        typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap())
+                        typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap()),
+                        payload: r.getPayload_asU8()
                     };
                 });
                 resolve(results);
@@ -672,7 +685,8 @@ export class HyperspaceClient {
                             id: r.getId(),
                             distance: r.getDistance(),
                             metadata: meta,
-                            typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap())
+                            typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap()),
+                            payload: r.getPayload_asU8()
                         };
                     })
                 );

@@ -17,6 +17,7 @@ struct SearchResultRec {
     std::unordered_map<std::string, ::hyperspace::MetadataValue> typed_metadata;
     double score;
     double distance; // Alias for score
+    std::vector<uint8_t> payload; // Sidecar Payload Storage (v3.2)
 };
 
 struct CollectionSummaryRec {
@@ -53,12 +54,12 @@ public:
     bool CreateCollection(const std::string& name, int dimension, const std::string& metric = "cosine");
     std::vector<CollectionSummaryRec> ListCollections();
 
-    bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "");
+    bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "", const std::vector<uint8_t>& payload = {});
     bool InsertText(uint32_t id, const std::string& text, const std::string& collection = "");
     bool Delete(uint32_t id, const std::string& collection = "");
     bool BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection = "");
     std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
-    std::vector<SearchResultRec> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false);
+    std::vector<SearchResultRec> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false, bool include_payload = false);
     std::vector<std::vector<SearchResultRec>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
     std::vector<SearchResultRec> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr);
     std::unordered_map<std::string, std::vector<SearchResultRec>> SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k = 10);

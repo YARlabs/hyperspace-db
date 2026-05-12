@@ -38,7 +38,7 @@ impl WaveInferenceEngine {
         let seeds = collection.search(query, &HashMap::new(), &[], &search_params).await?;
         
         let mut energy_map: HashMap<u32, f64> = HashMap::new();
-        for (id, score, _) in &seeds {
+        for (id, score, _, _) in &seeds {
             // Initial energy proportional to inverse distance
             energy_map.insert(*id, 1.0 / (1.0 + score));
         }

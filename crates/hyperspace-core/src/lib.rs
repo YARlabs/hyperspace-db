@@ -181,9 +181,16 @@ pub struct SearchParams {
     pub bm25_options: Option<crate::bm25::Bm25Params>,
     pub fusion_method: Option<String>,
     pub mrl_dimension: Option<usize>,
+    /// Sidecar Payload Storage (v3.2): if true, the server performs lazy disk I/O
+    /// for the final Top-K results. Default false = zero extra I/O.
+    pub include_payload: bool,
 }
 
-pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>);
+/// A single search result: (id, distance, metadata, optional_payload).
+/// The `payload` field is `Some(bytes)` ONLY when `SearchParams::include_payload = true`
+/// AND the vector was inserted with a payload. The bytes are the original uncompressed
+/// document — all decompression is performed server-side via lazy disk I/O.
+pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>, Option<Vec<u8>>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Durability {
@@ -310,8 +317,6 @@ pub trait Collection: Send + Sync + 'static {
         max_clusters: usize,
         max_nodes: usize,
     ) -> Result<Vec<Vec<u32>>, String>;
-    fn metadata_by_id(&self, id: u32) -> std::collections::HashMap<String, String>;
-    fn quantization_mode(&self) -> QuantizationMode;
 
     /// Fetch raw point data for a given list of IDs. Returns (id, vector, metadata) tuples.
     fn get_points(
@@ -332,6 +337,25 @@ pub trait Collection: Send + Sync + 'static {
         id: u32,
         patch: std::collections::HashMap<String, String>,
     ) -> Result<(), String>;
+
+    /// Look up the metadata HashMap for a given user-facing vector ID.
+    fn metadata_by_id(&self, id: u32) -> std::collections::HashMap<String, String>;
+
+    /// Write a heavy payload blob to the disk-only Payload Layer.
+    /// Called AFTER a successful `insert()`. The payload is zstd-compressed
+    /// before hitting disk. This method MUST NOT store any bytes in RAM.
+    /// Default no-op: implementors without payload support silently ignore it.
+    async fn insert_payload(&self, _id: u32, _payload: Vec<u8>) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Fetch decompressed payloads for the given IDs via lazy disk I/O.
+    /// MUST be called ONLY after HNSW traversal yields the final Top-K results.
+    /// Uses `tokio::task::spawn_blocking` internally to avoid blocking the runtime.
+    /// Returns a Vec aligned with `ids`: `None` if the ID has no payload.
+    async fn fetch_payloads(&self, _ids: &[u32]) -> Vec<Option<Vec<u8>>> {
+        vec![None; _ids.len()]
+    }
 
     /// Iterate over all points, optionally filtered, for data export / Explorer.
     fn scroll(

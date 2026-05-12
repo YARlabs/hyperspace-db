@@ -11,6 +11,9 @@ byteorder = "1.5.0"
 parking_lot.workspace = true
 crc32fast = "1.5.0"
 arc-swap = "1.7.1"
+# Sidecar Payload Storage: zstd for disk compression, tokio for spawn_blocking
+zstd = "0.13"
+tokio = { workspace = true }
 
 [features]
 default = ["mmap"]
@@ -19,4 +22,3 @@ mmap = ["dep:memmap2"]
 [dev-dependencies]
 tempfile = "3.8"
 proptest = "1.0"
-

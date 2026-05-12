@@ -8,11 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
 import { useSearchParams } from "react-router-dom"
-import { Code, Play, AlertCircle, ChevronLeft, ChevronRight, Edit3, Hash } from "lucide-react"
-import { scrollCollection, countFiltered, updatePayload } from "@/lib/api"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { Code, Play, AlertCircle, ChevronLeft, ChevronRight, Edit3, Hash, FileJson, Download, Plus, Database, Info } from "lucide-react"
+import { scrollCollection, countFiltered, updatePayload, insertVector } from "@/lib/api"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { useQueryClient } from "@tanstack/react-query"
 
 export function DataExplorerPage() {
     const [searchParams, setSearchParams] = useSearchParams()
@@ -44,18 +46,21 @@ export function DataExplorerPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Data Explorer</h1>
                     <p className="text-muted-foreground">Inspect vectors and validate search</p>
                 </div>
-                <div className="w-[300px]">
-                    <Select value={selectedCollection} onValueChange={handleSelect}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Collection" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {collections?.map((col: any) => {
-                                const name = typeof col === 'string' ? col : col.name
-                                return <SelectItem key={name} value={name}>{name}</SelectItem>
-                            })}
-                        </SelectContent>
-                    </Select>
+                <div className="flex items-center gap-4">
+                    <InsertVectorDialog collection={selectedCollection} />
+                    <div className="w-[300px]">
+                        <Select value={selectedCollection} onValueChange={handleSelect}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select Collection" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {collections?.map((col: any) => {
+                                    const name = typeof col === 'string' ? col : col.name
+                                    return <SelectItem key={name} value={name}>{name}</SelectItem>
+                                })}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
             </div>
 
@@ -129,14 +134,15 @@ function RawDataView({ collection }: { collection: string }) {
                                 <TableHead className="w-[80px]">ID</TableHead>
                                 <TableHead>Vector (Prefix)</TableHead>
                                 <TableHead>Metadata</TableHead>
+                                <TableHead>Payload (Disk)</TableHead>
                                 <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
-                                <TableRow><TableCell colSpan={4} className="text-center h-24"><div className="animate-pulse">Loading data plane...</div></TableCell></TableRow>
+                                <TableRow><TableCell colSpan={5} className="text-center h-24"><div className="animate-pulse">Loading data plane...</div></TableCell></TableRow>
                             ) : (!items || items.length === 0) ? (
-                                <TableRow><TableCell colSpan={4} className="text-center h-24 text-muted-foreground">No vectors found</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">No vectors found</TableCell></TableRow>
                             ) : (
                                 items.map((item: any) => {
                                     // Handle both [id, vec, meta] and {id, vector, metadata} formats
@@ -166,6 +172,20 @@ function RawDataView({ collection }: { collection: string }) {
                                                 </div>
                                             </TableCell>
                                             <TableCell>
+                                                {item.payload ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px]">
+                                                            <FileJson className="w-3 h-3 mr-1" /> Sidecar
+                                                        </Badge>
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => downloadPayload(id, item.payload)}>
+                                                            <Download className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[10px] text-zinc-600 italic">RAM Only</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-white" onClick={() => setIsEditing({ id, meta, typedMeta })}>
                                                     <Edit3 className="h-3 w-3" />
                                                 </Button>
@@ -181,7 +201,7 @@ function RawDataView({ collection }: { collection: string }) {
             {isEditing && (
                 <MetadataEditorDialog 
                     open={!!isEditing} 
-                    onOpenChange={(open) => !open && setIsEditing(null)}
+                    onOpenChange={(open: boolean) => !open && setIsEditing(null)}
                     point={isEditing}
                     collection={collection}
                     onSuccess={() => {
@@ -195,7 +215,6 @@ function RawDataView({ collection }: { collection: string }) {
 
 function MetadataEditorDialog({ open, onOpenChange, point, collection, onSuccess }: any) {
     const [metadata, setMetadata] = useState<string>(JSON.stringify(point.meta, null, 2))
-    const queryClient = useQueryClient()
 
     const mutation = useMutation({
         mutationFn: (data: any) => updatePayload(collection, point.id, data),
@@ -243,6 +262,14 @@ function SearchPlayground({ collection }: { collection: string }) {
     const [vectorInput, setVectorInput] = useState("[0.1, 0.2, 0.3]")
     const [topK, setTopK] = useState("5")
     const [exactFilterJson, setExactFilterJson] = useState("{}")
+    const [complexFiltersJson, setComplexFiltersJson] = useState("[]")
+    const [includePayload, setIncludePayload] = useState(false)
+    const [res, setRes] = useState<any>(null)
+    const [graphRes, setGraphRes] = useState<any>(null)
+    const [error, setError] = useState("")
+    const [startId, setStartId] = useState("0")
+    const [graphLayer, setGraphLayer] = useState("0")
+    const [graphDepth, setGraphDepth] = useState("2")
     const [graphNodes, setGraphNodes] = useState("128")
     const [isMultiSearch, setIsMultiSearch] = useState(false)
     const [multiCollections, setMultiCollections] = useState<string[]>([collection])
@@ -296,6 +323,7 @@ function SearchPlayground({ collection }: { collection: string }) {
                 top_k: Math.max(1, Number(topK) || 5),
                 filter: parsedExact,
                 filters: parsedComplex,
+                include_payload: includePayload
             })
         } catch (e: any) {
             setError("Invalid JSON format: " + e.message)
@@ -380,6 +408,13 @@ function SearchPlayground({ collection }: { collection: string }) {
                                 </div>
                             </div>
                         )}
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-900 border border-white/5">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm">Include Sidecar Payload</Label>
+                                <p className="text-[10px] text-muted-foreground">Perform lazy disk I/O to fetch heavy documents</p>
+                            </div>
+                            <Switch checked={includePayload} onCheckedChange={setIncludePayload} />
+                        </div>
                         <div className="grid w-full gap-2">
                             <Label htmlFor="vector">Vector JSON</Label>
                             <textarea
@@ -528,6 +563,7 @@ function ResultsTable({ results }: { results: any[] }) {
                     <TableHead>ID</TableHead>
                     <TableHead>Score</TableHead>
                     <TableHead>Metadata</TableHead>
+                    <TableHead>Payload</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -540,16 +576,139 @@ function ResultsTable({ results }: { results: any[] }) {
                                 {Object.entries(r.metadata || {}).map(([k, v]: any) => (
                                     <Badge key={k} variant="outline" className="text-[9px] border-white/10 text-zinc-400">{k}: {v}</Badge>
                                 ))}
-                                {Object.entries(r.typed_metadata || {}).map(([k, v]: any) => (
+                                {Object.entries(r.typed_metadata || {}).map(([k]: any) => (
                                     <Badge key={k} variant="outline" className="text-[9px] border-purple-500/30 text-purple-400">
                                         <Hash className="w-2 h-2 mr-1" /> {k}
                                     </Badge>
                                 ))}
                             </div>
                         </TableCell>
+                        <TableCell>
+                            {r.payload ? (
+                                <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={() => downloadPayload(r.id, r.payload)}>
+                                    <Download className="w-3 h-3" /> View
+                                </Button>
+                            ) : (
+                                <span className="text-[10px] text-zinc-600">-</span>
+                            )}
+                        </TableCell>
                     </TableRow>
                 ))}
             </TableBody>
         </Table>
+    )
+}
+
+const downloadPayload = (id: number, payload: string) => {
+    try {
+        const blob = new Blob([atob(payload)], { type: 'application/octet-stream' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `payload_${id}.bin`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        // Fallback: if not base64, show in alert
+        alert("Payload (Plain text): " + payload);
+    }
+}
+
+function InsertVectorDialog({ collection }: { collection: string }) {
+    const [open, setOpen] = useState(false)
+    const [id, setId] = useState("")
+    const [vector, setVector] = useState("[]")
+    const [metadata, setMetadata] = useState("{}")
+    const [payload, setPayload] = useState("")
+    const queryClient = useQueryClient()
+
+    const mutation = useMutation({
+        mutationFn: (data: any) => insertVector(collection, data),
+        onSuccess: () => {
+            setOpen(false)
+            setId("")
+            setVector("[]")
+            setMetadata("{}")
+            setPayload("")
+            queryClient.invalidateQueries({ queryKey: ['scroll', collection] })
+            queryClient.invalidateQueries({ queryKey: ['count', collection] })
+        }
+    })
+
+    const handleInsert = () => {
+        try {
+            mutation.mutate({
+                id: parseInt(id),
+                vector: JSON.parse(vector),
+                metadata: JSON.parse(metadata),
+                payload: payload || undefined
+            })
+        } catch (e: any) {
+            alert("Invalid JSON: " + e.message)
+        }
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10">
+                    <Plus className="h-4 w-4" /> Insert Vector
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[600px] bg-zinc-950 border-white/10">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Database className="h-5 w-5 text-emerald-400" />
+                        Insert into {collection}
+                    </DialogTitle>
+                    <DialogDescription>Store high-dimensional vectors with optional sidecar payloads.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Vector ID (Integer)</Label>
+                            <Input value={id} onChange={e => setId(e.target.value)} placeholder="e.g. 1001" />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Vector Data (JSON Array)</Label>
+                        <textarea
+                            className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-zinc-900 px-3 py-2 text-sm font-mono"
+                            value={vector}
+                            onChange={e => setVector(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Metadata (JSON Object)</Label>
+                        <textarea
+                            className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-zinc-900 px-3 py-2 text-sm font-mono"
+                            value={metadata}
+                            onChange={e => setMetadata(e.target.value)}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-emerald-400 flex items-center gap-1">
+                                <FileJson className="w-3 h-3" /> Sidecar Payload (Disk-Stored)
+                            </Label>
+                            <Info className="w-3 h-3 text-zinc-500" />
+                        </div>
+                        <textarea
+                            className="flex min-h-[120px] w-full rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm font-mono text-emerald-100"
+                            placeholder="Raw text or base64 blob. This will be stored on disk and fetched lazily."
+                            value={payload}
+                            onChange={e => setPayload(e.target.value)}
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+                    <Button onClick={handleInsert} disabled={!id || mutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">
+                        {mutation.isPending ? "Inserting..." : "Insert Point"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }

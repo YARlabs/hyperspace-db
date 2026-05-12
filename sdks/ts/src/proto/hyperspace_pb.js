@@ -5506,7 +5506,8 @@ proto.hyperspace.InsertRequest.toObject = function(includeInstance, msg) {
     originNodeId: jspb.Message.getFieldWithDefault(msg, 5, ""),
     logicalClock: jspb.Message.getFieldWithDefault(msg, 6, 0),
     durability: jspb.Message.getFieldWithDefault(msg, 7, 0),
-    typedMetadataMap: (f = msg.getTypedMetadataMap()) ? f.toObject(includeInstance, proto.hyperspace.MetadataValue.toObject) : []
+    typedMetadataMap: (f = msg.getTypedMetadataMap()) ? f.toObject(includeInstance, proto.hyperspace.MetadataValue.toObject) : [],
+    payload: msg.getPayload_asB64()
   };
 
   if (includeInstance) {
@@ -5580,6 +5581,10 @@ proto.hyperspace.InsertRequest.deserializeBinaryFromReader = function(msg, reade
       reader.readMessage(value, function(message, reader) {
         jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readMessage, proto.hyperspace.MetadataValue.deserializeBinaryFromReader, "", new proto.hyperspace.MetadataValue());
          });
+      break;
+    case 9:
+      var value = /** @type {!Uint8Array} */ (reader.readBytes());
+      msg.setPayload(value);
       break;
     default:
       reader.skipField();
@@ -5659,6 +5664,13 @@ proto.hyperspace.InsertRequest.serializeBinaryToWriter = function(message, write
   f = message.getTypedMetadataMap(true);
   if (f && f.getLength() > 0) {
     f.serializeBinary(8, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeMessage, proto.hyperspace.MetadataValue.serializeBinaryToWriter);
+  }
+  f = /** @type {!(string|Uint8Array)} */ (jspb.Message.getField(message, 9));
+  if (f != null) {
+    writer.writeBytes(
+      9,
+      f
+    );
   }
 };
 
@@ -5832,6 +5844,66 @@ proto.hyperspace.InsertRequest.prototype.getTypedMetadataMap = function(opt_noLa
 proto.hyperspace.InsertRequest.prototype.clearTypedMetadataMap = function() {
   this.getTypedMetadataMap().clear();
   return this;};
+
+
+/**
+ * optional bytes payload = 9;
+ * @return {!(string|Uint8Array)}
+ */
+proto.hyperspace.InsertRequest.prototype.getPayload = function() {
+  return /** @type {!(string|Uint8Array)} */ (jspb.Message.getFieldWithDefault(this, 9, ""));
+};
+
+
+/**
+ * optional bytes payload = 9;
+ * This is a type-conversion wrapper around `getPayload()`
+ * @return {string}
+ */
+proto.hyperspace.InsertRequest.prototype.getPayload_asB64 = function() {
+  return /** @type {string} */ (jspb.Message.bytesAsB64(
+      this.getPayload()));
+};
+
+
+/**
+ * optional bytes payload = 9;
+ * Note that Uint8Array is not supported on all browsers.
+ * @see http://caniuse.com/Uint8Array
+ * This is a type-conversion wrapper around `getPayload()`
+ * @return {!Uint8Array}
+ */
+proto.hyperspace.InsertRequest.prototype.getPayload_asU8 = function() {
+  return /** @type {!Uint8Array} */ (jspb.Message.bytesAsU8(
+      this.getPayload()));
+};
+
+
+/**
+ * @param {!(string|Uint8Array)} value
+ * @return {!proto.hyperspace.InsertRequest} returns this
+ */
+proto.hyperspace.InsertRequest.prototype.setPayload = function(value) {
+  return jspb.Message.setField(this, 9, value);
+};
+
+
+/**
+ * Clears the field making it undefined.
+ * @return {!proto.hyperspace.InsertRequest} returns this
+ */
+proto.hyperspace.InsertRequest.prototype.clearPayload = function() {
+  return jspb.Message.setField(this, 9, undefined);
+};
+
+
+/**
+ * Returns whether this field is set.
+ * @return {boolean}
+ */
+proto.hyperspace.InsertRequest.prototype.hasPayload = function() {
+  return jspb.Message.getField(this, 9) != null;
+};
 
 
 
@@ -6985,7 +7057,8 @@ proto.hyperspace.SearchTextRequest.toObject = function(includeInstance, msg) {
     filtersList: jspb.Message.toObjectList(msg.getFiltersList(),
     proto.hyperspace.Filter.toObject, includeInstance),
     bm25Options: (f = msg.getBm25Options()) && proto.hyperspace.Bm25Options.toObject(includeInstance, f),
-    hybridAlpha: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0)
+    hybridAlpha: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
+    includePayload: jspb.Message.getBooleanFieldWithDefault(msg, 8, false)
   };
 
   if (includeInstance) {
@@ -7053,6 +7126,10 @@ proto.hyperspace.SearchTextRequest.deserializeBinaryFromReader = function(msg, r
     case 7:
       var value = /** @type {number} */ (reader.readFloat());
       msg.setHybridAlpha(value);
+      break;
+    case 8:
+      var value = /** @type {boolean} */ (reader.readBool());
+      msg.setIncludePayload(value);
       break;
     default:
       reader.skipField();
@@ -7128,6 +7205,13 @@ proto.hyperspace.SearchTextRequest.serializeBinaryToWriter = function(message, w
   if (f != null) {
     writer.writeFloat(
       7,
+      f
+    );
+  }
+  f = message.getIncludePayload();
+  if (f) {
+    writer.writeBool(
+      8,
       f
     );
   }
@@ -7318,6 +7402,24 @@ proto.hyperspace.SearchTextRequest.prototype.clearHybridAlpha = function() {
  */
 proto.hyperspace.SearchTextRequest.prototype.hasHybridAlpha = function() {
   return jspb.Message.getField(this, 7) != null;
+};
+
+
+/**
+ * optional bool include_payload = 8;
+ * @return {boolean}
+ */
+proto.hyperspace.SearchTextRequest.prototype.getIncludePayload = function() {
+  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 8, false));
+};
+
+
+/**
+ * @param {boolean} value
+ * @return {!proto.hyperspace.SearchTextRequest} returns this
+ */
+proto.hyperspace.SearchTextRequest.prototype.setIncludePayload = function(value) {
+  return jspb.Message.setProto3BooleanField(this, 8, value);
 };
 
 
@@ -9660,7 +9762,8 @@ proto.hyperspace.SearchRequest.toObject = function(includeInstance, msg) {
     hybridAlpha: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
     useWasserstein: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
     bm25Options: (f = msg.getBm25Options()) && proto.hyperspace.Bm25Options.toObject(includeInstance, f),
-    mrlDimension: jspb.Message.getFieldWithDefault(msg, 10, 0)
+    mrlDimension: jspb.Message.getFieldWithDefault(msg, 10, 0),
+    includePayload: jspb.Message.getBooleanFieldWithDefault(msg, 11, false)
   };
 
   if (includeInstance) {
@@ -9742,6 +9845,10 @@ proto.hyperspace.SearchRequest.deserializeBinaryFromReader = function(msg, reade
     case 10:
       var value = /** @type {number} */ (reader.readUint32());
       msg.setMrlDimension(value);
+      break;
+    case 11:
+      var value = /** @type {boolean} */ (reader.readBool());
+      msg.setIncludePayload(value);
       break;
     default:
       reader.skipField();
@@ -9838,6 +9945,13 @@ proto.hyperspace.SearchRequest.serializeBinaryToWriter = function(message, write
   if (f != null) {
     writer.writeUint32(
       10,
+      f
+    );
+  }
+  f = message.getIncludePayload();
+  if (f) {
+    writer.writeBool(
+      11,
       f
     );
   }
@@ -10137,6 +10251,24 @@ proto.hyperspace.SearchRequest.prototype.clearMrlDimension = function() {
  */
 proto.hyperspace.SearchRequest.prototype.hasMrlDimension = function() {
   return jspb.Message.getField(this, 10) != null;
+};
+
+
+/**
+ * optional bool include_payload = 11;
+ * @return {boolean}
+ */
+proto.hyperspace.SearchRequest.prototype.getIncludePayload = function() {
+  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 11, false));
+};
+
+
+/**
+ * @param {boolean} value
+ * @return {!proto.hyperspace.SearchRequest} returns this
+ */
+proto.hyperspace.SearchRequest.prototype.setIncludePayload = function(value) {
+  return jspb.Message.setProto3BooleanField(this, 11, value);
 };
 
 
@@ -13154,7 +13286,8 @@ proto.hyperspace.SearchResult.toObject = function(includeInstance, msg) {
     id: jspb.Message.getFieldWithDefault(msg, 1, 0),
     distance: jspb.Message.getFloatingPointFieldWithDefault(msg, 2, 0.0),
     metadataMap: (f = msg.getMetadataMap()) ? f.toObject(includeInstance, undefined) : [],
-    typedMetadataMap: (f = msg.getTypedMetadataMap()) ? f.toObject(includeInstance, proto.hyperspace.MetadataValue.toObject) : []
+    typedMetadataMap: (f = msg.getTypedMetadataMap()) ? f.toObject(includeInstance, proto.hyperspace.MetadataValue.toObject) : [],
+    payload: msg.getPayload_asB64()
   };
 
   if (includeInstance) {
@@ -13211,6 +13344,10 @@ proto.hyperspace.SearchResult.deserializeBinaryFromReader = function(msg, reader
         jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readMessage, proto.hyperspace.MetadataValue.deserializeBinaryFromReader, "", new proto.hyperspace.MetadataValue());
          });
       break;
+    case 5:
+      var value = /** @type {!Uint8Array} */ (reader.readBytes());
+      msg.setPayload(value);
+      break;
     default:
       reader.skipField();
       break;
@@ -13261,6 +13398,13 @@ proto.hyperspace.SearchResult.serializeBinaryToWriter = function(message, writer
   f = message.getTypedMetadataMap(true);
   if (f && f.getLength() > 0) {
     f.serializeBinary(4, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeMessage, proto.hyperspace.MetadataValue.serializeBinaryToWriter);
+  }
+  f = /** @type {!(string|Uint8Array)} */ (jspb.Message.getField(message, 5));
+  if (f != null) {
+    writer.writeBytes(
+      5,
+      f
+    );
   }
 };
 
@@ -13343,6 +13487,66 @@ proto.hyperspace.SearchResult.prototype.getTypedMetadataMap = function(opt_noLaz
 proto.hyperspace.SearchResult.prototype.clearTypedMetadataMap = function() {
   this.getTypedMetadataMap().clear();
   return this;};
+
+
+/**
+ * optional bytes payload = 5;
+ * @return {!(string|Uint8Array)}
+ */
+proto.hyperspace.SearchResult.prototype.getPayload = function() {
+  return /** @type {!(string|Uint8Array)} */ (jspb.Message.getFieldWithDefault(this, 5, ""));
+};
+
+
+/**
+ * optional bytes payload = 5;
+ * This is a type-conversion wrapper around `getPayload()`
+ * @return {string}
+ */
+proto.hyperspace.SearchResult.prototype.getPayload_asB64 = function() {
+  return /** @type {string} */ (jspb.Message.bytesAsB64(
+      this.getPayload()));
+};
+
+
+/**
+ * optional bytes payload = 5;
+ * Note that Uint8Array is not supported on all browsers.
+ * @see http://caniuse.com/Uint8Array
+ * This is a type-conversion wrapper around `getPayload()`
+ * @return {!Uint8Array}
+ */
+proto.hyperspace.SearchResult.prototype.getPayload_asU8 = function() {
+  return /** @type {!Uint8Array} */ (jspb.Message.bytesAsU8(
+      this.getPayload()));
+};
+
+
+/**
+ * @param {!(string|Uint8Array)} value
+ * @return {!proto.hyperspace.SearchResult} returns this
+ */
+proto.hyperspace.SearchResult.prototype.setPayload = function(value) {
+  return jspb.Message.setField(this, 5, value);
+};
+
+
+/**
+ * Clears the field making it undefined.
+ * @return {!proto.hyperspace.SearchResult} returns this
+ */
+proto.hyperspace.SearchResult.prototype.clearPayload = function() {
+  return jspb.Message.setField(this, 5, undefined);
+};
+
+
+/**
+ * Returns whether this field is set.
+ * @return {boolean}
+ */
+proto.hyperspace.SearchResult.prototype.hasPayload = function() {
+  return jspb.Message.getField(this, 5) != null;
+};
 
 
 

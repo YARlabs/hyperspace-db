@@ -1,8 +1,6 @@
-import React, { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { 
-    Activity, 
-    Share2, 
-    Zap, 
+    Activity,
     Clock, 
     Maximize2, 
     Play, 
@@ -13,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
 import { fetchTrajectoryHistory } from "@/lib/api"
 
 interface TrajectoryPoint {
@@ -37,7 +34,7 @@ interface Ripple {
 
 export function TrajectoryPage() {
     const [allPoints, setAllPoints] = useState<TrajectoryPoint[]>([]);
-    const [ripples, setRipples] = useState<Ripple[]>([]);
+    const [, setRipples] = useState<Ripple[]>([]);
     const [visiblePointsCount, setVisiblePointsCount] = useState(0);
     const [isStreaming, setIsStreaming] = useState(false);
     const canvasRef = useRef<HTMLCanvasElement>(null);
