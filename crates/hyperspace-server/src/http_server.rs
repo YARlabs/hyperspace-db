@@ -334,12 +334,21 @@ async fn create_collection(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<CreateCollectionRequest>,
 ) -> impl IntoResponse {
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: payload.metric.clone(),
+            full_dimension: payload.dimension,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+
     match manager
         .create_collection(
             &ctx.user_id,
             &payload.name,
-            payload.dimension,
-            &payload.metric,
+            schema,
         )
         .await
     {
@@ -767,6 +776,7 @@ struct SearchReq {
     use_wasserstein: Option<bool>,
     mrl_dimension: Option<usize>,
     include_payload: Option<bool>,
+    weights: Option<HashMap<String, f32>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1009,6 +1019,7 @@ async fn search_collection(
             fusion_method: None,
             mrl_dimension: payload.mrl_dimension,
             include_payload: payload.include_payload.unwrap_or(false),
+            component_weights: payload.weights,
         };
         match col
             .search(

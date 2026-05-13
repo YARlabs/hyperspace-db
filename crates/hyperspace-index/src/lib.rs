@@ -33,7 +33,7 @@ use std::sync::Arc;
 use hyperspace_core::vector::{
     BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector,
 };
-use hyperspace_core::hybrid::Hybrid801QuantizedVector;
+use hyperspace_core::hybrid::HybridQuantizedVector;
 use hyperspace_core::QuantizationMode;
 use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_store::VectorStore;
@@ -101,7 +101,7 @@ impl Default for MetadataIndex {
     }
 }
 
-impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
+impl<M: Metric> HnswIndex<M> {
     fn metadata_numeric_value(
         meta: &std::collections::HashMap<String, String>,
         key: &str,
@@ -205,14 +205,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         Ok(())
     }
 
-    #[cfg(feature = "persistence")]
     pub fn load_snapshot(
         path: &std::path::Path,
         storage: Arc<VectorStore>,
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
+        dimension: usize,
     ) -> Result<Self, String> {
-        Self::load_snapshot_with_storage_precision(path, storage, mode, config, false)
+        Self::load_snapshot_with_storage_precision(path, storage, mode, config, false, dimension)
     }
 
     #[cfg(feature = "persistence")]
@@ -222,6 +222,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
         storage_f32: bool,
+        dimension: usize,
     ) -> Result<Self, String> {
         use std::time::Instant;
         let start = Instant::now();
@@ -373,6 +374,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(node_count as u32),
             _marker: PhantomData,
+            dimension,
         };
         index.rebuild_lexical_stats();
         Ok(index)
@@ -457,6 +459,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         storage: Arc<VectorStore>,
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
+        dimension: usize,
     ) -> Result<Self, String> {
         let archived = unsafe { rkyv::archived_root::<SnapshotData>(data) };
 
@@ -547,6 +550,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(node_count as u32),
             _marker: PhantomData,
+            dimension,
         };
         index.rebuild_lexical_stats();
         Ok(index)
@@ -564,7 +568,7 @@ const MAX_LAYERS: usize = 16;
 
 #[derive(Debug)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct HnswIndex<const N: usize, M: Metric<N>> {
+pub struct HnswIndex<M: Metric> {
     // Topology storage. Lock-free concurrent Vec: index == NodeId.
     // Node structs (with their inner per-layer RwLocks) are created in
     // insert_to_storage() where IDs are sequential, then graph links are
@@ -597,6 +601,7 @@ pub struct HnswIndex<const N: usize, M: Metric<N>> {
 
     // Fast multi-geometric routing (Klein Euclidean chords on upper layers)
     pub fast_routing: bool,
+    pub dimension: usize,
 
     // Task 6.4: Density-based HNSW graph pruning in syntactic voids
     pub density_pruning: bool,
@@ -681,13 +686,14 @@ impl PartialOrd for Candidate {
     }
 }
 
-impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
+impl<M: Metric> HnswIndex<M> {
     pub fn new(
         storage: Arc<VectorStore>,
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
+        dimension: usize,
     ) -> Self {
-        Self::new_with_storage_precision(storage, mode, config, false)
+        Self::new_with_storage_precision(storage, mode, config, false, dimension)
     }
 
     pub fn new_with_storage_precision(
@@ -695,6 +701,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
         storage_f32: bool,
+        dimension: usize,
     ) -> Self {
         let fast_routing = std::env::var("HS_FAST_ROUTING")
             .is_ok_and(|v| v.to_lowercase() == "true")
@@ -708,6 +715,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         Self {
             nodes: boxcar::Vec::new(),
+            dimension,
             append_lock: Mutex::new(()),
             metadata: MetadataIndex::default(),
             entry_point: AtomicU32::new(0),
@@ -742,7 +750,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         complex_filters: &[FilterExpr],
     ) -> Option<RoaringBitmap> {
         // PERF: Only clone the deleted bitmap when geometric filters are present.
-        // Geometric filters do an O(N) scan and hold no lock during it (snapshot approach).
+        // Geometric filters do an O(self.dimension) scan and hold no lock during it (snapshot approach).
         // For plain metadata/range filters we keep the read guard alive (cheap shared ptr).
         // Cloning on every unfiltered search was a regression from the previous fix.
         let has_geometric = complex_filters.iter().any(|f| {
@@ -847,7 +855,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         min_bounds.clone(),
                         max_bounds.clone(),
                     );
-                    // RAYON: parallel scan over O(N) vectors
+                    // RAYON: parallel scan over O(self.dimension) vectors
                     let ids: Vec<u32> = (0..count)
                         .into_par_iter()
                         .filter(|&i| !deleted.contains(i))
@@ -870,7 +878,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         apertures.clone(),
                         *cen,
                     );
-                    // RAYON: parallel scan over O(N) vectors
+                    // RAYON: parallel scan over O(self.dimension) vectors
                     let ids: Vec<u32> = (0..count)
                         .into_par_iter()
                         .filter(|&i| !deleted.contains(i))
@@ -885,7 +893,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 FilterExpr::InBall { center, radius } => {
                     let count = self.count_nodes() as u32;
                     let region = hyperspace_core::region::BallRegion::new(center.clone(), *radius);
-                    // RAYON: parallel scan over O(N) vectors
+                    // RAYON: parallel scan over O(self.dimension) vectors
                     let ids: Vec<u32> = (0..count)
                         .into_par_iter()
                         .filter(|&i| !deleted.contains(i))
@@ -978,12 +986,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         }
 
         // 1. Create HyperVector from query.
-        let mut aligned_query = [0.0; N];
+        let mut aligned_query = vec![0.0; self.dimension];
         assert!(
-            query.len() == N,
+            query.len() == self.dimension,
             "Query dimension mismatch provided {}, expected {}",
             query.len(),
-            N
+            self.dimension
         );
         aligned_query.copy_from_slice(query);
 
@@ -1141,11 +1149,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     // Distance calculation helper
     #[inline]
-    fn dist(&self, node_id: NodeId, query: &HyperVector<N>) -> f64 {
+    fn dist(&self, node_id: NodeId, query: &HyperVector) -> f64 {
         self.dist_mrl(node_id, query, None)
     }
 
-    fn dist_mrl(&self, node_id: NodeId, query: &HyperVector<N>, mrl_dim: Option<usize>) -> f64 {
+    fn dist_mrl(&self, node_id: NodeId, query: &HyperVector, mrl_dim: Option<usize>) -> f64 {
         // Defensive: Check bounds to avoid casting fallback/misaligned bytes during swaps
         if node_id as usize >= self.storage.count() {
             return f64::MAX;
@@ -1154,15 +1162,15 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let bytes = self.storage.get(node_id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<N>::from_bytes(bytes);
-                M::distance_quantized(q, query)
+                let q = QuantizedHyperVector::from_bytes(bytes);
+                M::distance_quantized(&q, query)
             }
             QuantizationMode::AsymmetricHybrid801 => {
                 // Specialized hybrid path
-                if N != 801 {
+                if self.dimension != 801 {
                     panic!("AsymmetricHybrid801 quantization mode is only supported for 801-dimensional vectors");
                 }
-                let q = Hybrid801QuantizedVector::from_bytes(bytes);
+                let q = HybridQuantizedVector::from_bytes(bytes);
                 if let Some(dim) = mrl_dim {
                     q.distance_mrl(unsafe { std::mem::transmute(query) }, dim)
                 } else {
@@ -1172,16 +1180,16 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::<N>::from_bytes(bytes);
-                M::distance_binary(b, query)
+                let b = BinaryHyperVector::from_bytes(bytes);
+                M::distance_binary(&b, query)
             }
             QuantizationMode::None => {
                 if self.storage_f32 {
-                    let v = HyperVectorF32::<N>::from_bytes(bytes);
+                    let v = HyperVectorF32::from_bytes(bytes);
                     let v64 = v.to_float64();
                     M::distance(&v64.coords, &query.coords)
                 } else {
-                    let v = HyperVector::<N>::from_bytes(bytes);
+                    let v = HyperVector::from_bytes(bytes);
                     M::distance(&v.coords, &query.coords)
                 }
             }
@@ -1191,8 +1199,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     fn dist_upper(
         &self,
         node_id: NodeId,
-        query: &HyperVector<N>,
-        query_klein: Option<&HyperVector<N>>,
+        query: &HyperVector,
+        query_klein: Option<&HyperVector>,
         mrl_dim: Option<usize>,
     ) -> f64 {
         if let Some(qk) = query_klein {
@@ -1202,11 +1210,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
             let bytes = self.storage.get(node_id);
             if self.storage_f32 {
-                let v = HyperVectorF32::<N>::from_bytes(bytes);
+                let v = HyperVectorF32::from_bytes(bytes);
                 let v64 = v.to_float64();
                 return v64.to_klein().klein_chord_distance_sq(qk);
             }
-            let v = HyperVector::<N>::from_bytes(bytes);
+            let v = HyperVector::from_bytes(bytes);
             return v.to_klein().klein_chord_distance_sq(qk);
         }
         self.dist_mrl(node_id, query, mrl_dim)
@@ -1226,7 +1234,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     fn search_bruteforce_bitmap(
         &self,
-        query: &HyperVector<N>,
+        query: &HyperVector,
         k: usize,
         allowed: &RoaringBitmap,
     ) -> Vec<(NodeId, f64)> {
@@ -1250,7 +1258,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     fn search_layer0(
         &self,
         start_node: NodeId,
-        query: &HyperVector<N>,
+        query: &HyperVector,
         k: usize,
         ef: usize,
         allowed: Option<&RoaringBitmap>,
@@ -1387,8 +1395,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     fn search_layer_candidates(
         &self,
         start_node: NodeId,
-        query: &HyperVector<N>,
-        query_klein: Option<&HyperVector<N>>,
+        query: &HyperVector,
+        query_klein: Option<&HyperVector>,
         level: usize,
         ef: usize,
     ) -> BinaryHeap<Candidate> {
@@ -1484,7 +1492,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     /// HNSW Heuristic for neighbor selection
     fn select_neighbors(
         &self,
-        _query_vec: &HyperVector<N>,
+        _query_vec: &HyperVector,
         candidates: BinaryHeap<Candidate>,
         m: usize,
     ) -> Vec<NodeId> {
@@ -1537,12 +1545,12 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     }
 
     // Helper to get HyperVector from id
-    pub fn get_vector(&self, id: NodeId) -> HyperVector<N> {
+    pub fn get_vector(&self, id: NodeId) -> HyperVector {
         if self.zonal {
             if let Some(zv) = self.zonal_storage.get(&id) {
                 let vector = match zv.value() {
                     hyperspace_core::vector::ZonalVector::Core(ref i8_coords) => {
-                        let mut coords = [0.0; N];
+                        let mut coords = vec![0.0; self.dimension];
                         let mut sq_norm = 0.0;
                         for (i, &c) in i8_coords.iter().enumerate() {
                             let val = f64::from(c) / 127.0;
@@ -1559,7 +1567,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         }
                     }
                     hyperspace_core::vector::ZonalVector::Boundary(ref f64_coords) => {
-                        let mut coords = [0.0; N];
+                        let mut coords = vec![0.0; self.dimension];
                         coords.copy_from_slice(f64_coords);
                         HyperVector::new_unchecked(coords)
                     }
@@ -1571,14 +1579,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // Defensive: Check bounds against the storage backend.
         // During MemTable swaps, a stale internal ID might be used against a fresh storage.
         if id as usize >= self.storage.count() {
-            return HyperVector::new_unchecked([0.0; N]);
+            return HyperVector::new_unchecked(vec![0.0; self.dimension]);
         }
 
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<N>::from_bytes(bytes);
-                let mut coords = [0.0; N];
+                let q = QuantizedHyperVector::from_bytes(bytes);
+                let mut coords = vec![0.0; self.dimension];
                 if M::name() == "lorentz" {
                     // Lorentz: alpha stores the dynamic-range scale factor
                     let scale = f64::from(q.alpha);
@@ -1599,19 +1607,19 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
             QuantizationMode::None => {
                 if self.storage_f32 {
-                    let v = HyperVectorF32::<N>::from_bytes(bytes);
+                    let v = HyperVectorF32::from_bytes(bytes);
                     v.to_float64()
                 } else {
-                    let v = HyperVector::<N>::from_bytes(bytes);
+                    let v = HyperVector::from_bytes(bytes);
                     v.clone()
                 }
             }
             QuantizationMode::AsymmetricHybrid801 => {
-                if N != 801 {
-                    panic!("AsymmetricHybrid801 requires N=801");
+                if self.dimension != 801 {
+                    panic!("AsymmetricHybrid801 requires self.dimension=801");
                 }
-                let q = Hybrid801QuantizedVector::from_bytes(bytes);
-                let mut coords = [0.0; N];
+                let q = HybridQuantizedVector::from_bytes(bytes);
+                let mut coords = vec![0.0; self.dimension];
                 // Reconstruction
                 for i in 0..33 {
                     coords[i] = f64::from(q.lorentz[i]);
@@ -1626,9 +1634,9 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 }
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::<N>::from_bytes(bytes);
-                let mut coords = [0.0; N];
-                let val = 1.0 / (N as f64).sqrt() * 0.99;
+                let b = BinaryHyperVector::from_bytes(bytes);
+                let mut coords = vec![0.0; self.dimension];
+                let val = 1.0 / (self.dimension as f64).sqrt() * 0.99;
                 for (i, coord) in coords.iter_mut().enumerate() {
                     let byte_idx = i / 8;
                     let bit_idx = i % 8;
@@ -1648,11 +1656,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     // Insert with Metadata
     pub fn insert_to_storage(&self, vector: &[f64]) -> Result<u32, String> {
-        let mut arr = [0.0; N];
-        if vector.len() != N {
-            return Err("Dim mismatch".into());
-        }
-        arr.copy_from_slice(vector);
+        let arr = vector.to_vec();
 
         // Validate against Metric logic (Poincare checks bounds, Euclidean doesn't)
         M::validate(&arr)?;
@@ -1678,31 +1682,29 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         self.config.is_anisotropic_enabled(),
                     )
                 };
-                q_bytes = q.as_bytes().to_vec();
+                q_bytes = q.as_bytes();
                 0 // Placeholder, we assign ID under lock below
             }
             QuantizationMode::AsymmetricHybrid801 => {
-                if N != 801 {
+                if self.dimension != 801 {
                     return Err("AsymmetricHybrid801 requires dimension 801".into());
                 }
-                let q = Hybrid801QuantizedVector::from_float(
-                    unsafe { std::mem::transmute(&q_vec_full) }
-                );
-                q_bytes = q.as_bytes().to_vec();
+                let q = HybridQuantizedVector::from_float(&q_vec_full, 33, q_vec_full.coords.len() - 33);
+                q_bytes = q.as_bytes();
                 0
             }
             QuantizationMode::None if self.storage_f32 => {
                 let v32 = HyperVectorF32::from_float64(&q_vec_full);
-                q_bytes = v32.as_bytes().to_vec();
+                q_bytes = v32.as_bytes();
                 0
             }
             QuantizationMode::None => {
-                q_bytes = q_vec_full.as_bytes().to_vec();
+                q_bytes = q_vec_full.as_bytes();
                 0
             }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::from_float(&q_vec_full);
-                q_bytes = b.as_bytes().to_vec();
+                q_bytes = b.as_bytes();
                 0
             }
         };
@@ -1727,11 +1729,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     /// Update existing vector in storage (for upsert)
     pub fn update_storage(&self, id: u32, vector: &[f64]) -> Result<u32, String> {
-        let mut arr = [0.0; N];
-        if vector.len() != N {
-            return Err("Dim mismatch".into());
-        }
-        arr.copy_from_slice(vector);
+        let arr = vector.to_vec();
 
         // Validate against Metric logic
         M::validate(&arr)?;
@@ -1756,19 +1754,19 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         self.config.is_anisotropic_enabled(),
                     )
                 };
-                self.storage.update(id, q.as_bytes())?;
+                self.storage.update(id, &q.as_bytes())?;
             }
             QuantizationMode::None => {
                 if self.storage_f32 {
                     let v32 = HyperVectorF32::from_float64(&q_vec_full);
-                    self.storage.update(id, v32.as_bytes())?;
+                    self.storage.update(id, &v32.as_bytes())?;
                 } else {
-                    self.storage.update(id, q_vec_full.as_bytes())?;
+                    self.storage.update(id, &q_vec_full.as_bytes())?;
                 }
             }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::from_float(&q_vec_full);
-                self.storage.update(id, b.as_bytes())?;
+                self.storage.update(id, &b.as_bytes())?;
             }
             QuantizationMode::AsymmetricHybrid801 => {
                 // AsymmetricHybrid801 stores the Euclidean portion as ScalarI8.
@@ -1776,7 +1774,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     &q_vec_full,
                     self.config.is_anisotropic_enabled(),
                 );
-                self.storage.update(id, q.as_bytes())?;
+                self.storage.update(id, &q.as_bytes())?;
             }
         }
         Ok(id)

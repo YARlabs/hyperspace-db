@@ -18,8 +18,26 @@ rpc CreateCollection (CreateCollectionRequest) returns (StatusResponse);
 
 message CreateCollectionRequest {
   string name = 1;
-  uint32 dimension = 2; // e.g. 1536, 1024, 64
-  string metric = 3;    // "l2", "euclidean", "cosine", "poincare", "lorentz"
+  CollectionSchema schema = 2;
+}
+
+message CollectionSchema {
+  repeated VectorComponent components = 1;
+  repeated MrlLayer cascade_pipeline = 2;
+}
+
+message VectorComponent {
+  string name = 1;
+  uint32 full_dimension = 2;
+  string metric = 3; // "l2", "cosine", "poincare", "lorentz"
+  float weight = 4;
+}
+
+message MrlLayer {
+  string component_name = 1;
+  uint32 cutoff_dimension = 2;
+  bool store_in_ram = 3;
+  uint32 rerank_top_k = 4;
 }
 ```
 
@@ -43,8 +61,7 @@ message ListCollectionsResponse {
 message CollectionSummary {
   string name = 1;
   uint64 count = 2;
-  uint32 dimension = 3;
-  string metric = 4;
+  CollectionSchema schema = 3;
 }
 ```
 
@@ -56,9 +73,8 @@ rpc GetCollectionStats (CollectionStatsRequest) returns (CollectionStatsResponse
 
 message CollectionStatsResponse {
   uint64 count = 1;
-  uint32 dimension = 2;
-  string metric = 3;
-  uint64 indexing_queue = 4;
+  uint64 indexing_queue = 2;
+  CollectionSchema schema = 3;
 }
 ```
 
@@ -112,6 +128,10 @@ message SearchRequest {
   optional Bm25Options bm25_options = 9;
   // Wasserstein 1D CDF O(N) distance
   optional bool use_wasserstein = 8;
+  // Component Weights for multi-vector fusion
+  map<string, float> component_weights = 10;
+  // MRL Truncation override
+  uint32 mrl_dimension = 11;
 }
 
 message Bm25Options {

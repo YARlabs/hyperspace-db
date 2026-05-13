@@ -142,11 +142,11 @@ Backup Server comes online after 1 week
 Catches up in minutes, not hours
 ```
 
-### 4. **The Cognitive Edge (Robotics & WASM)**
+### 4. **The Cognitive Edge (Robotics, ROS2 & WASM)**
 ```
 Browser/Robot (WASM/ROS2) ←→ Cloud Server
    ↓ Merkle Sync
-The edge agent runs the Tribunal Router and Cognitive Math locally. It only syncs the delta of its knowledge graph back to the global logic cluster, saving 99% bandwidth!
+The edge agent runs the Tribunal Router and Cognitive Math locally. It only syncs the delta of its knowledge graph back to the global logic cluster, saving 99% bandwidth! With ROS2 integration, robots can sync episodic memory chunks between sorties while maintaining sub-millisecond local latency.
 ```
 
 ---

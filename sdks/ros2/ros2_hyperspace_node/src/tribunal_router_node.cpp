@@ -14,7 +14,9 @@
 #include <hyperspace_interfaces/srv/get_node.hpp>
 #include <hyperspace_interfaces/srv/get_neighbors.hpp>
 #include <hyperspace_interfaces/srv/rebuild_index.hpp>
+#include <hyperspace_interfaces/srv/create_collection.hpp>
 #include <hyperspace_interfaces/srv/trigger_reconsolidation.hpp>
+#include <google/protobuf/util/json_util.h>
 #include <hyperspace_interfaces/msg/search_result.hpp>
 #include <hyperspace_interfaces/msg/system_stats.hpp>
 
@@ -119,6 +121,11 @@ public:
             "hyperspace/trigger_reconsolidation",
             std::bind(&TribunalRouterNode::handle_trigger_reconsolidation, this, std::placeholders::_1, std::placeholders::_2)
         );
+        
+        create_collection_service_ = this->create_service<hyperspace_interfaces::srv::CreateCollection>(
+            "hyperspace/create_collection",
+            std::bind(&TribunalRouterNode::handle_create_collection, this, std::placeholders::_1, std::placeholders::_2)
+        );
 
         metrics_pub_ = this->create_publisher<hyperspace_interfaces::msg::SystemStats>("hyperspace/metrics", 10);
         metrics_timer_ = this->create_wall_timer(
@@ -218,8 +225,6 @@ private:
         response->success = ok;
         if (ok) {
             response->count = stats.count;
-            response->dimension = stats.dimension;
-            response->metric = stats.metric;
             response->indexing_queue = stats.indexing_queue;
         } else {
             response->message = "Failed to get stats";
@@ -266,7 +271,7 @@ private:
         std::vector<double> vec;
         for (double v : request->vector) vec.push_back(v);
 
-        auto results = client_->SearchMultiCollection(cols, vec, request->top_k, request->mrl_dimension, request->use_wasserstein);
+        auto results = client_->SearchMultiCollection(cols, vec, request->top_k);
         for (const auto& kv : results) {
             for (const auto& r : kv.second) {
                 hyperspace_interfaces::msg::SearchResult msg;
@@ -289,7 +294,12 @@ private:
         std::vector<double> vec;
         for (double v : request->vector) vec.push_back(v);
 
-        auto results = client_->Search(vec, request->top_k, request->collection, request->hybrid_alpha, request->hybrid_query, request->mrl_dimension, request->use_wasserstein);
+        std::unordered_map<std::string, float> weights;
+        for (size_t i = 0; i < request->component_weights_keys.size() && i < request->component_weights_values.size(); ++i) {
+            weights[request->component_weights_keys[i]] = request->component_weights_values[i];
+        }
+
+        auto results = client_->Search(vec, request->top_k, request->collection, request->hybrid_query, request->hybrid_alpha, nullptr, request->mrl_dimension, request->use_wasserstein, false, weights);
         for (const auto& r : results) {
             hyperspace_interfaces::msg::SearchResult msg;
             msg.id = r.id;
@@ -347,6 +357,23 @@ private:
         response->success = client_->TriggerReconsolidation(request->collection, target, request->learning_rate);
     }
 
+    void handle_create_collection(
+        const std::shared_ptr<hyperspace_interfaces::srv::CreateCollection::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::CreateCollection::Response> response)
+    {
+        RCLCPP_INFO(this->get_logger(), "Creating Collection [%s] with Schema JSON", request->name.c_str());
+        ::hyperspace::CollectionSchema schema;
+        auto status = google::protobuf::util::JsonStringToMessage(request->schema_json, &schema);
+        if (!status.ok()) {
+            response->success = false;
+            response->message = "Invalid Schema JSON: " + status.ToString();
+            return;
+        }
+        bool ok = client_->CreateCollection(request->name, schema);
+        response->success = ok;
+        response->message = ok ? "Successfully created." : "Failed to create collection.";
+    }
+
     void publish_metrics() {
         // Monitor stream is tricky to bridge to topic directly in one call, 
         // normally we would keep the stream open. For simplicity, we just use the stats we have.
@@ -375,6 +402,7 @@ private:
     rclcpp::Service<hyperspace_interfaces::srv::GetNode>::SharedPtr get_node_service_;
     rclcpp::Service<hyperspace_interfaces::srv::GetNeighbors>::SharedPtr get_neighbors_service_;
     rclcpp::Service<hyperspace_interfaces::srv::RebuildIndex>::SharedPtr rebuild_index_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::CreateCollection>::SharedPtr create_collection_service_;
     rclcpp::Service<hyperspace_interfaces::srv::TriggerReconsolidation>::SharedPtr reconsolidation_service_;
 
     rclcpp::Publisher<hyperspace_interfaces::msg::SystemStats>::SharedPtr metrics_pub_;

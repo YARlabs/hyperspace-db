@@ -15,11 +15,10 @@ HyperspaceClient::HyperspaceClient(const std::string& endpoint, const std::strin
     stub_ = Database::NewStub(channel);
 }
 
-bool HyperspaceClient::CreateCollection(const std::string& name, int dimension, const std::string& metric) {
+bool HyperspaceClient::CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema) {
     ::hyperspace::CreateCollectionRequest request;
     request.set_name(name);
-    request.set_dimension(dimension);
-    request.set_metric(metric);
+    *request.mutable_schema() = schema;
 
     ::hyperspace::StatusResponse response;
     ClientContext context;
@@ -44,7 +43,7 @@ std::vector<CollectionSummaryRec> HyperspaceClient::ListCollections() {
     if (status.ok()) {
         output.reserve(response.collections_size());
         for (const auto& c : response.collections()) {
-            output.push_back({c.name(), (uint64_t)c.count(), (uint32_t)c.dimension(), c.metric()});
+            output.push_back({c.name(), (uint64_t)c.count(), c.schema()});
         }
     }
     return output;
@@ -138,7 +137,7 @@ std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const s
     return output;
 }
 
-std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein, bool include_payload) {
+std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein, bool include_payload, const std::unordered_map<std::string, float>& component_weights) {
     ::hyperspace::SearchRequest request;
     request.set_collection(collection);
     request.set_top_k(top_k);
@@ -156,6 +155,9 @@ std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>&
     if (mrl_dimension != 0) request.set_mrl_dimension(mrl_dimension);
     request.set_use_wasserstein(use_wasserstein);
     request.set_include_payload(include_payload);
+    for (auto const& [k, v] : component_weights) {
+        (*request.mutable_component_weights())[k] = v;
+    }
 
     ::hyperspace::SearchResponse response;
     ClientContext context;
@@ -302,12 +304,11 @@ bool HyperspaceClient::GetCollectionStats(const std::string& name, CollectionSta
     Status status = stub_->GetCollectionStats(&context, request, &response);
     if (status.ok()) {
         stats_out.count = response.count();
-        stats_out.dimension = response.dimension();
-        stats_out.metric = response.metric();
         stats_out.indexing_queue = response.indexing_queue();
         stats_out.disk_usage_bytes = response.disk_usage_bytes();
         stats_out.ram_usage_bytes = response.ram_usage_bytes();
         stats_out.active_tasks = response.active_tasks();
+        stats_out.schema = response.schema();
         return true;
     }
     return false;
@@ -458,64 +459,6 @@ uint64_t HyperspaceClient::Count(const std::vector<::hyperspace::Filter>& filter
     return 0;
 }
 
-bool HyperspaceClient::Exists(const std::string& name) {
-    CollectionStats stats;
-    return GetCollectionStats(name, stats);
-}
-
-bool HyperspaceClient::RebuildIndex(const std::string& name) {
-    ::hyperspace::RebuildIndexRequest req;
-    req.set_name(name);
-    ::hyperspace::StatusResponse resp;
-    ClientContext ctx;
-    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
-    return stub_->RebuildIndex(&ctx, req, &resp).ok();
-}
-
-bool HyperspaceClient::TriggerReconsolidation(const std::string& collection, const std::vector<double>& target, double lr) {
-    ::hyperspace::ReconsolidationRequest req;
-    req.set_collection(collection);
-    for (double v : target) req.add_target_vector(v);
-    req.set_learning_rate(lr);
-    ::hyperspace::StatusResponse resp;
-    ClientContext ctx;
-    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
-    return stub_->TriggerReconsolidation(&ctx, req, &resp).ok();
-}
-
-bool HyperspaceClient::GetNode(const std::string& collection, uint32_t id, uint32_t layer, ::hyperspace::GraphNode& node_out) {
-    ::hyperspace::GetNodeRequest req;
-    req.set_collection(collection);
-    req.set_id(id);
-    req.set_layer(layer);
-    ClientContext ctx;
-    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
-    Status s = stub_->GetNode(&ctx, req, &node_out);
-    return s.ok();
-}
-
-bool HyperspaceClient::GetNeighbors(const std::string& collection, uint32_t id, uint32_t layer, uint32_t limit, uint32_t offset, ::hyperspace::GetNeighborsResponse& resp_out) {
-    ::hyperspace::GetNeighborsRequest req;
-    req.set_collection(collection);
-    req.set_id(id);
-    req.set_layer(layer);
-    req.set_limit(limit);
-    req.set_offset(offset);
-    ClientContext ctx;
-    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
-    Status s = stub_->GetNeighbors(&ctx, req, &resp_out);
-    return s.ok();
-}
-
-bool HyperspaceClient::GetDigest(const std::string& collection, ::hyperspace::DigestResponse& resp_out) {
-    ::hyperspace::DigestRequest req;
-    req.set_collection(collection);
-    ClientContext ctx;
-    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
-    Status s = stub_->GetDigest(&ctx, req, &resp_out);
-    return s.ok();
-}
-
 bool HyperspaceClient::SyncHandshake(const std::string& collection, const std::vector<uint64_t>& client_buckets, uint64_t client_logical_clock, uint64_t client_count, std::vector<uint32_t>& out_diff_buckets) {
     ::hyperspace::SyncHandshakeRequest req;
     req.set_collection(collection);
@@ -527,7 +470,7 @@ bool HyperspaceClient::SyncHandshake(const std::string& collection, const std::v
     if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
     Status s = stub_->SyncHandshake(&ctx, req, &resp);
     if (s.ok()) {
-        for (uint32_t b : resp.diff_buckets()) out_diff_buckets.push_back(b);
+        for (const auto& b : resp.diff_buckets()) out_diff_buckets.push_back(b.bucket_index());
         return true;
     }
     return false;

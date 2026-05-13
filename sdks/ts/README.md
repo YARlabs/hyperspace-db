@@ -40,7 +40,12 @@ async function main() {
   const collection = "docs_ts";
 
   await client.deleteCollection(collection).catch(() => {});
-  await client.createCollection(collection, 3, "cosine");
+  await client.createCollection(collection, {
+    components: [
+      { name: "primary", metric: "cosine", full_dimension: 3, weight: 1.0 }
+    ],
+    cascade_pipeline: []
+  });
 
   await client.insert(1, [0.1, 0.2, 0.3], { source: "demo" }, collection);
   await client.insert(2, [0.2, 0.1, 0.4], { source: "demo" }, collection);
@@ -65,11 +70,22 @@ main().catch(console.error);
 - `apiKey`: optional API key
 - `userId`: optional tenant/user ID
 
-### `createCollection(name, dimension, metric)`
+### `createCollection(name, schema)`
 
-Create a new collection.
+Create a new collection using a `CollectionSchema`.
 
-- `metric`: `"l2" | "cosine" | "poincare" | "lorentz"`
+- `metric`: `"l2" | "cosine" | "poincare" | "lorentz" | "hybrid"`
+
+```ts
+await client.createCollection("my_coll", {
+  components: [
+    { name: "primary", metric: "lorentz", full_dimension: 129, weight: 1.0 }
+  ],
+  cascade_pipeline: [
+    { component_name: "primary", cutoff_dimension: 17, store_in_ram: true, rerank_top_k: 100 }
+  ]
+});
+```
 
 ### `deleteCollection(name)`
 
@@ -83,7 +99,7 @@ Returns `Promise<CollectionInfo[]>`.
 ```ts
 const collections = await client.listCollections();
 for (const col of collections) {
-  console.log(`${col.name}: dim=${col.dimension}, metric=${col.metric}, count=${col.count}`);
+  console.log(`${col.name}: count=${col.count}, schema=${JSON.stringify(col.schema)}`);
 }
 ```
 
@@ -306,7 +322,7 @@ const syncedThought = CognitiveMath.contextResonance(thought, globalContext, 0.5
 
 ## Embedding Pipeline (Optional)
 
-HyperspaceDB supports **per-geometry embeddings** — each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can have its own backend independently.
+HyperspaceDB supports **per-geometry embeddings** — each geometry (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can have its own backend independently.
 
 ### Server-Side Config (`.env`)
 

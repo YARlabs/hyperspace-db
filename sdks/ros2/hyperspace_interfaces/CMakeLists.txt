@@ -26,6 +26,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetNode.srv"
   "srv/GetNeighbors.srv"
   "srv/RebuildIndex.srv"
+  "srv/CreateCollection.srv"
   "srv/TriggerReconsolidation.srv"
 )
 

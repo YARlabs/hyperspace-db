@@ -264,6 +264,7 @@ function SearchPlayground({ collection }: { collection: string }) {
     const [exactFilterJson, setExactFilterJson] = useState("{}")
     const [complexFiltersJson, setComplexFiltersJson] = useState("[]")
     const [includePayload, setIncludePayload] = useState(false)
+    const [weightsJson, setWeightsJson] = useState("{}")
     const [res, setRes] = useState<any>(null)
     const [graphRes, setGraphRes] = useState<any>(null)
     const [error, setError] = useState("")
@@ -323,7 +324,8 @@ function SearchPlayground({ collection }: { collection: string }) {
                 top_k: Math.max(1, Number(topK) || 5),
                 filter: parsedExact,
                 filters: parsedComplex,
-                include_payload: includePayload
+                include_payload: includePayload,
+                weights: JSON.parse(weightsJson)
             })
         } catch (e: any) {
             setError("Invalid JSON format: " + e.message)
@@ -437,6 +439,15 @@ function SearchPlayground({ collection }: { collection: string }) {
                                 className="flex min-h-[90px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
                                 value={complexFiltersJson}
                                 onChange={(e) => setComplexFiltersJson(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid w-full gap-2">
+                            <Label htmlFor="weights">Component Weights JSON (map)</Label>
+                            <textarea
+                                className="flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
+                                value={weightsJson}
+                                onChange={(e) => setWeightsJson(e.target.value)}
+                                placeholder='e.g. {"primary": 0.8, "secondary": 0.2}'
                             />
                         </div>
                         {error && <div className="text-sm text-destructive flex gap-2 items-center"><AlertCircle className="h-4 w-4" /> {error}</div>}

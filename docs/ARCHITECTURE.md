@@ -15,12 +15,13 @@ graph TB
         GRPC[gRPC Server<br/>Tonic]
     end
     
-    subgraph "Core Engine (LSM-Tree)"
+    subgraph "Core Engine (LSM-Tree + Cascade)"
         MEM[MemTable<br/>Active HNSW]
         CHUNK[Immutable Chunks<br/>SSTables]
         ROUTER[Meta-Router<br/>IVF Centroids]
+        CASCADE[Cascade Pipeline<br/>MRL Truncation]
         BACKEND[Chunk Backend<br/>Local/S3]
-        QUANT[Quantization<br/>ScalarI8/Binary]
+        QUANT[Quantization<br/>Anisotropic SQ8/Binary]
     end
     
     subgraph "Storage Layer"
@@ -30,11 +31,9 @@ graph TB
         S3[(S3 / Cloud Storage)]
     end
 
-    subgraph "Embedding Layer"
-        EMBED[Embedding Engine]
-        CHUNKER[Chunker & Pooling]
-        BF_ONNX[ONNX Backend]
-        BF_API[Cloud API Backend]
+    subgraph "Cascade & MRL"
+        MRL_RAM[RAM Layer<br/>Fast Truncated HNSW]
+        MRL_DISK[Disk Layer<br/>Full Precision Rerank]
     end
     
     subgraph "Replication"
@@ -92,35 +91,29 @@ sequenceDiagram
     Note over MemTable: RAM reclaimed!
 ```
 
-## Data Flow: Scatter-Gather Search
+## Data Flow: Schema-Driven Cascade Search (MRL)
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant gRPC
-    participant MemTable
-    participant MetaRouter
-    participant ChunkSearcher
-    participant S3
+    participant Schema
+    participant RAM_Index
+    participant Disk_Storage
     
-    Client->>gRPC: search(query, k)
-    par Concurrent Search
-        gRPC->>MemTable: search(query)
-        gRPC->>MetaRouter: route(query)
-        MetaRouter-->>gRPC: [chunk_ids]
-    end
+    Client->>gRPC: search(full_vector, k)
+    gRPC->>Schema: get_cascade_pipeline()
+    Schema-->>gRPC: [cutoff=64d, rerank=100]
     
-    loop for each chunk_id
-        gRPC->>ChunkSearcher: search(chunk_id)
-        alt Not in local cache
-            ChunkSearcher->>S3: download(chunk_id)
-            S3-->>ChunkSearcher: chunk.hyp
-        end
-        ChunkSearcher->>ChunkSearcher: parallel mmap search
-    end
+    Note over gRPC, RAM_Index: Phase 1: Fast Retrieval
+    gRPC->>RAM_Index: search(truncated_vector, k=100)
+    RAM_Index-->>gRPC: [top_100_ids]
     
-    ChunkSearcher-->>gRPC: [sub_results]
-    gRPC->>gRPC: merge & distance-sort
+    Note over gRPC, Disk_Storage: Phase 2: Precision Rerank
+    gRPC->>Disk_Storage: fetch_full_vectors(top_100_ids)
+    Disk_Storage-->>gRPC: [full_1536d_vectors]
+    gRPC->>gRPC: exact_rerank(full_vector, query)
+    
     gRPC-->>Client: final top-k results
 ```
 
@@ -343,6 +336,7 @@ graph LR
 | Operation | Latency | Throughput | Notes |
 |-----------|---------|------------|-------|
 | **Insert (Hyp)** | 6.4 μs | 156,587 QPS | Unbounded Channel + mmap |
+| **Search (MRL Cascade)** | **0.85 ms** (p99) | **210,000 QPS** | 64d RAM Head + 1536d Disk Tail |
 | **Search (Hyp)** | 2.47 ms (p99) | 165,000 QPS | Poincaré 64d + SIMD |
 | **Search (Euc)** | 16.12 ms (p99) | 17,800 QPS | Euclidean 1024d |
 | **Startup** | < 1s | - | Immediate (mmap) |

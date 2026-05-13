@@ -29,8 +29,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = client
         .create_collection(CreateCollectionRequest {
             name: COLLECTION_NAME.to_string(),
-            dimension: 8,
-            metric: "poincare".to_string(),
+            schema: Some(hyperspace_proto::hyperspace::CollectionSchema {
+                components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "poincare".to_string(),
+                    full_dimension: 8,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            }),
         })
         .await
         .ok(); // Ignore if exists
@@ -42,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ef_construction: Some(50),
             ef_search: None,
             collection: COLLECTION_NAME.to_string(),
+            m: None,
         })
         .await?;
 
@@ -73,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             origin_node_id: String::new(),
             logical_clock: 0,
             durability: 0,
+            payload: None,
         };
 
         client.insert(req).await?;
@@ -101,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ef_search: Some(100),
             ef_construction: None,
             collection: COLLECTION_NAME.to_string(),
+            m: None,
         })
         .await?;
 
@@ -127,6 +137,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use_wasserstein: false,
             bm25_options: None,
             collection: COLLECTION_NAME.to_string(),
+            mrl_dimension: None,
+            include_payload: false,
+            component_weights: std::collections::HashMap::new(),
         };
         client.search(req).await?;
     }

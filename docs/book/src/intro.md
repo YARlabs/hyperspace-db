@@ -3,24 +3,14 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-nightly-orange.svg)](#)
-[![Version](https://img.shields.io/badge/version-3.0.1-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](#)
 
 **Fastest Vector Database for Hierarchical & Flat Data written in Rust.**  
 HyperspaceDB natively supports both the **Poincaré ball model** (for hierarchies) and **Euclidean space** (for standard OpenAI/BGE embeddings), delivering extreme performance through specialized SIMD kernels.
 
 ---
 
-## 🚀 Key Features
-
-*   **⚡️ Extreme Performance**: Built with Nightly Rust and SIMD intrinsics for maximum search throughput.
-*   **📐 Cognitive Math Engine**: Hyperbolic HNSW optimized for the Poincaré and Lorentz metrics, and O(N) Wasserstein-1 logic.
-*   **📦 Compression**: Integrated `ScalarI8` and `Binary` quantization reduces memory footprint by 87% to 98%.
-*   **🧵 Async Write Pipeline**: Decoupled ingestion with a background indexing worker and WAL for 10x faster inserts.
-*   **🖥️ Mission Control TUI**: Real-time terminal dashboard for monitoring QPS, segments, and system health.
-*   **🕸️ Edge Ready**: WASM compilation target allows running the full DB in browser with **Local-First** privacy and **IndexedDB** persistence.
-*   **🛠️ Runtime Tuning**: Dynamically adjust `ef_search` and `ef_construction` parameters via gRPC on-the-fly.
-*   **🏙 Multi-Tenancy**: Native SaaS support with namespace isolation (`user_id`) and billing stats.
-*   **🔁 Replication**: Leader-Follower architecture with Anti-Entropy catch-up for high availability.
+*   **🧭 Schema-Driven Cascade**: Define complex multi-vector schemas with native **MRL (Matryoshka)** support for sub-millisecond scaling via RAM-to-Disk funnels.
 *   **⚖️ Cognitive Math & Tribunal Router**: Native SDK utilities for calculating geometric trust scores on graphs to detect LLM hallucinations.
 *   **📡 Memory Reconsolidation**: Trigger AI sleep mode natively within the DB to restructure vectors via Flow Matching / Riemannian SGD.
 
@@ -60,8 +50,14 @@ pip install ./sdks/python
 from hyperspace import HyperspaceClient
 
 client = HyperspaceClient("localhost:50051")
-client.insert(vector=[0.1]*8, metadata={"category": "tech"})
-results = client.search(vector=[0.11]*8, top_k=5)
+client.create_collection(
+    name="tech_memory", 
+    schema={
+        "components": [{"name": "main", "metric": "cosine", "full_dimension": 1536}]
+    }
+)
+client.insert(id=1, vector=[0.1]*1536, metadata={"category": "tech"})
+results = client.search(vector=[0.11]*1536, top_k=5)
 ```
 
 ---

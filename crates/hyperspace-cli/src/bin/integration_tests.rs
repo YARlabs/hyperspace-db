@@ -122,7 +122,18 @@ async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
     // Create test collection
     let collection = format!("test_basic_{}", chrono::Utc::now().timestamp());
     client
-        .create_collection(collection.clone(), 128, "l2".to_string())
+        .create_collection(
+            collection.clone(),
+            hyperspace_sdk::CollectionSchema {
+                components: vec![hyperspace_sdk::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 128,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
 
     // Insert vectors
@@ -164,11 +175,20 @@ async fn test_leader_follower_sync() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create collection on both
     let collection = format!("test_sync_{}", chrono::Utc::now().timestamp());
+    let schema = hyperspace_sdk::CollectionSchema {
+        components: vec![hyperspace_sdk::VectorComponent {
+            name: "primary".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: 128,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
     leader
-        .create_collection(collection.clone(), 128, "l2".to_string())
+        .create_collection(collection.clone(), schema.clone())
         .await?;
     follower
-        .create_collection(collection.clone(), 128, "l2".to_string())
+        .create_collection(collection.clone(), schema)
         .await?;
 
     // Insert on Leader
@@ -227,7 +247,18 @@ async fn test_merkle_tree_consistency() -> Result<(), Box<dyn std::error::Error>
 
     let collection = format!("test_merkle_{}", chrono::Utc::now().timestamp());
     client
-        .create_collection(collection.clone(), 128, "l2".to_string())
+        .create_collection(
+            collection.clone(),
+            hyperspace_sdk::CollectionSchema {
+                components: vec![hyperspace_sdk::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 128,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
 
     // Get initial digest
@@ -283,7 +314,18 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
 
     let collection = format!("test_volume_{}", chrono::Utc::now().timestamp());
     client
-        .create_collection(collection.clone(), 128, "l2".to_string())
+        .create_collection(
+            collection.clone(),
+            hyperspace_sdk::CollectionSchema {
+                components: vec![hyperspace_sdk::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 128,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
 
     let start = std::time::Instant::now();
@@ -332,7 +374,18 @@ async fn test_concurrent_inserts() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
     setup_client
-        .create_collection(collection.clone(), 128, "l2".to_string())
+        .create_collection(
+            collection.clone(),
+            hyperspace_sdk::CollectionSchema {
+                components: vec![hyperspace_sdk::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 128,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
 
     // Spawn multiple concurrent tasks
@@ -390,7 +443,18 @@ async fn test_collection_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create
     client
-        .create_collection(collection.clone(), 128, "l2".to_string())
+        .create_collection(
+            collection.clone(),
+            hyperspace_sdk::CollectionSchema {
+                components: vec![hyperspace_sdk::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 128,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
 
     // Insert

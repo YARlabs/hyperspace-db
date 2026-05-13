@@ -78,8 +78,9 @@ function CollectionRow({ collection, isString, onDelete }: any) {
     // If backend only returns strings, we can fetch detailed stats here individually if needed, 
     // but better to fix backend. For now show placeholder if string.
     const count = isString ? "-" : collection.count
-    const dim = isString ? "-" : collection.dimension
-    const metric = isString ? "-" : collection.metric
+    const schema = collection.schema
+    const dim = schema ? schema.components.map((c: any) => c.full_dimension).reduce((a: number, b: number) => a + b, 0) : collection.dimension
+    const metric = schema ? schema.components.map((c: any) => c.metric).join('+') : collection.metric
 
     const navigate = useNavigate()
 
@@ -133,6 +134,7 @@ function CreateCollectionDialog() {
     const [open, setOpen] = useState(false)
     const [dimension, setDimension] = useState<string>("1024")
     const [metric, setMetric] = useState<string>("l2")
+    const [enableMRL, setEnableMRL] = useState<boolean>(false)
     const queryClient = useQueryClient()
 
     // Get global config to show default values
@@ -159,10 +161,27 @@ function CreateCollectionDialog() {
     })
 
     const handleCreate = () => {
+        const fullDim = parseInt(dimension) || 1024;
         mutation.mutate({
             name,
-            dimension: parseInt(dimension) || 1024,
-            metric: metric || "l2"
+            schema: {
+                components: [
+                    {
+                        name: "primary",
+                        metric: metric || "l2",
+                        full_dimension: fullDim,
+                        weight: 1.0
+                    }
+                ],
+                cascade_pipeline: enableMRL ? [
+                    {
+                        component_name: "primary",
+                        cutoff_dimension: Math.max(Math.floor(fullDim / 2), 1),
+                        store_in_ram: true,
+                        rerank_top_k: 100
+                    }
+                ] : []
+            }
         })
     }
 
@@ -226,6 +245,7 @@ function CreateCollectionDialog() {
                                     <SelectItem value="cosine">Cosine</SelectItem>
                                     <SelectItem value="poincare">Poincaré</SelectItem>
                                     <SelectItem value="lorentz">Lorentz (Hyperbolic)</SelectItem>
+                                    <SelectItem value="hybrid">Hybrid (Lorentz + L2)</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -242,6 +262,19 @@ function CreateCollectionDialog() {
                                 </SelectContent>
                             </Select>
                         </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 mt-2">
+                        <input 
+                            type="checkbox" 
+                            id="mrl" 
+                            checked={enableMRL} 
+                            onChange={(e) => setEnableMRL(e.target.checked)} 
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <Label htmlFor="mrl" className="font-normal cursor-pointer">
+                            Enable MRL (Matryoshka Representation Learning) - Creates a cascade pipeline for faster search
+                        </Label>
                     </div>
 
                     <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400">

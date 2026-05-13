@@ -62,17 +62,34 @@ export interface SearchResult {
     payload?: Uint8Array; // Sidecar Payload Storage (v3.2)
 }
 
+export interface VectorComponent {
+    name: string;
+    metric: string;
+    fullDimension: number;
+    weight: number;
+}
+
+export interface MrlLayer {
+    componentName: string;
+    cutoffDimension: number;
+    storeInRam: boolean;
+    rerankTopK: number;
+}
+
+export interface CollectionSchema {
+    components: VectorComponent[];
+    cascadePipeline: MrlLayer[];
+}
+
 export interface CollectionInfo {
     name: string;
     count: number;
-    dimension: number;
-    metric: string;
+    schema?: CollectionSchema;
 }
 
 export interface CollectionStats {
     count: number;
-    dimension: number;
-    metric: string;
+    schema?: CollectionSchema;
     indexingQueue: number;
     diskUsageBytes: number;
     ramUsageBytes: number;
@@ -362,12 +379,34 @@ export class HyperspaceClient {
 
     // ... (create/delete unchanged) ...
 
-    public createCollection(name: string, dimension: number, metric: string): Promise<boolean> {
+    public createCollection(name: string, schema: CollectionSchema): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new CreateCollectionRequest();
             req.setName(name);
-            req.setDimension(dimension);
-            req.setMetric(metric);
+            
+            const protoSchema = new hyperspace_pb.CollectionSchema();
+            
+            const components = schema.components.map(c => {
+                const comp = new hyperspace_pb.VectorComponent();
+                comp.setName(c.name);
+                comp.setMetric(c.metric);
+                comp.setFullDimension(c.fullDimension);
+                comp.setWeight(c.weight);
+                return comp;
+            });
+            protoSchema.setComponentsList(components);
+            
+            const pipeline = schema.cascadePipeline.map(l => {
+                const layer = new hyperspace_pb.MrlLayer();
+                layer.setComponentName(l.componentName);
+                layer.setCutoffDimension(l.cutoffDimension);
+                layer.setStoreInRam(l.storeInRam);
+                layer.setRerankTopK(l.rerankTopK);
+                return layer;
+            });
+            protoSchema.setCascadePipelineList(pipeline);
+            
+            req.setSchema(protoSchema);
 
             this.client.createCollection(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
@@ -394,12 +433,30 @@ export class HyperspaceClient {
 
             this.client.listCollections(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
-                const list = (resp.getCollectionsList() as any as ProtoCollectionSummary[]).map(c => ({
-                    name: c.getName(),
-                    count: c.getCount(),
-                    dimension: c.getDimension(),
-                    metric: c.getMetric()
-                }));
+                const list = (resp.getCollectionsList() as any as ProtoCollectionSummary[]).map(c => {
+                    const info: CollectionInfo = {
+                        name: c.getName(),
+                        count: c.getCount()
+                    };
+                    const protoSchema = c.getSchema();
+                    if (protoSchema) {
+                        info.schema = {
+                            components: protoSchema.getComponentsList().map((comp: any) => ({
+                                name: comp.getName(),
+                                metric: comp.getMetric(),
+                                fullDimension: comp.getFullDimension(),
+                                weight: comp.getWeight()
+                            })),
+                            cascadePipeline: protoSchema.getCascadePipelineList().map((layer: any) => ({
+                                componentName: layer.getComponentName(),
+                                cutoffDimension: layer.getCutoffDimension(),
+                                storeInRam: layer.getStoreInRam(),
+                                rerankTopK: layer.getRerankTopK()
+                            }))
+                        };
+                    }
+                    return info;
+                });
                 resolve(list);
             });
         });
@@ -541,7 +598,8 @@ export class HyperspaceClient {
             bm25?: Bm25Options,
             mrlDimension?: number,
             useWasserstein?: boolean,
-            includePayload?: boolean
+            includePayload?: boolean,
+            componentWeights?: { [key: string]: number }
         }
     ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
@@ -559,6 +617,12 @@ export class HyperspaceClient {
             if (options?.mrlDimension !== undefined) req.setMrlDimension(options.mrlDimension);
             if (options?.useWasserstein !== undefined) req.setUseWasserstein(options.useWasserstein);
             if (options?.includePayload !== undefined) req.setIncludePayload(options.includePayload);
+            if (options?.componentWeights) {
+                const map = req.getComponentWeightsMap();
+                for (const k in options.componentWeights) {
+                    map.set(k, options.componentWeights[k]);
+                }
+            }
             
             if (options?.bm25) {
                 const bm25Msg = new ProtoBm25Options();
@@ -964,15 +1028,31 @@ export class HyperspaceClient {
 
             this.client.getCollectionStats(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
-                resolve({
+                const stats: CollectionStats = {
                     count: resp.getCount(),
-                    dimension: resp.getDimension(),
-                    metric: resp.getMetric(),
                     indexingQueue: resp.getIndexingQueue(),
                     diskUsageBytes: resp.getDiskUsageBytes(),
                     ramUsageBytes: resp.getRamUsageBytes(),
                     activeTasks: resp.getActiveTasks()
-                });
+                };
+                const protoSchema = resp.getSchema();
+                if (protoSchema) {
+                    stats.schema = {
+                        components: protoSchema.getComponentsList().map((comp: any) => ({
+                            name: comp.getName(),
+                            metric: comp.getMetric(),
+                            fullDimension: comp.getFullDimension(),
+                            weight: comp.getWeight()
+                        })),
+                        cascadePipeline: protoSchema.getCascadePipelineList().map((layer: any) => ({
+                            componentName: layer.getComponentName(),
+                            cutoffDimension: layer.getCutoffDimension(),
+                            storeInRam: layer.getStoreInRam(),
+                            rerankTopK: layer.getRerankTopK()
+                        }))
+                    };
+                }
+                resolve(stats);
             });
         });
     }

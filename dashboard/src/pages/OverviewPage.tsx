@@ -67,7 +67,9 @@ export function OverviewPage() {
                                 status?.config?.metric === 'cosine' ? 'Cosine Similarity' :
                                     status?.config?.metric === 'l2' || status?.config?.metric === 'euclidean' ? 'Euclidean (L2)' :
                                         status?.config?.metric === 'poincare' ? 'Hyperbolic (Poincaré)' :
-                                            status?.config?.metric || 'Unknown'
+                                            status?.config?.metric === 'lorentz' ? 'Lorentz (Hyperbolic)' :
+                                                status?.config?.metric === 'hybrid' ? 'Hybrid (Lorentz + L2)' :
+                                                    status?.config?.metric || 'Unknown'
                             } />
                             <ConfigRow label="Quantization" value={status?.config?.quantization || "Scalar I8"} />
                             <ConfigRow label="Embedding Engine" value={status?.embedding?.enabled ? "Multi-Model Active" : "Disabled"} />
@@ -78,7 +80,10 @@ export function OverviewPage() {
                                             <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
                                                 {metric === 'l2' ? 'Euclidean (L2)' :
                                                     metric === 'cosine' ? 'Cosine' :
-                                                        metric.charAt(0).toUpperCase() + metric.slice(1)}
+                                                        metric === 'poincare' ? 'Poincaré' :
+                                                            metric === 'lorentz' ? 'Lorentz' :
+                                                                metric === 'hybrid' ? 'Hybrid' :
+                                                                    metric.charAt(0).toUpperCase() + metric.slice(1)}
                                             </span>
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs">{info.enabled ? info.model : <span className="text-muted-foreground/50 italic">Disabled</span>}</span>

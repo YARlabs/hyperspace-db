@@ -151,20 +151,25 @@ pub fn poincare_distance(u: &[f64], v: &[f64]) -> f64 {
 }
 ```
 
-### 2. **HNSW Index with Poincaré Metric**
+### 2. **Schema-Driven Collection Creation**
 
-```rust
-pub struct HnswIndex<const DIM: usize, M: DistanceMetric> {
-    storage: Arc<VectorStore>,
-    metric: M,  // Can be Euclidean or Poincaré
-    // ...
-}
+In HyperspaceDB 3.1.0, you define the geometry and indexing strategy via a single **CollectionSchema**. This allows you to enable **MRL (Matryoshka)** for sub-millisecond scaling.
 
-impl HnswIndex<1024, PoincareMetric> {
-    pub fn search(&self, query: &[f64], k: usize) -> Vec<(u32, f64)> {
-        // Uses poincare_distance internally
+```python
+from hyperspace import HyperspaceClient
+
+client = HyperspaceClient()
+client.create_collection(
+    name="taxonomy",
+    schema={
+        "components": [
+            {"name": "primary", "metric": "poincare", "full_dimension": 128}
+        ],
+        "cascade_pipeline": [
+            {"component_name": "primary", "cutoff_dimension": 32, "store_in_ram": True, "rerank_top_k": 50}
+        ]
     }
-}
+)
 ```
 
 ### 3. **Embedding Training**
@@ -262,14 +267,16 @@ fn fast_acosh(x: f64) -> f64 {
 
 ---
 
-## When to Use Hyperbolic vs Euclidean
+## Scaling Hyperbolic RAG with MRL (Schema-Driven Cascade)
 
-| Data Type | Best Metric | Reason |
-|-----------|-------------|--------|
-| **Hierarchical** (taxonomies, trees) | Poincaré | Preserves tree structure |
-| **Flat** (images, text chunks) | Euclidean | Simpler, faster |
-| **Graphs** (social networks) | Poincaré | Captures community structure |
-| **Time Series** | Euclidean | Sequential, not hierarchical |
+The biggest challenge with Hyperbolic embeddings in production is RAM. High-dimensional hyperbolic spaces (e.g. 512D) are extremely precise but memory-intensive.
+
+HyperspaceDB solves this with **Matryoshka Representation Learning (MRL)** integrated into the **Cascade Pipeline**:
+
+1. **Phase 1 (RAM)**: The engine searches the "head" of the vector (e.g. first 32D) in a RAM-resident HNSW index. This provides candidate IDs in microseconds.
+2. **Phase 2 (Disk)**: The engine fetches the full-resolution vector (e.g. 512D) from NVMe storage and performs an exact rerank of the top-K candidates.
+
+This "Funnel" approach allows you to achieve the recall of a 512D index with the RAM footprint of a 32D index.
 
 ---
 
@@ -307,11 +314,18 @@ if score < 0.1:
 git clone https://github.com/YARlabs/hyperspace-db
 cd hyperspace-db
 
-# Run with Poincaré metric
-cargo run --release --bin hyperspace-server -- --metric poincare
+# Run server
+cargo run --release --bin hyperspace-server
 
-# Insert hierarchical data
-python3 examples/wordnet_embedding.py
+# Create collection via cURL with Schema
+curl -X POST http://localhost:50050/api/collections \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "taxonomy",
+    "schema": {
+      "components": [{"name": "main", "metric": "poincare", "full_dimension": 128}]
+    }
+  }'
 ```
 
 ---

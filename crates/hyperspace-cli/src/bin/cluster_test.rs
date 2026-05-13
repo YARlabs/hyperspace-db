@@ -106,7 +106,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create Collection
     client
-        .create_collection("test_sync".to_string(), 1024, "l2".to_string())
+        .create_collection(
+            "test_sync".to_string(),
+            hyperspace_sdk::CollectionSchema {
+                components: vec![hyperspace_sdk::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 1024,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
     println!("✅ Collection created on Leader");
 

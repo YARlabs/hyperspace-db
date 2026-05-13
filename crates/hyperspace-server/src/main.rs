@@ -274,6 +274,7 @@ fn build_filters(
         ef_search: default_ef_search(),
         hybrid_query: req.hybrid_query,
         hybrid_alpha: req.hybrid_alpha,
+        component_weights: (!req.component_weights.is_empty()).then(|| req.component_weights.clone()),
         use_wasserstein: req.use_wasserstein,
         bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
         fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
@@ -518,7 +519,7 @@ fn parse_graph_filters(
                 }
                 // Delegate logical combinators to the shared parser
                 cond => {
-                    use hyperspace_proto::hyperspace::filter::Condition;
+                    
                     let f = Filter { condition: Some(cond) };
                     if let Some(expr) = proto_filter_to_expr(f) {
                         complex_filters.push(expr);
@@ -609,11 +610,13 @@ impl Database for HyperspaceService {
             return Err(Status::invalid_argument("Collection name cannot be empty"));
         }
 
-        // Map string metric to internal
-        // Manager accepts string metric.
+        let Some(schema) = req.schema else {
+            return Err(Status::invalid_argument("CollectionSchema is required"));
+        };
+
         match self
             .manager
-            .create_collection(&user_id, &req.name, req.dimension, &req.metric)
+            .create_collection(&user_id, &req.name, schema)
             .await
         {
             Ok(()) => Ok(Response::new(
@@ -658,14 +661,14 @@ impl Database for HyperspaceService {
         let req = request.into_inner();
         if let Some(col) = self.manager.get(&user_id, &req.name).await {
             let usage = col.get_usage();
+            let schema = self.manager.get_metadata(&user_id, &req.name).await.and_then(|m| m.schema);
             Ok(Response::new(CollectionStatsResponse {
                 count: col.count() as u64,
-                dimension: col.dimension() as u32,
-                metric: col.metric_name().to_string(),
                 indexing_queue: col.queue_size(),
                 disk_usage_bytes: usage.disk_usage_bytes,
                 ram_usage_bytes: usage.ram_usage_bytes,
                 active_tasks: usage.active_indexing_tasks,
+                schema,
             }))
         } else {
             Err(Status::not_found("Collection not found"))
@@ -1007,6 +1010,7 @@ impl Database for HyperspaceService {
                     ef_search: default_ef_search(),
                     hybrid_query: None,
                     hybrid_alpha: req.hybrid_alpha,
+                    component_weights: (!req.component_weights.is_empty()).then(|| req.component_weights.clone()),
                     use_wasserstein: false,
                     mrl_dimension: None,
                     bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
@@ -1262,6 +1266,7 @@ impl Database for HyperspaceService {
                     ef_search: default_ef_search(),
                     hybrid_query: None,
                     hybrid_alpha: None,
+                    component_weights: None,
                     use_wasserstein: false,
                     mrl_dimension: None,
                     bm25_options: None,
@@ -1314,6 +1319,7 @@ impl Database for HyperspaceService {
                     ef_search: default_ef_search(),
                     hybrid_query: None,
                     hybrid_alpha: None,
+                    component_weights: None,
                     use_wasserstein: false,
                     mrl_dimension: None,
                     bm25_options: None,
@@ -2191,8 +2197,17 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     // Create default collection if not exists
     if manager.get("default_admin", "default").await.is_none() {
         println!("Creating default collection...");
+        let schema = hyperspace_proto::hyperspace::CollectionSchema {
+            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                name: "default".to_string(),
+                metric: metric.clone(),
+                full_dimension: dim,
+                weight: 1.0,
+            }],
+            cascade_pipeline: vec![],
+        };
         manager
-            .create_collection("default_admin", "default", dim, &metric)
+            .create_collection("default_admin", "default", schema)
             .await?;
     }
 
@@ -2275,11 +2290,21 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                                     ),
                                                 ) => {
                                                     println!("Rep: Creating collection {col_name}");
+                                                    let schema = op.schema.unwrap_or_else(|| {
+                                                        hyperspace_proto::hyperspace::CollectionSchema {
+                                                            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                                                                name: "default".to_string(),
+                                                                metric: "l2".to_string(), // fallback
+                                                                full_dimension: 0, // fallback
+                                                                weight: 1.0,
+                                                            }],
+                                                            cascade_pipeline: vec![],
+                                                        }
+                                                    });
                                                     if let Err(e) = mgr
                                                         .create_collection_from_replication(
                                                             col_name,
-                                                            op.dimension,
-                                                            &op.metric,
+                                                            schema,
                                                         )
                                                         .await
                                                     {

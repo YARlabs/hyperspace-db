@@ -49,7 +49,7 @@ pub struct ChunkMeta {
 /// Internally a flat list of `ChunkMeta` entries protected by an `RwLock`.
 /// Writes happen rarely (once per ~256 MB WAL rotation).
 /// Reads happen on every search and need to be as fast as possible.
-pub struct MetaRouter<const N: usize> {
+pub struct MetaRouter {
     /// Registered chunk metadata, keyed by chunk_id for O(1) dedup.
     chunks: Arc<RwLock<Vec<ChunkMeta>>>,
     /// Index for fast O(1) chunk existence check.
@@ -60,13 +60,13 @@ pub struct MetaRouter<const N: usize> {
     pub query_count: AtomicU64,
 }
 
-impl<const N: usize> Default for MetaRouter<N> {
+impl Default for MetaRouter {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const N: usize> MetaRouter<N> {
+impl MetaRouter {
     /// Creates an empty MetaRouter.
     pub fn new() -> Self {
         Self {
@@ -230,8 +230,8 @@ impl<const N: usize> MetaRouter<N> {
     /// Streaming centroid accumulator — avoids holding all vectors in memory.
     /// Add each vector incrementally, then call `finish()`.
     #[allow(dead_code)]
-    pub fn centroid_accumulator() -> CentroidAccumulator {
-        CentroidAccumulator::new(N)
+    pub fn centroid_accumulator(dim: usize) -> CentroidAccumulator {
+        CentroidAccumulator::new(dim)
     }
 
     #[inline]
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_register_and_route() {
-        let router = MetaRouter::<4>::new();
+        let router = MetaRouter::new();
         router.register(make_meta("chunk_a", 1.0));
         router.register(make_meta("chunk_b", 5.0));
         router.register(make_meta("chunk_c", 10.0));
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn test_probe_k_capped_at_chunk_count() {
-        let router = MetaRouter::<4>::new();
+        let router = MetaRouter::new();
         router.register(make_meta("c1", 1.0));
         router.register(make_meta("c2", 2.0));
 
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_unregister() {
-        let router = MetaRouter::<4>::new();
+        let router = MetaRouter::new();
         router.register(make_meta("chunk_x", 3.0));
         router.register(make_meta("chunk_y", 7.0));
         assert_eq!(router.chunk_count(), 2);
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn test_empty_router() {
-        let router = MetaRouter::<4>::new();
+        let router = MetaRouter::new();
         let results = router.route(&[1.0; 4], 3);
         assert!(results.is_empty());
     }

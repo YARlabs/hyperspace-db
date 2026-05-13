@@ -14,7 +14,7 @@ impl BoxRegion {
         }
     }
 
-    pub fn contains<const N: usize>(&self, vector: &HyperVector<N>) -> bool {
+    pub fn contains(&self, vector: &HyperVector) -> bool {
         for (d, coord) in vector.coords.iter().enumerate() {
             if d < self.min_bounds.len()
                 && (*coord < self.min_bounds[d] || *coord > self.max_bounds[d])
@@ -44,7 +44,7 @@ impl ConeRegion {
         }
     }
 
-    pub fn contains<const N: usize>(&self, vector: &HyperVector<N>) -> bool {
+    pub fn contains(&self, vector: &HyperVector) -> bool {
         for (d, &entity_axis) in vector.coords.iter().enumerate() {
             if d < self.axes.len() {
                 let query_axis = self.axes[d];
@@ -76,7 +76,7 @@ impl BallRegion {
         Self { center, radius }
     }
 
-    pub fn contains<const N: usize>(&self, vector: &HyperVector<N>) -> bool {
+    pub fn contains(&self, vector: &HyperVector) -> bool {
         let mut dist_sq = 0.0;
         for (d, coord) in vector.coords.iter().enumerate() {
             if d < self.center.len() {

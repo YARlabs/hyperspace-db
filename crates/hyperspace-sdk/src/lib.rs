@@ -7,6 +7,7 @@ pub use hyperspace_proto::hyperspace::{
     InsertRequest, InsertTextRequest, ScrollRequest, SearchRequest, SearchResponse, SearchResult,
     SearchResult as ResultItem, SearchTextRequest, TraverseRequest, TraverseResponse,
     UpdatePayloadRequest, VectorData, VectorizeRequest, VectorizeResponse,
+    CollectionSchema, VectorComponent, MrlLayer,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -99,14 +100,11 @@ impl Client {
     pub async fn create_collection(
         &mut self,
         name: String,
-        dimension: u32,
-        metric: String,
+        schema: CollectionSchema,
     ) -> Result<String, tonic::Status> {
         let req = hyperspace_proto::hyperspace::CreateCollectionRequest {
             name,
-            dimension,
-            metric,
-            components: vec![],
+            schema: Some(schema),
         };
         let resp = self.inner.create_collection(req).await?;
         Ok(resp.into_inner().status)
@@ -226,6 +224,7 @@ impl Client {
             origin_node_id: String::new(),
             logical_clock: 0,
             durability: 0,
+            payload: None,
         };
         let resp = self.inner.insert(req).await?;
         Ok(resp.into_inner().success)
@@ -340,6 +339,7 @@ impl Client {
         collection: Option<String>,
         mrl_dimension: Option<u32>,
         use_wasserstein: bool,
+        component_weights: std::collections::HashMap<String, f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         let req = SearchRequest {
             vector,
@@ -352,6 +352,8 @@ impl Client {
             collection: collection.unwrap_or_default(),
             bm25_options: None,
             mrl_dimension,
+            include_payload: false,
+            component_weights,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -368,6 +370,7 @@ impl Client {
         collection: Option<String>,
         mrl_dimension: Option<u32>,
         use_wasserstein: bool,
+        component_weights: std::collections::HashMap<String, f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         self.search(
             Self::vec_f32_to_f64(vector),
@@ -375,6 +378,7 @@ impl Client {
             collection,
             mrl_dimension,
             use_wasserstein,
+            component_weights,
         )
         .await
     }
@@ -398,6 +402,8 @@ impl Client {
             filters: vec![],
             bm25_options,
             hybrid_alpha: None,
+            include_payload: false,
+            component_weights: std::collections::HashMap::new(),
         };
         let resp = self.inner.search_text(req).await?;
         Ok(resp.into_inner().results)
@@ -424,6 +430,8 @@ impl Client {
             collection: collection.unwrap_or_default(),
             bm25_options: None,
             mrl_dimension: None,
+            include_payload: false,
+            component_weights: std::collections::HashMap::new(),
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -453,6 +461,8 @@ impl Client {
                 collection: collection_name.clone(),
                 bm25_options: None,
                 mrl_dimension: None,
+                include_payload: false,
+                component_weights: std::collections::HashMap::new(),
             })
             .collect();
 
@@ -508,6 +518,8 @@ impl Client {
                 collection: col_name.clone(),
                 bm25_options: None,
                 mrl_dimension: None,
+                include_payload: false,
+                component_weights: std::collections::HashMap::new(),
             })
             .collect();
 
@@ -551,6 +563,8 @@ impl Client {
             collection: collection.unwrap_or_default(),
             bm25_options,
             mrl_dimension: None,
+            include_payload: false,
+            component_weights: std::collections::HashMap::new(),
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -738,6 +752,7 @@ impl Client {
             ef_search,
             ef_construction,
             collection: collection.unwrap_or_default(),
+            m: None,
         };
         let resp = self.inner.configure(req).await?;
         Ok(resp.into_inner().status)

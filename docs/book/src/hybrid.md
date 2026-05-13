@@ -1,14 +1,26 @@
-# 🧠 Hybrid Search (BM25 + RRF)
+# 🧠 Hybrid Search (Dense + Sparse + Multi-Vector)
 
 HyperspaceDB combines **Hyperbolic Vector Search** with state-of-the-art **BM25 Lexical Ranking** to deliver maximum retrieval accuracy.
 
 ## Conceptual Flow
 
-1. **Semantic Branch (Dense)**: Finds conceptually similar items using HNSW (L2, Cosine, Poincaré).
+HyperspaceDB supports three levels of hybrid search:
+
+1. **Semantic Branch (Dense)**: Finds conceptually similar items using HNSW (L2, Cosine, Poincaré, Lorentz).
 2. **Lexical Branch (Sparse)**: Finds exact token matches using a BM25-optimized inverted index.
-3. **Fusion Layer**: Scores from both branches are fused using **Reciprocal Rank Fusion (RRF)** or **Linear Weighted Fusion**.
+3. **Multi-Vector Branch**: Fuses multiple vector components (e.g. **Lorentz + L2**) within the same request.
+
+### 1. Vector + Lexical Fusion (BM25)
+
+Scores from dense and sparse branches are fused using **Reciprocal Rank Fusion (RRF)** or **Linear Weighted Fusion**.
 
 `RRF Score = 1/(k + rank_vec) + 1/(k + rank_lex)` (where `k` defaults to 60).
+
+### 2. Multi-Vector Fusion (Hybrid Metrics)
+
+In v3.1.0, you can search across multiple vector components defined in your `CollectionSchema`. Use `component_weights` to balance them.
+
+Example: **Lorentz (Hierarchy) + L2 (Similarity)**.
 
 ## BM25 Options
 
@@ -24,15 +36,35 @@ You can tune the lexical scavenger by providing a `bm25` configuration:
 ### Python
 
 ```python
+# 1. Full Hybrid (Dense Vector + BM25 Sparse)
+# This uses Reciprocal Rank Fusion (RRF) by default
 results = client.search(
     vector=query_vector,
     hybrid_query="apple macbook air",
-    hybrid_alpha=0.7,  # 70% vector weight
+    hybrid_alpha=0.7,      # 70% vector weight, 30% lexical weight
     top_k=10,
     bm25={
         "method": "bm25plus",
         "language": "english"
     }
+)
+
+# 2. Multi-Vector Component Weighting (v3.1.0)
+# Weighting internal schema components (e.g. Lorentz vs L2)
+results = client.search(
+    vector=query_vector,
+    top_k=10,
+    component_weights={"lorentz_part": 0.8, "l2_part": 0.2}
+)
+
+# 3. Triple Hybrid (Multi-Vector + BM25)
+# The ultimate retrieval pipeline
+results = client.search(
+    vector=query_vector,
+    hybrid_query="macbook pro hierarchy",
+    component_weights={"lorentz": 1.0},
+    bm25={"method": "lucene"},
+    top_k=5
 )
 ```
 

@@ -107,12 +107,35 @@ class HyperspaceClient:
 
     # ... (create/delete/list unchanged) ...
 
-    def create_collection(self, name: str, dimension: int, metric: str) -> bool:
-        req = hyperspace_pb2.CreateCollectionRequest(name=name, dimension=dimension, metric=metric)
+    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema]) -> bool:
+        if isinstance(schema, dict):
+            proto_schema = hyperspace_pb2.CollectionSchema()
+            if "components" in schema:
+                for c in schema["components"]:
+                    comp = hyperspace_pb2.VectorComponent(
+                        name=c["name"],
+                        metric=c["metric"],
+                        full_dimension=c["full_dimension"],
+                        weight=c.get("weight", 1.0)
+                    )
+                    proto_schema.components.append(comp)
+            if "cascade_pipeline" in schema:
+                for p in schema["cascade_pipeline"]:
+                    layer = hyperspace_pb2.MrlLayer(
+                        component_name=p["component_name"],
+                        cutoff_dimension=p["cutoff_dimension"],
+                        store_in_ram=p.get("store_in_ram", True),
+                        rerank_top_k=p.get("rerank_top_k", 100)
+                    )
+                    proto_schema.cascade_pipeline.append(layer)
+            schema = proto_schema
+
+        req = hyperspace_pb2.CreateCollectionRequest(name=name, schema=schema)
         try:
-            resp = self.stub.CreateCollection(req, metadata=self.metadata)
+            self.stub.CreateCollection(req, metadata=self.metadata)
             return True
-        except grpc.RpcError:
+        except grpc.RpcError as e:
+            print(f"RPC Error in create_collection: {e}")
             return False
 
     def delete_collection(self, name: str) -> bool:
@@ -131,14 +154,35 @@ class HyperspaceClient:
                 {
                     "name": c.name,
                     "count": c.count,
-                    "dimension": c.dimension,
-                    "metric": c.metric
+                    "schema": self._schema_to_dict(c.schema) if c.HasField("schema") else None
                 }
                 for c in resp.collections
             ]
         except grpc.RpcError as e:
-            print(f"RPC Error: {e}")
+            print(f"RPC Error in list_collections: {e}")
             return []
+
+    def _schema_to_dict(self, schema: hyperspace_pb2.CollectionSchema) -> Dict:
+        return {
+            "components": [
+                {
+                    "name": c.name,
+                    "metric": c.metric,
+                    "full_dimension": c.full_dimension,
+                    "weight": c.weight
+                }
+                for c in schema.components
+            ],
+            "cascade_pipeline": [
+                {
+                    "component_name": p.component_name,
+                    "cutoff_dimension": p.cutoff_dimension,
+                    "store_in_ram": p.store_in_ram,
+                    "rerank_top_k": p.rerank_top_k
+                }
+                for p in schema.cascade_pipeline
+            ]
+        }
 
 
     def get_collection_stats(self, name: str) -> Dict:
@@ -147,14 +191,14 @@ class HyperspaceClient:
             resp = self.stub.GetCollectionStats(req, metadata=self.metadata)
             return {
                 "count": resp.count,
-                "dimension": resp.dimension,
-                "metric": resp.metric,
                 "indexing_queue": resp.indexing_queue,
                 "disk_usage_bytes": resp.disk_usage_bytes,
                 "ram_usage_bytes": resp.ram_usage_bytes,
-                "active_tasks": resp.active_tasks
+                "active_tasks": resp.active_tasks,
+                "schema": self._schema_to_dict(resp.schema) if resp.HasField("schema") else None
             }
-        except grpc.RpcError:
+        except grpc.RpcError as e:
+            print(f"RPC Error in get_collection_stats: {e}")
             return {}
 
     def configure(self, collection: str, ef_search: Optional[int] = None, ef_construction: Optional[int] = None, m: Optional[int] = None) -> bool:
@@ -315,6 +359,9 @@ class HyperspaceClient:
             req.mrl_dimension = mrl_dimension
         if use_wasserstein is not None:
             req.use_wasserstein = use_wasserstein
+        if options and "component_weights" in options:
+             for k, v in options["component_weights"].items():
+                 req.component_weights[k] = float(v)
             
         if bm25 is not None:
             bm25_msg = hyperspace_pb2.Bm25Options()

@@ -1,0 +1,5 @@
+string name
+string schema_json
+---
+bool success
+string message

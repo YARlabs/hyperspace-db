@@ -44,8 +44,12 @@ func main() {
 	ctx := context.Background()
 	collection := "docs_go"
 
-	// Create collection
-	_ = client.CreateCollection(ctx, collection, 1024, "cosine")
+	// Create collection with Schema (Multi-Vector & MRL support)
+	_ = client.CreateCollection(ctx, collection, &pb.CollectionSchema{
+		Components: []*pb.VectorComponent{
+			{Name: "primary", Metric: "cosine", FullDimension: 1024, Weight: 1.0},
+		},
+	})
 
 	// Insert text (server-side vectorization)
 	err = client.InsertText(ctx, 1, "HyperspaceDB is awesome!", collection)
@@ -68,11 +72,32 @@ func main() {
 	collections, err := client.ListCollections(ctx)
 	if err == nil {
 		for _, col := range collections {
-			log.Printf("Collection: %s, Count: %d, Dim: %d, Metric: %s", col.Name, col.Count, col.Dimension, col.Metric)
+			log.Printf("Collection: %s, Count: %d, Schema: %v", col.Name, col.Count, col.Schema)
 		}
 	}
 }
 
+```
+
+## Matryoshka Representation Learning (MRL) & Cascading
+
+HyperspaceDB supports MRL through its **Cascade Pipeline**. This allows you to perform initial fast search on a truncated low-dimensional vector (e.g., 64D) and then rerank the results using the full vector (e.g., 1024D).
+
+```go
+schema := &pb.CollectionSchema{
+    Components: []*pb.VectorComponent{
+        {Name: "primary", Metric: "lorentz", FullDimension: 1025, Weight: 1.0},
+    },
+    CascadePipeline: []*pb.MrlLayer{
+        {
+            ComponentName:   "primary",
+            CutoffDimension: 129, // Initial search on 128D (+1)
+            StoreInRam:      true,
+            RerankTopK:      100,
+        },
+    },
+}
+client.CreateCollection(ctx, "mrl_collection", schema)
 ```
 
 ## Geometric Filters (New in v3.0)
@@ -120,7 +145,7 @@ res, err := client.Search(ctx, req)
 ```
 ## Embedding Pipeline (Optional)
 
-HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can use its own backend independently.
+HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can use its own backend independently.
 
 ### Quick Setup (Server `.env`)
 
@@ -172,3 +197,4 @@ res, err := client.SearchMultiCollection(ctx, req)
 | `l2` | Unit normalize | Euclidean distance tasks |
 | `poincare` | Clamp to unit ball | Hierarchical data (ontologies, taxonomies) |
 | `lorentz` | None | Mixed hierarchical + semantic (knowledge graphs) |
+| `hybrid` | None | Lorentz + L2 combined metric |

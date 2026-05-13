@@ -29,10 +29,10 @@ struct CollectionState {
     last_persisted_clock: u64,
 }
 
-pub struct CollectionImpl<const N: usize, M: Metric<N>> {
+pub struct CollectionImpl<M: Metric> {
     name: String,
     node_id: String,
-    index_link: Arc<ArcSwap<HnswIndex<N, M>>>,
+    index_link: Arc<ArcSwap<HnswIndex<M>>>,
     wal_link: Arc<ArcSwap<tokio::sync::Mutex<Wal>>>,
     index_tx: mpsc::UnboundedSender<(u32, HashMap<String, String>)>,
     replication_tx: broadcast::Sender<ReplicationLog>,
@@ -61,7 +61,7 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     // If existing vector shift is <= threshold and metadata unchanged, skip graph relinking.
     fast_upsert_delta: f64,
     // Global Meta-Router for IVF-style chunk routing (Task 1.2)
-    meta_router: Arc<MetaRouter<N>>,
+    meta_router: Arc<MetaRouter>,
     // Count of vectors currently in the "Flush Purgatory" (Frozen WAL -> Chunk conversion)
     flushing_vector_count: Arc<AtomicUsize>,
     // Count of vectors in the current ACTIVE WAL
@@ -76,6 +76,9 @@ pub struct CollectionImpl<const N: usize, M: Metric<N>> {
     // Stores heavy document blobs on disk. The index (16 bytes/entry) lives in RAM;
     // the bytes NEVER touch RAM during HNSW traversal. Reads use pread + spawn_blocking.
     payload_store: Arc<PayloadStore>,
+    dimension: usize,
+    schema: hyperspace_proto::hyperspace::CollectionSchema,
+    layout: hyperspace_core::vector::VectorLayout,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -89,9 +92,8 @@ struct BatchEntry<'a> {
     reindex_needed: bool,
 }
 
-impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
-    #[inline]
-    fn shift_l2_sq(a: &[f64; N], b: &[f64]) -> f64 {
+impl<M: Metric> CollectionImpl<M> {
+    fn shift_l2_sq(a: &[f64], b: &[f64]) -> f64 {
         a.iter()
             .zip(b.iter())
             .map(|(x, y)| {
@@ -171,6 +173,8 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         wal_path: std::path::PathBuf,
         mode: hyperspace_core::QuantizationMode,
         replication_tx: broadcast::Sender<ReplicationLog>,
+        dimension: usize,
+        schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let snap_path = data_dir.join("index.snap");
         let config = Arc::new(GlobalConfig::new());
@@ -241,25 +245,45 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             ngrams,
         });
 
+        let mut components = Vec::new();
+        let mut offset = 0;
+        for c in &schema.components {
+            components.push(hyperspace_core::vector::VectorComponentLayout {
+                name: c.name.clone(),
+                metric: c.metric.clone(),
+                dimension: c.full_dimension as usize,
+                weight: c.weight,
+                offset,
+            });
+            offset += c.full_dimension as usize;
+        }
+        
+        let layout = hyperspace_core::vector::VectorLayout {
+            dimension: offset,
+            bytes_per_element: 8, // f64
+            is_quantized: mode != hyperspace_core::QuantizationMode::None,
+            components,
+        };
+
         let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
         let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
 
         let mut element_size = match mode {
-            hyperspace_core::QuantizationMode::ScalarI8 => {
-                hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
-            }
-            hyperspace_core::QuantizationMode::Binary => {
-                hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
-            }
+            hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
+            hyperspace_core::QuantizationMode::Binary => (dimension + 7) / 8,
             hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                hyperspace_core::hybrid::Hybrid801QuantizedVector::SIZE
+                if dimension > 33 {
+                    33 * 4 + (dimension - 33) + 4
+                } else {
+                    dimension * 4 + 4
+                }
             }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
-                    hyperspace_core::vector::HyperVectorF32::<N>::SIZE
+                    dimension * 4
                 } else {
-                    hyperspace_core::vector::HyperVector::<N>::SIZE
+                    dimension * 8
                 }
             }
         };
@@ -274,12 +298,13 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 
         let (_store, index, _recovered_count) = if snap_path.exists() {
             let store = Arc::new(VectorStore::new(&data_dir, element_size));
-            match HnswIndex::<N, M>::load_snapshot_with_storage_precision(
+            match HnswIndex::<M>::load_snapshot_with_storage_precision(
                 &snap_path,
                 store.clone(),
                 mode,
                 config.clone(),
                 storage_f32,
+                dimension,
             ) {
                 Ok(idx) => {
                     let count = idx.count_nodes();
@@ -295,6 +320,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                             mode,
                             config.clone(),
                             storage_f32,
+                            dimension,
                         )),
                         0,
                     )
@@ -309,6 +335,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     mode,
                     config.clone(),
                     storage_f32,
+                    dimension,
                 )),
                 0,
             )
@@ -591,7 +618,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         });
 
         // Task 1.2: Initialize MetaRouter and Load Existing Chunks
-        let meta_router = Arc::new(MetaRouter::<N>::new());
+        let meta_router = Arc::new(MetaRouter::new());
         // Scan data directory for chunk segments
         if let Ok(entries) = std::fs::read_dir(&data_dir) {
             for entry in entries.flatten() {
@@ -601,12 +628,13 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     if name.starts_with("chunk_") {
                         // Load chunk metadata (centroid + count) from its snapshot
                         let snap_path = path.join("index.snap");
-                        if let Ok(_idx) = HnswIndex::<N, M>::load_snapshot_with_storage_precision(
+                        if let Ok(_idx) = HnswIndex::<M>::load_snapshot_with_storage_precision(
                             &snap_path,
                             Arc::new(VectorStore::new(&path, element_size)),
                             mode,
                             config.clone(),
                             storage_f32,
+                            dimension,
                         ) {
                             // Compute/recover centroid for routing
                             // Actually, HnswIndex doesn't store centroid, but we can compute it or
@@ -743,6 +771,9 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
             max_ram_bytes,
             pending_wal_flushes,
             payload_store,
+            dimension,
+            schema,
+            layout,
         })
     }
 
@@ -753,30 +784,31 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
         mode: hyperspace_core::QuantizationMode,
         data_dir: PathBuf,
         flush_limiter: Arc<Semaphore>,
-        meta_router: Arc<MetaRouter<N>>,
-        index_link: Arc<ArcSwap<HnswIndex<N, M>>>,
+        meta_router: Arc<MetaRouter>,
+        index_link: Arc<ArcSwap<HnswIndex<M>>>,
         _id_map: Arc<DashMap<u32, u32>>,
         _reverse_id_map: Arc<DashMap<u32, u32>>,
         flushing_vector_count: Arc<AtomicUsize>,
+        dimension: usize,
     ) {
         let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
         let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
         let element_size = match mode {
-            hyperspace_core::QuantizationMode::ScalarI8 => {
-                hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
-            }
-            hyperspace_core::QuantizationMode::Binary => {
-                hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
-            }
+            hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
+            hyperspace_core::QuantizationMode::Binary => (dimension + 7) / 8,
             hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                hyperspace_core::hybrid::Hybrid801QuantizedVector::SIZE
+                if dimension > 33 {
+                    33 * 4 + (dimension - 33) + 4
+                } else {
+                    dimension * 4 + 4
+                }
             }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
-                    hyperspace_core::vector::HyperVectorF32::<N>::SIZE
+                    dimension * 4
                 } else {
-                    hyperspace_core::vector::HyperVector::<N>::SIZE
+                    dimension * 8
                 }
             }
         };
@@ -807,22 +839,23 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                 }
 
                 let temp_store = Arc::new(VectorStore::new(&chunk_dir, element_size));
-                let local_index = HnswIndex::<N, M>::new_with_storage_precision(
+                let local_index = HnswIndex::<M>::new_with_storage_precision(
                     temp_store.clone(),
                     mode,
                     config.clone(),
                     storage_f32,
+                    dimension,
                 );
 
                 let mut insert_count = 0u32;
-                let mut centroid_acc = CentroidAccumulator::new(N);
+                let mut centroid_acc = CentroidAccumulator::new(dimension);
 
                 // Replay ALL accumulated segments into the same chunk
                 for (i, path) in frozen_wal_paths.iter().enumerate() {
                     let replay_start = std::time::Instant::now();
                     let replay_res = Wal::replay(path, |entry| {
                         let hyperspace_store::wal::WalEntry::Insert { vector, metadata, .. } = entry;
-                        if vector.len() == N {
+                        if vector.len() == dimension {
                             centroid_acc.add(&vector);
                             if let Ok(new_id) = local_index.insert_to_storage(&vector) {
                                 let _ = local_index.index_node(new_id, metadata);
@@ -878,11 +911,12 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
                     let memtable_dir = data_dir.join("memtable");
                     let _ = std::fs::create_dir_all(&memtable_dir);
                     let fresh_store = Arc::new(VectorStore::new(&memtable_dir, element_size));
-                    let fresh_index = Arc::new(HnswIndex::<N, M>::new_with_storage_precision(
+                    let fresh_index = Arc::new(HnswIndex::<M>::new_with_storage_precision(
                         fresh_store,
                         mode,
                         config.clone(),
                         storage_f32,
+                        dimension,
                     ));
                     index_link.store(fresh_index);
 
@@ -902,7 +936,7 @@ impl<const N: usize, M: Metric<N>> CollectionImpl<N, M> {
 }
 
 #[async_trait::async_trait]
-impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
+impl<M: Metric> Collection for CollectionImpl<M> {
     fn name(&self) -> &str {
         &self.name
     }
@@ -930,7 +964,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         }
 
         let count = self.index_link.load().count();
-        let dim = N;
+        let dim = self.dimension;
         let element_size = match self.mode {
             hyperspace_core::QuantizationMode::ScalarI8 => 1,
             hyperspace_core::QuantizationMode::Binary => 1, // simplified
@@ -978,10 +1012,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         clock: u64,
         durability: hyperspace_core::Durability,
     ) -> Result<(), String> {
-        if vector.len() != N {
+        if vector.len() != self.dimension {
             return Err(format!(
                 "Vector dimension mismatch. Expected {}, got {}",
-                N,
+                self.dimension,
                 vector.len()
             ));
         }
@@ -1074,7 +1108,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                             // LSM-style: Flush when MemTable exceeds memory budget
                             let memtable_nodes = self.index_link.load().count_nodes();
                             let memtable_budget = self.max_ram_bytes / 10;
-                            let est_memory = memtable_nodes * (N * 8 + 64);
+                            let est_memory = memtable_nodes * (self.dimension * 8 + 64);
 
                             let should = est_memory as u64 > memtable_budget;
 
@@ -1126,6 +1160,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 self.id_map.clone(),
                 self.reverse_id_map.clone(),
                 self.flushing_vector_count.clone(),
+                self.index_link.load().dimension,
             );
         }
 
@@ -1170,10 +1205,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     ) -> Result<(), String> {
         // 1. Validation
         for (vec, _, _) in &vectors {
-            if vec.len() != N {
+            if vec.len() != self.dimension {
                 return Err(format!(
                     "Vector dimension mismatch. Expected {}, got {}",
-                    N,
+                    self.dimension,
                     vec.len()
                 ));
             }
@@ -1293,7 +1328,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                             // LSM-style: Flush when MemTable exceeds memory budget
                             let memtable_nodes = self.index_link.load().count_nodes();
                             let memtable_budget = self.max_ram_bytes / 10;
-                            let est_memory = memtable_nodes * (N * 8 + 64);
+                            let est_memory = memtable_nodes * (self.dimension * 8 + 64);
 
                             let should = est_memory as u64 > memtable_budget;
 
@@ -1344,6 +1379,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 self.id_map.clone(),
                 self.reverse_id_map.clone(),
                 self.flushing_vector_count.clone(),
+                self.index_link.load().dimension,
             );
         }
 
@@ -1415,10 +1451,10 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         complex_filters: &[FilterExpr],
         params: &SearchParams,
     ) -> Result<Vec<SearchResult>, String> {
-        if query.len() != N {
+        if query.len() != self.dimension {
             return Err(format!(
                 "Query dimension mismatch. Expected {}, got {}",
-                N,
+                self.dimension,
                 query.len()
             ));
         }
@@ -1453,6 +1489,9 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             .acquire_owned()
             .await
             .map_err(|e| format!("Search limiter failed: {e}"))?;
+            
+        let layout_owned = self.layout.clone();
+        let component_weights_owned = params.component_weights.clone();
 
         // Quick Win: For small top_k, run search inline to avoid spawn_blocking overhead
         let use_blocking = top_k > 50 || rerank_enabled;
@@ -1497,7 +1536,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 let chunk_results = if chunk_dirs.is_empty() {
                     Vec::new()
                 } else {
-                    chunk_searcher::scatter_gather_search::<N, M>(
+                    chunk_searcher::scatter_gather_search::<M>(
                         &chunk_dirs,
                         &processed_query,
                         search_k,
@@ -1554,6 +1593,8 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                         &processed_query,
                         &candidate_ids,
                         &candidate_refs,
+                        Some(&layout_owned),
+                        component_weights_owned.as_ref(),
                     )
                 } else {
                     results
@@ -1729,23 +1770,31 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 return Err(e.to_string());
             }
 
+            let dimension = current_index.dimension;
+            let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
+                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+            let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
             let element_size = match mode {
-                hyperspace_core::QuantizationMode::ScalarI8 => {
-                    hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
-                }
-                hyperspace_core::QuantizationMode::Binary => {
-                    hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
-                }
+                hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
+                hyperspace_core::QuantizationMode::Binary => (dimension + 7) / 8,
                 hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                    hyperspace_core::hybrid::Hybrid801QuantizedVector::SIZE
+                    if dimension > 33 {
+                        33 * 4 + (dimension - 33) + 4
+                    } else {
+                        dimension * 4 + 4
+                    }
                 }
                 hyperspace_core::QuantizationMode::None => {
-                    hyperspace_core::vector::HyperVector::<N>::SIZE
+                    if storage_f32 {
+                        dimension * 4
+                    } else {
+                        dimension * 8
+                    }
                 }
             };
 
             let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
-            let new_index = HnswIndex::<N, M>::new(temp_store, mode, vacuum_config);
+            let new_index = HnswIndex::<M>::new(temp_store, mode, vacuum_config, dimension);
 
             // 4. Sequential Insertion
             // No yielding needed in blocking thread, OS handles scheduling.
@@ -1833,7 +1882,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 
     fn dimension(&self) -> usize {
-        N
+        self.dimension
     }
 
     // Updated peek to use index_link
@@ -1958,7 +2007,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
     }
 }
 
-impl<const N: usize, M: Metric<N>> Drop for CollectionImpl<N, M> {
+impl<M: Metric> Drop for CollectionImpl<M> {
     fn drop(&mut self) {
         println!(
             "🗑️ Dropping collection '{}'. Stopping background tasks...",

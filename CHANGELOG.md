@@ -5,19 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - 2026-04-18
+## [3.1.0] - 2026-05-13
 
 ### Added
-* **BM25 Lexical Upgrade (Sprint 13 / Stability Release)**:
+* **Schema-Driven Cascade Architecture (Sprint 14 / Major Release)**:
+    * **CollectionSchema**: Replaced legacy `dimension`/`metric` parameters with a flexible schema supporting multiple vector components.
+    * **MRL (Matryoshka Representation Learning)**: Native support for cascading search via `MrlLayer`, allowing fast retrieval on truncated dimensions with automatic reranking on full vectors.
+    * **Hybrid Metric Fusion**: Support for fused geometries (e.g., Lorentz + L2) with configurable `component_weights` per search request.
+* **BM25 Lexical Upgrade**:
     * **Native BM25 Scoring**: Integrated BM25 algorithm into the core index, supporting `k1`, `b`, and `delta` parameters.
     * **Hybrid Search Fusion**: Full support for RRF (Reciprocal Rank Fusion) and Linear Weighted Fusion to merge vector and keyword results.
-    * **New Proto Messages**: Added `Bm25Options` to `SearchRequest` and `SearchTextRequest`.
-    * **SDK Parity Milestone**:
-        * **TypeScript**: Standardized `insert` argument order. Added `Bm25Options` and full geometric search support.
-        * **Python**: Synchronized `HyperspaceClient` signatures. Added support for `hybrid_query` and full `BM25` configuration.
-        * **Go**: Regenerated protos and updated `SearchText` to support `BM25`.
-        * **C++**: Updated gRPC bindings and documentation for hybrid and geometric search.
-    * **Documentation**: Unified all SDK READMEs and updated the official book with Hybrid Search specifications.
+* **SDK Parity & Migration**:
+    * **Python, Go, C++, Dart, ROS2**: All client interfaces updated to support `CollectionSchema` and `component_weights`.
+    * **ROS2 Node**: Added `CreateCollection` service with JSON-schema support and updated `Search` for hybrid weights.
+    * **TypeScript & Rust**: Standardized `insert` argument order and added full MRL/Cascade support.
+* **Documentation**:
+    * Updated the official book with Schema-Driven architecture and MRL usage guides.
+    * Refreshed all SDK READMEs with migration examples.
 
 ### Fixed
 * **SDK Inconsistency**: Fixed `insert` argument order in Python and TS SDKs to match the `(id, vector, ...)` convention used in Rust and Go.

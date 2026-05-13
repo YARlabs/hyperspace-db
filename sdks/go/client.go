@@ -51,12 +51,10 @@ func (c *HyperspaceClient) withContext(ctx context.Context) context.Context {
 	return ctx
 }
 
-func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, dimension uint32, metric string) error {
+func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, schema *pb.CollectionSchema) error {
 	req := &pb.CreateCollectionRequest{
-		Name:      name,
-		Dimension: dimension,
-		Metric:    metric,
-		Components: []*pb.CollectionComponent{},
+		Name:   name,
+		Schema: schema,
 	}
 
 	_, err := c.client.CreateCollection(c.withContext(ctx), req)
@@ -148,12 +146,13 @@ func (c *HyperspaceClient) Vectorize(ctx context.Context, text string, metric st
 
 // SearchParams contains optional parameters for advanced vector search
 type SearchParams struct {
-	Filters        []*pb.Filter
-	HybridQuery    string
-	HybridAlpha    float32
-	BM25Options    *pb.Bm25Options
-	MrlDimension   uint32
-	UseWasserstein bool
+	Filters          []*pb.Filter
+	HybridQuery      string
+	HybridAlpha      float32
+	BM25Options      *pb.Bm25Options
+	MrlDimension     uint32
+	UseWasserstein   bool
+	ComponentWeights map[string]float32
 }
 
 // Search performs ANN lookup with optional geometric filters, BM25 factors, and hybrid ranking
@@ -179,6 +178,9 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 			req.UseWasserstein = params.UseWasserstein
 		}
 		req.Bm25Options = params.BM25Options
+		if params.ComponentWeights != nil {
+			req.ComponentWeights = params.ComponentWeights
+		}
 	}
 
 	res, err := c.client.Search(c.withContext(ctx), req)

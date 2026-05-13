@@ -4,23 +4,24 @@ This package provides a bridge between HyperspaceDB and the ROS2 environment, al
 
 ## Services
 
+- `hyperspace/create_collection`: Create a collection using a JSON schema definition.
 - `hyperspace/insert_text`: Vectorize and store text in the database.
 - `hyperspace/search_text`: Unified search with support for hybrid ranking.
-- `hyperspace/vectorize`: Get raw vector for a string.
-- `hyperspace/get_points`: Retrieve multiple points by ID.
-- `hyperspace/update_payload`: Patch metadata for an entry.
-- `hyperspace/scroll`: Paginated retrieval of stored vectors.
-- `hyperspace/count`: Count entries with specific filters.
-- `hyperspace/delete`: Remove entry by ID.
-- `hyperspace/health_check`: Monitor connection to the database.
-- `evaluate_claim_and_navigate`: Perform Riemannian evaluation of a "thought" vector relative to context and calculate next velocity.
+
+## Creating a Collection with Schema
+
+You can now define complex schemas (Multi-Vector, MRL, Hybrid) using JSON via the ROS2 service:
+
+```bash
+ros2 service call /hyperspace/create_collection hyperspace_interfaces/srv/CreateCollection "{name: 'robot_memory', schema_json: '{\"components\": [{\"name\": \"main\", \"metric\": \"lorentz\", \"full_dimension\": 1025}]}'}"
+```
 
 ## Hybrid Search Usage
 
-In ROS2, you can now specify `hybrid_alpha` in the `SearchText` service to balance between semantic and lexical results:
+In ROS2, you can specify `hybrid_alpha` and `hybrid_query` in the `Search` service:
 
 ```bash
-ros2 service call /hyperspace/search_text hyperspace_interfaces/srv/SearchText "{query: 'charging station', top_k: 5, collection: 'map_descriptors', hybrid_alpha: 0.5}"
+ros2 service call /hyperspace/search hyperspace_interfaces/srv/Search "{vector: [0.1, 0.2, 0.3], top_k: 5, collection: 'robot_memory', hybrid_alpha: 0.5, hybrid_query: 'docking station'}"
 ```
 
 ## Configuration

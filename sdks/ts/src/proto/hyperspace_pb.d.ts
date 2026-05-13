@@ -123,10 +123,11 @@ export namespace InsertOp {
 }
 
 export class CreateCollectionOp extends jspb.Message { 
-    getDimension(): number;
-    setDimension(value: number): CreateCollectionOp;
-    getMetric(): string;
-    setMetric(value: string): CreateCollectionOp;
+
+    hasSchema(): boolean;
+    clearSchema(): void;
+    getSchema(): CollectionSchema | undefined;
+    setSchema(value?: CollectionSchema): CreateCollectionOp;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CreateCollectionOp.AsObject;
@@ -140,8 +141,7 @@ export class CreateCollectionOp extends jspb.Message {
 
 export namespace CreateCollectionOp {
     export type AsObject = {
-        dimension: number,
-        metric: string,
+        schema?: CollectionSchema.AsObject,
     }
 }
 
@@ -205,14 +205,11 @@ export namespace QuantizationConfig {
 export class CreateCollectionRequest extends jspb.Message { 
     getName(): string;
     setName(value: string): CreateCollectionRequest;
-    getDimension(): number;
-    setDimension(value: number): CreateCollectionRequest;
-    getMetric(): string;
-    setMetric(value: string): CreateCollectionRequest;
-    clearComponentsList(): void;
-    getComponentsList(): Array<CollectionComponent>;
-    setComponentsList(value: Array<CollectionComponent>): CreateCollectionRequest;
-    addComponents(value?: CollectionComponent, index?: number): CollectionComponent;
+
+    hasSchema(): boolean;
+    clearSchema(): void;
+    getSchema(): CollectionSchema | undefined;
+    setSchema(value?: CollectionSchema): CreateCollectionRequest;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CreateCollectionRequest.AsObject;
@@ -227,9 +224,92 @@ export class CreateCollectionRequest extends jspb.Message {
 export namespace CreateCollectionRequest {
     export type AsObject = {
         name: string,
-        dimension: number,
+        schema?: CollectionSchema.AsObject,
+    }
+}
+
+export class VectorComponent extends jspb.Message { 
+    getName(): string;
+    setName(value: string): VectorComponent;
+    getMetric(): string;
+    setMetric(value: string): VectorComponent;
+    getFullDimension(): number;
+    setFullDimension(value: number): VectorComponent;
+    getWeight(): number;
+    setWeight(value: number): VectorComponent;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VectorComponent.AsObject;
+    static toObject(includeInstance: boolean, msg: VectorComponent): VectorComponent.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VectorComponent, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VectorComponent;
+    static deserializeBinaryFromReader(message: VectorComponent, reader: jspb.BinaryReader): VectorComponent;
+}
+
+export namespace VectorComponent {
+    export type AsObject = {
+        name: string,
         metric: string,
-        componentsList: Array<CollectionComponent.AsObject>,
+        fullDimension: number,
+        weight: number,
+    }
+}
+
+export class MrlLayer extends jspb.Message { 
+    getComponentName(): string;
+    setComponentName(value: string): MrlLayer;
+    getCutoffDimension(): number;
+    setCutoffDimension(value: number): MrlLayer;
+    getStoreInRam(): boolean;
+    setStoreInRam(value: boolean): MrlLayer;
+    getRerankTopK(): number;
+    setRerankTopK(value: number): MrlLayer;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): MrlLayer.AsObject;
+    static toObject(includeInstance: boolean, msg: MrlLayer): MrlLayer.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: MrlLayer, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): MrlLayer;
+    static deserializeBinaryFromReader(message: MrlLayer, reader: jspb.BinaryReader): MrlLayer;
+}
+
+export namespace MrlLayer {
+    export type AsObject = {
+        componentName: string,
+        cutoffDimension: number,
+        storeInRam: boolean,
+        rerankTopK: number,
+    }
+}
+
+export class CollectionSchema extends jspb.Message { 
+    clearComponentsList(): void;
+    getComponentsList(): Array<VectorComponent>;
+    setComponentsList(value: Array<VectorComponent>): CollectionSchema;
+    addComponents(value?: VectorComponent, index?: number): VectorComponent;
+    clearCascadePipelineList(): void;
+    getCascadePipelineList(): Array<MrlLayer>;
+    setCascadePipelineList(value: Array<MrlLayer>): CollectionSchema;
+    addCascadePipeline(value?: MrlLayer, index?: number): MrlLayer;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): CollectionSchema.AsObject;
+    static toObject(includeInstance: boolean, msg: CollectionSchema): CollectionSchema.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: CollectionSchema, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): CollectionSchema;
+    static deserializeBinaryFromReader(message: CollectionSchema, reader: jspb.BinaryReader): CollectionSchema;
+}
+
+export namespace CollectionSchema {
+    export type AsObject = {
+        componentsList: Array<VectorComponent.AsObject>,
+        cascadePipelineList: Array<MrlLayer.AsObject>,
     }
 }
 
@@ -290,10 +370,11 @@ export class CollectionSummary extends jspb.Message {
     setName(value: string): CollectionSummary;
     getCount(): number;
     setCount(value: number): CollectionSummary;
-    getDimension(): number;
-    setDimension(value: number): CollectionSummary;
-    getMetric(): string;
-    setMetric(value: string): CollectionSummary;
+
+    hasSchema(): boolean;
+    clearSchema(): void;
+    getSchema(): CollectionSchema | undefined;
+    setSchema(value?: CollectionSchema): CollectionSummary;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CollectionSummary.AsObject;
@@ -309,8 +390,7 @@ export namespace CollectionSummary {
     export type AsObject = {
         name: string,
         count: number,
-        dimension: number,
-        metric: string,
+        schema?: CollectionSchema.AsObject,
     }
 }
 
@@ -359,10 +439,6 @@ export namespace CollectionStatsRequest {
 export class CollectionStatsResponse extends jspb.Message { 
     getCount(): number;
     setCount(value: number): CollectionStatsResponse;
-    getDimension(): number;
-    setDimension(value: number): CollectionStatsResponse;
-    getMetric(): string;
-    setMetric(value: string): CollectionStatsResponse;
     getIndexingQueue(): number;
     setIndexingQueue(value: number): CollectionStatsResponse;
     getDiskUsageBytes(): number;
@@ -371,6 +447,11 @@ export class CollectionStatsResponse extends jspb.Message {
     setRamUsageBytes(value: number): CollectionStatsResponse;
     getActiveTasks(): number;
     setActiveTasks(value: number): CollectionStatsResponse;
+
+    hasSchema(): boolean;
+    clearSchema(): void;
+    getSchema(): CollectionSchema | undefined;
+    setSchema(value?: CollectionSchema): CollectionStatsResponse;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CollectionStatsResponse.AsObject;
@@ -385,12 +466,11 @@ export class CollectionStatsResponse extends jspb.Message {
 export namespace CollectionStatsResponse {
     export type AsObject = {
         count: number,
-        dimension: number,
-        metric: string,
         indexingQueue: number,
         diskUsageBytes: number,
         ramUsageBytes: number,
         activeTasks: number,
+        schema?: CollectionSchema.AsObject,
     }
 }
 
@@ -742,6 +822,9 @@ export class SearchTextRequest extends jspb.Message {
     getIncludePayload(): boolean;
     setIncludePayload(value: boolean): SearchTextRequest;
 
+    getComponentWeightsMap(): jspb.Map<string, number>;
+    clearComponentWeightsMap(): void;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchTextRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchTextRequest): SearchTextRequest.AsObject;
@@ -763,6 +846,8 @@ export namespace SearchTextRequest {
         bm25Options?: Bm25Options.AsObject,
         hybridAlpha?: number,
         includePayload: boolean,
+
+        componentWeightsMap: Array<[string, number]>,
     }
 }
 
@@ -1127,6 +1212,9 @@ export class SearchRequest extends jspb.Message {
     getIncludePayload(): boolean;
     setIncludePayload(value: boolean): SearchRequest;
 
+    getComponentWeightsMap(): jspb.Map<string, number>;
+    clearComponentWeightsMap(): void;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchRequest): SearchRequest.AsObject;
@@ -1151,6 +1239,8 @@ export namespace SearchRequest {
         bm25Options?: Bm25Options.AsObject,
         mrlDimension?: number,
         includePayload: boolean,
+
+        componentWeightsMap: Array<[string, number]>,
     }
 }
 

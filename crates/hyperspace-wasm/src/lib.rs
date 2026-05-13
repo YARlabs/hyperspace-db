@@ -14,14 +14,8 @@ use rexie::{ObjectStore, Rexie, TransactionMode};
 const SYNC_BUCKETS: usize = 256;
 
 enum IndexWrapper {
-    L2Dim384(Arc<HnswIndex<384, EuclideanMetric>>),
-    CosineDim384(Arc<HnswIndex<384, CosineMetric>>),
-    L2Dim768(Arc<HnswIndex<768, EuclideanMetric>>),
-    CosineDim768(Arc<HnswIndex<768, CosineMetric>>),
-    L2Dim1024(Arc<HnswIndex<1024, EuclideanMetric>>),
-    CosineDim1024(Arc<HnswIndex<1024, CosineMetric>>),
-    L2Dim1536(Arc<HnswIndex<1536, EuclideanMetric>>),
-    CosineDim1536(Arc<HnswIndex<1536, CosineMetric>>),
+    L2(Arc<HnswIndex<EuclideanMetric>>),
+    Cosine(Arc<HnswIndex<CosineMetric>>),
 }
 
 const DB_NAME: &str = "hyperspace_db";
@@ -65,17 +59,10 @@ impl HyperspaceDB {
         let mode = QuantizationMode::None;
         let metric = metric.to_lowercase();
 
-        let index = match (dimension, metric.as_str()) {
-             (384, "l2" | "euclidean") => IndexWrapper::L2Dim384(Arc::new(HnswIndex::new(storage, mode, config))),
-             (384, "cosine") => IndexWrapper::CosineDim384(Arc::new(HnswIndex::new(storage, mode, config))),
-             (768, "l2" | "euclidean") => IndexWrapper::L2Dim768(Arc::new(HnswIndex::new(storage, mode, config))),
-             (768, "cosine") => IndexWrapper::CosineDim768(Arc::new(HnswIndex::new(storage, mode, config))),
-             (1024, "l2" | "euclidean") => IndexWrapper::L2Dim1024(Arc::new(HnswIndex::new(storage, mode, config))),
-             (1024, "cosine") => IndexWrapper::CosineDim1024(Arc::new(HnswIndex::new(storage, mode, config))),
-             (1536, "l2" | "euclidean") => IndexWrapper::L2Dim1536(Arc::new(HnswIndex::new(storage, mode, config))),
-             (1536, "cosine") => IndexWrapper::CosineDim1536(Arc::new(HnswIndex::new(storage, mode, config))),
-
-             _ => return Err(JsValue::from_str(&format!("Unsupported config: dim={dimension}, metric={metric}. Supported dims: 384, 768, 1024, 1536"))),
+        let index = match metric.as_str() {
+             "l2" | "euclidean" => IndexWrapper::L2(Arc::new(HnswIndex::new(storage, mode, config, dimension))),
+             "cosine" => IndexWrapper::Cosine(Arc::new(HnswIndex::new(storage, mode, config, dimension))),
+             _ => return Err(JsValue::from_str(&format!("Unsupported metric={metric}."))),
         };
 
         Ok(Self {
@@ -109,19 +96,13 @@ impl HyperspaceDB {
         macro_rules! insert_impl {
             ($idx:expr) => {
                 $idx.insert(vector, HashMap::new())
-                    .map_err(|e| JsValue::from_str(&e))?
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?
             };
         }
 
         let internal_id = match &self.index {
-            IndexWrapper::L2Dim384(idx) => insert_impl!(idx),
-            IndexWrapper::CosineDim384(idx) => insert_impl!(idx),
-            IndexWrapper::L2Dim768(idx) => insert_impl!(idx),
-            IndexWrapper::CosineDim768(idx) => insert_impl!(idx),
-            IndexWrapper::L2Dim1024(idx) => insert_impl!(idx),
-            IndexWrapper::CosineDim1024(idx) => insert_impl!(idx),
-            IndexWrapper::L2Dim1536(idx) => insert_impl!(idx),
-            IndexWrapper::CosineDim1536(idx) => insert_impl!(idx),
+            IndexWrapper::L2(idx) => insert_impl!(idx),
+            IndexWrapper::Cosine(idx) => insert_impl!(idx),
         };
 
         id_map.insert(id, internal_id);
@@ -158,20 +139,16 @@ impl HyperspaceDB {
                     bm25_options: None,
                     fusion_method: None,
                     mrl_dimension: None,
+                    include_payload: false,
+                    component_weights: None,
                 };
                 $idx.search(vector, &HashMap::new(), &[], &params)
             }};
         }
 
         let results = match &self.index {
-            IndexWrapper::L2Dim384(idx) => search_impl!(idx),
-            IndexWrapper::CosineDim384(idx) => search_impl!(idx),
-            IndexWrapper::L2Dim768(idx) => search_impl!(idx),
-            IndexWrapper::CosineDim768(idx) => search_impl!(idx),
-            IndexWrapper::L2Dim1024(idx) => search_impl!(idx),
-            IndexWrapper::CosineDim1024(idx) => search_impl!(idx),
-            IndexWrapper::L2Dim1536(idx) => search_impl!(idx),
-            IndexWrapper::CosineDim1536(idx) => search_impl!(idx),
+            IndexWrapper::L2(idx) => search_impl!(idx),
+            IndexWrapper::Cosine(idx) => search_impl!(idx),
         };
 
         let rev_map = self.rev_map.read();
@@ -275,14 +252,8 @@ impl HyperspaceDB {
 
         // 1. Export Storage (Bytes)
         let vector_store = match &self.index {
-            IndexWrapper::L2Dim384(idx) => idx.get_storage(),
-            IndexWrapper::CosineDim384(idx) => idx.get_storage(),
-            IndexWrapper::L2Dim768(idx) => idx.get_storage(),
-            IndexWrapper::CosineDim768(idx) => idx.get_storage(),
-            IndexWrapper::L2Dim1024(idx) => idx.get_storage(),
-            IndexWrapper::CosineDim1024(idx) => idx.get_storage(),
-            IndexWrapper::L2Dim1536(idx) => idx.get_storage(),
-            IndexWrapper::CosineDim1536(idx) => idx.get_storage(),
+            IndexWrapper::L2(idx) => idx.get_storage(),
+            IndexWrapper::Cosine(idx) => idx.get_storage(),
         };
 
         let store_bytes = vector_store.as_ref().export();
@@ -300,14 +271,8 @@ impl HyperspaceDB {
         }
 
         let index_bytes = match &self.index {
-            IndexWrapper::L2Dim384(idx) => save_impl!(idx),
-            IndexWrapper::CosineDim384(idx) => save_impl!(idx),
-            IndexWrapper::L2Dim768(idx) => save_impl!(idx),
-            IndexWrapper::CosineDim768(idx) => save_impl!(idx),
-            IndexWrapper::L2Dim1024(idx) => save_impl!(idx),
-            IndexWrapper::CosineDim1024(idx) => save_impl!(idx),
-            IndexWrapper::L2Dim1536(idx) => save_impl!(idx),
-            IndexWrapper::CosineDim1536(idx) => save_impl!(idx),
+            IndexWrapper::L2(idx) => save_impl!(idx),
+            IndexWrapper::Cosine(idx) => save_impl!(idx),
         };
         let index_js = serde_wasm_bindgen::to_value(&index_bytes)?;
         db_store
@@ -405,37 +370,13 @@ impl HyperspaceDB {
         // 2. Restore Index
         // We match on self.index to determine which type to load into
         let new_index_wrapper = match &self.index {
-            IndexWrapper::L2Dim384(_) => IndexWrapper::L2Dim384(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
+            IndexWrapper::L2(_) => IndexWrapper::L2(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config, self.dimension)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?,
             )),
-            IndexWrapper::CosineDim384(_) => IndexWrapper::CosineDim384(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
-            )),
-            IndexWrapper::L2Dim768(_) => IndexWrapper::L2Dim768(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
-            )),
-            IndexWrapper::CosineDim768(_) => IndexWrapper::CosineDim768(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
-            )),
-            IndexWrapper::L2Dim1024(_) => IndexWrapper::L2Dim1024(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
-            )),
-            IndexWrapper::CosineDim1024(_) => IndexWrapper::CosineDim1024(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
-            )),
-            IndexWrapper::L2Dim1536(_) => IndexWrapper::L2Dim1536(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
-            )),
-            IndexWrapper::CosineDim1536(_) => IndexWrapper::CosineDim1536(Arc::new(
-                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config)
-                    .map_err(|e| JsValue::from_str(&e))?,
+            IndexWrapper::Cosine(_) => IndexWrapper::Cosine(Arc::new(
+                HnswIndex::load_from_bytes(&index_bytes, storage, mode, config, self.dimension)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?,
             )),
         };
 

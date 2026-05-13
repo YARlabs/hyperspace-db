@@ -13,8 +13,8 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 | `HS_HTTP_PORT` | `50050` | HTTP Dashboard port |
 | `HS_DATA_DIR` | `./data` | Path to store segments and WAL |
 | `HS_IDLE_TIMEOUT_SEC` | `3600` | Inactivity time (seconds) before collection unloads to disk |
-| `HS_DIMENSION` | `1024` | Default vector dimensionality (8, 64, 768, 1024, 1536, 3072, 4096, 8192) |
-| `HS_METRIC` | `cosine` | Distance metric (`cosine`, `poincare`, `l2`, `euclidean`, `lorentz`) |
+| `HS_DIMENSION` | `1024` | **Deprecated**. Use CollectionSchema. |
+| `HS_METRIC` | `cosine` | **Deprecated**. Use CollectionSchema. |
 | `HS_QUANTIZATION_LEVEL` | `none` | Compression (`none`, `scalar` (i8), `binary` (1-bit)) |
 | `HS_STORAGE_FLOAT32` | `false` | Store raw vectors as `f32` (`mode=none`) and promote to `f64` in distance kernels |
 | `HS_FAST_UPSERT_DELTA` | `0.0` | Fast upsert L2 threshold. `0.0` disables; typical `0.001..0.05` for iterative updates; too high can keep stale graph links |
@@ -89,13 +89,27 @@ HyperspaceDB supports strict data isolation via the `x-hyperspace-user-id` heade
 *   **Default Admin**: If `x-hyperspace-user-id` is omitted but a valid `x-api-key` is provided, the user is treated as `default_admin`.
 *   **SaaS Integration**: Gateways should inject this header after authenticating users.
 
-### Lorentz metric notes
+### Lorentz & Hybrid metric notes
 
-When `HS_METRIC=lorentz`, vectors must satisfy hyperboloid constraints:
+When using the `lorentz` metric or hybrid components:
 
-- `t > 0` (upper sheet)
-- `-t^2 + x_1^2 + ... + x_n^2 = -1`
+- **Lorentz**: Vectors must satisfy hyperboloid constraints: `-t^2 + x_1^2 + ... + x_n^2 = -1`. 
+- **Hybrid**: You can fuse metrics (e.g. `lorentz` + `l2`) in a single schema. Use `component_weights` in search requests to balance them.
 
+### MRL (Matryoshka) Pipeline
+
+To enable **Matryoshka Representation Learning** (Cascade Search), define a `cascade_pipeline` in your `CollectionSchema`. This is the recommended way to scale to billions of vectors:
+
+1. **Cutoff Dimension**: Specify a small dimension (e.g. 32 or 64) for the RAM-resident index.
+2. **Rerank K**: Set how many top candidates should be reranked using the full-resolution vector from disk.
+
+Example schema (Python):
+```python
+{
+    "components": [{"name": "v1", "metric": "cosine", "full_dimension": 1536}],
+    "cascade_pipeline": [{"component_name": "v1", "cutoff_dimension": 64, "store_in_ram": True, "rerank_top_k": 100}]
+}
+```
 ---
 
 ## Web Dashboard

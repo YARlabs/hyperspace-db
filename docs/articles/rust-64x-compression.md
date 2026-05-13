@@ -8,11 +8,10 @@
 
 ## TL;DR
 
-We built HyperspaceDB in **Rust** and achieved:
-- ✅ **64x compression** (8 bytes → 1 bit per dimension)
-- ✅ **95%+ recall** maintained
+- ✅ **Anisotropic SQ8** (+5.3% recall gain)
+- ✅ **Schema-Driven Cascade** (RAM-to-Disk funnel)
 - ✅ **Zero-copy** memory-mapped storage
-- ✅ **9,087 QPS** insert throughput
+- ✅ **210,000 QPS** search throughput (MRL Cascade)
 
 All while using **safe Rust** (no `unsafe` in hot paths).
 
@@ -86,6 +85,14 @@ fn quantize_binary(vec: &[f32]) -> u128 {
 ```
 
 **Storage**: 128 bits = **16 bytes** (256x smaller for 1024-dim!)
+
+#### Step 3: Anisotropic SQ8 (v3.1.0 Milestone)
+
+Isotropic quantization treats all dimensions equally. However, semantic vectors are concentrated along principal axes. Our **Anisotropic SQ8** applies a weighted loss function:
+
+$$L = \|e_\parallel\|^2 + t_w \cdot \|e_\perp\|^2$$
+
+By penalizing directional error ($e_\perp$) 10x more than magnitude error ($e_\parallel$), we achieved a **+5.3% recall gain** for Cosine metrics at the same 8x compression.
 
 ---
 
@@ -233,6 +240,20 @@ pub async fn save_snapshot_async(&self, path: &Path) {
 ```
 
 **Result**: **Zero blocking** for inserts/searches
+
+---
+
+## Challenge 6: Scaling to Billions with Cascade Pipelines (MRL)
+
+High-dimensional vectors (e.g. 1536D) take massive RAM even when quantized. 
+
+### Solution: Schema-Driven Cascade
+
+In v3.1.0, we introduced the **Cascade Pipeline**:
+1. **RAM Head**: Store only the "Matryoshka" truncated head (e.g. 64D) in RAM.
+2. **Disk Tail**: Store the full vector (1536D) on NVMe.
+
+Search happens in microseconds on the 64D RAM index, with a final precision rerank on the 1536D Disk tail. This reduces RAM usage by **another 10-20x** while maintaining 99% accuracy of the full model.
 
 ---
 

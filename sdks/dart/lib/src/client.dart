@@ -110,8 +110,8 @@ class HyperspaceClient {
     await _channel.shutdown();
   }
 
-  Future<bool> createCollection(String name, int dimension, String metric) async {
-    final req = CreateCollectionRequest(name: name, dimension: dimension, metric: metric);
+  Future<bool> createCollection(String name, pb.CollectionSchema schema) async {
+    final req = CreateCollectionRequest(name: name, schema: schema);
     final resp = await _stub.createCollection(req);
     return resp.status.isNotEmpty;
   }
@@ -144,7 +144,7 @@ class HyperspaceClient {
     if (typedMetadata != null) {
       typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
     }
-    if (payload != null) req.setField(9, payload); // Use dynamic field to bypass stub issue
+    if (payload != null) req.payload = payload;
     final resp = await _stub.insert(req);
     return resp.success;
   }
@@ -216,13 +216,14 @@ class HyperspaceClient {
     bool? useWasserstein,
     Map<String, String>? filter,
     List<Filter>? filters,
+    Map<String, double>? componentWeights,
   }) async {
     final req = SearchRequest(
       vector: vector,
       topK: topK,
       collection: collection,
     );
-    if (includePayload) req.setField(11, includePayload); // Bypass stub issue
+    if (includePayload) req.includePayload = includePayload;
     if (hybridQuery != null) req.hybridQuery = hybridQuery;
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
     if (bm25Options != null) req.bm25Options = bm25Options;
@@ -230,6 +231,7 @@ class HyperspaceClient {
     if (useWasserstein != null) req.useWasserstein = useWasserstein;
     if (filter != null) req.filter.addAll(filter);
     if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
+    if (componentWeights != null) req.componentWeights.addAll(componentWeights);
 
     final resp = await _stub.search(req);
     return resp.results;
@@ -259,7 +261,7 @@ class HyperspaceClient {
       topK: topK,
       collection: collection,
     );
-    if (includePayload) req.setField(8, includePayload); // Bypass stub issue
+    if (includePayload) req.includePayload = includePayload;
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
     if (bm25Options != null) req.bm25Options = bm25Options;
     if (filter != null) req.filter.addAll(filter);

@@ -45,7 +45,7 @@ use hyperspace_store::VectorStore;
 /// The caller must NOT map these IDs through the collection's id_map since chunk
 /// segments use their own internal IDs starting from 0.
 #[allow(clippy::too_many_arguments)]
-pub fn search_chunk<const N: usize, M: Metric<N>>(
+pub fn search_chunk<M: Metric>(
     chunk_dir: &Path,
     query: &[f64],
     k: usize,
@@ -65,26 +65,34 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
         .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
     let storage_f32 = storage_f32_requested && mode == QuantizationMode::None;
 
+    let dimension = query.len();
     let element_size = match mode {
-        QuantizationMode::ScalarI8 => hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE,
-        QuantizationMode::Binary => hyperspace_core::vector::BinaryHyperVector::<N>::SIZE,
-        QuantizationMode::AsymmetricHybrid801 => hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE,
+        QuantizationMode::ScalarI8 => dimension + 4,
+        QuantizationMode::Binary => (dimension + 7) / 8,
+        QuantizationMode::AsymmetricHybrid801 => {
+            if dimension > 33 {
+                33 * 4 + (dimension - 33) + 4
+            } else {
+                dimension * 4 + 4
+            }
+        }
         QuantizationMode::None => {
             if storage_f32 {
-                hyperspace_core::vector::HyperVectorF32::<N>::SIZE
+                dimension * 4
             } else {
-                hyperspace_core::vector::HyperVector::<N>::SIZE
+                dimension * 8
             }
         }
     };
 
     let store = Arc::new(VectorStore::new(chunk_dir, element_size));
-    let chunk_index = HnswIndex::<N, M>::load_snapshot_with_storage_precision(
+    let chunk_index = HnswIndex::<M>::load_snapshot_with_storage_precision(
         &snap_path,
         store,
         mode,
         Arc::clone(config),
         storage_f32,
+        dimension,
     )?;
 
     let params = hyperspace_core::SearchParams {
@@ -92,6 +100,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
         ef_search,
         hybrid_query: None,
         hybrid_alpha: None,
+        component_weights: None,
         use_wasserstein,
         bm25_options: None,
         fusion_method: None,
@@ -120,7 +129,7 @@ pub fn search_chunk<const N: usize, M: Metric<N>>(
 /// Note: IDs are chunk-local and cannot be used for metadata lookups in the main index.
 /// The caller should use only the distances for ranking merge.
 #[allow(clippy::too_many_arguments)]
-pub async fn scatter_gather_search_async<const N: usize, M: Metric<N> + Send + Sync + 'static>(
+pub async fn scatter_gather_search_async<M: Metric + Send + Sync + 'static>(
     chunk_dirs: &[std::path::PathBuf],
     query: &[f64],
     k: usize,
@@ -143,7 +152,7 @@ pub async fn scatter_gather_search_async<const N: usize, M: Metric<N> + Send + S
             let config = config.clone();
 
             tokio::task::spawn_blocking(move || {
-                search_chunk::<N, M>(
+                search_chunk::<M>(
                     &dir,
                     &query,
                     k,
@@ -186,7 +195,7 @@ pub async fn scatter_gather_search_async<const N: usize, M: Metric<N> + Send + S
 /// Legacy synchronous wrapper for backwards compatibility.
 /// Spawns an async task and blocks on it - use scatter_gather_search_async when possible.
 #[allow(clippy::too_many_arguments)]
-pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync + 'static>(
+pub fn scatter_gather_search<M: Metric + Send + Sync + 'static>(
     chunk_dirs: &[std::path::PathBuf],
     query: &[f64],
     k: usize,
@@ -199,7 +208,7 @@ pub fn scatter_gather_search<const N: usize, M: Metric<N> + Send + Sync + 'stati
 ) -> Vec<(u32, f64, usize)> {
     // Use tokio runtime to run async function
     let rt = tokio::runtime::Handle::current();
-    rt.block_on(scatter_gather_search_async::<N, M>(
+    rt.block_on(scatter_gather_search_async::<M>(
         chunk_dirs,
         query,
         k,

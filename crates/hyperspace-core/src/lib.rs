@@ -18,7 +18,7 @@ pub mod optim;
 pub mod region;
 pub mod vector;
 pub mod hybrid;
-pub use hybrid::Hybrid801Metric;
+pub use hybrid::HybridMetric;
 pub mod wasserstein;
 
 pub use config::GlobalConfig;
@@ -94,9 +94,9 @@ pub enum FilterExpr {
 }
 
 impl FilterExpr {
-    pub fn check<const N: usize>(
+    pub fn check(
         &self,
-        vector: &HyperVector<N>,
+        vector: &HyperVector,
         metadata: &std::collections::HashMap<String, String>,
     ) -> bool {
         match self {
@@ -177,6 +177,7 @@ pub struct SearchParams {
     pub ef_search: usize,
     pub hybrid_query: Option<String>,
     pub hybrid_alpha: Option<f32>,
+    pub component_weights: Option<std::collections::HashMap<String, f32>>,
     pub use_wasserstein: bool,
     pub bm25_options: Option<crate::bm25::Bm25Params>,
     pub fusion_method: Option<String>,
@@ -368,7 +369,7 @@ pub trait Collection: Send + Sync + 'static {
         self.peek(self.count().max(1), 0)
             .into_iter()
             .skip(offset)
-            .filter(|(_, vec, meta)| {
+            .filter(|(_, _vec, meta)| {
                 // Build a dummy HyperVector-like slice for geometric checks.
                 // We pass the slice to check(); for geometric filters this is best-effort.
                 filters.iter().all(|f| {
@@ -391,12 +392,12 @@ pub trait Collection: Send + Sync + 'static {
     }
 }
 
-pub trait Metric<const N: usize>: Send + Sync + 'static {
+pub trait Metric: Send + Sync + 'static {
     fn name() -> &'static str;
-    fn distance(a: &[f64; N], b: &[f64; N]) -> f64;
+    fn distance(a: &[f64], b: &[f64]) -> f64;
 
     // Default valid verification: ensure all dimensions are finite
-    fn validate(vector: &[f64; N]) -> Result<(), String> {
+    fn validate(vector: &[f64]) -> Result<(), String> {
         for &val in vector {
             if !val.is_finite() {
                 return Err(format!(
@@ -408,17 +409,17 @@ pub trait Metric<const N: usize>: Send + Sync + 'static {
         Ok(())
     }
 
-    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64;
-    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64;
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64;
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64;
 }
 
-impl<const N: usize> Metric<N> for PoincareMetric {
+impl Metric for PoincareMetric {
     fn name() -> &'static str {
         "poincare"
     }
 
     #[inline(always)]
-    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
         let norm_u_sq: f64 = a.iter().map(|&x| x * x).sum();
         let norm_v_sq: f64 = b.iter().map(|&x| x * x).sum();
         let diff_sq: f64 = a.iter().zip(b.iter()).map(|(u, v)| (u - v).powi(2)).sum();
@@ -428,7 +429,7 @@ impl<const N: usize> Metric<N> for PoincareMetric {
         arg.acosh()
     }
 
-    fn validate(vector: &[f64; N]) -> Result<(), String> {
+    fn validate(vector: &[f64]) -> Result<(), String> {
         for &val in vector {
             if !val.is_finite() {
                 return Err("Poincaré vector contains non-finite values (NaN/Inf)".to_string());
@@ -441,33 +442,32 @@ impl<const N: usize> Metric<N> for PoincareMetric {
         Ok(())
     }
 
-    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         a.poincare_distance_sq_to_float(b)
     }
 
-    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
         a.poincare_distance_sq_to_float(b)
     }
 }
 
-impl<const N: usize> Metric<N> for LorentzMetric {
+impl Metric for LorentzMetric {
     fn name() -> &'static str {
         "lorentz"
     }
 
     #[inline(always)]
-    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        debug_assert!(N >= 2, "Lorentz metric requires at least 2 dimensions");
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        debug_assert!(a.len() >= 2, "Lorentz metric requires at least 2 dimensions");
         let mut inner_prod = -a[0] * b[0];
-        for i in 1..N {
+        for i in 1..a.len() {
             inner_prod += a[i] * b[i];
         }
-        // Hyperboloid distance: d(x, y) = arcosh(-<x, y>_L), where <.,.>_L uses signature (-, +, ... ,+).
         let arg = (-inner_prod).max(1.0 + 1e-12);
         arg.acosh()
     }
 
-    fn validate(vector: &[f64; N]) -> Result<(), String> {
+    fn validate(vector: &[f64]) -> Result<(), String> {
         if !vector.iter().all(|v| v.is_finite()) {
             return Err("Lorentz vector contains non-finite values".to_string());
         }
@@ -475,9 +475,8 @@ impl<const N: usize> Metric<N> for LorentzMetric {
             return Err("Lorentz vector must be on the upper sheet (t > 0)".to_string());
         }
 
-        // Point must satisfy: -t^2 + x1^2 + ... + xn^2 = -1
         let mut spatial_sq = 0.0_f64;
-        for i in 1..N {
+        for i in 1..vector.len() {
             spatial_sq += vector[i] * vector[i];
         }
         let minkowski_norm = -vector[0] * vector[0] + spatial_sq;
@@ -489,34 +488,32 @@ impl<const N: usize> Metric<N> for LorentzMetric {
         Ok(())
     }
 
-    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         a.lorentz_distance_to_float(b)
     }
 
-    fn distance_binary(_a: &BinaryHyperVector<N>, _b: &HyperVector<N>) -> f64 {
-        panic!(
-            "Binary quantization is not supported for the Lorentz model. \
-             sign(x) destroys hierarchical information encoded in the hyperboloid magnitude."
-        );
+    fn distance_binary(_a: &BinaryHyperVector, _b: &HyperVector) -> f64 {
+        panic!("Binary quantization is not supported for the Lorentz model.");
     }
 }
 
-impl<const N: usize> Metric<N> for EuclideanMetric {
+impl Metric for EuclideanMetric {
     fn name() -> &'static str {
         "l2"
     }
 
     #[cfg(feature = "nightly-simd")]
     #[inline(always)]
-    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
         use std::simd::f32x8;
         use std::simd::num::SimdFloat;
 
         let mut sum = f32x8::splat(0.0);
         let mut i = 0;
         const LANES: usize = 8;
+        let n = a.len();
 
-        while i + LANES <= N {
+        while i + LANES <= n {
             let mut a_buf = [0.0f32; LANES];
             let mut b_buf = [0.0f32; LANES];
             for k in 0..LANES {
@@ -532,8 +529,7 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
 
         let mut total = sum.reduce_sum() as f64;
 
-        // Scalar Tail
-        while i < N {
+        while i < n {
             let diff = (a[i] as f32) - (b[i] as f32);
             total += (diff * diff) as f64;
             i += 1;
@@ -543,21 +539,18 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
 
     #[cfg(not(feature = "nightly-simd"))]
     #[inline(always)]
-    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // Euclidean path uses f32 math by design.
-        // Hyperbolic workloads remain on f64 in `PoincareMetric`.
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
         let mut sum = 0.0f32;
-        for i in 0..N {
+        let n = a.len();
+        for i in 0..n {
             let diff = (a[i] as f32) - (b[i] as f32);
             sum += diff * diff;
         }
         f64::from(sum)
     }
 
-    // validate uses default
-
     #[cfg(feature = "nightly-simd")]
-    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         use std::simd::num::{SimdFloat, SimdInt};
         use std::simd::{f32x8, i8x8};
 
@@ -567,34 +560,26 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
 
         let mut sum = f32x8::splat(0.0);
         let mut i = 0;
+        let n = a.coords.len();
 
-        // SIMD Loop
-        while i + LANES <= N {
-            // 1. Load quantized vector (i8)
+        while i + LANES <= n {
             let a_chunk = i8x8::from_slice(&a.coords[i..i + LANES]);
-
-            // 2. Load Query (f64) and convert to f32
             let mut query_buf = [0.0f32; LANES];
             for k in 0..LANES {
                 query_buf[k] = b.coords[i + k] as f32;
             }
             let b_chunk = f32x8::from_slice(&query_buf);
 
-            // 3. Vectorized cast i8 -> f32
             let a_f32: f32x8 = a_chunk.cast();
-
-            // 4. Math in f32 (AVX2/AVX512 friendly)
             let a_scaled = a_f32 * scale_vec;
             let diff = a_scaled - b_chunk;
             sum += diff * diff;
-
             i += LANES;
         }
 
         let mut total_sum = sum.reduce_sum() as f64;
 
-        // Scalar Tail
-        while i < N {
+        while i < n {
             let a_val = f32::from(a.coords[i]) * SCALE_INV;
             let diff = a_val - (b.coords[i] as f32);
             total_sum += (diff * diff) as f64;
@@ -605,7 +590,7 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
     }
 
     #[cfg(not(feature = "nightly-simd"))]
-    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         const SCALE_INV: f64 = 1.0 / 127.0;
         let mut sum_sq_diff = 0.0;
         for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
@@ -616,44 +601,34 @@ impl<const N: usize> Metric<N> for EuclideanMetric {
         sum_sq_diff
     }
 
-    // Binary implementation calls the method added to vector struct
-    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
-        a.l2_distance_sq_to_float(b)
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.poincare_distance_sq_to_float(b)
     }
 }
 
-/// Cosine metric for normalized vectors.
-/// Uses squared L2 distance to preserve graph geometry for HNSW.
-#[derive(Debug, Clone, Copy)]
 pub struct CosineMetric;
 
-impl<const N: usize> Metric<N> for CosineMetric {
+impl Metric for CosineMetric {
     fn name() -> &'static str {
         "cosine"
     }
 
     #[inline(always)]
-    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
-        // Cosine distance implementation: equivalent to squared Euclidean distance on normalized vectors.
-        // Ranking is preserved and triangle inequality holds.
-        <EuclideanMetric as Metric<N>>::distance(a, b)
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        <EuclideanMetric as Metric>::distance(a, b)
     }
 
-    // validate uses default
-
     #[cfg(feature = "nightly-simd")]
-    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
-        // Re-use Euclidean logic as Cosine is just L2 on normalized vectors
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         EuclideanMetric::distance_quantized(a, b)
     }
 
     #[cfg(not(feature = "nightly-simd"))]
-    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         EuclideanMetric::distance_quantized(a, b)
     }
 
-    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
-        // Approximates Hamming distance for binary vectors.
-        a.l2_distance_sq_to_float(b)
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.poincare_distance_sq_to_float(b)
     }
 }

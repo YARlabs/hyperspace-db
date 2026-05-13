@@ -161,6 +161,39 @@ struct VectorData_MetadataEntry_DoNotUseDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 VectorData_MetadataEntry_DoNotUseDefaultTypeInternal _VectorData_MetadataEntry_DoNotUse_default_instance_;
 
+inline constexpr VectorComponent::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        name_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        metric_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        full_dimension_{0u},
+        weight_{0} {}
+
+template <typename>
+constexpr VectorComponent::VectorComponent(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(VectorComponent_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct VectorComponentDefaultTypeInternal {
+  constexpr VectorComponentDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~VectorComponentDefaultTypeInternal() {}
+  union {
+    VectorComponent _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 VectorComponentDefaultTypeInternal _VectorComponent_default_instance_;
+
 inline constexpr VacuumFilterQuery::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     ::_pbi::ConstantInitialized) noexcept
@@ -446,6 +479,24 @@ struct SearchTextRequest_FilterEntry_DoNotUseDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 SearchTextRequest_FilterEntry_DoNotUseDefaultTypeInternal _SearchTextRequest_FilterEntry_DoNotUse_default_instance_;
 template <typename>
+constexpr SearchTextRequest_ComponentWeightsEntry_DoNotUse::SearchTextRequest_ComponentWeightsEntry_DoNotUse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : SearchTextRequest_ComponentWeightsEntry_DoNotUse::MapEntry(SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_.base()){}
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : SearchTextRequest_ComponentWeightsEntry_DoNotUse::MapEntry() {
+}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+struct SearchTextRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal {
+  constexpr SearchTextRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~SearchTextRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal() {}
+  union {
+    SearchTextRequest_ComponentWeightsEntry_DoNotUse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 SearchTextRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal _SearchTextRequest_ComponentWeightsEntry_DoNotUse_default_instance_;
+template <typename>
 constexpr SearchResult_MetadataEntry_DoNotUse::SearchResult_MetadataEntry_DoNotUse(::_pbi::ConstantInitialized)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : SearchResult_MetadataEntry_DoNotUse::MapEntry(SearchResult_MetadataEntry_DoNotUse_class_data_.base()){}
@@ -481,6 +532,24 @@ struct SearchRequest_FilterEntry_DoNotUseDefaultTypeInternal {
 
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 SearchRequest_FilterEntry_DoNotUseDefaultTypeInternal _SearchRequest_FilterEntry_DoNotUse_default_instance_;
+template <typename>
+constexpr SearchRequest_ComponentWeightsEntry_DoNotUse::SearchRequest_ComponentWeightsEntry_DoNotUse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : SearchRequest_ComponentWeightsEntry_DoNotUse::MapEntry(SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_.base()){}
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : SearchRequest_ComponentWeightsEntry_DoNotUse::MapEntry() {
+}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+struct SearchRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal {
+  constexpr SearchRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~SearchRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal() {}
+  union {
+    SearchRequest_ComponentWeightsEntry_DoNotUse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 SearchRequest_ComponentWeightsEntry_DoNotUseDefaultTypeInternal _SearchRequest_ComponentWeightsEntry_DoNotUse_default_instance_;
 
 inline constexpr SearchMultiCollectionRequest::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
@@ -647,6 +716,37 @@ struct QuantizationConfigDefaultTypeInternal {
 
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 QuantizationConfigDefaultTypeInternal _QuantizationConfig_default_instance_;
+
+inline constexpr MrlLayer::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        component_name_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        cutoff_dimension_{0u},
+        store_in_ram_{false},
+        rerank_top_k_{0u} {}
+
+template <typename>
+constexpr MrlLayer::MrlLayer(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(MrlLayer_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct MrlLayerDefaultTypeInternal {
+  constexpr MrlLayerDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~MrlLayerDefaultTypeInternal() {}
+  union {
+    MrlLayer _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 MrlLayerDefaultTypeInternal _MrlLayer_default_instance_;
 template <typename>
 constexpr MonitorRequest::MonitorRequest(::_pbi::ConstantInitialized)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
@@ -1447,35 +1547,6 @@ struct DeleteCollectionOpDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 DeleteCollectionOpDefaultTypeInternal _DeleteCollectionOp_default_instance_;
 
-inline constexpr CreateCollectionOp::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    ::_pbi::ConstantInitialized) noexcept
-      : _cached_size_{0},
-        metric_(
-            &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        dimension_{0u} {}
-
-template <typename>
-constexpr CreateCollectionOp::CreateCollectionOp(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(CreateCollectionOp_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
-}
-struct CreateCollectionOpDefaultTypeInternal {
-  constexpr CreateCollectionOpDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~CreateCollectionOpDefaultTypeInternal() {}
-  union {
-    CreateCollectionOp _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CreateCollectionOpDefaultTypeInternal _CreateCollectionOp_default_instance_;
-
 inline constexpr CountResponse::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     ::_pbi::ConstantInitialized) noexcept
@@ -1532,73 +1603,6 @@ struct ConfigUpdateDefaultTypeInternal {
 
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ConfigUpdateDefaultTypeInternal _ConfigUpdate_default_instance_;
-
-inline constexpr CollectionSummary::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    ::_pbi::ConstantInitialized) noexcept
-      : _cached_size_{0},
-        name_(
-            &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        metric_(
-            &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        count_{::uint64_t{0u}},
-        dimension_{0u} {}
-
-template <typename>
-constexpr CollectionSummary::CollectionSummary(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(CollectionSummary_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
-}
-struct CollectionSummaryDefaultTypeInternal {
-  constexpr CollectionSummaryDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~CollectionSummaryDefaultTypeInternal() {}
-  union {
-    CollectionSummary _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CollectionSummaryDefaultTypeInternal _CollectionSummary_default_instance_;
-
-inline constexpr CollectionStatsResponse::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    ::_pbi::ConstantInitialized) noexcept
-      : _cached_size_{0},
-        metric_(
-            &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        count_{::uint64_t{0u}},
-        indexing_queue_{::uint64_t{0u}},
-        disk_usage_bytes_{::uint64_t{0u}},
-        ram_usage_bytes_{::uint64_t{0u}},
-        active_tasks_{::uint64_t{0u}},
-        dimension_{0u} {}
-
-template <typename>
-constexpr CollectionStatsResponse::CollectionStatsResponse(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(CollectionStatsResponse_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
-}
-struct CollectionStatsResponseDefaultTypeInternal {
-  constexpr CollectionStatsResponseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~CollectionStatsResponseDefaultTypeInternal() {}
-  union {
-    CollectionStatsResponse _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CollectionStatsResponseDefaultTypeInternal _CollectionStatsResponse_default_instance_;
 
 inline constexpr CollectionStatsRequest::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
@@ -1925,40 +1929,6 @@ struct RebuildIndexRequestDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 RebuildIndexRequestDefaultTypeInternal _RebuildIndexRequest_default_instance_;
 
-inline constexpr ListCollectionsResponse::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    ::_pbi::ConstantInitialized) noexcept
-      : _cached_size_{0},
-        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
-        collections_{visibility, ::_pbi::InternalMetadataOffset::Build<
-            ::hyperspace::ListCollectionsResponse,
-            PROTOBUF_FIELD_OFFSET(::hyperspace::ListCollectionsResponse, _impl_.collections_)>()
-        }
-        #else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
-        collections_ {}
-        #endif
-     {}
-
-template <typename>
-constexpr ListCollectionsResponse::ListCollectionsResponse(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(ListCollectionsResponse_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
-}
-struct ListCollectionsResponseDefaultTypeInternal {
-  constexpr ListCollectionsResponseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~ListCollectionsResponseDefaultTypeInternal() {}
-  union {
-    ListCollectionsResponse _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ListCollectionsResponseDefaultTypeInternal _ListCollectionsResponse_default_instance_;
-
 inline constexpr InsertTextRequest::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     ::_pbi::ConstantInitialized) noexcept
@@ -2210,46 +2180,48 @@ struct FilterOrDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 FilterOrDefaultTypeInternal _FilterOr_default_instance_;
 
-inline constexpr CreateCollectionRequest::Impl_::Impl_(
+inline constexpr CollectionSchema::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
         components_{visibility, ::_pbi::InternalMetadataOffset::Build<
-            ::hyperspace::CreateCollectionRequest,
-            PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.components_)>()
+            ::hyperspace::CollectionSchema,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.components_)>()
         }
         #else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
         components_ {}
         #endif
         ,
-        name_(
-            &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        metric_(
-            &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        dimension_{0u} {}
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        cascade_pipeline_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::CollectionSchema,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.cascade_pipeline_)>()
+        }
+        #else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        cascade_pipeline_ {}
+        #endif
+     {}
 
 template <typename>
-constexpr CreateCollectionRequest::CreateCollectionRequest(::_pbi::ConstantInitialized)
+constexpr CollectionSchema::CollectionSchema(::_pbi::ConstantInitialized)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(CreateCollectionRequest_class_data_.base()),
+    : ::google::protobuf::Message(CollectionSchema_class_data_.base()),
 #else   // PROTOBUF_CUSTOM_VTABLE
     : ::google::protobuf::Message(),
 #endif  // PROTOBUF_CUSTOM_VTABLE
       _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
 }
-struct CreateCollectionRequestDefaultTypeInternal {
-  constexpr CreateCollectionRequestDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~CreateCollectionRequestDefaultTypeInternal() {}
+struct CollectionSchemaDefaultTypeInternal {
+  constexpr CollectionSchemaDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~CollectionSchemaDefaultTypeInternal() {}
   union {
-    CreateCollectionRequest _instance;
+    CollectionSchema _instance;
   };
 };
 
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CreateCollectionRequestDefaultTypeInternal _CreateCollectionRequest_default_instance_;
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CollectionSchemaDefaultTypeInternal _CollectionSchema_default_instance_;
 
 inline constexpr VectorInsertedEvent::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
@@ -2474,6 +2446,7 @@ inline constexpr SearchTextRequest::Impl_::Impl_(
         bm25_options_{nullptr},
         top_k_{0u},
         hybrid_alpha_{0},
+        include_payload_{false},
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
         filter_{visibility, ::_pbi::InternalMetadataOffset::Build<
             ::hyperspace::SearchTextRequest,
@@ -2481,6 +2454,15 @@ inline constexpr SearchTextRequest::Impl_::Impl_(
         }
         #else
         filter_ {}
+        #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
+        component_weights_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::SearchTextRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.component_weights_)>()
+        }
+        #else
+        component_weights_ {}
         #endif
      {}
 
@@ -2508,6 +2490,9 @@ inline constexpr SearchResult::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
+        payload_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
         distance_{0},
         id_{0u},
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
@@ -2581,6 +2566,7 @@ inline constexpr SearchRequest::Impl_::Impl_(
         top_k_{0u},
         hybrid_alpha_{0},
         use_wasserstein_{false},
+        include_payload_{false},
         mrl_dimension_{0u},
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
         filter_{visibility, ::_pbi::InternalMetadataOffset::Build<
@@ -2589,6 +2575,15 @@ inline constexpr SearchRequest::Impl_::Impl_(
         }
         #else
         filter_ {}
+        #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
+        component_weights_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::SearchRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.component_weights_)>()
+        }
+        #else
+        component_weights_ {}
         #endif
      {}
 
@@ -2668,6 +2663,9 @@ inline constexpr InsertRequest::Impl_::Impl_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
         origin_node_id_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        payload_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
         id_{0u},
@@ -2820,6 +2818,61 @@ struct GraphNodeDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 GraphNodeDefaultTypeInternal _GraphNode_default_instance_;
 
+inline constexpr CreateCollectionRequest::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        name_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        schema_{nullptr} {}
+
+template <typename>
+constexpr CreateCollectionRequest::CreateCollectionRequest(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(CreateCollectionRequest_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct CreateCollectionRequestDefaultTypeInternal {
+  constexpr CreateCollectionRequestDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~CreateCollectionRequestDefaultTypeInternal() {}
+  union {
+    CreateCollectionRequest _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CreateCollectionRequestDefaultTypeInternal _CreateCollectionRequest_default_instance_;
+
+inline constexpr CreateCollectionOp::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        schema_{nullptr} {}
+
+template <typename>
+constexpr CreateCollectionOp::CreateCollectionOp(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(CreateCollectionOp_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct CreateCollectionOpDefaultTypeInternal {
+  constexpr CreateCollectionOpDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~CreateCollectionOpDefaultTypeInternal() {}
+  union {
+    CreateCollectionOp _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CreateCollectionOpDefaultTypeInternal _CreateCollectionOp_default_instance_;
+
 inline constexpr CountRequest::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     ::_pbi::ConstantInitialized) noexcept
@@ -2856,6 +2909,67 @@ struct CountRequestDefaultTypeInternal {
 
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CountRequestDefaultTypeInternal _CountRequest_default_instance_;
+
+inline constexpr CollectionSummary::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        name_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        schema_{nullptr},
+        count_{::uint64_t{0u}} {}
+
+template <typename>
+constexpr CollectionSummary::CollectionSummary(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(CollectionSummary_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct CollectionSummaryDefaultTypeInternal {
+  constexpr CollectionSummaryDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~CollectionSummaryDefaultTypeInternal() {}
+  union {
+    CollectionSummary _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CollectionSummaryDefaultTypeInternal _CollectionSummary_default_instance_;
+
+inline constexpr CollectionStatsResponse::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        schema_{nullptr},
+        count_{::uint64_t{0u}},
+        indexing_queue_{::uint64_t{0u}},
+        disk_usage_bytes_{::uint64_t{0u}},
+        ram_usage_bytes_{::uint64_t{0u}},
+        active_tasks_{::uint64_t{0u}} {}
+
+template <typename>
+constexpr CollectionStatsResponse::CollectionStatsResponse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(CollectionStatsResponse_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct CollectionStatsResponseDefaultTypeInternal {
+  constexpr CollectionStatsResponseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~CollectionStatsResponseDefaultTypeInternal() {}
+  union {
+    CollectionStatsResponse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 CollectionStatsResponseDefaultTypeInternal _CollectionStatsResponse_default_instance_;
 
 inline constexpr TraverseResponse::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
@@ -2992,6 +3106,40 @@ struct ReplicationLogDefaultTypeInternal {
 
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ReplicationLogDefaultTypeInternal _ReplicationLog_default_instance_;
+
+inline constexpr ListCollectionsResponse::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        collections_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::ListCollectionsResponse,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::ListCollectionsResponse, _impl_.collections_)>()
+        }
+        #else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        collections_ {}
+        #endif
+     {}
+
+template <typename>
+constexpr ListCollectionsResponse::ListCollectionsResponse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(ListCollectionsResponse_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct ListCollectionsResponseDefaultTypeInternal {
+  constexpr ListCollectionsResponseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~ListCollectionsResponseDefaultTypeInternal() {}
+  union {
+    ListCollectionsResponse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 ListCollectionsResponseDefaultTypeInternal _ListCollectionsResponse_default_instance_;
 
 inline constexpr GetPointsResponse::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
@@ -3352,10 +3500,8 @@ const ::uint32_t
         3,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionOp, _impl_._has_bits_),
-        5, // hasbit index offset
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionOp, _impl_.dimension_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionOp, _impl_.metric_),
-        1,
+        4, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionOp, _impl_.schema_),
         0,
         0x000, // bitmap
         0x081, // bitmap
@@ -3370,15 +3516,40 @@ const ::uint32_t
         0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_._has_bits_),
-        7, // hasbit index offset
+        5, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.name_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.dimension_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.metric_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.components_),
-        1,
-        3,
-        2,
+        PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.schema_),
         0,
+        1,
+        0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VectorComponent, _impl_._has_bits_),
+        7, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VectorComponent, _impl_.name_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VectorComponent, _impl_.metric_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VectorComponent, _impl_.full_dimension_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VectorComponent, _impl_.weight_),
+        0,
+        1,
+        2,
+        3,
+        0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::MrlLayer, _impl_._has_bits_),
+        7, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::MrlLayer, _impl_.component_name_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::MrlLayer, _impl_.cutoff_dimension_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::MrlLayer, _impl_.store_in_ram_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::MrlLayer, _impl_.rerank_top_k_),
+        0,
+        1,
+        2,
+        3,
+        0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.components_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.cascade_pipeline_),
+        0,
+        1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionComponent, _impl_._has_bits_),
         7, // hasbit index offset
@@ -3397,14 +3568,12 @@ const ::uint32_t
         0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSummary, _impl_._has_bits_),
-        7, // hasbit index offset
+        6, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSummary, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSummary, _impl_.count_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSummary, _impl_.dimension_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSummary, _impl_.metric_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSummary, _impl_.schema_),
         0,
         2,
-        3,
         1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::ListCollectionsResponse, _impl_._has_bits_),
@@ -3418,21 +3587,19 @@ const ::uint32_t
         0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_._has_bits_),
-        10, // hasbit index offset
+        9, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.count_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.dimension_),
-        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.metric_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.indexing_queue_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.disk_usage_bytes_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.ram_usage_bytes_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.active_tasks_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionStatsResponse, _impl_.schema_),
         1,
-        6,
-        0,
         2,
         3,
         4,
         5,
+        0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::RebuildIndexRequest, _impl_._has_bits_),
         5, // hasbit index offset
@@ -3485,7 +3652,7 @@ const ::uint32_t
         1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_._has_bits_),
-        11, // hasbit index offset
+        12, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_.collection_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_.vector_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_.id_),
@@ -3494,14 +3661,16 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_.logical_clock_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_.durability_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_.typed_metadata_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::InsertRequest, _impl_.payload_),
         1,
         0,
-        3,
-        6,
-        2,
-        5,
         4,
         7,
+        2,
+        6,
+        5,
+        8,
+        3,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::VectorData_MetadataEntry_DoNotUse, _impl_._has_bits_),
         5, // hasbit index offset
@@ -3580,8 +3749,15 @@ const ::uint32_t
         0,
         1,
         0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_.key_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_.value_),
+        0,
+        1,
+        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_._has_bits_),
-        10, // hasbit index offset
+        12, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.collection_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.text_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.top_k_),
@@ -3589,13 +3765,17 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.filters_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.bm25_options_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.hybrid_alpha_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.include_payload_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.component_weights_),
         1,
         2,
         4,
-        6,
+        7,
         0,
         3,
         5,
+        6,
+        8,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::Bm25Options, _impl_._has_bits_),
         10, // hasbit index offset
@@ -3708,8 +3888,15 @@ const ::uint32_t
         0,
         1,
         0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_.key_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_.value_),
+        0,
+        1,
+        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_._has_bits_),
-        13, // hasbit index offset
+        15, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.collection_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.vector_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.top_k_),
@@ -3720,16 +3907,20 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.use_wasserstein_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.bm25_options_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.mrl_dimension_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.include_payload_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.component_weights_),
         2,
         0,
         5,
-        9,
+        10,
         1,
         3,
         6,
         7,
         4,
+        9,
         8,
+        11,
         0x004, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::Filter, _impl_._oneof_case_[0]),
         PROTOBUF_FIELD_OFFSET(::hyperspace::Filter, _impl_.condition_),
@@ -3851,15 +4042,17 @@ const ::uint32_t
         1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchResult, _impl_._has_bits_),
-        7, // hasbit index offset
+        8, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchResult, _impl_.id_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchResult, _impl_.distance_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchResult, _impl_.metadata_),
         PROTOBUF_FIELD_OFFSET(::hyperspace::SearchResult, _impl_.typed_metadata_),
-        1,
-        0,
+        PROTOBUF_FIELD_OFFSET(::hyperspace::SearchResult, _impl_.payload_),
         2,
+        1,
         3,
+        4,
+        0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::hyperspace::GetNodeRequest, _impl_._has_bits_),
         6, // hasbit index offset
@@ -4182,103 +4375,108 @@ static const ::_pbi::MigrationSchema
         {31, sizeof(::hyperspace::InsertOp_TypedMetadataEntry_DoNotUse)},
         {38, sizeof(::hyperspace::InsertOp)},
         {49, sizeof(::hyperspace::CreateCollectionOp)},
-        {56, sizeof(::hyperspace::DeleteCollectionOp)},
-        {57, sizeof(::hyperspace::DeleteOp)},
-        {62, sizeof(::hyperspace::QuantizationConfig)},
-        {67, sizeof(::hyperspace::CreateCollectionRequest)},
-        {78, sizeof(::hyperspace::CollectionComponent)},
-        {89, sizeof(::hyperspace::DeleteCollectionRequest)},
-        {94, sizeof(::hyperspace::CollectionSummary)},
-        {105, sizeof(::hyperspace::ListCollectionsResponse)},
-        {110, sizeof(::hyperspace::CollectionStatsRequest)},
-        {115, sizeof(::hyperspace::CollectionStatsResponse)},
-        {132, sizeof(::hyperspace::RebuildIndexRequest)},
-        {139, sizeof(::hyperspace::ConfigUpdate)},
-        {150, sizeof(::hyperspace::VacuumFilterQuery)},
-        {159, sizeof(::hyperspace::ReconsolidationRequest)},
-        {168, sizeof(::hyperspace::InsertRequest_MetadataEntry_DoNotUse)},
-        {175, sizeof(::hyperspace::InsertRequest_TypedMetadataEntry_DoNotUse)},
-        {182, sizeof(::hyperspace::InsertRequest)},
-        {201, sizeof(::hyperspace::VectorData_MetadataEntry_DoNotUse)},
-        {208, sizeof(::hyperspace::VectorData_TypedMetadataEntry_DoNotUse)},
-        {215, sizeof(::hyperspace::VectorData)},
-        {226, sizeof(::hyperspace::BatchInsertRequest)},
-        {239, sizeof(::hyperspace::InsertTextRequest_MetadataEntry_DoNotUse)},
-        {246, sizeof(::hyperspace::InsertTextRequest)},
-        {259, sizeof(::hyperspace::VectorizeRequest)},
-        {266, sizeof(::hyperspace::VectorizeResponse)},
-        {271, sizeof(::hyperspace::SearchTextRequest_FilterEntry_DoNotUse)},
-        {278, sizeof(::hyperspace::SearchTextRequest)},
-        {295, sizeof(::hyperspace::Bm25Options)},
-        {312, sizeof(::hyperspace::InsertResponse)},
-        {317, sizeof(::hyperspace::DeleteRequest)},
-        {324, sizeof(::hyperspace::DeleteResponse)},
-        {329, sizeof(::hyperspace::GetPointsRequest)},
-        {336, sizeof(::hyperspace::GetPointsResponse)},
-        {341, sizeof(::hyperspace::UpdatePayloadRequest_MetadataEntry_DoNotUse)},
-        {348, sizeof(::hyperspace::UpdatePayloadRequest_TypedMetadataEntry_DoNotUse)},
-        {355, sizeof(::hyperspace::UpdatePayloadRequest)},
-        {366, sizeof(::hyperspace::ScrollRequest)},
-        {377, sizeof(::hyperspace::ScrollResponse)},
-        {382, sizeof(::hyperspace::CountRequest)},
-        {389, sizeof(::hyperspace::CountResponse)},
-        {394, sizeof(::hyperspace::HealthCheckResponse)},
-        {399, sizeof(::hyperspace::SearchRequest_FilterEntry_DoNotUse)},
-        {406, sizeof(::hyperspace::SearchRequest)},
-        {429, sizeof(::hyperspace::Filter)},
-        {440, sizeof(::hyperspace::FilterAnd)},
-        {445, sizeof(::hyperspace::FilterOr)},
-        {450, sizeof(::hyperspace::FilterNot)},
-        {455, sizeof(::hyperspace::Match)},
-        {462, sizeof(::hyperspace::Range)},
-        {475, sizeof(::hyperspace::InCone)},
-        {484, sizeof(::hyperspace::InBox)},
-        {491, sizeof(::hyperspace::InBall)},
-        {498, sizeof(::hyperspace::SearchResponse)},
-        {503, sizeof(::hyperspace::BatchSearchRequest)},
-        {508, sizeof(::hyperspace::BatchSearchResponse)},
-        {513, sizeof(::hyperspace::SearchMultiCollectionRequest)},
-        {522, sizeof(::hyperspace::SearchMultiCollectionResponse_ResponsesEntry_DoNotUse)},
-        {529, sizeof(::hyperspace::SearchMultiCollectionResponse)},
-        {534, sizeof(::hyperspace::SearchResult_MetadataEntry_DoNotUse)},
-        {541, sizeof(::hyperspace::SearchResult_TypedMetadataEntry_DoNotUse)},
-        {548, sizeof(::hyperspace::SearchResult)},
-        {559, sizeof(::hyperspace::GetNodeRequest)},
-        {568, sizeof(::hyperspace::GraphNode_MetadataEntry_DoNotUse)},
-        {575, sizeof(::hyperspace::GraphNode_TypedMetadataEntry_DoNotUse)},
-        {582, sizeof(::hyperspace::GraphNode)},
-        {595, sizeof(::hyperspace::GetNeighborsRequest)},
-        {608, sizeof(::hyperspace::GetNeighborsResponse)},
-        {615, sizeof(::hyperspace::TraverseRequest_FilterEntry_DoNotUse)},
-        {622, sizeof(::hyperspace::TraverseRequest)},
-        {639, sizeof(::hyperspace::TraverseResponse)},
-        {644, sizeof(::hyperspace::FindSemanticClustersRequest)},
-        {657, sizeof(::hyperspace::GetConceptParentsRequest)},
-        {668, sizeof(::hyperspace::GetConceptParentsResponse)},
-        {673, sizeof(::hyperspace::GraphCluster)},
-        {678, sizeof(::hyperspace::FindSemanticClustersResponse)},
-        {683, sizeof(::hyperspace::MetadataValue)},
-        {690, sizeof(::hyperspace::EventSubscriptionRequest)},
-        {697, sizeof(::hyperspace::VectorInsertedEvent_MetadataEntry_DoNotUse)},
-        {704, sizeof(::hyperspace::VectorInsertedEvent_TypedMetadataEntry_DoNotUse)},
-        {711, sizeof(::hyperspace::VectorInsertedEvent)},
-        {726, sizeof(::hyperspace::TrajectoryStepEvent_MetadataEntry_DoNotUse)},
-        {733, sizeof(::hyperspace::TrajectoryStepEvent)},
-        {746, sizeof(::hyperspace::VectorDeletedEvent)},
-        {757, sizeof(::hyperspace::EventMessage)},
-        {770, sizeof(::hyperspace::Empty)},
-        {771, sizeof(::hyperspace::StatusResponse)},
-        {776, sizeof(::hyperspace::MonitorRequest)},
-        {777, sizeof(::hyperspace::SystemStats)},
-        {788, sizeof(::hyperspace::DigestRequest)},
-        {793, sizeof(::hyperspace::DigestResponse)},
-        {804, sizeof(::hyperspace::SyncHandshakeRequest)},
-        {815, sizeof(::hyperspace::DiffBucket)},
-        {824, sizeof(::hyperspace::SyncHandshakeResponse)},
-        {835, sizeof(::hyperspace::SyncPullRequest)},
-        {842, sizeof(::hyperspace::SyncVectorData_MetadataEntry_DoNotUse)},
-        {849, sizeof(::hyperspace::SyncVectorData)},
-        {862, sizeof(::hyperspace::SyncPushResponse)},
+        {54, sizeof(::hyperspace::DeleteCollectionOp)},
+        {55, sizeof(::hyperspace::DeleteOp)},
+        {60, sizeof(::hyperspace::QuantizationConfig)},
+        {65, sizeof(::hyperspace::CreateCollectionRequest)},
+        {72, sizeof(::hyperspace::VectorComponent)},
+        {83, sizeof(::hyperspace::MrlLayer)},
+        {94, sizeof(::hyperspace::CollectionSchema)},
+        {101, sizeof(::hyperspace::CollectionComponent)},
+        {112, sizeof(::hyperspace::DeleteCollectionRequest)},
+        {117, sizeof(::hyperspace::CollectionSummary)},
+        {126, sizeof(::hyperspace::ListCollectionsResponse)},
+        {131, sizeof(::hyperspace::CollectionStatsRequest)},
+        {136, sizeof(::hyperspace::CollectionStatsResponse)},
+        {151, sizeof(::hyperspace::RebuildIndexRequest)},
+        {158, sizeof(::hyperspace::ConfigUpdate)},
+        {169, sizeof(::hyperspace::VacuumFilterQuery)},
+        {178, sizeof(::hyperspace::ReconsolidationRequest)},
+        {187, sizeof(::hyperspace::InsertRequest_MetadataEntry_DoNotUse)},
+        {194, sizeof(::hyperspace::InsertRequest_TypedMetadataEntry_DoNotUse)},
+        {201, sizeof(::hyperspace::InsertRequest)},
+        {222, sizeof(::hyperspace::VectorData_MetadataEntry_DoNotUse)},
+        {229, sizeof(::hyperspace::VectorData_TypedMetadataEntry_DoNotUse)},
+        {236, sizeof(::hyperspace::VectorData)},
+        {247, sizeof(::hyperspace::BatchInsertRequest)},
+        {260, sizeof(::hyperspace::InsertTextRequest_MetadataEntry_DoNotUse)},
+        {267, sizeof(::hyperspace::InsertTextRequest)},
+        {280, sizeof(::hyperspace::VectorizeRequest)},
+        {287, sizeof(::hyperspace::VectorizeResponse)},
+        {292, sizeof(::hyperspace::SearchTextRequest_FilterEntry_DoNotUse)},
+        {299, sizeof(::hyperspace::SearchTextRequest_ComponentWeightsEntry_DoNotUse)},
+        {306, sizeof(::hyperspace::SearchTextRequest)},
+        {327, sizeof(::hyperspace::Bm25Options)},
+        {344, sizeof(::hyperspace::InsertResponse)},
+        {349, sizeof(::hyperspace::DeleteRequest)},
+        {356, sizeof(::hyperspace::DeleteResponse)},
+        {361, sizeof(::hyperspace::GetPointsRequest)},
+        {368, sizeof(::hyperspace::GetPointsResponse)},
+        {373, sizeof(::hyperspace::UpdatePayloadRequest_MetadataEntry_DoNotUse)},
+        {380, sizeof(::hyperspace::UpdatePayloadRequest_TypedMetadataEntry_DoNotUse)},
+        {387, sizeof(::hyperspace::UpdatePayloadRequest)},
+        {398, sizeof(::hyperspace::ScrollRequest)},
+        {409, sizeof(::hyperspace::ScrollResponse)},
+        {414, sizeof(::hyperspace::CountRequest)},
+        {421, sizeof(::hyperspace::CountResponse)},
+        {426, sizeof(::hyperspace::HealthCheckResponse)},
+        {431, sizeof(::hyperspace::SearchRequest_FilterEntry_DoNotUse)},
+        {438, sizeof(::hyperspace::SearchRequest_ComponentWeightsEntry_DoNotUse)},
+        {445, sizeof(::hyperspace::SearchRequest)},
+        {472, sizeof(::hyperspace::Filter)},
+        {483, sizeof(::hyperspace::FilterAnd)},
+        {488, sizeof(::hyperspace::FilterOr)},
+        {493, sizeof(::hyperspace::FilterNot)},
+        {498, sizeof(::hyperspace::Match)},
+        {505, sizeof(::hyperspace::Range)},
+        {518, sizeof(::hyperspace::InCone)},
+        {527, sizeof(::hyperspace::InBox)},
+        {534, sizeof(::hyperspace::InBall)},
+        {541, sizeof(::hyperspace::SearchResponse)},
+        {546, sizeof(::hyperspace::BatchSearchRequest)},
+        {551, sizeof(::hyperspace::BatchSearchResponse)},
+        {556, sizeof(::hyperspace::SearchMultiCollectionRequest)},
+        {565, sizeof(::hyperspace::SearchMultiCollectionResponse_ResponsesEntry_DoNotUse)},
+        {572, sizeof(::hyperspace::SearchMultiCollectionResponse)},
+        {577, sizeof(::hyperspace::SearchResult_MetadataEntry_DoNotUse)},
+        {584, sizeof(::hyperspace::SearchResult_TypedMetadataEntry_DoNotUse)},
+        {591, sizeof(::hyperspace::SearchResult)},
+        {604, sizeof(::hyperspace::GetNodeRequest)},
+        {613, sizeof(::hyperspace::GraphNode_MetadataEntry_DoNotUse)},
+        {620, sizeof(::hyperspace::GraphNode_TypedMetadataEntry_DoNotUse)},
+        {627, sizeof(::hyperspace::GraphNode)},
+        {640, sizeof(::hyperspace::GetNeighborsRequest)},
+        {653, sizeof(::hyperspace::GetNeighborsResponse)},
+        {660, sizeof(::hyperspace::TraverseRequest_FilterEntry_DoNotUse)},
+        {667, sizeof(::hyperspace::TraverseRequest)},
+        {684, sizeof(::hyperspace::TraverseResponse)},
+        {689, sizeof(::hyperspace::FindSemanticClustersRequest)},
+        {702, sizeof(::hyperspace::GetConceptParentsRequest)},
+        {713, sizeof(::hyperspace::GetConceptParentsResponse)},
+        {718, sizeof(::hyperspace::GraphCluster)},
+        {723, sizeof(::hyperspace::FindSemanticClustersResponse)},
+        {728, sizeof(::hyperspace::MetadataValue)},
+        {735, sizeof(::hyperspace::EventSubscriptionRequest)},
+        {742, sizeof(::hyperspace::VectorInsertedEvent_MetadataEntry_DoNotUse)},
+        {749, sizeof(::hyperspace::VectorInsertedEvent_TypedMetadataEntry_DoNotUse)},
+        {756, sizeof(::hyperspace::VectorInsertedEvent)},
+        {771, sizeof(::hyperspace::TrajectoryStepEvent_MetadataEntry_DoNotUse)},
+        {778, sizeof(::hyperspace::TrajectoryStepEvent)},
+        {791, sizeof(::hyperspace::VectorDeletedEvent)},
+        {802, sizeof(::hyperspace::EventMessage)},
+        {815, sizeof(::hyperspace::Empty)},
+        {816, sizeof(::hyperspace::StatusResponse)},
+        {821, sizeof(::hyperspace::MonitorRequest)},
+        {822, sizeof(::hyperspace::SystemStats)},
+        {833, sizeof(::hyperspace::DigestRequest)},
+        {838, sizeof(::hyperspace::DigestResponse)},
+        {849, sizeof(::hyperspace::SyncHandshakeRequest)},
+        {860, sizeof(::hyperspace::DiffBucket)},
+        {869, sizeof(::hyperspace::SyncHandshakeResponse)},
+        {880, sizeof(::hyperspace::SyncPullRequest)},
+        {887, sizeof(::hyperspace::SyncVectorData_MetadataEntry_DoNotUse)},
+        {894, sizeof(::hyperspace::SyncVectorData)},
+        {907, sizeof(::hyperspace::SyncPushResponse)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_ReplicationRequest_default_instance_._instance,
@@ -4291,6 +4489,9 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_DeleteOp_default_instance_._instance,
     &::hyperspace::_QuantizationConfig_default_instance_._instance,
     &::hyperspace::_CreateCollectionRequest_default_instance_._instance,
+    &::hyperspace::_VectorComponent_default_instance_._instance,
+    &::hyperspace::_MrlLayer_default_instance_._instance,
+    &::hyperspace::_CollectionSchema_default_instance_._instance,
     &::hyperspace::_CollectionComponent_default_instance_._instance,
     &::hyperspace::_DeleteCollectionRequest_default_instance_._instance,
     &::hyperspace::_CollectionSummary_default_instance_._instance,
@@ -4313,6 +4514,7 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_VectorizeRequest_default_instance_._instance,
     &::hyperspace::_VectorizeResponse_default_instance_._instance,
     &::hyperspace::_SearchTextRequest_FilterEntry_DoNotUse_default_instance_._instance,
+    &::hyperspace::_SearchTextRequest_ComponentWeightsEntry_DoNotUse_default_instance_._instance,
     &::hyperspace::_SearchTextRequest_default_instance_._instance,
     &::hyperspace::_Bm25Options_default_instance_._instance,
     &::hyperspace::_InsertResponse_default_instance_._instance,
@@ -4329,6 +4531,7 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_CountResponse_default_instance_._instance,
     &::hyperspace::_HealthCheckResponse_default_instance_._instance,
     &::hyperspace::_SearchRequest_FilterEntry_DoNotUse_default_instance_._instance,
+    &::hyperspace::_SearchRequest_ComponentWeightsEntry_DoNotUse_default_instance_._instance,
     &::hyperspace::_SearchRequest_default_instance_._instance,
     &::hyperspace::_Filter_default_instance_._instance,
     &::hyperspace::_FilterAnd_default_instance_._instance,
@@ -4403,325 +4606,346 @@ const char descriptor_table_protodef_hyperspace_2eproto[] ABSL_ATTRIBUTE_SECTION
     "Op.TypedMetadataEntry\032/\n\rMetadataEntry\022\013"
     "\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022TypedM"
     "etadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\013"
-    "2\031.hyperspace.MetadataValue:\0028\001\"7\n\022Creat"
-    "eCollectionOp\022\021\n\tdimension\030\001 \001(\r\022\016\n\006metr"
-    "ic\030\002 \001(\t\"\024\n\022DeleteCollectionOp\"\026\n\010Delete"
-    "Op\022\n\n\002id\030\001 \001(\r\"@\n\022QuantizationConfig\022*\n\004"
-    "mode\030\001 \001(\0162\034.hyperspace.QuantizationMode"
-    "\"\177\n\027CreateCollectionRequest\022\014\n\004name\030\001 \001("
-    "\t\022\021\n\tdimension\030\002 \001(\r\022\016\n\006metric\030\003 \001(\t\0223\n\n"
-    "components\030\004 \003(\0132\037.hyperspace.Collection"
-    "Component\"g\n\023CollectionComponent\022\r\n\005spac"
-    "e\030\001 \001(\t\022\021\n\tdimension\030\002 \001(\r\022\016\n\006metric\030\003 \001"
-    "(\t\022\023\n\006weight\030\004 \001(\002H\000\210\001\001B\t\n\007_weight\"\'\n\027De"
-    "leteCollectionRequest\022\014\n\004name\030\001 \001(\t\"S\n\021C"
-    "ollectionSummary\022\014\n\004name\030\001 \001(\t\022\r\n\005count\030"
-    "\002 \001(\004\022\021\n\tdimension\030\003 \001(\r\022\016\n\006metric\030\004 \001(\t"
-    "\"M\n\027ListCollectionsResponse\0222\n\013collectio"
-    "ns\030\001 \003(\0132\035.hyperspace.CollectionSummary\""
-    "&\n\026CollectionStatsRequest\022\014\n\004name\030\001 \001(\t\""
-    "\254\001\n\027CollectionStatsResponse\022\r\n\005count\030\001 \001"
-    "(\004\022\021\n\tdimension\030\002 \001(\r\022\016\n\006metric\030\003 \001(\t\022\026\n"
-    "\016indexing_queue\030\004 \001(\004\022\030\n\020disk_usage_byte"
-    "s\030\005 \001(\004\022\027\n\017ram_usage_bytes\030\006 \001(\004\022\024\n\014acti"
-    "ve_tasks\030\007 \001(\004\"n\n\023RebuildIndexRequest\022\014\n"
-    "\004name\030\001 \001(\t\0228\n\014filter_query\030\002 \001(\0132\035.hype"
-    "rspace.VacuumFilterQueryH\000\210\001\001B\017\n\r_filter"
-    "_query\"\220\001\n\014ConfigUpdate\022\022\n\ncollection\030\001 "
-    "\001(\t\022\026\n\tef_search\030\002 \001(\rH\000\210\001\001\022\034\n\017ef_constr"
-    "uction\030\003 \001(\rH\001\210\001\001\022\016\n\001m\030\004 \001(\rH\002\210\001\001B\014\n\n_ef"
-    "_searchB\022\n\020_ef_constructionB\004\n\002_m\";\n\021Vac"
-    "uumFilterQuery\022\013\n\003key\030\001 \001(\t\022\n\n\002op\030\002 \001(\t\022"
-    "\r\n\005value\030\003 \001(\001\"Z\n\026ReconsolidationRequest"
-    "\022\022\n\ncollection\030\001 \001(\t\022\025\n\rtarget_vector\030\002 "
-    "\003(\001\022\025\n\rlearning_rate\030\003 \001(\001\"\242\003\n\rInsertReq"
-    "uest\022\022\n\ncollection\030\001 \001(\t\022\016\n\006vector\030\002 \003(\001"
-    "\022\n\n\002id\030\003 \001(\r\0229\n\010metadata\030\004 \003(\0132\'.hypersp"
-    "ace.InsertRequest.MetadataEntry\022\026\n\016origi"
-    "n_node_id\030\005 \001(\t\022\025\n\rlogical_clock\030\006 \001(\004\022/"
-    "\n\ndurability\030\007 \001(\0162\033.hyperspace.Durabili"
-    "tyLevel\022D\n\016typed_metadata\030\010 \003(\0132,.hypers"
-    "pace.InsertRequest.TypedMetadataEntry\032/\n"
-    "\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001"
-    "(\t:\0028\001\032O\n\022TypedMetadataEntry\022\013\n\003key\030\001 \001("
-    "\t\022(\n\005value\030\002 \001(\0132\031.hyperspace.MetadataVa"
-    "lue:\0028\001\"\245\002\n\nVectorData\022\016\n\006vector\030\001 \003(\001\022\n"
-    "\n\002id\030\002 \001(\r\0226\n\010metadata\030\003 \003(\0132$.hyperspac"
-    "e.VectorData.MetadataEntry\022A\n\016typed_meta"
-    "data\030\004 \003(\0132).hyperspace.VectorData.Typed"
-    "MetadataEntry\032/\n\rMetadataEntry\022\013\n\003key\030\001 "
-    "\001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022TypedMetadataE"
-    "ntry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hyper"
-    "space.MetadataValue:\0028\001\"\261\001\n\022BatchInsertR"
-    "equest\022\022\n\ncollection\030\001 \001(\t\022\'\n\007vectors\030\002 "
-    "\003(\0132\026.hyperspace.VectorData\022\026\n\016origin_no"
-    "de_id\030\003 \001(\t\022\025\n\rlogical_clock\030\004 \001(\004\022/\n\ndu"
-    "rability\030\005 \001(\0162\033.hyperspace.DurabilityLe"
-    "vel\"\342\001\n\021InsertTextRequest\022\022\n\ncollection\030"
-    "\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\014\n\004text\030\003 \001(\t\022=\n\010metad"
-    "ata\030\004 \003(\0132+.hyperspace.InsertTextRequest"
-    ".MetadataEntry\022/\n\ndurability\030\005 \001(\0162\033.hyp"
-    "erspace.DurabilityLevel\032/\n\rMetadataEntry"
-    "\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\"0\n\020Vect"
-    "orizeRequest\022\014\n\004text\030\001 \001(\t\022\016\n\006metric\030\002 \001"
-    "(\t\"#\n\021VectorizeResponse\022\016\n\006vector\030\001 \003(\001\""
-    "\304\002\n\021SearchTextRequest\022\022\n\ncollection\030\001 \001("
-    "\t\022\014\n\004text\030\002 \001(\t\022\r\n\005top_k\030\003 \001(\r\0229\n\006filter"
-    "\030\004 \003(\0132).hyperspace.SearchTextRequest.Fi"
-    "lterEntry\022#\n\007filters\030\005 \003(\0132\022.hyperspace."
-    "Filter\0222\n\014bm25_options\030\006 \001(\0132\027.hyperspac"
-    "e.Bm25OptionsH\000\210\001\001\022\031\n\014hybrid_alpha\030\007 \001(\002"
-    "H\001\210\001\001\032-\n\013FilterEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005val"
-    "ue\030\002 \001(\t:\0028\001B\017\n\r_bm25_optionsB\017\n\r_hybrid"
-    "_alpha\"\353\001\n\013Bm25Options\022\023\n\006method\030\001 \001(\tH\000"
-    "\210\001\001\022\017\n\002k1\030\002 \001(\002H\001\210\001\001\022\016\n\001b\030\003 \001(\002H\002\210\001\001\022\022\n\005"
-    "delta\030\004 \001(\002H\003\210\001\001\022\025\n\010language\030\005 \001(\tH\004\210\001\001\022"
-    "\023\n\006ngrams\030\006 \001(\rH\005\210\001\001\022\032\n\rfusion_method\030\007 "
-    "\001(\tH\006\210\001\001B\t\n\007_methodB\005\n\003_k1B\004\n\002_bB\010\n\006_del"
-    "taB\013\n\t_languageB\t\n\007_ngramsB\020\n\016_fusion_me"
-    "thod\"!\n\016InsertResponse\022\017\n\007success\030\001 \001(\010\""
-    "/\n\rDeleteRequest\022\022\n\ncollection\030\001 \001(\t\022\n\n\002"
-    "id\030\002 \001(\r\"!\n\016DeleteResponse\022\017\n\007success\030\001 "
-    "\001(\010\"3\n\020GetPointsRequest\022\022\n\ncollection\030\001 "
-    "\001(\t\022\013\n\003ids\030\002 \003(\r\";\n\021GetPointsResponse\022&\n"
-    "\006points\030\001 \003(\0132\026.hyperspace.VectorData\"\307\002"
-    "\n\024UpdatePayloadRequest\022\022\n\ncollection\030\001 \001"
-    "(\t\022\n\n\002id\030\002 \001(\r\022@\n\010metadata\030\003 \003(\0132..hyper"
-    "space.UpdatePayloadRequest.MetadataEntry"
-    "\022K\n\016typed_metadata\030\004 \003(\01323.hyperspace.Up"
-    "datePayloadRequest.TypedMetadataEntry\032/\n"
-    "\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001"
-    "(\t:\0028\001\032O\n\022TypedMetadataEntry\022\013\n\003key\030\001 \001("
-    "\t\022(\n\005value\030\002 \001(\0132\031.hyperspace.MetadataVa"
-    "lue:\0028\001\"g\n\rScrollRequest\022\022\n\ncollection\030\001"
-    " \001(\t\022\r\n\005limit\030\002 \001(\r\022\016\n\006offset\030\003 \001(\r\022#\n\007f"
-    "ilters\030\004 \003(\0132\022.hyperspace.Filter\"8\n\016Scro"
-    "llResponse\022&\n\006points\030\001 \003(\0132\026.hyperspace."
-    "VectorData\"G\n\014CountRequest\022\022\n\ncollection"
-    "\030\001 \001(\t\022#\n\007filters\030\002 \003(\0132\022.hyperspace.Fil"
-    "ter\"\036\n\rCountResponse\022\r\n\005count\030\001 \001(\004\"%\n\023H"
-    "ealthCheckResponse\022\016\n\006status\030\001 \001(\t\"\261\003\n\rS"
-    "earchRequest\022\022\n\ncollection\030\001 \001(\t\022\016\n\006vect"
-    "or\030\002 \003(\001\022\r\n\005top_k\030\003 \001(\r\0225\n\006filter\030\004 \003(\0132"
-    "%.hyperspace.SearchRequest.FilterEntry\022#"
-    "\n\007filters\030\005 \003(\0132\022.hyperspace.Filter\022\031\n\014h"
-    "ybrid_query\030\006 \001(\tH\000\210\001\001\022\031\n\014hybrid_alpha\030\007"
-    " \001(\002H\001\210\001\001\022\027\n\017use_wasserstein\030\010 \001(\010\0222\n\014bm"
-    "25_options\030\t \001(\0132\027.hyperspace.Bm25Option"
-    "sH\002\210\001\001\022\032\n\rmrl_dimension\030\n \001(\rH\003\210\001\001\032-\n\013Fi"
-    "lterEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028"
-    "\001B\017\n\r_hybrid_queryB\017\n\r_hybrid_alphaB\017\n\r_"
-    "bm25_optionsB\020\n\016_mrl_dimension\"\311\002\n\006Filte"
-    "r\022\"\n\005match\030\001 \001(\0132\021.hyperspace.MatchH\000\022\"\n"
-    "\005range\030\002 \001(\0132\021.hyperspace.RangeH\000\022%\n\007in_"
-    "cone\030\003 \001(\0132\022.hyperspace.InConeH\000\022#\n\006in_b"
-    "ox\030\004 \001(\0132\021.hyperspace.InBoxH\000\022%\n\007in_ball"
-    "\030\005 \001(\0132\022.hyperspace.InBallH\000\022\'\n\006and_op\030\006"
-    " \001(\0132\025.hyperspace.FilterAndH\000\022%\n\005or_op\030\007"
-    " \001(\0132\024.hyperspace.FilterOrH\000\022\'\n\006not_op\030\010"
-    " \001(\0132\025.hyperspace.FilterNotH\000B\013\n\tconditi"
-    "on\"3\n\tFilterAnd\022&\n\nconditions\030\001 \003(\0132\022.hy"
-    "perspace.Filter\"2\n\010FilterOr\022&\n\ncondition"
-    "s\030\001 \003(\0132\022.hyperspace.Filter\"2\n\tFilterNot"
-    "\022%\n\tcondition\030\001 \001(\0132\022.hyperspace.Filter\""
-    "#\n\005Match\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t\"\214\001\n"
-    "\005Range\022\013\n\003key\030\001 \001(\t\022\020\n\003gte\030\002 \001(\003H\000\210\001\001\022\020\n"
-    "\003lte\030\003 \001(\003H\001\210\001\001\022\024\n\007gte_f64\030\004 \001(\001H\002\210\001\001\022\024\n"
-    "\007lte_f64\030\005 \001(\001H\003\210\001\001B\006\n\004_gteB\006\n\004_lteB\n\n\010_"
-    "gte_f64B\n\n\010_lte_f64\"6\n\006InCone\022\014\n\004axes\030\001 "
-    "\003(\001\022\021\n\tapertures\030\002 \003(\001\022\013\n\003cen\030\003 \001(\001\"/\n\005I"
-    "nBox\022\022\n\nmin_bounds\030\001 \003(\001\022\022\n\nmax_bounds\030\002"
-    " \003(\001\"(\n\006InBall\022\016\n\006center\030\001 \003(\001\022\016\n\006radius"
-    "\030\002 \001(\001\";\n\016SearchResponse\022)\n\007results\030\001 \003("
-    "\0132\030.hyperspace.SearchResult\"A\n\022BatchSear"
-    "chRequest\022+\n\010searches\030\001 \003(\0132\031.hyperspace"
-    ".SearchRequest\"D\n\023BatchSearchResponse\022-\n"
-    "\tresponses\030\001 \003(\0132\032.hyperspace.SearchResp"
-    "onse\"R\n\034SearchMultiCollectionRequest\022\023\n\013"
-    "collections\030\001 \003(\t\022\016\n\006vector\030\002 \003(\001\022\r\n\005top"
-    "_k\030\003 \001(\r\"\272\001\n\035SearchMultiCollectionRespon"
-    "se\022K\n\tresponses\030\001 \003(\01328.hyperspace.Searc"
-    "hMultiCollectionResponse.ResponsesEntry\032"
-    "L\n\016ResponsesEntry\022\013\n\003key\030\001 \001(\t\022)\n\005value\030"
-    "\002 \001(\0132\032.hyperspace.SearchResponse:\0028\001\"\255\002"
-    "\n\014SearchResult\022\n\n\002id\030\001 \001(\r\022\020\n\010distance\030\002"
-    " \001(\001\0228\n\010metadata\030\003 \003(\0132&.hyperspace.Sear"
-    "chResult.MetadataEntry\022C\n\016typed_metadata"
-    "\030\004 \003(\0132+.hyperspace.SearchResult.TypedMe"
-    "tadataEntry\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001("
-    "\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022TypedMetadataEnt"
-    "ry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hypersp"
-    "ace.MetadataValue:\0028\001\"\?\n\016GetNodeRequest\022"
-    "\022\n\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\r\n\005layer"
-    "\030\003 \001(\r\"\264\002\n\tGraphNode\022\n\n\002id\030\001 \001(\r\022\r\n\005laye"
-    "r\030\002 \001(\r\022\021\n\tneighbors\030\003 \003(\r\0225\n\010metadata\030\004"
-    " \003(\0132#.hyperspace.GraphNode.MetadataEntr"
-    "y\022@\n\016typed_metadata\030\005 \003(\0132(.hyperspace.G"
-    "raphNode.TypedMetadataEntry\032/\n\rMetadataE"
-    "ntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022"
-    "TypedMetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005value"
-    "\030\002 \001(\0132\031.hyperspace.MetadataValue:\0028\001\"c\n"
-    "\023GetNeighborsRequest\022\022\n\ncollection\030\001 \001(\t"
-    "\022\n\n\002id\030\002 \001(\r\022\r\n\005layer\030\003 \001(\r\022\r\n\005limit\030\004 \001"
-    "(\r\022\016\n\006offset\030\005 \001(\r\"V\n\024GetNeighborsRespon"
-    "se\022(\n\tneighbors\030\001 \003(\0132\025.hyperspace.Graph"
-    "Node\022\024\n\014edge_weights\030\002 \003(\001\"\371\001\n\017TraverseR"
-    "equest\022\022\n\ncollection\030\001 \001(\t\022\020\n\010start_id\030\002"
-    " \001(\r\022\021\n\tmax_depth\030\003 \001(\r\022\021\n\tmax_nodes\030\004 \001"
-    "(\r\022\r\n\005layer\030\005 \001(\r\0227\n\006filter\030\006 \003(\0132\'.hype"
-    "rspace.TraverseRequest.FilterEntry\022#\n\007fi"
-    "lters\030\007 \003(\0132\022.hyperspace.Filter\032-\n\013Filte"
-    "rEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\"8"
-    "\n\020TraverseResponse\022$\n\005nodes\030\001 \003(\0132\025.hype"
-    "rspace.GraphNode\"\203\001\n\033FindSemanticCluster"
-    "sRequest\022\022\n\ncollection\030\001 \001(\t\022\r\n\005layer\030\002 "
-    "\001(\r\022\030\n\020min_cluster_size\030\003 \001(\r\022\024\n\014max_clu"
-    "sters\030\004 \001(\r\022\021\n\tmax_nodes\030\005 \001(\r\"X\n\030GetCon"
-    "ceptParentsRequest\022\022\n\ncollection\030\001 \001(\t\022\n"
-    "\n\002id\030\002 \001(\r\022\r\n\005layer\030\003 \001(\r\022\r\n\005limit\030\004 \001(\r"
-    "\"C\n\031GetConceptParentsResponse\022&\n\007parents"
-    "\030\001 \003(\0132\025.hyperspace.GraphNode\" \n\014GraphCl"
-    "uster\022\020\n\010node_ids\030\001 \003(\r\"J\n\034FindSemanticC"
-    "lustersResponse\022*\n\010clusters\030\001 \003(\0132\030.hype"
-    "rspace.GraphCluster\"r\n\rMetadataValue\022\026\n\014"
-    "string_value\030\001 \001(\tH\000\022\023\n\tint_value\030\002 \001(\003H"
-    "\000\022\026\n\014double_value\030\003 \001(\001H\000\022\024\n\nbool_value\030"
-    "\004 \001(\010H\000B\006\n\004kind\"h\n\030EventSubscriptionRequ"
-    "est\022$\n\005types\030\001 \003(\0162\025.hyperspace.EventTyp"
-    "e\022\027\n\ncollection\030\002 \001(\tH\000\210\001\001B\r\n\013_collectio"
-    "n\"\363\002\n\023VectorInsertedEvent\022\n\n\002id\030\001 \001(\r\022\022\n"
-    "\ncollection\030\002 \001(\t\022\025\n\rlogical_clock\030\003 \001(\004"
-    "\022\026\n\016origin_node_id\030\004 \001(\t\022\?\n\010metadata\030\005 \003"
-    "(\0132-.hyperspace.VectorInsertedEvent.Meta"
-    "dataEntry\022J\n\016typed_metadata\030\006 \003(\01322.hype"
-    "rspace.VectorInsertedEvent.TypedMetadata"
-    "Entry\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005v"
-    "alue\030\002 \001(\t:\0028\001\032O\n\022TypedMetadataEntry\022\013\n\003"
-    "key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hyperspace.Me"
-    "tadataValue:\0028\001\"\275\001\n\023TrajectoryStepEvent\022"
-    "\n\n\002id\030\001 \001(\r\022\022\n\ncollection\030\002 \001(\t\022\t\n\001x\030\003 \001"
-    "(\002\022\t\n\001y\030\004 \001(\002\022\?\n\010metadata\030\005 \003(\0132-.hypers"
-    "pace.TrajectoryStepEvent.MetadataEntry\032/"
+    "2\031.hyperspace.MetadataValue:\0028\001\"^\n\022Creat"
+    "eCollectionOp\0221\n\006schema\030\003 \001(\0132\034.hyperspa"
+    "ce.CollectionSchemaH\000\210\001\001B\t\n\007_schemaJ\004\010\001\020"
+    "\002J\004\010\002\020\003\"\024\n\022DeleteCollectionOp\"\026\n\010DeleteO"
+    "p\022\n\n\002id\030\001 \001(\r\"@\n\022QuantizationConfig\022*\n\004m"
+    "ode\030\001 \001(\0162\034.hyperspace.QuantizationMode\""
+    "w\n\027CreateCollectionRequest\022\014\n\004name\030\001 \001(\t"
+    "\0221\n\006schema\030\005 \001(\0132\034.hyperspace.Collection"
+    "SchemaH\000\210\001\001B\t\n\007_schemaJ\004\010\002\020\003J\004\010\003\020\004J\004\010\004\020\005"
+    "\"W\n\017VectorComponent\022\014\n\004name\030\001 \001(\t\022\016\n\006met"
+    "ric\030\002 \001(\t\022\026\n\016full_dimension\030\003 \001(\r\022\016\n\006wei"
+    "ght\030\004 \001(\002\"h\n\010MrlLayer\022\026\n\016component_name\030"
+    "\001 \001(\t\022\030\n\020cutoff_dimension\030\002 \001(\r\022\024\n\014store"
+    "_in_ram\030\003 \001(\010\022\024\n\014rerank_top_k\030\004 \001(\r\"s\n\020C"
+    "ollectionSchema\022/\n\ncomponents\030\001 \003(\0132\033.hy"
+    "perspace.VectorComponent\022.\n\020cascade_pipe"
+    "line\030\002 \003(\0132\024.hyperspace.MrlLayer\"g\n\023Coll"
+    "ectionComponent\022\r\n\005space\030\001 \001(\t\022\021\n\tdimens"
+    "ion\030\002 \001(\r\022\016\n\006metric\030\003 \001(\t\022\023\n\006weight\030\004 \001("
+    "\002H\000\210\001\001B\t\n\007_weight\"\'\n\027DeleteCollectionReq"
+    "uest\022\014\n\004name\030\001 \001(\t\"z\n\021CollectionSummary\022"
+    "\014\n\004name\030\001 \001(\t\022\r\n\005count\030\002 \001(\004\0221\n\006schema\030\005"
+    " \001(\0132\034.hyperspace.CollectionSchemaH\000\210\001\001B"
+    "\t\n\007_schemaJ\004\010\003\020\004J\004\010\004\020\005\"M\n\027ListCollection"
+    "sResponse\0222\n\013collections\030\001 \003(\0132\035.hypersp"
+    "ace.CollectionSummary\"&\n\026CollectionStats"
+    "Request\022\014\n\004name\030\001 \001(\t\"\323\001\n\027CollectionStat"
+    "sResponse\022\r\n\005count\030\001 \001(\004\022\026\n\016indexing_que"
+    "ue\030\004 \001(\004\022\030\n\020disk_usage_bytes\030\005 \001(\004\022\027\n\017ra"
+    "m_usage_bytes\030\006 \001(\004\022\024\n\014active_tasks\030\007 \001("
+    "\004\0221\n\006schema\030\010 \001(\0132\034.hyperspace.Collectio"
+    "nSchemaH\000\210\001\001B\t\n\007_schemaJ\004\010\002\020\003J\004\010\003\020\004\"n\n\023R"
+    "ebuildIndexRequest\022\014\n\004name\030\001 \001(\t\0228\n\014filt"
+    "er_query\030\002 \001(\0132\035.hyperspace.VacuumFilter"
+    "QueryH\000\210\001\001B\017\n\r_filter_query\"\220\001\n\014ConfigUp"
+    "date\022\022\n\ncollection\030\001 \001(\t\022\026\n\tef_search\030\002 "
+    "\001(\rH\000\210\001\001\022\034\n\017ef_construction\030\003 \001(\rH\001\210\001\001\022\016"
+    "\n\001m\030\004 \001(\rH\002\210\001\001B\014\n\n_ef_searchB\022\n\020_ef_cons"
+    "tructionB\004\n\002_m\";\n\021VacuumFilterQuery\022\013\n\003k"
+    "ey\030\001 \001(\t\022\n\n\002op\030\002 \001(\t\022\r\n\005value\030\003 \001(\001\"Z\n\026R"
+    "econsolidationRequest\022\022\n\ncollection\030\001 \001("
+    "\t\022\025\n\rtarget_vector\030\002 \003(\001\022\025\n\rlearning_rat"
+    "e\030\003 \001(\001\"\304\003\n\rInsertRequest\022\022\n\ncollection\030"
+    "\001 \001(\t\022\016\n\006vector\030\002 \003(\001\022\n\n\002id\030\003 \001(\r\0229\n\010met"
+    "adata\030\004 \003(\0132\'.hyperspace.InsertRequest.M"
+    "etadataEntry\022\026\n\016origin_node_id\030\005 \001(\t\022\025\n\r"
+    "logical_clock\030\006 \001(\004\022/\n\ndurability\030\007 \001(\0162"
+    "\033.hyperspace.DurabilityLevel\022D\n\016typed_me"
+    "tadata\030\010 \003(\0132,.hyperspace.InsertRequest."
+    "TypedMetadataEntry\022\024\n\007payload\030\t \001(\014H\000\210\001\001"
+    "\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030"
+    "\002 \001(\t:\0028\001\032O\n\022TypedMetadataEntry\022\013\n\003key\030\001"
+    " \001(\t\022(\n\005value\030\002 \001(\0132\031.hyperspace.Metadat"
+    "aValue:\0028\001B\n\n\010_payload\"\245\002\n\nVectorData\022\016\n"
+    "\006vector\030\001 \003(\001\022\n\n\002id\030\002 \001(\r\0226\n\010metadata\030\003 "
+    "\003(\0132$.hyperspace.VectorData.MetadataEntr"
+    "y\022A\n\016typed_metadata\030\004 \003(\0132).hyperspace.V"
+    "ectorData.TypedMetadataEntry\032/\n\rMetadata"
+    "Entry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n"
+    "\022TypedMetadataEntry\022\013\n\003key\030\001 \001(\t\022(\n\005valu"
+    "e\030\002 \001(\0132\031.hyperspace.MetadataValue:\0028\001\"\261"
+    "\001\n\022BatchInsertRequest\022\022\n\ncollection\030\001 \001("
+    "\t\022\'\n\007vectors\030\002 \003(\0132\026.hyperspace.VectorDa"
+    "ta\022\026\n\016origin_node_id\030\003 \001(\t\022\025\n\rlogical_cl"
+    "ock\030\004 \001(\004\022/\n\ndurability\030\005 \001(\0162\033.hyperspa"
+    "ce.DurabilityLevel\"\342\001\n\021InsertTextRequest"
+    "\022\022\n\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\014\n\004text"
+    "\030\003 \001(\t\022=\n\010metadata\030\004 \003(\0132+.hyperspace.In"
+    "sertTextRequest.MetadataEntry\022/\n\ndurabil"
+    "ity\030\005 \001(\0162\033.hyperspace.DurabilityLevel\032/"
     "\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 "
-    "\001(\t:\0028\001\"c\n\022VectorDeletedEvent\022\n\n\002id\030\001 \001("
-    "\r\022\022\n\ncollection\030\002 \001(\t\022\025\n\rlogical_clock\030\003"
-    " \001(\004\022\026\n\016origin_node_id\030\004 \001(\t\"\360\001\n\014EventMe"
-    "ssage\022#\n\004type\030\001 \001(\0162\025.hyperspace.EventTy"
-    "pe\022:\n\017vector_inserted\030\002 \001(\0132\037.hyperspace"
-    ".VectorInsertedEventH\000\0228\n\016vector_deleted"
-    "\030\003 \001(\0132\036.hyperspace.VectorDeletedEventH\000"
-    "\022:\n\017trajectory_step\030\004 \001(\0132\037.hyperspace.T"
-    "rajectoryStepEventH\000B\t\n\007payload\"\007\n\005Empty"
-    "\" \n\016StatusResponse\022\016\n\006status\030\001 \001(\t\"\020\n\016Mo"
-    "nitorRequest\"e\n\013SystemStats\022\031\n\021total_col"
-    "lections\030\001 \001(\004\022\025\n\rtotal_vectors\030\002 \001(\004\022\027\n"
-    "\017total_memory_mb\030\003 \001(\001\022\013\n\003qps\030\004 \001(\001\"#\n\rD"
-    "igestRequest\022\022\n\ncollection\030\001 \001(\t\"[\n\016Dige"
-    "stResponse\022\025\n\rlogical_clock\030\001 \001(\004\022\022\n\nsta"
-    "te_hash\030\002 \001(\004\022\017\n\007buckets\030\003 \003(\004\022\r\n\005count\030"
-    "\004 \001(\004\"v\n\024SyncHandshakeRequest\022\022\n\ncollect"
-    "ion\030\001 \001(\t\022\026\n\016client_buckets\030\002 \003(\004\022\034\n\024cli"
-    "ent_logical_clock\030\003 \001(\004\022\024\n\014client_count\030"
-    "\004 \001(\004\"L\n\nDiffBucket\022\024\n\014bucket_index\030\001 \001("
-    "\r\022\023\n\013server_hash\030\002 \001(\004\022\023\n\013client_hash\030\003 "
-    "\001(\004\"\212\001\n\025SyncHandshakeResponse\022,\n\014diff_bu"
-    "ckets\030\001 \003(\0132\026.hyperspace.DiffBucket\022\034\n\024s"
-    "erver_logical_clock\030\002 \001(\004\022\024\n\014server_coun"
-    "t\030\003 \001(\004\022\017\n\007in_sync\030\004 \001(\010\"=\n\017SyncPullRequ"
-    "est\022\022\n\ncollection\030\001 \001(\t\022\026\n\016bucket_indice"
-    "s\030\002 \003(\r\"\303\001\n\016SyncVectorData\022\022\n\ncollection"
-    "\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\016\n\006vector\030\003 \003(\001\022:\n\010me"
-    "tadata\030\004 \003(\0132(.hyperspace.SyncVectorData"
-    ".MetadataEntry\022\024\n\014bucket_index\030\005 \001(\r\032/\n\r"
+    "\001(\t:\0028\001\"0\n\020VectorizeRequest\022\014\n\004text\030\001 \001("
+    "\t\022\016\n\006metric\030\002 \001(\t\"#\n\021VectorizeResponse\022\016"
+    "\n\006vector\030\001 \003(\001\"\346\003\n\021SearchTextRequest\022\022\n\n"
+    "collection\030\001 \001(\t\022\014\n\004text\030\002 \001(\t\022\r\n\005top_k\030"
+    "\003 \001(\r\0229\n\006filter\030\004 \003(\0132).hyperspace.Searc"
+    "hTextRequest.FilterEntry\022#\n\007filters\030\005 \003("
+    "\0132\022.hyperspace.Filter\0222\n\014bm25_options\030\006 "
+    "\001(\0132\027.hyperspace.Bm25OptionsH\000\210\001\001\022\031\n\014hyb"
+    "rid_alpha\030\007 \001(\002H\001\210\001\001\022\027\n\017include_payload\030"
+    "\010 \001(\010\022N\n\021component_weights\030\t \003(\01323.hyper"
+    "space.SearchTextRequest.ComponentWeights"
+    "Entry\032-\n\013FilterEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005val"
+    "ue\030\002 \001(\t:\0028\001\0327\n\025ComponentWeightsEntry\022\013\n"
+    "\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\002:\0028\001B\017\n\r_bm25_o"
+    "ptionsB\017\n\r_hybrid_alpha\"\353\001\n\013Bm25Options\022"
+    "\023\n\006method\030\001 \001(\tH\000\210\001\001\022\017\n\002k1\030\002 \001(\002H\001\210\001\001\022\016\n"
+    "\001b\030\003 \001(\002H\002\210\001\001\022\022\n\005delta\030\004 \001(\002H\003\210\001\001\022\025\n\010lan"
+    "guage\030\005 \001(\tH\004\210\001\001\022\023\n\006ngrams\030\006 \001(\rH\005\210\001\001\022\032\n"
+    "\rfusion_method\030\007 \001(\tH\006\210\001\001B\t\n\007_methodB\005\n\003"
+    "_k1B\004\n\002_bB\010\n\006_deltaB\013\n\t_languageB\t\n\007_ngr"
+    "amsB\020\n\016_fusion_method\"!\n\016InsertResponse\022"
+    "\017\n\007success\030\001 \001(\010\"/\n\rDeleteRequest\022\022\n\ncol"
+    "lection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\"!\n\016DeleteRespo"
+    "nse\022\017\n\007success\030\001 \001(\010\"3\n\020GetPointsRequest"
+    "\022\022\n\ncollection\030\001 \001(\t\022\013\n\003ids\030\002 \003(\r\";\n\021Get"
+    "PointsResponse\022&\n\006points\030\001 \003(\0132\026.hypersp"
+    "ace.VectorData\"\307\002\n\024UpdatePayloadRequest\022"
+    "\022\n\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022@\n\010metad"
+    "ata\030\003 \003(\0132..hyperspace.UpdatePayloadRequ"
+    "est.MetadataEntry\022K\n\016typed_metadata\030\004 \003("
+    "\01323.hyperspace.UpdatePayloadRequest.Type"
+    "dMetadataEntry\032/\n\rMetadataEntry\022\013\n\003key\030\001"
+    " \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022TypedMetadata"
+    "Entry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hype"
+    "rspace.MetadataValue:\0028\001\"g\n\rScrollReques"
+    "t\022\022\n\ncollection\030\001 \001(\t\022\r\n\005limit\030\002 \001(\r\022\016\n\006"
+    "offset\030\003 \001(\r\022#\n\007filters\030\004 \003(\0132\022.hyperspa"
+    "ce.Filter\"8\n\016ScrollResponse\022&\n\006points\030\001 "
+    "\003(\0132\026.hyperspace.VectorData\"G\n\014CountRequ"
+    "est\022\022\n\ncollection\030\001 \001(\t\022#\n\007filters\030\002 \003(\013"
+    "2\022.hyperspace.Filter\"\036\n\rCountResponse\022\r\n"
+    "\005count\030\001 \001(\004\"%\n\023HealthCheckResponse\022\016\n\006s"
+    "tatus\030\001 \001(\t\"\317\004\n\rSearchRequest\022\022\n\ncollect"
+    "ion\030\001 \001(\t\022\016\n\006vector\030\002 \003(\001\022\r\n\005top_k\030\003 \001(\r"
+    "\0225\n\006filter\030\004 \003(\0132%.hyperspace.SearchRequ"
+    "est.FilterEntry\022#\n\007filters\030\005 \003(\0132\022.hyper"
+    "space.Filter\022\031\n\014hybrid_query\030\006 \001(\tH\000\210\001\001\022"
+    "\031\n\014hybrid_alpha\030\007 \001(\002H\001\210\001\001\022\027\n\017use_wasser"
+    "stein\030\010 \001(\010\0222\n\014bm25_options\030\t \001(\0132\027.hype"
+    "rspace.Bm25OptionsH\002\210\001\001\022\032\n\rmrl_dimension"
+    "\030\n \001(\rH\003\210\001\001\022\027\n\017include_payload\030\013 \001(\010\022J\n\021"
+    "component_weights\030\014 \003(\0132/.hyperspace.Sea"
+    "rchRequest.ComponentWeightsEntry\032-\n\013Filt"
+    "erEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032"
+    "7\n\025ComponentWeightsEntry\022\013\n\003key\030\001 \001(\t\022\r\n"
+    "\005value\030\002 \001(\002:\0028\001B\017\n\r_hybrid_queryB\017\n\r_hy"
+    "brid_alphaB\017\n\r_bm25_optionsB\020\n\016_mrl_dime"
+    "nsion\"\311\002\n\006Filter\022\"\n\005match\030\001 \001(\0132\021.hypers"
+    "pace.MatchH\000\022\"\n\005range\030\002 \001(\0132\021.hyperspace"
+    ".RangeH\000\022%\n\007in_cone\030\003 \001(\0132\022.hyperspace.I"
+    "nConeH\000\022#\n\006in_box\030\004 \001(\0132\021.hyperspace.InB"
+    "oxH\000\022%\n\007in_ball\030\005 \001(\0132\022.hyperspace.InBal"
+    "lH\000\022\'\n\006and_op\030\006 \001(\0132\025.hyperspace.FilterA"
+    "ndH\000\022%\n\005or_op\030\007 \001(\0132\024.hyperspace.FilterO"
+    "rH\000\022\'\n\006not_op\030\010 \001(\0132\025.hyperspace.FilterN"
+    "otH\000B\013\n\tcondition\"3\n\tFilterAnd\022&\n\ncondit"
+    "ions\030\001 \003(\0132\022.hyperspace.Filter\"2\n\010Filter"
+    "Or\022&\n\nconditions\030\001 \003(\0132\022.hyperspace.Filt"
+    "er\"2\n\tFilterNot\022%\n\tcondition\030\001 \001(\0132\022.hyp"
+    "erspace.Filter\"#\n\005Match\022\013\n\003key\030\001 \001(\t\022\r\n\005"
+    "value\030\002 \001(\t\"\214\001\n\005Range\022\013\n\003key\030\001 \001(\t\022\020\n\003gt"
+    "e\030\002 \001(\003H\000\210\001\001\022\020\n\003lte\030\003 \001(\003H\001\210\001\001\022\024\n\007gte_f6"
+    "4\030\004 \001(\001H\002\210\001\001\022\024\n\007lte_f64\030\005 \001(\001H\003\210\001\001B\006\n\004_g"
+    "teB\006\n\004_lteB\n\n\010_gte_f64B\n\n\010_lte_f64\"6\n\006In"
+    "Cone\022\014\n\004axes\030\001 \003(\001\022\021\n\tapertures\030\002 \003(\001\022\013\n"
+    "\003cen\030\003 \001(\001\"/\n\005InBox\022\022\n\nmin_bounds\030\001 \003(\001\022"
+    "\022\n\nmax_bounds\030\002 \003(\001\"(\n\006InBall\022\016\n\006center\030"
+    "\001 \003(\001\022\016\n\006radius\030\002 \001(\001\";\n\016SearchResponse\022"
+    ")\n\007results\030\001 \003(\0132\030.hyperspace.SearchResu"
+    "lt\"A\n\022BatchSearchRequest\022+\n\010searches\030\001 \003"
+    "(\0132\031.hyperspace.SearchRequest\"D\n\023BatchSe"
+    "archResponse\022-\n\tresponses\030\001 \003(\0132\032.hypers"
+    "pace.SearchResponse\"R\n\034SearchMultiCollec"
+    "tionRequest\022\023\n\013collections\030\001 \003(\t\022\016\n\006vect"
+    "or\030\002 \003(\001\022\r\n\005top_k\030\003 \001(\r\"\272\001\n\035SearchMultiC"
+    "ollectionResponse\022K\n\tresponses\030\001 \003(\01328.h"
+    "yperspace.SearchMultiCollectionResponse."
+    "ResponsesEntry\032L\n\016ResponsesEntry\022\013\n\003key\030"
+    "\001 \001(\t\022)\n\005value\030\002 \001(\0132\032.hyperspace.Search"
+    "Response:\0028\001\"\317\002\n\014SearchResult\022\n\n\002id\030\001 \001("
+    "\r\022\020\n\010distance\030\002 \001(\001\0228\n\010metadata\030\003 \003(\0132&."
+    "hyperspace.SearchResult.MetadataEntry\022C\n"
+    "\016typed_metadata\030\004 \003(\0132+.hyperspace.Searc"
+    "hResult.TypedMetadataEntry\022\024\n\007payload\030\005 "
+    "\001(\014H\000\210\001\001\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r"
+    "\n\005value\030\002 \001(\t:\0028\001\032O\n\022TypedMetadataEntry\022"
+    "\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hyperspace"
+    ".MetadataValue:\0028\001B\n\n\010_payload\"\?\n\016GetNod"
+    "eRequest\022\022\n\ncollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r"
+    "\022\r\n\005layer\030\003 \001(\r\"\264\002\n\tGraphNode\022\n\n\002id\030\001 \001("
+    "\r\022\r\n\005layer\030\002 \001(\r\022\021\n\tneighbors\030\003 \003(\r\0225\n\010m"
+    "etadata\030\004 \003(\0132#.hyperspace.GraphNode.Met"
+    "adataEntry\022@\n\016typed_metadata\030\005 \003(\0132(.hyp"
+    "erspace.GraphNode.TypedMetadataEntry\032/\n\r"
     "MetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001("
-    "\t:\0028\001\"J\n\020SyncPushResponse\022\020\n\010accepted\030\001 "
-    "\001(\r\022\020\n\010rejected\030\002 \001(\r\022\022\n\nduplicates\030\003 \001("
-    "\r*+\n\020QuantizationMode\022\010\n\004NONE\020\000\022\r\n\tSCALA"
-    "R_I8\020\001*F\n\017DurabilityLevel\022\021\n\rDEFAULT_LEV"
-    "EL\020\000\022\t\n\005ASYNC\020\001\022\t\n\005BATCH\020\002\022\n\n\006STRICT\020\003*\\"
-    "\n\tEventType\022\021\n\rEVENT_UNKNOWN\020\000\022\023\n\017VECTOR"
-    "_INSERTED\020\001\022\022\n\016VECTOR_DELETED\020\002\022\023\n\017TRAJE"
-    "CTORY_STEP\020\0032\377\024\n\010Database\022S\n\020CreateColle"
-    "ction\022#.hyperspace.CreateCollectionReque"
-    "st\032\032.hyperspace.StatusResponse\022S\n\020Delete"
-    "Collection\022#.hyperspace.DeleteCollection"
-    "Request\032\032.hyperspace.StatusResponse\022I\n\017L"
-    "istCollections\022\021.hyperspace.Empty\032#.hype"
-    "rspace.ListCollectionsResponse\022]\n\022GetCol"
-    "lectionStats\022\".hyperspace.CollectionStat"
-    "sRequest\032#.hyperspace.CollectionStatsRes"
-    "ponse\022\?\n\006Insert\022\031.hyperspace.InsertReque"
-    "st\032\032.hyperspace.InsertResponse\022I\n\013BatchI"
-    "nsert\022\036.hyperspace.BatchInsertRequest\032\032."
-    "hyperspace.InsertResponse\022G\n\nInsertText\022"
-    "\035.hyperspace.InsertTextRequest\032\032.hypersp"
-    "ace.InsertResponse\022H\n\tVectorize\022\034.hypers"
-    "pace.VectorizeRequest\032\035.hyperspace.Vecto"
-    "rizeResponse\022G\n\nSearchText\022\035.hyperspace."
-    "SearchTextRequest\032\032.hyperspace.SearchRes"
-    "ponse\022\?\n\006Delete\022\031.hyperspace.DeleteReque"
-    "st\032\032.hyperspace.DeleteResponse\022H\n\tGetPoi"
-    "nts\022\034.hyperspace.GetPointsRequest\032\035.hype"
-    "rspace.GetPointsResponse\022M\n\rUpdatePayloa"
-    "d\022 .hyperspace.UpdatePayloadRequest\032\032.hy"
-    "perspace.StatusResponse\022\?\n\006Scroll\022\031.hype"
-    "rspace.ScrollRequest\032\032.hyperspace.Scroll"
-    "Response\022<\n\005Count\022\030.hyperspace.CountRequ"
-    "est\032\031.hyperspace.CountResponse\022\?\n\006Search"
-    "\022\031.hyperspace.SearchRequest\032\032.hyperspace"
-    ".SearchResponse\022N\n\013SearchBatch\022\036.hypersp"
-    "ace.BatchSearchRequest\032\037.hyperspace.Batc"
-    "hSearchResponse\022l\n\025SearchMultiCollection"
-    "\022(.hyperspace.SearchMultiCollectionReque"
-    "st\032).hyperspace.SearchMultiCollectionRes"
-    "ponse\022<\n\007GetNode\022\032.hyperspace.GetNodeReq"
-    "uest\032\025.hyperspace.GraphNode\022Q\n\014GetNeighb"
-    "ors\022\037.hyperspace.GetNeighborsRequest\032 .h"
-    "yperspace.GetNeighborsResponse\022`\n\021GetCon"
-    "ceptParents\022$.hyperspace.GetConceptParen"
-    "tsRequest\032%.hyperspace.GetConceptParents"
-    "Response\022E\n\010Traverse\022\033.hyperspace.Traver"
-    "seRequest\032\034.hyperspace.TraverseResponse\022"
-    "i\n\024FindSemanticClusters\022\'.hyperspace.Fin"
-    "dSemanticClustersRequest\032(.hyperspace.Fi"
-    "ndSemanticClustersResponse\022@\n\007Monitor\022\032."
-    "hyperspace.MonitorRequest\032\027.hyperspace.S"
-    "ystemStats0\001\022@\n\017TriggerSnapshot\022\021.hypers"
-    "pace.Empty\032\032.hyperspace.StatusResponse\022>"
-    "\n\rTriggerVacuum\022\021.hyperspace.Empty\032\032.hyp"
-    "erspace.StatusResponse\022X\n\026TriggerReconso"
-    "lidation\022\".hyperspace.ReconsolidationReq"
-    "uest\032\032.hyperspace.StatusResponse\022A\n\tConf"
-    "igure\022\030.hyperspace.ConfigUpdate\032\032.hypers"
-    "pace.StatusResponse\022I\n\tReplicate\022\036.hyper"
-    "space.ReplicationRequest\032\032.hyperspace.Re"
-    "plicationLog0\001\022U\n\021SubscribeToEvents\022$.hy"
-    "perspace.EventSubscriptionRequest\032\030.hype"
-    "rspace.EventMessage0\001\022B\n\tGetDigest\022\031.hyp"
-    "erspace.DigestRequest\032\032.hyperspace.Diges"
-    "tResponse\022K\n\014RebuildIndex\022\037.hyperspace.R"
-    "ebuildIndexRequest\032\032.hyperspace.StatusRe"
-    "sponse\022T\n\rSyncHandshake\022 .hyperspace.Syn"
-    "cHandshakeRequest\032!.hyperspace.SyncHands"
-    "hakeResponse\022E\n\010SyncPull\022\033.hyperspace.Sy"
-    "ncPullRequest\032\032.hyperspace.SyncVectorDat"
-    "a0\001\022F\n\010SyncPush\022\032.hyperspace.SyncVectorD"
-    "ata\032\034.hyperspace.SyncPushResponse(\001\022A\n\013H"
-    "ealthCheck\022\021.hyperspace.Empty\032\037.hyperspa"
-    "ce.HealthCheckResponseB,Z*github.com/yar"
-    "labs/hyperspace-sdk-go/protob\006proto3"
+    "\t:\0028\001\032O\n\022TypedMetadataEntry\022\013\n\003key\030\001 \001(\t"
+    "\022(\n\005value\030\002 \001(\0132\031.hyperspace.MetadataVal"
+    "ue:\0028\001\"c\n\023GetNeighborsRequest\022\022\n\ncollect"
+    "ion\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\r\n\005layer\030\003 \001(\r\022\r\n\005"
+    "limit\030\004 \001(\r\022\016\n\006offset\030\005 \001(\r\"V\n\024GetNeighb"
+    "orsResponse\022(\n\tneighbors\030\001 \003(\0132\025.hypersp"
+    "ace.GraphNode\022\024\n\014edge_weights\030\002 \003(\001\"\371\001\n\017"
+    "TraverseRequest\022\022\n\ncollection\030\001 \001(\t\022\020\n\010s"
+    "tart_id\030\002 \001(\r\022\021\n\tmax_depth\030\003 \001(\r\022\021\n\tmax_"
+    "nodes\030\004 \001(\r\022\r\n\005layer\030\005 \001(\r\0227\n\006filter\030\006 \003"
+    "(\0132\'.hyperspace.TraverseRequest.FilterEn"
+    "try\022#\n\007filters\030\007 \003(\0132\022.hyperspace.Filter"
+    "\032-\n\013FilterEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 "
+    "\001(\t:\0028\001\"8\n\020TraverseResponse\022$\n\005nodes\030\001 \003"
+    "(\0132\025.hyperspace.GraphNode\"\203\001\n\033FindSemant"
+    "icClustersRequest\022\022\n\ncollection\030\001 \001(\t\022\r\n"
+    "\005layer\030\002 \001(\r\022\030\n\020min_cluster_size\030\003 \001(\r\022\024"
+    "\n\014max_clusters\030\004 \001(\r\022\021\n\tmax_nodes\030\005 \001(\r\""
+    "X\n\030GetConceptParentsRequest\022\022\n\ncollectio"
+    "n\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\r\n\005layer\030\003 \001(\r\022\r\n\005li"
+    "mit\030\004 \001(\r\"C\n\031GetConceptParentsResponse\022&"
+    "\n\007parents\030\001 \003(\0132\025.hyperspace.GraphNode\" "
+    "\n\014GraphCluster\022\020\n\010node_ids\030\001 \003(\r\"J\n\034Find"
+    "SemanticClustersResponse\022*\n\010clusters\030\001 \003"
+    "(\0132\030.hyperspace.GraphCluster\"r\n\rMetadata"
+    "Value\022\026\n\014string_value\030\001 \001(\tH\000\022\023\n\tint_val"
+    "ue\030\002 \001(\003H\000\022\026\n\014double_value\030\003 \001(\001H\000\022\024\n\nbo"
+    "ol_value\030\004 \001(\010H\000B\006\n\004kind\"h\n\030EventSubscri"
+    "ptionRequest\022$\n\005types\030\001 \003(\0162\025.hyperspace"
+    ".EventType\022\027\n\ncollection\030\002 \001(\tH\000\210\001\001B\r\n\013_"
+    "collection\"\363\002\n\023VectorInsertedEvent\022\n\n\002id"
+    "\030\001 \001(\r\022\022\n\ncollection\030\002 \001(\t\022\025\n\rlogical_cl"
+    "ock\030\003 \001(\004\022\026\n\016origin_node_id\030\004 \001(\t\022\?\n\010met"
+    "adata\030\005 \003(\0132-.hyperspace.VectorInsertedE"
+    "vent.MetadataEntry\022J\n\016typed_metadata\030\006 \003"
+    "(\01322.hyperspace.VectorInsertedEvent.Type"
+    "dMetadataEntry\032/\n\rMetadataEntry\022\013\n\003key\030\001"
+    " \001(\t\022\r\n\005value\030\002 \001(\t:\0028\001\032O\n\022TypedMetadata"
+    "Entry\022\013\n\003key\030\001 \001(\t\022(\n\005value\030\002 \001(\0132\031.hype"
+    "rspace.MetadataValue:\0028\001\"\275\001\n\023TrajectoryS"
+    "tepEvent\022\n\n\002id\030\001 \001(\r\022\022\n\ncollection\030\002 \001(\t"
+    "\022\t\n\001x\030\003 \001(\002\022\t\n\001y\030\004 \001(\002\022\?\n\010metadata\030\005 \003(\013"
+    "2-.hyperspace.TrajectoryStepEvent.Metada"
+    "taEntry\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n"
+    "\005value\030\002 \001(\t:\0028\001\"c\n\022VectorDeletedEvent\022\n"
+    "\n\002id\030\001 \001(\r\022\022\n\ncollection\030\002 \001(\t\022\025\n\rlogica"
+    "l_clock\030\003 \001(\004\022\026\n\016origin_node_id\030\004 \001(\t\"\360\001"
+    "\n\014EventMessage\022#\n\004type\030\001 \001(\0162\025.hyperspac"
+    "e.EventType\022:\n\017vector_inserted\030\002 \001(\0132\037.h"
+    "yperspace.VectorInsertedEventH\000\0228\n\016vecto"
+    "r_deleted\030\003 \001(\0132\036.hyperspace.VectorDelet"
+    "edEventH\000\022:\n\017trajectory_step\030\004 \001(\0132\037.hyp"
+    "erspace.TrajectoryStepEventH\000B\t\n\007payload"
+    "\"\007\n\005Empty\" \n\016StatusResponse\022\016\n\006status\030\001 "
+    "\001(\t\"\020\n\016MonitorRequest\"e\n\013SystemStats\022\031\n\021"
+    "total_collections\030\001 \001(\004\022\025\n\rtotal_vectors"
+    "\030\002 \001(\004\022\027\n\017total_memory_mb\030\003 \001(\001\022\013\n\003qps\030\004"
+    " \001(\001\"#\n\rDigestRequest\022\022\n\ncollection\030\001 \001("
+    "\t\"[\n\016DigestResponse\022\025\n\rlogical_clock\030\001 \001"
+    "(\004\022\022\n\nstate_hash\030\002 \001(\004\022\017\n\007buckets\030\003 \003(\004\022"
+    "\r\n\005count\030\004 \001(\004\"v\n\024SyncHandshakeRequest\022\022"
+    "\n\ncollection\030\001 \001(\t\022\026\n\016client_buckets\030\002 \003"
+    "(\004\022\034\n\024client_logical_clock\030\003 \001(\004\022\024\n\014clie"
+    "nt_count\030\004 \001(\004\"L\n\nDiffBucket\022\024\n\014bucket_i"
+    "ndex\030\001 \001(\r\022\023\n\013server_hash\030\002 \001(\004\022\023\n\013clien"
+    "t_hash\030\003 \001(\004\"\212\001\n\025SyncHandshakeResponse\022,"
+    "\n\014diff_buckets\030\001 \003(\0132\026.hyperspace.DiffBu"
+    "cket\022\034\n\024server_logical_clock\030\002 \001(\004\022\024\n\014se"
+    "rver_count\030\003 \001(\004\022\017\n\007in_sync\030\004 \001(\010\"=\n\017Syn"
+    "cPullRequest\022\022\n\ncollection\030\001 \001(\t\022\026\n\016buck"
+    "et_indices\030\002 \003(\r\"\303\001\n\016SyncVectorData\022\022\n\nc"
+    "ollection\030\001 \001(\t\022\n\n\002id\030\002 \001(\r\022\016\n\006vector\030\003 "
+    "\003(\001\022:\n\010metadata\030\004 \003(\0132(.hyperspace.SyncV"
+    "ectorData.MetadataEntry\022\024\n\014bucket_index\030"
+    "\005 \001(\r\032/\n\rMetadataEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005v"
+    "alue\030\002 \001(\t:\0028\001\"J\n\020SyncPushResponse\022\020\n\010ac"
+    "cepted\030\001 \001(\r\022\020\n\010rejected\030\002 \001(\r\022\022\n\nduplic"
+    "ates\030\003 \001(\r*+\n\020QuantizationMode\022\010\n\004NONE\020\000"
+    "\022\r\n\tSCALAR_I8\020\001*F\n\017DurabilityLevel\022\021\n\rDE"
+    "FAULT_LEVEL\020\000\022\t\n\005ASYNC\020\001\022\t\n\005BATCH\020\002\022\n\n\006S"
+    "TRICT\020\003*\\\n\tEventType\022\021\n\rEVENT_UNKNOWN\020\000\022"
+    "\023\n\017VECTOR_INSERTED\020\001\022\022\n\016VECTOR_DELETED\020\002"
+    "\022\023\n\017TRAJECTORY_STEP\020\0032\377\024\n\010Database\022S\n\020Cr"
+    "eateCollection\022#.hyperspace.CreateCollec"
+    "tionRequest\032\032.hyperspace.StatusResponse\022"
+    "S\n\020DeleteCollection\022#.hyperspace.DeleteC"
+    "ollectionRequest\032\032.hyperspace.StatusResp"
+    "onse\022I\n\017ListCollections\022\021.hyperspace.Emp"
+    "ty\032#.hyperspace.ListCollectionsResponse\022"
+    "]\n\022GetCollectionStats\022\".hyperspace.Colle"
+    "ctionStatsRequest\032#.hyperspace.Collectio"
+    "nStatsResponse\022\?\n\006Insert\022\031.hyperspace.In"
+    "sertRequest\032\032.hyperspace.InsertResponse\022"
+    "I\n\013BatchInsert\022\036.hyperspace.BatchInsertR"
+    "equest\032\032.hyperspace.InsertResponse\022G\n\nIn"
+    "sertText\022\035.hyperspace.InsertTextRequest\032"
+    "\032.hyperspace.InsertResponse\022H\n\tVectorize"
+    "\022\034.hyperspace.VectorizeRequest\032\035.hypersp"
+    "ace.VectorizeResponse\022G\n\nSearchText\022\035.hy"
+    "perspace.SearchTextRequest\032\032.hyperspace."
+    "SearchResponse\022\?\n\006Delete\022\031.hyperspace.De"
+    "leteRequest\032\032.hyperspace.DeleteResponse\022"
+    "H\n\tGetPoints\022\034.hyperspace.GetPointsReque"
+    "st\032\035.hyperspace.GetPointsResponse\022M\n\rUpd"
+    "atePayload\022 .hyperspace.UpdatePayloadReq"
+    "uest\032\032.hyperspace.StatusResponse\022\?\n\006Scro"
+    "ll\022\031.hyperspace.ScrollRequest\032\032.hyperspa"
+    "ce.ScrollResponse\022<\n\005Count\022\030.hyperspace."
+    "CountRequest\032\031.hyperspace.CountResponse\022"
+    "\?\n\006Search\022\031.hyperspace.SearchRequest\032\032.h"
+    "yperspace.SearchResponse\022N\n\013SearchBatch\022"
+    "\036.hyperspace.BatchSearchRequest\032\037.hypers"
+    "pace.BatchSearchResponse\022l\n\025SearchMultiC"
+    "ollection\022(.hyperspace.SearchMultiCollec"
+    "tionRequest\032).hyperspace.SearchMultiColl"
+    "ectionResponse\022<\n\007GetNode\022\032.hyperspace.G"
+    "etNodeRequest\032\025.hyperspace.GraphNode\022Q\n\014"
+    "GetNeighbors\022\037.hyperspace.GetNeighborsRe"
+    "quest\032 .hyperspace.GetNeighborsResponse\022"
+    "`\n\021GetConceptParents\022$.hyperspace.GetCon"
+    "ceptParentsRequest\032%.hyperspace.GetConce"
+    "ptParentsResponse\022E\n\010Traverse\022\033.hyperspa"
+    "ce.TraverseRequest\032\034.hyperspace.Traverse"
+    "Response\022i\n\024FindSemanticClusters\022\'.hyper"
+    "space.FindSemanticClustersRequest\032(.hype"
+    "rspace.FindSemanticClustersResponse\022@\n\007M"
+    "onitor\022\032.hyperspace.MonitorRequest\032\027.hyp"
+    "erspace.SystemStats0\001\022@\n\017TriggerSnapshot"
+    "\022\021.hyperspace.Empty\032\032.hyperspace.StatusR"
+    "esponse\022>\n\rTriggerVacuum\022\021.hyperspace.Em"
+    "pty\032\032.hyperspace.StatusResponse\022X\n\026Trigg"
+    "erReconsolidation\022\".hyperspace.Reconsoli"
+    "dationRequest\032\032.hyperspace.StatusRespons"
+    "e\022A\n\tConfigure\022\030.hyperspace.ConfigUpdate"
+    "\032\032.hyperspace.StatusResponse\022I\n\tReplicat"
+    "e\022\036.hyperspace.ReplicationRequest\032\032.hype"
+    "rspace.ReplicationLog0\001\022U\n\021SubscribeToEv"
+    "ents\022$.hyperspace.EventSubscriptionReque"
+    "st\032\030.hyperspace.EventMessage0\001\022B\n\tGetDig"
+    "est\022\031.hyperspace.DigestRequest\032\032.hypersp"
+    "ace.DigestResponse\022K\n\014RebuildIndex\022\037.hyp"
+    "erspace.RebuildIndexRequest\032\032.hyperspace"
+    ".StatusResponse\022T\n\rSyncHandshake\022 .hyper"
+    "space.SyncHandshakeRequest\032!.hyperspace."
+    "SyncHandshakeResponse\022E\n\010SyncPull\022\033.hype"
+    "rspace.SyncPullRequest\032\032.hyperspace.Sync"
+    "VectorData0\001\022F\n\010SyncPush\022\032.hyperspace.Sy"
+    "ncVectorData\032\034.hyperspace.SyncPushRespon"
+    "se(\001\022A\n\013HealthCheck\022\021.hyperspace.Empty\032\037"
+    ".hyperspace.HealthCheckResponseB,Z*githu"
+    "b.com/yarlabs/hyperspace-sdk-go/protob\006p"
+    "roto3"
 };
 static ::absl::once_flag descriptor_table_hyperspace_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_hyperspace_2eproto = {
     false,
     false,
-    12916,
+    13725,
     descriptor_table_protodef_hyperspace_2eproto,
     "hyperspace.proto",
     &descriptor_table_hyperspace_2eproto_once,
     nullptr,
     0,
-    103,
+    108,
     schemas,
     file_default_instances,
     TableStruct_hyperspace_2eproto::offsets,
@@ -6299,8 +6523,7 @@ PROTOBUF_NDEBUG_INLINE CreateCollectionOp::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
     [[maybe_unused]] const ::hyperspace::CreateCollectionOp& from_msg)
       : _has_bits_{from._has_bits_},
-        _cached_size_{0},
-        metric_(arena, from.metric_) {}
+        _cached_size_{0} {}
 
 CreateCollectionOp::CreateCollectionOp(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -6315,19 +6538,21 @@ CreateCollectionOp::CreateCollectionOp(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  _impl_.dimension_ = from._impl_.dimension_;
+  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
+  _impl_.schema_ = (CheckHasBit(cached_has_bits, 0x00000001U))
+                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_)
+                : nullptr;
 
   // @@protoc_insertion_point(copy_constructor:hyperspace.CreateCollectionOp)
 }
 PROTOBUF_NDEBUG_INLINE CreateCollectionOp::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-      : _cached_size_{0},
-        metric_(arena) {}
+      : _cached_size_{0} {}
 
 inline void CreateCollectionOp::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  _impl_.dimension_ = {};
+  _impl_.schema_ = {};
 }
 CreateCollectionOp::~CreateCollectionOp() {
   // @@protoc_insertion_point(destructor:hyperspace.CreateCollectionOp)
@@ -6340,7 +6565,7 @@ inline void CreateCollectionOp::SharedDtor(MessageLite& self) {
   }
   this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
   ABSL_DCHECK(this_.GetArena() == nullptr);
-  this_._impl_.metric_.Destroy();
+  delete this_._impl_.schema_;
   this_._impl_.~Impl_();
 }
 
@@ -6350,7 +6575,7 @@ inline void* PROTOBUF_NONNULL CreateCollectionOp::PlacementNew_(
   return ::new (mem) CreateCollectionOp(arena);
 }
 constexpr auto CreateCollectionOp::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(CreateCollectionOp),
+  return ::google::protobuf::internal::MessageCreator::ZeroInit(sizeof(CreateCollectionOp),
                                             alignof(CreateCollectionOp));
 }
 constexpr auto CreateCollectionOp::InternalGenerateClassData_() {
@@ -6386,18 +6611,18 @@ CreateCollectionOp::GetClassData() const {
   return CreateCollectionOp_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<1, 2, 0, 44, 2>
+const ::_pbi::TcParseTable<0, 1, 1, 0, 2>
 CreateCollectionOp::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(CreateCollectionOp, _impl_._has_bits_),
     0, // no _extensions_
-    2, 8,  // max_field_number, fast_idx_mask
+    3, 0,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967292,  // skipmap
+    4294967291,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    2,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
+    1,  // num_field_entries
+    1,  // num_aux_entries
+    offsetof(decltype(_table_), aux_entries),
     CreateCollectionOp_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -6405,27 +6630,20 @@ CreateCollectionOp::_table_ = {
     ::_pbi::TcParser::GetTable<::hyperspace::CreateCollectionOp>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    // string metric = 2;
-    {::_pbi::TcParser::FastUS1,
-     {18, 0, 0,
-      PROTOBUF_FIELD_OFFSET(CreateCollectionOp, _impl_.metric_)}},
-    // uint32 dimension = 1;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(CreateCollectionOp, _impl_.dimension_), 1>(),
-     {8, 1, 0,
-      PROTOBUF_FIELD_OFFSET(CreateCollectionOp, _impl_.dimension_)}},
+    // optional .hyperspace.CollectionSchema schema = 3;
+    {::_pbi::TcParser::FastMtS1,
+     {26, 0, 0,
+      PROTOBUF_FIELD_OFFSET(CreateCollectionOp, _impl_.schema_)}},
   }}, {{
     65535, 65535
   }}, {{
-    // uint32 dimension = 1;
-    {PROTOBUF_FIELD_OFFSET(CreateCollectionOp, _impl_.dimension_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
-    // string metric = 2;
-    {PROTOBUF_FIELD_OFFSET(CreateCollectionOp, _impl_.metric_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // optional .hyperspace.CollectionSchema schema = 3;
+    {PROTOBUF_FIELD_OFFSET(CreateCollectionOp, _impl_.schema_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
-  // no aux_entries
   {{
-    "\35\0\6\0\0\0\0\0"
-    "hyperspace.CreateCollectionOp"
-    "metric"
+      {::_pbi::TcParser::GetTable<::hyperspace::CollectionSchema>()},
+  }},
+  {{
   }},
 };
 PROTOBUF_NOINLINE void CreateCollectionOp::Clear() {
@@ -6437,9 +6655,9 @@ PROTOBUF_NOINLINE void CreateCollectionOp::Clear() {
 
   cached_has_bits = _impl_._has_bits_[0];
   if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-    _impl_.metric_.ClearNonDefaultToEmpty();
+    ABSL_DCHECK(_impl_.schema_ != nullptr);
+    _impl_.schema_->Clear();
   }
-  _impl_.dimension_ = 0u;
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -6463,23 +6681,11 @@ PROTOBUF_NOINLINE void CreateCollectionOp::Clear() {
   (void)cached_has_bits;
 
   cached_has_bits = this_._impl_._has_bits_[0];
-  // uint32 dimension = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-    if (this_._internal_dimension() != 0) {
-      target = stream->EnsureSpace(target);
-      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
-          1, this_._internal_dimension(), target);
-    }
-  }
-
-  // string metric = 2;
+  // optional .hyperspace.CollectionSchema schema = 3;
   if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-    if (!this_._internal_metric().empty()) {
-      const ::std::string& _s = this_._internal_metric();
-      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.CreateCollectionOp.metric");
-      target = stream->WriteStringMaybeAliased(2, _s, target);
-    }
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        3, *this_._impl_.schema_, this_._impl_.schema_->GetCachedSize(), target,
+        stream);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -6505,22 +6711,12 @@ PROTOBUF_NOINLINE void CreateCollectionOp::Clear() {
   // Prevent compiler warnings about cached_has_bits being unused
   (void)cached_has_bits;
 
-  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
-  cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
-    // string metric = 2;
+   {
+    // optional .hyperspace.CollectionSchema schema = 3;
+    cached_has_bits = this_._impl_._has_bits_[0];
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-      if (!this_._internal_metric().empty()) {
-        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
-                                        this_._internal_metric());
-      }
-    }
-    // uint32 dimension = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      if (this_._internal_dimension() != 0) {
-        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
-            this_._internal_dimension());
-      }
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.schema_);
     }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
@@ -6535,26 +6731,19 @@ void CreateCollectionOp::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
     from.CheckHasBitConsistency();
   }
+  ::google::protobuf::Arena* arena = _this->GetArena();
   // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.CreateCollectionOp)
   ABSL_DCHECK_NE(&from, _this);
   ::uint32_t cached_has_bits = 0;
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
-    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-      if (!from._internal_metric().empty()) {
-        _this->_internal_set_metric(from._internal_metric());
-      } else {
-        if (_this->_impl_.metric_.IsDefault()) {
-          _this->_internal_set_metric("");
-        }
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      if (from._internal_dimension() != 0) {
-        _this->_impl_.dimension_ = from._impl_.dimension_;
-      }
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    ABSL_DCHECK(from._impl_.schema_ != nullptr);
+    if (_this->_impl_.schema_ == nullptr) {
+      _this->_impl_.schema_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_);
+    } else {
+      _this->_impl_.schema_->MergeFrom(*from._impl_.schema_);
     }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
@@ -6572,12 +6761,9 @@ void CreateCollectionOp::CopyFrom(const CreateCollectionOp& from) {
 
 void CreateCollectionOp::InternalSwap(CreateCollectionOp* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   using ::std::swap;
-  auto* arena = GetArena();
-  ABSL_DCHECK_EQ(arena, other->GetArena());
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
-  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.metric_, &other->_impl_.metric_, arena);
-  swap(_impl_.dimension_, other->_impl_.dimension_);
+  swap(_impl_.schema_, other->_impl_.schema_);
 }
 
 ::google::protobuf::Metadata CreateCollectionOp::GetMetadata() const {
@@ -7211,17 +7397,7 @@ PROTOBUF_NDEBUG_INLINE CreateCollectionRequest::Impl_::Impl_(
     [[maybe_unused]] const ::hyperspace::CreateCollectionRequest& from_msg)
       : _has_bits_{from._has_bits_},
         _cached_size_{0},
-        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
-        components_{visibility, ::_pbi::InternalMetadataOffset::Build<
-            ::hyperspace::CreateCollectionRequest,
-            PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.components_)>()
-        , from.components_}
-        #else
-        components_ { visibility, arena, from.components_ }
-        #endif
-        ,
-        name_(arena, from.name_),
-        metric_(arena, from.metric_) {}
+        name_(arena, from.name_) {}
 
 CreateCollectionRequest::CreateCollectionRequest(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -7236,7 +7412,10 @@ CreateCollectionRequest::CreateCollectionRequest(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  _impl_.dimension_ = from._impl_.dimension_;
+  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
+  _impl_.schema_ = (CheckHasBit(cached_has_bits, 0x00000002U))
+                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_)
+                : nullptr;
 
   // @@protoc_insertion_point(copy_constructor:hyperspace.CreateCollectionRequest)
 }
@@ -7244,21 +7423,11 @@ PROTOBUF_NDEBUG_INLINE CreateCollectionRequest::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
       : _cached_size_{0},
-        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
-        components_{visibility, ::_pbi::InternalMetadataOffset::Build<
-            ::hyperspace::CreateCollectionRequest,
-            PROTOBUF_FIELD_OFFSET(::hyperspace::CreateCollectionRequest, _impl_.components_)>()
-        }
-        #else
-        components_ { visibility, arena }
-        #endif
-        ,
-        name_(arena),
-        metric_(arena) {}
+        name_(arena) {}
 
 inline void CreateCollectionRequest::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  _impl_.dimension_ = {};
+  _impl_.schema_ = {};
 }
 CreateCollectionRequest::~CreateCollectionRequest() {
   // @@protoc_insertion_point(destructor:hyperspace.CreateCollectionRequest)
@@ -7272,7 +7441,7 @@ inline void CreateCollectionRequest::SharedDtor(MessageLite& self) {
   this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
   ABSL_DCHECK(this_.GetArena() == nullptr);
   this_._impl_.name_.Destroy();
-  this_._impl_.metric_.Destroy();
+  delete this_._impl_.schema_;
   this_._impl_.~Impl_();
 }
 
@@ -7281,29 +7450,10 @@ inline void* PROTOBUF_NONNULL CreateCollectionRequest::PlacementNew_(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
   return ::new (mem) CreateCollectionRequest(arena);
 }
-#ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
 constexpr auto CreateCollectionRequest::InternalNewImpl_() {
   return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(CreateCollectionRequest),
                                             alignof(CreateCollectionRequest));
 }
-#else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
-constexpr auto CreateCollectionRequest::InternalNewImpl_() {
-  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
-      PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.components_) +
-          decltype(CreateCollectionRequest::_impl_.components_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
-  });
-  if (arena_bits.has_value()) {
-    return ::google::protobuf::internal::MessageCreator::CopyInit(
-        sizeof(CreateCollectionRequest), alignof(CreateCollectionRequest), *arena_bits);
-  } else {
-    return ::google::protobuf::internal::MessageCreator(&CreateCollectionRequest::PlacementNew_,
-                                 sizeof(CreateCollectionRequest),
-                                 alignof(CreateCollectionRequest));
-  }
-}
-#endif
 constexpr auto CreateCollectionRequest::InternalGenerateClassData_() {
   return ::google::protobuf::internal::ClassDataFull{
       ::google::protobuf::internal::ClassData{
@@ -7337,16 +7487,16 @@ CreateCollectionRequest::GetClassData() const {
   return CreateCollectionRequest_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<2, 4, 1, 53, 2>
+const ::_pbi::TcParseTable<0, 2, 1, 47, 2>
 CreateCollectionRequest::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_._has_bits_),
     0, // no _extensions_
-    4, 24,  // max_field_number, fast_idx_mask
+    5, 0,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967280,  // skipmap
+    4294967278,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    4,  // num_field_entries
+    2,  // num_field_entries
     1,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     CreateCollectionRequest_class_data_.base(),
@@ -7356,42 +7506,25 @@ CreateCollectionRequest::_table_ = {
     ::_pbi::TcParser::GetTable<::hyperspace::CreateCollectionRequest>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    // repeated .hyperspace.CollectionComponent components = 4;
-    {::_pbi::TcParser::FastMtR1,
-     {34, 0, 0,
-      PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.components_)}},
     // string name = 1;
     {::_pbi::TcParser::FastUS1,
-     {10, 1, 0,
+     {10, 0, 0,
       PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.name_)}},
-    // uint32 dimension = 2;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(CreateCollectionRequest, _impl_.dimension_), 3>(),
-     {16, 3, 0,
-      PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.dimension_)}},
-    // string metric = 3;
-    {::_pbi::TcParser::FastUS1,
-     {26, 2, 0,
-      PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.metric_)}},
   }}, {{
     65535, 65535
   }}, {{
     // string name = 1;
-    {PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.name_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
-    // uint32 dimension = 2;
-    {PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.dimension_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
-    // string metric = 3;
-    {PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.metric_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
-    // repeated .hyperspace.CollectionComponent components = 4;
-    {PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.components_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.name_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // optional .hyperspace.CollectionSchema schema = 5;
+    {PROTOBUF_FIELD_OFFSET(CreateCollectionRequest, _impl_.schema_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
-      {::_pbi::TcParser::GetTable<::hyperspace::CollectionComponent>()},
+      {::_pbi::TcParser::GetTable<::hyperspace::CollectionSchema>()},
   }},
   {{
-    "\42\4\0\6\0\0\0\0"
+    "\42\4\0\0\0\0\0\0"
     "hyperspace.CreateCollectionRequest"
     "name"
-    "metric"
   }},
 };
 PROTOBUF_NOINLINE void CreateCollectionRequest::Clear() {
@@ -7402,18 +7535,15 @@ PROTOBUF_NOINLINE void CreateCollectionRequest::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      _impl_.components_.Clear();
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _impl_.name_.ClearNonDefaultToEmpty();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      _impl_.metric_.ClearNonDefaultToEmpty();
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      ABSL_DCHECK(_impl_.schema_ != nullptr);
+      _impl_.schema_->Clear();
     }
   }
-  _impl_.dimension_ = 0u;
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -7438,7 +7568,7 @@ PROTOBUF_NOINLINE void CreateCollectionRequest::Clear() {
 
   cached_has_bits = this_._impl_._has_bits_[0];
   // string name = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
     if (!this_._internal_name().empty()) {
       const ::std::string& _s = this_._internal_name();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -7447,36 +7577,11 @@ PROTOBUF_NOINLINE void CreateCollectionRequest::Clear() {
     }
   }
 
-  // uint32 dimension = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-    if (this_._internal_dimension() != 0) {
-      target = stream->EnsureSpace(target);
-      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
-          2, this_._internal_dimension(), target);
-    }
-  }
-
-  // string metric = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-    if (!this_._internal_metric().empty()) {
-      const ::std::string& _s = this_._internal_metric();
-      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.CreateCollectionRequest.metric");
-      target = stream->WriteStringMaybeAliased(3, _s, target);
-    }
-  }
-
-  // repeated .hyperspace.CollectionComponent components = 4;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    for (unsigned i = 0, n = static_cast<unsigned>(
-                             this_._internal_components_size());
-         i < n; i++) {
-      const auto& repfield = this_._internal_components().Get(i);
-      target =
-          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-              4, repfield, repfield.GetCachedSize(),
-              target, stream);
-    }
+  // optional .hyperspace.CollectionSchema schema = 5;
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        5, *this_._impl_.schema_, this_._impl_.schema_->GetCachedSize(), target,
+        stream);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -7504,34 +7609,18 @@ PROTOBUF_NOINLINE void CreateCollectionRequest::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
-    // repeated .hyperspace.CollectionComponent components = 4;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      total_size += 1UL * this_._internal_components_size();
-      for (const auto& msg : this_._internal_components()) {
-        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
-      }
-    }
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
     // string name = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!this_._internal_name().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_name());
       }
     }
-    // string metric = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      if (!this_._internal_metric().empty()) {
-        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
-                                        this_._internal_metric());
-      }
-    }
-    // uint32 dimension = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      if (this_._internal_dimension() != 0) {
-        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
-            this_._internal_dimension());
-      }
+    // optional .hyperspace.CollectionSchema schema = 5;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.schema_);
     }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
@@ -7553,13 +7642,8 @@ void CreateCollectionRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      _this->_internal_mutable_components()->InternalMergeFromWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), arena,
-          from._internal_components());
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
       } else {
@@ -7568,18 +7652,12 @@ void CreateCollectionRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      if (!from._internal_metric().empty()) {
-        _this->_internal_set_metric(from._internal_metric());
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      ABSL_DCHECK(from._impl_.schema_ != nullptr);
+      if (_this->_impl_.schema_ == nullptr) {
+        _this->_impl_.schema_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_);
       } else {
-        if (_this->_impl_.metric_.IsDefault()) {
-          _this->_internal_set_metric("");
-        }
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      if (from._internal_dimension() != 0) {
-        _this->_impl_.dimension_ = from._impl_.dimension_;
+        _this->_impl_.schema_->MergeFrom(*from._impl_.schema_);
       }
     }
   }
@@ -7602,13 +7680,1156 @@ void CreateCollectionRequest::InternalSwap(CreateCollectionRequest* PROTOBUF_RES
   ABSL_DCHECK_EQ(arena, other->GetArena());
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
-  _impl_.components_.InternalSwap(&other->_impl_.components_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
-  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.metric_, &other->_impl_.metric_, arena);
-  swap(_impl_.dimension_, other->_impl_.dimension_);
+  swap(_impl_.schema_, other->_impl_.schema_);
 }
 
 ::google::protobuf::Metadata CreateCollectionRequest::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
+class VectorComponent::_Internal {
+ public:
+  using HasBits =
+      decltype(::std::declval<VectorComponent>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_._has_bits_);
+};
+
+VectorComponent::VectorComponent(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, VectorComponent_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:hyperspace.VectorComponent)
+}
+PROTOBUF_NDEBUG_INLINE VectorComponent::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    [[maybe_unused]] const ::hyperspace::VectorComponent& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        name_(arena, from.name_),
+        metric_(arena, from.metric_) {}
+
+VectorComponent::VectorComponent(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const VectorComponent& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, VectorComponent_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  VectorComponent* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  ::memcpy(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, full_dimension_),
+           reinterpret_cast<const char*>(&from._impl_) +
+               offsetof(Impl_, full_dimension_),
+           offsetof(Impl_, weight_) -
+               offsetof(Impl_, full_dimension_) +
+               sizeof(Impl_::weight_));
+
+  // @@protoc_insertion_point(copy_constructor:hyperspace.VectorComponent)
+}
+PROTOBUF_NDEBUG_INLINE VectorComponent::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        name_(arena),
+        metric_(arena) {}
+
+inline void VectorComponent::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+  ::memset(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, full_dimension_),
+           0,
+           offsetof(Impl_, weight_) -
+               offsetof(Impl_, full_dimension_) +
+               sizeof(Impl_::weight_));
+}
+VectorComponent::~VectorComponent() {
+  // @@protoc_insertion_point(destructor:hyperspace.VectorComponent)
+  SharedDtor(*this);
+}
+inline void VectorComponent::SharedDtor(MessageLite& self) {
+  VectorComponent& this_ = static_cast<VectorComponent&>(self);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.name_.Destroy();
+  this_._impl_.metric_.Destroy();
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL VectorComponent::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) VectorComponent(arena);
+}
+constexpr auto VectorComponent::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(VectorComponent),
+                                            alignof(VectorComponent));
+}
+constexpr auto VectorComponent::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_VectorComponent_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // IsInitialized
+          &VectorComponent::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<VectorComponent>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &VectorComponent::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<VectorComponent>(), &VectorComponent::ByteSizeLong,
+              &VectorComponent::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_._cached_size_),
+          false,
+      },
+      &VectorComponent::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull VectorComponent_class_data_ =
+        VectorComponent::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+VectorComponent::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&VectorComponent_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(VectorComponent_class_data_.tc_table);
+  return VectorComponent_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<2, 4, 0, 45, 2>
+VectorComponent::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_._has_bits_),
+    0, // no _extensions_
+    4, 24,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967280,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    4,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    VectorComponent_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::VectorComponent>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // float weight = 4;
+    {::_pbi::TcParser::FastF32S1,
+     {37, 3, 0,
+      PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.weight_)}},
+    // string name = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.name_)}},
+    // string metric = 2;
+    {::_pbi::TcParser::FastUS1,
+     {18, 1, 0,
+      PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.metric_)}},
+    // uint32 full_dimension = 3;
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(VectorComponent, _impl_.full_dimension_), 2>(),
+     {24, 2, 0,
+      PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.full_dimension_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string name = 1;
+    {PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.name_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // string metric = 2;
+    {PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.metric_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // uint32 full_dimension = 3;
+    {PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.full_dimension_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    // float weight = 4;
+    {PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.weight_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+  }},
+  // no aux_entries
+  {{
+    "\32\4\6\0\0\0\0\0"
+    "hyperspace.VectorComponent"
+    "name"
+    "metric"
+  }},
+};
+PROTOBUF_NOINLINE void VectorComponent::Clear() {
+// @@protoc_insertion_point(message_clear_start:hyperspace.VectorComponent)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+      _impl_.name_.ClearNonDefaultToEmpty();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      _impl_.metric_.ClearNonDefaultToEmpty();
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000cU)) {
+    ::memset(&_impl_.full_dimension_, 0, static_cast<::size_t>(
+        reinterpret_cast<char*>(&_impl_.weight_) -
+        reinterpret_cast<char*>(&_impl_.full_dimension_)) + sizeof(_impl_.weight_));
+  }
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL VectorComponent::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const VectorComponent& this_ = static_cast<const VectorComponent&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL VectorComponent::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const VectorComponent& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(serialize_to_array_start:hyperspace.VectorComponent)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // string name = 1;
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    if (!this_._internal_name().empty()) {
+      const ::std::string& _s = this_._internal_name();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.VectorComponent.name");
+      target = stream->WriteStringMaybeAliased(1, _s, target);
+    }
+  }
+
+  // string metric = 2;
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (!this_._internal_metric().empty()) {
+      const ::std::string& _s = this_._internal_metric();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.VectorComponent.metric");
+      target = stream->WriteStringMaybeAliased(2, _s, target);
+    }
+  }
+
+  // uint32 full_dimension = 3;
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (this_._internal_full_dimension() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
+          3, this_._internal_full_dimension(), target);
+    }
+  }
+
+  // float weight = 4;
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (::absl::bit_cast<::uint32_t>(this_._internal_weight()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteFloatToArray(
+          4, this_._internal_weight(), target);
+    }
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:hyperspace.VectorComponent)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t VectorComponent::ByteSizeLong(const MessageLite& base) {
+  const VectorComponent& this_ = static_cast<const VectorComponent&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t VectorComponent::ByteSizeLong() const {
+  const VectorComponent& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:hyperspace.VectorComponent)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+    // string name = 1;
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+      if (!this_._internal_name().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_name());
+      }
+    }
+    // string metric = 2;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!this_._internal_metric().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_metric());
+      }
+    }
+    // uint32 full_dimension = 3;
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (this_._internal_full_dimension() != 0) {
+        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
+            this_._internal_full_dimension());
+      }
+    }
+    // float weight = 4;
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (::absl::bit_cast<::uint32_t>(this_._internal_weight()) != 0) {
+        total_size += 5;
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void VectorComponent::MergeImpl(::google::protobuf::MessageLite& to_msg,
+                            const ::google::protobuf::MessageLite& from_msg) {
+   auto* const _this =
+      static_cast<VectorComponent*>(&to_msg);
+  auto& from = static_cast<const VectorComponent&>(from_msg);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    from.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.VectorComponent)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+      if (!from._internal_name().empty()) {
+        _this->_internal_set_name(from._internal_name());
+      } else {
+        if (_this->_impl_.name_.IsDefault()) {
+          _this->_internal_set_name("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!from._internal_metric().empty()) {
+        _this->_internal_set_metric(from._internal_metric());
+      } else {
+        if (_this->_impl_.metric_.IsDefault()) {
+          _this->_internal_set_metric("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (from._internal_full_dimension() != 0) {
+        _this->_impl_.full_dimension_ = from._impl_.full_dimension_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (::absl::bit_cast<::uint32_t>(from._internal_weight()) != 0) {
+        _this->_impl_.weight_ = from._impl_.weight_;
+      }
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+}
+
+void VectorComponent::CopyFrom(const VectorComponent& from) {
+  // @@protoc_insertion_point(class_specific_copy_from_start:hyperspace.VectorComponent)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void VectorComponent::InternalSwap(VectorComponent* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using ::std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.metric_, &other->_impl_.metric_, arena);
+  ::google::protobuf::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.weight_)
+      + sizeof(VectorComponent::_impl_.weight_)
+      - PROTOBUF_FIELD_OFFSET(VectorComponent, _impl_.full_dimension_)>(
+          reinterpret_cast<char*>(&_impl_.full_dimension_),
+          reinterpret_cast<char*>(&other->_impl_.full_dimension_));
+}
+
+::google::protobuf::Metadata VectorComponent::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
+class MrlLayer::_Internal {
+ public:
+  using HasBits =
+      decltype(::std::declval<MrlLayer>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_._has_bits_);
+};
+
+MrlLayer::MrlLayer(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, MrlLayer_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:hyperspace.MrlLayer)
+}
+PROTOBUF_NDEBUG_INLINE MrlLayer::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    [[maybe_unused]] const ::hyperspace::MrlLayer& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        component_name_(arena, from.component_name_) {}
+
+MrlLayer::MrlLayer(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const MrlLayer& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, MrlLayer_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  MrlLayer* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  ::memcpy(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, cutoff_dimension_),
+           reinterpret_cast<const char*>(&from._impl_) +
+               offsetof(Impl_, cutoff_dimension_),
+           offsetof(Impl_, rerank_top_k_) -
+               offsetof(Impl_, cutoff_dimension_) +
+               sizeof(Impl_::rerank_top_k_));
+
+  // @@protoc_insertion_point(copy_constructor:hyperspace.MrlLayer)
+}
+PROTOBUF_NDEBUG_INLINE MrlLayer::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        component_name_(arena) {}
+
+inline void MrlLayer::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+  ::memset(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, cutoff_dimension_),
+           0,
+           offsetof(Impl_, rerank_top_k_) -
+               offsetof(Impl_, cutoff_dimension_) +
+               sizeof(Impl_::rerank_top_k_));
+}
+MrlLayer::~MrlLayer() {
+  // @@protoc_insertion_point(destructor:hyperspace.MrlLayer)
+  SharedDtor(*this);
+}
+inline void MrlLayer::SharedDtor(MessageLite& self) {
+  MrlLayer& this_ = static_cast<MrlLayer&>(self);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.component_name_.Destroy();
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL MrlLayer::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) MrlLayer(arena);
+}
+constexpr auto MrlLayer::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(MrlLayer),
+                                            alignof(MrlLayer));
+}
+constexpr auto MrlLayer::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_MrlLayer_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // IsInitialized
+          &MrlLayer::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<MrlLayer>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &MrlLayer::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<MrlLayer>(), &MrlLayer::ByteSizeLong,
+              &MrlLayer::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_._cached_size_),
+          false,
+      },
+      &MrlLayer::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull MrlLayer_class_data_ =
+        MrlLayer::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+MrlLayer::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&MrlLayer_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(MrlLayer_class_data_.tc_table);
+  return MrlLayer_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<2, 4, 0, 42, 2>
+MrlLayer::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_._has_bits_),
+    0, // no _extensions_
+    4, 24,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967280,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    4,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    MrlLayer_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::MrlLayer>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // uint32 rerank_top_k = 4;
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(MrlLayer, _impl_.rerank_top_k_), 3>(),
+     {32, 3, 0,
+      PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.rerank_top_k_)}},
+    // string component_name = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.component_name_)}},
+    // uint32 cutoff_dimension = 2;
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(MrlLayer, _impl_.cutoff_dimension_), 1>(),
+     {16, 1, 0,
+      PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.cutoff_dimension_)}},
+    // bool store_in_ram = 3;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(MrlLayer, _impl_.store_in_ram_), 2>(),
+     {24, 2, 0,
+      PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.store_in_ram_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string component_name = 1;
+    {PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.component_name_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // uint32 cutoff_dimension = 2;
+    {PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.cutoff_dimension_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    // bool store_in_ram = 3;
+    {PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.store_in_ram_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+    // uint32 rerank_top_k = 4;
+    {PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.rerank_top_k_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+  }},
+  // no aux_entries
+  {{
+    "\23\16\0\0\0\0\0\0"
+    "hyperspace.MrlLayer"
+    "component_name"
+  }},
+};
+PROTOBUF_NOINLINE void MrlLayer::Clear() {
+// @@protoc_insertion_point(message_clear_start:hyperspace.MrlLayer)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    _impl_.component_name_.ClearNonDefaultToEmpty();
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000eU)) {
+    ::memset(&_impl_.cutoff_dimension_, 0, static_cast<::size_t>(
+        reinterpret_cast<char*>(&_impl_.rerank_top_k_) -
+        reinterpret_cast<char*>(&_impl_.cutoff_dimension_)) + sizeof(_impl_.rerank_top_k_));
+  }
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL MrlLayer::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const MrlLayer& this_ = static_cast<const MrlLayer&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL MrlLayer::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const MrlLayer& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(serialize_to_array_start:hyperspace.MrlLayer)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // string component_name = 1;
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    if (!this_._internal_component_name().empty()) {
+      const ::std::string& _s = this_._internal_component_name();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.MrlLayer.component_name");
+      target = stream->WriteStringMaybeAliased(1, _s, target);
+    }
+  }
+
+  // uint32 cutoff_dimension = 2;
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (this_._internal_cutoff_dimension() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
+          2, this_._internal_cutoff_dimension(), target);
+    }
+  }
+
+  // bool store_in_ram = 3;
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (this_._internal_store_in_ram() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteBoolToArray(
+          3, this_._internal_store_in_ram(), target);
+    }
+  }
+
+  // uint32 rerank_top_k = 4;
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (this_._internal_rerank_top_k() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
+          4, this_._internal_rerank_top_k(), target);
+    }
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:hyperspace.MrlLayer)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t MrlLayer::ByteSizeLong(const MessageLite& base) {
+  const MrlLayer& this_ = static_cast<const MrlLayer&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t MrlLayer::ByteSizeLong() const {
+  const MrlLayer& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:hyperspace.MrlLayer)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+    // string component_name = 1;
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+      if (!this_._internal_component_name().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_component_name());
+      }
+    }
+    // uint32 cutoff_dimension = 2;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (this_._internal_cutoff_dimension() != 0) {
+        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
+            this_._internal_cutoff_dimension());
+      }
+    }
+    // bool store_in_ram = 3;
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (this_._internal_store_in_ram() != 0) {
+        total_size += 2;
+      }
+    }
+    // uint32 rerank_top_k = 4;
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (this_._internal_rerank_top_k() != 0) {
+        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
+            this_._internal_rerank_top_k());
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void MrlLayer::MergeImpl(::google::protobuf::MessageLite& to_msg,
+                            const ::google::protobuf::MessageLite& from_msg) {
+   auto* const _this =
+      static_cast<MrlLayer*>(&to_msg);
+  auto& from = static_cast<const MrlLayer&>(from_msg);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    from.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.MrlLayer)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+      if (!from._internal_component_name().empty()) {
+        _this->_internal_set_component_name(from._internal_component_name());
+      } else {
+        if (_this->_impl_.component_name_.IsDefault()) {
+          _this->_internal_set_component_name("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (from._internal_cutoff_dimension() != 0) {
+        _this->_impl_.cutoff_dimension_ = from._impl_.cutoff_dimension_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (from._internal_store_in_ram() != 0) {
+        _this->_impl_.store_in_ram_ = from._impl_.store_in_ram_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (from._internal_rerank_top_k() != 0) {
+        _this->_impl_.rerank_top_k_ = from._impl_.rerank_top_k_;
+      }
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+}
+
+void MrlLayer::CopyFrom(const MrlLayer& from) {
+  // @@protoc_insertion_point(class_specific_copy_from_start:hyperspace.MrlLayer)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void MrlLayer::InternalSwap(MrlLayer* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using ::std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.component_name_, &other->_impl_.component_name_, arena);
+  ::google::protobuf::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.rerank_top_k_)
+      + sizeof(MrlLayer::_impl_.rerank_top_k_)
+      - PROTOBUF_FIELD_OFFSET(MrlLayer, _impl_.cutoff_dimension_)>(
+          reinterpret_cast<char*>(&_impl_.cutoff_dimension_),
+          reinterpret_cast<char*>(&other->_impl_.cutoff_dimension_));
+}
+
+::google::protobuf::Metadata MrlLayer::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
+class CollectionSchema::_Internal {
+ public:
+  using HasBits =
+      decltype(::std::declval<CollectionSchema>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_._has_bits_);
+};
+
+CollectionSchema::CollectionSchema(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, CollectionSchema_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:hyperspace.CollectionSchema)
+}
+PROTOBUF_NDEBUG_INLINE CollectionSchema::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    [[maybe_unused]] const ::hyperspace::CollectionSchema& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        components_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::CollectionSchema,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.components_)>()
+        , from.components_}
+        #else
+        components_ { visibility, arena, from.components_ }
+        #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        cascade_pipeline_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::CollectionSchema,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.cascade_pipeline_)>()
+        , from.cascade_pipeline_}
+        #else
+        cascade_pipeline_ { visibility, arena, from.cascade_pipeline_ }
+        #endif
+     {}
+
+CollectionSchema::CollectionSchema(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const CollectionSchema& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, CollectionSchema_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  CollectionSchema* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+
+  // @@protoc_insertion_point(copy_constructor:hyperspace.CollectionSchema)
+}
+PROTOBUF_NDEBUG_INLINE CollectionSchema::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        components_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::CollectionSchema,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.components_)>()
+        }
+        #else
+        components_ { visibility, arena }
+        #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        cascade_pipeline_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::CollectionSchema,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::CollectionSchema, _impl_.cascade_pipeline_)>()
+        }
+        #else
+        cascade_pipeline_ { visibility, arena }
+        #endif
+     {}
+
+inline void CollectionSchema::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+}
+CollectionSchema::~CollectionSchema() {
+  // @@protoc_insertion_point(destructor:hyperspace.CollectionSchema)
+  SharedDtor(*this);
+}
+inline void CollectionSchema::SharedDtor(MessageLite& self) {
+  CollectionSchema& this_ = static_cast<CollectionSchema&>(self);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL CollectionSchema::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) CollectionSchema(arena);
+}
+#ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+constexpr auto CollectionSchema::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(CollectionSchema),
+                                            alignof(CollectionSchema));
+}
+#else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+constexpr auto CollectionSchema::InternalNewImpl_() {
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_.components_) +
+          decltype(CollectionSchema::_impl_.components_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_.cascade_pipeline_) +
+          decltype(CollectionSchema::_impl_.cascade_pipeline_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::ZeroInit(
+        sizeof(CollectionSchema), alignof(CollectionSchema), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&CollectionSchema::PlacementNew_,
+                                 sizeof(CollectionSchema),
+                                 alignof(CollectionSchema));
+  }
+}
+#endif
+constexpr auto CollectionSchema::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_CollectionSchema_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // IsInitialized
+          &CollectionSchema::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<CollectionSchema>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &CollectionSchema::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<CollectionSchema>(), &CollectionSchema::ByteSizeLong,
+              &CollectionSchema::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_._cached_size_),
+          false,
+      },
+      &CollectionSchema::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull CollectionSchema_class_data_ =
+        CollectionSchema::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+CollectionSchema::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&CollectionSchema_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(CollectionSchema_class_data_.tc_table);
+  return CollectionSchema_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 2, 0, 2>
+CollectionSchema::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    2,  // num_aux_entries
+    offsetof(decltype(_table_), aux_entries),
+    CollectionSchema_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::CollectionSchema>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // repeated .hyperspace.MrlLayer cascade_pipeline = 2;
+    {::_pbi::TcParser::FastMtR1,
+     {18, 1, 1,
+      PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_.cascade_pipeline_)}},
+    // repeated .hyperspace.VectorComponent components = 1;
+    {::_pbi::TcParser::FastMtR1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_.components_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // repeated .hyperspace.VectorComponent components = 1;
+    {PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_.components_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+    // repeated .hyperspace.MrlLayer cascade_pipeline = 2;
+    {PROTOBUF_FIELD_OFFSET(CollectionSchema, _impl_.cascade_pipeline_), _Internal::kHasBitsOffset + 1, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+  }},
+  {{
+      {::_pbi::TcParser::GetTable<::hyperspace::VectorComponent>()},
+      {::_pbi::TcParser::GetTable<::hyperspace::MrlLayer>()},
+  }},
+  {{
+  }},
+};
+PROTOBUF_NOINLINE void CollectionSchema::Clear() {
+// @@protoc_insertion_point(message_clear_start:hyperspace.CollectionSchema)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _impl_.components_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+      _impl_.cascade_pipeline_.Clear();
+    }
+  }
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL CollectionSchema::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const CollectionSchema& this_ = static_cast<const CollectionSchema&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL CollectionSchema::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const CollectionSchema& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(serialize_to_array_start:hyperspace.CollectionSchema)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // repeated .hyperspace.VectorComponent components = 1;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+    for (unsigned i = 0, n = static_cast<unsigned>(
+                             this_._internal_components_size());
+         i < n; i++) {
+      const auto& repfield = this_._internal_components().Get(i);
+      target =
+          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+              1, repfield, repfield.GetCachedSize(),
+              target, stream);
+    }
+  }
+
+  // repeated .hyperspace.MrlLayer cascade_pipeline = 2;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+    for (unsigned i = 0, n = static_cast<unsigned>(
+                             this_._internal_cascade_pipeline_size());
+         i < n; i++) {
+      const auto& repfield = this_._internal_cascade_pipeline().Get(i);
+      target =
+          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+              2, repfield, repfield.GetCachedSize(),
+              target, stream);
+    }
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:hyperspace.CollectionSchema)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t CollectionSchema::ByteSizeLong(const MessageLite& base) {
+  const CollectionSchema& this_ = static_cast<const CollectionSchema&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t CollectionSchema::ByteSizeLong() const {
+  const CollectionSchema& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:hyperspace.CollectionSchema)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    // repeated .hyperspace.VectorComponent components = 1;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      total_size += 1UL * this_._internal_components_size();
+      for (const auto& msg : this_._internal_components()) {
+        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
+      }
+    }
+    // repeated .hyperspace.MrlLayer cascade_pipeline = 2;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+      total_size += 1UL * this_._internal_cascade_pipeline_size();
+      for (const auto& msg : this_._internal_cascade_pipeline()) {
+        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void CollectionSchema::MergeImpl(::google::protobuf::MessageLite& to_msg,
+                            const ::google::protobuf::MessageLite& from_msg) {
+   auto* const _this =
+      static_cast<CollectionSchema*>(&to_msg);
+  auto& from = static_cast<const CollectionSchema&>(from_msg);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    from.CheckHasBitConsistency();
+  }
+  ::google::protobuf::Arena* arena = _this->GetArena();
+  // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.CollectionSchema)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _this->_internal_mutable_components()->InternalMergeFromWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), arena,
+          from._internal_components());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+      _this->_internal_mutable_cascade_pipeline()->InternalMergeFromWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), arena,
+          from._internal_cascade_pipeline());
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+}
+
+void CollectionSchema::CopyFrom(const CollectionSchema& from) {
+  // @@protoc_insertion_point(class_specific_copy_from_start:hyperspace.CollectionSchema)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void CollectionSchema::InternalSwap(CollectionSchema* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using ::std::swap;
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  _impl_.components_.InternalSwap(&other->_impl_.components_);
+  _impl_.cascade_pipeline_.InternalSwap(&other->_impl_.cascade_pipeline_);
+}
+
+::google::protobuf::Metadata CollectionSchema::GetMetadata() const {
   return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
 }
 // ===================================================================
@@ -8297,8 +9518,7 @@ PROTOBUF_NDEBUG_INLINE CollectionSummary::Impl_::Impl_(
     [[maybe_unused]] const ::hyperspace::CollectionSummary& from_msg)
       : _has_bits_{from._has_bits_},
         _cached_size_{0},
-        name_(arena, from.name_),
-        metric_(arena, from.metric_) {}
+        name_(arena, from.name_) {}
 
 CollectionSummary::CollectionSummary(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -8313,13 +9533,11 @@ CollectionSummary::CollectionSummary(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  ::memcpy(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, count_),
-           reinterpret_cast<const char*>(&from._impl_) +
-               offsetof(Impl_, count_),
-           offsetof(Impl_, dimension_) -
-               offsetof(Impl_, count_) +
-               sizeof(Impl_::dimension_));
+  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
+  _impl_.schema_ = (CheckHasBit(cached_has_bits, 0x00000002U))
+                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_)
+                : nullptr;
+  _impl_.count_ = from._impl_.count_;
 
   // @@protoc_insertion_point(copy_constructor:hyperspace.CollectionSummary)
 }
@@ -8327,17 +9545,16 @@ PROTOBUF_NDEBUG_INLINE CollectionSummary::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
       : _cached_size_{0},
-        name_(arena),
-        metric_(arena) {}
+        name_(arena) {}
 
 inline void CollectionSummary::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
   ::memset(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, count_),
+               offsetof(Impl_, schema_),
            0,
-           offsetof(Impl_, dimension_) -
-               offsetof(Impl_, count_) +
-               sizeof(Impl_::dimension_));
+           offsetof(Impl_, count_) -
+               offsetof(Impl_, schema_) +
+               sizeof(Impl_::count_));
 }
 CollectionSummary::~CollectionSummary() {
   // @@protoc_insertion_point(destructor:hyperspace.CollectionSummary)
@@ -8351,7 +9568,7 @@ inline void CollectionSummary::SharedDtor(MessageLite& self) {
   this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
   ABSL_DCHECK(this_.GetArena() == nullptr);
   this_._impl_.name_.Destroy();
-  this_._impl_.metric_.Destroy();
+  delete this_._impl_.schema_;
   this_._impl_.~Impl_();
 }
 
@@ -8397,18 +9614,18 @@ CollectionSummary::GetClassData() const {
   return CollectionSummary_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<2, 4, 0, 47, 2>
+const ::_pbi::TcParseTable<1, 3, 1, 41, 2>
 CollectionSummary::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_._has_bits_),
     0, // no _extensions_
-    4, 24,  // max_field_number, fast_idx_mask
+    5, 8,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967280,  // skipmap
+    4294967276,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    4,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
+    3,  // num_field_entries
+    1,  // num_aux_entries
+    offsetof(decltype(_table_), aux_entries),
     CollectionSummary_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -8416,22 +9633,14 @@ CollectionSummary::_table_ = {
     ::_pbi::TcParser::GetTable<::hyperspace::CollectionSummary>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    // string metric = 4;
-    {::_pbi::TcParser::FastUS1,
-     {34, 1, 0,
-      PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.metric_)}},
-    // string name = 1;
-    {::_pbi::TcParser::FastUS1,
-     {10, 0, 0,
-      PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.name_)}},
     // uint64 count = 2;
     {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(CollectionSummary, _impl_.count_), 2>(),
      {16, 2, 0,
       PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.count_)}},
-    // uint32 dimension = 3;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(CollectionSummary, _impl_.dimension_), 3>(),
-     {24, 3, 0,
-      PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.dimension_)}},
+    // string name = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.name_)}},
   }}, {{
     65535, 65535
   }}, {{
@@ -8439,17 +9648,16 @@ CollectionSummary::_table_ = {
     {PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.name_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // uint64 count = 2;
     {PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.count_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
-    // uint32 dimension = 3;
-    {PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.dimension_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
-    // string metric = 4;
-    {PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.metric_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // optional .hyperspace.CollectionSchema schema = 5;
+    {PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.schema_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
-  // no aux_entries
   {{
-    "\34\4\0\0\6\0\0\0"
+      {::_pbi::TcParser::GetTable<::hyperspace::CollectionSchema>()},
+  }},
+  {{
+    "\34\4\0\0\0\0\0\0"
     "hyperspace.CollectionSummary"
     "name"
-    "metric"
   }},
 };
 PROTOBUF_NOINLINE void CollectionSummary::Clear() {
@@ -8465,14 +9673,11 @@ PROTOBUF_NOINLINE void CollectionSummary::Clear() {
       _impl_.name_.ClearNonDefaultToEmpty();
     }
     if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      _impl_.metric_.ClearNonDefaultToEmpty();
+      ABSL_DCHECK(_impl_.schema_ != nullptr);
+      _impl_.schema_->Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000cU)) {
-    ::memset(&_impl_.count_, 0, static_cast<::size_t>(
-        reinterpret_cast<char*>(&_impl_.dimension_) -
-        reinterpret_cast<char*>(&_impl_.count_)) + sizeof(_impl_.dimension_));
-  }
+  _impl_.count_ = ::uint64_t{0u};
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -8515,23 +9720,11 @@ PROTOBUF_NOINLINE void CollectionSummary::Clear() {
     }
   }
 
-  // uint32 dimension = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-    if (this_._internal_dimension() != 0) {
-      target = stream->EnsureSpace(target);
-      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
-          3, this_._internal_dimension(), target);
-    }
-  }
-
-  // string metric = 4;
+  // optional .hyperspace.CollectionSchema schema = 5;
   if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-    if (!this_._internal_metric().empty()) {
-      const ::std::string& _s = this_._internal_metric();
-      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.CollectionSummary.metric");
-      target = stream->WriteStringMaybeAliased(4, _s, target);
-    }
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        5, *this_._impl_.schema_, this_._impl_.schema_->GetCachedSize(), target,
+        stream);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -8559,7 +9752,7 @@ PROTOBUF_NOINLINE void CollectionSummary::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
     // string name = 1;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!this_._internal_name().empty()) {
@@ -8567,25 +9760,16 @@ PROTOBUF_NOINLINE void CollectionSummary::Clear() {
                                         this_._internal_name());
       }
     }
-    // string metric = 4;
+    // optional .hyperspace.CollectionSchema schema = 5;
     if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      if (!this_._internal_metric().empty()) {
-        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
-                                        this_._internal_metric());
-      }
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.schema_);
     }
     // uint64 count = 2;
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (this_._internal_count() != 0) {
         total_size += ::_pbi::WireFormatLite::UInt64SizePlusOne(
             this_._internal_count());
-      }
-    }
-    // uint32 dimension = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      if (this_._internal_dimension() != 0) {
-        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
-            this_._internal_dimension());
       }
     }
   }
@@ -8601,13 +9785,14 @@ void CollectionSummary::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
     from.CheckHasBitConsistency();
   }
+  ::google::protobuf::Arena* arena = _this->GetArena();
   // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.CollectionSummary)
   ABSL_DCHECK_NE(&from, _this);
   ::uint32_t cached_has_bits = 0;
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
@@ -8618,22 +9803,16 @@ void CollectionSummary::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      if (!from._internal_metric().empty()) {
-        _this->_internal_set_metric(from._internal_metric());
+      ABSL_DCHECK(from._impl_.schema_ != nullptr);
+      if (_this->_impl_.schema_ == nullptr) {
+        _this->_impl_.schema_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_);
       } else {
-        if (_this->_impl_.metric_.IsDefault()) {
-          _this->_internal_set_metric("");
-        }
+        _this->_impl_.schema_->MergeFrom(*from._impl_.schema_);
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (from._internal_count() != 0) {
         _this->_impl_.count_ = from._impl_.count_;
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      if (from._internal_dimension() != 0) {
-        _this->_impl_.dimension_ = from._impl_.dimension_;
       }
     }
   }
@@ -8657,13 +9836,12 @@ void CollectionSummary::InternalSwap(CollectionSummary* PROTOBUF_RESTRICT PROTOB
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
-  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.metric_, &other->_impl_.metric_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.dimension_)
-      + sizeof(CollectionSummary::_impl_.dimension_)
-      - PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.count_)>(
-          reinterpret_cast<char*>(&_impl_.count_),
-          reinterpret_cast<char*>(&other->_impl_.count_));
+      PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.count_)
+      + sizeof(CollectionSummary::_impl_.count_)
+      - PROTOBUF_FIELD_OFFSET(CollectionSummary, _impl_.schema_)>(
+          reinterpret_cast<char*>(&_impl_.schema_),
+          reinterpret_cast<char*>(&other->_impl_.schema_));
 }
 
 ::google::protobuf::Metadata CollectionSummary::GetMetadata() const {
@@ -9273,8 +10451,7 @@ PROTOBUF_NDEBUG_INLINE CollectionStatsResponse::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
     [[maybe_unused]] const ::hyperspace::CollectionStatsResponse& from_msg)
       : _has_bits_{from._has_bits_},
-        _cached_size_{0},
-        metric_(arena, from.metric_) {}
+        _cached_size_{0} {}
 
 CollectionStatsResponse::CollectionStatsResponse(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -9289,30 +10466,33 @@ CollectionStatsResponse::CollectionStatsResponse(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
+  _impl_.schema_ = (CheckHasBit(cached_has_bits, 0x00000001U))
+                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_)
+                : nullptr;
   ::memcpy(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, count_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, count_),
-           offsetof(Impl_, dimension_) -
+           offsetof(Impl_, active_tasks_) -
                offsetof(Impl_, count_) +
-               sizeof(Impl_::dimension_));
+               sizeof(Impl_::active_tasks_));
 
   // @@protoc_insertion_point(copy_constructor:hyperspace.CollectionStatsResponse)
 }
 PROTOBUF_NDEBUG_INLINE CollectionStatsResponse::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-      : _cached_size_{0},
-        metric_(arena) {}
+      : _cached_size_{0} {}
 
 inline void CollectionStatsResponse::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
   ::memset(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, count_),
+               offsetof(Impl_, schema_),
            0,
-           offsetof(Impl_, dimension_) -
-               offsetof(Impl_, count_) +
-               sizeof(Impl_::dimension_));
+           offsetof(Impl_, active_tasks_) -
+               offsetof(Impl_, schema_) +
+               sizeof(Impl_::active_tasks_));
 }
 CollectionStatsResponse::~CollectionStatsResponse() {
   // @@protoc_insertion_point(destructor:hyperspace.CollectionStatsResponse)
@@ -9325,7 +10505,7 @@ inline void CollectionStatsResponse::SharedDtor(MessageLite& self) {
   }
   this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
   ABSL_DCHECK(this_.GetArena() == nullptr);
-  this_._impl_.metric_.Destroy();
+  delete this_._impl_.schema_;
   this_._impl_.~Impl_();
 }
 
@@ -9335,7 +10515,7 @@ inline void* PROTOBUF_NONNULL CollectionStatsResponse::PlacementNew_(
   return ::new (mem) CollectionStatsResponse(arena);
 }
 constexpr auto CollectionStatsResponse::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(CollectionStatsResponse),
+  return ::google::protobuf::internal::MessageCreator::ZeroInit(sizeof(CollectionStatsResponse),
                                             alignof(CollectionStatsResponse));
 }
 constexpr auto CollectionStatsResponse::InternalGenerateClassData_() {
@@ -9371,18 +10551,18 @@ CollectionStatsResponse::GetClassData() const {
   return CollectionStatsResponse_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 7, 0, 49, 2>
+const ::_pbi::TcParseTable<3, 6, 1, 0, 2>
 CollectionStatsResponse::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_._has_bits_),
     0, // no _extensions_
-    7, 56,  // max_field_number, fast_idx_mask
+    8, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967168,  // skipmap
+    4294967046,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    7,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
+    6,  // num_field_entries
+    1,  // num_aux_entries
+    offsetof(decltype(_table_), aux_entries),
     CollectionStatsResponse_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -9390,19 +10570,16 @@ CollectionStatsResponse::_table_ = {
     ::_pbi::TcParser::GetTable<::hyperspace::CollectionStatsResponse>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    {::_pbi::TcParser::MiniParse, {}},
+    // optional .hyperspace.CollectionSchema schema = 8;
+    {::_pbi::TcParser::FastMtS1,
+     {66, 0, 0,
+      PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.schema_)}},
     // uint64 count = 1;
     {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(CollectionStatsResponse, _impl_.count_), 1>(),
      {8, 1, 0,
       PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.count_)}},
-    // uint32 dimension = 2;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(CollectionStatsResponse, _impl_.dimension_), 6>(),
-     {16, 6, 0,
-      PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.dimension_)}},
-    // string metric = 3;
-    {::_pbi::TcParser::FastUS1,
-     {26, 0, 0,
-      PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.metric_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
     // uint64 indexing_queue = 4;
     {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(CollectionStatsResponse, _impl_.indexing_queue_), 2>(),
      {32, 2, 0,
@@ -9424,10 +10601,6 @@ CollectionStatsResponse::_table_ = {
   }}, {{
     // uint64 count = 1;
     {PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.count_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
-    // uint32 dimension = 2;
-    {PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.dimension_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
-    // string metric = 3;
-    {PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.metric_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // uint64 indexing_queue = 4;
     {PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.indexing_queue_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
     // uint64 disk_usage_bytes = 5;
@@ -9436,12 +10609,13 @@ CollectionStatsResponse::_table_ = {
     {PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.ram_usage_bytes_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
     // uint64 active_tasks = 7;
     {PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.active_tasks_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
+    // optional .hyperspace.CollectionSchema schema = 8;
+    {PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.schema_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
-  // no aux_entries
   {{
-    "\42\0\0\6\0\0\0\0"
-    "hyperspace.CollectionStatsResponse"
-    "metric"
+      {::_pbi::TcParser::GetTable<::hyperspace::CollectionSchema>()},
+  }},
+  {{
   }},
 };
 PROTOBUF_NOINLINE void CollectionStatsResponse::Clear() {
@@ -9453,12 +10627,13 @@ PROTOBUF_NOINLINE void CollectionStatsResponse::Clear() {
 
   cached_has_bits = _impl_._has_bits_[0];
   if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-    _impl_.metric_.ClearNonDefaultToEmpty();
+    ABSL_DCHECK(_impl_.schema_ != nullptr);
+    _impl_.schema_->Clear();
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007eU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000003eU)) {
     ::memset(&_impl_.count_, 0, static_cast<::size_t>(
-        reinterpret_cast<char*>(&_impl_.dimension_) -
-        reinterpret_cast<char*>(&_impl_.count_)) + sizeof(_impl_.dimension_));
+        reinterpret_cast<char*>(&_impl_.active_tasks_) -
+        reinterpret_cast<char*>(&_impl_.count_)) + sizeof(_impl_.active_tasks_));
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -9489,25 +10664,6 @@ PROTOBUF_NOINLINE void CollectionStatsResponse::Clear() {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteUInt64ToArray(
           1, this_._internal_count(), target);
-    }
-  }
-
-  // uint32 dimension = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
-    if (this_._internal_dimension() != 0) {
-      target = stream->EnsureSpace(target);
-      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
-          2, this_._internal_dimension(), target);
-    }
-  }
-
-  // string metric = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-    if (!this_._internal_metric().empty()) {
-      const ::std::string& _s = this_._internal_metric();
-      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.CollectionStatsResponse.metric");
-      target = stream->WriteStringMaybeAliased(3, _s, target);
     }
   }
 
@@ -9547,6 +10703,13 @@ PROTOBUF_NOINLINE void CollectionStatsResponse::Clear() {
     }
   }
 
+  // optional .hyperspace.CollectionSchema schema = 8;
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        8, *this_._impl_.schema_, this_._impl_.schema_->GetCachedSize(), target,
+        stream);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -9572,13 +10735,11 @@ PROTOBUF_NOINLINE void CollectionStatsResponse::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
-    // string metric = 3;
+  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+    // optional .hyperspace.CollectionSchema schema = 8;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-      if (!this_._internal_metric().empty()) {
-        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
-                                        this_._internal_metric());
-      }
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.schema_);
     }
     // uint64 count = 1;
     if (CheckHasBit(cached_has_bits, 0x00000002U)) {
@@ -9615,13 +10776,6 @@ PROTOBUF_NOINLINE void CollectionStatsResponse::Clear() {
             this_._internal_active_tasks());
       }
     }
-    // uint32 dimension = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
-      if (this_._internal_dimension() != 0) {
-        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
-            this_._internal_dimension());
-      }
-    }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
                                              &this_._impl_._cached_size_);
@@ -9635,20 +10789,20 @@ void CollectionStatsResponse::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
     from.CheckHasBitConsistency();
   }
+  ::google::protobuf::Arena* arena = _this->GetArena();
   // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.CollectionStatsResponse)
   ABSL_DCHECK_NE(&from, _this);
   ::uint32_t cached_has_bits = 0;
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-      if (!from._internal_metric().empty()) {
-        _this->_internal_set_metric(from._internal_metric());
+      ABSL_DCHECK(from._impl_.schema_ != nullptr);
+      if (_this->_impl_.schema_ == nullptr) {
+        _this->_impl_.schema_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.schema_);
       } else {
-        if (_this->_impl_.metric_.IsDefault()) {
-          _this->_internal_set_metric("");
-        }
+        _this->_impl_.schema_->MergeFrom(*from._impl_.schema_);
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000002U)) {
@@ -9676,11 +10830,6 @@ void CollectionStatsResponse::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.active_tasks_ = from._impl_.active_tasks_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
-      if (from._internal_dimension() != 0) {
-        _this->_impl_.dimension_ = from._impl_.dimension_;
-      }
-    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -9697,17 +10846,14 @@ void CollectionStatsResponse::CopyFrom(const CollectionStatsResponse& from) {
 
 void CollectionStatsResponse::InternalSwap(CollectionStatsResponse* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   using ::std::swap;
-  auto* arena = GetArena();
-  ABSL_DCHECK_EQ(arena, other->GetArena());
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
-  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.metric_, &other->_impl_.metric_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.dimension_)
-      + sizeof(CollectionStatsResponse::_impl_.dimension_)
-      - PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.count_)>(
-          reinterpret_cast<char*>(&_impl_.count_),
-          reinterpret_cast<char*>(&other->_impl_.count_));
+      PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.active_tasks_)
+      + sizeof(CollectionStatsResponse::_impl_.active_tasks_)
+      - PROTOBUF_FIELD_OFFSET(CollectionStatsResponse, _impl_.schema_)>(
+          reinterpret_cast<char*>(&_impl_.schema_),
+          reinterpret_cast<char*>(&other->_impl_.schema_));
 }
 
 ::google::protobuf::Metadata CollectionStatsResponse::GetMetadata() const {
@@ -11354,6 +12500,7 @@ PROTOBUF_NDEBUG_INLINE InsertRequest::Impl_::Impl_(
         ,
         collection_(arena, from.collection_),
         origin_node_id_(arena, from.origin_node_id_),
+        payload_(arena, from.payload_),
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
         metadata_{visibility, ::_pbi::InternalMetadataOffset::Build<
             ::hyperspace::InsertRequest,
@@ -11411,6 +12558,7 @@ PROTOBUF_NDEBUG_INLINE InsertRequest::Impl_::Impl_(
         ,
         collection_(arena),
         origin_node_id_(arena),
+        payload_(arena),
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
         metadata_{visibility, ::_pbi::InternalMetadataOffset::Build<
             ::hyperspace::InsertRequest,
@@ -11452,6 +12600,7 @@ inline void InsertRequest::SharedDtor(MessageLite& self) {
   ABSL_DCHECK(this_.GetArena() == nullptr);
   this_._impl_.collection_.Destroy();
   this_._impl_.origin_node_id_.Destroy();
+  this_._impl_.payload_.Destroy();
   this_._impl_.~Impl_();
 }
 
@@ -11524,16 +12673,16 @@ InsertRequest::GetClassData() const {
   return InsertRequest_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 8, 3, 87, 2>
+const ::_pbi::TcParseTable<4, 9, 3, 87, 2>
 InsertRequest::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_._has_bits_),
     0, // no _extensions_
-    8, 56,  // max_field_number, fast_idx_mask
+    9, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967040,  // skipmap
+    4294966784,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    8,  // num_field_entries
+    9,  // num_field_entries
     3,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     InsertRequest_class_data_.base(),
@@ -11553,8 +12702,8 @@ InsertRequest::_table_ = {
      {18, 0, 0,
       PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.vector_)}},
     // uint32 id = 3;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(InsertRequest, _impl_.id_), 3>(),
-     {24, 3, 0,
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(InsertRequest, _impl_.id_), 4>(),
+     {24, 4, 0,
       PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.id_)}},
     {::_pbi::TcParser::MiniParse, {}},
     // string origin_node_id = 5;
@@ -11562,13 +12711,24 @@ InsertRequest::_table_ = {
      {42, 2, 0,
       PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.origin_node_id_)}},
     // uint64 logical_clock = 6;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(InsertRequest, _impl_.logical_clock_), 5>(),
-     {48, 5, 0,
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(InsertRequest, _impl_.logical_clock_), 6>(),
+     {48, 6, 0,
       PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.logical_clock_)}},
     // .hyperspace.DurabilityLevel durability = 7;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(InsertRequest, _impl_.durability_), 4>(),
-     {56, 4, 0,
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(InsertRequest, _impl_.durability_), 5>(),
+     {56, 5, 0,
       PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.durability_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    // optional bytes payload = 9;
+    {::_pbi::TcParser::FastBS1,
+     {74, 3, 0,
+      PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.payload_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
   }}, {{
@@ -11577,17 +12737,19 @@ InsertRequest::_table_ = {
     // repeated double vector = 2;
     {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.vector_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
     // uint32 id = 3;
-    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.id_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.id_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
     // map<string, string> metadata = 4;
-    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.metadata_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.metadata_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // string origin_node_id = 5;
     {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.origin_node_id_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // uint64 logical_clock = 6;
-    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.logical_clock_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
+    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.logical_clock_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
     // .hyperspace.DurabilityLevel durability = 7;
-    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.durability_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kOpenEnum)},
+    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.durability_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kOpenEnum)},
     // map<string, .hyperspace.MetadataValue> typed_metadata = 8;
-    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.typed_metadata_), _Internal::kHasBitsOffset + 7, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.typed_metadata_), _Internal::kHasBitsOffset + 8, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    // optional bytes payload = 9;
+    {PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.payload_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kBytes | ::_fl::kRepAString)},
   }},
   {{
       {::_pbi::TcParser::GetMapAuxInfo(
@@ -11613,7 +12775,7 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _impl_.vector_.Clear();
     }
@@ -11623,17 +12785,20 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       _impl_.origin_node_id_.ClearNonDefaultToEmpty();
     }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      _impl_.payload_.ClearNonDefaultToEmpty();
+    }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x000000f8U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000f0U)) {
     ::memset(&_impl_.id_, 0, static_cast<::size_t>(
         reinterpret_cast<char*>(&_impl_.logical_clock_) -
         reinterpret_cast<char*>(&_impl_.id_)) + sizeof(_impl_.logical_clock_));
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       _impl_.metadata_.Clear();
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
-      _impl_.typed_metadata_.Clear();
-    }
+  }
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+    _impl_.typed_metadata_.Clear();
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -11676,7 +12841,7 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
   }
 
   // uint32 id = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
     if (this_._internal_id() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
@@ -11685,7 +12850,7 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
   }
 
   // map<string, string> metadata = 4;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
     if (!this_._internal_metadata().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, ::std::string>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, ::std::string,
@@ -11730,7 +12895,7 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
   }
 
   // uint64 logical_clock = 6;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
     if (this_._internal_logical_clock() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteUInt64ToArray(
@@ -11739,7 +12904,7 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
   }
 
   // .hyperspace.DurabilityLevel durability = 7;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
     if (this_._internal_durability() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteEnumToArray(
@@ -11748,7 +12913,7 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
   }
 
   // map<string, .hyperspace.MetadataValue> typed_metadata = 8;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
     if (!this_._internal_typed_metadata().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, ::hyperspace::MetadataValue>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, ::hyperspace::MetadataValue,
@@ -11774,6 +12939,12 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
         }
       }
     }
+  }
+
+  // optional bytes payload = 9;
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    const ::std::string& _s = this_._internal_payload();
+    target = stream->WriteBytesMaybeAliased(9, _s, target);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -11826,29 +12997,34 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
                                         this_._internal_origin_node_id());
       }
     }
-    // uint32 id = 3;
+    // optional bytes payload = 9;
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      total_size += 1 + ::google::protobuf::internal::WireFormatLite::BytesSize(
+                                      this_._internal_payload());
+    }
+    // uint32 id = 3;
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (this_._internal_id() != 0) {
         total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
             this_._internal_id());
       }
     }
     // .hyperspace.DurabilityLevel durability = 7;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       if (this_._internal_durability() != 0) {
         total_size += 1 +
                       ::_pbi::WireFormatLite::EnumSize(this_._internal_durability());
       }
     }
     // uint64 logical_clock = 6;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       if (this_._internal_logical_clock() != 0) {
         total_size += ::_pbi::WireFormatLite::UInt64SizePlusOne(
             this_._internal_logical_clock());
       }
     }
     // map<string, string> metadata = 4;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_metadata_size());
       for (const auto& entry : this_._internal_metadata()) {
@@ -11857,8 +13033,10 @@ PROTOBUF_NOINLINE void InsertRequest::Clear() {
                                        _pbi::WireFormatLite::TYPE_STRING>::ByteSizeLong(entry.first, entry.second);
       }
     }
+  }
+   {
     // map<string, .hyperspace.MetadataValue> typed_metadata = 8;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_typed_metadata_size());
       for (const auto& entry : this_._internal_typed_metadata()) {
@@ -11909,26 +13087,29 @@ void InsertRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      _this->_internal_set_payload(from._internal_payload());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (from._internal_id() != 0) {
         _this->_impl_.id_ = from._impl_.id_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       if (from._internal_durability() != 0) {
         _this->_impl_.durability_ = from._impl_.durability_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       if (from._internal_logical_clock() != 0) {
         _this->_impl_.logical_clock_ = from._impl_.logical_clock_;
       }
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       _this->_impl_.metadata_.MergeFrom(from._impl_.metadata_);
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
-      _this->_impl_.typed_metadata_.MergeFrom(from._impl_.typed_metadata_);
-    }
+  }
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+    _this->_impl_.typed_metadata_.MergeFrom(from._impl_.typed_metadata_);
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -11952,6 +13133,7 @@ void InsertRequest::InternalSwap(InsertRequest* PROTOBUF_RESTRICT PROTOBUF_NONNU
   _impl_.vector_.InternalSwap(&other->_impl_.vector_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.collection_, &other->_impl_.collection_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.origin_node_id_, &other->_impl_.origin_node_id_, arena);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.payload_, &other->_impl_.payload_, arena);
   ::google::protobuf::internal::memswap<
       PROTOBUF_FIELD_OFFSET(InsertRequest, _impl_.logical_clock_)
       + sizeof(InsertRequest::_impl_.logical_clock_)
@@ -14433,6 +15615,102 @@ SearchTextRequest_FilterEntry_DoNotUse::_table_ = {
 };
 // ===================================================================
 
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+SearchTextRequest_ComponentWeightsEntry_DoNotUse::SearchTextRequest_ComponentWeightsEntry_DoNotUse()
+    : SuperType(SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_.base()) {}
+SearchTextRequest_ComponentWeightsEntry_DoNotUse::SearchTextRequest_ComponentWeightsEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+    : SuperType(arena, SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_.base()) {}
+#else   // PROTOBUF_CUSTOM_VTABLE
+SearchTextRequest_ComponentWeightsEntry_DoNotUse::SearchTextRequest_ComponentWeightsEntry_DoNotUse() : SuperType() {}
+SearchTextRequest_ComponentWeightsEntry_DoNotUse::SearchTextRequest_ComponentWeightsEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+inline void* PROTOBUF_NONNULL SearchTextRequest_ComponentWeightsEntry_DoNotUse::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) SearchTextRequest_ComponentWeightsEntry_DoNotUse(arena);
+}
+constexpr auto SearchTextRequest_ComponentWeightsEntry_DoNotUse::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(SearchTextRequest_ComponentWeightsEntry_DoNotUse),
+                                            alignof(SearchTextRequest_ComponentWeightsEntry_DoNotUse));
+}
+constexpr auto SearchTextRequest_ComponentWeightsEntry_DoNotUse::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_SearchTextRequest_ComponentWeightsEntry_DoNotUse_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // IsInitialized
+          &SearchTextRequest_ComponentWeightsEntry_DoNotUse::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<SearchTextRequest_ComponentWeightsEntry_DoNotUse>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &SearchTextRequest_ComponentWeightsEntry_DoNotUse::SharedDtor,
+          static_cast<void (::google::protobuf::MessageLite::*)()>(&SearchTextRequest_ComponentWeightsEntry_DoNotUse::ClearImpl),
+              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
+              ,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_._cached_size_),
+          false,
+      },
+      &SearchTextRequest_ComponentWeightsEntry_DoNotUse::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_ =
+        SearchTextRequest_ComponentWeightsEntry_DoNotUse::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+SearchTextRequest_ComponentWeightsEntry_DoNotUse::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_.tc_table);
+  return SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 0, 62, 2>
+SearchTextRequest_ComponentWeightsEntry_DoNotUse::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    SearchTextRequest_ComponentWeightsEntry_DoNotUse_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::SearchTextRequest_ComponentWeightsEntry_DoNotUse>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // float value = 2;
+    {::_pbi::TcParser::FastF32S1,
+     {21, 1, 0,
+      PROTOBUF_FIELD_OFFSET(SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_.value_)}},
+    // string key = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_.key_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string key = 1;
+    {PROTOBUF_FIELD_OFFSET(SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // float value = 2;
+    {PROTOBUF_FIELD_OFFSET(SearchTextRequest_ComponentWeightsEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+  }},
+  // no aux_entries
+  {{
+    "\62\3\0\0\0\0\0\0"
+    "hyperspace.SearchTextRequest.ComponentWeightsEntry"
+    "key"
+  }},
+};
+// ===================================================================
+
 class SearchTextRequest::_Internal {
  public:
   using HasBits =
@@ -14475,6 +15753,15 @@ PROTOBUF_NDEBUG_INLINE SearchTextRequest::Impl_::Impl_(
         #else
         filter_ { visibility, arena, from.filter_ }
         #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
+        component_weights_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::SearchTextRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.component_weights_)>()
+        , from.component_weights_}
+        #else
+        component_weights_ { visibility, arena, from.component_weights_ }
+        #endif
      {}
 
 SearchTextRequest::SearchTextRequest(
@@ -14498,9 +15785,9 @@ SearchTextRequest::SearchTextRequest(
                offsetof(Impl_, top_k_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, top_k_),
-           offsetof(Impl_, hybrid_alpha_) -
+           offsetof(Impl_, include_payload_) -
                offsetof(Impl_, top_k_) +
-               sizeof(Impl_::hybrid_alpha_));
+               sizeof(Impl_::include_payload_));
 
   // @@protoc_insertion_point(copy_constructor:hyperspace.SearchTextRequest)
 }
@@ -14527,6 +15814,15 @@ PROTOBUF_NDEBUG_INLINE SearchTextRequest::Impl_::Impl_(
         #else
         filter_ { visibility, arena }
         #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
+        component_weights_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::SearchTextRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::SearchTextRequest, _impl_.component_weights_)>()
+        }
+        #else
+        component_weights_ { visibility, arena }
+        #endif
      {}
 
 inline void SearchTextRequest::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
@@ -14534,9 +15830,9 @@ inline void SearchTextRequest::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena)
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, bm25_options_),
            0,
-           offsetof(Impl_, hybrid_alpha_) -
+           offsetof(Impl_, include_payload_) -
                offsetof(Impl_, bm25_options_) +
-               sizeof(Impl_::hybrid_alpha_));
+               sizeof(Impl_::include_payload_));
 }
 SearchTextRequest::~SearchTextRequest() {
   // @@protoc_insertion_point(destructor:hyperspace.SearchTextRequest)
@@ -14574,6 +15870,10 @@ constexpr auto SearchTextRequest::InternalNewImpl_() {
                   ::google::protobuf::Message::internal_visibility()),
       PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.filters_) +
           decltype(SearchTextRequest::_impl_.filters_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.component_weights_) +
+          decltype(SearchTextRequest::_impl_.component_weights_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
   });
@@ -14620,17 +15920,17 @@ SearchTextRequest::GetClassData() const {
   return SearchTextRequest_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 7, 3, 57, 2>
+const ::_pbi::TcParseTable<3, 9, 4, 82, 2>
 SearchTextRequest::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_._has_bits_),
     0, // no _extensions_
-    7, 56,  // max_field_number, fast_idx_mask
+    9, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967168,  // skipmap
+    4294966784,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    7,  // num_field_entries
-    3,  // num_aux_entries
+    9,  // num_field_entries
+    4,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     SearchTextRequest_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -14639,7 +15939,10 @@ SearchTextRequest::_table_ = {
     ::_pbi::TcParser::GetTable<::hyperspace::SearchTextRequest>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    {::_pbi::TcParser::MiniParse, {}},
+    // bool include_payload = 8;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(SearchTextRequest, _impl_.include_payload_), 6>(),
+     {64, 6, 0,
+      PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.include_payload_)}},
     // string collection = 1;
     {::_pbi::TcParser::FastUS1,
      {10, 1, 0,
@@ -14675,26 +15978,33 @@ SearchTextRequest::_table_ = {
     // uint32 top_k = 3;
     {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.top_k_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
     // map<string, string> filter = 4;
-    {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.filter_), _Internal::kHasBitsOffset + 6, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.filter_), _Internal::kHasBitsOffset + 7, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // repeated .hyperspace.Filter filters = 5;
     {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.filters_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // optional .hyperspace.Bm25Options bm25_options = 6;
     {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.bm25_options_), _Internal::kHasBitsOffset + 3, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // optional float hybrid_alpha = 7;
     {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.hybrid_alpha_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+    // bool include_payload = 8;
+    {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.include_payload_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+    // map<string, float> component_weights = 9;
+    {PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.component_weights_), _Internal::kHasBitsOffset + 8, 3, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::hyperspace::Filter>()},
       {::_pbi::TcParser::GetTable<::hyperspace::Bm25Options>()},
       {::_pbi::TcParser::GetMapAuxInfo(
           1, 0, 9, 9, 0)},
+      {::_pbi::TcParser::GetMapAuxInfo(
+          1, 0, 9, 2, 0)},
   }},
   {{
-    "\34\12\4\0\6\0\0\0"
+    "\34\12\4\0\6\0\0\0\0\21\0\0\0\0\0\0"
     "hyperspace.SearchTextRequest"
     "collection"
     "text"
     "filter"
+    "component_weights"
   }},
 };
 PROTOBUF_NOINLINE void SearchTextRequest::Clear() {
@@ -14720,13 +16030,16 @@ PROTOBUF_NOINLINE void SearchTextRequest::Clear() {
       _impl_.bm25_options_->Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000070U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000f0U)) {
     ::memset(&_impl_.top_k_, 0, static_cast<::size_t>(
-        reinterpret_cast<char*>(&_impl_.hybrid_alpha_) -
-        reinterpret_cast<char*>(&_impl_.top_k_)) + sizeof(_impl_.hybrid_alpha_));
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+        reinterpret_cast<char*>(&_impl_.include_payload_) -
+        reinterpret_cast<char*>(&_impl_.top_k_)) + sizeof(_impl_.include_payload_));
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       _impl_.filter_.Clear();
     }
+  }
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+    _impl_.component_weights_.Clear();
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -14781,7 +16094,7 @@ PROTOBUF_NOINLINE void SearchTextRequest::Clear() {
   }
 
   // map<string, string> filter = 4;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
     if (!this_._internal_filter().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, ::std::string>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, ::std::string,
@@ -14842,6 +16155,44 @@ PROTOBUF_NOINLINE void SearchTextRequest::Clear() {
         7, this_._internal_hybrid_alpha(), target);
   }
 
+  // bool include_payload = 8;
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (this_._internal_include_payload() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteBoolToArray(
+          8, this_._internal_include_payload(), target);
+    }
+  }
+
+  // map<string, float> component_weights = 9;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+    if (!this_._internal_component_weights().empty()) {
+      using MapType = ::google::protobuf::Map<::std::string, float>;
+      using WireHelper = _pbi::MapEntryFuncs<::std::string, float,
+                                     _pbi::WireFormatLite::TYPE_STRING,
+                                     _pbi::WireFormatLite::TYPE_FLOAT>;
+      const auto& field = this_._internal_component_weights();
+
+      if (stream->IsSerializationDeterministic() && field.size() > 1) {
+        for (const auto& entry : ::google::protobuf::internal::MapSorterPtr<MapType>(field)) {
+          target = WireHelper::InternalSerialize(
+              9, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.SearchTextRequest.component_weights");
+        }
+      } else {
+        for (const auto& entry : field) {
+          target = WireHelper::InternalSerialize(
+              9, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.SearchTextRequest.component_weights");
+        }
+      }
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -14868,7 +16219,7 @@ PROTOBUF_NOINLINE void SearchTextRequest::Clear() {
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
   total_size += static_cast<bool>(0x00000020U & cached_has_bits) * 5;
-  if (BatchCheckHasBit(cached_has_bits, 0x0000005fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000dfU)) {
     // repeated .hyperspace.Filter filters = 5;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       total_size += 1UL * this_._internal_filters_size();
@@ -14902,14 +16253,32 @@ PROTOBUF_NOINLINE void SearchTextRequest::Clear() {
             this_._internal_top_k());
       }
     }
+    // bool include_payload = 8;
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      if (this_._internal_include_payload() != 0) {
+        total_size += 2;
+      }
+    }
     // map<string, string> filter = 4;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_filter_size());
       for (const auto& entry : this_._internal_filter()) {
         total_size += _pbi::MapEntryFuncs<::std::string, ::std::string,
                                        _pbi::WireFormatLite::TYPE_STRING,
                                        _pbi::WireFormatLite::TYPE_STRING>::ByteSizeLong(entry.first, entry.second);
+      }
+    }
+  }
+   {
+    // map<string, float> component_weights = 9;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+      total_size +=
+          1 * ::google::protobuf::internal::FromIntSize(this_._internal_component_weights_size());
+      for (const auto& entry : this_._internal_component_weights()) {
+        total_size += _pbi::MapEntryFuncs<::std::string, float,
+                                       _pbi::WireFormatLite::TYPE_STRING,
+                                       _pbi::WireFormatLite::TYPE_FLOAT>::ByteSizeLong(entry.first, entry.second);
       }
     }
   }
@@ -14932,7 +16301,7 @@ void SearchTextRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_filters()->InternalMergeFromWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), arena,
@@ -14972,9 +16341,17 @@ void SearchTextRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       _this->_impl_.hybrid_alpha_ = from._impl_.hybrid_alpha_;
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      if (from._internal_include_payload() != 0) {
+        _this->_impl_.include_payload_ = from._impl_.include_payload_;
+      }
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
       _this->_impl_.filter_.MergeFrom(from._impl_.filter_);
     }
+  }
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+    _this->_impl_.component_weights_.MergeFrom(from._impl_.component_weights_);
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -14999,12 +16376,13 @@ void SearchTextRequest::InternalSwap(SearchTextRequest* PROTOBUF_RESTRICT PROTOB
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.collection_, &other->_impl_.collection_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.text_, &other->_impl_.text_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.hybrid_alpha_)
-      + sizeof(SearchTextRequest::_impl_.hybrid_alpha_)
+      PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.include_payload_)
+      + sizeof(SearchTextRequest::_impl_.include_payload_)
       - PROTOBUF_FIELD_OFFSET(SearchTextRequest, _impl_.bm25_options_)>(
           reinterpret_cast<char*>(&_impl_.bm25_options_),
           reinterpret_cast<char*>(&other->_impl_.bm25_options_));
   _impl_.filter_.InternalSwap(&other->_impl_.filter_);
+  _impl_.component_weights_.InternalSwap(&other->_impl_.component_weights_);
 }
 
 ::google::protobuf::Metadata SearchTextRequest::GetMetadata() const {
@@ -19275,6 +20653,102 @@ SearchRequest_FilterEntry_DoNotUse::_table_ = {
 };
 // ===================================================================
 
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+SearchRequest_ComponentWeightsEntry_DoNotUse::SearchRequest_ComponentWeightsEntry_DoNotUse()
+    : SuperType(SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_.base()) {}
+SearchRequest_ComponentWeightsEntry_DoNotUse::SearchRequest_ComponentWeightsEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+    : SuperType(arena, SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_.base()) {}
+#else   // PROTOBUF_CUSTOM_VTABLE
+SearchRequest_ComponentWeightsEntry_DoNotUse::SearchRequest_ComponentWeightsEntry_DoNotUse() : SuperType() {}
+SearchRequest_ComponentWeightsEntry_DoNotUse::SearchRequest_ComponentWeightsEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+inline void* PROTOBUF_NONNULL SearchRequest_ComponentWeightsEntry_DoNotUse::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) SearchRequest_ComponentWeightsEntry_DoNotUse(arena);
+}
+constexpr auto SearchRequest_ComponentWeightsEntry_DoNotUse::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(SearchRequest_ComponentWeightsEntry_DoNotUse),
+                                            alignof(SearchRequest_ComponentWeightsEntry_DoNotUse));
+}
+constexpr auto SearchRequest_ComponentWeightsEntry_DoNotUse::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_SearchRequest_ComponentWeightsEntry_DoNotUse_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // IsInitialized
+          &SearchRequest_ComponentWeightsEntry_DoNotUse::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<SearchRequest_ComponentWeightsEntry_DoNotUse>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &SearchRequest_ComponentWeightsEntry_DoNotUse::SharedDtor,
+          static_cast<void (::google::protobuf::MessageLite::*)()>(&SearchRequest_ComponentWeightsEntry_DoNotUse::ClearImpl),
+              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
+              ,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_._cached_size_),
+          false,
+      },
+      &SearchRequest_ComponentWeightsEntry_DoNotUse::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_ =
+        SearchRequest_ComponentWeightsEntry_DoNotUse::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+SearchRequest_ComponentWeightsEntry_DoNotUse::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_.tc_table);
+  return SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 0, 58, 2>
+SearchRequest_ComponentWeightsEntry_DoNotUse::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    SearchRequest_ComponentWeightsEntry_DoNotUse_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::SearchRequest_ComponentWeightsEntry_DoNotUse>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // float value = 2;
+    {::_pbi::TcParser::FastF32S1,
+     {21, 1, 0,
+      PROTOBUF_FIELD_OFFSET(SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_.value_)}},
+    // string key = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_.key_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string key = 1;
+    {PROTOBUF_FIELD_OFFSET(SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // float value = 2;
+    {PROTOBUF_FIELD_OFFSET(SearchRequest_ComponentWeightsEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+  }},
+  // no aux_entries
+  {{
+    "\56\3\0\0\0\0\0\0"
+    "hyperspace.SearchRequest.ComponentWeightsEntry"
+    "key"
+  }},
+};
+// ===================================================================
+
 class SearchRequest::_Internal {
  public:
   using HasBits =
@@ -19325,6 +20799,15 @@ PROTOBUF_NDEBUG_INLINE SearchRequest::Impl_::Impl_(
         , from.filter_}
         #else
         filter_ { visibility, arena, from.filter_ }
+        #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
+        component_weights_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::SearchRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.component_weights_)>()
+        , from.component_weights_}
+        #else
+        component_weights_ { visibility, arena, from.component_weights_ }
         #endif
      {}
 
@@ -19387,6 +20870,15 @@ PROTOBUF_NDEBUG_INLINE SearchRequest::Impl_::Impl_(
         #else
         filter_ { visibility, arena }
         #endif
+        ,
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
+        component_weights_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::SearchRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::SearchRequest, _impl_.component_weights_)>()
+        }
+        #else
+        component_weights_ { visibility, arena }
+        #endif
      {}
 
 inline void SearchRequest::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
@@ -19440,6 +20932,10 @@ constexpr auto SearchRequest::InternalNewImpl_() {
           decltype(SearchRequest::_impl_.filters_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.component_weights_) +
+          decltype(SearchRequest::_impl_.component_weights_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
   });
   if (arena_bits.has_value()) {
     return ::google::protobuf::internal::MessageCreator::CopyInit(
@@ -19484,17 +20980,17 @@ SearchRequest::GetClassData() const {
   return SearchRequest_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<4, 10, 3, 69, 2>
+const ::_pbi::TcParseTable<4, 12, 4, 86, 2>
 SearchRequest::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_._has_bits_),
     0, // no _extensions_
-    10, 120,  // max_field_number, fast_idx_mask
+    12, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294966272,  // skipmap
+    4294963200,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    10,  // num_field_entries
-    3,  // num_aux_entries
+    12,  // num_field_entries
+    4,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     SearchRequest_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -19538,10 +21034,13 @@ SearchRequest::_table_ = {
      {74, 4, 1,
       PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.bm25_options_)}},
     // optional uint32 mrl_dimension = 10;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(SearchRequest, _impl_.mrl_dimension_), 8>(),
-     {80, 8, 0,
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(SearchRequest, _impl_.mrl_dimension_), 9>(),
+     {80, 9, 0,
       PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.mrl_dimension_)}},
-    {::_pbi::TcParser::MiniParse, {}},
+    // bool include_payload = 11;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(SearchRequest, _impl_.include_payload_), 8>(),
+     {88, 8, 0,
+      PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.include_payload_)}},
     {::_pbi::TcParser::MiniParse, {}},
     {::_pbi::TcParser::MiniParse, {}},
     {::_pbi::TcParser::MiniParse, {}},
@@ -19556,7 +21055,7 @@ SearchRequest::_table_ = {
     // uint32 top_k = 3;
     {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.top_k_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
     // map<string, string> filter = 4;
-    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.filter_), _Internal::kHasBitsOffset + 9, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.filter_), _Internal::kHasBitsOffset + 10, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // repeated .hyperspace.Filter filters = 5;
     {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.filters_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // optional string hybrid_query = 6;
@@ -19568,20 +21067,27 @@ SearchRequest::_table_ = {
     // optional .hyperspace.Bm25Options bm25_options = 9;
     {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.bm25_options_), _Internal::kHasBitsOffset + 4, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // optional uint32 mrl_dimension = 10;
-    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.mrl_dimension_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.mrl_dimension_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    // bool include_payload = 11;
+    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.include_payload_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+    // map<string, float> component_weights = 12;
+    {PROTOBUF_FIELD_OFFSET(SearchRequest, _impl_.component_weights_), _Internal::kHasBitsOffset + 11, 3, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::hyperspace::Filter>()},
       {::_pbi::TcParser::GetTable<::hyperspace::Bm25Options>()},
       {::_pbi::TcParser::GetMapAuxInfo(
           1, 0, 9, 9, 0)},
+      {::_pbi::TcParser::GetMapAuxInfo(
+          1, 0, 9, 2, 0)},
   }},
   {{
-    "\30\12\0\0\6\0\14\0\0\0\0\0\0\0\0\0"
+    "\30\12\0\0\6\0\14\0\0\0\0\0\21\0\0\0"
     "hyperspace.SearchRequest"
     "collection"
     "filter"
     "hybrid_query"
+    "component_weights"
   }},
 };
 PROTOBUF_NOINLINE void SearchRequest::Clear() {
@@ -19615,10 +21121,15 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
         reinterpret_cast<char*>(&_impl_.use_wasserstein_) -
         reinterpret_cast<char*>(&_impl_.top_k_)) + sizeof(_impl_.use_wasserstein_));
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000300U)) {
-    _impl_.mrl_dimension_ = 0u;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000f00U)) {
+    ::memset(&_impl_.include_payload_, 0, static_cast<::size_t>(
+        reinterpret_cast<char*>(&_impl_.mrl_dimension_) -
+        reinterpret_cast<char*>(&_impl_.include_payload_)) + sizeof(_impl_.mrl_dimension_));
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
       _impl_.filter_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
+      _impl_.component_weights_.Clear();
     }
   }
   _impl_._has_bits_.Clear();
@@ -19671,7 +21182,7 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
   }
 
   // map<string, string> filter = 4;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
     if (!this_._internal_filter().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, ::std::string>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, ::std::string,
@@ -19750,10 +21261,48 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
   }
 
   // optional uint32 mrl_dimension = 10;
-  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000200U)) {
     target = stream->EnsureSpace(target);
     target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
         10, this_._internal_mrl_dimension(), target);
+  }
+
+  // bool include_payload = 11;
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    if (this_._internal_include_payload() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteBoolToArray(
+          11, this_._internal_include_payload(), target);
+    }
+  }
+
+  // map<string, float> component_weights = 12;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
+    if (!this_._internal_component_weights().empty()) {
+      using MapType = ::google::protobuf::Map<::std::string, float>;
+      using WireHelper = _pbi::MapEntryFuncs<::std::string, float,
+                                     _pbi::WireFormatLite::TYPE_STRING,
+                                     _pbi::WireFormatLite::TYPE_FLOAT>;
+      const auto& field = this_._internal_component_weights();
+
+      if (stream->IsSerializationDeterministic() && field.size() > 1) {
+        for (const auto& entry : ::google::protobuf::internal::MapSorterPtr<MapType>(field)) {
+          target = WireHelper::InternalSerialize(
+              12, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.SearchRequest.component_weights");
+        }
+      } else {
+        for (const auto& entry : field) {
+          target = WireHelper::InternalSerialize(
+              12, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.SearchRequest.component_weights");
+        }
+      }
+    }
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -19831,20 +21380,36 @@ PROTOBUF_NOINLINE void SearchRequest::Clear() {
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000300U)) {
-    // optional uint32 mrl_dimension = 10;
+  if (BatchCheckHasBit(cached_has_bits, 0x00000f00U)) {
+    // bool include_payload = 11;
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+      if (this_._internal_include_payload() != 0) {
+        total_size += 2;
+      }
+    }
+    // optional uint32 mrl_dimension = 10;
+    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
       total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
           this_._internal_mrl_dimension());
     }
     // map<string, string> filter = 4;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_filter_size());
       for (const auto& entry : this_._internal_filter()) {
         total_size += _pbi::MapEntryFuncs<::std::string, ::std::string,
                                        _pbi::WireFormatLite::TYPE_STRING,
                                        _pbi::WireFormatLite::TYPE_STRING>::ByteSizeLong(entry.first, entry.second);
+      }
+    }
+    // map<string, float> component_weights = 12;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
+      total_size +=
+          1 * ::google::protobuf::internal::FromIntSize(this_._internal_component_weights_size());
+      for (const auto& entry : this_._internal_component_weights()) {
+        total_size += _pbi::MapEntryFuncs<::std::string, float,
+                                       _pbi::WireFormatLite::TYPE_STRING,
+                                       _pbi::WireFormatLite::TYPE_FLOAT>::ByteSizeLong(entry.first, entry.second);
       }
     }
   }
@@ -19910,12 +21475,20 @@ void SearchRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000300U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000f00U)) {
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+      if (from._internal_include_payload() != 0) {
+        _this->_impl_.include_payload_ = from._impl_.include_payload_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
       _this->_impl_.mrl_dimension_ = from._impl_.mrl_dimension_;
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
       _this->_impl_.filter_.MergeFrom(from._impl_.filter_);
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
+      _this->_impl_.component_weights_.MergeFrom(from._impl_.component_weights_);
     }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
@@ -19948,6 +21521,7 @@ void SearchRequest::InternalSwap(SearchRequest* PROTOBUF_RESTRICT PROTOBUF_NONNU
           reinterpret_cast<char*>(&_impl_.bm25_options_),
           reinterpret_cast<char*>(&other->_impl_.bm25_options_));
   _impl_.filter_.InternalSwap(&other->_impl_.filter_);
+  _impl_.component_weights_.InternalSwap(&other->_impl_.component_weights_);
 }
 
 ::google::protobuf::Metadata SearchRequest::GetMetadata() const {
@@ -25205,6 +26779,7 @@ PROTOBUF_NDEBUG_INLINE SearchResult::Impl_::Impl_(
     [[maybe_unused]] const ::hyperspace::SearchResult& from_msg)
       : _has_bits_{from._has_bits_},
         _cached_size_{0},
+        payload_(arena, from.payload_),
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
         metadata_{visibility, ::_pbi::InternalMetadataOffset::Build<
             ::hyperspace::SearchResult,
@@ -25251,6 +26826,7 @@ PROTOBUF_NDEBUG_INLINE SearchResult::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
       : _cached_size_{0},
+        payload_(arena),
         #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_MAP_FIELD
         metadata_{visibility, ::_pbi::InternalMetadataOffset::Build<
             ::hyperspace::SearchResult,
@@ -25290,6 +26866,7 @@ inline void SearchResult::SharedDtor(MessageLite& self) {
   }
   this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
   ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.payload_.Destroy();
   this_._impl_.~Impl_();
 }
 
@@ -25358,16 +26935,16 @@ SearchResult::GetClassData() const {
   return SearchResult_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<1, 4, 3, 54, 2>
+const ::_pbi::TcParseTable<3, 5, 3, 54, 2>
 SearchResult::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(SearchResult, _impl_._has_bits_),
     0, // no _extensions_
-    4, 8,  // max_field_number, fast_idx_mask
+    5, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967280,  // skipmap
+    4294967264,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    4,  // num_field_entries
+    5,  // num_field_entries
     3,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     SearchResult_class_data_.base(),
@@ -25377,25 +26954,36 @@ SearchResult::_table_ = {
     ::_pbi::TcParser::GetTable<::hyperspace::SearchResult>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
+    {::_pbi::TcParser::MiniParse, {}},
+    // uint32 id = 1;
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(SearchResult, _impl_.id_), 2>(),
+     {8, 2, 0,
+      PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.id_)}},
     // double distance = 2;
     {::_pbi::TcParser::FastF64S1,
-     {17, 0, 0,
+     {17, 1, 0,
       PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.distance_)}},
-    // uint32 id = 1;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(SearchResult, _impl_.id_), 1>(),
-     {8, 1, 0,
-      PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.id_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    // optional bytes payload = 5;
+    {::_pbi::TcParser::FastBS1,
+     {42, 0, 0,
+      PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.payload_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
   }}, {{
     // uint32 id = 1;
-    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.id_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.id_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
     // double distance = 2;
-    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.distance_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.distance_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
     // map<string, string> metadata = 3;
-    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.metadata_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.metadata_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // map<string, .hyperspace.MetadataValue> typed_metadata = 4;
-    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.typed_metadata_), _Internal::kHasBitsOffset + 3, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.typed_metadata_), _Internal::kHasBitsOffset + 4, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    // optional bytes payload = 5;
+    {PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.payload_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kBytes | ::_fl::kRepAString)},
   }},
   {{
       {::_pbi::TcParser::GetMapAuxInfo(
@@ -25419,14 +27007,17 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    _impl_.payload_.ClearNonDefaultToEmpty();
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001eU)) {
     ::memset(&_impl_.distance_, 0, static_cast<::size_t>(
         reinterpret_cast<char*>(&_impl_.id_) -
         reinterpret_cast<char*>(&_impl_.distance_)) + sizeof(_impl_.id_));
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
       _impl_.metadata_.Clear();
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
       _impl_.typed_metadata_.Clear();
     }
   }
@@ -25454,7 +27045,7 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
 
   cached_has_bits = this_._impl_._has_bits_[0];
   // uint32 id = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
     if (this_._internal_id() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
@@ -25463,7 +27054,7 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
   }
 
   // double distance = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_distance()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
@@ -25472,7 +27063,7 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
   }
 
   // map<string, string> metadata = 3;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
     if (!this_._internal_metadata().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, ::std::string>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, ::std::string,
@@ -25507,7 +27098,7 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
   }
 
   // map<string, .hyperspace.MetadataValue> typed_metadata = 4;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
     if (!this_._internal_typed_metadata().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, ::hyperspace::MetadataValue>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, ::hyperspace::MetadataValue,
@@ -25535,6 +27126,12 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
     }
   }
 
+  // optional bytes payload = 5;
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    const ::std::string& _s = this_._internal_payload();
+    target = stream->WriteBytesMaybeAliased(5, _s, target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -25560,22 +27157,27 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
-    // double distance = 2;
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
+    // optional bytes payload = 5;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+      total_size += 1 + ::google::protobuf::internal::WireFormatLite::BytesSize(
+                                      this_._internal_payload());
+    }
+    // double distance = 2;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_distance()) != 0) {
         total_size += 9;
       }
     }
     // uint32 id = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (this_._internal_id() != 0) {
         total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
             this_._internal_id());
       }
     }
     // map<string, string> metadata = 3;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_metadata_size());
       for (const auto& entry : this_._internal_metadata()) {
@@ -25585,7 +27187,7 @@ PROTOBUF_NOINLINE void SearchResult::Clear() {
       }
     }
     // map<string, .hyperspace.MetadataValue> typed_metadata = 4;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_typed_metadata_size());
       for (const auto& entry : this_._internal_typed_metadata()) {
@@ -25613,21 +27215,24 @@ void SearchResult::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+      _this->_internal_set_payload(from._internal_payload());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_distance()) != 0) {
         _this->_impl_.distance_ = from._impl_.distance_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (from._internal_id() != 0) {
         _this->_impl_.id_ = from._impl_.id_;
       }
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
       _this->_impl_.metadata_.MergeFrom(from._impl_.metadata_);
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
       _this->_impl_.typed_metadata_.MergeFrom(from._impl_.typed_metadata_);
     }
   }
@@ -25646,8 +27251,11 @@ void SearchResult::CopyFrom(const SearchResult& from) {
 
 void SearchResult::InternalSwap(SearchResult* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   using ::std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.payload_, &other->_impl_.payload_, arena);
   ::google::protobuf::internal::memswap<
       PROTOBUF_FIELD_OFFSET(SearchResult, _impl_.id_)
       + sizeof(SearchResult::_impl_.id_)

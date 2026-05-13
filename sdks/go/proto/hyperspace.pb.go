@@ -423,8 +423,7 @@ func (x *InsertOp) GetTypedMetadata() map[string]*MetadataValue {
 
 type CreateCollectionOp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Dimension     uint32                 `protobuf:"varint,1,opt,name=dimension,proto3" json:"dimension,omitempty"`
-	Metric        string                 `protobuf:"bytes,2,opt,name=metric,proto3" json:"metric,omitempty"`
+	Schema        *CollectionSchema      `protobuf:"bytes,3,opt,name=schema,proto3,oneof" json:"schema,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -459,18 +458,11 @@ func (*CreateCollectionOp) Descriptor() ([]byte, []int) {
 	return file_hyperspace_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *CreateCollectionOp) GetDimension() uint32 {
+func (x *CreateCollectionOp) GetSchema() *CollectionSchema {
 	if x != nil {
-		return x.Dimension
+		return x.Schema
 	}
-	return 0
-}
-
-func (x *CreateCollectionOp) GetMetric() string {
-	if x != nil {
-		return x.Metric
-	}
-	return ""
+	return nil
 }
 
 type DeleteCollectionOp struct {
@@ -600,9 +592,7 @@ func (x *QuantizationConfig) GetMode() QuantizationMode {
 type CreateCollectionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Dimension     uint32                 `protobuf:"varint,2,opt,name=dimension,proto3" json:"dimension,omitempty"`
-	Metric        string                 `protobuf:"bytes,3,opt,name=metric,proto3" json:"metric,omitempty"` // "cosine", "l2", "poincare", "hybrid"
-	Components    []*CollectionComponent `protobuf:"bytes,4,rep,name=components,proto3" json:"components,omitempty"`
+	Schema        *CollectionSchema      `protobuf:"bytes,5,opt,name=schema,proto3,oneof" json:"schema,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -644,23 +634,197 @@ func (x *CreateCollectionRequest) GetName() string {
 	return ""
 }
 
-func (x *CreateCollectionRequest) GetDimension() uint32 {
+func (x *CreateCollectionRequest) GetSchema() *CollectionSchema {
 	if x != nil {
-		return x.Dimension
+		return x.Schema
 	}
-	return 0
+	return nil
 }
 
-func (x *CreateCollectionRequest) GetMetric() string {
+type VectorComponent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Metric        string                 `protobuf:"bytes,2,opt,name=metric,proto3" json:"metric,omitempty"` // "cosine", "l2", "lorentz", "poincare"
+	FullDimension uint32                 `protobuf:"varint,3,opt,name=full_dimension,json=fullDimension,proto3" json:"full_dimension,omitempty"`
+	Weight        float32                `protobuf:"fixed32,4,opt,name=weight,proto3" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VectorComponent) Reset() {
+	*x = VectorComponent{}
+	mi := &file_hyperspace_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VectorComponent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VectorComponent) ProtoMessage() {}
+
+func (x *VectorComponent) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VectorComponent.ProtoReflect.Descriptor instead.
+func (*VectorComponent) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *VectorComponent) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *VectorComponent) GetMetric() string {
 	if x != nil {
 		return x.Metric
 	}
 	return ""
 }
 
-func (x *CreateCollectionRequest) GetComponents() []*CollectionComponent {
+func (x *VectorComponent) GetFullDimension() uint32 {
+	if x != nil {
+		return x.FullDimension
+	}
+	return 0
+}
+
+func (x *VectorComponent) GetWeight() float32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+type MrlLayer struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ComponentName   string                 `protobuf:"bytes,1,opt,name=component_name,json=componentName,proto3" json:"component_name,omitempty"`
+	CutoffDimension uint32                 `protobuf:"varint,2,opt,name=cutoff_dimension,json=cutoffDimension,proto3" json:"cutoff_dimension,omitempty"`
+	StoreInRam      bool                   `protobuf:"varint,3,opt,name=store_in_ram,json=storeInRam,proto3" json:"store_in_ram,omitempty"`
+	RerankTopK      uint32                 `protobuf:"varint,4,opt,name=rerank_top_k,json=rerankTopK,proto3" json:"rerank_top_k,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *MrlLayer) Reset() {
+	*x = MrlLayer{}
+	mi := &file_hyperspace_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MrlLayer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MrlLayer) ProtoMessage() {}
+
+func (x *MrlLayer) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MrlLayer.ProtoReflect.Descriptor instead.
+func (*MrlLayer) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *MrlLayer) GetComponentName() string {
+	if x != nil {
+		return x.ComponentName
+	}
+	return ""
+}
+
+func (x *MrlLayer) GetCutoffDimension() uint32 {
+	if x != nil {
+		return x.CutoffDimension
+	}
+	return 0
+}
+
+func (x *MrlLayer) GetStoreInRam() bool {
+	if x != nil {
+		return x.StoreInRam
+	}
+	return false
+}
+
+func (x *MrlLayer) GetRerankTopK() uint32 {
+	if x != nil {
+		return x.RerankTopK
+	}
+	return 0
+}
+
+type CollectionSchema struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Components      []*VectorComponent     `protobuf:"bytes,1,rep,name=components,proto3" json:"components,omitempty"`
+	CascadePipeline []*MrlLayer            `protobuf:"bytes,2,rep,name=cascade_pipeline,json=cascadePipeline,proto3" json:"cascade_pipeline,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CollectionSchema) Reset() {
+	*x = CollectionSchema{}
+	mi := &file_hyperspace_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CollectionSchema) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CollectionSchema) ProtoMessage() {}
+
+func (x *CollectionSchema) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CollectionSchema.ProtoReflect.Descriptor instead.
+func (*CollectionSchema) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CollectionSchema) GetComponents() []*VectorComponent {
 	if x != nil {
 		return x.Components
+	}
+	return nil
+}
+
+func (x *CollectionSchema) GetCascadePipeline() []*MrlLayer {
+	if x != nil {
+		return x.CascadePipeline
 	}
 	return nil
 }
@@ -677,7 +841,7 @@ type CollectionComponent struct {
 
 func (x *CollectionComponent) Reset() {
 	*x = CollectionComponent{}
-	mi := &file_hyperspace_proto_msgTypes[8]
+	mi := &file_hyperspace_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -689,7 +853,7 @@ func (x *CollectionComponent) String() string {
 func (*CollectionComponent) ProtoMessage() {}
 
 func (x *CollectionComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[8]
+	mi := &file_hyperspace_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -702,7 +866,7 @@ func (x *CollectionComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionComponent.ProtoReflect.Descriptor instead.
 func (*CollectionComponent) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{8}
+	return file_hyperspace_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CollectionComponent) GetSpace() string {
@@ -742,7 +906,7 @@ type DeleteCollectionRequest struct {
 
 func (x *DeleteCollectionRequest) Reset() {
 	*x = DeleteCollectionRequest{}
-	mi := &file_hyperspace_proto_msgTypes[9]
+	mi := &file_hyperspace_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -754,7 +918,7 @@ func (x *DeleteCollectionRequest) String() string {
 func (*DeleteCollectionRequest) ProtoMessage() {}
 
 func (x *DeleteCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[9]
+	mi := &file_hyperspace_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -767,7 +931,7 @@ func (x *DeleteCollectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteCollectionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{9}
+	return file_hyperspace_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DeleteCollectionRequest) GetName() string {
@@ -781,15 +945,14 @@ type CollectionSummary struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Count         uint64                 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
-	Dimension     uint32                 `protobuf:"varint,3,opt,name=dimension,proto3" json:"dimension,omitempty"`
-	Metric        string                 `protobuf:"bytes,4,opt,name=metric,proto3" json:"metric,omitempty"`
+	Schema        *CollectionSchema      `protobuf:"bytes,5,opt,name=schema,proto3,oneof" json:"schema,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CollectionSummary) Reset() {
 	*x = CollectionSummary{}
-	mi := &file_hyperspace_proto_msgTypes[10]
+	mi := &file_hyperspace_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -801,7 +964,7 @@ func (x *CollectionSummary) String() string {
 func (*CollectionSummary) ProtoMessage() {}
 
 func (x *CollectionSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[10]
+	mi := &file_hyperspace_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -814,7 +977,7 @@ func (x *CollectionSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionSummary.ProtoReflect.Descriptor instead.
 func (*CollectionSummary) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{10}
+	return file_hyperspace_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CollectionSummary) GetName() string {
@@ -831,18 +994,11 @@ func (x *CollectionSummary) GetCount() uint64 {
 	return 0
 }
 
-func (x *CollectionSummary) GetDimension() uint32 {
+func (x *CollectionSummary) GetSchema() *CollectionSchema {
 	if x != nil {
-		return x.Dimension
+		return x.Schema
 	}
-	return 0
-}
-
-func (x *CollectionSummary) GetMetric() string {
-	if x != nil {
-		return x.Metric
-	}
-	return ""
+	return nil
 }
 
 type ListCollectionsResponse struct {
@@ -854,7 +1010,7 @@ type ListCollectionsResponse struct {
 
 func (x *ListCollectionsResponse) Reset() {
 	*x = ListCollectionsResponse{}
-	mi := &file_hyperspace_proto_msgTypes[11]
+	mi := &file_hyperspace_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -866,7 +1022,7 @@ func (x *ListCollectionsResponse) String() string {
 func (*ListCollectionsResponse) ProtoMessage() {}
 
 func (x *ListCollectionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[11]
+	mi := &file_hyperspace_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -879,7 +1035,7 @@ func (x *ListCollectionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCollectionsResponse.ProtoReflect.Descriptor instead.
 func (*ListCollectionsResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{11}
+	return file_hyperspace_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListCollectionsResponse) GetCollections() []*CollectionSummary {
@@ -898,7 +1054,7 @@ type CollectionStatsRequest struct {
 
 func (x *CollectionStatsRequest) Reset() {
 	*x = CollectionStatsRequest{}
-	mi := &file_hyperspace_proto_msgTypes[12]
+	mi := &file_hyperspace_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -910,7 +1066,7 @@ func (x *CollectionStatsRequest) String() string {
 func (*CollectionStatsRequest) ProtoMessage() {}
 
 func (x *CollectionStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[12]
+	mi := &file_hyperspace_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -923,7 +1079,7 @@ func (x *CollectionStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionStatsRequest.ProtoReflect.Descriptor instead.
 func (*CollectionStatsRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{12}
+	return file_hyperspace_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CollectionStatsRequest) GetName() string {
@@ -934,18 +1090,20 @@ func (x *CollectionStatsRequest) GetName() string {
 }
 
 type CollectionStatsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Count         uint64                 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
-	Dimension     uint32                 `protobuf:"varint,2,opt,name=dimension,proto3" json:"dimension,omitempty"`
-	Metric        string                 `protobuf:"bytes,3,opt,name=metric,proto3" json:"metric,omitempty"`
-	IndexingQueue uint64                 `protobuf:"varint,4,opt,name=indexing_queue,json=indexingQueue,proto3" json:"indexing_queue,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Count          uint64                 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
+	IndexingQueue  uint64                 `protobuf:"varint,4,opt,name=indexing_queue,json=indexingQueue,proto3" json:"indexing_queue,omitempty"`
+	DiskUsageBytes uint64                 `protobuf:"varint,5,opt,name=disk_usage_bytes,json=diskUsageBytes,proto3" json:"disk_usage_bytes,omitempty"`
+	RamUsageBytes  uint64                 `protobuf:"varint,6,opt,name=ram_usage_bytes,json=ramUsageBytes,proto3" json:"ram_usage_bytes,omitempty"`
+	ActiveTasks    uint64                 `protobuf:"varint,7,opt,name=active_tasks,json=activeTasks,proto3" json:"active_tasks,omitempty"`
+	Schema         *CollectionSchema      `protobuf:"bytes,8,opt,name=schema,proto3,oneof" json:"schema,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CollectionStatsResponse) Reset() {
 	*x = CollectionStatsResponse{}
-	mi := &file_hyperspace_proto_msgTypes[13]
+	mi := &file_hyperspace_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -957,7 +1115,7 @@ func (x *CollectionStatsResponse) String() string {
 func (*CollectionStatsResponse) ProtoMessage() {}
 
 func (x *CollectionStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[13]
+	mi := &file_hyperspace_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -970,7 +1128,7 @@ func (x *CollectionStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectionStatsResponse.ProtoReflect.Descriptor instead.
 func (*CollectionStatsResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{13}
+	return file_hyperspace_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CollectionStatsResponse) GetCount() uint64 {
@@ -980,25 +1138,39 @@ func (x *CollectionStatsResponse) GetCount() uint64 {
 	return 0
 }
 
-func (x *CollectionStatsResponse) GetDimension() uint32 {
-	if x != nil {
-		return x.Dimension
-	}
-	return 0
-}
-
-func (x *CollectionStatsResponse) GetMetric() string {
-	if x != nil {
-		return x.Metric
-	}
-	return ""
-}
-
 func (x *CollectionStatsResponse) GetIndexingQueue() uint64 {
 	if x != nil {
 		return x.IndexingQueue
 	}
 	return 0
+}
+
+func (x *CollectionStatsResponse) GetDiskUsageBytes() uint64 {
+	if x != nil {
+		return x.DiskUsageBytes
+	}
+	return 0
+}
+
+func (x *CollectionStatsResponse) GetRamUsageBytes() uint64 {
+	if x != nil {
+		return x.RamUsageBytes
+	}
+	return 0
+}
+
+func (x *CollectionStatsResponse) GetActiveTasks() uint64 {
+	if x != nil {
+		return x.ActiveTasks
+	}
+	return 0
+}
+
+func (x *CollectionStatsResponse) GetSchema() *CollectionSchema {
+	if x != nil {
+		return x.Schema
+	}
+	return nil
 }
 
 type RebuildIndexRequest struct {
@@ -1011,7 +1183,7 @@ type RebuildIndexRequest struct {
 
 func (x *RebuildIndexRequest) Reset() {
 	*x = RebuildIndexRequest{}
-	mi := &file_hyperspace_proto_msgTypes[14]
+	mi := &file_hyperspace_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1023,7 +1195,7 @@ func (x *RebuildIndexRequest) String() string {
 func (*RebuildIndexRequest) ProtoMessage() {}
 
 func (x *RebuildIndexRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[14]
+	mi := &file_hyperspace_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1036,7 +1208,7 @@ func (x *RebuildIndexRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RebuildIndexRequest.ProtoReflect.Descriptor instead.
 func (*RebuildIndexRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{14}
+	return file_hyperspace_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RebuildIndexRequest) GetName() string {
@@ -1058,13 +1230,14 @@ type ConfigUpdate struct {
 	Collection     string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
 	EfSearch       *uint32                `protobuf:"varint,2,opt,name=ef_search,json=efSearch,proto3,oneof" json:"ef_search,omitempty"`
 	EfConstruction *uint32                `protobuf:"varint,3,opt,name=ef_construction,json=efConstruction,proto3,oneof" json:"ef_construction,omitempty"`
+	M              *uint32                `protobuf:"varint,4,opt,name=m,proto3,oneof" json:"m,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ConfigUpdate) Reset() {
 	*x = ConfigUpdate{}
-	mi := &file_hyperspace_proto_msgTypes[15]
+	mi := &file_hyperspace_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1076,7 +1249,7 @@ func (x *ConfigUpdate) String() string {
 func (*ConfigUpdate) ProtoMessage() {}
 
 func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[15]
+	mi := &file_hyperspace_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1089,7 +1262,7 @@ func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigUpdate.ProtoReflect.Descriptor instead.
 func (*ConfigUpdate) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{15}
+	return file_hyperspace_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ConfigUpdate) GetCollection() string {
@@ -1113,6 +1286,13 @@ func (x *ConfigUpdate) GetEfConstruction() uint32 {
 	return 0
 }
 
+func (x *ConfigUpdate) GetM() uint32 {
+	if x != nil && x.M != nil {
+		return *x.M
+	}
+	return 0
+}
+
 type VacuumFilterQuery struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -1124,7 +1304,7 @@ type VacuumFilterQuery struct {
 
 func (x *VacuumFilterQuery) Reset() {
 	*x = VacuumFilterQuery{}
-	mi := &file_hyperspace_proto_msgTypes[16]
+	mi := &file_hyperspace_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1136,7 +1316,7 @@ func (x *VacuumFilterQuery) String() string {
 func (*VacuumFilterQuery) ProtoMessage() {}
 
 func (x *VacuumFilterQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[16]
+	mi := &file_hyperspace_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1149,7 +1329,7 @@ func (x *VacuumFilterQuery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VacuumFilterQuery.ProtoReflect.Descriptor instead.
 func (*VacuumFilterQuery) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{16}
+	return file_hyperspace_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *VacuumFilterQuery) GetKey() string {
@@ -1184,7 +1364,7 @@ type ReconsolidationRequest struct {
 
 func (x *ReconsolidationRequest) Reset() {
 	*x = ReconsolidationRequest{}
-	mi := &file_hyperspace_proto_msgTypes[17]
+	mi := &file_hyperspace_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1196,7 +1376,7 @@ func (x *ReconsolidationRequest) String() string {
 func (*ReconsolidationRequest) ProtoMessage() {}
 
 func (x *ReconsolidationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[17]
+	mi := &file_hyperspace_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1209,7 +1389,7 @@ func (x *ReconsolidationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconsolidationRequest.ProtoReflect.Descriptor instead.
 func (*ReconsolidationRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{17}
+	return file_hyperspace_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ReconsolidationRequest) GetCollection() string {
@@ -1244,13 +1424,17 @@ type InsertRequest struct {
 	LogicalClock  uint64                    `protobuf:"varint,6,opt,name=logical_clock,json=logicalClock,proto3" json:"logical_clock,omitempty"`
 	Durability    DurabilityLevel           `protobuf:"varint,7,opt,name=durability,proto3,enum=hyperspace.DurabilityLevel" json:"durability,omitempty"`
 	TypedMetadata map[string]*MetadataValue `protobuf:"bytes,8,rep,name=typed_metadata,json=typedMetadata,proto3" json:"typed_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Sidecar Payload Storage (v3.2): heavy documents stored on disk, NOT in RAM.
+	// The payload is zstd-compressed and written to the chunk file's Payload Layer.
+	// It is NEVER loaded into memory during HNSW traversal.
+	Payload       []byte `protobuf:"bytes,9,opt,name=payload,proto3,oneof" json:"payload,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InsertRequest) Reset() {
 	*x = InsertRequest{}
-	mi := &file_hyperspace_proto_msgTypes[18]
+	mi := &file_hyperspace_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1262,7 +1446,7 @@ func (x *InsertRequest) String() string {
 func (*InsertRequest) ProtoMessage() {}
 
 func (x *InsertRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[18]
+	mi := &file_hyperspace_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1275,7 +1459,7 @@ func (x *InsertRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertRequest.ProtoReflect.Descriptor instead.
 func (*InsertRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{18}
+	return file_hyperspace_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *InsertRequest) GetCollection() string {
@@ -1334,6 +1518,13 @@ func (x *InsertRequest) GetTypedMetadata() map[string]*MetadataValue {
 	return nil
 }
 
+func (x *InsertRequest) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
 type VectorData struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
 	Vector        []float64                 `protobuf:"fixed64,1,rep,packed,name=vector,proto3" json:"vector,omitempty"`
@@ -1346,7 +1537,7 @@ type VectorData struct {
 
 func (x *VectorData) Reset() {
 	*x = VectorData{}
-	mi := &file_hyperspace_proto_msgTypes[19]
+	mi := &file_hyperspace_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1358,7 +1549,7 @@ func (x *VectorData) String() string {
 func (*VectorData) ProtoMessage() {}
 
 func (x *VectorData) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[19]
+	mi := &file_hyperspace_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1371,7 +1562,7 @@ func (x *VectorData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorData.ProtoReflect.Descriptor instead.
 func (*VectorData) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{19}
+	return file_hyperspace_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *VectorData) GetVector() []float64 {
@@ -1415,7 +1606,7 @@ type BatchInsertRequest struct {
 
 func (x *BatchInsertRequest) Reset() {
 	*x = BatchInsertRequest{}
-	mi := &file_hyperspace_proto_msgTypes[20]
+	mi := &file_hyperspace_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1427,7 +1618,7 @@ func (x *BatchInsertRequest) String() string {
 func (*BatchInsertRequest) ProtoMessage() {}
 
 func (x *BatchInsertRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[20]
+	mi := &file_hyperspace_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1440,7 +1631,7 @@ func (x *BatchInsertRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchInsertRequest.ProtoReflect.Descriptor instead.
 func (*BatchInsertRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{20}
+	return file_hyperspace_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *BatchInsertRequest) GetCollection() string {
@@ -1491,7 +1682,7 @@ type InsertTextRequest struct {
 
 func (x *InsertTextRequest) Reset() {
 	*x = InsertTextRequest{}
-	mi := &file_hyperspace_proto_msgTypes[21]
+	mi := &file_hyperspace_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1503,7 +1694,7 @@ func (x *InsertTextRequest) String() string {
 func (*InsertTextRequest) ProtoMessage() {}
 
 func (x *InsertTextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[21]
+	mi := &file_hyperspace_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1516,7 +1707,7 @@ func (x *InsertTextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertTextRequest.ProtoReflect.Descriptor instead.
 func (*InsertTextRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{21}
+	return file_hyperspace_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *InsertTextRequest) GetCollection() string {
@@ -1564,7 +1755,7 @@ type VectorizeRequest struct {
 
 func (x *VectorizeRequest) Reset() {
 	*x = VectorizeRequest{}
-	mi := &file_hyperspace_proto_msgTypes[22]
+	mi := &file_hyperspace_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1576,7 +1767,7 @@ func (x *VectorizeRequest) String() string {
 func (*VectorizeRequest) ProtoMessage() {}
 
 func (x *VectorizeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[22]
+	mi := &file_hyperspace_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1589,7 +1780,7 @@ func (x *VectorizeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorizeRequest.ProtoReflect.Descriptor instead.
 func (*VectorizeRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{22}
+	return file_hyperspace_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *VectorizeRequest) GetText() string {
@@ -1615,7 +1806,7 @@ type VectorizeResponse struct {
 
 func (x *VectorizeResponse) Reset() {
 	*x = VectorizeResponse{}
-	mi := &file_hyperspace_proto_msgTypes[23]
+	mi := &file_hyperspace_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1627,7 +1818,7 @@ func (x *VectorizeResponse) String() string {
 func (*VectorizeResponse) ProtoMessage() {}
 
 func (x *VectorizeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[23]
+	mi := &file_hyperspace_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1640,7 +1831,7 @@ func (x *VectorizeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorizeResponse.ProtoReflect.Descriptor instead.
 func (*VectorizeResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{23}
+	return file_hyperspace_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *VectorizeResponse) GetVector() []float64 {
@@ -1651,21 +1842,23 @@ func (x *VectorizeResponse) GetVector() []float64 {
 }
 
 type SearchTextRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
-	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
-	TopK          uint32                 `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`
-	Filter        map[string]string      `protobuf:"bytes,4,rep,name=filter,proto3" json:"filter,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Filters       []*Filter              `protobuf:"bytes,5,rep,name=filters,proto3" json:"filters,omitempty"`
-	Bm25Options   *Bm25Options           `protobuf:"bytes,6,opt,name=bm25_options,json=bm25Options,proto3,oneof" json:"bm25_options,omitempty"`
-	HybridAlpha   *float32               `protobuf:"fixed32,7,opt,name=hybrid_alpha,json=hybridAlpha,proto3,oneof" json:"hybrid_alpha,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Collection       string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	Text             string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	TopK             uint32                 `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`
+	Filter           map[string]string      `protobuf:"bytes,4,rep,name=filter,proto3" json:"filter,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Filters          []*Filter              `protobuf:"bytes,5,rep,name=filters,proto3" json:"filters,omitempty"`
+	Bm25Options      *Bm25Options           `protobuf:"bytes,6,opt,name=bm25_options,json=bm25Options,proto3,oneof" json:"bm25_options,omitempty"`
+	HybridAlpha      *float32               `protobuf:"fixed32,7,opt,name=hybrid_alpha,json=hybridAlpha,proto3,oneof" json:"hybrid_alpha,omitempty"`
+	IncludePayload   bool                   `protobuf:"varint,8,opt,name=include_payload,json=includePayload,proto3" json:"include_payload,omitempty"`
+	ComponentWeights map[string]float32     `protobuf:"bytes,9,rep,name=component_weights,json=componentWeights,proto3" json:"component_weights,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SearchTextRequest) Reset() {
 	*x = SearchTextRequest{}
-	mi := &file_hyperspace_proto_msgTypes[24]
+	mi := &file_hyperspace_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1677,7 +1870,7 @@ func (x *SearchTextRequest) String() string {
 func (*SearchTextRequest) ProtoMessage() {}
 
 func (x *SearchTextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[24]
+	mi := &file_hyperspace_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1690,7 +1883,7 @@ func (x *SearchTextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchTextRequest.ProtoReflect.Descriptor instead.
 func (*SearchTextRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{24}
+	return file_hyperspace_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *SearchTextRequest) GetCollection() string {
@@ -1742,6 +1935,20 @@ func (x *SearchTextRequest) GetHybridAlpha() float32 {
 	return 0
 }
 
+func (x *SearchTextRequest) GetIncludePayload() bool {
+	if x != nil {
+		return x.IncludePayload
+	}
+	return false
+}
+
+func (x *SearchTextRequest) GetComponentWeights() map[string]float32 {
+	if x != nil {
+		return x.ComponentWeights
+	}
+	return nil
+}
+
 type Bm25Options struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Method        *string                `protobuf:"bytes,1,opt,name=method,proto3,oneof" json:"method,omitempty"`
@@ -1757,7 +1964,7 @@ type Bm25Options struct {
 
 func (x *Bm25Options) Reset() {
 	*x = Bm25Options{}
-	mi := &file_hyperspace_proto_msgTypes[25]
+	mi := &file_hyperspace_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1769,7 +1976,7 @@ func (x *Bm25Options) String() string {
 func (*Bm25Options) ProtoMessage() {}
 
 func (x *Bm25Options) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[25]
+	mi := &file_hyperspace_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1782,7 +1989,7 @@ func (x *Bm25Options) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bm25Options.ProtoReflect.Descriptor instead.
 func (*Bm25Options) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{25}
+	return file_hyperspace_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *Bm25Options) GetMethod() string {
@@ -1843,7 +2050,7 @@ type InsertResponse struct {
 
 func (x *InsertResponse) Reset() {
 	*x = InsertResponse{}
-	mi := &file_hyperspace_proto_msgTypes[26]
+	mi := &file_hyperspace_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1855,7 +2062,7 @@ func (x *InsertResponse) String() string {
 func (*InsertResponse) ProtoMessage() {}
 
 func (x *InsertResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[26]
+	mi := &file_hyperspace_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1868,7 +2075,7 @@ func (x *InsertResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertResponse.ProtoReflect.Descriptor instead.
 func (*InsertResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{26}
+	return file_hyperspace_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *InsertResponse) GetSuccess() bool {
@@ -1888,7 +2095,7 @@ type DeleteRequest struct {
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_hyperspace_proto_msgTypes[27]
+	mi := &file_hyperspace_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1900,7 +2107,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[27]
+	mi := &file_hyperspace_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1913,7 +2120,7 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{27}
+	return file_hyperspace_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DeleteRequest) GetCollection() string {
@@ -1939,7 +2146,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_hyperspace_proto_msgTypes[28]
+	mi := &file_hyperspace_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1951,7 +2158,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[28]
+	mi := &file_hyperspace_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1964,7 +2171,7 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{28}
+	return file_hyperspace_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DeleteResponse) GetSuccess() bool {
@@ -1984,7 +2191,7 @@ type GetPointsRequest struct {
 
 func (x *GetPointsRequest) Reset() {
 	*x = GetPointsRequest{}
-	mi := &file_hyperspace_proto_msgTypes[29]
+	mi := &file_hyperspace_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1996,7 +2203,7 @@ func (x *GetPointsRequest) String() string {
 func (*GetPointsRequest) ProtoMessage() {}
 
 func (x *GetPointsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[29]
+	mi := &file_hyperspace_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2009,7 +2216,7 @@ func (x *GetPointsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPointsRequest.ProtoReflect.Descriptor instead.
 func (*GetPointsRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{29}
+	return file_hyperspace_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetPointsRequest) GetCollection() string {
@@ -2035,7 +2242,7 @@ type GetPointsResponse struct {
 
 func (x *GetPointsResponse) Reset() {
 	*x = GetPointsResponse{}
-	mi := &file_hyperspace_proto_msgTypes[30]
+	mi := &file_hyperspace_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2047,7 +2254,7 @@ func (x *GetPointsResponse) String() string {
 func (*GetPointsResponse) ProtoMessage() {}
 
 func (x *GetPointsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[30]
+	mi := &file_hyperspace_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2060,7 +2267,7 @@ func (x *GetPointsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPointsResponse.ProtoReflect.Descriptor instead.
 func (*GetPointsResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{30}
+	return file_hyperspace_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetPointsResponse) GetPoints() []*VectorData {
@@ -2082,7 +2289,7 @@ type UpdatePayloadRequest struct {
 
 func (x *UpdatePayloadRequest) Reset() {
 	*x = UpdatePayloadRequest{}
-	mi := &file_hyperspace_proto_msgTypes[31]
+	mi := &file_hyperspace_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2094,7 +2301,7 @@ func (x *UpdatePayloadRequest) String() string {
 func (*UpdatePayloadRequest) ProtoMessage() {}
 
 func (x *UpdatePayloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[31]
+	mi := &file_hyperspace_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2107,7 +2314,7 @@ func (x *UpdatePayloadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePayloadRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePayloadRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{31}
+	return file_hyperspace_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *UpdatePayloadRequest) GetCollection() string {
@@ -2150,7 +2357,7 @@ type ScrollRequest struct {
 
 func (x *ScrollRequest) Reset() {
 	*x = ScrollRequest{}
-	mi := &file_hyperspace_proto_msgTypes[32]
+	mi := &file_hyperspace_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2162,7 +2369,7 @@ func (x *ScrollRequest) String() string {
 func (*ScrollRequest) ProtoMessage() {}
 
 func (x *ScrollRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[32]
+	mi := &file_hyperspace_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2175,7 +2382,7 @@ func (x *ScrollRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScrollRequest.ProtoReflect.Descriptor instead.
 func (*ScrollRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{32}
+	return file_hyperspace_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ScrollRequest) GetCollection() string {
@@ -2215,7 +2422,7 @@ type ScrollResponse struct {
 
 func (x *ScrollResponse) Reset() {
 	*x = ScrollResponse{}
-	mi := &file_hyperspace_proto_msgTypes[33]
+	mi := &file_hyperspace_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2227,7 +2434,7 @@ func (x *ScrollResponse) String() string {
 func (*ScrollResponse) ProtoMessage() {}
 
 func (x *ScrollResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[33]
+	mi := &file_hyperspace_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2240,7 +2447,7 @@ func (x *ScrollResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScrollResponse.ProtoReflect.Descriptor instead.
 func (*ScrollResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{33}
+	return file_hyperspace_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ScrollResponse) GetPoints() []*VectorData {
@@ -2260,7 +2467,7 @@ type CountRequest struct {
 
 func (x *CountRequest) Reset() {
 	*x = CountRequest{}
-	mi := &file_hyperspace_proto_msgTypes[34]
+	mi := &file_hyperspace_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2272,7 +2479,7 @@ func (x *CountRequest) String() string {
 func (*CountRequest) ProtoMessage() {}
 
 func (x *CountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[34]
+	mi := &file_hyperspace_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2285,7 +2492,7 @@ func (x *CountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountRequest.ProtoReflect.Descriptor instead.
 func (*CountRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{34}
+	return file_hyperspace_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *CountRequest) GetCollection() string {
@@ -2311,7 +2518,7 @@ type CountResponse struct {
 
 func (x *CountResponse) Reset() {
 	*x = CountResponse{}
-	mi := &file_hyperspace_proto_msgTypes[35]
+	mi := &file_hyperspace_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2323,7 +2530,7 @@ func (x *CountResponse) String() string {
 func (*CountResponse) ProtoMessage() {}
 
 func (x *CountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[35]
+	mi := &file_hyperspace_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2336,7 +2543,7 @@ func (x *CountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountResponse.ProtoReflect.Descriptor instead.
 func (*CountResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{35}
+	return file_hyperspace_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *CountResponse) GetCount() uint64 {
@@ -2355,7 +2562,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_hyperspace_proto_msgTypes[36]
+	mi := &file_hyperspace_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2367,7 +2574,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[36]
+	mi := &file_hyperspace_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2380,7 +2587,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{36}
+	return file_hyperspace_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *HealthCheckResponse) GetStatus() string {
@@ -2402,13 +2609,18 @@ type SearchRequest struct {
 	UseWasserstein bool                   `protobuf:"varint,8,opt,name=use_wasserstein,json=useWasserstein,proto3" json:"use_wasserstein,omitempty"`
 	Bm25Options    *Bm25Options           `protobuf:"bytes,9,opt,name=bm25_options,json=bm25Options,proto3,oneof" json:"bm25_options,omitempty"`
 	MrlDimension   *uint32                `protobuf:"varint,10,opt,name=mrl_dimension,json=mrlDimension,proto3,oneof" json:"mrl_dimension,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Sidecar Payload Storage (v3.2): if true, the server performs lazy disk I/O
+	// ONLY for the final Top-K results to attach their stored payload blobs.
+	// Default is false — zero extra I/O for standard searches.
+	IncludePayload   bool               `protobuf:"varint,11,opt,name=include_payload,json=includePayload,proto3" json:"include_payload,omitempty"`
+	ComponentWeights map[string]float32 `protobuf:"bytes,12,rep,name=component_weights,json=componentWeights,proto3" json:"component_weights,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SearchRequest) Reset() {
 	*x = SearchRequest{}
-	mi := &file_hyperspace_proto_msgTypes[37]
+	mi := &file_hyperspace_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2420,7 +2632,7 @@ func (x *SearchRequest) String() string {
 func (*SearchRequest) ProtoMessage() {}
 
 func (x *SearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[37]
+	mi := &file_hyperspace_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2433,7 +2645,7 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{37}
+	return file_hyperspace_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *SearchRequest) GetCollection() string {
@@ -2506,6 +2718,20 @@ func (x *SearchRequest) GetMrlDimension() uint32 {
 	return 0
 }
 
+func (x *SearchRequest) GetIncludePayload() bool {
+	if x != nil {
+		return x.IncludePayload
+	}
+	return false
+}
+
+func (x *SearchRequest) GetComponentWeights() map[string]float32 {
+	if x != nil {
+		return x.ComponentWeights
+	}
+	return nil
+}
+
 type Filter struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Condition:
@@ -2525,7 +2751,7 @@ type Filter struct {
 
 func (x *Filter) Reset() {
 	*x = Filter{}
-	mi := &file_hyperspace_proto_msgTypes[38]
+	mi := &file_hyperspace_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2537,7 +2763,7 @@ func (x *Filter) String() string {
 func (*Filter) ProtoMessage() {}
 
 func (x *Filter) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[38]
+	mi := &file_hyperspace_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2550,7 +2776,7 @@ func (x *Filter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Filter.ProtoReflect.Descriptor instead.
 func (*Filter) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{38}
+	return file_hyperspace_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *Filter) GetCondition() isFilter_Condition {
@@ -2693,7 +2919,7 @@ type FilterAnd struct {
 
 func (x *FilterAnd) Reset() {
 	*x = FilterAnd{}
-	mi := &file_hyperspace_proto_msgTypes[39]
+	mi := &file_hyperspace_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2705,7 +2931,7 @@ func (x *FilterAnd) String() string {
 func (*FilterAnd) ProtoMessage() {}
 
 func (x *FilterAnd) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[39]
+	mi := &file_hyperspace_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2718,7 +2944,7 @@ func (x *FilterAnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilterAnd.ProtoReflect.Descriptor instead.
 func (*FilterAnd) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{39}
+	return file_hyperspace_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *FilterAnd) GetConditions() []*Filter {
@@ -2737,7 +2963,7 @@ type FilterOr struct {
 
 func (x *FilterOr) Reset() {
 	*x = FilterOr{}
-	mi := &file_hyperspace_proto_msgTypes[40]
+	mi := &file_hyperspace_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2749,7 +2975,7 @@ func (x *FilterOr) String() string {
 func (*FilterOr) ProtoMessage() {}
 
 func (x *FilterOr) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[40]
+	mi := &file_hyperspace_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2762,7 +2988,7 @@ func (x *FilterOr) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilterOr.ProtoReflect.Descriptor instead.
 func (*FilterOr) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{40}
+	return file_hyperspace_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *FilterOr) GetConditions() []*Filter {
@@ -2781,7 +3007,7 @@ type FilterNot struct {
 
 func (x *FilterNot) Reset() {
 	*x = FilterNot{}
-	mi := &file_hyperspace_proto_msgTypes[41]
+	mi := &file_hyperspace_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2793,7 +3019,7 @@ func (x *FilterNot) String() string {
 func (*FilterNot) ProtoMessage() {}
 
 func (x *FilterNot) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[41]
+	mi := &file_hyperspace_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2806,7 +3032,7 @@ func (x *FilterNot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilterNot.ProtoReflect.Descriptor instead.
 func (*FilterNot) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{41}
+	return file_hyperspace_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *FilterNot) GetCondition() *Filter {
@@ -2826,7 +3052,7 @@ type Match struct {
 
 func (x *Match) Reset() {
 	*x = Match{}
-	mi := &file_hyperspace_proto_msgTypes[42]
+	mi := &file_hyperspace_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2838,7 +3064,7 @@ func (x *Match) String() string {
 func (*Match) ProtoMessage() {}
 
 func (x *Match) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[42]
+	mi := &file_hyperspace_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2851,7 +3077,7 @@ func (x *Match) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Match.ProtoReflect.Descriptor instead.
 func (*Match) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{42}
+	return file_hyperspace_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *Match) GetKey() string {
@@ -2881,7 +3107,7 @@ type Range struct {
 
 func (x *Range) Reset() {
 	*x = Range{}
-	mi := &file_hyperspace_proto_msgTypes[43]
+	mi := &file_hyperspace_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2893,7 +3119,7 @@ func (x *Range) String() string {
 func (*Range) ProtoMessage() {}
 
 func (x *Range) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[43]
+	mi := &file_hyperspace_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2906,7 +3132,7 @@ func (x *Range) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Range.ProtoReflect.Descriptor instead.
 func (*Range) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{43}
+	return file_hyperspace_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Range) GetKey() string {
@@ -2955,7 +3181,7 @@ type InCone struct {
 
 func (x *InCone) Reset() {
 	*x = InCone{}
-	mi := &file_hyperspace_proto_msgTypes[44]
+	mi := &file_hyperspace_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2967,7 +3193,7 @@ func (x *InCone) String() string {
 func (*InCone) ProtoMessage() {}
 
 func (x *InCone) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[44]
+	mi := &file_hyperspace_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2980,7 +3206,7 @@ func (x *InCone) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InCone.ProtoReflect.Descriptor instead.
 func (*InCone) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{44}
+	return file_hyperspace_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *InCone) GetAxes() []float64 {
@@ -3014,7 +3240,7 @@ type InBox struct {
 
 func (x *InBox) Reset() {
 	*x = InBox{}
-	mi := &file_hyperspace_proto_msgTypes[45]
+	mi := &file_hyperspace_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3026,7 +3252,7 @@ func (x *InBox) String() string {
 func (*InBox) ProtoMessage() {}
 
 func (x *InBox) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[45]
+	mi := &file_hyperspace_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3039,7 +3265,7 @@ func (x *InBox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InBox.ProtoReflect.Descriptor instead.
 func (*InBox) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{45}
+	return file_hyperspace_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *InBox) GetMinBounds() []float64 {
@@ -3066,7 +3292,7 @@ type InBall struct {
 
 func (x *InBall) Reset() {
 	*x = InBall{}
-	mi := &file_hyperspace_proto_msgTypes[46]
+	mi := &file_hyperspace_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3078,7 +3304,7 @@ func (x *InBall) String() string {
 func (*InBall) ProtoMessage() {}
 
 func (x *InBall) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[46]
+	mi := &file_hyperspace_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3091,7 +3317,7 @@ func (x *InBall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InBall.ProtoReflect.Descriptor instead.
 func (*InBall) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{46}
+	return file_hyperspace_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *InBall) GetCenter() []float64 {
@@ -3117,7 +3343,7 @@ type SearchResponse struct {
 
 func (x *SearchResponse) Reset() {
 	*x = SearchResponse{}
-	mi := &file_hyperspace_proto_msgTypes[47]
+	mi := &file_hyperspace_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3129,7 +3355,7 @@ func (x *SearchResponse) String() string {
 func (*SearchResponse) ProtoMessage() {}
 
 func (x *SearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[47]
+	mi := &file_hyperspace_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3142,7 +3368,7 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
 func (*SearchResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{47}
+	return file_hyperspace_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *SearchResponse) GetResults() []*SearchResult {
@@ -3161,7 +3387,7 @@ type BatchSearchRequest struct {
 
 func (x *BatchSearchRequest) Reset() {
 	*x = BatchSearchRequest{}
-	mi := &file_hyperspace_proto_msgTypes[48]
+	mi := &file_hyperspace_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3173,7 +3399,7 @@ func (x *BatchSearchRequest) String() string {
 func (*BatchSearchRequest) ProtoMessage() {}
 
 func (x *BatchSearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[48]
+	mi := &file_hyperspace_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3186,7 +3412,7 @@ func (x *BatchSearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchSearchRequest.ProtoReflect.Descriptor instead.
 func (*BatchSearchRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{48}
+	return file_hyperspace_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *BatchSearchRequest) GetSearches() []*SearchRequest {
@@ -3205,7 +3431,7 @@ type BatchSearchResponse struct {
 
 func (x *BatchSearchResponse) Reset() {
 	*x = BatchSearchResponse{}
-	mi := &file_hyperspace_proto_msgTypes[49]
+	mi := &file_hyperspace_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3217,7 +3443,7 @@ func (x *BatchSearchResponse) String() string {
 func (*BatchSearchResponse) ProtoMessage() {}
 
 func (x *BatchSearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[49]
+	mi := &file_hyperspace_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3230,7 +3456,7 @@ func (x *BatchSearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchSearchResponse.ProtoReflect.Descriptor instead.
 func (*BatchSearchResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{49}
+	return file_hyperspace_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *BatchSearchResponse) GetResponses() []*SearchResponse {
@@ -3251,7 +3477,7 @@ type SearchMultiCollectionRequest struct {
 
 func (x *SearchMultiCollectionRequest) Reset() {
 	*x = SearchMultiCollectionRequest{}
-	mi := &file_hyperspace_proto_msgTypes[50]
+	mi := &file_hyperspace_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3263,7 +3489,7 @@ func (x *SearchMultiCollectionRequest) String() string {
 func (*SearchMultiCollectionRequest) ProtoMessage() {}
 
 func (x *SearchMultiCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[50]
+	mi := &file_hyperspace_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3276,7 +3502,7 @@ func (x *SearchMultiCollectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchMultiCollectionRequest.ProtoReflect.Descriptor instead.
 func (*SearchMultiCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{50}
+	return file_hyperspace_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *SearchMultiCollectionRequest) GetCollections() []string {
@@ -3309,7 +3535,7 @@ type SearchMultiCollectionResponse struct {
 
 func (x *SearchMultiCollectionResponse) Reset() {
 	*x = SearchMultiCollectionResponse{}
-	mi := &file_hyperspace_proto_msgTypes[51]
+	mi := &file_hyperspace_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3321,7 +3547,7 @@ func (x *SearchMultiCollectionResponse) String() string {
 func (*SearchMultiCollectionResponse) ProtoMessage() {}
 
 func (x *SearchMultiCollectionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[51]
+	mi := &file_hyperspace_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3334,7 +3560,7 @@ func (x *SearchMultiCollectionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchMultiCollectionResponse.ProtoReflect.Descriptor instead.
 func (*SearchMultiCollectionResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{51}
+	return file_hyperspace_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *SearchMultiCollectionResponse) GetResponses() map[string]*SearchResponse {
@@ -3350,13 +3576,17 @@ type SearchResult struct {
 	Distance      float64                   `protobuf:"fixed64,2,opt,name=distance,proto3" json:"distance,omitempty"`
 	Metadata      map[string]string         `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	TypedMetadata map[string]*MetadataValue `protobuf:"bytes,4,rep,name=typed_metadata,json=typedMetadata,proto3" json:"typed_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Sidecar Payload Storage (v3.2): populated ONLY when include_payload=true
+	// in the SearchRequest AND the vector was inserted with a payload.
+	// The bytes are the original uncompressed payload — decompression is server-side.
+	Payload       []byte `protobuf:"bytes,5,opt,name=payload,proto3,oneof" json:"payload,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchResult) Reset() {
 	*x = SearchResult{}
-	mi := &file_hyperspace_proto_msgTypes[52]
+	mi := &file_hyperspace_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3368,7 +3598,7 @@ func (x *SearchResult) String() string {
 func (*SearchResult) ProtoMessage() {}
 
 func (x *SearchResult) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[52]
+	mi := &file_hyperspace_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3381,7 +3611,7 @@ func (x *SearchResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResult.ProtoReflect.Descriptor instead.
 func (*SearchResult) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{52}
+	return file_hyperspace_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *SearchResult) GetId() uint32 {
@@ -3412,6 +3642,13 @@ func (x *SearchResult) GetTypedMetadata() map[string]*MetadataValue {
 	return nil
 }
 
+func (x *SearchResult) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
 type GetNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
@@ -3423,7 +3660,7 @@ type GetNodeRequest struct {
 
 func (x *GetNodeRequest) Reset() {
 	*x = GetNodeRequest{}
-	mi := &file_hyperspace_proto_msgTypes[53]
+	mi := &file_hyperspace_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3435,7 +3672,7 @@ func (x *GetNodeRequest) String() string {
 func (*GetNodeRequest) ProtoMessage() {}
 
 func (x *GetNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[53]
+	mi := &file_hyperspace_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3448,7 +3685,7 @@ func (x *GetNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{53}
+	return file_hyperspace_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *GetNodeRequest) GetCollection() string {
@@ -3485,7 +3722,7 @@ type GraphNode struct {
 
 func (x *GraphNode) Reset() {
 	*x = GraphNode{}
-	mi := &file_hyperspace_proto_msgTypes[54]
+	mi := &file_hyperspace_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3497,7 +3734,7 @@ func (x *GraphNode) String() string {
 func (*GraphNode) ProtoMessage() {}
 
 func (x *GraphNode) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[54]
+	mi := &file_hyperspace_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3510,7 +3747,7 @@ func (x *GraphNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphNode.ProtoReflect.Descriptor instead.
 func (*GraphNode) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{54}
+	return file_hyperspace_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *GraphNode) GetId() uint32 {
@@ -3561,7 +3798,7 @@ type GetNeighborsRequest struct {
 
 func (x *GetNeighborsRequest) Reset() {
 	*x = GetNeighborsRequest{}
-	mi := &file_hyperspace_proto_msgTypes[55]
+	mi := &file_hyperspace_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3573,7 +3810,7 @@ func (x *GetNeighborsRequest) String() string {
 func (*GetNeighborsRequest) ProtoMessage() {}
 
 func (x *GetNeighborsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[55]
+	mi := &file_hyperspace_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3586,7 +3823,7 @@ func (x *GetNeighborsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNeighborsRequest.ProtoReflect.Descriptor instead.
 func (*GetNeighborsRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{55}
+	return file_hyperspace_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *GetNeighborsRequest) GetCollection() string {
@@ -3634,7 +3871,7 @@ type GetNeighborsResponse struct {
 
 func (x *GetNeighborsResponse) Reset() {
 	*x = GetNeighborsResponse{}
-	mi := &file_hyperspace_proto_msgTypes[56]
+	mi := &file_hyperspace_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3646,7 +3883,7 @@ func (x *GetNeighborsResponse) String() string {
 func (*GetNeighborsResponse) ProtoMessage() {}
 
 func (x *GetNeighborsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[56]
+	mi := &file_hyperspace_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3659,7 +3896,7 @@ func (x *GetNeighborsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNeighborsResponse.ProtoReflect.Descriptor instead.
 func (*GetNeighborsResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{56}
+	return file_hyperspace_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *GetNeighborsResponse) GetNeighbors() []*GraphNode {
@@ -3691,7 +3928,7 @@ type TraverseRequest struct {
 
 func (x *TraverseRequest) Reset() {
 	*x = TraverseRequest{}
-	mi := &file_hyperspace_proto_msgTypes[57]
+	mi := &file_hyperspace_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3703,7 +3940,7 @@ func (x *TraverseRequest) String() string {
 func (*TraverseRequest) ProtoMessage() {}
 
 func (x *TraverseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[57]
+	mi := &file_hyperspace_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3716,7 +3953,7 @@ func (x *TraverseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TraverseRequest.ProtoReflect.Descriptor instead.
 func (*TraverseRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{57}
+	return file_hyperspace_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *TraverseRequest) GetCollection() string {
@@ -3777,7 +4014,7 @@ type TraverseResponse struct {
 
 func (x *TraverseResponse) Reset() {
 	*x = TraverseResponse{}
-	mi := &file_hyperspace_proto_msgTypes[58]
+	mi := &file_hyperspace_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3789,7 +4026,7 @@ func (x *TraverseResponse) String() string {
 func (*TraverseResponse) ProtoMessage() {}
 
 func (x *TraverseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[58]
+	mi := &file_hyperspace_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3802,7 +4039,7 @@ func (x *TraverseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TraverseResponse.ProtoReflect.Descriptor instead.
 func (*TraverseResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{58}
+	return file_hyperspace_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *TraverseResponse) GetNodes() []*GraphNode {
@@ -3825,7 +4062,7 @@ type FindSemanticClustersRequest struct {
 
 func (x *FindSemanticClustersRequest) Reset() {
 	*x = FindSemanticClustersRequest{}
-	mi := &file_hyperspace_proto_msgTypes[59]
+	mi := &file_hyperspace_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3837,7 +4074,7 @@ func (x *FindSemanticClustersRequest) String() string {
 func (*FindSemanticClustersRequest) ProtoMessage() {}
 
 func (x *FindSemanticClustersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[59]
+	mi := &file_hyperspace_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3850,7 +4087,7 @@ func (x *FindSemanticClustersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindSemanticClustersRequest.ProtoReflect.Descriptor instead.
 func (*FindSemanticClustersRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{59}
+	return file_hyperspace_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *FindSemanticClustersRequest) GetCollection() string {
@@ -3900,7 +4137,7 @@ type GetConceptParentsRequest struct {
 
 func (x *GetConceptParentsRequest) Reset() {
 	*x = GetConceptParentsRequest{}
-	mi := &file_hyperspace_proto_msgTypes[60]
+	mi := &file_hyperspace_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3912,7 +4149,7 @@ func (x *GetConceptParentsRequest) String() string {
 func (*GetConceptParentsRequest) ProtoMessage() {}
 
 func (x *GetConceptParentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[60]
+	mi := &file_hyperspace_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3925,7 +4162,7 @@ func (x *GetConceptParentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConceptParentsRequest.ProtoReflect.Descriptor instead.
 func (*GetConceptParentsRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{60}
+	return file_hyperspace_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *GetConceptParentsRequest) GetCollection() string {
@@ -3965,7 +4202,7 @@ type GetConceptParentsResponse struct {
 
 func (x *GetConceptParentsResponse) Reset() {
 	*x = GetConceptParentsResponse{}
-	mi := &file_hyperspace_proto_msgTypes[61]
+	mi := &file_hyperspace_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3977,7 +4214,7 @@ func (x *GetConceptParentsResponse) String() string {
 func (*GetConceptParentsResponse) ProtoMessage() {}
 
 func (x *GetConceptParentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[61]
+	mi := &file_hyperspace_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3990,7 +4227,7 @@ func (x *GetConceptParentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConceptParentsResponse.ProtoReflect.Descriptor instead.
 func (*GetConceptParentsResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{61}
+	return file_hyperspace_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *GetConceptParentsResponse) GetParents() []*GraphNode {
@@ -4009,7 +4246,7 @@ type GraphCluster struct {
 
 func (x *GraphCluster) Reset() {
 	*x = GraphCluster{}
-	mi := &file_hyperspace_proto_msgTypes[62]
+	mi := &file_hyperspace_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4021,7 +4258,7 @@ func (x *GraphCluster) String() string {
 func (*GraphCluster) ProtoMessage() {}
 
 func (x *GraphCluster) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[62]
+	mi := &file_hyperspace_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4034,7 +4271,7 @@ func (x *GraphCluster) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphCluster.ProtoReflect.Descriptor instead.
 func (*GraphCluster) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{62}
+	return file_hyperspace_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GraphCluster) GetNodeIds() []uint32 {
@@ -4053,7 +4290,7 @@ type FindSemanticClustersResponse struct {
 
 func (x *FindSemanticClustersResponse) Reset() {
 	*x = FindSemanticClustersResponse{}
-	mi := &file_hyperspace_proto_msgTypes[63]
+	mi := &file_hyperspace_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4065,7 +4302,7 @@ func (x *FindSemanticClustersResponse) String() string {
 func (*FindSemanticClustersResponse) ProtoMessage() {}
 
 func (x *FindSemanticClustersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[63]
+	mi := &file_hyperspace_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4078,7 +4315,7 @@ func (x *FindSemanticClustersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindSemanticClustersResponse.ProtoReflect.Descriptor instead.
 func (*FindSemanticClustersResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{63}
+	return file_hyperspace_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *FindSemanticClustersResponse) GetClusters() []*GraphCluster {
@@ -4103,7 +4340,7 @@ type MetadataValue struct {
 
 func (x *MetadataValue) Reset() {
 	*x = MetadataValue{}
-	mi := &file_hyperspace_proto_msgTypes[64]
+	mi := &file_hyperspace_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4115,7 +4352,7 @@ func (x *MetadataValue) String() string {
 func (*MetadataValue) ProtoMessage() {}
 
 func (x *MetadataValue) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[64]
+	mi := &file_hyperspace_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4128,7 +4365,7 @@ func (x *MetadataValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetadataValue.ProtoReflect.Descriptor instead.
 func (*MetadataValue) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{64}
+	return file_hyperspace_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *MetadataValue) GetKind() isMetadataValue_Kind {
@@ -4212,7 +4449,7 @@ type EventSubscriptionRequest struct {
 
 func (x *EventSubscriptionRequest) Reset() {
 	*x = EventSubscriptionRequest{}
-	mi := &file_hyperspace_proto_msgTypes[65]
+	mi := &file_hyperspace_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4224,7 +4461,7 @@ func (x *EventSubscriptionRequest) String() string {
 func (*EventSubscriptionRequest) ProtoMessage() {}
 
 func (x *EventSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[65]
+	mi := &file_hyperspace_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4237,7 +4474,7 @@ func (x *EventSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*EventSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{65}
+	return file_hyperspace_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *EventSubscriptionRequest) GetTypes() []EventType {
@@ -4268,7 +4505,7 @@ type VectorInsertedEvent struct {
 
 func (x *VectorInsertedEvent) Reset() {
 	*x = VectorInsertedEvent{}
-	mi := &file_hyperspace_proto_msgTypes[66]
+	mi := &file_hyperspace_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4280,7 +4517,7 @@ func (x *VectorInsertedEvent) String() string {
 func (*VectorInsertedEvent) ProtoMessage() {}
 
 func (x *VectorInsertedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[66]
+	mi := &file_hyperspace_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4293,7 +4530,7 @@ func (x *VectorInsertedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorInsertedEvent.ProtoReflect.Descriptor instead.
 func (*VectorInsertedEvent) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{66}
+	return file_hyperspace_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *VectorInsertedEvent) GetId() uint32 {
@@ -4351,7 +4588,7 @@ type TrajectoryStepEvent struct {
 
 func (x *TrajectoryStepEvent) Reset() {
 	*x = TrajectoryStepEvent{}
-	mi := &file_hyperspace_proto_msgTypes[67]
+	mi := &file_hyperspace_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4363,7 +4600,7 @@ func (x *TrajectoryStepEvent) String() string {
 func (*TrajectoryStepEvent) ProtoMessage() {}
 
 func (x *TrajectoryStepEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[67]
+	mi := &file_hyperspace_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4376,7 +4613,7 @@ func (x *TrajectoryStepEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrajectoryStepEvent.ProtoReflect.Descriptor instead.
 func (*TrajectoryStepEvent) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{67}
+	return file_hyperspace_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *TrajectoryStepEvent) GetId() uint32 {
@@ -4426,7 +4663,7 @@ type VectorDeletedEvent struct {
 
 func (x *VectorDeletedEvent) Reset() {
 	*x = VectorDeletedEvent{}
-	mi := &file_hyperspace_proto_msgTypes[68]
+	mi := &file_hyperspace_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4438,7 +4675,7 @@ func (x *VectorDeletedEvent) String() string {
 func (*VectorDeletedEvent) ProtoMessage() {}
 
 func (x *VectorDeletedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[68]
+	mi := &file_hyperspace_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4451,7 +4688,7 @@ func (x *VectorDeletedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorDeletedEvent.ProtoReflect.Descriptor instead.
 func (*VectorDeletedEvent) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{68}
+	return file_hyperspace_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *VectorDeletedEvent) GetId() uint32 {
@@ -4497,7 +4734,7 @@ type EventMessage struct {
 
 func (x *EventMessage) Reset() {
 	*x = EventMessage{}
-	mi := &file_hyperspace_proto_msgTypes[69]
+	mi := &file_hyperspace_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4509,7 +4746,7 @@ func (x *EventMessage) String() string {
 func (*EventMessage) ProtoMessage() {}
 
 func (x *EventMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[69]
+	mi := &file_hyperspace_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4522,7 +4759,7 @@ func (x *EventMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventMessage.ProtoReflect.Descriptor instead.
 func (*EventMessage) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{69}
+	return file_hyperspace_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *EventMessage) GetType() EventType {
@@ -4596,7 +4833,7 @@ type Empty struct {
 
 func (x *Empty) Reset() {
 	*x = Empty{}
-	mi := &file_hyperspace_proto_msgTypes[70]
+	mi := &file_hyperspace_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4608,7 +4845,7 @@ func (x *Empty) String() string {
 func (*Empty) ProtoMessage() {}
 
 func (x *Empty) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[70]
+	mi := &file_hyperspace_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4621,7 +4858,7 @@ func (x *Empty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Empty.ProtoReflect.Descriptor instead.
 func (*Empty) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{70}
+	return file_hyperspace_proto_rawDescGZIP(), []int{73}
 }
 
 type StatusResponse struct {
@@ -4633,7 +4870,7 @@ type StatusResponse struct {
 
 func (x *StatusResponse) Reset() {
 	*x = StatusResponse{}
-	mi := &file_hyperspace_proto_msgTypes[71]
+	mi := &file_hyperspace_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4645,7 +4882,7 @@ func (x *StatusResponse) String() string {
 func (*StatusResponse) ProtoMessage() {}
 
 func (x *StatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[71]
+	mi := &file_hyperspace_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4658,7 +4895,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{71}
+	return file_hyperspace_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *StatusResponse) GetStatus() string {
@@ -4676,7 +4913,7 @@ type MonitorRequest struct {
 
 func (x *MonitorRequest) Reset() {
 	*x = MonitorRequest{}
-	mi := &file_hyperspace_proto_msgTypes[72]
+	mi := &file_hyperspace_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4688,7 +4925,7 @@ func (x *MonitorRequest) String() string {
 func (*MonitorRequest) ProtoMessage() {}
 
 func (x *MonitorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[72]
+	mi := &file_hyperspace_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4701,7 +4938,7 @@ func (x *MonitorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitorRequest.ProtoReflect.Descriptor instead.
 func (*MonitorRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{72}
+	return file_hyperspace_proto_rawDescGZIP(), []int{75}
 }
 
 type SystemStats struct {
@@ -4716,7 +4953,7 @@ type SystemStats struct {
 
 func (x *SystemStats) Reset() {
 	*x = SystemStats{}
-	mi := &file_hyperspace_proto_msgTypes[73]
+	mi := &file_hyperspace_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4728,7 +4965,7 @@ func (x *SystemStats) String() string {
 func (*SystemStats) ProtoMessage() {}
 
 func (x *SystemStats) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[73]
+	mi := &file_hyperspace_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4741,7 +4978,7 @@ func (x *SystemStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemStats.ProtoReflect.Descriptor instead.
 func (*SystemStats) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{73}
+	return file_hyperspace_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *SystemStats) GetTotalCollections() uint64 {
@@ -4781,7 +5018,7 @@ type DigestRequest struct {
 
 func (x *DigestRequest) Reset() {
 	*x = DigestRequest{}
-	mi := &file_hyperspace_proto_msgTypes[74]
+	mi := &file_hyperspace_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4793,7 +5030,7 @@ func (x *DigestRequest) String() string {
 func (*DigestRequest) ProtoMessage() {}
 
 func (x *DigestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[74]
+	mi := &file_hyperspace_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4806,7 +5043,7 @@ func (x *DigestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DigestRequest.ProtoReflect.Descriptor instead.
 func (*DigestRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{74}
+	return file_hyperspace_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *DigestRequest) GetCollection() string {
@@ -4828,7 +5065,7 @@ type DigestResponse struct {
 
 func (x *DigestResponse) Reset() {
 	*x = DigestResponse{}
-	mi := &file_hyperspace_proto_msgTypes[75]
+	mi := &file_hyperspace_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4840,7 +5077,7 @@ func (x *DigestResponse) String() string {
 func (*DigestResponse) ProtoMessage() {}
 
 func (x *DigestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[75]
+	mi := &file_hyperspace_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4853,7 +5090,7 @@ func (x *DigestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DigestResponse.ProtoReflect.Descriptor instead.
 func (*DigestResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{75}
+	return file_hyperspace_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *DigestResponse) GetLogicalClock() uint64 {
@@ -4897,7 +5134,7 @@ type SyncHandshakeRequest struct {
 
 func (x *SyncHandshakeRequest) Reset() {
 	*x = SyncHandshakeRequest{}
-	mi := &file_hyperspace_proto_msgTypes[76]
+	mi := &file_hyperspace_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4909,7 +5146,7 @@ func (x *SyncHandshakeRequest) String() string {
 func (*SyncHandshakeRequest) ProtoMessage() {}
 
 func (x *SyncHandshakeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[76]
+	mi := &file_hyperspace_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4922,7 +5159,7 @@ func (x *SyncHandshakeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncHandshakeRequest.ProtoReflect.Descriptor instead.
 func (*SyncHandshakeRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{76}
+	return file_hyperspace_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *SyncHandshakeRequest) GetCollection() string {
@@ -4964,7 +5201,7 @@ type DiffBucket struct {
 
 func (x *DiffBucket) Reset() {
 	*x = DiffBucket{}
-	mi := &file_hyperspace_proto_msgTypes[77]
+	mi := &file_hyperspace_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4976,7 +5213,7 @@ func (x *DiffBucket) String() string {
 func (*DiffBucket) ProtoMessage() {}
 
 func (x *DiffBucket) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[77]
+	mi := &file_hyperspace_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4989,7 +5226,7 @@ func (x *DiffBucket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffBucket.ProtoReflect.Descriptor instead.
 func (*DiffBucket) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{77}
+	return file_hyperspace_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *DiffBucket) GetBucketIndex() uint32 {
@@ -5029,7 +5266,7 @@ type SyncHandshakeResponse struct {
 
 func (x *SyncHandshakeResponse) Reset() {
 	*x = SyncHandshakeResponse{}
-	mi := &file_hyperspace_proto_msgTypes[78]
+	mi := &file_hyperspace_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5041,7 +5278,7 @@ func (x *SyncHandshakeResponse) String() string {
 func (*SyncHandshakeResponse) ProtoMessage() {}
 
 func (x *SyncHandshakeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[78]
+	mi := &file_hyperspace_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5054,7 +5291,7 @@ func (x *SyncHandshakeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncHandshakeResponse.ProtoReflect.Descriptor instead.
 func (*SyncHandshakeResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{78}
+	return file_hyperspace_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *SyncHandshakeResponse) GetDiffBuckets() []*DiffBucket {
@@ -5096,7 +5333,7 @@ type SyncPullRequest struct {
 
 func (x *SyncPullRequest) Reset() {
 	*x = SyncPullRequest{}
-	mi := &file_hyperspace_proto_msgTypes[79]
+	mi := &file_hyperspace_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5108,7 +5345,7 @@ func (x *SyncPullRequest) String() string {
 func (*SyncPullRequest) ProtoMessage() {}
 
 func (x *SyncPullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[79]
+	mi := &file_hyperspace_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5121,7 +5358,7 @@ func (x *SyncPullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncPullRequest.ProtoReflect.Descriptor instead.
 func (*SyncPullRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{79}
+	return file_hyperspace_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *SyncPullRequest) GetCollection() string {
@@ -5152,7 +5389,7 @@ type SyncVectorData struct {
 
 func (x *SyncVectorData) Reset() {
 	*x = SyncVectorData{}
-	mi := &file_hyperspace_proto_msgTypes[80]
+	mi := &file_hyperspace_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5164,7 +5401,7 @@ func (x *SyncVectorData) String() string {
 func (*SyncVectorData) ProtoMessage() {}
 
 func (x *SyncVectorData) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[80]
+	mi := &file_hyperspace_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5177,7 +5414,7 @@ func (x *SyncVectorData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncVectorData.ProtoReflect.Descriptor instead.
 func (*SyncVectorData) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{80}
+	return file_hyperspace_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *SyncVectorData) GetCollection() string {
@@ -5226,7 +5463,7 @@ type SyncPushResponse struct {
 
 func (x *SyncPushResponse) Reset() {
 	*x = SyncPushResponse{}
-	mi := &file_hyperspace_proto_msgTypes[81]
+	mi := &file_hyperspace_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5238,7 +5475,7 @@ func (x *SyncPushResponse) String() string {
 func (*SyncPushResponse) ProtoMessage() {}
 
 func (x *SyncPushResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[81]
+	mi := &file_hyperspace_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5251,7 +5488,7 @@ func (x *SyncPushResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncPushResponse.ProtoReflect.Descriptor instead.
 func (*SyncPushResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{81}
+	return file_hyperspace_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *SyncPushResponse) GetAccepted() uint32 {
@@ -5304,22 +5541,36 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
 	"\x12TypedMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
-	"\x05value\x18\x02 \x01(\v2\x19.hyperspace.MetadataValueR\x05value:\x028\x01\"J\n" +
-	"\x12CreateCollectionOp\x12\x1c\n" +
-	"\tdimension\x18\x01 \x01(\rR\tdimension\x12\x16\n" +
-	"\x06metric\x18\x02 \x01(\tR\x06metric\"\x14\n" +
+	"\x05value\x18\x02 \x01(\v2\x19.hyperspace.MetadataValueR\x05value:\x028\x01\"f\n" +
+	"\x12CreateCollectionOp\x129\n" +
+	"\x06schema\x18\x03 \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01B\t\n" +
+	"\a_schemaJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03\"\x14\n" +
 	"\x12DeleteCollectionOp\"\x1a\n" +
 	"\bDeleteOp\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\"F\n" +
 	"\x12QuantizationConfig\x120\n" +
-	"\x04mode\x18\x01 \x01(\x0e2\x1c.hyperspace.QuantizationModeR\x04mode\"\xa4\x01\n" +
+	"\x04mode\x18\x01 \x01(\x0e2\x1c.hyperspace.QuantizationModeR\x04mode\"\x85\x01\n" +
 	"\x17CreateCollectionRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
-	"\tdimension\x18\x02 \x01(\rR\tdimension\x12\x16\n" +
-	"\x06metric\x18\x03 \x01(\tR\x06metric\x12?\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x129\n" +
+	"\x06schema\x18\x05 \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01B\t\n" +
+	"\a_schemaJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"|\n" +
+	"\x0fVectorComponent\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06metric\x18\x02 \x01(\tR\x06metric\x12%\n" +
+	"\x0efull_dimension\x18\x03 \x01(\rR\rfullDimension\x12\x16\n" +
+	"\x06weight\x18\x04 \x01(\x02R\x06weight\"\xa0\x01\n" +
+	"\bMrlLayer\x12%\n" +
+	"\x0ecomponent_name\x18\x01 \x01(\tR\rcomponentName\x12)\n" +
+	"\x10cutoff_dimension\x18\x02 \x01(\rR\x0fcutoffDimension\x12 \n" +
+	"\fstore_in_ram\x18\x03 \x01(\bR\n" +
+	"storeInRam\x12 \n" +
+	"\frerank_top_k\x18\x04 \x01(\rR\n" +
+	"rerankTopK\"\x90\x01\n" +
+	"\x10CollectionSchema\x12;\n" +
 	"\n" +
-	"components\x18\x04 \x03(\v2\x1f.hyperspace.CollectionComponentR\n" +
-	"components\"\x89\x01\n" +
+	"components\x18\x01 \x03(\v2\x1b.hyperspace.VectorComponentR\n" +
+	"components\x12?\n" +
+	"\x10cascade_pipeline\x18\x02 \x03(\v2\x14.hyperspace.MrlLayerR\x0fcascadePipeline\"\x89\x01\n" +
 	"\x13CollectionComponent\x12\x14\n" +
 	"\x05space\x18\x01 \x01(\tR\x05space\x12\x1c\n" +
 	"\tdimension\x18\x02 \x01(\rR\tdimension\x12\x16\n" +
@@ -5327,34 +5578,39 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x06weight\x18\x04 \x01(\x02H\x00R\x06weight\x88\x01\x01B\t\n" +
 	"\a_weight\"-\n" +
 	"\x17DeleteCollectionRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x8f\x01\n" +
 	"\x11CollectionSummary\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x04R\x05count\x12\x1c\n" +
-	"\tdimension\x18\x03 \x01(\rR\tdimension\x12\x16\n" +
-	"\x06metric\x18\x04 \x01(\tR\x06metric\"Z\n" +
+	"\x05count\x18\x02 \x01(\x04R\x05count\x129\n" +
+	"\x06schema\x18\x05 \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01B\t\n" +
+	"\a_schemaJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"Z\n" +
 	"\x17ListCollectionsResponse\x12?\n" +
 	"\vcollections\x18\x01 \x03(\v2\x1d.hyperspace.CollectionSummaryR\vcollections\",\n" +
 	"\x16CollectionStatsRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x8c\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x9d\x02\n" +
 	"\x17CollectionStatsResponse\x12\x14\n" +
-	"\x05count\x18\x01 \x01(\x04R\x05count\x12\x1c\n" +
-	"\tdimension\x18\x02 \x01(\rR\tdimension\x12\x16\n" +
-	"\x06metric\x18\x03 \x01(\tR\x06metric\x12%\n" +
-	"\x0eindexing_queue\x18\x04 \x01(\x04R\rindexingQueue\"\x81\x01\n" +
+	"\x05count\x18\x01 \x01(\x04R\x05count\x12%\n" +
+	"\x0eindexing_queue\x18\x04 \x01(\x04R\rindexingQueue\x12(\n" +
+	"\x10disk_usage_bytes\x18\x05 \x01(\x04R\x0ediskUsageBytes\x12&\n" +
+	"\x0fram_usage_bytes\x18\x06 \x01(\x04R\rramUsageBytes\x12!\n" +
+	"\factive_tasks\x18\a \x01(\x04R\vactiveTasks\x129\n" +
+	"\x06schema\x18\b \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01B\t\n" +
+	"\a_schemaJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04\"\x81\x01\n" +
 	"\x13RebuildIndexRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12E\n" +
 	"\ffilter_query\x18\x02 \x01(\v2\x1d.hyperspace.VacuumFilterQueryH\x00R\vfilterQuery\x88\x01\x01B\x0f\n" +
-	"\r_filter_query\"\xa0\x01\n" +
+	"\r_filter_query\"\xb9\x01\n" +
 	"\fConfigUpdate\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
 	"collection\x12 \n" +
 	"\tef_search\x18\x02 \x01(\rH\x00R\befSearch\x88\x01\x01\x12,\n" +
-	"\x0fef_construction\x18\x03 \x01(\rH\x01R\x0eefConstruction\x88\x01\x01B\f\n" +
+	"\x0fef_construction\x18\x03 \x01(\rH\x01R\x0eefConstruction\x88\x01\x01\x12\x11\n" +
+	"\x01m\x18\x04 \x01(\rH\x02R\x01m\x88\x01\x01B\f\n" +
 	"\n" +
 	"_ef_searchB\x12\n" +
-	"\x10_ef_construction\"K\n" +
+	"\x10_ef_constructionB\x04\n" +
+	"\x02_m\"K\n" +
 	"\x11VacuumFilterQuery\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x0e\n" +
 	"\x02op\x18\x02 \x01(\tR\x02op\x12\x14\n" +
@@ -5364,7 +5620,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"collection\x18\x01 \x01(\tR\n" +
 	"collection\x12#\n" +
 	"\rtarget_vector\x18\x02 \x03(\x01R\ftargetVector\x12#\n" +
-	"\rlearning_rate\x18\x03 \x01(\x01R\flearningRate\"\x93\x04\n" +
+	"\rlearning_rate\x18\x03 \x01(\x01R\flearningRate\"\xbe\x04\n" +
 	"\rInsertRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -5377,13 +5633,16 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\n" +
 	"durability\x18\a \x01(\x0e2\x1b.hyperspace.DurabilityLevelR\n" +
 	"durability\x12S\n" +
-	"\x0etyped_metadata\x18\b \x03(\v2,.hyperspace.InsertRequest.TypedMetadataEntryR\rtypedMetadata\x1a;\n" +
+	"\x0etyped_metadata\x18\b \x03(\v2,.hyperspace.InsertRequest.TypedMetadataEntryR\rtypedMetadata\x12\x1d\n" +
+	"\apayload\x18\t \x01(\fH\x00R\apayload\x88\x01\x01\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
 	"\x12TypedMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
-	"\x05value\x18\x02 \x01(\v2\x19.hyperspace.MetadataValueR\x05value:\x028\x01\"\xe2\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x19.hyperspace.MetadataValueR\x05value:\x028\x01B\n" +
+	"\n" +
+	"\b_payload\"\xe2\x02\n" +
 	"\n" +
 	"VectorData\x12\x16\n" +
 	"\x06vector\x18\x01 \x03(\x01R\x06vector\x12\x0e\n" +
@@ -5423,7 +5682,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x16\n" +
 	"\x06metric\x18\x02 \x01(\tR\x06metric\"+\n" +
 	"\x11VectorizeResponse\x12\x16\n" +
-	"\x06vector\x18\x01 \x03(\x01R\x06vector\"\x93\x03\n" +
+	"\x06vector\x18\x01 \x03(\x01R\x06vector\"\xe3\x04\n" +
 	"\x11SearchTextRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -5433,10 +5692,15 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x06filter\x18\x04 \x03(\v2).hyperspace.SearchTextRequest.FilterEntryR\x06filter\x12,\n" +
 	"\afilters\x18\x05 \x03(\v2\x12.hyperspace.FilterR\afilters\x12?\n" +
 	"\fbm25_options\x18\x06 \x01(\v2\x17.hyperspace.Bm25OptionsH\x00R\vbm25Options\x88\x01\x01\x12&\n" +
-	"\fhybrid_alpha\x18\a \x01(\x02H\x01R\vhybridAlpha\x88\x01\x01\x1a9\n" +
+	"\fhybrid_alpha\x18\a \x01(\x02H\x01R\vhybridAlpha\x88\x01\x01\x12'\n" +
+	"\x0finclude_payload\x18\b \x01(\bR\x0eincludePayload\x12`\n" +
+	"\x11component_weights\x18\t \x03(\v23.hyperspace.SearchTextRequest.ComponentWeightsEntryR\x10componentWeights\x1a9\n" +
 	"\vFilterEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
+	"\x15ComponentWeightsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x02R\x05value:\x028\x01B\x0f\n" +
 	"\r_bm25_optionsB\x0f\n" +
 	"\r_hybrid_alpha\"\xa1\x02\n" +
 	"\vBm25Options\x12\x1b\n" +
@@ -5500,7 +5764,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rCountResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x04R\x05count\"-\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\"\xad\x04\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"\xf9\x05\n" +
 	"\rSearchRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -5514,10 +5778,15 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x0fuse_wasserstein\x18\b \x01(\bR\x0euseWasserstein\x12?\n" +
 	"\fbm25_options\x18\t \x01(\v2\x17.hyperspace.Bm25OptionsH\x02R\vbm25Options\x88\x01\x01\x12(\n" +
 	"\rmrl_dimension\x18\n" +
-	" \x01(\rH\x03R\fmrlDimension\x88\x01\x01\x1a9\n" +
+	" \x01(\rH\x03R\fmrlDimension\x88\x01\x01\x12'\n" +
+	"\x0finclude_payload\x18\v \x01(\bR\x0eincludePayload\x12\\\n" +
+	"\x11component_weights\x18\f \x03(\v2/.hyperspace.SearchRequest.ComponentWeightsEntryR\x10componentWeights\x1a9\n" +
 	"\vFilterEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
+	"\x15ComponentWeightsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x02R\x05value:\x028\x01B\x0f\n" +
 	"\r_hybrid_queryB\x0f\n" +
 	"\r_hybrid_alphaB\x0f\n" +
 	"\r_bm25_optionsB\x10\n" +
@@ -5583,18 +5852,21 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\tresponses\x18\x01 \x03(\v28.hyperspace.SearchMultiCollectionResponse.ResponsesEntryR\tresponses\x1aX\n" +
 	"\x0eResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
-	"\x05value\x18\x02 \x01(\v2\x1a.hyperspace.SearchResponseR\x05value:\x028\x01\"\xec\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x1a.hyperspace.SearchResponseR\x05value:\x028\x01\"\x97\x03\n" +
 	"\fSearchResult\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1a\n" +
 	"\bdistance\x18\x02 \x01(\x01R\bdistance\x12B\n" +
 	"\bmetadata\x18\x03 \x03(\v2&.hyperspace.SearchResult.MetadataEntryR\bmetadata\x12R\n" +
-	"\x0etyped_metadata\x18\x04 \x03(\v2+.hyperspace.SearchResult.TypedMetadataEntryR\rtypedMetadata\x1a;\n" +
+	"\x0etyped_metadata\x18\x04 \x03(\v2+.hyperspace.SearchResult.TypedMetadataEntryR\rtypedMetadata\x12\x1d\n" +
+	"\apayload\x18\x05 \x01(\fH\x00R\apayload\x88\x01\x01\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
 	"\x12TypedMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
-	"\x05value\x18\x02 \x01(\v2\x19.hyperspace.MetadataValueR\x05value:\x028\x01\"V\n" +
+	"\x05value\x18\x02 \x01(\v2\x19.hyperspace.MetadataValueR\x05value:\x028\x01B\n" +
+	"\n" +
+	"\b_payload\"V\n" +
 	"\x0eGetNodeRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -5838,7 +6110,7 @@ func file_hyperspace_proto_rawDescGZIP() []byte {
 }
 
 var file_hyperspace_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_hyperspace_proto_msgTypes = make([]protoimpl.MessageInfo, 103)
+var file_hyperspace_proto_msgTypes = make([]protoimpl.MessageInfo, 108)
 var file_hyperspace_proto_goTypes = []any{
 	(QuantizationMode)(0),                 // 0: hyperspace.QuantizationMode
 	(DurabilityLevel)(0),                  // 1: hyperspace.DurabilityLevel
@@ -5851,252 +6123,264 @@ var file_hyperspace_proto_goTypes = []any{
 	(*DeleteOp)(nil),                      // 8: hyperspace.DeleteOp
 	(*QuantizationConfig)(nil),            // 9: hyperspace.QuantizationConfig
 	(*CreateCollectionRequest)(nil),       // 10: hyperspace.CreateCollectionRequest
-	(*CollectionComponent)(nil),           // 11: hyperspace.CollectionComponent
-	(*DeleteCollectionRequest)(nil),       // 12: hyperspace.DeleteCollectionRequest
-	(*CollectionSummary)(nil),             // 13: hyperspace.CollectionSummary
-	(*ListCollectionsResponse)(nil),       // 14: hyperspace.ListCollectionsResponse
-	(*CollectionStatsRequest)(nil),        // 15: hyperspace.CollectionStatsRequest
-	(*CollectionStatsResponse)(nil),       // 16: hyperspace.CollectionStatsResponse
-	(*RebuildIndexRequest)(nil),           // 17: hyperspace.RebuildIndexRequest
-	(*ConfigUpdate)(nil),                  // 18: hyperspace.ConfigUpdate
-	(*VacuumFilterQuery)(nil),             // 19: hyperspace.VacuumFilterQuery
-	(*ReconsolidationRequest)(nil),        // 20: hyperspace.ReconsolidationRequest
-	(*InsertRequest)(nil),                 // 21: hyperspace.InsertRequest
-	(*VectorData)(nil),                    // 22: hyperspace.VectorData
-	(*BatchInsertRequest)(nil),            // 23: hyperspace.BatchInsertRequest
-	(*InsertTextRequest)(nil),             // 24: hyperspace.InsertTextRequest
-	(*VectorizeRequest)(nil),              // 25: hyperspace.VectorizeRequest
-	(*VectorizeResponse)(nil),             // 26: hyperspace.VectorizeResponse
-	(*SearchTextRequest)(nil),             // 27: hyperspace.SearchTextRequest
-	(*Bm25Options)(nil),                   // 28: hyperspace.Bm25Options
-	(*InsertResponse)(nil),                // 29: hyperspace.InsertResponse
-	(*DeleteRequest)(nil),                 // 30: hyperspace.DeleteRequest
-	(*DeleteResponse)(nil),                // 31: hyperspace.DeleteResponse
-	(*GetPointsRequest)(nil),              // 32: hyperspace.GetPointsRequest
-	(*GetPointsResponse)(nil),             // 33: hyperspace.GetPointsResponse
-	(*UpdatePayloadRequest)(nil),          // 34: hyperspace.UpdatePayloadRequest
-	(*ScrollRequest)(nil),                 // 35: hyperspace.ScrollRequest
-	(*ScrollResponse)(nil),                // 36: hyperspace.ScrollResponse
-	(*CountRequest)(nil),                  // 37: hyperspace.CountRequest
-	(*CountResponse)(nil),                 // 38: hyperspace.CountResponse
-	(*HealthCheckResponse)(nil),           // 39: hyperspace.HealthCheckResponse
-	(*SearchRequest)(nil),                 // 40: hyperspace.SearchRequest
-	(*Filter)(nil),                        // 41: hyperspace.Filter
-	(*FilterAnd)(nil),                     // 42: hyperspace.FilterAnd
-	(*FilterOr)(nil),                      // 43: hyperspace.FilterOr
-	(*FilterNot)(nil),                     // 44: hyperspace.FilterNot
-	(*Match)(nil),                         // 45: hyperspace.Match
-	(*Range)(nil),                         // 46: hyperspace.Range
-	(*InCone)(nil),                        // 47: hyperspace.InCone
-	(*InBox)(nil),                         // 48: hyperspace.InBox
-	(*InBall)(nil),                        // 49: hyperspace.InBall
-	(*SearchResponse)(nil),                // 50: hyperspace.SearchResponse
-	(*BatchSearchRequest)(nil),            // 51: hyperspace.BatchSearchRequest
-	(*BatchSearchResponse)(nil),           // 52: hyperspace.BatchSearchResponse
-	(*SearchMultiCollectionRequest)(nil),  // 53: hyperspace.SearchMultiCollectionRequest
-	(*SearchMultiCollectionResponse)(nil), // 54: hyperspace.SearchMultiCollectionResponse
-	(*SearchResult)(nil),                  // 55: hyperspace.SearchResult
-	(*GetNodeRequest)(nil),                // 56: hyperspace.GetNodeRequest
-	(*GraphNode)(nil),                     // 57: hyperspace.GraphNode
-	(*GetNeighborsRequest)(nil),           // 58: hyperspace.GetNeighborsRequest
-	(*GetNeighborsResponse)(nil),          // 59: hyperspace.GetNeighborsResponse
-	(*TraverseRequest)(nil),               // 60: hyperspace.TraverseRequest
-	(*TraverseResponse)(nil),              // 61: hyperspace.TraverseResponse
-	(*FindSemanticClustersRequest)(nil),   // 62: hyperspace.FindSemanticClustersRequest
-	(*GetConceptParentsRequest)(nil),      // 63: hyperspace.GetConceptParentsRequest
-	(*GetConceptParentsResponse)(nil),     // 64: hyperspace.GetConceptParentsResponse
-	(*GraphCluster)(nil),                  // 65: hyperspace.GraphCluster
-	(*FindSemanticClustersResponse)(nil),  // 66: hyperspace.FindSemanticClustersResponse
-	(*MetadataValue)(nil),                 // 67: hyperspace.MetadataValue
-	(*EventSubscriptionRequest)(nil),      // 68: hyperspace.EventSubscriptionRequest
-	(*VectorInsertedEvent)(nil),           // 69: hyperspace.VectorInsertedEvent
-	(*TrajectoryStepEvent)(nil),           // 70: hyperspace.TrajectoryStepEvent
-	(*VectorDeletedEvent)(nil),            // 71: hyperspace.VectorDeletedEvent
-	(*EventMessage)(nil),                  // 72: hyperspace.EventMessage
-	(*Empty)(nil),                         // 73: hyperspace.Empty
-	(*StatusResponse)(nil),                // 74: hyperspace.StatusResponse
-	(*MonitorRequest)(nil),                // 75: hyperspace.MonitorRequest
-	(*SystemStats)(nil),                   // 76: hyperspace.SystemStats
-	(*DigestRequest)(nil),                 // 77: hyperspace.DigestRequest
-	(*DigestResponse)(nil),                // 78: hyperspace.DigestResponse
-	(*SyncHandshakeRequest)(nil),          // 79: hyperspace.SyncHandshakeRequest
-	(*DiffBucket)(nil),                    // 80: hyperspace.DiffBucket
-	(*SyncHandshakeResponse)(nil),         // 81: hyperspace.SyncHandshakeResponse
-	(*SyncPullRequest)(nil),               // 82: hyperspace.SyncPullRequest
-	(*SyncVectorData)(nil),                // 83: hyperspace.SyncVectorData
-	(*SyncPushResponse)(nil),              // 84: hyperspace.SyncPushResponse
-	nil,                                   // 85: hyperspace.InsertOp.MetadataEntry
-	nil,                                   // 86: hyperspace.InsertOp.TypedMetadataEntry
-	nil,                                   // 87: hyperspace.InsertRequest.MetadataEntry
-	nil,                                   // 88: hyperspace.InsertRequest.TypedMetadataEntry
-	nil,                                   // 89: hyperspace.VectorData.MetadataEntry
-	nil,                                   // 90: hyperspace.VectorData.TypedMetadataEntry
-	nil,                                   // 91: hyperspace.InsertTextRequest.MetadataEntry
-	nil,                                   // 92: hyperspace.SearchTextRequest.FilterEntry
-	nil,                                   // 93: hyperspace.UpdatePayloadRequest.MetadataEntry
-	nil,                                   // 94: hyperspace.UpdatePayloadRequest.TypedMetadataEntry
-	nil,                                   // 95: hyperspace.SearchRequest.FilterEntry
-	nil,                                   // 96: hyperspace.SearchMultiCollectionResponse.ResponsesEntry
-	nil,                                   // 97: hyperspace.SearchResult.MetadataEntry
-	nil,                                   // 98: hyperspace.SearchResult.TypedMetadataEntry
-	nil,                                   // 99: hyperspace.GraphNode.MetadataEntry
-	nil,                                   // 100: hyperspace.GraphNode.TypedMetadataEntry
-	nil,                                   // 101: hyperspace.TraverseRequest.FilterEntry
-	nil,                                   // 102: hyperspace.VectorInsertedEvent.MetadataEntry
-	nil,                                   // 103: hyperspace.VectorInsertedEvent.TypedMetadataEntry
-	nil,                                   // 104: hyperspace.TrajectoryStepEvent.MetadataEntry
-	nil,                                   // 105: hyperspace.SyncVectorData.MetadataEntry
+	(*VectorComponent)(nil),               // 11: hyperspace.VectorComponent
+	(*MrlLayer)(nil),                      // 12: hyperspace.MrlLayer
+	(*CollectionSchema)(nil),              // 13: hyperspace.CollectionSchema
+	(*CollectionComponent)(nil),           // 14: hyperspace.CollectionComponent
+	(*DeleteCollectionRequest)(nil),       // 15: hyperspace.DeleteCollectionRequest
+	(*CollectionSummary)(nil),             // 16: hyperspace.CollectionSummary
+	(*ListCollectionsResponse)(nil),       // 17: hyperspace.ListCollectionsResponse
+	(*CollectionStatsRequest)(nil),        // 18: hyperspace.CollectionStatsRequest
+	(*CollectionStatsResponse)(nil),       // 19: hyperspace.CollectionStatsResponse
+	(*RebuildIndexRequest)(nil),           // 20: hyperspace.RebuildIndexRequest
+	(*ConfigUpdate)(nil),                  // 21: hyperspace.ConfigUpdate
+	(*VacuumFilterQuery)(nil),             // 22: hyperspace.VacuumFilterQuery
+	(*ReconsolidationRequest)(nil),        // 23: hyperspace.ReconsolidationRequest
+	(*InsertRequest)(nil),                 // 24: hyperspace.InsertRequest
+	(*VectorData)(nil),                    // 25: hyperspace.VectorData
+	(*BatchInsertRequest)(nil),            // 26: hyperspace.BatchInsertRequest
+	(*InsertTextRequest)(nil),             // 27: hyperspace.InsertTextRequest
+	(*VectorizeRequest)(nil),              // 28: hyperspace.VectorizeRequest
+	(*VectorizeResponse)(nil),             // 29: hyperspace.VectorizeResponse
+	(*SearchTextRequest)(nil),             // 30: hyperspace.SearchTextRequest
+	(*Bm25Options)(nil),                   // 31: hyperspace.Bm25Options
+	(*InsertResponse)(nil),                // 32: hyperspace.InsertResponse
+	(*DeleteRequest)(nil),                 // 33: hyperspace.DeleteRequest
+	(*DeleteResponse)(nil),                // 34: hyperspace.DeleteResponse
+	(*GetPointsRequest)(nil),              // 35: hyperspace.GetPointsRequest
+	(*GetPointsResponse)(nil),             // 36: hyperspace.GetPointsResponse
+	(*UpdatePayloadRequest)(nil),          // 37: hyperspace.UpdatePayloadRequest
+	(*ScrollRequest)(nil),                 // 38: hyperspace.ScrollRequest
+	(*ScrollResponse)(nil),                // 39: hyperspace.ScrollResponse
+	(*CountRequest)(nil),                  // 40: hyperspace.CountRequest
+	(*CountResponse)(nil),                 // 41: hyperspace.CountResponse
+	(*HealthCheckResponse)(nil),           // 42: hyperspace.HealthCheckResponse
+	(*SearchRequest)(nil),                 // 43: hyperspace.SearchRequest
+	(*Filter)(nil),                        // 44: hyperspace.Filter
+	(*FilterAnd)(nil),                     // 45: hyperspace.FilterAnd
+	(*FilterOr)(nil),                      // 46: hyperspace.FilterOr
+	(*FilterNot)(nil),                     // 47: hyperspace.FilterNot
+	(*Match)(nil),                         // 48: hyperspace.Match
+	(*Range)(nil),                         // 49: hyperspace.Range
+	(*InCone)(nil),                        // 50: hyperspace.InCone
+	(*InBox)(nil),                         // 51: hyperspace.InBox
+	(*InBall)(nil),                        // 52: hyperspace.InBall
+	(*SearchResponse)(nil),                // 53: hyperspace.SearchResponse
+	(*BatchSearchRequest)(nil),            // 54: hyperspace.BatchSearchRequest
+	(*BatchSearchResponse)(nil),           // 55: hyperspace.BatchSearchResponse
+	(*SearchMultiCollectionRequest)(nil),  // 56: hyperspace.SearchMultiCollectionRequest
+	(*SearchMultiCollectionResponse)(nil), // 57: hyperspace.SearchMultiCollectionResponse
+	(*SearchResult)(nil),                  // 58: hyperspace.SearchResult
+	(*GetNodeRequest)(nil),                // 59: hyperspace.GetNodeRequest
+	(*GraphNode)(nil),                     // 60: hyperspace.GraphNode
+	(*GetNeighborsRequest)(nil),           // 61: hyperspace.GetNeighborsRequest
+	(*GetNeighborsResponse)(nil),          // 62: hyperspace.GetNeighborsResponse
+	(*TraverseRequest)(nil),               // 63: hyperspace.TraverseRequest
+	(*TraverseResponse)(nil),              // 64: hyperspace.TraverseResponse
+	(*FindSemanticClustersRequest)(nil),   // 65: hyperspace.FindSemanticClustersRequest
+	(*GetConceptParentsRequest)(nil),      // 66: hyperspace.GetConceptParentsRequest
+	(*GetConceptParentsResponse)(nil),     // 67: hyperspace.GetConceptParentsResponse
+	(*GraphCluster)(nil),                  // 68: hyperspace.GraphCluster
+	(*FindSemanticClustersResponse)(nil),  // 69: hyperspace.FindSemanticClustersResponse
+	(*MetadataValue)(nil),                 // 70: hyperspace.MetadataValue
+	(*EventSubscriptionRequest)(nil),      // 71: hyperspace.EventSubscriptionRequest
+	(*VectorInsertedEvent)(nil),           // 72: hyperspace.VectorInsertedEvent
+	(*TrajectoryStepEvent)(nil),           // 73: hyperspace.TrajectoryStepEvent
+	(*VectorDeletedEvent)(nil),            // 74: hyperspace.VectorDeletedEvent
+	(*EventMessage)(nil),                  // 75: hyperspace.EventMessage
+	(*Empty)(nil),                         // 76: hyperspace.Empty
+	(*StatusResponse)(nil),                // 77: hyperspace.StatusResponse
+	(*MonitorRequest)(nil),                // 78: hyperspace.MonitorRequest
+	(*SystemStats)(nil),                   // 79: hyperspace.SystemStats
+	(*DigestRequest)(nil),                 // 80: hyperspace.DigestRequest
+	(*DigestResponse)(nil),                // 81: hyperspace.DigestResponse
+	(*SyncHandshakeRequest)(nil),          // 82: hyperspace.SyncHandshakeRequest
+	(*DiffBucket)(nil),                    // 83: hyperspace.DiffBucket
+	(*SyncHandshakeResponse)(nil),         // 84: hyperspace.SyncHandshakeResponse
+	(*SyncPullRequest)(nil),               // 85: hyperspace.SyncPullRequest
+	(*SyncVectorData)(nil),                // 86: hyperspace.SyncVectorData
+	(*SyncPushResponse)(nil),              // 87: hyperspace.SyncPushResponse
+	nil,                                   // 88: hyperspace.InsertOp.MetadataEntry
+	nil,                                   // 89: hyperspace.InsertOp.TypedMetadataEntry
+	nil,                                   // 90: hyperspace.InsertRequest.MetadataEntry
+	nil,                                   // 91: hyperspace.InsertRequest.TypedMetadataEntry
+	nil,                                   // 92: hyperspace.VectorData.MetadataEntry
+	nil,                                   // 93: hyperspace.VectorData.TypedMetadataEntry
+	nil,                                   // 94: hyperspace.InsertTextRequest.MetadataEntry
+	nil,                                   // 95: hyperspace.SearchTextRequest.FilterEntry
+	nil,                                   // 96: hyperspace.SearchTextRequest.ComponentWeightsEntry
+	nil,                                   // 97: hyperspace.UpdatePayloadRequest.MetadataEntry
+	nil,                                   // 98: hyperspace.UpdatePayloadRequest.TypedMetadataEntry
+	nil,                                   // 99: hyperspace.SearchRequest.FilterEntry
+	nil,                                   // 100: hyperspace.SearchRequest.ComponentWeightsEntry
+	nil,                                   // 101: hyperspace.SearchMultiCollectionResponse.ResponsesEntry
+	nil,                                   // 102: hyperspace.SearchResult.MetadataEntry
+	nil,                                   // 103: hyperspace.SearchResult.TypedMetadataEntry
+	nil,                                   // 104: hyperspace.GraphNode.MetadataEntry
+	nil,                                   // 105: hyperspace.GraphNode.TypedMetadataEntry
+	nil,                                   // 106: hyperspace.TraverseRequest.FilterEntry
+	nil,                                   // 107: hyperspace.VectorInsertedEvent.MetadataEntry
+	nil,                                   // 108: hyperspace.VectorInsertedEvent.TypedMetadataEntry
+	nil,                                   // 109: hyperspace.TrajectoryStepEvent.MetadataEntry
+	nil,                                   // 110: hyperspace.SyncVectorData.MetadataEntry
 }
 var file_hyperspace_proto_depIdxs = []int32{
 	5,   // 0: hyperspace.ReplicationLog.insert:type_name -> hyperspace.InsertOp
 	6,   // 1: hyperspace.ReplicationLog.create_collection:type_name -> hyperspace.CreateCollectionOp
 	7,   // 2: hyperspace.ReplicationLog.delete_collection:type_name -> hyperspace.DeleteCollectionOp
 	8,   // 3: hyperspace.ReplicationLog.delete:type_name -> hyperspace.DeleteOp
-	85,  // 4: hyperspace.InsertOp.metadata:type_name -> hyperspace.InsertOp.MetadataEntry
-	86,  // 5: hyperspace.InsertOp.typed_metadata:type_name -> hyperspace.InsertOp.TypedMetadataEntry
-	0,   // 6: hyperspace.QuantizationConfig.mode:type_name -> hyperspace.QuantizationMode
-	11,  // 7: hyperspace.CreateCollectionRequest.components:type_name -> hyperspace.CollectionComponent
-	13,  // 8: hyperspace.ListCollectionsResponse.collections:type_name -> hyperspace.CollectionSummary
-	19,  // 9: hyperspace.RebuildIndexRequest.filter_query:type_name -> hyperspace.VacuumFilterQuery
-	87,  // 10: hyperspace.InsertRequest.metadata:type_name -> hyperspace.InsertRequest.MetadataEntry
-	1,   // 11: hyperspace.InsertRequest.durability:type_name -> hyperspace.DurabilityLevel
-	88,  // 12: hyperspace.InsertRequest.typed_metadata:type_name -> hyperspace.InsertRequest.TypedMetadataEntry
-	89,  // 13: hyperspace.VectorData.metadata:type_name -> hyperspace.VectorData.MetadataEntry
-	90,  // 14: hyperspace.VectorData.typed_metadata:type_name -> hyperspace.VectorData.TypedMetadataEntry
-	22,  // 15: hyperspace.BatchInsertRequest.vectors:type_name -> hyperspace.VectorData
-	1,   // 16: hyperspace.BatchInsertRequest.durability:type_name -> hyperspace.DurabilityLevel
-	91,  // 17: hyperspace.InsertTextRequest.metadata:type_name -> hyperspace.InsertTextRequest.MetadataEntry
-	1,   // 18: hyperspace.InsertTextRequest.durability:type_name -> hyperspace.DurabilityLevel
-	92,  // 19: hyperspace.SearchTextRequest.filter:type_name -> hyperspace.SearchTextRequest.FilterEntry
-	41,  // 20: hyperspace.SearchTextRequest.filters:type_name -> hyperspace.Filter
-	28,  // 21: hyperspace.SearchTextRequest.bm25_options:type_name -> hyperspace.Bm25Options
-	22,  // 22: hyperspace.GetPointsResponse.points:type_name -> hyperspace.VectorData
-	93,  // 23: hyperspace.UpdatePayloadRequest.metadata:type_name -> hyperspace.UpdatePayloadRequest.MetadataEntry
-	94,  // 24: hyperspace.UpdatePayloadRequest.typed_metadata:type_name -> hyperspace.UpdatePayloadRequest.TypedMetadataEntry
-	41,  // 25: hyperspace.ScrollRequest.filters:type_name -> hyperspace.Filter
-	22,  // 26: hyperspace.ScrollResponse.points:type_name -> hyperspace.VectorData
-	41,  // 27: hyperspace.CountRequest.filters:type_name -> hyperspace.Filter
-	95,  // 28: hyperspace.SearchRequest.filter:type_name -> hyperspace.SearchRequest.FilterEntry
-	41,  // 29: hyperspace.SearchRequest.filters:type_name -> hyperspace.Filter
-	28,  // 30: hyperspace.SearchRequest.bm25_options:type_name -> hyperspace.Bm25Options
-	45,  // 31: hyperspace.Filter.match:type_name -> hyperspace.Match
-	46,  // 32: hyperspace.Filter.range:type_name -> hyperspace.Range
-	47,  // 33: hyperspace.Filter.in_cone:type_name -> hyperspace.InCone
-	48,  // 34: hyperspace.Filter.in_box:type_name -> hyperspace.InBox
-	49,  // 35: hyperspace.Filter.in_ball:type_name -> hyperspace.InBall
-	42,  // 36: hyperspace.Filter.and_op:type_name -> hyperspace.FilterAnd
-	43,  // 37: hyperspace.Filter.or_op:type_name -> hyperspace.FilterOr
-	44,  // 38: hyperspace.Filter.not_op:type_name -> hyperspace.FilterNot
-	41,  // 39: hyperspace.FilterAnd.conditions:type_name -> hyperspace.Filter
-	41,  // 40: hyperspace.FilterOr.conditions:type_name -> hyperspace.Filter
-	41,  // 41: hyperspace.FilterNot.condition:type_name -> hyperspace.Filter
-	55,  // 42: hyperspace.SearchResponse.results:type_name -> hyperspace.SearchResult
-	40,  // 43: hyperspace.BatchSearchRequest.searches:type_name -> hyperspace.SearchRequest
-	50,  // 44: hyperspace.BatchSearchResponse.responses:type_name -> hyperspace.SearchResponse
-	96,  // 45: hyperspace.SearchMultiCollectionResponse.responses:type_name -> hyperspace.SearchMultiCollectionResponse.ResponsesEntry
-	97,  // 46: hyperspace.SearchResult.metadata:type_name -> hyperspace.SearchResult.MetadataEntry
-	98,  // 47: hyperspace.SearchResult.typed_metadata:type_name -> hyperspace.SearchResult.TypedMetadataEntry
-	99,  // 48: hyperspace.GraphNode.metadata:type_name -> hyperspace.GraphNode.MetadataEntry
-	100, // 49: hyperspace.GraphNode.typed_metadata:type_name -> hyperspace.GraphNode.TypedMetadataEntry
-	57,  // 50: hyperspace.GetNeighborsResponse.neighbors:type_name -> hyperspace.GraphNode
-	101, // 51: hyperspace.TraverseRequest.filter:type_name -> hyperspace.TraverseRequest.FilterEntry
-	41,  // 52: hyperspace.TraverseRequest.filters:type_name -> hyperspace.Filter
-	57,  // 53: hyperspace.TraverseResponse.nodes:type_name -> hyperspace.GraphNode
-	57,  // 54: hyperspace.GetConceptParentsResponse.parents:type_name -> hyperspace.GraphNode
-	65,  // 55: hyperspace.FindSemanticClustersResponse.clusters:type_name -> hyperspace.GraphCluster
-	2,   // 56: hyperspace.EventSubscriptionRequest.types:type_name -> hyperspace.EventType
-	102, // 57: hyperspace.VectorInsertedEvent.metadata:type_name -> hyperspace.VectorInsertedEvent.MetadataEntry
-	103, // 58: hyperspace.VectorInsertedEvent.typed_metadata:type_name -> hyperspace.VectorInsertedEvent.TypedMetadataEntry
-	104, // 59: hyperspace.TrajectoryStepEvent.metadata:type_name -> hyperspace.TrajectoryStepEvent.MetadataEntry
-	2,   // 60: hyperspace.EventMessage.type:type_name -> hyperspace.EventType
-	69,  // 61: hyperspace.EventMessage.vector_inserted:type_name -> hyperspace.VectorInsertedEvent
-	71,  // 62: hyperspace.EventMessage.vector_deleted:type_name -> hyperspace.VectorDeletedEvent
-	70,  // 63: hyperspace.EventMessage.trajectory_step:type_name -> hyperspace.TrajectoryStepEvent
-	80,  // 64: hyperspace.SyncHandshakeResponse.diff_buckets:type_name -> hyperspace.DiffBucket
-	105, // 65: hyperspace.SyncVectorData.metadata:type_name -> hyperspace.SyncVectorData.MetadataEntry
-	67,  // 66: hyperspace.InsertOp.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	67,  // 67: hyperspace.InsertRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	67,  // 68: hyperspace.VectorData.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	67,  // 69: hyperspace.UpdatePayloadRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	50,  // 70: hyperspace.SearchMultiCollectionResponse.ResponsesEntry.value:type_name -> hyperspace.SearchResponse
-	67,  // 71: hyperspace.SearchResult.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	67,  // 72: hyperspace.GraphNode.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	67,  // 73: hyperspace.VectorInsertedEvent.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	10,  // 74: hyperspace.Database.CreateCollection:input_type -> hyperspace.CreateCollectionRequest
-	12,  // 75: hyperspace.Database.DeleteCollection:input_type -> hyperspace.DeleteCollectionRequest
-	73,  // 76: hyperspace.Database.ListCollections:input_type -> hyperspace.Empty
-	15,  // 77: hyperspace.Database.GetCollectionStats:input_type -> hyperspace.CollectionStatsRequest
-	21,  // 78: hyperspace.Database.Insert:input_type -> hyperspace.InsertRequest
-	23,  // 79: hyperspace.Database.BatchInsert:input_type -> hyperspace.BatchInsertRequest
-	24,  // 80: hyperspace.Database.InsertText:input_type -> hyperspace.InsertTextRequest
-	25,  // 81: hyperspace.Database.Vectorize:input_type -> hyperspace.VectorizeRequest
-	27,  // 82: hyperspace.Database.SearchText:input_type -> hyperspace.SearchTextRequest
-	30,  // 83: hyperspace.Database.Delete:input_type -> hyperspace.DeleteRequest
-	32,  // 84: hyperspace.Database.GetPoints:input_type -> hyperspace.GetPointsRequest
-	34,  // 85: hyperspace.Database.UpdatePayload:input_type -> hyperspace.UpdatePayloadRequest
-	35,  // 86: hyperspace.Database.Scroll:input_type -> hyperspace.ScrollRequest
-	37,  // 87: hyperspace.Database.Count:input_type -> hyperspace.CountRequest
-	40,  // 88: hyperspace.Database.Search:input_type -> hyperspace.SearchRequest
-	51,  // 89: hyperspace.Database.SearchBatch:input_type -> hyperspace.BatchSearchRequest
-	53,  // 90: hyperspace.Database.SearchMultiCollection:input_type -> hyperspace.SearchMultiCollectionRequest
-	56,  // 91: hyperspace.Database.GetNode:input_type -> hyperspace.GetNodeRequest
-	58,  // 92: hyperspace.Database.GetNeighbors:input_type -> hyperspace.GetNeighborsRequest
-	63,  // 93: hyperspace.Database.GetConceptParents:input_type -> hyperspace.GetConceptParentsRequest
-	60,  // 94: hyperspace.Database.Traverse:input_type -> hyperspace.TraverseRequest
-	62,  // 95: hyperspace.Database.FindSemanticClusters:input_type -> hyperspace.FindSemanticClustersRequest
-	75,  // 96: hyperspace.Database.Monitor:input_type -> hyperspace.MonitorRequest
-	73,  // 97: hyperspace.Database.TriggerSnapshot:input_type -> hyperspace.Empty
-	73,  // 98: hyperspace.Database.TriggerVacuum:input_type -> hyperspace.Empty
-	20,  // 99: hyperspace.Database.TriggerReconsolidation:input_type -> hyperspace.ReconsolidationRequest
-	18,  // 100: hyperspace.Database.Configure:input_type -> hyperspace.ConfigUpdate
-	3,   // 101: hyperspace.Database.Replicate:input_type -> hyperspace.ReplicationRequest
-	68,  // 102: hyperspace.Database.SubscribeToEvents:input_type -> hyperspace.EventSubscriptionRequest
-	77,  // 103: hyperspace.Database.GetDigest:input_type -> hyperspace.DigestRequest
-	17,  // 104: hyperspace.Database.RebuildIndex:input_type -> hyperspace.RebuildIndexRequest
-	79,  // 105: hyperspace.Database.SyncHandshake:input_type -> hyperspace.SyncHandshakeRequest
-	82,  // 106: hyperspace.Database.SyncPull:input_type -> hyperspace.SyncPullRequest
-	83,  // 107: hyperspace.Database.SyncPush:input_type -> hyperspace.SyncVectorData
-	73,  // 108: hyperspace.Database.HealthCheck:input_type -> hyperspace.Empty
-	74,  // 109: hyperspace.Database.CreateCollection:output_type -> hyperspace.StatusResponse
-	74,  // 110: hyperspace.Database.DeleteCollection:output_type -> hyperspace.StatusResponse
-	14,  // 111: hyperspace.Database.ListCollections:output_type -> hyperspace.ListCollectionsResponse
-	16,  // 112: hyperspace.Database.GetCollectionStats:output_type -> hyperspace.CollectionStatsResponse
-	29,  // 113: hyperspace.Database.Insert:output_type -> hyperspace.InsertResponse
-	29,  // 114: hyperspace.Database.BatchInsert:output_type -> hyperspace.InsertResponse
-	29,  // 115: hyperspace.Database.InsertText:output_type -> hyperspace.InsertResponse
-	26,  // 116: hyperspace.Database.Vectorize:output_type -> hyperspace.VectorizeResponse
-	50,  // 117: hyperspace.Database.SearchText:output_type -> hyperspace.SearchResponse
-	31,  // 118: hyperspace.Database.Delete:output_type -> hyperspace.DeleteResponse
-	33,  // 119: hyperspace.Database.GetPoints:output_type -> hyperspace.GetPointsResponse
-	74,  // 120: hyperspace.Database.UpdatePayload:output_type -> hyperspace.StatusResponse
-	36,  // 121: hyperspace.Database.Scroll:output_type -> hyperspace.ScrollResponse
-	38,  // 122: hyperspace.Database.Count:output_type -> hyperspace.CountResponse
-	50,  // 123: hyperspace.Database.Search:output_type -> hyperspace.SearchResponse
-	52,  // 124: hyperspace.Database.SearchBatch:output_type -> hyperspace.BatchSearchResponse
-	54,  // 125: hyperspace.Database.SearchMultiCollection:output_type -> hyperspace.SearchMultiCollectionResponse
-	57,  // 126: hyperspace.Database.GetNode:output_type -> hyperspace.GraphNode
-	59,  // 127: hyperspace.Database.GetNeighbors:output_type -> hyperspace.GetNeighborsResponse
-	64,  // 128: hyperspace.Database.GetConceptParents:output_type -> hyperspace.GetConceptParentsResponse
-	61,  // 129: hyperspace.Database.Traverse:output_type -> hyperspace.TraverseResponse
-	66,  // 130: hyperspace.Database.FindSemanticClusters:output_type -> hyperspace.FindSemanticClustersResponse
-	76,  // 131: hyperspace.Database.Monitor:output_type -> hyperspace.SystemStats
-	74,  // 132: hyperspace.Database.TriggerSnapshot:output_type -> hyperspace.StatusResponse
-	74,  // 133: hyperspace.Database.TriggerVacuum:output_type -> hyperspace.StatusResponse
-	74,  // 134: hyperspace.Database.TriggerReconsolidation:output_type -> hyperspace.StatusResponse
-	74,  // 135: hyperspace.Database.Configure:output_type -> hyperspace.StatusResponse
-	4,   // 136: hyperspace.Database.Replicate:output_type -> hyperspace.ReplicationLog
-	72,  // 137: hyperspace.Database.SubscribeToEvents:output_type -> hyperspace.EventMessage
-	78,  // 138: hyperspace.Database.GetDigest:output_type -> hyperspace.DigestResponse
-	74,  // 139: hyperspace.Database.RebuildIndex:output_type -> hyperspace.StatusResponse
-	81,  // 140: hyperspace.Database.SyncHandshake:output_type -> hyperspace.SyncHandshakeResponse
-	83,  // 141: hyperspace.Database.SyncPull:output_type -> hyperspace.SyncVectorData
-	84,  // 142: hyperspace.Database.SyncPush:output_type -> hyperspace.SyncPushResponse
-	39,  // 143: hyperspace.Database.HealthCheck:output_type -> hyperspace.HealthCheckResponse
-	109, // [109:144] is the sub-list for method output_type
-	74,  // [74:109] is the sub-list for method input_type
-	74,  // [74:74] is the sub-list for extension type_name
-	74,  // [74:74] is the sub-list for extension extendee
-	0,   // [0:74] is the sub-list for field type_name
+	88,  // 4: hyperspace.InsertOp.metadata:type_name -> hyperspace.InsertOp.MetadataEntry
+	89,  // 5: hyperspace.InsertOp.typed_metadata:type_name -> hyperspace.InsertOp.TypedMetadataEntry
+	13,  // 6: hyperspace.CreateCollectionOp.schema:type_name -> hyperspace.CollectionSchema
+	0,   // 7: hyperspace.QuantizationConfig.mode:type_name -> hyperspace.QuantizationMode
+	13,  // 8: hyperspace.CreateCollectionRequest.schema:type_name -> hyperspace.CollectionSchema
+	11,  // 9: hyperspace.CollectionSchema.components:type_name -> hyperspace.VectorComponent
+	12,  // 10: hyperspace.CollectionSchema.cascade_pipeline:type_name -> hyperspace.MrlLayer
+	13,  // 11: hyperspace.CollectionSummary.schema:type_name -> hyperspace.CollectionSchema
+	16,  // 12: hyperspace.ListCollectionsResponse.collections:type_name -> hyperspace.CollectionSummary
+	13,  // 13: hyperspace.CollectionStatsResponse.schema:type_name -> hyperspace.CollectionSchema
+	22,  // 14: hyperspace.RebuildIndexRequest.filter_query:type_name -> hyperspace.VacuumFilterQuery
+	90,  // 15: hyperspace.InsertRequest.metadata:type_name -> hyperspace.InsertRequest.MetadataEntry
+	1,   // 16: hyperspace.InsertRequest.durability:type_name -> hyperspace.DurabilityLevel
+	91,  // 17: hyperspace.InsertRequest.typed_metadata:type_name -> hyperspace.InsertRequest.TypedMetadataEntry
+	92,  // 18: hyperspace.VectorData.metadata:type_name -> hyperspace.VectorData.MetadataEntry
+	93,  // 19: hyperspace.VectorData.typed_metadata:type_name -> hyperspace.VectorData.TypedMetadataEntry
+	25,  // 20: hyperspace.BatchInsertRequest.vectors:type_name -> hyperspace.VectorData
+	1,   // 21: hyperspace.BatchInsertRequest.durability:type_name -> hyperspace.DurabilityLevel
+	94,  // 22: hyperspace.InsertTextRequest.metadata:type_name -> hyperspace.InsertTextRequest.MetadataEntry
+	1,   // 23: hyperspace.InsertTextRequest.durability:type_name -> hyperspace.DurabilityLevel
+	95,  // 24: hyperspace.SearchTextRequest.filter:type_name -> hyperspace.SearchTextRequest.FilterEntry
+	44,  // 25: hyperspace.SearchTextRequest.filters:type_name -> hyperspace.Filter
+	31,  // 26: hyperspace.SearchTextRequest.bm25_options:type_name -> hyperspace.Bm25Options
+	96,  // 27: hyperspace.SearchTextRequest.component_weights:type_name -> hyperspace.SearchTextRequest.ComponentWeightsEntry
+	25,  // 28: hyperspace.GetPointsResponse.points:type_name -> hyperspace.VectorData
+	97,  // 29: hyperspace.UpdatePayloadRequest.metadata:type_name -> hyperspace.UpdatePayloadRequest.MetadataEntry
+	98,  // 30: hyperspace.UpdatePayloadRequest.typed_metadata:type_name -> hyperspace.UpdatePayloadRequest.TypedMetadataEntry
+	44,  // 31: hyperspace.ScrollRequest.filters:type_name -> hyperspace.Filter
+	25,  // 32: hyperspace.ScrollResponse.points:type_name -> hyperspace.VectorData
+	44,  // 33: hyperspace.CountRequest.filters:type_name -> hyperspace.Filter
+	99,  // 34: hyperspace.SearchRequest.filter:type_name -> hyperspace.SearchRequest.FilterEntry
+	44,  // 35: hyperspace.SearchRequest.filters:type_name -> hyperspace.Filter
+	31,  // 36: hyperspace.SearchRequest.bm25_options:type_name -> hyperspace.Bm25Options
+	100, // 37: hyperspace.SearchRequest.component_weights:type_name -> hyperspace.SearchRequest.ComponentWeightsEntry
+	48,  // 38: hyperspace.Filter.match:type_name -> hyperspace.Match
+	49,  // 39: hyperspace.Filter.range:type_name -> hyperspace.Range
+	50,  // 40: hyperspace.Filter.in_cone:type_name -> hyperspace.InCone
+	51,  // 41: hyperspace.Filter.in_box:type_name -> hyperspace.InBox
+	52,  // 42: hyperspace.Filter.in_ball:type_name -> hyperspace.InBall
+	45,  // 43: hyperspace.Filter.and_op:type_name -> hyperspace.FilterAnd
+	46,  // 44: hyperspace.Filter.or_op:type_name -> hyperspace.FilterOr
+	47,  // 45: hyperspace.Filter.not_op:type_name -> hyperspace.FilterNot
+	44,  // 46: hyperspace.FilterAnd.conditions:type_name -> hyperspace.Filter
+	44,  // 47: hyperspace.FilterOr.conditions:type_name -> hyperspace.Filter
+	44,  // 48: hyperspace.FilterNot.condition:type_name -> hyperspace.Filter
+	58,  // 49: hyperspace.SearchResponse.results:type_name -> hyperspace.SearchResult
+	43,  // 50: hyperspace.BatchSearchRequest.searches:type_name -> hyperspace.SearchRequest
+	53,  // 51: hyperspace.BatchSearchResponse.responses:type_name -> hyperspace.SearchResponse
+	101, // 52: hyperspace.SearchMultiCollectionResponse.responses:type_name -> hyperspace.SearchMultiCollectionResponse.ResponsesEntry
+	102, // 53: hyperspace.SearchResult.metadata:type_name -> hyperspace.SearchResult.MetadataEntry
+	103, // 54: hyperspace.SearchResult.typed_metadata:type_name -> hyperspace.SearchResult.TypedMetadataEntry
+	104, // 55: hyperspace.GraphNode.metadata:type_name -> hyperspace.GraphNode.MetadataEntry
+	105, // 56: hyperspace.GraphNode.typed_metadata:type_name -> hyperspace.GraphNode.TypedMetadataEntry
+	60,  // 57: hyperspace.GetNeighborsResponse.neighbors:type_name -> hyperspace.GraphNode
+	106, // 58: hyperspace.TraverseRequest.filter:type_name -> hyperspace.TraverseRequest.FilterEntry
+	44,  // 59: hyperspace.TraverseRequest.filters:type_name -> hyperspace.Filter
+	60,  // 60: hyperspace.TraverseResponse.nodes:type_name -> hyperspace.GraphNode
+	60,  // 61: hyperspace.GetConceptParentsResponse.parents:type_name -> hyperspace.GraphNode
+	68,  // 62: hyperspace.FindSemanticClustersResponse.clusters:type_name -> hyperspace.GraphCluster
+	2,   // 63: hyperspace.EventSubscriptionRequest.types:type_name -> hyperspace.EventType
+	107, // 64: hyperspace.VectorInsertedEvent.metadata:type_name -> hyperspace.VectorInsertedEvent.MetadataEntry
+	108, // 65: hyperspace.VectorInsertedEvent.typed_metadata:type_name -> hyperspace.VectorInsertedEvent.TypedMetadataEntry
+	109, // 66: hyperspace.TrajectoryStepEvent.metadata:type_name -> hyperspace.TrajectoryStepEvent.MetadataEntry
+	2,   // 67: hyperspace.EventMessage.type:type_name -> hyperspace.EventType
+	72,  // 68: hyperspace.EventMessage.vector_inserted:type_name -> hyperspace.VectorInsertedEvent
+	74,  // 69: hyperspace.EventMessage.vector_deleted:type_name -> hyperspace.VectorDeletedEvent
+	73,  // 70: hyperspace.EventMessage.trajectory_step:type_name -> hyperspace.TrajectoryStepEvent
+	83,  // 71: hyperspace.SyncHandshakeResponse.diff_buckets:type_name -> hyperspace.DiffBucket
+	110, // 72: hyperspace.SyncVectorData.metadata:type_name -> hyperspace.SyncVectorData.MetadataEntry
+	70,  // 73: hyperspace.InsertOp.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	70,  // 74: hyperspace.InsertRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	70,  // 75: hyperspace.VectorData.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	70,  // 76: hyperspace.UpdatePayloadRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	53,  // 77: hyperspace.SearchMultiCollectionResponse.ResponsesEntry.value:type_name -> hyperspace.SearchResponse
+	70,  // 78: hyperspace.SearchResult.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	70,  // 79: hyperspace.GraphNode.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	70,  // 80: hyperspace.VectorInsertedEvent.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	10,  // 81: hyperspace.Database.CreateCollection:input_type -> hyperspace.CreateCollectionRequest
+	15,  // 82: hyperspace.Database.DeleteCollection:input_type -> hyperspace.DeleteCollectionRequest
+	76,  // 83: hyperspace.Database.ListCollections:input_type -> hyperspace.Empty
+	18,  // 84: hyperspace.Database.GetCollectionStats:input_type -> hyperspace.CollectionStatsRequest
+	24,  // 85: hyperspace.Database.Insert:input_type -> hyperspace.InsertRequest
+	26,  // 86: hyperspace.Database.BatchInsert:input_type -> hyperspace.BatchInsertRequest
+	27,  // 87: hyperspace.Database.InsertText:input_type -> hyperspace.InsertTextRequest
+	28,  // 88: hyperspace.Database.Vectorize:input_type -> hyperspace.VectorizeRequest
+	30,  // 89: hyperspace.Database.SearchText:input_type -> hyperspace.SearchTextRequest
+	33,  // 90: hyperspace.Database.Delete:input_type -> hyperspace.DeleteRequest
+	35,  // 91: hyperspace.Database.GetPoints:input_type -> hyperspace.GetPointsRequest
+	37,  // 92: hyperspace.Database.UpdatePayload:input_type -> hyperspace.UpdatePayloadRequest
+	38,  // 93: hyperspace.Database.Scroll:input_type -> hyperspace.ScrollRequest
+	40,  // 94: hyperspace.Database.Count:input_type -> hyperspace.CountRequest
+	43,  // 95: hyperspace.Database.Search:input_type -> hyperspace.SearchRequest
+	54,  // 96: hyperspace.Database.SearchBatch:input_type -> hyperspace.BatchSearchRequest
+	56,  // 97: hyperspace.Database.SearchMultiCollection:input_type -> hyperspace.SearchMultiCollectionRequest
+	59,  // 98: hyperspace.Database.GetNode:input_type -> hyperspace.GetNodeRequest
+	61,  // 99: hyperspace.Database.GetNeighbors:input_type -> hyperspace.GetNeighborsRequest
+	66,  // 100: hyperspace.Database.GetConceptParents:input_type -> hyperspace.GetConceptParentsRequest
+	63,  // 101: hyperspace.Database.Traverse:input_type -> hyperspace.TraverseRequest
+	65,  // 102: hyperspace.Database.FindSemanticClusters:input_type -> hyperspace.FindSemanticClustersRequest
+	78,  // 103: hyperspace.Database.Monitor:input_type -> hyperspace.MonitorRequest
+	76,  // 104: hyperspace.Database.TriggerSnapshot:input_type -> hyperspace.Empty
+	76,  // 105: hyperspace.Database.TriggerVacuum:input_type -> hyperspace.Empty
+	23,  // 106: hyperspace.Database.TriggerReconsolidation:input_type -> hyperspace.ReconsolidationRequest
+	21,  // 107: hyperspace.Database.Configure:input_type -> hyperspace.ConfigUpdate
+	3,   // 108: hyperspace.Database.Replicate:input_type -> hyperspace.ReplicationRequest
+	71,  // 109: hyperspace.Database.SubscribeToEvents:input_type -> hyperspace.EventSubscriptionRequest
+	80,  // 110: hyperspace.Database.GetDigest:input_type -> hyperspace.DigestRequest
+	20,  // 111: hyperspace.Database.RebuildIndex:input_type -> hyperspace.RebuildIndexRequest
+	82,  // 112: hyperspace.Database.SyncHandshake:input_type -> hyperspace.SyncHandshakeRequest
+	85,  // 113: hyperspace.Database.SyncPull:input_type -> hyperspace.SyncPullRequest
+	86,  // 114: hyperspace.Database.SyncPush:input_type -> hyperspace.SyncVectorData
+	76,  // 115: hyperspace.Database.HealthCheck:input_type -> hyperspace.Empty
+	77,  // 116: hyperspace.Database.CreateCollection:output_type -> hyperspace.StatusResponse
+	77,  // 117: hyperspace.Database.DeleteCollection:output_type -> hyperspace.StatusResponse
+	17,  // 118: hyperspace.Database.ListCollections:output_type -> hyperspace.ListCollectionsResponse
+	19,  // 119: hyperspace.Database.GetCollectionStats:output_type -> hyperspace.CollectionStatsResponse
+	32,  // 120: hyperspace.Database.Insert:output_type -> hyperspace.InsertResponse
+	32,  // 121: hyperspace.Database.BatchInsert:output_type -> hyperspace.InsertResponse
+	32,  // 122: hyperspace.Database.InsertText:output_type -> hyperspace.InsertResponse
+	29,  // 123: hyperspace.Database.Vectorize:output_type -> hyperspace.VectorizeResponse
+	53,  // 124: hyperspace.Database.SearchText:output_type -> hyperspace.SearchResponse
+	34,  // 125: hyperspace.Database.Delete:output_type -> hyperspace.DeleteResponse
+	36,  // 126: hyperspace.Database.GetPoints:output_type -> hyperspace.GetPointsResponse
+	77,  // 127: hyperspace.Database.UpdatePayload:output_type -> hyperspace.StatusResponse
+	39,  // 128: hyperspace.Database.Scroll:output_type -> hyperspace.ScrollResponse
+	41,  // 129: hyperspace.Database.Count:output_type -> hyperspace.CountResponse
+	53,  // 130: hyperspace.Database.Search:output_type -> hyperspace.SearchResponse
+	55,  // 131: hyperspace.Database.SearchBatch:output_type -> hyperspace.BatchSearchResponse
+	57,  // 132: hyperspace.Database.SearchMultiCollection:output_type -> hyperspace.SearchMultiCollectionResponse
+	60,  // 133: hyperspace.Database.GetNode:output_type -> hyperspace.GraphNode
+	62,  // 134: hyperspace.Database.GetNeighbors:output_type -> hyperspace.GetNeighborsResponse
+	67,  // 135: hyperspace.Database.GetConceptParents:output_type -> hyperspace.GetConceptParentsResponse
+	64,  // 136: hyperspace.Database.Traverse:output_type -> hyperspace.TraverseResponse
+	69,  // 137: hyperspace.Database.FindSemanticClusters:output_type -> hyperspace.FindSemanticClustersResponse
+	79,  // 138: hyperspace.Database.Monitor:output_type -> hyperspace.SystemStats
+	77,  // 139: hyperspace.Database.TriggerSnapshot:output_type -> hyperspace.StatusResponse
+	77,  // 140: hyperspace.Database.TriggerVacuum:output_type -> hyperspace.StatusResponse
+	77,  // 141: hyperspace.Database.TriggerReconsolidation:output_type -> hyperspace.StatusResponse
+	77,  // 142: hyperspace.Database.Configure:output_type -> hyperspace.StatusResponse
+	4,   // 143: hyperspace.Database.Replicate:output_type -> hyperspace.ReplicationLog
+	75,  // 144: hyperspace.Database.SubscribeToEvents:output_type -> hyperspace.EventMessage
+	81,  // 145: hyperspace.Database.GetDigest:output_type -> hyperspace.DigestResponse
+	77,  // 146: hyperspace.Database.RebuildIndex:output_type -> hyperspace.StatusResponse
+	84,  // 147: hyperspace.Database.SyncHandshake:output_type -> hyperspace.SyncHandshakeResponse
+	86,  // 148: hyperspace.Database.SyncPull:output_type -> hyperspace.SyncVectorData
+	87,  // 149: hyperspace.Database.SyncPush:output_type -> hyperspace.SyncPushResponse
+	42,  // 150: hyperspace.Database.HealthCheck:output_type -> hyperspace.HealthCheckResponse
+	116, // [116:151] is the sub-list for method output_type
+	81,  // [81:116] is the sub-list for method input_type
+	81,  // [81:81] is the sub-list for extension type_name
+	81,  // [81:81] is the sub-list for extension extendee
+	0,   // [0:81] is the sub-list for field type_name
 }
 
 func init() { file_hyperspace_proto_init() }
@@ -6110,13 +6394,18 @@ func file_hyperspace_proto_init() {
 		(*ReplicationLog_DeleteCollection)(nil),
 		(*ReplicationLog_Delete)(nil),
 	}
-	file_hyperspace_proto_msgTypes[8].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[14].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[15].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[24].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[25].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[37].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[38].OneofWrappers = []any{
+	file_hyperspace_proto_msgTypes[3].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[7].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[11].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[13].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[16].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[17].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[18].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[21].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[27].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[28].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[40].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[41].OneofWrappers = []any{
 		(*Filter_Match)(nil),
 		(*Filter_Range)(nil),
 		(*Filter_InCone)(nil),
@@ -6126,15 +6415,16 @@ func file_hyperspace_proto_init() {
 		(*Filter_OrOp)(nil),
 		(*Filter_NotOp)(nil),
 	}
-	file_hyperspace_proto_msgTypes[43].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[64].OneofWrappers = []any{
+	file_hyperspace_proto_msgTypes[46].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[55].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[67].OneofWrappers = []any{
 		(*MetadataValue_StringValue)(nil),
 		(*MetadataValue_IntValue)(nil),
 		(*MetadataValue_DoubleValue)(nil),
 		(*MetadataValue_BoolValue)(nil),
 	}
-	file_hyperspace_proto_msgTypes[65].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[69].OneofWrappers = []any{
+	file_hyperspace_proto_msgTypes[68].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[72].OneofWrappers = []any{
 		(*EventMessage_VectorInserted)(nil),
 		(*EventMessage_VectorDeleted)(nil),
 		(*EventMessage_TrajectoryStep)(nil),
@@ -6145,7 +6435,7 @@ func file_hyperspace_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hyperspace_proto_rawDesc), len(file_hyperspace_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   103,
+			NumMessages:   108,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

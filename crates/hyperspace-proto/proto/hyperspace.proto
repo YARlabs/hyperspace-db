@@ -92,8 +92,8 @@ message InsertOp {
 }
 
 message CreateCollectionOp {
-  uint32 dimension = 1;
-  string metric = 2;
+  reserved 1, 2;
+  optional CollectionSchema schema = 3;
 }
 
 message DeleteCollectionOp {
@@ -115,9 +115,29 @@ enum QuantizationMode {
 
 message CreateCollectionRequest {
   string name = 1;
-  uint32 dimension = 2;
-  string metric = 3; // "cosine", "l2", "poincare", "hybrid"
-  repeated CollectionComponent components = 4;
+  reserved 2;
+  reserved 3;
+  reserved 4;
+  optional CollectionSchema schema = 5;
+}
+
+message VectorComponent {
+    string name = 1;
+    string metric = 2; // "cosine", "l2", "lorentz", "poincare"
+    uint32 full_dimension = 3;
+    float weight = 4;
+}
+
+message MrlLayer {
+    string component_name = 1;
+    uint32 cutoff_dimension = 2;
+    bool store_in_ram = 3;
+    uint32 rerank_top_k = 4;
+}
+
+message CollectionSchema {
+    repeated VectorComponent components = 1;
+    repeated MrlLayer cascade_pipeline = 2;
 }
 
 message CollectionComponent {
@@ -134,8 +154,9 @@ message DeleteCollectionRequest {
 message CollectionSummary {
   string name = 1;
   uint64 count = 2;
-  uint32 dimension = 3;
-  string metric = 4;
+  reserved 3;
+  reserved 4;
+  optional CollectionSchema schema = 5;
 }
 
 message ListCollectionsResponse {
@@ -149,12 +170,13 @@ message CollectionStatsRequest {
 
 message CollectionStatsResponse {
   uint64 count = 1;
-  uint32 dimension = 2;
-  string metric = 3;
+  reserved 2;
+  reserved 3;
   uint64 indexing_queue = 4;
   uint64 disk_usage_bytes = 5;
   uint64 ram_usage_bytes = 6;
   uint64 active_tasks = 7;
+  optional CollectionSchema schema = 8;
 }
 
 message RebuildIndexRequest {
@@ -248,6 +270,7 @@ message SearchTextRequest {
   optional Bm25Options bm25_options = 6;
   optional float hybrid_alpha = 7;
   bool include_payload = 8;
+  map<string, float> component_weights = 9;
 }
 
 message Bm25Options {
@@ -329,6 +352,7 @@ message SearchRequest {
   // ONLY for the final Top-K results to attach their stored payload blobs.
   // Default is false — zero extra I/O for standard searches.
   bool include_payload = 11;
+  map<string, float> component_weights = 12;
 }
 
 message Filter {

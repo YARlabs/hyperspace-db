@@ -5,27 +5,66 @@
 #[cfg(feature = "nightly-simd")]
 use std::simd::prelude::*;
 
-/// Aligned vector struct. N is the dimension.
-/// align(64) is critical for AVX-512 and cache lines.
-#[repr(C, align(64))]
+/// VectorLayout tracks the sizes of different components and how they are sliced from RAM/Disk.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VectorComponentLayout {
+    pub name: String,
+    pub metric: String,
+    pub dimension: usize,
+    pub weight: f32,
+    pub offset: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VectorLayout {
+    pub dimension: usize,
+    pub bytes_per_element: usize,
+    pub is_quantized: bool,
+    pub components: Vec<VectorComponentLayout>,
+}
+
+/// Dynamic vector struct.
 #[derive(Debug, Clone)]
-pub struct HyperVector<const N: usize> {
-    pub coords: [f64; N],
+pub struct HyperVector {
+    pub coords: Vec<f64>,
     pub alpha: f64, // Precomputed coefficient: 1 / (1 - ||x||^2)
 }
 
 /// Memory-optimized storage vector.
-/// Keeps coordinates in f32 and alpha in f32, and is promoted to f64 during distance evaluation.
-#[repr(C, align(64))]
 #[derive(Debug, Clone)]
-pub struct HyperVectorF32<const N: usize> {
-    pub coords: [f32; N],
+pub struct HyperVectorF32 {
+    pub coords: Vec<f32>,
     pub alpha: f32,
 }
 
-impl<const N: usize> HyperVector<N> {
+impl HyperVector {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let alpha_offset = bytes.len() - 8;
+        let mut alpha_bytes = [0u8; 8];
+        alpha_bytes.copy_from_slice(&bytes[alpha_offset..]);
+        let alpha = f64::from_le_bytes(alpha_bytes);
+
+        let coords_len = alpha_offset / 8;
+        let mut coords = Vec::with_capacity(coords_len);
+        for i in 0..coords_len {
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&bytes[i*8..(i+1)*8]);
+            coords.push(f64::from_le_bytes(buf));
+        }
+        Self { coords, alpha }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.coords.len() * 8 + 8);
+        for c in &self.coords {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.alpha.to_le_bytes());
+        bytes
+    }
+
     /// Creates a new `HyperVector`, validating it is strictly inside the unit ball.
-    pub fn new(coords: [f64; N]) -> Result<Self, String> {
+    pub fn new(coords: Vec<f64>) -> Result<Self, String> {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
         if sq_norm >= 1.0 - 1e-9 {
             return Err("Vector must be strictly inside the Poincaré ball".to_string());
@@ -35,45 +74,37 @@ impl<const N: usize> HyperVector<N> {
     }
 
     /// Creates a `HyperVector` without validation.
-    pub fn new_unchecked(coords: [f64; N]) -> Self {
+    pub fn new_unchecked(coords: Vec<f64>) -> Self {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
-        // Calculate alpha anyway, but handle >= 1.0 gracefully (though unused for L2)
-        // If sq_norm >= 1.0, alpha becomes negative or infinite.
-        // We store it as-is; usage must handle these cases.
         let alpha = 1.0 / (1.0 - sq_norm);
         Self { coords, alpha }
     }
 
     /// Calculates the squared Poincaré distance. Critical performance path.
-    /// Uses the Möbius addition formula optimizations.
     #[inline(always)]
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
+        let _n = self.coords.len();
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
             let mut sum_sq_diff = f64x8::splat(0.0);
 
-            // Note: If N < 8, this logic needs care, but keeping original logic for consistency
-            for i in (0..N).step_by(LANES) {
-                if i + LANES <= N {
+            for i in (0..n).step_by(LANES) {
+                if i + LANES <= n {
                     let a = f64x8::from_slice(&self.coords[i..i + LANES]);
                     let b = f64x8::from_slice(&other.coords[i..i + LANES]);
                     let diff = a - b;
                     sum_sq_diff += diff * diff;
-                } else {
-                    // Tail handling would go here for strict correctness with generic N
                 }
             }
 
             let l2_sq = sum_sq_diff.reduce_sum();
 
-            // Fallback for tail elements if N is not multiple of 8 (basic scalar loop for tail)
-            // Handle tail elements for non-multiple-of-8 dimensions.
             let mut tail_sq = 0.0;
-            let remainder = N % LANES;
+            let remainder = n % LANES;
             if remainder != 0 {
-                let start = N - remainder;
-                for i in start..N {
+                let start = n - remainder;
+                for i in start..n {
                     let diff = self.coords[i] - other.coords[i];
                     tail_sq += diff * diff;
                 }
@@ -86,7 +117,6 @@ impl<const N: usize> HyperVector<N> {
 
         #[cfg(not(feature = "nightly-simd"))]
         {
-            // Stable Rust implementation (Scalar / Auto-vectorized)
             let mut sum_sq_diff = 0.0;
             for (u, v) in self.coords.iter().zip(other.coords.iter()) {
                 let diff = u - v;
@@ -97,18 +127,14 @@ impl<const N: usize> HyperVector<N> {
         }
     }
 
-    /// Returns the true Hyperbolic distance (acosh of the squared distance).
     pub fn true_distance(&self, other: &Self) -> f64 {
         self.poincare_distance_sq(other).acosh()
     }
 
-    /// Converts a Poincaré vector to a Klein model vector.
-    /// `x_K` = 2 * `x_P` / (1 + ||`x_P`||^2)
     #[must_use]
     pub fn to_klein(&self) -> Self {
-        let mut coords_k = [0.0f64; N];
-        // self.alpha = 1 / (1 - sq_norm), so sq_norm = 1 - 1/alpha
-        // denom = 1 + sq_norm = 2 - 1/alpha
+        let n = self.coords.len();
+        let mut coords_k = vec![0.0f64; n];
         let sq_norm = 1.0 - (1.0 / self.alpha);
         let denom = 1.0 + sq_norm;
 
@@ -118,30 +144,28 @@ impl<const N: usize> HyperVector<N> {
         Self::new_unchecked(coords_k)
     }
 
-    /// Converts a Klein model vector to a Lorentz hyperboloid point.
-    /// Returns (`time_component`, [`spatial_components`; N]).
     #[must_use]
-    pub fn klein_to_lorentz(&self) -> (f64, [f64; N]) {
+    pub fn klein_to_lorentz(&self) -> (f64, Vec<f64>) {
+        let n = self.coords.len();
         let sq_norm: f64 = self.coords.iter().map(|&x| x * x).sum();
         let factor = 1.0 / (1.0 - sq_norm).max(1e-12).sqrt();
-        let mut spatial = [0.0f64; N];
+        let mut spatial = vec![0.0f64; n];
         for (s, &k) in spatial.iter_mut().zip(self.coords.iter()) {
             *s = k * factor;
         }
         (factor, spatial)
     }
 
-    /// Computes the Euclidean squared distance between two Klein vectors (chords).
-    /// Used for fast multi-geometric routing in upper HNSW layers.
     #[inline(always)]
     pub fn klein_chord_distance_sq(&self, other: &Self) -> f64 {
+        let _n = self.coords.len();
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
             let mut sum_sq_diff = f64x8::splat(0.0);
 
-            for i in (0..N).step_by(LANES) {
-                if i + LANES <= N {
+            for i in (0..n).step_by(LANES) {
+                if i + LANES <= n {
                     let a = f64x8::from_slice(&self.coords[i..i + LANES]);
                     let b = f64x8::from_slice(&other.coords[i..i + LANES]);
                     let diff = a - b;
@@ -151,10 +175,10 @@ impl<const N: usize> HyperVector<N> {
 
             let mut eucl_sq = sum_sq_diff.reduce_sum();
 
-            let remainder = N % LANES;
+            let remainder = n % LANES;
             if remainder != 0 {
-                let start = N - remainder;
-                for i in start..N {
+                let start = n - remainder;
+                for i in start..n {
                     let diff = self.coords[i] - other.coords[i];
                     eucl_sq += diff * diff;
                 }
@@ -174,9 +198,35 @@ impl<const N: usize> HyperVector<N> {
     }
 }
 
-impl<const N: usize> HyperVectorF32<N> {
-    pub fn from_float64(v: &HyperVector<N>) -> Self {
-        let mut coords = [0.0f32; N];
+impl HyperVectorF32 {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let alpha_offset = bytes.len() - 4;
+        let mut alpha_bytes = [0u8; 4];
+        alpha_bytes.copy_from_slice(&bytes[alpha_offset..]);
+        let alpha = f32::from_le_bytes(alpha_bytes);
+
+        let coords_len = alpha_offset / 4;
+        let mut coords = Vec::with_capacity(coords_len);
+        for i in 0..coords_len {
+            let mut buf = [0u8; 4];
+            buf.copy_from_slice(&bytes[i*4..(i+1)*4]);
+            coords.push(f32::from_le_bytes(buf));
+        }
+        Self { coords, alpha }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.coords.len() * 4 + 4);
+        for c in &self.coords {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.alpha.to_le_bytes());
+        bytes
+    }
+
+    pub fn from_float64(v: &HyperVector) -> Self {
+        let n = v.coords.len();
+        let mut coords = vec![0.0f32; n];
         for (dst, src) in coords.iter_mut().zip(v.coords.iter()) {
             *dst = *src as f32;
         }
@@ -186,8 +236,9 @@ impl<const N: usize> HyperVectorF32<N> {
         }
     }
 
-    pub fn to_float64(&self) -> HyperVector<N> {
-        let mut coords = [0.0f64; N];
+    pub fn to_float64(&self) -> HyperVector {
+        let n = self.coords.len();
+        let mut coords = vec![0.0f64; n];
         for (dst, src) in coords.iter_mut().zip(self.coords.iter()) {
             *dst = f64::from(*src);
         }
@@ -199,20 +250,41 @@ impl<const N: usize> HyperVectorF32<N> {
 }
 
 /// Quantized version (i8 coordinates)
-#[repr(C, align(64))]
 #[derive(Debug, Clone)]
-pub struct QuantizedHyperVector<const N: usize> {
-    pub coords: [i8; N],
+pub struct QuantizedHyperVector {
+    pub coords: Vec<i8>,
     pub alpha: f32, // Storing as f32 to save space
 }
 
-impl<const N: usize> QuantizedHyperVector<N> {
-    pub fn from_float(v: &HyperVector<N>, anisotropic: bool) -> Self {
-        let mut coords = [0i8; N];
+impl QuantizedHyperVector {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let alpha_offset = bytes.len() - 4;
+        let mut alpha_bytes = [0u8; 4];
+        alpha_bytes.copy_from_slice(&bytes[alpha_offset..]);
+        let alpha = f32::from_le_bytes(alpha_bytes);
 
-        // 1. If high dimension, fast path isotropic quantization
-        // OR if anisotropic refinement is explicitly disabled
-        if N > 128 || !anisotropic {
+        let coords_len = alpha_offset;
+        let mut coords = Vec::with_capacity(coords_len);
+        for i in 0..coords_len {
+            coords.push(bytes[i] as i8);
+        }
+        Self { coords, alpha }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.coords.len() + 4);
+        for c in &self.coords {
+            bytes.push(*c as u8);
+        }
+        bytes.extend_from_slice(&self.alpha.to_le_bytes());
+        bytes
+    }
+
+    pub fn from_float(v: &HyperVector, anisotropic: bool) -> Self {
+        let n = v.coords.len();
+        let mut coords = vec![0i8; n];
+
+        if n > 128 || !anisotropic {
             for (dst, &src) in coords.iter_mut().zip(v.coords.iter()) {
                 let val = (src * 127.0).round().clamp(-127.0, 127.0);
                 *dst = val as i8;
@@ -223,9 +295,7 @@ impl<const N: usize> QuantizedHyperVector<N> {
             };
         }
 
-        let mut float_coords = [0.0f64; N];
-
-        // 1. Compute norm of original vector
+        let mut float_coords = vec![0.0f64; n];
         let mut sq_norm = 0.0;
         for src in &v.coords {
             sq_norm += src * src;
@@ -233,27 +303,23 @@ impl<const N: usize> QuantizedHyperVector<N> {
         let norm = sq_norm.sqrt();
         let inv_norm = if norm > 1e-9 { 1.0 / norm } else { 0.0 };
 
-        // 2. Initial isotropic quantization
-        for i in 0..N {
+        for i in 0..n {
             let val = (v.coords[i] * 127.0).round().clamp(-127.0, 127.0);
             coords[i] = val as i8;
             float_coords[i] = val / 127.0;
         }
 
         if norm > 1e-9 {
-            // 3. Anisotropic Coordinate Descent Refinement (ScaNN / RaBitQ inspired)
-            // Penalize orthogonal error 10x more than parallel error to preserve angles
             let t_weight = 10.0;
-
             let mut current_dot_err_x = 0.0;
             let mut current_sq_err = 0.0;
-            for j in 0..N {
+            for j in 0..n {
                 let err = float_coords[j] - v.coords[j];
                 current_dot_err_x += err * v.coords[j];
                 current_sq_err += err * err;
             }
 
-            for i in 0..N {
+            for i in 0..n {
                 let original_q = coords[i];
                 let original_f = float_coords[i];
                 let original_err = original_f - v.coords[i];
@@ -279,7 +345,6 @@ impl<const N: usize> QuantizedHyperVector<N> {
                     let e_parallel_sq = e_parallel_mag * e_parallel_mag;
                     let e_ortho_sq = (sq_err - e_parallel_sq).max(0.0);
 
-                    // Anisotropic loss
                     let loss = e_parallel_sq + t_weight * e_ortho_sq;
 
                     if loss < best_loss {
@@ -305,22 +370,20 @@ impl<const N: usize> QuantizedHyperVector<N> {
     }
 
     #[inline(always)]
-    pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
+    pub fn poincare_distance_sq_to_float(&self, query: &HyperVector) -> f64 {
+        let _n = self.coords.len();
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
             const SCALE_INV: f32 = 1.0 / 127.0;
             let mut sum_sq_diff = Simd::<f32, LANES>::splat(0.0);
 
-            for i in (0..N).step_by(LANES) {
-                if i + LANES <= N {
+            for i in (0..n).step_by(LANES) {
+                if i + LANES <= n {
                     let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
                     let a_f32: Simd<f32, LANES> = a_i8.cast();
                     let a_scaled = a_f32 * Simd::splat(SCALE_INV);
 
-                    // Optimization: Load 8 f64s, cast to 8 f32s.
-                    // This uses YMM registers (256-bit) instead of ZMM (512-bit) for f32,
-                    // but allows f32 ALU usage which is often higher throughput.
                     let b_f64 = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
                     let b_f32: Simd<f32, LANES> = b_f64.cast();
 
@@ -331,14 +394,12 @@ impl<const N: usize> QuantizedHyperVector<N> {
 
             let l2_sq = sum_sq_diff.reduce_sum() as f64;
 
-            // Tail handling
             let mut tail_sq = 0.0;
-            let remainder = N % LANES;
+            let remainder = n % LANES;
             if remainder != 0 {
-                let start = N - remainder;
-                for i in start..N {
+                let start = n - remainder;
+                for i in start..n {
                     let a_val = f32::from(self.coords[i]) * SCALE_INV;
-                    // Cast query to f32 match SIMD path
                     let diff = a_val - (query.coords[i] as f32);
                     tail_sq += (diff * diff) as f64;
                 }
@@ -351,7 +412,6 @@ impl<const N: usize> QuantizedHyperVector<N> {
 
         #[cfg(not(feature = "nightly-simd"))]
         {
-            // Stable Rust implementation
             const SCALE_INV: f64 = 1.0 / 127.0;
             let mut sum_sq_diff = 0.0;
 
@@ -366,160 +426,122 @@ impl<const N: usize> QuantizedHyperVector<N> {
         }
     }
 
-    /// Quantizes a Lorentz (hyperboloid) vector using dynamic-range scalar quantization.
-    ///
-    /// Unlike Poincaré vectors (bounded in [-1, 1]), Lorentz coordinates are unbounded:
-    /// the time component x[0] = cosh(r) >= 1 and spatial components can be arbitrarily large.
-    /// We store `max(|x_i|)` as a scale factor in the `alpha` field, then map all coordinates
-    /// to the i8 range [-127, 127] via: `q_i = round(x_i / scale * 127)`.
-    ///
-    /// Dequantization: `x_i ~ (q_i / 127.0) * alpha`
-    ///
-    /// This preserves the Minkowski inner product structure at reduced precision while
-    /// keeping the struct layout identical (no storage format change).
-    pub fn from_float_lorentz(v: &HyperVector<N>) -> Self {
-        // Dynamic range: find the maximum absolute coordinate value
+    pub fn from_float_lorentz(v: &HyperVector) -> Self {
+        let n = v.coords.len();
         let scale = v
             .coords
             .iter()
             .map(|&x| x.abs())
             .fold(0.0_f64, f64::max)
-            .max(1e-12); // Guard against degenerate vectors
+            .max(1e-12);
 
         let inv_scale = 127.0 / scale;
-        let mut coords = [0i8; N];
+        let mut coords = vec![0i8; n];
         for (dst, &src) in coords.iter_mut().zip(v.coords.iter()) {
             *dst = (src * inv_scale).round().clamp(-127.0, 127.0) as i8;
         }
 
         Self {
             coords,
-            alpha: scale as f32, // Store scale factor (not Poincare alpha)
+            alpha: scale as f32,
         }
     }
 
-    /// Computes the approximate Lorentz distance from this quantized vector to a full-precision query.
-    ///
-    /// Dequantizes using the stored scale factor, then computes:
-    ///   d(a, b) = acosh(-<a, b>_L)
-    /// where <a, b>_L = -a[0]*b[0] + sum(a[i]*b[i], i=1..N) is the Minkowski inner product.
-    ///
-    /// The computation uses f64 to preserve numerical stability near the hyperboloid.
     #[inline(always)]
-    pub fn lorentz_distance_to_float(&self, query: &HyperVector<N>) -> f64 {
+    pub fn lorentz_distance_to_float(&self, query: &HyperVector) -> f64 {
+        let n = self.coords.len();
+        let scale = f64::from(self.alpha);
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
-            let scale = f64::from(self.alpha);
-            let scale_inv_127 = scale / 127.0;
+            let inv_127 = 1.0 / 127.0;
+            let scale_simd = Simd::<f64, LANES>::splat(scale * inv_127);
+            let mut sum_spatial = Simd::<f64, LANES>::splat(0.0);
 
-            // SIMD: accumulate full Euclidean dot product, then fix the Minkowski sign.
-            // <a,b>_L = -a0*b0 + sum(ai*bi) = euclidean_dot - 2*a0*b0
-            let scale_f32 = scale_inv_127 as f32;
-            let scale_vec = Simd::<f32, LANES>::splat(scale_f32);
-            let mut dot_sum = Simd::<f32, LANES>::splat(0.0);
-
-            for i in (0..N).step_by(LANES) {
-                if i + LANES <= N {
+            for i in (1..n).step_by(LANES) {
+                if i + LANES <= n {
                     let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
-                    let a_f32: Simd<f32, LANES> = a_i8.cast();
-                    let a_scaled = a_f32 * scale_vec;
-
-                    let b_f64 = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
-                    let b_f32: Simd<f32, LANES> = b_f64.cast();
-
-                    dot_sum += a_scaled * b_f32;
+                    let a_f64: Simd<f64, LANES> = a_i8.cast();
+                    let a_scaled = a_f64 * scale_simd;
+                    let b = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
+                    sum_spatial += a_scaled * b;
                 }
             }
 
-            let mut euclidean_dot = dot_sum.reduce_sum() as f64;
+            let mut spatial_dot = sum_spatial.reduce_sum();
 
-            // Tail handling
-            let remainder = N % LANES;
+            let remainder = (n - 1) % LANES;
             if remainder != 0 {
-                let start = N - remainder;
-                for i in start..N {
-                    let a_val = f64::from(self.coords[i]) * scale_inv_127;
-                    euclidean_dot += a_val * query.coords[i];
+                let start = n - remainder;
+                for i in start..n {
+                    let a_val = (f64::from(self.coords[i]) * inv_127) * scale;
+                    spatial_dot += a_val * query.coords[i];
                 }
             }
 
-            // Convert to Minkowski: <a,b>_L = euclidean_dot - 2*a[0]*b[0]
-            let a0 = f64::from(self.coords[0]) * scale_inv_127;
-            let minkowski_inner = euclidean_dot - 2.0 * a0 * query.coords[0];
+            let a_time = (f64::from(self.coords[0]) * inv_127) * scale;
+            let b_time = query.coords[0];
+            let minkowski_dot = a_time * b_time - spatial_dot;
 
-            let arg = (-minkowski_inner).max(1.0 + 1e-12);
+            let arg = minkowski_dot.max(1.0);
             arg.acosh()
         }
 
         #[cfg(not(feature = "nightly-simd"))]
         {
-            let scale = f64::from(self.alpha);
-            let scale_inv_127 = scale / 127.0;
-
-            // Time-like component (negative sign in Minkowski signature)
-            let a0 = f64::from(self.coords[0]) * scale_inv_127;
-            let mut inner = -a0 * query.coords[0];
-
-            // Spatial components (positive sign)
-            for i in 1..N {
-                let a_val = f64::from(self.coords[i]) * scale_inv_127;
-                inner += a_val * query.coords[i];
+            let inv_127 = 1.0 / 127.0;
+            let mut spatial_dot = 0.0;
+            for i in 1..n {
+                let a_val = (f64::from(self.coords[i]) * inv_127) * scale;
+                spatial_dot += a_val * query.coords[i];
             }
 
-            // d(a,b) = acosh(-<a,b>_L)
-            let arg = (-inner).max(1.0 + 1e-12);
-            arg.acosh()
+            let a_time = (f64::from(self.coords[0]) * inv_127) * scale;
+            let b_time = query.coords[0];
+
+            let minkowski_dot = a_time * b_time - spatial_dot;
+            minkowski_dot.max(1.0).acosh()
         }
     }
 }
 
-impl<const N: usize> HyperVectorF32<N> {
-    pub const SIZE: usize = std::mem::size_of::<Self>();
-    pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: `self` is a valid POD-like struct with stable repr(C, align).
-        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
-    }
-    /// Casts bytes to `HyperVectorF32`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "HyperVectorF32: Misaligned bytes! Use aligned storage."
-        );
-        // SAFETY: alignment and size are controlled by caller/storage element sizing.
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
-    }
-}
-
-/// Binary Quantized (1 bit per dimension)
-/// With Fixed Storage Buffer (512 bytes) to support up to 4096 dimensions
-/// safely without `generic_const_exprs`.
-#[repr(C)]
+/// Binary vector struct (1 bit per dimension)
 #[derive(Debug, Clone)]
-pub struct BinaryHyperVector<const N: usize> {
-    pub bits: [u8; 512],
-    pub alpha: f32,
+pub struct BinaryHyperVector {
+    pub bits: Vec<u8>,
+    pub alpha: f32, // Stored to preserve the conformal factor (for distances)
 }
 
-impl<const N: usize> BinaryHyperVector<N> {
-    pub fn from_float(v: &HyperVector<N>) -> Self {
-        let mut bits = [0u8; 512];
-        for (i, &val) in v.coords.iter().enumerate() {
-            if i >= 4096 {
-                break;
-            } // Safety cap
-            if val > 0.0 {
-                let byte_idx = i / 8;
-                let bit_idx = i % 8;
-                bits[byte_idx] |= 1 << bit_idx;
+impl BinaryHyperVector {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let alpha_offset = bytes.len() - 4;
+        let mut alpha_bytes = [0u8; 4];
+        alpha_bytes.copy_from_slice(&bytes[alpha_offset..]);
+        let alpha = f32::from_le_bytes(alpha_bytes);
+
+        let mut bits = Vec::with_capacity(alpha_offset);
+        bits.extend_from_slice(&bytes[..alpha_offset]);
+        Self { bits, alpha }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.bits.len() + 4);
+        bytes.extend_from_slice(&self.bits);
+        bytes.extend_from_slice(&self.alpha.to_le_bytes());
+        bytes
+    }
+
+    pub fn from_float(v: &HyperVector) -> Self {
+        let n = v.coords.len();
+        let bytes_len = (n + 7) / 8;
+        let mut bits = vec![0u8; bytes_len];
+
+        for i in 0..n {
+            if v.coords[i] > 0.0 {
+                bits[i / 8] |= 1 << (i % 8);
             }
         }
+
         Self {
             bits,
             alpha: v.alpha as f32,
@@ -527,125 +549,22 @@ impl<const N: usize> BinaryHyperVector<N> {
     }
 
     #[inline(always)]
-    pub fn hamming_distance(&self, other: &Self) -> u32 {
-        let mut dist = 0;
-        let limit = N.div_ceil(8);
-        for i in 0..limit {
-            dist += (self.bits[i] ^ other.bits[i]).count_ones();
-        }
-        dist
-    }
-
-    pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
-        let val = 1.0 / (N as f64).sqrt() * 0.99;
+    pub fn poincare_distance_sq_to_float(&self, query: &HyperVector) -> f64 {
+        let n = query.coords.len();
         let mut sum_sq_diff = 0.0;
 
-        for i in 0..N {
-            if i >= 4096 {
-                break;
-            }
-            let byte_idx = i / 8;
-            let bit_idx = i % 8;
-            let bit = (self.bits[byte_idx] >> bit_idx) & 1;
-
-            let recon = if bit == 1 { val } else { -val };
-            let diff = recon - query.coords[i];
+        for i in 0..n {
+            let bit = (self.bits[i / 8] >> (i % 8)) & 1;
+            let val = if bit == 1 { 1.0 } else { -1.0 };
+            let diff = val - query.coords[i];
             sum_sq_diff += diff * diff;
         }
 
         let delta = sum_sq_diff * f64::from(self.alpha) * query.alpha;
         1.0 + 2.0 * delta
     }
-
-    pub fn l2_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
-        let val = 1.0 / (N as f64).sqrt() * 0.99;
-        let mut sum_sq_diff = 0.0;
-
-        for i in 0..N {
-            if i >= 4096 {
-                break;
-            }
-            let byte_idx = i / 8;
-            let bit_idx = i % 8;
-            let bit = (self.bits[byte_idx] >> bit_idx) & 1;
-
-            let recon = if bit == 1 { val } else { -val };
-            let diff = recon - query.coords[i];
-            sum_sq_diff += diff * diff;
-        }
-        sum_sq_diff
-    }
 }
 
-impl<const N: usize> HyperVector<N> {
-    pub const SIZE: usize = std::mem::size_of::<Self>();
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
-    }
-    /// Casts bytes to `HyperVector`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "HyperVector: Misaligned bytes! Use aligned storage."
-        );
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
-    }
-}
-
-impl<const N: usize> QuantizedHyperVector<N> {
-    pub const SIZE: usize = std::mem::size_of::<Self>();
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
-    }
-    /// Casts bytes to `QuantizedHyperVector`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        let addr = bytes.as_ptr();
-        let align = std::mem::align_of::<Self>();
-        let offset = addr.align_offset(align);
-        assert!(
-            offset == 0,
-            "QuantizedHyperVector: Misaligned bytes! addr={addr:?}, align={align}, offset={offset}. Use aligned storage."
-        );
-        // SAFETY: alignment and size are controlled by caller/storage element sizing.
-        unsafe { &*addr.cast::<Self>() }
-    }
-}
-
-impl<const N: usize> BinaryHyperVector<N> {
-    pub const SIZE: usize = std::mem::size_of::<Self>();
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(std::ptr::from_ref(self).cast::<u8>(), Self::SIZE) }
-    }
-    /// Casts bytes to `BinaryHyperVector`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "BinaryHyperVector: Misaligned bytes!"
-        );
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
-    }
-}
-
-/// Task 6.3: Zonal (MOND) Quantization
-/// Core vectors (near the origin) use compressed i8 representation.
-/// Boundary vectors (near the horizon) use high-precision f64.
 #[derive(Debug, Clone)]
 pub enum ZonalVector {
     Core(Vec<i8>),
@@ -653,52 +572,7 @@ pub enum ZonalVector {
 }
 
 impl ZonalVector {
-    pub fn new_zonal(coords: &[f64]) -> Self {
-        let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
-        let r = sq_norm.sqrt();
-
-        // If hyperbolic radius is small (R < 0.5), compress to Core.
-        if r < 0.5 {
-            // Compress to i8 via dynamic range or simple [-1, 1] mapping
-            let mut i8_coords = Vec::with_capacity(coords.len());
-            for &c in coords {
-                let val = (c * 127.0).round().clamp(-127.0, 127.0);
-                i8_coords.push(val as i8);
-            }
-            ZonalVector::Core(i8_coords)
-        } else {
-            ZonalVector::Boundary(coords.to_vec())
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_hypervector_creation() {
-        let coords = [0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4];
-        let v = HyperVector::<8>::new(coords).unwrap();
-        assert!((v.coords[0] - 0.1).abs() < f64::EPSILON);
-        assert!(v.alpha > 0.0);
-    }
-    #[test]
-    fn bench_distance_speed() {
-        let a = HyperVector::<1024>::new([0.001; 1024]).unwrap();
-        let b = HyperVector::<1024>::new([0.002; 1024]).unwrap();
-
-        let start = std::time::Instant::now();
-        let iterations = 1_000_000;
-
-        // Warm up the CPU cache
-        let mut black_box = 0.0;
-
-        for _ in 0..iterations {
-            black_box += a.poincare_distance_sq(&b);
-        }
-
-        let duration = start.elapsed();
-        println!("⏱️ 1M distances took: {duration:?} (Check sum: {black_box})");
+    pub fn new_zonal(arr: &[f64]) -> Self {
+        Self::Boundary(arr.to_vec())
     }
 }

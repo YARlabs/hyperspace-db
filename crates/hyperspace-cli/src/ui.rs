@@ -161,12 +161,18 @@ fn draw_collections(f: &mut Frame, app: &App, area: Rect) {
         .collections_list
         .iter()
         .map(|c| {
+            let schema_str = if let Some(schema) = &c.schema {
+                if let Some(comp) = schema.components.first() {
+                    format!("Dim: {} | Metric: {}", comp.full_dimension, comp.metric)
+                } else {
+                    "Empty Schema".to_string()
+                }
+            } else {
+                "No Schema".to_string()
+            };
             Line::from(vec![
                 Span::styled(format!("{:<30}", c.name), Style::default().fg(Color::Cyan)),
-                Span::raw(format!(
-                    " | Dim: {:<5} | Metric: {:<10} | Count: {}",
-                    c.dimension, c.metric, c.count
-                )),
+                Span::raw(format!(" | {} | Count: {}", schema_str, c.count)),
             ])
         })
         .collect();

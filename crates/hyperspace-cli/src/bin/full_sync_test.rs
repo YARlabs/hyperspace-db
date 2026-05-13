@@ -23,8 +23,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("📦 Creating test collection: {collection_name}...");
+    let schema = hyperspace_sdk::CollectionSchema {
+        components: vec![hyperspace_sdk::VectorComponent {
+            name: "primary".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: 128,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
     leader
-        .create_collection(collection_name.clone(), 128, "l2".to_string())
+        .create_collection(collection_name.clone(), schema.clone())
         .await?;
 
     // Also create on Follower
@@ -36,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     follower
-        .create_collection(collection_name.clone(), 128, "l2".to_string())
+        .create_collection(collection_name.clone(), schema)
         .await?;
     println!("✅ Collections created\n");
 

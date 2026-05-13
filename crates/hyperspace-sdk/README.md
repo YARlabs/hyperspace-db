@@ -36,7 +36,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let collection = "docs_rust".to_string();
     let _ = client.delete_collection(collection.clone()).await;
-    client.create_collection(collection.clone(), 3, "cosine".to_string()).await?;
+
+    // Use the new Schema-driven API
+    use hyperspace_proto::hyperspace::{CollectionSchema, VectorComponent};
+    let schema = CollectionSchema {
+        components: vec![VectorComponent {
+            name: "primary".to_string(),
+            metric: "cosine".to_string(),
+            full_dimension: 3,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+
+    client.create_collection(collection.clone(), schema).await?;
 
     client.insert(
         1,
@@ -117,6 +130,31 @@ let results = client.search_hybrid(
 ).await?;
 ```
 
+## Matryoshka Representation Learning (MRL) & Cascading
+
+HyperspaceDB supports MRL through its **Cascade Pipeline**. This allows you to perform initial fast search on a truncated low-dimensional vector (e.g., 64D) and then rerank the results using the full vector (e.g., 1024D).
+
+```rust
+use hyperspace_proto::hyperspace::{CollectionSchema, VectorComponent, MrlLayer};
+
+let schema = CollectionSchema {
+    components: vec![VectorComponent {
+        name: "primary".to_string(),
+        metric: "lorentz".to_string(),
+        full_dimension: 1025, // 1024 + 1
+        weight: 1.0,
+    }],
+    cascade_pipeline: vec![MrlLayer {
+        component_name: "primary".to_string(),
+        cutoff_dimension: 129, // Perform initial search on 128D (+1)
+        store_in_ram: true,
+        rerank_top_k: 100,
+    }],
+};
+
+client.create_collection("mrl_collection".to_string(), schema).await?;
+```
+
 ## f32 Helpers
 
 When your app keeps Euclidean vectors in `f32`, use conversion helpers:
@@ -130,8 +168,9 @@ The crate converts to protocol `f64` once per call.
 ## API Surface (Core)
 
 - `Client::connect`
-- `create_collection`, `delete_collection`
-- `list_collections` (returns `Vec<CollectionSummary>` with name, count, dimension, and metric)
+- `create_collection(name, schema)` (takes `CollectionSchema`)
+- `delete_collection`
+- `list_collections` (returns `Vec<CollectionSummary>` with name, count, and schema)
 - `insert`, `insert_f32`
 
 - `insert_text` (server-side vectorization and storage)
@@ -209,7 +248,7 @@ let synced_thought = context_resonance(&thought, &global_context, 0.5, curvature
 
 ## Embedding Pipeline (Optional)
 
-HyperspaceDB supports **per-geometry embeddings** — each of the 4 distance types (`l2`, `cosine`, `poincare`, `lorentz`) can have its own embedding backend configured independently.
+HyperspaceDB supports **per-geometry embeddings** — each of the 5 distance types (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can have its own embedding backend configured independently.
 
 ### Available Backends
 

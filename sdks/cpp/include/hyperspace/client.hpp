@@ -23,18 +23,16 @@ struct SearchResultRec {
 struct CollectionSummaryRec {
     std::string name;
     uint64_t count;
-    uint32_t dimension;
-    std::string metric;
+    ::hyperspace::CollectionSchema schema;
 };
 
 struct CollectionStats {
     uint64_t count;
-    uint32_t dimension;
-    std::string metric;
     uint64_t indexing_queue;
     uint64_t disk_usage_bytes;
     uint64_t ram_usage_bytes;
     uint64_t active_tasks;
+    ::hyperspace::CollectionSchema schema;
 };
 
 struct Bm25Params {
@@ -51,7 +49,7 @@ public:
     ~HyperspaceClient() = default;
 
     // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
-    bool CreateCollection(const std::string& name, int dimension, const std::string& metric = "cosine");
+    bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema);
     std::vector<CollectionSummaryRec> ListCollections();
 
     bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "", const std::vector<uint8_t>& payload = {});
@@ -59,7 +57,7 @@ public:
     bool Delete(uint32_t id, const std::string& collection = "");
     bool BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection = "");
     std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
-    std::vector<SearchResultRec> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false, bool include_payload = false);
+    std::vector<SearchResultRec> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false, bool include_payload = false, const std::unordered_map<std::string, float>& component_weights = {});
     std::vector<std::vector<SearchResultRec>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
     std::vector<SearchResultRec> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr);
     std::unordered_map<std::string, std::vector<SearchResultRec>> SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k = 10);

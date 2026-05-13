@@ -713,9 +713,63 @@ pub fn rerank_topk_exact(
     query: &[f64],
     candidate_ids: &[u32],
     candidate_vectors: &[&[f64]],
+    layout: Option<&crate::vector::VectorLayout>,
+    weight_overrides: Option<&std::collections::HashMap<String, f32>>,
 ) -> Vec<(u32, f64)> {
     debug_assert_eq!(candidate_ids.len(), candidate_vectors.len());
-    let (distances, _backend) = batch_distance_auto(metric, candidate_vectors, query);
+
+    let distances = if let Some(l) = layout {
+        if l.components.len() > 1 {
+            let mut final_dist = vec![0.0; candidate_ids.len()];
+            
+            for comp in &l.components {
+                let start = comp.offset;
+                let end = start + comp.dimension;
+                
+                // If query is smaller than component end, skip it (fallback)
+                if query.len() < end {
+                    continue;
+                }
+                
+                let q_slice = &query[start..end];
+                let mut c_slices = Vec::with_capacity(candidate_vectors.len());
+                for c in candidate_vectors {
+                    if c.len() >= end {
+                        c_slices.push(&c[start..end]);
+                    } else {
+                        // fallback if vector is corrupted
+                        c_slices.push(&c[0..0]);
+                    }
+                }
+                
+                let comp_metric = match comp.metric.as_str() {
+                    "cosine" => GpuMetric::Cosine,
+                    "poincare" => GpuMetric::Poincare,
+                    "lorentz" => GpuMetric::Lorentz,
+                    _ => GpuMetric::L2,
+                };
+                
+                let (comp_dist, _) = batch_distance_auto(comp_metric, &c_slices, q_slice);
+                
+                let weight = weight_overrides
+                    .and_then(|w| w.get(&comp.name))
+                    .copied()
+                    .unwrap_or(comp.weight) as f64;
+                
+                for i in 0..final_dist.len() {
+                    final_dist[i] += comp_dist[i] * weight;
+                }
+            }
+            final_dist
+        } else {
+            let (d, _) = batch_distance_auto(metric, candidate_vectors, query);
+            d
+        }
+    } else {
+        let (d, _) = batch_distance_auto(metric, candidate_vectors, query);
+        d
+    };
+
     let mut out: Vec<(u32, f64)> = candidate_ids.iter().copied().zip(distances).collect();
     out.sort_by(|a, b| a.1.total_cmp(&b.1));
     out
@@ -776,7 +830,7 @@ mod tests {
         let ids = vec![10, 20];
         let v1 = vec![2.0, 0.0];
         let v2 = vec![1.0, 0.0];
-        let ranked = rerank_topk_exact(GpuMetric::L2, &q, &ids, &[&v1, &v2]);
+        let ranked = rerank_topk_exact(GpuMetric::L2, &q, &ids, &[&v1, &v2], None, None);
         assert_eq!(ranked[0].0, 20);
     }
 

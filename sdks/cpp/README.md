@@ -27,20 +27,31 @@ Example usage:
 #include "proto/hyperspace.grpc.pb.h"
 #include <grpcpp/grpcpp.h>
 
-// Connect and Search
-auto channel = grpc::CreateChannel("localhost:50051", grpc::InsecureChannelCredentials());
-auto stub = hyperspace::Database::NewStub(channel);
+// 1. Create Collection with Schema
+hyperspace::CreateCollectionRequest create_req;
+create_req.set_name("docs");
+auto* schema = create_req.mutable_schema();
+auto* primary = schema->add_components();
+primary->set_name("primary");
+primary->set_metric("cosine");
+primary->set_full_dimension(1024);
+primary->set_weight(1.0);
 
+hyperspace::StatusResponse create_res;
+grpc::ClientContext create_ctx;
+create_ctx.AddMetadata("x-api-key", "I_LOVE_HYPERSPACEDB");
+status = stub->CreateCollection(&create_ctx, create_req, &create_res);
+
+// 2. Search
 hyperspace::SearchRequest request;
-request.set_collection("robots_memory");
+request.set_collection("docs");
 request.add_vector(0.12);
 request.add_vector(-0.45);
 request.set_top_k(10);
-request.set_use_wasserstein(false); // Enable for 1D CFM (Wasserstein Metric)
 
 hyperspace::SearchResponse response;
 grpc::ClientContext context;
-context.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
+context.AddMetadata("x-api-key", "I_LOVE_HYPERSPACEDB");
 
 grpc::Status status = stub->Search(&context, request, &response);
 
@@ -91,23 +102,26 @@ grpc::ClientContext search_text_ctx;
 search_text_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 status = stub->SearchText(&search_text_ctx, search_text_req, &search_text_res);
 
-// 7. Hybrid Search (Lexical + Vector)
-hyperspace::SearchRequest hybrid_req;
-hybrid_req.set_collection("docs");
-hybrid_req.add_vector(0.12); // Semantic vector
-hybrid_req.set_hybrid_query("quantum computing"); // Lexical query
-hybrid_req.set_hybrid_alpha(0.7); // 70% vector weight
-hybrid_req.set_top_k(10);
-
-// Optional: BM25 configuration
-auto* bm25 = hybrid_req.mutable_bm25_options();
-bm25->set_method("bm25plus");
-bm25->set_language("english");
-
-hyperspace::SearchResponse hybrid_res;
-grpc::ClientContext hybrid_ctx;
-hybrid_ctx.AddMetadata("authorization", "Bearer I_LOVE_HYPERSPACEDB");
 status = stub->Search(&hybrid_ctx, hybrid_req, &hybrid_res);
+
+// 8. Matryoshka Representation Learning (MRL) & Cascading
+hyperspace::CreateCollectionRequest mrl_req;
+mrl_req.set_name("mrl_docs");
+auto* mrl_schema = mrl_req.mutable_schema();
+auto* comp = mrl_schema->add_components();
+comp->set_name("main");
+comp->set_metric("lorentz");
+comp->set_full_dimension(1025);
+
+auto* mrl_layer = mrl_schema->add_cascade_pipeline();
+mrl_layer->set_component_name("main");
+mrl_layer->set_cutoff_dimension(129); // 128D (+1) fast search
+mrl_layer->set_store_in_ram(true);
+mrl_layer->set_rerank_top_k(100);
+
+grpc::ClientContext mrl_ctx;
+mrl_ctx.AddMetadata("x-api-key", "I_LOVE_HYPERSPACEDB");
+status = stub->CreateCollection(&mrl_ctx, mrl_req, &create_res);
 
 // 6. List Collections with Metadata
 hyperspace::Empty list_req;
@@ -118,14 +132,13 @@ status = stub->ListCollections(&list_ctx, list_req, &list_res);
 for (const auto& col : list_res.collections()) {
     std::cout << "Collection: " << col.name() 
               << ", Count: " << col.count() 
-              << ", Dim: " << col.dimension() 
-              << ", Metric: " << col.metric() << std::endl;
+              << ", Schema: " << col.schema().DebugString() << std::endl;
 }
 ```
 
 ## Embedding Pipeline (Optional)
 
-HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can use its own backend.
+HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can use its own backend.
 
 ### Server Configuration (`.env`)
 
@@ -176,5 +189,6 @@ grpc::Status status = stub->SearchMultiCollection(&context, req, &response);
 | `l2` | Unit normalize | Euclidean distance / robotics |
 | `poincare` | Clamp to unit ball | Hierarchical data (knowledge graphs) |
 | `lorentz` | None | Mixed hierarchical + semantic (spatial AI) |
+| `hybrid` | None | Lorentz + L2 combined metric |
 
 > **Note:** For `lorentz` geometry, dimension = spatial_dim + 1 (e.g. 129 for 128-dim spatial vectors).

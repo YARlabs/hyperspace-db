@@ -2,7 +2,7 @@ use crate::collection::CollectionImpl;
 use dashmap::DashMap;
 use hyperspace_core::VacuumFilterQuery;
 use hyperspace_core::{
-    Collection, CosineMetric, EuclideanMetric, Hybrid801Metric, LorentzMetric, PoincareMetric,
+    Collection, CosineMetric, EuclideanMetric, HybridMetric, LorentzMetric, PoincareMetric,
 };
 use hyperspace_proto::hyperspace::{
     replication_log, CreateCollectionOp, DeleteCollectionOp, ReplicationLog,
@@ -36,6 +36,7 @@ pub enum ClusterRole {
 pub struct CollectionEntry {
     pub collection: Arc<dyn Collection>,
     pub last_accessed: AtomicU64,
+    pub meta: CollectionMetadata,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,82 +212,34 @@ impl CollectionManager {
         let quant_mode = meta.quantization_mode();
         let node_id = self.cluster_state.read().await.node_id.clone();
 
-        // Helper macro to reduce boilerplate
         macro_rules! inst {
-            ($N:expr, $M:ty) => {
+            ($M:ty) => {
                 Arc::new(
-                    CollectionImpl::<$N, $M>::new(
+                    CollectionImpl::<$M>::new(
                         name.to_string(),
                         node_id.clone(),
                         col_dir.clone(),
                         wal_path.clone(),
                         quant_mode,
                         self.replication_tx.clone(),
+                        meta.dimension() as usize,
+                        meta.get_schema(),
                     )
                     .await?,
                 )
             };
         }
 
-        let collection: Arc<dyn Collection> = match (meta.dimension, meta.metric.as_str()) {
-            // Hyperbolic (Poincaré)
-            (4, "poincare") => inst!(4, PoincareMetric),
-            (8, "poincare") => inst!(8, PoincareMetric),
-            (16, "poincare") => inst!(16, PoincareMetric),
-            (32, "poincare") => inst!(32, PoincareMetric),
-            (64, "poincare") => inst!(64, PoincareMetric),
-            (128, "poincare") => inst!(128, PoincareMetric),
-
-            // Euclidean (L2)
-            (8, "euclidean" | "l2") => inst!(8, EuclideanMetric),
-            (16, "euclidean" | "l2") => inst!(16, EuclideanMetric),
-            (32, "euclidean" | "l2") => inst!(32, EuclideanMetric),
-            (64, "euclidean" | "l2") => inst!(64, EuclideanMetric),
-            (128, "euclidean" | "l2") => inst!(128, EuclideanMetric),
-            (768, "euclidean" | "l2") => inst!(768, EuclideanMetric),
-            (1024, "euclidean" | "l2") => inst!(1024, EuclideanMetric),
-            (1536, "euclidean" | "l2") => inst!(1536, EuclideanMetric),
-            (2048, "euclidean" | "l2") => inst!(2048, EuclideanMetric),
-            (3072, "euclidean" | "l2") => inst!(3072, EuclideanMetric),
-            (4096, "euclidean" | "l2") => inst!(4096, EuclideanMetric),
-            (8192, "euclidean" | "l2") => inst!(8192, EuclideanMetric),
-
-            // Cosine Similarity
-            (8, "cosine") => inst!(8, CosineMetric),
-            (16, "cosine") => inst!(16, CosineMetric),
-            (32, "cosine") => inst!(32, CosineMetric),
-            (64, "cosine") => inst!(64, CosineMetric),
-            (128, "cosine") => inst!(128, CosineMetric),
-            (768, "cosine") => inst!(768, CosineMetric),
-            (1024, "cosine") => inst!(1024, CosineMetric),
-            (1536, "cosine") => inst!(1536, CosineMetric),
-            (2048, "cosine") => inst!(2048, CosineMetric),
-            (3072, "cosine") => inst!(3072, CosineMetric),
-            (4096, "cosine") => inst!(4096, CosineMetric),
-            (8192, "cosine") => inst!(8192, CosineMetric),
-
-            // Lorentz Model (Minkowski Space)
-            // Note: In HyperspaceDB, Lorentz requires N+1 dimensions (Spatial + 1)
-            (4, "lorentz") => inst!(4, LorentzMetric),
-            (5, "lorentz") => inst!(5, LorentzMetric),
-            (8, "lorentz") => inst!(8, LorentzMetric),
-            (9, "lorentz") => inst!(9, LorentzMetric),
-            (16, "lorentz") => inst!(16, LorentzMetric),
-            (17, "lorentz") => inst!(17, LorentzMetric),
-            (32, "lorentz") => inst!(32, LorentzMetric),
-            (33, "lorentz") => inst!(33, LorentzMetric),
-            (64, "lorentz") => inst!(64, LorentzMetric),
-            (65, "lorentz") => inst!(65, LorentzMetric),
-            (128, "lorentz") => inst!(128, LorentzMetric),
-            (129, "lorentz") => inst!(129, LorentzMetric),
-
-            // Hybrid (Lorentz + Euclidean)
-            (801, "hybrid") => inst!(801, Hybrid801Metric),
-
+        let collection: Arc<dyn Collection> = match meta.metric_name().as_str() {
+            "poincare" => inst!(PoincareMetric),
+            "euclidean" | "l2" => inst!(EuclideanMetric),
+            "cosine" => inst!(CosineMetric),
+            "lorentz" => inst!(LorentzMetric),
+            "hybrid" => inst!(HybridMetric),
             _ => {
                 return Err(format!(
                     "Unsupported configuration: dim={}, metric={}",
-                    meta.dimension, meta.metric
+                    meta.dimension(), meta.metric_name()
                 )
                 .into());
             }
@@ -295,6 +248,7 @@ impl CollectionManager {
         let entry = CollectionEntry {
             collection,
             last_accessed: AtomicU64::new(current_time_secs()),
+            meta,
         };
         self.collections.insert(name.to_string(), entry);
         Ok(())
@@ -304,21 +258,19 @@ impl CollectionManager {
         &self,
         user_id: &str,
         name: &str,
-        dimension: u32,
-        metric: &str,
+        schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<(), String> {
         let internal_name = Self::get_internal_name(user_id, name);
-        self.create_collection_internal(&internal_name, dimension, metric, true)
+        self.create_collection_internal(&internal_name, schema, true)
             .await
     }
 
     pub async fn create_collection_from_replication(
         &self,
         name: &str,
-        dimension: u32,
-        metric: &str,
+        schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<(), String> {
-        self.create_collection_internal(name, dimension, metric, false)
+        self.create_collection_internal(name, schema, false)
             .await
     }
 
@@ -367,8 +319,7 @@ impl CollectionManager {
     async fn create_collection_internal(
         &self,
         name: &str,
-        dimension: u32,
-        metric: &str,
+        schema: hyperspace_proto::hyperspace::CollectionSchema,
         replicate: bool,
     ) -> Result<(), String> {
         if self.collections.contains_key(name) {
@@ -385,8 +336,9 @@ impl CollectionManager {
             .to_lowercase();
 
         let meta = CollectionMetadata {
-            dimension,
-            metric: metric.to_string(),
+            schema: Some(schema.clone()),
+            dimension: None,
+            metric: None,
             quantization,
         };
 
@@ -405,8 +357,7 @@ impl CollectionManager {
                 collection: name.to_string(),
                 operation: Some(replication_log::Operation::CreateCollection(
                     CreateCollectionOp {
-                        dimension,
-                        metric: metric.to_string(),
+                        schema: Some(schema),
                     },
                 )),
             };
@@ -419,7 +370,14 @@ impl CollectionManager {
     pub async fn get_internal(&self, internal_name: &str) -> Option<Arc<dyn Collection>> {
         self.collections
             .get(internal_name)
-            .map(|c| c.value().collection.clone())
+            .map(|entry| entry.collection.clone())
+    }
+
+    pub async fn get_metadata(&self, user_id: &str, name: &str) -> Option<CollectionMetadata> {
+        let internal_name = Self::get_internal_name(user_id, name);
+        self.collections
+            .get(&internal_name)
+            .map(|entry| entry.meta.clone())
     }
 
     pub async fn get(&self, user_id: &str, name: &str) -> Option<Arc<dyn Collection>> {
@@ -495,11 +453,11 @@ impl CollectionManager {
         let mut summaries = Vec::new();
         for name in names {
             if let Some(col) = self.get(user_id, &name).await {
+                let schema = self.get_metadata(user_id, &name).await.and_then(|m| m.schema);
                 summaries.push(hyperspace_proto::hyperspace::CollectionSummary {
                     name: name.clone(),
                     count: col.count() as u64,
-                    dimension: col.dimension() as u32,
-                    metric: col.metric_name().to_string(),
+                    schema,
                 });
             }
         }
@@ -661,11 +619,12 @@ fn calculate_dir_size(path: &Path) -> std::io::Result<u64> {
     Ok(total_size)
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct CollectionMetadata {
-    dimension: u32,
-    metric: String,
-    quantization: String,
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct CollectionMetadata {
+    pub schema: Option<hyperspace_proto::hyperspace::CollectionSchema>,
+    pub dimension: Option<u32>,
+    pub metric: Option<String>,
+    pub quantization: String,
 }
 
 impl CollectionMetadata {
@@ -678,6 +637,38 @@ impl CollectionMetadata {
         let s = fs::read_to_string(dir.join("meta.json"))?;
         let meta: Self = serde_json::from_str(&s)?;
         Ok(meta)
+    }
+
+    pub fn get_schema(&self) -> hyperspace_proto::hyperspace::CollectionSchema {
+        if let Some(schema) = &self.schema {
+            schema.clone()
+        } else {
+            hyperspace_proto::hyperspace::CollectionSchema {
+                components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                    name: "default".to_string(),
+                    metric: self.metric.clone().unwrap_or_else(|| "l2".to_string()),
+                    full_dimension: self.dimension.unwrap_or(0),
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            }
+        }
+    }
+
+    pub fn dimension(&self) -> usize {
+        self.get_schema()
+            .components
+            .first()
+            .map(|c| c.full_dimension as usize)
+            .unwrap_or(0)
+    }
+
+    pub fn metric_name(&self) -> String {
+        self.get_schema()
+            .components
+            .first()
+            .map(|c| c.metric.clone())
+            .unwrap_or_else(|| "l2".to_string())
     }
 
     fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {

@@ -23,10 +23,10 @@ graph TD
         Router -->|Route| Chunk
     end
     
-    subgraph Read_Path ["Scatter-Gather Search"]
-        S --> Searcher[Chunk Searcher]
-        Searcher -->|Parallel mmap| Chunk
-        S --> Merge[Result Merger]
+    subgraph Cascade_Pipeline ["Schema-Driven Cascade (MRL)"]
+        S -->|3. Phase 1| RAM_Search[Fast RAM Search (Truncated)]
+        RAM_Search -->|4. Top-K| Reranker[Disk Reranker (Full Vector)]
+        Reranker -->|5. Merge| Merge[Result Merger]
     end
 
     subgraph Embedding_Engine ["Embedding Engine"]
@@ -54,12 +54,15 @@ HyperspaceDB relies on principles from modern cosmology to execute vector search
    Continuous Riemannian SGD pulls vectors towards an attractor state (e.g. Flow Matching) directly via `TriggerReconsolidation`, restructuring the graph dynamically without full re-indexing.
 6. **Cross-Feature Matching (Wasserstein-1):**
    Instead of $O(N^3)$ generic OT, we execute an ultra-fast $O(N)$ 1D L1-CDF algorithm to compare distributions along feature axes directly inside the metric dispatch.
+7. **Cascading Funnel (The MRL Horizon):**
+   To avoid the "Curse of Dimensionality" in RAM, HyperspaceDB uses **Matryoshka Representation Learning (MRL)**. The engine defines a **Cascade Pipeline** in the schema: a truncated "head" (e.g. 64D) is indexed in RAM for microsecond retrieval, while the "tail" (e.g. 1536D) is stored on disk for a final precision-rerank phase.
+
 
 ---
 
 ## 💾 Storage Layer (LSM-Tree Architecture)
 
-HyperspaceDB 3.0 uses an **LSM-Tree** inspired architecture for vector search, optimized for high throughput and cloud tiering.
+HyperspaceDB 3.1.0 uses an **LSM-Tree** inspired architecture for vector search, optimized for high throughput, cloud tiering, and multi-vector schemas.
 
 ### 1. MemTable & WAL
 New vectors are first appended to the **Write-Ahead Log (WAL)** and simultaneously indexed in an in-memory **HNSW MemTable**.
@@ -99,6 +102,10 @@ HyperspaceDB SDK includes a **Cognitive Math** engine built upon the HNSW graph 
 3.  **Wasserstein-1 (Cross-Feature Matching / 1D CDF)**
     *   **Formula**: $ d(u, v) = \sum |CDF_u(i) - CDF_v(i)| $
     *   **Optimization**: O(N) evaluation instead of O(N^3) Sinkhorn, used for structural distribution matching.
+
+4.  **Hybrid Metric (Fused Lorentz + L2)**
+    *   **Logic**: Combining Hyperbolic and Euclidean components with dynamic weights.
+    *   **Use Case**: Hierarchical data with semantic drift.
 
 *   **Locking**: The graph uses fine-grained `RwLock` per node layer, allowing concurrent searches and updates.
 

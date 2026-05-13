@@ -40,7 +40,17 @@ client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
 collection = "docs_py"
 
 client.delete_collection(collection)
-client.create_collection(collection, dimension=3, metric="cosine")
+
+# New Schema-driven API (Matryoshka + Multi-Vector support)
+client.create_collection(
+    collection,
+    schema={
+        "components": [
+            {"name": "primary", "metric": "cosine", "full_dimension": 3, "weight": 1.0}
+        ],
+        "cascade_pipeline": []
+    }
+)
 
 # id is now the first argument
 client.insert(
@@ -110,11 +120,33 @@ results = client.search(
     collection="docs"
 )
 
-# Or if using query_text for auto-embedding:
 results = client.search(
     query_text="quantum computing",
     hybrid_alpha=0.7,
     collection="docs"
+)
+```
+
+## Matryoshka Representation Learning (MRL) & Cascading
+
+HyperspaceDB supports MRL through its **Cascade Pipeline**. This allows you to perform initial fast search on a truncated low-dimensional vector (e.g., 64D) and then rerank the results using the full vector (e.g., 1024D).
+
+```python
+client.create_collection(
+    "mrl_collection",
+    schema={
+        "components": [
+            {"name": "primary", "metric": "lorentz", "full_dimension": 1025, "weight": 1.0}
+        ],
+        "cascade_pipeline": [
+            {
+                "component_name": "primary",
+                "cutoff_dimension": 129, # Initial search on 128D (+1)
+                "store_in_ram": True,
+                "rerank_top_k": 100
+            }
+        ]
+    }
 )
 ```
 
@@ -183,10 +215,10 @@ status = client.health_check() # Returns "ONLINE"
 
 ### Collection Operations
 
-- `create_collection(name, dimension, metric) -> bool`
+- `create_collection(name, schema: dict) -> bool`
 - `delete_collection(name) -> bool`
-- `list_collections() -> list[dict]`  # [{"name": str, "count": int, "dimension": int, "metric": str}]
-- `get_collection_stats(name) -> dict`  # {"count": int, "dimension": int, "metric": str, "indexing_queue": int}
+- `list_collections() -> list[dict]`  # [{"name": str, "count": int, "schema": dict}]
+- `get_collection_stats(name) -> dict`  # {"count": int, "indexing_queue": int, "schema": dict}
 
 
 ### Data Operations
@@ -295,7 +327,7 @@ client = HyperspaceClient(
 
 ## Embedding Pipeline (Optional)
 
-HyperspaceDB supports **per-geometry embeddings** — each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can use its own backend independently.
+HyperspaceDB supports **per-geometry embeddings** — each geometry (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can use its own backend independently.
 
 ### Quick Setup via Environment Variables
 

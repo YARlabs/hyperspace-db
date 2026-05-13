@@ -42,8 +42,12 @@ void main() async {
   
   const col = 'knowledge_graph';
 
-  // 2. Create Collection (128D Poincaré space for hierarchies)
-  await client.createCollection(col, 128, 'poincare');
+  // 2. Create Collection with Schema (Multi-Vector & MRL support)
+  await client.createCollection(col, pb.CollectionSchema(
+    components: [
+      pb.VectorComponent(name: 'primary', metric: 'poincare', fullDimension: 128, weight: 1.0)
+    ]
+  ));
   
   // 3. Batch Insert Vectors with Typed Metadata
   await client.batchInsert([
@@ -79,13 +83,34 @@ void main() async {
 }
 ```
 
+## 🧠 Matryoshka Representation Learning (MRL)
+
+HyperspaceDB supports MRL through its **Cascade Pipeline**. This allows you to perform initial fast search on a truncated low-dimensional vector (e.g., 64D) and then rerank the results using the full vector (e.g., 1024D).
+
+```dart
+final schema = pb.CollectionSchema(
+  components: [
+    pb.VectorComponent(name: 'main', metric: 'lorentz', fullDimension: 1025)
+  ],
+  cascadePipeline: [
+    pb.MrlLayer(
+      componentName: 'main',
+      cutoffDimension: 129, // 128D (+1) fast search
+      storeInRam: true,
+      rerankTopK: 100
+    )
+  ]
+);
+await client.createCollection('mrl_docs', schema);
+```
+
 ## 🔍 API Overview
 
 ### Collection Management
-- `createCollection(name, dimension, metric)`: Create a new space.
+- `createCollection(name, schema)`: Create a new space with [CollectionSchema].
 - `deleteCollection(name)`: Remove a space.
 - `listCollections()`: List all available collections.
-- `getCollectionStats(name)`: Get real-time stats including **Disk** and **RAM** usage.
+- `getCollectionStats(name)`: Get real-time stats including **Disk**, **RAM** and **Schema** details.
 - `exists(name)`: Check if a collection exists.
 
 ### Data Operations
@@ -98,7 +123,7 @@ void main() async {
 - `count({filters})`: Get the number of points matching criteria.
 
 ### Advanced Search
-- `search(vector, topK, {filters, hybridQuery, hybridAlpha, ...})`: Standard ANN search.
+- `search(vector, topK, {filters, hybridQuery, hybridAlpha, componentWeights, ...})`: Standard ANN search.
 - `searchText(text, topK, {filters, ...})`: Server-side vectorized search.
 - `searchBatch(vectors, topK)`: Multiple searches in one RPC call.
 - `searchMultiCollection(collections, vector, topK)`: Parallel search across multiple metrics.

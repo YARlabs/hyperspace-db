@@ -29,8 +29,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = client
         .create_collection(CreateCollectionRequest {
             name: COLLECTION_NAME.to_string(),
-            dimension: 1024,
-            metric: "l2".to_string(),
+            schema: Some(hyperspace_proto::hyperspace::CollectionSchema {
+                components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                    name: "primary".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 1024,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            }),
         })
         .await
         .ok();
@@ -48,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             origin_node_id: String::new(),
             logical_clock: 0,
             durability: 0,
+            payload: None,
         })
         .await?;
 
@@ -64,6 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             origin_node_id: String::new(),
             logical_clock: 0,
             durability: 0,
+            payload: None,
         })
         .await?;
 
@@ -80,6 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             origin_node_id: String::new(),
             logical_clock: 0,
             durability: 0,
+            payload: None,
         })
         .await?;
 
@@ -98,6 +108,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             hybrid_alpha: None,
             use_wasserstein: false,
             bm25_options: None,
+            mrl_dimension: None,
+            include_payload: false,
+            component_weights: std::collections::HashMap::new(),
         })
         .await?;
 

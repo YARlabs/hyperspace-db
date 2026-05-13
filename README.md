@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 [![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
-**v3.0** | **The World's First Spatial AI Engine.**
+**v3.1.0** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -42,8 +42,8 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
     <td>Built on Nightly Rust. Our <b>ArcSwap Lock-Free architecture</b> and <code>f32</code> SIMD intrinsics deliver up to <b>12,000 Search QPS</b> and <b>60,000 Ingest QPS</b> on a single node.</td>
   </tr>
   <tr>
-    <td>🧭 <b>Global Meta-Router</b></td>
-    <td>Implements pure <b>Compute/Storage Separation</b>. The RAM-resident <code>MetaRouter</code> queries thousands of underlying HNSW fragments (chunks) in microseconds, pulling heavy data from NVMe/S3 via Paged Loading on the fly.</td>
+    <td>🧭 <b>Schema-Driven Cascade</b></td>
+    <td>Native <b>MRL (Matryoshka)</b> support. Define one schema with multiple layers; the RAM-resident <code>CascadePipeline</code> queries truncated dimensions in microseconds, automatically reranking results via full-resolution vectors on NVMe/S3.</td>
   </tr>
   <tr>
     <td>🎓 <b>Cognitive Math Engine</b></td>
@@ -478,8 +478,18 @@ from hyperspace import HyperspaceClient
 # Connect to local instance
 client = HyperspaceClient()
 
-# Create a collection with proper Cognitive Metrics
-client.create_collection(name="world_model", dimension=64, metric="poincare")
+# Create a collection with Schema-Driven Cascade (128D Poincaré + MRL)
+client.create_collection(
+    name="world_model", 
+    schema={
+        "components": [
+            {"name": "primary", "metric": "poincare", "full_dimension": 128, "weight": 1.0}
+        ],
+        "cascade_pipeline": [
+            {"component_name": "primary", "cutoff_dimension": 32, "store_in_ram": True, "rerank_top_k": 100}
+        ]
+    }
+)
 
 # Insert text document (you can provide your own embeddings)
 client.insert(id=1, collection="world_model", document="Hyperspace is autonomous.")
@@ -508,8 +518,15 @@ from hyperspace import HyperspaceClient
 
 client = HyperspaceClient()
 
-# Create a new collection
-client.create_collection(name="my_vectors", dimension=1536, metric="poincare")
+# Create a new collection with Schema
+client.create_collection(
+    name="my_vectors", 
+    schema={
+        "components": [
+            {"name": "main", "metric": "cosine", "full_dimension": 1536}
+        ]
+    }
+)
 
 # Insert into specific collection
 client.insert(id=1, document="...", collection="my_vectors")
@@ -555,9 +572,10 @@ Configure these via `.env` file or environment variables:
 
 | Variable | Description | Supported Values | Default |
 | :--- | :--- | :--- | :--- |
-| `HS_DIMENSION` | Vector dimensions | `16`, `32`, `64`, `128` (Hyperbolic) <br> `1024` (BGE), `1536` (OpenAI), `2048` (Voyage) | `1024` |
-| `HS_METRIC`    | Distance formula | `poincare` (Hyperbolic) <br> `cosine` (Cosine Similarity) <br> `l2`, `euclidean` (Squared L2) | `cosine` |
 | `HS_QUANTIZATION_LEVEL` | Compression | `scalar` (i8), `binary` (1-bit), `none` (f64) | `none` |
+
+> [!IMPORTANT]
+> Since v3.1.0, `HS_DIMENSION` and `HS_METRIC` are deprecated. Use **CollectionSchema** via SDK or CLI for granular control.
 
 ### 🎯 Supported Presets
 
