@@ -1,0 +1,9 @@
+string collection
+uint32 root_id
+uint32 max_depth
+---
+# Simplified response for ROS2
+uint32[] node_ids
+string[] node_metadata_json
+uint32[] edge_types
+bool success

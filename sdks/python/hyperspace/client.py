@@ -800,6 +800,21 @@ class HyperspaceClient:
             return False
 
 
+    def predict_relation(self, id_a: int, id_b: int, collection: str = "", curvature: float = 1.0) -> List[float]:
+        """
+        Computes the semantic relation vector R such that A + R ≈ B.
+        """
+        pts = self.get_points([id_a, id_b], collection=collection)
+        if len(pts) < 2:
+            return []
+        
+        id_to_vec = {p["id"]: p["vector"] for p in pts}
+        vec_a = id_to_vec[id_a]
+        vec_b = id_to_vec[id_b]
+        
+        from .math import log_map
+        return log_map(vec_a, vec_b, c=curvature)
+
     def close(self):
         self.channel.close()
 
@@ -810,7 +825,7 @@ class HyperspaceClient:
         self.close()
 
     def get_points(self, ids: List[int], collection: str = "") -> List[Dict]:
-        req = hyperspace_pb2.GetPointsRequest(ids=ids, collection=collection)
+        req = hyperspace_pb2.GetPointsRequest(collection=collection, ids=ids)
         try:
             resp = self.stub.GetPoints(req, metadata=self.metadata)
             return [
@@ -822,8 +837,99 @@ class HyperspaceClient:
                 }
                 for p in resp.points
             ]
-        except grpc.RpcError:
+        except grpc.RpcError as e:
+            print(f"RPC Error in get_points: {e}")
             return []
+
+    def get_subsumption_tree(self, root_id: int, max_depth: int = 3, collection: str = "") -> List[Dict]:
+        """
+        Returns a directed hierarchy tree starting from root_id.
+        """
+        req = hyperspace_pb2.GetSubsumptionTreeRequest(
+            collection=collection,
+            root_id=root_id,
+            max_depth=max_depth
+        )
+        try:
+            resp = self.stub.GetSubsumptionTree(req, metadata=self.metadata)
+            return [
+                {
+                    "id": n.id,
+                    "metadata": dict(n.metadata),
+                    "edge_types": n.edge_types
+                }
+                for n in resp.nodes
+            ]
+        except grpc.RpcError as e:
+            print(f"RPC Error in get_subsumption_tree: {e}")
+            return []
+
+    def explore_graph(self, start_id: int, max_depth: int = 2, max_nodes: int = 256, collection: str = "") -> Dict:
+        """
+        High-level wrapper that returns a JSON Ego-Graph for visualization.
+        """
+        req = hyperspace_pb2.TraverseRequest(
+            collection=collection,
+            start_id=start_id,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            traversal_mode=1, # DIFFUSIVE
+            breadth_limit=10
+        )
+        try:
+            resp = self.stub.Traverse(req, metadata=self.metadata)
+            nodes = [
+                {
+                    "id": n.id,
+                    "metadata": dict(n.metadata),
+                    "edge_types": n.edge_types,
+                    "neighbors": list(n.neighbors)
+                }
+                for n in resp.nodes
+            ]
+            return {
+                "nodes": nodes,
+                "center_id": start_id,
+                "count": len(nodes)
+            }
+        except grpc.RpcError as e:
+            print(f"RPC Error in explore_graph: {e}")
+            return {}
+
+    def predict_momentum(self, trajectory_ids: List[int], steps: float = 1.0, collection: str = "", curvature: float = 1.0) -> List[float]:
+        """
+        Client-side trajectory prediction using Koopman/Riemannian math.
+        """
+        if len(trajectory_ids) < 2:
+            return []
+            
+        pts = self.get_points(trajectory_ids, collection=collection)
+        id_to_vec = {p["id"]: p["vector"] for p in pts}
+        vectors = [id_to_vec[i] for i in trajectory_ids if i in id_to_vec]
+        
+        if len(vectors) < 2:
+            return []
+            
+        from .math import koopman_extrapolate
+        return koopman_extrapolate(vectors[-2], vectors[-1], steps, c=curvature)
+
+    def get_trust_score(self, trajectory_ids: List[int], collection: str = "", curvature: float = 1.0) -> float:
+        """
+        Evaluates the Lyapunov stability of a trajectory.
+        Lower values mean more stable/reliable path.
+        """
+        pts = self.get_points(trajectory_ids, collection=collection)
+        id_to_vec = {p["id"]: p["vector"] for p in pts}
+        vectors = [id_to_vec[i] for i in trajectory_ids if i in id_to_vec]
+        
+        if len(vectors) < 3:
+            return 0.0
+            
+        from .math import lyapunov_convergence
+        try:
+            return lyapunov_convergence(vectors, c=curvature)
+        except Exception:
+            return 1.0 # Max chaos on error
 
     def update_payload(self, id: int, metadata: Dict[str, str], collection: str = "") -> bool:
         req = hyperspace_pb2.UpdatePayloadRequest(id=id, metadata=metadata, collection=collection)

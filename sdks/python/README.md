@@ -236,7 +236,9 @@ status = client.health_check() # Returns "ONLINE"
 - `get_node(id, layer=0, collection="") -> dict`
 - `get_neighbors(id, layer=0, limit=64, offset=0, collection="") -> list[dict]`
 - `get_concept_parents(id, layer=0, limit=32, collection="") -> list[dict]`
-- `traverse(start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None, collection="") -> list[dict]`
+- `get_subsumption_tree(root_id, max_depth=3, collection="") -> list[dict]`  # Lorentz hierarchy
+- `traverse(start_id, max_depth=2, max_nodes=256, layer=0, traversal_mode=0, breadth_limit=10, filter=None, filters=None, collection="") -> list[dict]`
+- `explore_graph(start_id, max_depth=2, max_nodes=256, collection="") -> dict` # Ego-Graph JSON
 - `find_semantic_clusters(layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000, collection="") -> list[list[int]]`
 
 For `filters` with `type="range"`, decimal thresholds are supported (`gte_f64/lte_f64` in gRPC payload are set automatically for non-integer values).
@@ -293,16 +295,41 @@ from hyperspace.math import (
 )
 
 # 1. Detect Hallucinations (Entropy approaches 1.0)
-entropy = local_entropy(candidate=thought_vector, neighbors=neighbors, c=1.0)
+entropy = client.local_entropy(candidate=thought_vector, neighbors=neighbors, c=1.0)
 
 # 2. Proof of Convergence (Negative derivative = convergence)
-stability = lyapunov_convergence(trajectory=chain_of_thought, c=1.0)
+stability = client.get_trust_score(trajectory_ids=[1, 2, 3], collection="docs")
 
 # 3. Extrapolate next thought (Koopman linearization)
-next_thought = koopman_extrapolate(past, current, steps=1.0, c=1.0)
+next_thought = client.predict_momentum(trajectory_ids=[10, 11], steps=1.0)
 
 # 4. Phase-Locked Loop for topic tracking
 synced_thought = context_resonance(thought, global_context, resonance_factor=0.5, c=1.0)
+
+# 5. Predict Semantic Relation (A + R ≈ B)
+relation = client.predict_relation(id_a=1, id_b=2)
+```
+
+## Implicit Graph Engine (v3.2)
+
+HyperspaceDB treats your vectors as nodes in a dynamic graph. Relationships are inferred from the geometry:
+- **Lorentz / Poincare**: Hierarchy and subsumption (light cones).
+- **L2 / Cosine**: Semantic similarity and adjacency.
+
+### Subsumption Trees
+Extract directed hierarchies from Lorentz-encoded data:
+```python
+tree = client.get_subsumption_tree(root_id=1, max_depth=5)
+```
+
+### Advanced Traversal
+Navigate the graph using physical kernels:
+```python
+results = client.traverse(
+    start_id=1,
+    traversal_mode=2, # 0: GREEDY, 1: DIFFUSIVE, 2: MOMENTUM
+    breadth_limit=5
+)
 ```
 
 ## Durability Levels

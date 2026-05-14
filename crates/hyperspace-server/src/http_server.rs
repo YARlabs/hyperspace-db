@@ -167,6 +167,14 @@ pub async fn start_http_server(
             "/api/collections/{name}/graph/clusters",
             post(graph_clusters),
         )
+        .route(
+            "/api/collections/{name}/graph/subsumption",
+            get(graph_get_subsumption_tree),
+        )
+        .route(
+            "/api/collections/{name}/graph/explore",
+            get(graph_explore_http),
+        )
         .route("/api/status", get(get_status))
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
@@ -802,6 +810,7 @@ struct HttpFilter {
 struct HttpGraphNode {
     id: u32,
     layer: usize,
+    vector: Option<Vec<f64>>,
     neighbors: Vec<u32>,
     metadata: HashMap<String, String>,
     typed_metadata: HashMap<String, serde_json::Value>,
@@ -909,9 +918,12 @@ fn graph_node_from_collection(
         .collect::<Vec<_>>();
     let meta = col.metadata_by_id(id);
     let (metadata, typed_metadata) = parse_typed_metadata(&meta);
+    let vector = col.get_vector(id).ok();
+
     Ok(HttpGraphNode {
         id,
         layer,
+        vector,
         neighbors,
         metadata,
         typed_metadata,
@@ -1435,7 +1447,7 @@ async fn graph_traverse(
         .as_ref()
         .map_or_else(Vec::new, |f| convert_filters(f));
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
-        match col.graph_traverse(payload.start_id, layer, max_depth, max_nodes) {
+        match col.graph_traverse(payload.start_id, layer, max_depth, max_nodes, usize::MAX) {
             Ok(ids) => {
                 let nodes: Vec<HttpGraphNode> = ids
                     .into_iter()
@@ -1474,6 +1486,74 @@ async fn graph_clusters(
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
         match col.graph_clusters(layer, min_cluster_size, max_clusters, max_nodes) {
             Ok(clusters) => Json(clusters).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GraphSubsumptionQuery {
+    root_id: u32,
+    max_depth: Option<u32>,
+}
+
+async fn graph_get_subsumption_tree(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Query(q): Query<GraphSubsumptionQuery>,
+) -> impl IntoResponse {
+    let max_depth = q.max_depth.unwrap_or(3).min(10);
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.graph_traverse(q.root_id, 0, max_depth as usize, 1000, 10) {
+            Ok(ids) => {
+                let nodes: Vec<HttpGraphNode> = ids
+                    .into_iter()
+                    .filter_map(|id| graph_node_from_collection(&col, id, 0, 64, 0).ok())
+                    .collect();
+                Json(nodes).into_response()
+            }
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GraphExploreQuery {
+    start_id: u32,
+    max_depth: Option<u32>,
+    max_nodes: Option<u32>,
+}
+
+async fn graph_explore_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Query(q): Query<GraphExploreQuery>,
+) -> impl IntoResponse {
+    let max_depth = q.max_depth.unwrap_or(2).min(5);
+    let max_nodes = q.max_nodes.unwrap_or(256).min(2000);
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.graph_traverse(q.start_id, 0, max_depth as usize, max_nodes as usize, 10) {
+            Ok(ids) => {
+                let nodes: Vec<HttpGraphNode> = ids
+                    .into_iter()
+                    .filter_map(|id| graph_node_from_collection(&col, id, 0, 64, 0).ok())
+                    .collect();
+                Json(nodes).into_response()
+            }
             Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
         }
     } else {

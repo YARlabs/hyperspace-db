@@ -42,7 +42,7 @@ use hyperspace_proto::hyperspace::{
     DigestRequest, DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
     FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
     GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
-    GetPointsRequest, GetPointsResponse, GraphCluster, GraphNode, HealthCheckResponse,
+    GetPointsRequest, GetPointsResponse, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse, GraphCluster, GraphNode, HealthCheckResponse,
     InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse, MetadataValue,
     MonitorRequest, ScrollRequest, ScrollResponse, SearchMultiCollectionRequest,
     SearchMultiCollectionResponse, SearchRequest, SearchResponse, SearchResult, SearchTextRequest,
@@ -392,12 +392,24 @@ fn build_graph_node(
     let neighbors = col
         .graph_neighbors(id, layer, usize::MAX)
         .unwrap_or_default();
+        
+    let metric_name = col.metric_name();
+    let edge_type = if metric_name.contains("lorentz") {
+        2 // HIERARCHY
+    } else if metric_name.contains("l2") || metric_name.contains("cosine") {
+        1 // SIMILARITY
+    } else {
+        0 // UNKNOWN
+    };
+    let edge_types = vec![edge_type; neighbors.len()];
+
     GraphNode {
         id,
         layer: layer as u32,
         neighbors,
         metadata: plain_metadata,
         typed_metadata,
+        edge_types,
     }
 }
 
@@ -1488,16 +1500,44 @@ impl Database for HyperspaceService {
         } else {
             req.max_nodes as usize
         };
+        let breadth_limit = req.breadth_limit as usize;
+        
         let (exact_filter, complex_filters) =
             parse_graph_filters(req.filter.into_iter().collect(), req.filters);
+            
         let Some(col) = self.manager.get(&user_id, &col_name).await else {
             return Err(Status::not_found(format!(
                 "Collection '{col_name}' not found"
             )));
         };
-        let mut ids = col
-            .graph_traverse(req.start_id, layer, max_depth, max_nodes)
-            .map_err(Status::invalid_argument)?;
+
+        let mut ids;
+        
+        if req.traversal_mode == 1 /* DIFFUSIVE */ {
+            let pts = col.get_points(&[req.start_id]);
+            if pts.is_empty() {
+                return Err(Status::not_found("Start ID not found"));
+            }
+            let query = &pts[0].1;
+            
+            let params = crate::wave::WaveInferenceParams {
+                steps: max_depth,
+                top_k: max_nodes,
+                ..Default::default()
+            };
+            let results = crate::wave::WaveInferenceEngine::search_diffusive(col.clone(), query, params)
+                .await
+                .map_err(Status::internal)?;
+            ids = results.into_iter().map(|(id, _, _)| id).collect();
+        } else if req.traversal_mode == 2 /* MOMENTUM */ {
+            return Err(Status::unimplemented("MOMENTUM mode requires a trajectory and is not supported in Traverse API. Use explore_graph/search_momentum"));
+        } else {
+            // GREEDY
+            ids = col
+                .graph_traverse(req.start_id, layer, max_depth, max_nodes, breadth_limit)
+                .map_err(Status::invalid_argument)?;
+        }
+
         if !exact_filter.is_empty() || !complex_filters.is_empty() {
             ids.retain(|id| {
                 let meta = col.metadata_by_id(*id);
@@ -1506,6 +1546,7 @@ impl Database for HyperspaceService {
         }
         let nodes = ids
             .into_iter()
+
             .map(|id| build_graph_node(&col, id, layer))
             .collect();
         Ok(Response::new(TraverseResponse { nodes }))
@@ -2145,6 +2186,32 @@ impl Database for HyperspaceService {
         } else {
             Err(Status::not_found(format!("Collection '{col_name}' not found")))
         }
+    }
+
+    async fn get_subsumption_tree(
+        &self,
+        request: Request<GetSubsumptionTreeRequest>,
+    ) -> Result<Response<GetSubsumptionTreeResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        
+        let max_depth = if req.max_depth == 0 { 3 } else { req.max_depth as usize };
+        // We do a graph traverse but we specifically look for Lorentz metrics.
+        // For now, we can just use graph_traverse and let edge_types inference handle the annotation
+        let ids = col.graph_traverse(req.root_id, 0, max_depth, 100, usize::MAX).unwrap_or_default();
+        
+        let nodes = ids.into_iter().map(|id| build_graph_node(&col, id, 0)).collect();
+        Ok(Response::new(GetSubsumptionTreeResponse { nodes }))
     }
 
     async fn health_check(

@@ -311,6 +311,15 @@ func (c *HyperspaceClient) FindSemanticClusters(ctx context.Context, req *pb.Fin
 	return c.client.FindSemanticClusters(c.withContext(ctx), req)
 }
 
+func (c *HyperspaceClient) GetSubsumptionTree(ctx context.Context, rootId uint32, maxDepth uint32, collection string) (*pb.GetSubsumptionTreeResponse, error) {
+	req := &pb.GetSubsumptionTreeRequest{
+		Collection: collection,
+		RootId:     rootId,
+		MaxDepth:   maxDepth,
+	}
+	return c.client.GetSubsumptionTree(c.withContext(ctx), req)
+}
+
 // Admin & Sync API
 func (c *HyperspaceClient) RebuildIndex(ctx context.Context, name string) error {
 	req := &pb.RebuildIndexRequest{Name: name}

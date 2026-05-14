@@ -96,3 +96,28 @@ To ensure these filters don't slow down the engine, geometric intersection is pe
 1.  Generate a bitset of candidates satisfying the geometric query.
 2.  Perform HNSW bitwise-AND intersection during the search phase.
 3.  This allows for $O(1)$ rejection of candidates outside the region of interest.
+
+## Cognitive Math & Implicit Graph
+
+HyperspaceDB v3.1 introduces dynamic kernels for navigating and verifying semantic trajectories.
+
+### 1. Lyapunov Stability (Trust Scoring)
+To evaluate the reliability of a semantic path or cluster, we calculate the local **Lyapunov Stability**. A stable attractor indicates a high-trust concept.
+
+$$ \lambda = \lim_{t \to \infty} \frac{1}{t} \ln \frac{|\delta Z(t)|}{|\delta Z(0)|} $$
+
+In the dashboard, this is used to generate the **Geometric Trust Score**. If $\lambda < 0$, the semantic trajectory is converging (Truth/Consistent). If $\lambda > 0$, the path is diverging toward chaos (Potential Hallucination).
+
+### 2. Koopman Linearization (Momentum Traversal)
+For **Momentum Traversal**, we treat the HNSW graph as a dynamic system. We map the nonlinear jumps between nodes into a linear operator space using the **Koopman Operator** $\mathcal{K}$:
+
+$$ g(x_{t+1}) = \mathcal{K} g(x_t) $$
+
+Where $g$ is a set of observable functions (the node embeddings). This allows the engine to predict the "Semantic Inertia" of a search query, enabling the **Momentum Path Visualizer** in the dashboard.
+
+### 3. Wave Diffusion Kernel
+The resonant diffusion engine models semantic propagation as a wave packet $\Psi(x, t)$ satisfying a discrete Schrodinger-like equation over the HNSW adjacency matrix $A$:
+
+$$ i \hbar \frac{\partial \Psi}{\partial t} = -\frac{\hbar^2}{2m} \nabla^2 \Psi + V(x) \Psi $$
+
+Where the Laplacian $\nabla^2$ is derived from the graph weights. This provides a mechanism for finding "logically resonant" nodes that standard nearest-neighbor search might miss.

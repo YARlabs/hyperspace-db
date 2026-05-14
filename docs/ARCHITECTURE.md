@@ -40,6 +40,13 @@ graph TB
         LEADER[Leader Node]
         FOLLOWER[Follower Node]
     end
+
+    subgraph "Visualization (Phase 4)"
+        DASH[React Dashboard]
+        DASH -->|/api/graph/explore| GRPC
+        DASH -->|Canvas| POINCARE[Poincaré Disk]
+        DASH -->|Canvas| MOMENTUM[Momentum HUD]
+    end
     
     PY --> GRPC
     TS --> GRPC
@@ -289,6 +296,9 @@ Using the **Graph Traversal API** integrated with hyperbolic geometry functions,
 If a generated LLM response (concept B) has an extremely long geodesic path from the context (concept A) or is completely disconnected, the system automatically flags the claim as a hallucination, assigning it a Geometric Trust Score ~ 0.0.
 
 In addition to this, HyperspaceDB introduces **Memory Reconsolidation (AI Sleep Mode)** logic. Using Riemannian Gradient Descent and Flow Matching algorithms natively via `TriggerReconsolidation`, vectors can be algorithmically shifted toward semantic attractors while the database is idle, cleaning noisy data distributions structurally.
+
+**Implicit Graph Engine & Explorer (v3.1)**:
+The database exposes its internal topology as a first-class resource. By combining **Lorentz Light-Cone filters** (`InCone`) with **Wave Diffusion** (resonant energy propagation), the system manifests semantic relationships without explicit edge storage. The **Graph Explorer Dashboard** (Phase 4) provides a real-time HUD for this engine, visualizing Poincaré/Euclidean manifold projections and agent **Momentum Trajectories** (Koopman extrapolations).
 
 ```python
 # The Tribunal validates the claim geometry

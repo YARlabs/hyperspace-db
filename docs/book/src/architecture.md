@@ -32,6 +32,13 @@ graph TD
     subgraph Background Tasks
         Snap[Snapshotter] -->|Serialize| Disk[Index Snapshot (.snap)]
     end
+
+    subgraph "Visualization (Phase 4)"
+        DASH[React Dashboard]
+        DASH -->|/api/graph/explore| S
+        DASH -->|Canvas| POINCARE[Poincaré Disk]
+        DASH -->|Canvas| MOMENTUM[Momentum HUD]
+    end
 ```
 
 ---

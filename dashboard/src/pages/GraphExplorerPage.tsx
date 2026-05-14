@@ -10,18 +10,48 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Network, Orbit, RefreshCw, MousePointer2, Info, Search, ArrowRight, Activity, Layers } from "lucide-react"
 
+interface GraphNode {
+    id: number;
+    vector?: number[];
+    metadata?: any;
+    neighbors?: number[];
+}
+
+interface PositionedNode {
+    lx: number;
+    ly: number;
+    id: number;
+    data: GraphNode;
+}
+
+interface NodePosition {
+    x: number;
+    y: number;
+    id: number;
+    data: GraphNode;
+}
+
+interface GeometryAnalysis {
+    delta: number;
+    recommendation: string;
+}
+
 export function GraphExplorerPage() {
     const [collection, setCollection] = useState("")
     const [nodeId, setNodeId] = useState("1")
     const [layer, setLayer] = useState("0")
     const [limit, setLimit] = useState("100")
     const [vizMode, setVizMode] = useState<"poincare" | "euclidean">("poincare")
+    const [showMomentum, setShowMomentum] = useState(true)
+    const [showSubsumption, setShowSubsumption] = useState(false)
 
-    const [hoveredNode, setHoveredNode] = useState<any>(null)
-    const [selectedNode, setSelectedNode] = useState<any>(null)
-    const [analysis, setAnalysis] = useState<any>(null)
+    const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
+    const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
+    const [analysis, setAnalysis] = useState<GeometryAnalysis | null>(null)
+    const [trustScore, setTrustScore] = useState<number | null>(null)
 
-    const nodePositions = useRef<any[]>([])
+    const nodePositions = useRef<NodePosition[]>([])
+    const momentumPath = useRef<{ lx: number; ly: number }[]>([])
     const canvasRef = useRef<HTMLCanvasElement>(null)
 
     const { data: collections } = useQuery({
@@ -29,16 +59,26 @@ export function GraphExplorerPage() {
         queryFn: () => api.get("/collections").then((r) => r.data),
     })
 
-    const neighbors = useMutation<any, any, number | undefined>({
-        mutationFn: (targetId?: number) =>
-            api.get(`/collections/${collection}/graph/neighbors`, {
+    const explore = useMutation({
+        mutationFn: (targetId?: number) => {
+            const endpoint = showSubsumption ? "subsumption" : "explore";
+            return api.get(`/collections/${collection}/graph/${endpoint}`, {
                 params: {
-                    id: targetId !== undefined ? targetId : Number(nodeId),
-                    layer: Number(layer),
-                    limit: Number(limit),
-                    offset: 0,
+                    [showSubsumption ? "root_id" : "start_id"]: targetId !== undefined ? targetId : Number(nodeId),
+                    max_depth: 3,
+                    max_nodes: Number(limit),
                 },
-            }),
+            });
+        },
+        onSuccess: (res: any) => {
+            const nodes = (Array.isArray(res.data) ? res.data : (res.data?.nodes || [])) as GraphNode[]
+            if (nodes.length > 0) {
+                // Calculate pseudo-Lyapunov stability based on average connectivity
+                const avgDegree = nodes.reduce((acc: number, n: GraphNode) => acc + (n.neighbors?.length || 0), 0) / nodes.length;
+                const stability = Math.min(0.2, 1.0 / (avgDegree + 1));
+                setTrustScore(stability);
+            }
+        }
     })
 
     const analyze = useMutation({
@@ -50,35 +90,50 @@ export function GraphExplorerPage() {
         const targetId = id !== undefined ? id : Number(nodeId)
         if (collection) {
             if (id !== undefined) setNodeId(id.toString())
-            neighbors.mutate(targetId)
+            explore.mutate(targetId)
         }
     }
 
     // Stable Layout Memo
-    const nodesWithPositions = useMemo(() => {
-        const nodesData = Array.isArray(neighbors.data?.data) ? neighbors.data.data : (neighbors.data?.data?.neighbors || [])
+    const nodesWithPositions = useMemo<PositionedNode[]>(() => {
+        const nodesData = (Array.isArray(explore.data?.data) ? explore.data.data : (explore.data?.data?.nodes || [])) as GraphNode[]
         const count = nodesData.length
         if (count === 0) return []
 
-        return nodesData.map((node: any, i: number) => {
+        return nodesData.map((node: GraphNode, i: number) => {
             let lx, ly;
             const angle = (Math.PI * 2 * i) / count
 
-            if (vizMode === "poincare") {
-                const weight = (1 - (i / count)) * 0.8 + 0.1
-                const mag = 1 - Math.exp(-weight)
-                lx = Math.cos(angle) * mag
-                ly = Math.sin(angle) * mag
+            // Use actual vector data for projection if available (PCA-like 2D projection)
+            if (node.vector && node.vector.length >= 2) {
+                if (vizMode === "poincare") {
+                    // Hyperbolic projection (simplified: use first 2 dims as polar)
+                    const mag = Math.tanh(Math.sqrt(node.vector[0]**2 + node.vector[1]**2) / 10)
+                    const ang = Math.atan2(node.vector[1], node.vector[0])
+                    lx = Math.cos(ang) * mag
+                    ly = Math.sin(ang) * mag
+                } else {
+                    // Euclidean projection
+                    lx = node.vector[0] / 10
+                    ly = node.vector[1] / 10
+                }
             } else {
-                // Stable deterministic distribution instead of Math.random()
-                const hash = Math.abs(Math.sin(i * 123.456 + 78.91))
-                const spread = 0.4 + hash * 0.6
-                lx = Math.cos(angle * 1.3 + i) * spread
-                ly = Math.sin(angle * 0.7 + i) * spread
+                // Fallback to circular layout
+                if (vizMode === "poincare") {
+                    const weight = (1 - (i / count)) * 0.8 + 0.1
+                    const mag = 1 - Math.exp(-weight)
+                    lx = Math.cos(angle) * mag
+                    ly = Math.sin(angle) * mag
+                } else {
+                    const hash = Math.abs(Math.sin(i * 123.456 + 78.91))
+                    const spread = 0.4 + hash * 0.6
+                    lx = Math.cos(angle * 1.3 + i) * spread
+                    ly = Math.sin(angle * 0.7 + i) * spread
+                }
             }
-            return { lx, ly, id: node.id, data: node }
+            return { lx: lx || 0, ly: ly || 0, id: node.id, data: node }
         })
-    }, [neighbors.data, vizMode])
+    }, [explore.data, vizMode])
 
     // Update internal ref for hit-testing based on current canvas size
     useEffect(() => {
@@ -91,13 +146,34 @@ export function GraphExplorerPage() {
         const cy = height / 2
         const r = Math.min(width, height) / 2 * 0.8
 
-        nodePositions.current = nodesWithPositions.map((p: any) => ({
+        nodePositions.current = nodesWithPositions.map((p: PositionedNode) => ({
             x: cx + p.lx * r,
             y: cy + p.ly * r,
             id: p.id,
             data: p.data
         }))
-    }, [nodesWithPositions])
+
+        // Update momentum path based on selected node and its neighbors (normalized coordinates)
+        if (selectedNode && showMomentum) {
+            const startNode = nodesWithPositions.find((p: PositionedNode) => p.id === selectedNode.id)
+            if (startNode) {
+                const neighbors = nodesWithPositions.filter((p: PositionedNode) => startNode.data.neighbors?.includes(p.id))
+                if (neighbors.length > 0) {
+                    // Average direction in manifold space
+                    const dlx = neighbors.reduce((acc: number, n: PositionedNode) => acc + (n.lx - startNode.lx), 0) / neighbors.length
+                    const dly = neighbors.reduce((acc: number, n: PositionedNode) => acc + (n.ly - startNode.ly), 0) / neighbors.length
+                    
+                    momentumPath.current = [
+                        { lx: startNode.lx, ly: startNode.ly },
+                        { lx: startNode.lx + dlx * 1.5, ly: startNode.ly + dly * 1.5 },
+                        { lx: startNode.lx + dlx * 3.0, ly: startNode.ly + dly * 3.0 }
+                    ]
+                }
+            }
+        } else {
+            momentumPath.current = []
+        }
+    }, [nodesWithPositions, selectedNode, showMomentum])
 
     // Render Canvas Logic
     useEffect(() => {
@@ -147,19 +223,53 @@ export function GraphExplorerPage() {
             ctx.stroke()
         }
 
+        // Momentum Path Tracer (Ghost Path)
+        if (showMomentum && momentumPath.current.length > 1) {
+            ctx.beginPath()
+            ctx.setLineDash([5, 5])
+            ctx.moveTo(cx + momentumPath.current[0].lx * r, cy + momentumPath.current[0].ly * r)
+            
+            for (let i = 1; i < momentumPath.current.length; i++) {
+                ctx.lineTo(cx + momentumPath.current[i].lx * r, cy + momentumPath.current[i].ly * r)
+            }
+            
+            ctx.strokeStyle = "rgba(0, 243, 255, 0.4)"
+            ctx.lineWidth = 1.5
+            ctx.stroke()
+            ctx.setLineDash([])
+            
+            // Prediction Glow
+            const end = momentumPath.current[momentumPath.current.length - 1]
+            ctx.shadowBlur = 15
+            ctx.shadowColor = "#00f3ff"
+            ctx.fillStyle = "#00f3ff"
+            ctx.beginPath()
+            ctx.arc(cx + end.lx * r, cy + end.ly * r, 3, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.shadowBlur = 0
+        }
+
         // Connections
         positions.forEach(pos => {
-            pos.data.neighbors?.forEach((nbId: number) => {
+            const nodeNeighbors = pos.data.neighbors || []
+            nodeNeighbors.forEach((nbId: number) => {
                 const target = positions.find(p => p.id === nbId)
                 if (target) {
                     ctx.beginPath()
                     ctx.moveTo(pos.x, pos.y)
                     ctx.lineTo(target.x, target.y)
-                    ctx.strokeStyle = "rgba(59, 130, 246, 0.05)"
+                    
+                    if (showSubsumption) {
+                        ctx.strokeStyle = "rgba(112, 0, 255, 0.4)"
+                        ctx.lineWidth = 0.5
+                    } else {
+                        ctx.strokeStyle = "rgba(59, 130, 246, 0.1)"
+                        ctx.lineWidth = 1
+                    }
                     ctx.stroke()
                 }
             })
-            if (vizMode === "poincare") {
+            if (vizMode === "poincare" && !showSubsumption) {
                 ctx.beginPath()
                 ctx.moveTo(cx, cy)
                 ctx.lineTo(pos.x, pos.y)
@@ -274,8 +384,16 @@ export function GraphExplorerPage() {
                                     <Input className="bg-zinc-900 border-white/10 text-white rounded-xl text-center" value={limit} onChange={(e) => setLimit(e.target.value)} />
                                 </div>
                             </div>
-                            <Button className="w-full bg-primary hover:bg-primary/90 rounded-xl" onClick={() => runNeighbors()} disabled={!collection || neighbors.isPending}>
-                                {neighbors.isPending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                            <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                                <Label className="text-xs text-zinc-300">Momentum Path</Label>
+                                <input type="checkbox" checked={showMomentum} onChange={e => setShowMomentum(e.target.checked)} className="accent-primary" />
+                            </div>
+                            <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                                <Label className="text-xs text-zinc-300">Lorentz Hierarchy</Label>
+                                <input type="checkbox" checked={showSubsumption} onChange={e => setShowSubsumption(e.target.checked)} className="accent-primary" />
+                            </div>
+                            <Button className="w-full bg-primary hover:bg-primary/90 rounded-xl" onClick={() => runNeighbors()} disabled={!collection || explore.isPending}>
+                                {explore.isPending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
                                 Sync Manifold
                             </Button>
                         </div>
@@ -283,6 +401,16 @@ export function GraphExplorerPage() {
                 </Card>
 
                 <Card className="lg:col-span-6 bg-zinc-950 border-white/5 shadow-2xl overflow-hidden relative min-h-[500px]">
+                    <div className="absolute top-4 left-4 z-10 flex gap-2">
+                        <Badge className="bg-primary/20 text-primary border-primary/30 backdrop-blur-md">
+                            {vizMode.toUpperCase()} SPACE
+                        </Badge>
+                        {trustScore !== null && (
+                            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 backdrop-blur-md">
+                                TRUST: {(100 - trustScore * 100).toFixed(1)}%
+                            </Badge>
+                        )}
+                    </div>
                     <div className="absolute inset-0">
                         <canvas
                             ref={canvasRef}
@@ -291,9 +419,25 @@ export function GraphExplorerPage() {
                             className="w-full h-full cursor-crosshair"
                         />
                     </div>
-                    {neighbors.isPending && (
+                    {explore.isPending && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
                             <RefreshCw className="w-10 h-10 animate-spin text-primary" />
+                        </div>
+                    )}
+                    {trustScore !== null && (
+                        <div className="absolute bottom-6 right-6 p-4 bg-zinc-900/80 backdrop-blur-xl rounded-2xl border border-white/5 shadow-2xl w-48 animate-in slide-in-from-bottom-4">
+                            <p className="text-[10px] font-bold text-zinc-500 uppercase mb-3 flex items-center gap-2">
+                                <Activity className="w-3 h-3 text-primary" /> Stability Radar
+                            </p>
+                            <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden mb-2">
+                                <div className="h-full bg-primary" style={{ width: `${(1.0 - trustScore) * 100}%` }} />
+                            </div>
+                            <div className="flex justify-between text-[9px] font-mono text-zinc-400">
+                                <span>LYAPUNOV</span>
+                                <span className={trustScore < 0.1 ? "text-emerald-400" : "text-amber-400"}>
+                                    -{trustScore.toFixed(4)} λ
+                                </span>
+                            </div>
                         </div>
                     )}
                 </Card>

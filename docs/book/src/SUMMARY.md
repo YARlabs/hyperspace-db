@@ -24,6 +24,10 @@
     - [Security & Auth](security.md)
     - [S3 Cloud Tiering](storage.md#s3-cloud-tiering-optional)
     - [Data Safety & Durability](durability.md)
+- [Implicit Graph Engine](graph_engine.md)
+    - [Manifold Visualization](graph_engine.md#visualizing-the-manifold)
+    - [Momentum Traversal](graph_engine.md#momentum-traversal-math)
+    - [Lyapunov Stability Radar](graph_engine.md#stability-analysis)
 
 # Architecture & Internals
 - [System Overview](architecture.md)

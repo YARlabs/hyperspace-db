@@ -280,6 +280,16 @@ This "Funnel" approach allows you to achieve the recall of a 512D index with the
 
 ---
 
+## Implicit Graph: The Final Frontier of RAG (v3.1)
+
+In v3.1, we introduce the **Implicit Graph Engine**. Traditionally, you have to manually define edges in a Knowledge Graph. With HyperspaceDB, the edges are *implicit* in the geometry.
+
+1. **Lorentz Light-Cones**: By using the Lorentz metric, the engine can instantly identify "parent-child" relationships based on whether a vector falls within the geometric light-cone of another.
+2. **Wave Diffusion Traversal**: Instead of standard k-NN, the engine can "resonate" a query across the graph. The search propagates like a wave, finding not just similar items, but logically connected paths.
+3. **Momentum Search (Dirac)**: Traversal with semantic inertia. The search path doesn't just jump to the closest node; it follows the "momentum" of the previous hops, simulating a natural flow of thought.
+
+---
+
 ## The Heterogeneous Tribunal Framework
 
 Since Hyperbolic space efficiently captures hierarchical logic, it becomes incredibly easy to spot logical jumps—aka **Hallucinations**.
@@ -292,6 +302,9 @@ score = tribunal.evaluate_claim(concept_a_id=12, concept_b_id=45)
 if score < 0.1:
     print("Hallucination detected!")
 ```
+
+### 🔭 Visualizing Knowledge Trajectories
+With the **Graph Explorer (v3.1)**, developers can finally "see" their RAG logic. The dashboard projects the high-dimensional Poincaré ball into an interactive 2D canvas, allowing you to trace **Momentum Paths** and monitor **Lyapunov Stability** in real-time. This turns "Black Box" vector search into a transparent, navigable knowledge map.
 
 ---
 

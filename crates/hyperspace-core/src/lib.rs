@@ -310,6 +310,7 @@ pub trait Collection: Send + Sync + 'static {
         layer: usize,
         max_depth: usize,
         max_nodes: usize,
+        breadth_limit: usize,
     ) -> Result<Vec<u32>, String>;
     fn graph_clusters(
         &self,
@@ -318,6 +319,15 @@ pub trait Collection: Send + Sync + 'static {
         max_clusters: usize,
         max_nodes: usize,
     ) -> Result<Vec<Vec<u32>>, String>;
+
+    /// Geometric Trust Scoring (Tribunal)
+    /// Evaluates a trajectory of Node IDs and returns a trust score [0.0, 1.0]
+    /// based on the Lyapunov stability / geometric distance in the local manifold.
+    /// A score close to 0 indicates a hallucination / invalid jump.
+    fn evaluate_trust_score(&self, trajectory_ids: &[u32]) -> Result<f64, String> {
+        let _ = trajectory_ids;
+        Err("Tribunal Trust Scoring not implemented for this collection".into())
+    }
 
     /// Fetch raw point data for a given list of IDs. Returns (id, vector, metadata) tuples.
     fn get_points(
@@ -411,6 +421,13 @@ pub trait Metric: Send + Sync + 'static {
 
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64;
     fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64;
+
+    /// Extrapolates the trajectory using metric-specific geometry (e.g. Koopman/Riemannian tangent projection).
+    /// Default returns an error if the metric doesn't support momentum traversal.
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        let _ = (past, current, steps);
+        Err(format!("Momentum extrapolation not supported for metric: {}", Self::name()))
+    }
 }
 
 impl Metric for PoincareMetric {
@@ -448,6 +465,86 @@ impl Metric for PoincareMetric {
 
     fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
         a.poincare_distance_sq_to_float(b)
+    }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        let c = 1.0;
+        let mut x2 = 0.0;
+        let mut y2 = 0.0;
+        let mut xy = 0.0;
+        for i in 0..past.len() {
+            x2 += past[i] * past[i];
+            y2 += current[i] * current[i];
+            xy += past[i] * current[i];
+        }
+        
+        let num_left = 1.0 + 2.0 * c * xy + c * y2;
+        let num_right = 1.0 - c * x2;
+        let den = 1.0 + 2.0 * c * xy + c * c * x2 * y2;
+        if den.abs() < 1e-15 {
+            return Err("Mobius addition denominator too small".into());
+        }
+        
+        let mut delta = vec![0.0; past.len()];
+        let mut delta_norm_sq = 0.0;
+        for i in 0..past.len() {
+            delta[i] = (num_left * (-past[i]) + num_right * current[i]) / den;
+            delta_norm_sq += delta[i] * delta[i];
+        }
+        let delta_norm = delta_norm_sq.sqrt();
+        if delta_norm < 1e-15 {
+            return Ok(current.to_vec());
+        }
+        
+        let lambda_x = 2.0 / (1.0 - c * x2).max(1e-15);
+        let arg = (c.sqrt() * delta_norm).min(1.0 - 1e-15);
+        let factor = (2.0 / (lambda_x * c.sqrt())) * arg.atanh();
+        
+        let mut velocity_at_past = vec![0.0; past.len()];
+        for i in 0..past.len() {
+            velocity_at_past[i] = factor * delta[i] / delta_norm;
+        }
+
+        // Simplified extrapolation (Euler step mapped back)
+        let mut step = vec![0.0; past.len()];
+        let mut v_norm_sq = 0.0;
+        for i in 0..past.len() {
+            step[i] = velocity_at_past[i] * steps;
+            v_norm_sq += step[i] * step[i];
+        }
+        let v_norm = v_norm_sq.sqrt();
+        if v_norm < 1e-15 {
+            return Ok(current.to_vec());
+        }
+        
+        let cx2 = current.iter().map(|&x| x*x).sum::<f64>();
+        let lambda_c = 2.0 / (1.0 - c * cx2).max(1e-15);
+        let scale = (c.sqrt() * lambda_c * v_norm / 2.0).tanh() / (c.sqrt() * v_norm);
+        
+        let mut applied_step = vec![0.0; past.len()];
+        for i in 0..past.len() {
+            applied_step[i] = scale * step[i];
+        }
+        
+        let mut as_x2 = 0.0;
+        let mut cx_as = 0.0;
+        for i in 0..past.len() {
+            as_x2 += applied_step[i] * applied_step[i];
+            cx_as += current[i] * applied_step[i];
+        }
+        let num_left2 = 1.0 + 2.0 * c * cx_as + c * as_x2;
+        let num_right2 = 1.0 - c * cx2;
+        let den2 = 1.0 + 2.0 * c * cx_as + c * c * cx2 * as_x2;
+        
+        if den2.abs() < 1e-15 {
+            return Err("Mobius addition denominator too small".into());
+        }
+        
+        let mut result = vec![0.0; past.len()];
+        for i in 0..past.len() {
+            result[i] = (num_left2 * current[i] + num_right2 * applied_step[i]) / den2;
+        }
+        Ok(result)
     }
 }
 
@@ -494,6 +591,39 @@ impl Metric for LorentzMetric {
 
     fn distance_binary(_a: &BinaryHyperVector, _b: &HyperVector) -> f64 {
         panic!("Binary quantization is not supported for the Lorentz model.");
+    }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        // 1. Convert Lorentz to Poincare
+        let to_poincare = |v: &[f64]| {
+            let t = v[0];
+            let mut p = vec![0.0; v.len() - 1];
+            let factor = 1.0 / (t + 1.0);
+            for i in 0..p.len() {
+                p[i] = v[i+1] * factor;
+            }
+            p
+        };
+
+        let p_past = to_poincare(past);
+        let p_current = to_poincare(current);
+
+        // 2. Extrapolate in Poincare ball
+        let p_next = PoincareMetric::extrapolate_momentum(&p_past, &p_current, steps)?;
+
+        // 3. Convert back to Lorentz
+        let mut p_norm_sq = 0.0;
+        for &val in &p_next {
+            p_norm_sq += val * val;
+        }
+        let den = (1.0 - p_norm_sq).max(1e-15);
+        let mut result = vec![0.0; past.len()];
+        result[0] = (1.0 + p_norm_sq) / den;
+        let factor = 2.0 / den;
+        for i in 0..p_next.len() {
+            result[i+1] = p_next[i] * factor;
+        }
+        Ok(result)
     }
 }
 
@@ -604,6 +734,15 @@ impl Metric for EuclideanMetric {
     fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
         a.poincare_distance_sq_to_float(b)
     }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        let mut result = vec![0.0; past.len()];
+        for i in 0..past.len() {
+            let tangent = current[i] - past[i];
+            result[i] = current[i] + steps * tangent;
+        }
+        Ok(result)
+    }
 }
 
 pub struct CosineMetric;
@@ -630,5 +769,11 @@ impl Metric for CosineMetric {
 
     fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
         a.poincare_distance_sq_to_float(b)
+    }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        // Cosine momentum is similar to Euclidean but conceptually on a sphere.
+        // For simplicity, we use linear extrapolation.
+        EuclideanMetric::extrapolate_momentum(past, current, steps)
     }
 }

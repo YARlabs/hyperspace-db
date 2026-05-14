@@ -34,6 +34,13 @@ graph TD
         EE -->|Chunking| ONNX[ONNX Backend]
         EE -->|Pooling| API[Cloud API Backend]
     end
+
+    subgraph Visualization_Layer ["Visualization Layer (Phase 4)"]
+        DASH[React Dashboard]
+        DASH -->|/api/graph/explore| S
+        DASH -->|Canvas| POINCARE[Poincaré Disk]
+        DASH -->|Canvas| MOMENTUM[Momentum HUD]
+    end
 ```
 
 ---
@@ -52,9 +59,11 @@ HyperspaceDB relies on principles from modern cosmology to execute vector search
    Akin to comic voids and clustered galaxies, HyperspaceDB performs Density-based Graph Pruning. Outlying vectors inherit restricted edge mappings, reducing RAM.
 5. **Memory Reconsolidation (AI Sleep Mode):**
    Continuous Riemannian SGD pulls vectors towards an attractor state (e.g. Flow Matching) directly via `TriggerReconsolidation`, restructuring the graph dynamically without full re-indexing.
-6. **Cross-Feature Matching (Wasserstein-1):**
+6. **Relativistic Traversal (Dirac & Momentum):**
+   Implicit edges in the graph are navigated using **Momentum Traversal**. Instead of greedy steps, the engine uses **Koopman Extrapolations** (SDK) to predict the next node in the semantic trajectory, simulating inertia in the latent space.
+7. **Cross-Feature Matching (Wasserstein-1):**
    Instead of $O(N^3)$ generic OT, we execute an ultra-fast $O(N)$ 1D L1-CDF algorithm to compare distributions along feature axes directly inside the metric dispatch.
-7. **Cascading Funnel (The MRL Horizon):**
+8. **Cascading Funnel (The MRL Horizon):**
    To avoid the "Curse of Dimensionality" in RAM, HyperspaceDB uses **Matryoshka Representation Learning (MRL)**. The engine defines a **Cascade Pipeline** in the schema: a truncated "head" (e.g. 64D) is indexed in RAM for microsecond retrieval, while the "tail" (e.g. 1536D) is stored on disk for a final precision-rerank phase.
 
 
@@ -87,8 +96,11 @@ Cold chunks can be transparently offloaded to **S3-compatible storage**.
 ### Metric Abstraction & HNSW
 We use a Generic Metric system (`Metric<N>`) to support multiple geometries efficiently, dispatched at compile-time via Const Generics.
 
-#### Cognitive Math & Tribunal Router
-HyperspaceDB SDK includes a **Cognitive Math** engine built upon the HNSW graph that performs Phase-Locked Loop context tracking, Koopman extrapolations, and calculates LLM hallucination chaos via `local_entropy`. The **Heterogeneous Tribunal Framework** uses the Graph Traversal API to assign a "Geometric Trust Score" to any LLM claim by validating logical paths between ideas.
+#### Cognitive Math & Implicit Graph
+HyperspaceDB SDK includes a **Cognitive Math** engine built upon the HNSW graph that performs Phase-Locked Loop context tracking, Koopman extrapolations, and calculates LLM hallucination chaos via `local_entropy`.
+
+**Implicit Graph Engine (v3.1)**:
+The database exposes its internal topology as a first-class resource. By combining **Lorentz Light-Cone filters** (`InCone`) with **Wave Diffusion** (resonant energy propagation), the system manifests semantic relationships without explicit edge storage. The **Graph Explorer Dashboard** (Phase 4) provides a real-time HUD for this engine, visualizing Poincaré/Euclidean manifold projections and agent **Momentum Trajectories** (Koopman extrapolations). The **Heterogeneous Tribunal Framework** uses this Graph Traversal API to assign a "Geometric Trust Score" to any LLM claim by validating logical paths between ideas.
 
 1.  **Hyperbolic Space (Poincaré Ball)**
     *   **Formula**: $ d(u, v) = \text{acosh}\left(1 + 2 \frac{||u-v||^2}{(1-||u||^2)(1-||v||^2)}\right) $

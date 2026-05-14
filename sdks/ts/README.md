@@ -15,7 +15,7 @@ Use this SDK for:
 - filtered point counting (`count`)
 - health monitoring (`healthCheck`)
 - typed metadata (`string | number | boolean`)
-- graph traversal APIs (`getNode`, `getNeighbors`, `getConceptParents`, `traverse`, `findSemanticClusters`)
+- graph traversal APIs (`getNode`, `getNeighbors`, `getSubsumptionTree`, `getConceptParents`, `traverse`, `exploreGraph`, `findSemanticClusters`)
 - rebuild with metadata pruning (`rebuildIndexWithFilter`)
 - multi-tenant authentication headers (`x-api-key`, `x-hyperspace-user-id`)
 
@@ -308,16 +308,42 @@ Provides advanced tools for Agentic AI, running entirely on the client side:
 import { CognitiveMath } from "hyperspace-sdk-ts";
 
 // 1. Detect Hallucinations (Entropy approaches 1.0)
-const entropy = CognitiveMath.localEntropy(candidateThought, neighbors, 1.0);
+const entropy = client.localEntropy(candidateThought, neighbors, 1.0);
 
 // 2. Proof of Convergence (Negative derivative = convergence)
-const stability = CognitiveMath.lyapunovConvergence(chainOfThought, 1.0);
+const stability = await client.getTrustScore([1, 2, 3]);
 
 // 3. Extrapolate next thought (Koopman linearization)
-const nextThought = CognitiveMath.koopmanExtrapolate(past, current, 1.0, 1.0);
+const nextThought = await client.predictMomentum([10, 11], 1.0);
 
 // 4. Phase-Locked Loop for topic tracking
 const syncedThought = CognitiveMath.contextResonance(thought, globalContext, 0.5, 1.0);
+
+// 5. Predict Semantic Relation (A + R ≈ B)
+const relation = await client.predictRelation(1, 2);
+```
+
+## Implicit Graph Engine (v3.2)
+
+HyperspaceDB treats your vectors as nodes in a dynamic graph. Relationships are inferred from the geometry:
+- **Lorentz / Poincare**: Hierarchy and subsumption (light cones).
+- **L2 / Cosine**: Semantic similarity and adjacency.
+
+### Subsumption Trees
+Extract directed hierarchies from Lorentz-encoded data:
+```ts
+const tree = await client.getSubsumptionTree(1, 5);
+```
+
+### Advanced Traversal
+Navigate the graph using physical kernels:
+```ts
+const results = await client.traverse({
+    startId: 1,
+    traversalMode: 2, // 0: GREEDY, 1: DIFFUSIVE, 2: MOMENTUM
+    breadthLimit: 5
+});
+```
 ```
 
 ## Embedding Pipeline (Optional)

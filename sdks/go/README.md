@@ -21,6 +21,7 @@ go get github.com/yarlabs/hyperspace-sdk-go
 - **System Health**: Active server monitoring via `HealthCheck`.
 - **CDC Streaming**: React to structural topology changes in real time through `SubscribeToEvents`/Event Streams.
 - **Graph Traversal APIs**: Access direct paths via `GetNeighbors` and perform node clustering.
+- **Implicit Graph Engine**: Extract light-cone hierarchies with `GetSubsumptionTree` and navigate using advanced `Traverse` modes (Greedy, Diffusive, Momentum).
 
 ## Usage Example
 

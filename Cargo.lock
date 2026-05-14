@@ -1766,7 +1766,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "3.0.1"
+version = "3.1.0"
 dependencies = [
  "chrono",
  "crossterm",
@@ -1781,7 +1781,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -1812,7 +1812,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "boxcar",
  "crossbeam-skiplist",
@@ -1837,7 +1837,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "3.1.1"
+version = "3.1.2"
 dependencies = [
  "prost",
  "serde",
@@ -1847,7 +1847,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "3.1.1"
+version = "3.1.2"
 dependencies = [
  "async-trait",
  "hf-hub",
@@ -1866,7 +1866,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "arc-swap",
  "async-stream",
@@ -1906,7 +1906,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "arc-swap",
  "byteorder",
@@ -1939,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-wasm"
-version = "3.0.1"
+version = "3.1.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",

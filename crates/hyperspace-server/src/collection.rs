@@ -1941,12 +1941,13 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         layer: usize,
         max_depth: usize,
         max_nodes: usize,
+        breadth_limit: usize,
     ) -> Result<Vec<u32>, String> {
         let internal_start = self.to_internal_id(start_id);
         let traversed =
             self.index_link
                 .load()
-                .graph_traverse(internal_start, layer, max_depth, max_nodes)?;
+                .graph_traverse(internal_start, layer, max_depth, max_nodes, breadth_limit)?;
         Ok(traversed.into_iter().map(|n| self.to_user_id(n)).collect())
     }
 
@@ -1967,6 +1968,36 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             .into_iter()
             .map(|c| c.into_iter().map(|n| self.to_user_id(n)).collect())
             .collect())
+    }
+
+    fn evaluate_trust_score(&self, trajectory_ids: &[u32]) -> Result<f64, String> {
+        if trajectory_ids.len() < 3 {
+            return Err("Trust scoring requires a trajectory of at least 3 nodes".into());
+        }
+        
+        let mut vectors = Vec::new();
+        for &id in trajectory_ids {
+            let pts = self.get_points(&[id]);
+            if pts.is_empty() {
+                return Err(format!("Node {} not found", id));
+            }
+            vectors.push(pts[0].1.clone());
+        }
+
+        let attractor = &vectors[vectors.len() - 1];
+        let mut v_diff_sum = 0.0;
+        
+        for i in 0..vectors.len() - 1 {
+            let v_t0 = M::distance(&vectors[i], attractor);
+            let v_t1 = M::distance(&vectors[i + 1], attractor);
+            v_diff_sum += v_t1 - v_t0;
+        }
+        
+        let avg_change = v_diff_sum / (vectors.len() - 1) as f64;
+        
+        // Negative average change indicates convergence to the target.
+        let score = 1.0 / (1.0 + avg_change.max(0.0).exp());
+        Ok(score)
     }
 
     fn metadata_by_id(&self, id: u32) -> HashMap<String, String> {

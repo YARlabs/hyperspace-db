@@ -48,8 +48,10 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
   <tr>
     <td>🎓 <b>Cognitive Math Engine</b></td>
     <td>First-class HNSW support for Euclidean (L2/Cosine), <b>Poincaré Ball</b>, <b>Lorentz Hyperboloid</b> metrics, and <b>Wasserstein O(N) CFM</b>.
-    * **Advanced Geometric Filters**: Added `InBall`, `InBox`, and `InCone` filters to the core engine and gRPC/REST APIs.
-    * **Bitset-Based Pruning**: Implemented high-performance sequential filtering over spatial regions.
+    * **Implicit Graph Engine (v3.1)**: Stop hiding HNSW topology. Expose raw adjacency and navigate via **Lorentz Light-Cones** and **Wave Diffusion** (resonant semantic propagation).
+    * **Graph Explorer (v3.1)**: High-performance canvas-based visualization of HNSW topology. Features Poincaré/Euclidean manifold projections, **Momentum Path Tracing**, and **Lyapunov Stability Radar**.
+    * **Relativistic Traversal**: Use **Momentum Traversal** (Dirac) to swing through nodes with semantic inertia, predicting trajectories via Koopman extrapolations.
+    * **Advanced Geometric Filters**: Native <code>InBall</code>, <code>InBox</code>, and <code>InCone</code> filters in core engine.
 Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the Native SDK. Evaluate datasets via <b>Gromov's Delta-Hyperbolicity</b>.</td>
   </tr>
   <tr>
@@ -443,7 +445,7 @@ http://localhost:50050
 - �️ **Cluster Nodes**: Visualize node topology and replication status
 - �🔍 **Data Explorer**: View recent vectors and test search queries
 - ⚙️ **Settings**: Integration snippets (Python, cURL) and live logs
-- 📈 **Graph Explorer**: (Coming in v1.4) Visualize HNSW graph structure
+- 📈 **Graph Explorer**: Visualize HNSW graph structure, Poincaré manifolds, and agent momentum trajectories in real-time.
 
 **Authentication:**
 If `HYPERSPACE_API_KEY` is set, you'll be prompted to enter it on first visit. The key is stored in `localStorage` for subsequent sessions.

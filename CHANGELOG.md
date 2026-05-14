@@ -5,9 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - 2026-05-13
+## [3.1.0] - 2026-05-14
 
 ### Added
+* **Implicit Graph Explorer (Phase 4 / Final Release)**:
+    * **Geometric Dashboards**: Real-time visualization of Poincaré and Euclidean manifolds using actual node embeddings.
+    * **Momentum Path Tracing**: Glowing visual trajectories in the dashboard that predict agent "thought paths" using Koopman extrapolations.
+    * **Stability Analysis Radar**: Interactive Lyapunov stability monitor visualizing local graph connectivity and trust scores.
+    * **Lorentz HUD & Subsumption**: Visual distinction between hierarchical light-cone relationships and standard semantic edges.
+    * **Real-time Resonance**: Diffusion "ripples" on the canvas for nodes with high stability/trust.
+* **HTTP Graph API Upgrades**:
+    * Enhanced `/graph/explore` and `/graph/subsumption` to include raw `vector` data for high-performance client-side rendering.
+* **SDK Ecosystem Finalization**:
+    * 100% parity across Rust, Python, TS, Go, Dart, C++, and ROS2 for all Graph Engine and Cognitive Math features.
+    * Standardized documentation and migration guides for v3.2.
+* **Implicit Graph Engine (Sprint 15 / Phase 1)**:
+    * **HNSW Adjacency Exposal**: New `graph_neighbors`, `graph_traverse`, and `graph_clusters` APIs for direct topological exploration.
+    * **Lorentz InCone Filtering**: Native support for geometric light-cone filters in `FilterExpr`.
+    * **Wave Diffusion Kernels**: Production-ready `WaveInferenceEngine` for resonant semantic diffusion across graph nodes.
+    * **Roadmap: Dirac & Momentum Traversal**: Defined the implementation path for relativistic search using Koopman extrapolations.
+* **Cognitive Math Expansion**:
+    * Added `local_entropy`, `lyapunov_convergence`, and `koopman_extrapolate` to all SDKs for trajectory-aware AI agents.
 * **Schema-Driven Cascade Architecture (Sprint 14 / Major Release)**:
     * **CollectionSchema**: Replaced legacy `dimension`/`metric` parameters with a flexible schema supporting multiple vector components.
     * **MRL (Matryoshka Representation Learning)**: Native support for cascading search via `MrlLayer`, allowing fast retrieval on truncated dimensions with automatic reranking on full vectors.

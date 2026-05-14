@@ -37,6 +37,7 @@ service Database {
   rpc GetConceptParents (GetConceptParentsRequest) returns (GetConceptParentsResponse);
   rpc Traverse (TraverseRequest) returns (TraverseResponse);
   rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClustersResponse);
+  rpc GetSubsumptionTree (GetSubsumptionTreeRequest) returns (GetSubsumptionTreeResponse);
   // Stream statistics for TUI (Global or Collection tailored)
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
   
@@ -448,12 +449,19 @@ message GetNodeRequest {
   uint32 layer = 3;
 }
 
+enum EdgeType {
+  UNKNOWN = 0;
+  SIMILARITY = 1; // Euclidean / Cosine dominance
+  HIERARCHY = 2;  // Lorentz dominance (Light-Cone containment)
+}
+
 message GraphNode {
   uint32 id = 1;
   uint32 layer = 2;
   repeated uint32 neighbors = 3;
   map<string, string> metadata = 4;
   map<string, MetadataValue> typed_metadata = 5;
+  repeated EdgeType edge_types = 6; // Inference based on distance metric dominance
 }
 
 message GetNeighborsRequest {
@@ -469,6 +477,12 @@ message GetNeighborsResponse {
   repeated double edge_weights = 2; // distance(source -> neighbors[i])
 }
 
+enum TraversalMode {
+  GREEDY = 0;
+  DIFFUSIVE = 1; // Wave
+  MOMENTUM = 2;  // Dirac
+}
+
 message TraverseRequest {
   string collection = 1;
   uint32 start_id = 2;
@@ -477,10 +491,22 @@ message TraverseRequest {
   uint32 layer = 5;
   map<string, string> filter = 6;
   repeated Filter filters = 7;
+  TraversalMode traversal_mode = 8;
+  uint32 breadth_limit = 9;
 }
 
 message TraverseResponse {
   repeated GraphNode nodes = 1;
+}
+
+message GetSubsumptionTreeRequest {
+  string collection = 1;
+  uint32 root_id = 2;
+  uint32 max_depth = 3;
+}
+
+message GetSubsumptionTreeResponse {
+  repeated GraphNode nodes = 1; // Directed tree based on Lorentz light-cone containment
 }
 
 message FindSemanticClustersRequest {

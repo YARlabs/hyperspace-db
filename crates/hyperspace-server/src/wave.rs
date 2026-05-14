@@ -7,6 +7,7 @@ pub struct WaveInferenceParams {
     pub sigma: f64,
     pub damping: f64,
     pub top_k: usize,
+    pub frequency: f64, // Added for PLL
 }
 
 impl Default for WaveInferenceParams {
@@ -16,6 +17,7 @@ impl Default for WaveInferenceParams {
             sigma: 1.0,
             damping: 0.8,
             top_k: 10,
+            frequency: std::f64::consts::PI / 2.0, // Default 90 deg phase per unit distance
         }
     }
 }
@@ -43,19 +45,22 @@ impl WaveInferenceEngine {
             energy_map.insert(*id, 1.0 / (1.0 + score));
         }
 
-        // 2. Diffusion Steps
+        // 2. Diffusion Steps (Phase-Locked Loop)
         for _ in 0..params.steps {
             let mut next_energy = energy_map.clone();
             
             for (&id, &energy) in &energy_map {
-                if energy < 0.01 { continue; } // Skip dead waves
+                if energy.abs() < 0.01 { continue; } // Skip dead waves
 
                 // Get neighbors in Layer 0
                 if let Ok(neighbors) = collection.graph_neighbors(id, 0, 10) {
                     if let Ok(distances) = collection.graph_neighbor_distances(id, &neighbors) {
                         for (neighbor_id, dist) in neighbors.into_iter().zip(distances.into_iter()) {
-                            // Gaussian resonance: e = E * exp(-d^2 / sigma^2)
-                            let resonance = energy * (-dist.powi(2) / params.sigma.powi(2)).exp() * params.damping;
+                            // Phase-Locked Loop (PLL) interference: 
+                            // The distance becomes a phase shift. Waves can destructively interfere.
+                            let phase_shift = dist * params.frequency;
+                            let resonance = energy * (-dist.powi(2) / params.sigma.powi(2)).exp() * phase_shift.cos() * params.damping;
+                            
                             let e = next_energy.entry(neighbor_id).or_insert(0.0);
                             *e += resonance;
                         }

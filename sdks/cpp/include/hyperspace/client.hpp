@@ -74,6 +74,7 @@ public:
     // Graph API
     bool GetNode(const std::string& collection, uint32_t id, uint32_t layer, ::hyperspace::GraphNode& node_out);
     bool GetNeighbors(const std::string& collection, uint32_t id, uint32_t layer, uint32_t limit, uint32_t offset, ::hyperspace::GetNeighborsResponse& resp_out);
+    bool GetSubsumptionTree(const std::string& collection, uint32_t root_id, uint32_t max_depth, ::hyperspace::GetSubsumptionTreeResponse& resp_out);
     
     // Sync & Events
     bool GetDigest(const std::string& collection, ::hyperspace::DigestResponse& resp_out);

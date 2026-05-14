@@ -7,6 +7,7 @@ This package provides a bridge between HyperspaceDB and the ROS2 environment, al
 - `hyperspace/create_collection`: Create a collection using a JSON schema definition.
 - `hyperspace/insert_text`: Vectorize and store text in the database.
 - `hyperspace/search_text`: Unified search with support for hybrid ranking.
+- `hyperspace/get_subsumption_tree`: Extract directed light-cone hierarchies for robotic navigation.
 
 ## Creating a Collection with Schema
 

@@ -3,11 +3,11 @@ pub use hyperspace_proto::hyperspace::{
     BatchInsertRequest, BatchSearchRequest, CollectionSummary, CountRequest, DurabilityLevel,
     EventMessage, EventSubscriptionRequest, EventType, FindSemanticClustersRequest,
     FindSemanticClustersResponse, GetConceptParentsRequest, GetConceptParentsResponse,
-    GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GetPointsRequest, GraphNode,
-    InsertRequest, InsertTextRequest, ScrollRequest, SearchRequest, SearchResponse, SearchResult,
-    SearchResult as ResultItem, SearchTextRequest, TraverseRequest, TraverseResponse,
-    UpdatePayloadRequest, VectorData, VectorizeRequest, VectorizeResponse,
-    CollectionSchema, VectorComponent, MrlLayer,
+    GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GetPointsRequest, GetSubsumptionTreeRequest,
+    GetSubsumptionTreeResponse, GraphNode, InsertRequest, InsertTextRequest, ScrollRequest,
+    SearchRequest, SearchResponse, SearchResult, SearchResult as ResultItem, SearchTextRequest,
+    TraverseRequest, TraverseResponse, UpdatePayloadRequest, VectorData, VectorizeRequest,
+    VectorizeResponse, CollectionSchema, VectorComponent, MrlLayer,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -797,6 +797,62 @@ impl Client {
         };
         let resp = self.inner.sync_handshake(req).await?;
         Ok(resp.into_inner())
+    }
+
+    /// Returns the subsumption tree (directed hierarchy) starting from a root node.
+    pub async fn get_subsumption_tree(
+        &mut self,
+        root_id: u32,
+        max_depth: u32,
+        collection: Option<String>,
+    ) -> Result<Vec<GraphNode>, tonic::Status> {
+        let req = GetSubsumptionTreeRequest {
+            collection: collection.unwrap_or_default(),
+            root_id,
+            max_depth,
+        };
+        let resp = self.inner.get_subsumption_tree(req).await?;
+        Ok(resp.into_inner().nodes)
+    }
+
+    /// High-level wrapper that explores the graph and returns an ego-graph structure.
+    pub async fn explore_graph(
+        &mut self,
+        start_id: u32,
+        max_depth: u32,
+        max_nodes: u32,
+        collection: Option<String>,
+    ) -> Result<serde_json::Value, tonic::Status> {
+        let req = TraverseRequest {
+            start_id,
+            max_depth,
+            max_nodes,
+            layer: 0,
+            collection: collection.unwrap_or_default(),
+            traversal_mode: 1, // DIFFUSIVE
+            breadth_limit: 10,
+            filter: std::collections::HashMap::new(),
+            filters: vec![],
+        };
+        let resp = self.traverse(req).await?;
+
+        // Convert nodes to a simplified JSON ego-graph
+        let nodes: Vec<serde_json::Value> = resp
+            .nodes
+            .iter()
+            .map(|n| {
+                serde_json::json!({
+                    "id": n.id,
+                    "metadata": n.metadata,
+                    "edge_types": n.edge_types
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "nodes": nodes,
+            "center_id": start_id
+        }))
     }
 
     /// Pulls differing subset of vectors from server bucket indices.

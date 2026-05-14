@@ -25,5 +25,6 @@ We will acknowledge your report within 48 hours and provide an estimated timefra
 *   **Authentication**: Built-in API Key support (SHA-256 hashed storage, Constant-time comparison) for all HTTP & gRPC traffic.
 *   **Swarm Perimeter (v3.0)**: The UDP Edge-to-Edge Gossip protocol (`HS_GOSSIP_PEERS`) operates without built-in encryption. **It is designed for isolated Local Area Networks (LAN) or WireGuard/Tailscale VPCs.** Do not expose the Gossip port (`7946` by default) to the public internet.
 *   **Multi-Tenancy**: Native namespace isolation between users ensuring data privacy in shared environments.
+*   **Graph Perimeter (v3.1)**: New Graph and Traversal endpoints (`/api/collections/{name}/graph/*`) enforce the same API Key and User-ID isolation as the search data plane. Recursive traversal is depth-limited to prevent DoS.
 *   **Role Based Access**: Strict Leader (Read/Write) and Follower (Read-Only) separation.
 *   **Dependency Audits**: We regularly audit our crate dependencies.

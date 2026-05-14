@@ -1140,6 +1140,85 @@ export class HyperspaceClient {
         });
     }
 
+    public getSubsumptionTree(rootId: number, maxDepth: number = 3, collection: string = ''): Promise<GraphNode[]> {
+        return new Promise((resolve, reject) => {
+            const req = new (hyperspace_pb as any).GetSubsumptionTreeRequest();
+            req.setRootId(rootId);
+            req.setMaxDepth(maxDepth);
+            req.setCollection(collection);
+
+            (this.client as any).getSubsumptionTree(req, this.metadata, (err: any, resp: any) => {
+                if (err) return reject(err);
+                const nodes = resp.getNodesList().map((n: any) => ({
+                    id: n.getId(),
+                    metadata: n.getMetadataMap().toObject(),
+                    edgeTypes: n.getEdgeTypesList()
+                }));
+                resolve(nodes);
+            });
+        });
+    }
+
+    public async exploreGraph(startId: number, maxDepth: number = 2, maxNodes: number = 256, collection: string = ''): Promise<any> {
+        const req = new TraverseRequest();
+        req.setStartId(startId);
+        req.setMaxDepth(maxDepth);
+        req.setMaxNodes(maxNodes);
+        req.setCollection(collection);
+        (req as any).setTraversalMode(1); // DIFFUSIVE
+        (req as any).setBreadthLimit(10);
+
+        return new Promise((resolve, reject) => {
+            this.client.traverse(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const nodes = resp.getNodesList().map((n: any) => ({
+                    id: n.getId(),
+                    metadata: n.getMetadataMap().toObject(),
+                    edgeTypes: n.getEdgeTypesList(),
+                    neighbors: n.getNeighborsList()
+                }));
+                resolve({
+                    nodes,
+                    centerId: startId,
+                    count: nodes.length
+                });
+            });
+        });
+    }
+
+    public async predictMomentum(trajectoryIds: number[], steps: number = 1.0, collection: string = '', curvature: number = 1.0): Promise<number[]> {
+        if (trajectoryIds.length < 2) return [];
+
+        const pts = await this.getPoints(trajectoryIds, collection);
+        const idToVec = new Map<number, number[]>();
+        pts.forEach(p => idToVec.set(p.id, p.vector));
+
+        const vectors = trajectoryIds.map(id => idToVec.get(id)).filter(v => !!v) as number[][];
+        if (vectors.length < 2) return [];
+
+        const past = vectors[vectors.length - 2];
+        const current = vectors[vectors.length - 1];
+
+        const { koopmanExtrapolate } = require('./math');
+        return koopmanExtrapolate(past, current, steps, curvature);
+    }
+
+    public async getTrustScore(trajectoryIds: number[], collection: string = '', curvature: number = 1.0): Promise<number> {
+        const pts = await this.getPoints(trajectoryIds, collection);
+        const idToVec = new Map<number, number[]>();
+        pts.forEach(p => idToVec.set(p.id, p.vector));
+
+        const vectors = trajectoryIds.map(id => idToVec.get(id)).filter(v => !!v) as number[][];
+        if (vectors.length < 3) return 0.0;
+
+        const { lyapunovConvergence } = require('./math');
+        try {
+            return lyapunovConvergence(vectors, curvature);
+        } catch (e) {
+            return 1.0;
+        }
+    }
+
 
     public close() {
         this.client.close();

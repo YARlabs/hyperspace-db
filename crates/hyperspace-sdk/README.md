@@ -189,6 +189,8 @@ The crate converts to protocol `f64` once per call.
 - `get_collection_stats`, `get_digest`
 - `trigger_vacuum`, `trigger_reconsolidation`, `rebuild_index`, `rebuild_index_with_filter`
 - `get_neighbors_with_weights` (graph edges with distances)
+- `get_subsumption_tree` (extract hierarchy from Lorentz/Poincare data)
+- `explore_graph` (returns ego-graph for visualization)
 - `subscribe_to_events` (CDC stream)
 
 ### Rebuild with Pruning
@@ -237,13 +239,45 @@ use hyperspace_sdk::math::{
 let entropy = local_entropy(&thought_vector, &neighbors, curvature)?;
 
 // 2. Proof of Convergence (Negative derivative = convergence)
-let stability = lyapunov_convergence(&chain_of_thought, curvature)?;
+let stability = client.get_trust_score(trajectory_ids, None).await?;
 
 // 3. Extrapolate next thought (Koopman linearization)
-let next_thought = koopman_extrapolate(&past, &current, 1.0, curvature)?;
+let next_thought = client.predict_momentum(trajectory_ids, 1.0).await?;
 
 // 4. Phase-Locked Loop for topic tracking
 let synced_thought = context_resonance(&thought, &global_context, 0.5, curvature)?;
+
+// 5. Predict Semantic Relation (A + R ≈ B)
+let relation = client.predict_relation(id_a, id_b, None).await?;
+```
+
+## Implicit Graph Engine (v3.1)
+
+HyperspaceDB treats your vectors as nodes in a dynamic graph. Relationships are inferred from the geometry:
+- **Lorentz / Poincare**: Hierarchy and subsumption (light cones).
+- **L2 / Cosine**: Semantic similarity and adjacency.
+
+### Subsumption Trees
+Extract directed hierarchies from Lorentz-encoded data:
+```rust
+let tree = client.get_subsumption_tree(root_id, 5, None).await?;
+```
+
+### Advanced Traversal
+Navigate the graph using physical kernels:
+```rust
+let results = client.traverse(
+    start_id,
+    2, // max depth
+    256, // max nodes
+    0, // layer
+    Some(2), // traversal_mode (2 = MOMENTUM)
+    Some(5), // breadth_limit
+    None, // filter
+    vec![], // filters
+    None, // collection
+).await?;
+```
 ```
 
 ## Embedding Pipeline (Optional)

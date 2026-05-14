@@ -127,6 +127,8 @@ await client.createCollection('mrl_docs', schema);
 - `searchText(text, topK, {filters, ...})`: Server-side vectorized search.
 - `searchBatch(vectors, topK)`: Multiple searches in one RPC call.
 - `searchMultiCollection(collections, vector, topK)`: Parallel search across multiple metrics.
+- `getSubsumptionTree(collection, rootId, maxDepth)`: Extract directed hierarchy from Lorentz/Poincare data.
+- `exploreGraph(startId, {maxDepth, maxNodes})`: High-level ego-graph retrieval for visualization.
 
 ### Spatial Filtering (New in v3.1)
 Build complex filters using the `Filter` class:
@@ -160,12 +162,17 @@ final analysis = HyperspaceClient.analyzeDeltaHyperbolicity(vectors);
 print('Recommended Metric: ${analysis['recommendation']}'); // poincare, lorentz, or l2
 
 // 2. Stability Analysis
-final stability = lyapunovConvergence(chainOfThoughtTrajectory);
-if (stability < 0) print('AI reasoning is converging stable.');
+final stability = await client.getTrustScore(trajectoryIds);
 
-// 3. Hallucination Detection
+// 3. Extrapolate next thought (Koopman linearization)
+final nextThought = await client.predictMomentum(trajectoryIds);
+
+// 4. Hallucination Detection
 final entropy = localEntropy(thoughtVector, neighborVectors);
 if (entropy > 0.8) print('Potential hallucination detected (high geometric entropy)');
+
+// 5. Predict Semantic Relation (A + R ≈ B)
+final relation = await client.predictRelation(idA, idB);
 ```
 
 ## ⚡ Performance Tips

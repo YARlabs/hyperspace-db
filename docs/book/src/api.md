@@ -312,8 +312,10 @@ message MetadataValue {
 ```protobuf
 rpc GetNode (GetNodeRequest) returns (GraphNode);
 rpc GetNeighbors (GetNeighborsRequest) returns (GetNeighborsResponse);
+rpc GetSubsumptionTree (GetSubsumptionTreeRequest) returns (GetSubsumptionTreeResponse);
+rpc Traverse (TraverseRequest) returns (stream TraverseResponse);
+rpc ExploreGraph (ExploreGraphRequest) returns (ExploreGraphResponse);
 rpc GetConceptParents (GetConceptParentsRequest) returns (GetConceptParentsResponse);
-rpc Traverse (TraverseRequest) returns (TraverseResponse);
 rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClustersResponse);
 ```
 
@@ -514,3 +516,5 @@ Convenience endpoint for dashboard/manual testing.
 - `GET /api/collections/{name}/graph/parents?id={id}&layer={layer}&limit={limit}`
 - `POST /api/collections/{name}/graph/traverse`
 - `POST /api/collections/{name}/graph/clusters`
+- `GET /api/collections/{name}/graph/explore?id={id}&depth={depth}` (v3.1 High-level Ego-Graph)
+- `GET /api/collections/{name}/graph/subsumption?root_id={id}&depth={depth}` (v3.1 Lorentz Hierarchy)

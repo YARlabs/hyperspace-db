@@ -381,6 +381,15 @@ class HyperspaceClient {
     return _stub.findSemanticClusters(req);
   }
 
+  Future<GetSubsumptionTreeResponse> getSubsumptionTree(String collection, int rootId, int maxDepth) {
+    final req = GetSubsumptionTreeRequest(
+      collection: collection,
+      rootId: rootId,
+      maxDepth: maxDepth,
+    );
+    return _stub.getSubsumptionTree(req);
+  }
+
   // Admin & Sync API
   Future<bool> rebuildIndex(String name) async {
     final req = RebuildIndexRequest(name: name);

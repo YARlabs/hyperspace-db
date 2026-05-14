@@ -180,4 +180,28 @@ impl Metric for HybridMetric {
     fn distance_binary(_a: &BinaryHyperVector, _b: &HyperVector) -> f64 {
         0.0
     }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        // Hybrid vectors have a fixed layout: 33 dims Lorentz + N dims Euclidean
+        let lorentz_dim = 33;
+        if past.len() < lorentz_dim || current.len() < lorentz_dim {
+            return Err("Vector too short for Hybrid layout".into());
+        }
+
+        // 1. Extrapolate Lorentz part
+        let l_past = &past[..lorentz_dim];
+        let l_current = &current[..lorentz_dim];
+        let l_next = crate::LorentzMetric::extrapolate_momentum(l_past, l_current, steps)?;
+
+        // 2. Extrapolate Euclidean part
+        let e_past = &past[lorentz_dim..];
+        let e_current = &current[lorentz_dim..];
+        let e_next = crate::EuclideanMetric::extrapolate_momentum(e_past, e_current, steps)?;
+
+        // 3. Combine
+        let mut result = Vec::with_capacity(past.len());
+        result.extend_from_slice(&l_next);
+        result.extend_from_slice(&e_next);
+        Ok(result)
+    }
 }

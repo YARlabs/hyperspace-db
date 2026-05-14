@@ -964,7 +964,28 @@ impl<M: Metric> HnswIndex<M> {
         del.insert(id);
     }
 
+    pub fn search_momentum(
+        &self,
+        trajectory: &[Vec<f64>],
+        filter: &std::collections::HashMap<String, String>,
+        complex_filters: &[FilterExpr],
+        params: &hyperspace_core::SearchParams,
+    ) -> Result<Vec<(NodeId, f64)>, String> {
+        if trajectory.len() < 2 {
+            return Err("Momentum traversal requires at least 2 points in trajectory".into());
+        }
+        let past = &trajectory[trajectory.len() - 2];
+        let current = &trajectory[trajectory.len() - 1];
+
+        // 1. Extrapolate to find the semantic destination using metric-specific geometry
+        let predicted = M::extrapolate_momentum(past, current, 1.0)?;
+
+        // 2. Perform greedy search around the predicted destination
+        Ok(self.search(&predicted, filter, complex_filters, params))
+    }
+
     #[allow(clippy::too_many_arguments)]
+
     pub fn search(
         &self,
         query: &[f64],
@@ -2140,6 +2161,7 @@ impl<M: Metric> HnswIndex<M> {
         layer: usize,
         max_depth: usize,
         max_nodes: usize,
+        breadth_limit: usize,
     ) -> Result<Vec<NodeId>, String> {
         if max_nodes == 0 {
             return Ok(Vec::new());
@@ -2175,7 +2197,9 @@ impl<M: Metric> HnswIndex<M> {
                 if node.layers.len() <= layer {
                     continue;
                 }
-                for &next in node.layers[layer].read().iter() {
+                let neighbors = node.layers[layer].read();
+                let limit = if breadth_limit == 0 { usize::MAX } else { breadth_limit };
+                for &next in neighbors.iter().take(limit) {
                     if deleted.contains(next) {
                         continue;
                     }
