@@ -81,7 +81,7 @@ pub struct MetadataIndex {
     pub deleted: RwLock<RoaringBitmap>,
     pub forward: DashMap<u32, std::collections::HashMap<String, String>>,
     pub token_df: DashMap<String, u32>,
-    pub doc_token_len: DashMap<u32, u32>,
+    pub doc_token_len: boxcar::Vec<AtomicU32>,
     pub term_doc_freq: DashMap<String, Vec<(u32, u16)>>,
     pub total_token_len: AtomicU64,
 }
@@ -94,7 +94,7 @@ impl Default for MetadataIndex {
             deleted: RwLock::new(RoaringBitmap::new()),
             forward: DashMap::new(),
             token_df: DashMap::new(),
-            doc_token_len: DashMap::new(),
+            doc_token_len: boxcar::Vec::new(),
             term_doc_freq: DashMap::new(),
             total_token_len: AtomicU64::new(0),
         }
@@ -357,7 +357,7 @@ impl<M: Metric> HnswIndex<M> {
                 deleted: RwLock::new(deleted),
                 forward,
                 token_df: DashMap::new(),
-                doc_token_len: DashMap::new(),
+                doc_token_len: boxcar::Vec::new(),
                 term_doc_freq: DashMap::new(),
                 total_token_len: AtomicU64::new(0),
             },
@@ -533,7 +533,7 @@ impl<M: Metric> HnswIndex<M> {
                 deleted: RwLock::new(deleted),
                 forward,
                 token_df: DashMap::new(),
-                doc_token_len: DashMap::new(),
+                doc_token_len: boxcar::Vec::new(),
                 term_doc_freq: DashMap::new(),
                 total_token_len: AtomicU64::new(0),
             },
@@ -779,19 +779,19 @@ impl<M: Metric> HnswIndex<M> {
 
         let mut bitmap: Option<RoaringBitmap> = None;
 
-        let mut apply_mask = |mask: &RoaringBitmap| {
+        fn apply_mask(bitmap: &mut Option<RoaringBitmap>, mask: &RoaringBitmap) {
             if let Some(ref mut bm) = bitmap {
                 *bm &= mask;
             } else {
-                bitmap = Some(mask.clone());
+                *bitmap = Some(mask.clone());
             }
-        };
+        }
 
         if !filter.is_empty() {
             for (key, val) in filter {
                 let tag = format!("{key}:{val}");
                 if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
-                    apply_mask(&tag_bitmap);
+                    apply_mask(&mut bitmap, &tag_bitmap);
                 } else {
                     return Some(RoaringBitmap::new());
                 }
@@ -803,7 +803,7 @@ impl<M: Metric> HnswIndex<M> {
                 FilterExpr::Match { key, value } => {
                     let tag = format!("{key}:{value}");
                     if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
-                        apply_mask(&tag_bitmap);
+                        apply_mask(&mut bitmap, &tag_bitmap);
                     } else {
                         return Some(RoaringBitmap::new());
                     }
@@ -819,7 +819,7 @@ impl<M: Metric> HnswIndex<M> {
                     if prefix_union.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
-                    apply_mask(&prefix_union);
+                    apply_mask(&mut bitmap, &prefix_union);
                 }
                 FilterExpr::Range { key, gte, lte } => {
                     let mut range_union = RoaringBitmap::new();
@@ -834,30 +834,52 @@ impl<M: Metric> HnswIndex<M> {
                         }
                     }
 
-                    for item in &self.metadata.forward {
-                        if range_union.contains(*item.key()) {
-                            continue;
-                        }
-                        let Some(num) = Self::metadata_numeric_value(item.value(), key) else {
-                            continue;
-                        };
+                    let check_range = |num: f64| -> bool {
                         if let Some(min) = gte {
                             if num < *min {
-                                continue;
+                                return false;
                             }
                         }
                         if let Some(max) = lte {
                             if num > *max {
-                                continue;
+                                return false;
                             }
                         }
-                        range_union.insert(*item.key());
+                        true
+                    };
+
+                    if let Some(ref bm) = bitmap {
+                        let mut filtered_range_union = RoaringBitmap::new();
+                        for id in bm.iter() {
+                            if range_union.contains(id) {
+                                filtered_range_union.insert(id);
+                            } else if let Some(item) = self.metadata.forward.get(&id) {
+                                if let Some(num) = Self::metadata_numeric_value(item.value(), key) {
+                                    if check_range(num) {
+                                        filtered_range_union.insert(id);
+                                    }
+                                }
+                            }
+                        }
+                        range_union = filtered_range_union;
+                    } else {
+                        for item in &self.metadata.forward {
+                            let id = *item.key();
+                            if range_union.contains(id) {
+                                continue;
+                            }
+                            if let Some(num) = Self::metadata_numeric_value(item.value(), key) {
+                                if check_range(num) {
+                                    range_union.insert(id);
+                                }
+                            }
+                        }
                     }
 
                     if range_union.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
-                    apply_mask(&range_union);
+                    apply_mask(&mut bitmap, &range_union);
                 }
                 FilterExpr::InBox {
                     min_bounds,
@@ -868,17 +890,32 @@ impl<M: Metric> HnswIndex<M> {
                         min_bounds.clone(),
                         max_bounds.clone(),
                     );
-                    // RAYON: parallel scan over O(self.dimension) vectors
-                    let ids: Vec<u32> = (0..count)
-                        .into_par_iter()
-                        .filter(|&i| !deleted.contains(i))
-                        .filter(|&i| region.contains(&self.get_vector(i)))
-                        .collect();
+                    let ids: Vec<u32> = if let Some(ref bm) = bitmap {
+                        if bm.len() > 1024 {
+                            bm.iter()
+                                .collect::<Vec<_>>()
+                                .into_par_iter()
+                                .filter(|&i| !deleted.contains(i))
+                                .filter(|&i| region.contains(&self.get_vector(i)))
+                                .collect()
+                        } else {
+                            bm.iter()
+                                .filter(|&i| !deleted.contains(i))
+                                .filter(|&i| region.contains(&self.get_vector(i)))
+                                .collect()
+                        }
+                    } else {
+                        (0..count)
+                            .into_par_iter()
+                            .filter(|&i| !deleted.contains(i))
+                            .filter(|&i| region.contains(&self.get_vector(i)))
+                            .collect()
+                    };
                     let box_match: RoaringBitmap = ids.into_iter().collect();
                     if box_match.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
-                    apply_mask(&box_match);
+                    apply_mask(&mut bitmap, &box_match);
                 }
                 FilterExpr::InCone {
                     axes,
@@ -891,32 +928,62 @@ impl<M: Metric> HnswIndex<M> {
                         apertures.clone(),
                         *cen,
                     );
-                    // RAYON: parallel scan over O(self.dimension) vectors
-                    let ids: Vec<u32> = (0..count)
-                        .into_par_iter()
-                        .filter(|&i| !deleted.contains(i))
-                        .filter(|&i| region.contains(&self.get_vector(i)))
-                        .collect();
+                    let ids: Vec<u32> = if let Some(ref bm) = bitmap {
+                        if bm.len() > 1024 {
+                            bm.iter()
+                                .collect::<Vec<_>>()
+                                .into_par_iter()
+                                .filter(|&i| !deleted.contains(i))
+                                .filter(|&i| region.contains(&self.get_vector(i)))
+                                .collect()
+                        } else {
+                            bm.iter()
+                                .filter(|&i| !deleted.contains(i))
+                                .filter(|&i| region.contains(&self.get_vector(i)))
+                                .collect()
+                        }
+                    } else {
+                        (0..count)
+                            .into_par_iter()
+                            .filter(|&i| !deleted.contains(i))
+                            .filter(|&i| region.contains(&self.get_vector(i)))
+                            .collect()
+                    };
                     let cone_match: RoaringBitmap = ids.into_iter().collect();
                     if cone_match.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
-                    apply_mask(&cone_match);
+                    apply_mask(&mut bitmap, &cone_match);
                 }
                 FilterExpr::InBall { center, radius } => {
                     let count = self.count_nodes() as u32;
                     let region = hyperspace_core::region::BallRegion::new(center.clone(), *radius);
-                    // RAYON: parallel scan over O(self.dimension) vectors
-                    let ids: Vec<u32> = (0..count)
-                        .into_par_iter()
-                        .filter(|&i| !deleted.contains(i))
-                        .filter(|&i| region.contains(&self.get_vector(i)))
-                        .collect();
+                    let ids: Vec<u32> = if let Some(ref bm) = bitmap {
+                        if bm.len() > 1024 {
+                            bm.iter()
+                                .collect::<Vec<_>>()
+                                .into_par_iter()
+                                .filter(|&i| !deleted.contains(i))
+                                .filter(|&i| region.contains(&self.get_vector(i)))
+                                .collect()
+                        } else {
+                            bm.iter()
+                                .filter(|&i| !deleted.contains(i))
+                                .filter(|&i| region.contains(&self.get_vector(i)))
+                                .collect()
+                        }
+                    } else {
+                        (0..count)
+                            .into_par_iter()
+                            .filter(|&i| !deleted.contains(i))
+                            .filter(|&i| region.contains(&self.get_vector(i)))
+                            .collect()
+                    };
                     let ball_match: RoaringBitmap = ids.into_iter().collect();
                     if ball_match.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
-                    apply_mask(&ball_match);
+                    apply_mask(&mut bitmap, &ball_match);
                 }
                 FilterExpr::And(conditions) => {
                     // Evaluate each sub-condition independently and AND (intersect) the bitmaps.
@@ -925,7 +992,7 @@ impl<M: Metric> HnswIndex<M> {
                         if let Some(sub_bm) =
                             self.build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond))
                         {
-                            apply_mask(&sub_bm);
+                            apply_mask(&mut bitmap, &sub_bm);
                         } else {
                             return Some(RoaringBitmap::new());
                         }
@@ -945,7 +1012,7 @@ impl<M: Metric> HnswIndex<M> {
                     if union.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
-                    apply_mask(&union);
+                    apply_mask(&mut bitmap, &union);
                 }
                 FilterExpr::Not(cond) => {
                     // NOT = all active nodes MINUS nodes matching the inner condition.
@@ -960,7 +1027,7 @@ impl<M: Metric> HnswIndex<M> {
                     if not_bm.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
-                    apply_mask(&not_bm);
+                    apply_mask(&mut bitmap, &not_bm);
                 }
             }
         }
@@ -2408,7 +2475,12 @@ impl<M: Metric> HnswIndex<M> {
     }
 
     fn remove_doc_lexical_stats(&self, id: NodeId) {
-        if let Some((_, old_len)) = self.metadata.doc_token_len.remove(&id) {
+        let old_len = if let Some(entry) = self.metadata.doc_token_len.get(id as usize) {
+            entry.swap(0, Ordering::Relaxed)
+        } else {
+            0
+        };
+        if old_len > 0 {
             self.metadata
                 .total_token_len
                 .fetch_sub(u64::from(old_len), Ordering::Relaxed);
@@ -2438,7 +2510,12 @@ impl<M: Metric> HnswIndex<M> {
     fn upsert_doc_lexical_stats(&self, id: NodeId, meta: &HashMap<String, String>) {
         self.remove_doc_lexical_stats(id);
         let (term_freq, doc_len) = Self::build_doc_term_stats(meta, &self.config);
-        self.metadata.doc_token_len.insert(id, doc_len);
+        while id >= self.metadata.doc_token_len.count() as u32 {
+            self.metadata.doc_token_len.push(AtomicU32::new(0));
+        }
+        if let Some(entry) = self.metadata.doc_token_len.get(id as usize) {
+            entry.store(doc_len, Ordering::Relaxed);
+        }
         self.metadata
             .total_token_len
             .fetch_add(u64::from(doc_len), Ordering::Relaxed);
@@ -2460,7 +2537,11 @@ impl<M: Metric> HnswIndex<M> {
 
     fn rebuild_lexical_stats(&self) {
         self.metadata.token_df.clear();
-        self.metadata.doc_token_len.clear();
+        for i in 0..self.metadata.doc_token_len.count() {
+            if let Some(entry) = self.metadata.doc_token_len.get(i) {
+                entry.store(0, Ordering::Relaxed);
+            }
+        }
         self.metadata.term_doc_freq.clear();
         self.metadata.total_token_len.store(0, Ordering::Relaxed);
         for item in &self.metadata.forward {
@@ -2547,8 +2628,8 @@ impl<M: Metric> HnswIndex<M> {
                         let dl = self
                             .metadata
                             .doc_token_len
-                            .get(&id)
-                            .map_or(0.0, |v| *v as f32)
+                            .get(id as usize)
+                            .map_or(0.0, |v| v.load(Ordering::Relaxed) as f32)
                             .max(1.0);
 
                         let score = f64::from(hyperspace_core::bm25::score(
@@ -2575,7 +2656,37 @@ impl<M: Metric> HnswIndex<M> {
                 a
             });
 
-        let mut keyword_results: Vec<(u32, f64)> = keyword_scores.into_iter().collect();
+        #[derive(PartialEq)]
+        struct MinHeapEntry {
+            score: f64,
+            id: u32,
+        }
+        impl Eq for MinHeapEntry {}
+        impl PartialOrd for MinHeapEntry {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+        impl Ord for MinHeapEntry {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                other.score.total_cmp(&self.score)
+            }
+        }
+
+        let max_k = (params.top_k * 3).max(200);
+        let mut heap = std::collections::BinaryHeap::with_capacity(max_k + 1);
+        for (id, score) in keyword_scores {
+            if heap.len() < max_k {
+                heap.push(MinHeapEntry { score, id });
+            } else if score > heap.peek().unwrap().score {
+                heap.pop();
+                heap.push(MinHeapEntry { score, id });
+            }
+        }
+        let mut keyword_results: Vec<(u32, f64)> = heap
+            .into_iter()
+            .map(|entry| (entry.id, entry.score))
+            .collect();
         keyword_results.sort_by(|a, b| b.1.total_cmp(&a.1));
 
         // 3. Fusion

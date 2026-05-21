@@ -193,22 +193,22 @@ impl Tokenizer {
 
         self.pattern
             .find_iter(text)
-            .map(|m| {
-                let mut token = m.as_str().to_string();
-                if self.lowercase {
-                    token = token.to_lowercase();
+            .filter_map(|m| {
+                let s = m.as_str();
+                let mut token = smol_str::SmolStr::new(s);
+                if self.lowercase && s.chars().any(|c| c.is_uppercase()) {
+                    token = smol_str::SmolStr::new(s.to_lowercase());
                 }
                 if let Some(ref stemmer) = self.stemmer {
-                    token = stemmer.stem(&token).to_string();
+                    let stemmed = stemmer.stem(&token);
+                    token = smol_str::SmolStr::new(stemmed);
                 }
-                token
-            })
-            .filter(|token| {
                 if let Some(ref sw) = self.stopwords {
-                    !sw.contains(token)
-                } else {
-                    true
+                    if sw.contains(token.as_str()) {
+                        return None;
+                    }
                 }
+                Some(token.to_string())
             })
             .collect()
     }
