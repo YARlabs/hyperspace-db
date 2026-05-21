@@ -111,7 +111,22 @@ class HyperspaceClient:
 
     # ... (create/delete/list unchanged) ...
 
-    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema]) -> bool:
+    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None) -> bool:
+        if schema is None:
+            if dimension is not None and metric is not None:
+                schema = {
+                    "components": [
+                        {
+                            "name": "default",
+                            "metric": metric,
+                            "full_dimension": dimension,
+                            "weight": 1.0
+                        }
+                    ]
+                }
+            else:
+                raise ValueError("Either schema or both dimension and metric must be provided")
+
         if isinstance(schema, dict):
             proto_schema = hyperspace_pb2.CollectionSchema()
             if "components" in schema:
@@ -348,7 +363,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "") -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None) -> List[Dict]:
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")

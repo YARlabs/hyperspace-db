@@ -178,9 +178,13 @@ impl Metric for HybridMetric {
         "hybrid"
     }
 
-    fn distance(_a: &[f64], _b: &[f64]) -> f64 {
-        // dynamic distance requires dimensions. We panic here.
-        panic!("Use distance fn with layout");
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        if a.len() < 33 || b.len() < 33 {
+            return 0.0;
+        }
+        let d_lor = <crate::LorentzMetric as crate::Metric>::distance(&a[..33], &b[..33]);
+        let d_euc = <crate::EuclideanMetric as crate::Metric>::distance(&a[33..], &b[33..]);
+        d_lor + d_euc
     }
 
     fn distance_quantized(_a: &QuantizedHyperVector, _b: &HyperVector) -> f64 {

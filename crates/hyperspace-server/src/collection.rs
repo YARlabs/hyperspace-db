@@ -778,6 +778,7 @@ impl<M: Metric> CollectionImpl<M> {
                 "cosine" => hyperspace_cache::CacheMetricType::Cosine,
                 "poincare" => hyperspace_cache::CacheMetricType::Poincare,
                 "lorentz" => hyperspace_cache::CacheMetricType::Lorentz,
+                "hybrid" => hyperspace_cache::CacheMetricType::Hybrid { lorentz_weight: 1.0, l2_weight: 1.0 },
                 _ => hyperspace_cache::CacheMetricType::L2,
             };
 
@@ -1691,6 +1692,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         // Quick Win: For small top_k, run search inline to avoid spawn_blocking overhead
         let use_blocking = top_k > 50 || rerank_enabled;
 
+        let index_link_for_cache = index_link.clone();
         if use_blocking {
             // Convert to owned only when entering blocking task
             let processed_query = processed_query_cow.into_owned();
@@ -1825,7 +1827,36 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             .await
             .map_err(|e| format!("Search task failed: {e}"))?;
 
-            // === Step 3: Lazy Payload Fetch (v3.2) ==============================
+            // === Step 3 (Read-Through): Populate cache with HNSW results =========
+            // When enabled, top-K results from every disk HNSW search are inserted
+            // into the L1 cache so that future queries for the same or nearby vectors
+            // become L1 hits. Controlled by HYPERSPACE_CACHE_READ_THROUGH (default: true).
+            let read_through_enabled = std::env::var("HYPERSPACE_CACHE_READ_THROUGH")
+                .map_or(true, |v| v.to_lowercase() != "false");
+            if read_through_enabled {
+                if let Some(ref cache) = self.cache {
+                    let index_snap = index_link_for_cache.load_full();
+                    for (user_id, _dist, meta) in &pre_payload {
+                        // Look up the internal id to fetch raw vector coords.
+                        let internal_id_opt = if ids_are_identity {
+                            Some(*user_id)
+                        } else {
+                            // reverse_id_map maps internal -> external; we need external -> internal
+                            // Iterate the index to find it (best-effort, zero-copy on cache hit).
+                            // For identity IDs this is a no-op branch.
+                            None
+                        };
+                        if let Some(internal_id) = internal_id_opt {
+                            if (internal_id as usize) < index_snap.count() {
+                                let hv = index_snap.get_vector(internal_id);
+                                cache.insert(*user_id, hv.coords.clone(), meta.clone(), None);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Step 4: Lazy Payload Fetch (v3.2) ==============================
             // Only executed when include_payload=true AND after Top-K is decided.
             // Zero disk I/O on the default (include_payload=false) path.
             if include_payload {

@@ -39,10 +39,18 @@ pub struct L2AnnStore<D: CacheDistance> {
     /// Timestamp (ms since UNIX epoch) of the last completed rebuild.
     /// Used by VectorCache to implement cooldown and metrics.
     pub last_rebuild_ms: AtomicU64,
+    /// How many candidates the L2 HNSW graph explores per query.
+    /// Higher values improve recall at the cost of latency.
+    /// Configurable via `HYPERSPACE_CACHE_L2_EF_SEARCH` (default: 64).
+    ef_search: usize,
 }
 
 impl<D: CacheDistance> L2AnnStore<D> {
     pub fn new(distance: D, dimension: usize, pending_capacity: usize) -> Self {
+        let ef_search = std::env::var("HYPERSPACE_CACHE_L2_EF_SEARCH")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(64);
         Self {
             index: ArcSwap::new(Arc::new(None)),
             pending: Mutex::new(Vec::new()),
@@ -51,6 +59,7 @@ impl<D: CacheDistance> L2AnnStore<D> {
             tombstones: DashSet::new(),
             dimension,
             last_rebuild_ms: AtomicU64::new(0),
+            ef_search,
         }
     }
 
@@ -91,7 +100,11 @@ impl<D: CacheDistance> L2AnnStore<D> {
             values.push(id);
         }
 
-        let builder = Builder::default();
+        // ef_search and ef_construction are baked into the HnswMap at build time.
+        // They control search beam width and graph quality respectively.
+        let builder = Builder::default()
+            .ef_search(self.ef_search)
+            .ef_construction(self.ef_search);
         let hnsw = builder.build(points, values);
 
         // Atomic swap: readers see either the old or new index, never a partial state.
@@ -117,6 +130,7 @@ impl<D: CacheDistance> L2AnnStore<D> {
             metric_type: self.distance.metric_type(),
         };
 
+        // Search uses ef_search baked into the HnswMap at rebuild time.
         let mut search = Search::default();
         if let Some(index) = &**self.index.load() {
             let mut results = Vec::new();

@@ -18,12 +18,13 @@ pub use l2_ann::AnyAnnStore;
 pub use ttl::TimerWheel;
 pub use eviction::EvictionManager;
 
-/// Minimum milliseconds between two consecutive L2 HNSW rebuilds.
+/// Default minimum milliseconds between two consecutive L2 HNSW rebuilds.
+/// Override at runtime via `HYPERSPACE_CACHE_REBUILD_COOLDOWN_MS`.
 ///
 /// FIX (Bottleneck 1): Prevents rebuild storms under high write load.
 /// Without this, every batch of `ann_rebuild_batch` inserts would spawn a new
 /// expensive blocking rebuild task, saturating the thread pool.
-const REBUILD_COOLDOWN_MS: u64 = 5_000;
+const DEFAULT_REBUILD_COOLDOWN_MS: u64 = 5_000;
 
 /// Tombstone ratio threshold above which a rebuild is proactively triggered.
 ///
@@ -148,8 +149,13 @@ pub struct VectorCache {
     /// Timestamp (ms since epoch) of the last `trigger_rebuild()` call.
     ///
     /// FIX (Bottleneck 1): Guards against rebuild storms. trigger_rebuild() is a
-    /// no-op if called within REBUILD_COOLDOWN_MS of the previous invocation.
+    /// no-op if called within rebuild_cooldown_ms of the previous invocation.
     last_rebuild_triggered_ms: AtomicU64,
+
+    /// Minimum ms between two consecutive L2 rebuilds.
+    /// Reads `HYPERSPACE_CACHE_REBUILD_COOLDOWN_MS` at construction time,
+    /// defaulting to `DEFAULT_REBUILD_COOLDOWN_MS` (5000ms).
+    rebuild_cooldown_ms: u64,
 
     shutdown: tokio::sync::watch::Sender<bool>,
 }
@@ -189,6 +195,11 @@ impl VectorCache {
             )),
         };
 
+        let rebuild_cooldown_ms = std::env::var("HYPERSPACE_CACHE_REBUILD_COOLDOWN_MS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_REBUILD_COOLDOWN_MS);
+
         let ttl_wheel = Arc::new(TimerWheel::new());
         let eviction = parking_lot::RwLock::new(EvictionManager::new(config.eviction_policy, config.l1_capacity, None));
         let config = parking_lot::RwLock::new(config);
@@ -203,6 +214,7 @@ impl VectorCache {
             l1_tracker: RateTracker::new(),
             l2_tracker: RateTracker::new(),
             last_rebuild_triggered_ms: AtomicU64::new(0),
+            rebuild_cooldown_ms,
             shutdown,
         }
     }
@@ -567,7 +579,7 @@ impl VectorCache {
             .as_millis() as u64;
 
         let last = self.last_rebuild_triggered_ms.load(Ordering::Relaxed);
-        if now_ms.saturating_sub(last) < REBUILD_COOLDOWN_MS {
+        if now_ms.saturating_sub(last) < self.rebuild_cooldown_ms {
             // Still within cooldown window — skip this trigger.
             // The periodic 5s task will pick up any remaining pending entries.
             return;
