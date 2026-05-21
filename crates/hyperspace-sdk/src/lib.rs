@@ -1,13 +1,14 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
-    BatchInsertRequest, BatchSearchRequest, CollectionSummary, CountRequest, DurabilityLevel,
-    EventMessage, EventSubscriptionRequest, EventType, FindSemanticClustersRequest,
-    FindSemanticClustersResponse, GetConceptParentsRequest, GetConceptParentsResponse,
-    GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest, GetPointsRequest, GetSubsumptionTreeRequest,
-    GetSubsumptionTreeResponse, GraphNode, InsertRequest, InsertTextRequest, ScrollRequest,
-    SearchRequest, SearchResponse, SearchResult, SearchResult as ResultItem, SearchTextRequest,
-    TraverseRequest, TraverseResponse, UpdatePayloadRequest, VectorData, VectorizeRequest,
-    VectorizeResponse, CollectionSchema, VectorComponent, MrlLayer,
+    BatchInsertRequest, BatchSearchRequest, CollectionSchema, CollectionSummary, CountRequest,
+    DurabilityLevel, EventMessage, EventSubscriptionRequest, EventType,
+    Filter, Match, Prefix, Range, InCone, InBall, InBox, FilterAnd, FilterOr, FilterNot,
+    FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
+    GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
+    GetPointsRequest, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse, GraphNode,
+    InsertRequest, InsertTextRequest, MrlLayer, ScrollRequest, SearchRequest, SearchResponse,
+    SearchResult, SearchResult as ResultItem, SearchTextRequest, TraverseRequest, TraverseResponse,
+    UpdatePayloadRequest, VectorComponent, VectorData, VectorizeRequest, VectorizeResponse,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -22,6 +23,21 @@ pub mod math;
 mod embedder;
 #[cfg(feature = "embedders")]
 pub use embedder::*;
+
+/// Lightweight ego-graph result returned by [`Client::explore_graph`].
+#[derive(Debug, Clone)]
+pub struct EgoGraphNode {
+    pub id: u32,
+    pub metadata: std::collections::HashMap<String, String>,
+    pub edge_types: Vec<i32>,
+}
+
+/// Result of [`Client::explore_graph`]: a centre node id and a list of neighbouring nodes.
+#[derive(Debug, Clone)]
+pub struct EgoGraph {
+    pub center_id: u32,
+    pub nodes: Vec<EgoGraphNode>,
+}
 
 #[derive(Clone)]
 pub struct AuthInterceptor {
@@ -117,6 +133,26 @@ impl Client {
     pub async fn delete_collection(&mut self, name: String) -> Result<String, tonic::Status> {
         let req = hyperspace_proto::hyperspace::DeleteCollectionRequest { name };
         let resp = self.inner.delete_collection(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
+    /// Freezes a collection manually (unloads HNSW from memory).
+    ///
+    /// # Errors
+    /// Returns error if the collection does not exist or network fails.
+    pub async fn freeze_collection(&mut self, name: String) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::FreezeCollectionRequest { name };
+        let resp = self.inner.freeze_collection(req).await?;
+        Ok(resp.into_inner().status)
+    }
+
+    /// Unfreezes a collection manually (lazy-loads HNSW back into memory).
+    ///
+    /// # Errors
+    /// Returns error if the collection does not exist or network fails.
+    pub async fn unfreeze_collection(&mut self, name: String) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::UnfreezeCollectionRequest { name };
+        let resp = self.inner.unfreeze_collection(req).await?;
         Ok(resp.into_inner().status)
     }
 
@@ -822,7 +858,7 @@ impl Client {
         max_depth: u32,
         max_nodes: u32,
         collection: Option<String>,
-    ) -> Result<serde_json::Value, tonic::Status> {
+    ) -> Result<EgoGraph, tonic::Status> {
         let req = TraverseRequest {
             start_id,
             max_depth,
@@ -836,23 +872,20 @@ impl Client {
         };
         let resp = self.traverse(req).await?;
 
-        // Convert nodes to a simplified JSON ego-graph
-        let nodes: Vec<serde_json::Value> = resp
+        let nodes = resp
             .nodes
-            .iter()
-            .map(|n| {
-                serde_json::json!({
-                    "id": n.id,
-                    "metadata": n.metadata,
-                    "edge_types": n.edge_types
-                })
+            .into_iter()
+            .map(|n| EgoGraphNode {
+                id: n.id,
+                metadata: n.metadata,
+                edge_types: n.edge_types,
             })
             .collect();
 
-        Ok(serde_json::json!({
-            "nodes": nodes,
-            "center_id": start_id
-        }))
+        Ok(EgoGraph {
+            center_id: start_id,
+            nodes,
+        })
     }
 
     /// Pulls differing subset of vectors from server bucket indices.
@@ -906,10 +939,7 @@ impl Client {
         ids: Vec<u32>,
         collection: String,
     ) -> Result<Vec<hyperspace_proto::hyperspace::VectorData>, tonic::Status> {
-        let req = GetPointsRequest {
-            ids,
-            collection,
-        };
+        let req = GetPointsRequest { ids, collection };
         let resp = self.inner.get_points(req).await?;
         Ok(resp.into_inner().points)
     }

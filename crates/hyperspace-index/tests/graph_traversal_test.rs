@@ -14,10 +14,10 @@ fn test_graph_traversal_api_basics() {
 
     let storage = Arc::new(VectorStore::new(
         &storage_path,
-        hyperspace_core::vector::HyperVector::<8>::SIZE,
+        8 * 8 + 8,
     ));
-    let index: HnswIndex<8, EuclideanMetric> =
-        HnswIndex::new(storage, QuantizationMode::None, config);
+    let index: HnswIndex<EuclideanMetric> =
+        HnswIndex::new(storage, QuantizationMode::None, config, 8);
 
     for i in 0..128u32 {
         let mut vec = vec![0.0; 8];
@@ -39,7 +39,7 @@ fn test_graph_traversal_api_basics() {
     assert!(!neighbors.is_empty(), "neighbors should not be empty");
     assert!(neighbors.len() <= 16);
 
-    let traversed = index.graph_traverse(0, 0, 2, 64).expect("traverse");
+    let traversed = index.graph_traverse(0, 0, 2, 64, usize::MAX).expect("traverse");
     assert!(
         !traversed.is_empty(),
         "traverse should return at least start node"

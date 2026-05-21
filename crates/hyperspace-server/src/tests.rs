@@ -22,8 +22,17 @@ async fn test_rebuild_and_queue() {
 
     // 1. Create Collection
     let col_name = "test_rebuild";
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: 128,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
     manager
-        .create_collection("default_admin", col_name, 128, "l2")
+        .create_collection("default_admin", col_name, schema)
         .await
         .expect("Create failed");
 
@@ -98,8 +107,17 @@ async fn test_vacuum() {
     let (etx, _) = broadcast::channel(100);
     let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
 
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: 64,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
     manager
-        .create_collection("default_admin", "vac_col", 64, "l2")
+        .create_collection("default_admin", "vac_col", schema)
         .await
         .unwrap();
 
@@ -135,12 +153,22 @@ async fn test_delta_sync() {
     let dim = 64;
 
     // Create the same collection on both nodes
+    let schema_a = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+    let schema_b = schema_a.clone();
     manager_a
-        .create_collection("default_admin", col_name, dim, "l2")
+        .create_collection("default_admin", col_name, schema_a)
         .await
         .unwrap();
     manager_b
-        .create_collection("default_admin", col_name, dim, "l2")
+        .create_collection("default_admin", col_name, schema_b)
         .await
         .unwrap();
 

@@ -1286,6 +1286,11 @@ export class Filter extends jspb.Message {
     getNotOp(): FilterNot | undefined;
     setNotOp(value?: FilterNot): Filter;
 
+    hasPrefix(): boolean;
+    clearPrefix(): void;
+    getPrefix(): Prefix | undefined;
+    setPrefix(value?: Prefix): Filter;
+
     getConditionCase(): Filter.ConditionCase;
 
     serializeBinary(): Uint8Array;
@@ -1308,6 +1313,7 @@ export namespace Filter {
         andOp?: FilterAnd.AsObject,
         orOp?: FilterOr.AsObject,
         notOp?: FilterNot.AsObject,
+        prefix?: Prefix.AsObject,
     }
 
     export enum ConditionCase {
@@ -1320,6 +1326,7 @@ export namespace Filter {
         AND_OP = 6,
         OR_OP = 7,
         NOT_OP = 8,
+        PREFIX = 9,
     }
 
 }
@@ -1411,6 +1418,29 @@ export namespace Match {
     export type AsObject = {
         key: string,
         value: string,
+    }
+}
+
+export class Prefix extends jspb.Message { 
+    getKey(): string;
+    setKey(value: string): Prefix;
+    getPrefix(): string;
+    setPrefix(value: string): Prefix;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Prefix.AsObject;
+    static toObject(includeInstance: boolean, msg: Prefix): Prefix.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: Prefix, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): Prefix;
+    static deserializeBinaryFromReader(message: Prefix, reader: jspb.BinaryReader): Prefix;
+}
+
+export namespace Prefix {
+    export type AsObject = {
+        key: string,
+        prefix: string,
     }
 }
 
@@ -1740,6 +1770,10 @@ export class GraphNode extends jspb.Message {
 
     getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
     clearTypedMetadataMap(): void;
+    clearEdgeTypesList(): void;
+    getEdgeTypesList(): Array<EdgeType>;
+    setEdgeTypesList(value: Array<EdgeType>): GraphNode;
+    addEdgeTypes(value: EdgeType, index?: number): EdgeType;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): GraphNode.AsObject;
@@ -1760,6 +1794,7 @@ export namespace GraphNode {
         metadataMap: Array<[string, string]>,
 
         typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
+        edgeTypesList: Array<EdgeType>,
     }
 }
 
@@ -1840,6 +1875,10 @@ export class TraverseRequest extends jspb.Message {
     getFiltersList(): Array<Filter>;
     setFiltersList(value: Array<Filter>): TraverseRequest;
     addFilters(value?: Filter, index?: number): Filter;
+    getTraversalMode(): TraversalMode;
+    setTraversalMode(value: TraversalMode): TraverseRequest;
+    getBreadthLimit(): number;
+    setBreadthLimit(value: number): TraverseRequest;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): TraverseRequest.AsObject;
@@ -1861,6 +1900,8 @@ export namespace TraverseRequest {
 
         filterMap: Array<[string, string]>,
         filtersList: Array<Filter.AsObject>,
+        traversalMode: TraversalMode,
+        breadthLimit: number,
     }
 }
 
@@ -1881,6 +1922,54 @@ export class TraverseResponse extends jspb.Message {
 }
 
 export namespace TraverseResponse {
+    export type AsObject = {
+        nodesList: Array<GraphNode.AsObject>,
+    }
+}
+
+export class GetSubsumptionTreeRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): GetSubsumptionTreeRequest;
+    getRootId(): number;
+    setRootId(value: number): GetSubsumptionTreeRequest;
+    getMaxDepth(): number;
+    setMaxDepth(value: number): GetSubsumptionTreeRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetSubsumptionTreeRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: GetSubsumptionTreeRequest): GetSubsumptionTreeRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetSubsumptionTreeRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetSubsumptionTreeRequest;
+    static deserializeBinaryFromReader(message: GetSubsumptionTreeRequest, reader: jspb.BinaryReader): GetSubsumptionTreeRequest;
+}
+
+export namespace GetSubsumptionTreeRequest {
+    export type AsObject = {
+        collection: string,
+        rootId: number,
+        maxDepth: number,
+    }
+}
+
+export class GetSubsumptionTreeResponse extends jspb.Message { 
+    clearNodesList(): void;
+    getNodesList(): Array<GraphNode>;
+    setNodesList(value: Array<GraphNode>): GetSubsumptionTreeResponse;
+    addNodes(value?: GraphNode, index?: number): GraphNode;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): GetSubsumptionTreeResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: GetSubsumptionTreeResponse): GetSubsumptionTreeResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: GetSubsumptionTreeResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): GetSubsumptionTreeResponse;
+    static deserializeBinaryFromReader(message: GetSubsumptionTreeResponse, reader: jspb.BinaryReader): GetSubsumptionTreeResponse;
+}
+
+export namespace GetSubsumptionTreeResponse {
     export type AsObject = {
         nodesList: Array<GraphNode.AsObject>,
     }
@@ -2552,6 +2641,46 @@ export namespace SyncPushResponse {
     }
 }
 
+export class FreezeCollectionRequest extends jspb.Message { 
+    getName(): string;
+    setName(value: string): FreezeCollectionRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): FreezeCollectionRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: FreezeCollectionRequest): FreezeCollectionRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: FreezeCollectionRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): FreezeCollectionRequest;
+    static deserializeBinaryFromReader(message: FreezeCollectionRequest, reader: jspb.BinaryReader): FreezeCollectionRequest;
+}
+
+export namespace FreezeCollectionRequest {
+    export type AsObject = {
+        name: string,
+    }
+}
+
+export class UnfreezeCollectionRequest extends jspb.Message { 
+    getName(): string;
+    setName(value: string): UnfreezeCollectionRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): UnfreezeCollectionRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: UnfreezeCollectionRequest): UnfreezeCollectionRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: UnfreezeCollectionRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): UnfreezeCollectionRequest;
+    static deserializeBinaryFromReader(message: UnfreezeCollectionRequest, reader: jspb.BinaryReader): UnfreezeCollectionRequest;
+}
+
+export namespace UnfreezeCollectionRequest {
+    export type AsObject = {
+        name: string,
+    }
+}
+
 export enum QuantizationMode {
     NONE = 0,
     SCALAR_I8 = 1,
@@ -2562,6 +2691,18 @@ export enum DurabilityLevel {
     ASYNC = 1,
     BATCH = 2,
     STRICT = 3,
+}
+
+export enum EdgeType {
+    UNKNOWN = 0,
+    SIMILARITY = 1,
+    HIERARCHY = 2,
+}
+
+export enum TraversalMode {
+    GREEDY = 0,
+    DIFFUSIVE = 1,
+    MOMENTUM = 2,
 }
 
 export enum EventType {

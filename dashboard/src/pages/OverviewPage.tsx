@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
-import { api, fetchStatus } from "@/lib/api"
+import { api, fetchStatus, getCacheStats } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Database, HardDrive, Server, Zap, FolderOpen } from "lucide-react"
+import { Database, HardDrive, Server, Zap, FolderOpen, Layers, TrendingUp } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useState } from "react"
@@ -18,6 +18,12 @@ export function OverviewPage() {
         queryFn: () => api.get("/metrics").then(r => r.data),
         refetchInterval: 30000
     })
+    const { data: collections } = useQuery({
+        queryKey: ['collections'],
+        queryFn: () => api.get("/collections").then(r => r.data),
+        refetchInterval: 60000,
+        refetchOnWindowFocus: false
+    })
 
     if (sLoading && !status) return <OverviewSkeleton />
 
@@ -27,6 +33,10 @@ export function OverviewPage() {
         }
         return `${mb} MB`
     }
+
+    const collectionNames: string[] = Array.isArray(collections)
+        ? collections.map((c: any) => typeof c === "string" ? c : c.name)
+        : []
 
     return (
         <div className="space-y-6 fade-in">
@@ -51,8 +61,12 @@ export function OverviewPage() {
                 <StatCard title="Disk Usage" value={formatDiskSize(metrics?.disk_usage_mb || 0)} icon={FolderOpen} desc="Data directory size" />
                 <StatCard title="Collections" value={metrics?.total_collections || 0} icon={Server} desc="Active indices" />
                 <StatCard title="CPU Load" value={`${metrics?.cpu_usage_percent || 0}%`} icon={Zap} desc="System Load (Est.)" />
-                {/* <StatCard title="System Mode" value={status?.config?.mode?.toUpperCase() || "PERFORMANCE"} icon={Zap} desc="Optimization profile" /> */}
             </div>
+
+            {/* Hot Cache Summary — spans full width */}
+            {collectionNames.length > 0 && (
+                <HotCacheSummary collectionNames={collectionNames} />
+            )}
 
             <div className="grid gap-4 md:grid-cols-2">
                 <Card>
@@ -125,6 +139,156 @@ export function OverviewPage() {
                 </Card>
             </div>
         </div>
+    )
+}
+
+// ─── Hot Cache Summary ─────────────────────────────────────────────────────────
+
+function HotCacheSummary({ collectionNames }: { collectionNames: string[] }) {
+    // Fetch stats for all collections in parallel
+    const queries = collectionNames.map(name =>
+        // eslint-disable-next-line react-hooks/rules-of-hooks
+        useQuery({
+            queryKey: ['cache-stats', name],
+            queryFn: () => getCacheStats(name),
+            refetchInterval: 10000,
+            retry: false,
+        })
+    )
+
+    const allStats = queries.map(q => q.data).filter(Boolean)
+
+    if (allStats.length === 0) {
+        // Cache might be disabled or all collections cold
+        return (
+            <Card className="border-dashed border-zinc-700/50 bg-zinc-950/40">
+                <CardContent className="py-4 text-center text-xs text-zinc-500">
+                    Hot Cache — no data yet (collections may still be warming up)
+                </CardContent>
+            </Card>
+        )
+    }
+
+    // Aggregate across all collections
+    const totalL1 = allStats.reduce((s, d) => s + (d.l1_size ?? 0), 0)
+    const totalL2 = allStats.reduce((s, d) => s + (d.l2_index_size ?? 0), 0)
+    const totalMem = allStats.reduce((s, d) => s + (d.estimated_memory_bytes ?? 0), 0)
+    const totalTombstone = allStats.reduce((s, d) => s + (d.tombstone_count ?? 0), 0)
+    const totalPending = allStats.reduce((s, d) => s + (d.pending_rebuild ?? 0), 0)
+
+    const avgL1HitRate = allStats.length
+        ? allStats.reduce((s, d) => s + (d.l1_hit_rate ?? 0), 0) / allStats.length
+        : 0
+    const avgL2HitRate = allStats.length
+        ? allStats.reduce((s, d) => s + (d.l2_hit_rate ?? 0), 0) / allStats.length
+        : 0
+
+    const formatBytes = (b: number) => {
+        if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(1)} GB`
+        if (b >= 1024 ** 2) return `${(b / 1024 ** 2).toFixed(0)} MB`
+        if (b >= 1024) return `${(b / 1024).toFixed(0)} KB`
+        return `${b} B`
+    }
+
+    const hitRateColor = (r: number) =>
+        r >= 0.8 ? "text-emerald-400" : r >= 0.5 ? "text-amber-400" : "text-red-400"
+
+    return (
+        <Card className="border-blue-500/20 bg-gradient-to-br from-blue-950/30 via-zinc-950 to-zinc-950">
+            <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-md bg-blue-500/15 text-blue-400">
+                        <Layers className="h-4 w-4" />
+                    </div>
+                    <div>
+                        <CardTitle className="text-base">L0 Hot Tier Cache</CardTitle>
+                        <CardDescription className="text-xs">
+                            Aggregated across {allStats.length} collection{allStats.length !== 1 ? "s" : ""}
+                        </CardDescription>
+                    </div>
+                    <div className="ml-auto flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
+                        <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        ACTIVE
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+
+                    {/* L1 Hit Rate */}
+                    <div className="rounded-lg bg-zinc-900/60 border border-white/5 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-zinc-400">
+                            <TrendingUp className="h-3 w-3" />
+                            <span className="text-[10px] uppercase font-bold tracking-wider">L1 Hit Rate</span>
+                        </div>
+                        <div className={`text-2xl font-mono font-bold ${hitRateColor(avgL1HitRate)}`}>
+                            {(avgL1HitRate * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-[10px] text-zinc-500">Exact ID lookup</div>
+                        {/* Mini bar */}
+                        <div className="h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all ${avgL1HitRate >= 0.8 ? "bg-emerald-500" : avgL1HitRate >= 0.5 ? "bg-amber-500" : "bg-red-500"}`}
+                                style={{ width: `${Math.min(avgL1HitRate * 100, 100)}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* L2 Hit Rate */}
+                    <div className="rounded-lg bg-zinc-900/60 border border-white/5 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-zinc-400">
+                            <TrendingUp className="h-3 w-3" />
+                            <span className="text-[10px] uppercase font-bold tracking-wider">L2 Hit Rate</span>
+                        </div>
+                        <div className={`text-2xl font-mono font-bold ${hitRateColor(avgL2HitRate)}`}>
+                            {(avgL2HitRate * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-[10px] text-zinc-500">ANN in-memory</div>
+                        <div className="h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all ${avgL2HitRate >= 0.8 ? "bg-emerald-500" : avgL2HitRate >= 0.5 ? "bg-amber-500" : "bg-red-500"}`}
+                                style={{ width: `${Math.min(avgL2HitRate * 100, 100)}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* L1 Vectors */}
+                    <div className="rounded-lg bg-zinc-900/60 border border-white/5 p-3 space-y-1">
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">L1 Vectors</div>
+                        <div className="text-2xl font-mono font-bold text-blue-400">{totalL1.toLocaleString()}</div>
+                        <div className="text-[10px] text-zinc-500">L2 graph: {totalL2.toLocaleString()}</div>
+                    </div>
+
+                    {/* Memory */}
+                    <div className="rounded-lg bg-zinc-900/60 border border-white/5 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-zinc-400">
+                            <HardDrive className="h-3 w-3" />
+                            <span className="text-[10px] uppercase font-bold tracking-wider">Cache RAM</span>
+                        </div>
+                        <div className="text-2xl font-mono font-bold text-purple-400">{formatBytes(totalMem)}</div>
+                        <div className="text-[10px] text-zinc-500">Est. hot tier</div>
+                    </div>
+
+                    {/* Tombstones */}
+                    <div className="rounded-lg bg-zinc-900/60 border border-white/5 p-3 space-y-1">
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Tombstones</div>
+                        <div className={`text-2xl font-mono font-bold ${totalTombstone > 0 ? "text-amber-400" : "text-zinc-500"}`}>
+                            {totalTombstone.toLocaleString()}
+                        </div>
+                        <div className="text-[10px] text-zinc-500">Pending cleanup</div>
+                    </div>
+
+                    {/* Pending Rebuild */}
+                    <div className="rounded-lg bg-zinc-900/60 border border-white/5 p-3 space-y-1">
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Pending Rebuild</div>
+                        <div className={`text-2xl font-mono font-bold ${totalPending > 0 ? "text-sky-400" : "text-zinc-500"}`}>
+                            {totalPending.toLocaleString()}
+                        </div>
+                        <div className="text-[10px] text-zinc-500">L2 queue</div>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
     )
 }
 

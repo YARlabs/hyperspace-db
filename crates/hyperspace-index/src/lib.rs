@@ -30,10 +30,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 // Imports
+use hyperspace_core::hybrid::HybridQuantizedVector;
 use hyperspace_core::vector::{
     BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector,
 };
-use hyperspace_core::hybrid::HybridQuantizedVector;
 use hyperspace_core::QuantizationMode;
 use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_store::VectorStore;
@@ -808,6 +808,19 @@ impl<M: Metric> HnswIndex<M> {
                         return Some(RoaringBitmap::new());
                     }
                 }
+                FilterExpr::Prefix { key, prefix } => {
+                    let mut prefix_union = RoaringBitmap::new();
+                    let prefix_tag = format!("{key}:{prefix}");
+                    for entry in self.metadata.inverted.iter() {
+                        if entry.key().starts_with(&prefix_tag) {
+                            prefix_union |= entry.value();
+                        }
+                    }
+                    if prefix_union.is_empty() {
+                        return Some(RoaringBitmap::new());
+                    }
+                    apply_mask(&prefix_union);
+                }
                 FilterExpr::Range { key, gte, lte } => {
                     let mut range_union = RoaringBitmap::new();
 
@@ -909,7 +922,9 @@ impl<M: Metric> HnswIndex<M> {
                     // Evaluate each sub-condition independently and AND (intersect) the bitmaps.
                     let empty_exact = std::collections::HashMap::new();
                     for cond in conditions {
-                        if let Some(sub_bm) = self.build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond)) {
+                        if let Some(sub_bm) =
+                            self.build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond))
+                        {
                             apply_mask(&sub_bm);
                         } else {
                             return Some(RoaringBitmap::new());
@@ -921,7 +936,9 @@ impl<M: Metric> HnswIndex<M> {
                     let empty_exact = std::collections::HashMap::new();
                     let mut union = RoaringBitmap::new();
                     for cond in conditions {
-                        if let Some(sub_bm) = self.build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond)) {
+                        if let Some(sub_bm) =
+                            self.build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond))
+                        {
                             union |= sub_bm;
                         }
                     }
@@ -933,9 +950,8 @@ impl<M: Metric> HnswIndex<M> {
                 FilterExpr::Not(cond) => {
                     // NOT = all active nodes MINUS nodes matching the inner condition.
                     let count = self.count_nodes() as u32;
-                    let all_active: RoaringBitmap = (0..count)
-                        .filter(|&i| !deleted.contains(i))
-                        .collect();
+                    let all_active: RoaringBitmap =
+                        (0..count).filter(|&i| !deleted.contains(i)).collect();
                     let empty_exact = std::collections::HashMap::new();
                     let excluded = self
                         .build_allowed_bitmap(&empty_exact, std::slice::from_ref(cond))
@@ -985,7 +1001,6 @@ impl<M: Metric> HnswIndex<M> {
     }
 
     #[allow(clippy::too_many_arguments)]
-
     pub fn search(
         &self,
         query: &[f64],
@@ -1038,7 +1053,12 @@ impl<M: Metric> HnswIndex<M> {
             None
         };
 
-        let mut curr_dist = self.dist_upper(entry_node, &q_vec, query_klein.as_ref(), params.mrl_dimension);
+        let mut curr_dist = self.dist_upper(
+            entry_node,
+            &q_vec,
+            query_klein.as_ref(),
+            params.mrl_dimension,
+        );
         let mut curr_node = entry_node;
 
         // 1. Zoom-in phase: Greedy search from top to layer 1.
@@ -1060,7 +1080,12 @@ impl<M: Metric> HnswIndex<M> {
                     }
                     let neighbors = node.layers[level].read();
                     for &neighbor in neighbors.iter() {
-                        let d = self.dist_upper(neighbor, &q_vec, query_klein.as_ref(), params.mrl_dimension);
+                        let d = self.dist_upper(
+                            neighbor,
+                            &q_vec,
+                            query_klein.as_ref(),
+                            params.mrl_dimension,
+                        );
                         if d < curr_dist {
                             curr_dist = d;
                             curr_node = neighbor;
@@ -1131,7 +1156,7 @@ impl<M: Metric> HnswIndex<M> {
                 continue;
             }
 
-            let vec = self.get_vector(id).coords.to_vec();
+            let vec = self.get_vector(id).coords.clone();
             let meta = self
                 .metadata
                 .forward
@@ -1156,7 +1181,7 @@ impl<M: Metric> HnswIndex<M> {
             if deleted.contains(id) {
                 continue;
             }
-            let vec = self.get_vector(id).coords.to_vec();
+            let vec = self.get_vector(id).coords.clone();
             let meta = self
                 .metadata
                 .forward
@@ -1188,15 +1213,20 @@ impl<M: Metric> HnswIndex<M> {
             }
             QuantizationMode::AsymmetricHybrid801 => {
                 // Specialized hybrid path
-                if self.dimension != 801 {
-                    panic!("AsymmetricHybrid801 quantization mode is only supported for 801-dimensional vectors");
-                }
+                assert!(self.dimension == 801, "AsymmetricHybrid801 quantization mode is only supported for 801-dimensional vectors");
                 let q = HybridQuantizedVector::from_bytes(bytes);
                 if let Some(dim) = mrl_dim {
-                    q.distance_mrl(unsafe { std::mem::transmute(query) }, dim)
+                    q.distance_mrl(
+                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
+                        dim,
+                    )
                 } else {
-                    let d_lor = q.lorentz_distance_to_float(unsafe { std::mem::transmute(query) });
-                    let d_euc = q.euclidean_distance_sq_to_float(unsafe { std::mem::transmute(query) });
+                    let d_lor = q.lorentz_distance_to_float(unsafe {
+                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
+                    });
+                    let d_euc = q.euclidean_distance_sq_to_float(unsafe {
+                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
+                    });
                     d_lor + d_euc
                 }
             }
@@ -1636,18 +1666,18 @@ impl<M: Metric> HnswIndex<M> {
                 }
             }
             QuantizationMode::AsymmetricHybrid801 => {
-                if self.dimension != 801 {
-                    panic!("AsymmetricHybrid801 requires self.dimension=801");
-                }
+                assert!(
+                    self.dimension == 801,
+                    "AsymmetricHybrid801 requires self.dimension=801"
+                );
                 let q = HybridQuantizedVector::from_bytes(bytes);
                 let mut coords = vec![0.0; self.dimension];
-                // Reconstruction
-                for i in 0..33 {
-                    coords[i] = f64::from(q.lorentz[i]);
+                // Reconstruction: Lorentz part (f32) then Euclidean part (i8 SQ8)
+                for (coord, &val) in coords[..33].iter_mut().zip(q.lorentz.iter()) {
+                    *coord = f64::from(val);
                 }
-                const SCALE_INV: f64 = 1.0 / 127.0;
-                for i in 0..768 {
-                    coords[33 + i] = f64::from(q.euclidean[i]) * SCALE_INV;
+                for (coord, &val) in coords[33..].iter_mut().zip(q.euclidean.iter()) {
+                    *coord = f64::from(val) / 127.0;
                 }
                 HyperVector {
                     coords,
@@ -1710,7 +1740,11 @@ impl<M: Metric> HnswIndex<M> {
                 if self.dimension != 801 {
                     return Err("AsymmetricHybrid801 requires dimension 801".into());
                 }
-                let q = HybridQuantizedVector::from_float(&q_vec_full, 33, q_vec_full.coords.len() - 33);
+                let q = HybridQuantizedVector::from_float(
+                    &q_vec_full,
+                    33,
+                    q_vec_full.coords.len() - 33,
+                );
                 q_bytes = q.as_bytes();
                 0
             }
@@ -2198,7 +2232,11 @@ impl<M: Metric> HnswIndex<M> {
                     continue;
                 }
                 let neighbors = node.layers[layer].read();
-                let limit = if breadth_limit == 0 { usize::MAX } else { breadth_limit };
+                let limit = if breadth_limit == 0 {
+                    usize::MAX
+                } else {
+                    breadth_limit
+                };
                 for &next in neighbors.iter().take(limit) {
                     if deleted.contains(next) {
                         continue;

@@ -14,10 +14,10 @@ pub mod config;
 pub mod fuzzy;
 pub mod gpu;
 pub mod gromov;
+pub mod hybrid;
 pub mod optim;
 pub mod region;
 pub mod vector;
-pub mod hybrid;
 pub use hybrid::HybridMetric;
 pub mod wasserstein;
 
@@ -37,9 +37,9 @@ pub fn check_simd() {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod hybrid_tests;
+#[cfg(test)]
+mod tests;
 
 pub type HyperFloat = f64;
 
@@ -69,6 +69,10 @@ pub enum FilterExpr {
     Match {
         key: String,
         value: String,
+    },
+    Prefix {
+        key: String,
+        prefix: String,
     },
     Range {
         key: String,
@@ -101,6 +105,13 @@ impl FilterExpr {
     ) -> bool {
         match self {
             Self::Match { key, value } => metadata.get(key) == Some(value),
+            Self::Prefix { key, prefix } => {
+                if let Some(val_str) = metadata.get(key) {
+                    val_str.starts_with(prefix)
+                } else {
+                    false
+                }
+            }
             Self::Range { key, gte, lte } => {
                 if let Some(val_str) = metadata.get(key) {
                     if let Ok(val) = val_str.parse::<f64>() {
@@ -139,24 +150,36 @@ impl FilterExpr {
                 region.contains(vector)
             }
             Self::And(conds) => conds.iter().all(|c| c.check(vector, metadata)),
-            Self::Or(conds)  => conds.iter().any(|c| c.check(vector, metadata)),
-            Self::Not(cond)  => !cond.check(vector, metadata),
+            Self::Or(conds) => conds.iter().any(|c| c.check(vector, metadata)),
+            Self::Not(cond) => !cond.check(vector, metadata),
         }
     }
 
     /// Metadata-only check (no vector). Geometric filters (`InCone`, `InBall`, `InBox`)
     /// are skipped (return `true`) because vector data is unavailable in scroll context.
-    pub fn check_meta(
-        &self,
-        metadata: &std::collections::HashMap<String, String>,
-    ) -> bool {
+    pub fn check_meta(&self, metadata: &std::collections::HashMap<String, String>) -> bool {
         match self {
             Self::Match { key, value } => metadata.get(key) == Some(value),
+            Self::Prefix { key, prefix } => {
+                if let Some(val_str) = metadata.get(key) {
+                    val_str.starts_with(prefix)
+                } else {
+                    false
+                }
+            }
             Self::Range { key, gte, lte } => {
                 if let Some(val_str) = metadata.get(key) {
                     if let Ok(val) = val_str.parse::<f64>() {
-                        if let Some(g) = gte { if val < *g { return false; } }
-                        if let Some(l) = lte { if val > *l { return false; } }
+                        if let Some(g) = gte {
+                            if val < *g {
+                                return false;
+                            }
+                        }
+                        if let Some(l) = lte {
+                            if val > *l {
+                                return false;
+                            }
+                        }
                         return true;
                     }
                 }
@@ -165,8 +188,8 @@ impl FilterExpr {
             // Geometric filters need vector data; pass-through in meta-only context.
             Self::InCone { .. } | Self::InBox { .. } | Self::InBall { .. } => true,
             Self::And(conds) => conds.iter().all(|c| c.check_meta(metadata)),
-            Self::Or(conds)  => conds.iter().any(|c| c.check_meta(metadata)),
-            Self::Not(cond)  => !cond.check_meta(metadata),
+            Self::Or(conds) => conds.iter().any(|c| c.check_meta(metadata)),
+            Self::Not(cond) => !cond.check_meta(metadata),
         }
     }
 }
@@ -187,11 +210,16 @@ pub struct SearchParams {
     pub include_payload: bool,
 }
 
-/// A single search result: (id, distance, metadata, optional_payload).
+/// A single search result: (id, distance, metadata, `optional_payload`).
 /// The `payload` field is `Some(bytes)` ONLY when `SearchParams::include_payload = true`
 /// AND the vector was inserted with a payload. The bytes are the original uncompressed
 /// document — all decompression is performed server-side via lazy disk I/O.
-pub type SearchResult = (u32, f64, std::collections::HashMap<String, String>, Option<Vec<u8>>);
+pub type SearchResult = (
+    u32,
+    f64,
+    std::collections::HashMap<String, String>,
+    Option<Vec<u8>>,
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Durability {
@@ -230,6 +258,15 @@ pub struct CollectionConfigUpdate {
     pub ef_search: Option<usize>,
     pub ef_construction: Option<usize>,
     pub m: Option<usize>,
+}
+
+/// Read-only snapshot of the current HNSW runtime configuration.
+/// Returned by `Collection::get_hnsw_config()` to expose live values to the HTTP API.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HnswConfig {
+    pub ef_search: usize,
+    pub ef_construction: usize,
+    pub m: usize,
 }
 
 #[async_trait::async_trait]
@@ -272,6 +309,10 @@ pub trait Collection: Send + Sync + 'static {
     fn queue_size(&self) -> u64; // Indexing queue size for eventual consistency
     fn quantization_mode(&self) -> crate::QuantizationMode;
     fn get_usage(&self) -> CollectionUsage;
+    fn get_hnsw_config(&self) -> HnswConfig {
+        // Default implementation — overridden by CollectionImpl with real atomics.
+        HnswConfig { ef_search: 0, ef_construction: 0, m: 0 }
+    }
     fn update_config(&self, config: CollectionConfigUpdate) -> Result<(), String>;
     async fn optimize(&self) -> Result<(), String> {
         // Default: No-op for collections lacking optimization support.
@@ -349,7 +390,7 @@ pub trait Collection: Send + Sync + 'static {
         patch: std::collections::HashMap<String, String>,
     ) -> Result<(), String>;
 
-    /// Look up the metadata HashMap for a given user-facing vector ID.
+    /// Look up the metadata `HashMap` for a given user-facing vector ID.
     fn metadata_by_id(&self, id: u32) -> std::collections::HashMap<String, String>;
 
     /// Write a heavy payload blob to the disk-only Payload Layer.
@@ -400,6 +441,18 @@ pub trait Collection: Send + Sync + 'static {
         }
         self.scroll(usize::MAX, 0, filters).len()
     }
+
+    fn cache_stats(&self) -> Result<String, String> {
+        Err("Cache not supported".to_string())
+    }
+    fn cache_clear(&self) -> Result<(), String> {
+        Err("Cache not supported".to_string())
+    }
+    fn cache_update_config(&self, policy: String, ann_threshold: Option<f64>) -> Result<(), String> {
+        let _ = policy;
+        let _ = ann_threshold;
+        Err("Cache not supported".to_string())
+    }
 }
 
 pub trait Metric: Send + Sync + 'static {
@@ -426,7 +479,10 @@ pub trait Metric: Send + Sync + 'static {
     /// Default returns an error if the metric doesn't support momentum traversal.
     fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
         let _ = (past, current, steps);
-        Err(format!("Momentum extrapolation not supported for metric: {}", Self::name()))
+        Err(format!(
+            "Momentum extrapolation not supported for metric: {}",
+            Self::name()
+        ))
     }
 }
 
@@ -477,14 +533,14 @@ impl Metric for PoincareMetric {
             y2 += current[i] * current[i];
             xy += past[i] * current[i];
         }
-        
+
         let num_left = 1.0 + 2.0 * c * xy + c * y2;
         let num_right = 1.0 - c * x2;
         let den = 1.0 + 2.0 * c * xy + c * c * x2 * y2;
         if den.abs() < 1e-15 {
             return Err("Mobius addition denominator too small".into());
         }
-        
+
         let mut delta = vec![0.0; past.len()];
         let mut delta_norm_sq = 0.0;
         for i in 0..past.len() {
@@ -495,11 +551,11 @@ impl Metric for PoincareMetric {
         if delta_norm < 1e-15 {
             return Ok(current.to_vec());
         }
-        
+
         let lambda_x = 2.0 / (1.0 - c * x2).max(1e-15);
         let arg = (c.sqrt() * delta_norm).min(1.0 - 1e-15);
         let factor = (2.0 / (lambda_x * c.sqrt())) * arg.atanh();
-        
+
         let mut velocity_at_past = vec![0.0; past.len()];
         for i in 0..past.len() {
             velocity_at_past[i] = factor * delta[i] / delta_norm;
@@ -516,16 +572,16 @@ impl Metric for PoincareMetric {
         if v_norm < 1e-15 {
             return Ok(current.to_vec());
         }
-        
-        let cx2 = current.iter().map(|&x| x*x).sum::<f64>();
+
+        let cx2 = current.iter().map(|&x| x * x).sum::<f64>();
         let lambda_c = 2.0 / (1.0 - c * cx2).max(1e-15);
         let scale = (c.sqrt() * lambda_c * v_norm / 2.0).tanh() / (c.sqrt() * v_norm);
-        
+
         let mut applied_step = vec![0.0; past.len()];
         for i in 0..past.len() {
             applied_step[i] = scale * step[i];
         }
-        
+
         let mut as_x2 = 0.0;
         let mut cx_as = 0.0;
         for i in 0..past.len() {
@@ -535,11 +591,11 @@ impl Metric for PoincareMetric {
         let num_left2 = 1.0 + 2.0 * c * cx_as + c * as_x2;
         let num_right2 = 1.0 - c * cx2;
         let den2 = 1.0 + 2.0 * c * cx_as + c * c * cx2 * as_x2;
-        
+
         if den2.abs() < 1e-15 {
             return Err("Mobius addition denominator too small".into());
         }
-        
+
         let mut result = vec![0.0; past.len()];
         for i in 0..past.len() {
             result[i] = (num_left2 * current[i] + num_right2 * applied_step[i]) / den2;
@@ -555,7 +611,10 @@ impl Metric for LorentzMetric {
 
     #[inline(always)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
-        debug_assert!(a.len() >= 2, "Lorentz metric requires at least 2 dimensions");
+        debug_assert!(
+            a.len() >= 2,
+            "Lorentz metric requires at least 2 dimensions"
+        );
         let mut inner_prod = -a[0] * b[0];
         for i in 1..a.len() {
             inner_prod += a[i] * b[i];
@@ -600,7 +659,7 @@ impl Metric for LorentzMetric {
             let mut p = vec![0.0; v.len() - 1];
             let factor = 1.0 / (t + 1.0);
             for i in 0..p.len() {
-                p[i] = v[i+1] * factor;
+                p[i] = v[i + 1] * factor;
             }
             p
         };
@@ -621,7 +680,7 @@ impl Metric for LorentzMetric {
         result[0] = (1.0 + p_norm_sq) / den;
         let factor = 2.0 / den;
         for i in 0..p_next.len() {
-            result[i+1] = p_next[i] * factor;
+            result[i + 1] = p_next[i] * factor;
         }
         Ok(result)
     }

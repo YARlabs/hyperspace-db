@@ -70,6 +70,10 @@ class HyperspaceClient:
             match_data = f.get("match", f)
             pf.match.key = match_data["key"]
             pf.match.value = str(match_data["value"])
+        elif f_type == "prefix" or "prefix" in f:
+            prefix_data = f.get("prefix", f)
+            pf.prefix.key = prefix_data["key"]
+            pf.prefix.prefix = str(prefix_data["prefix"])
         elif f_type == "range" or "range" in f:
             range_data = f.get("range", f)
             pf.range.key = range_data["key"]
@@ -145,6 +149,24 @@ class HyperspaceClient:
             return True
         except grpc.RpcError:
             return False
+
+    def freeze_collection(self, name: str) -> str:
+        req = hyperspace_pb2.FreezeCollectionRequest(name=name)
+        try:
+            resp = self.stub.FreezeCollection(req, metadata=self.metadata)
+            return resp.status
+        except grpc.RpcError as e:
+            print(f"RPC Error in freeze_collection: {e}")
+            return f"Error: {e}"
+
+    def unfreeze_collection(self, name: str) -> str:
+        req = hyperspace_pb2.UnfreezeCollectionRequest(name=name)
+        try:
+            resp = self.stub.UnfreezeCollection(req, metadata=self.metadata)
+            return resp.status
+        except grpc.RpcError as e:
+            print(f"RPC Error in unfreeze_collection: {e}")
+            return f"Error: {e}"
 
     def list_collections(self) -> List[Dict]:
         req = hyperspace_pb2.Empty()
@@ -635,6 +657,12 @@ class HyperspaceClient:
                     req.filters.append(
                         hyperspace_pb2.Filter(
                             match=hyperspace_pb2.Match(key=f["key"], value=f["value"])
+                        )
+                    )
+                elif f.get("type") == "prefix":
+                    req.filters.append(
+                        hyperspace_pb2.Filter(
+                            prefix=hyperspace_pb2.Prefix(key=f["key"], prefix=str(f["prefix"]))
                         )
                     )
                 elif f.get("type") == "range":

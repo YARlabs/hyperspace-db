@@ -8,11 +8,9 @@ use axum::{
     routing::{get, patch, post},
     Json, Router,
 };
-use hyperspace_proto::hyperspace::EventMessage;
-use tokio::sync::broadcast;
-use tokio_stream::StreamExt;
-use hyperspace_core::SearchParams;
 use base64::prelude::*;
+use hyperspace_core::SearchParams;
+use hyperspace_proto::hyperspace::EventMessage;
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -21,6 +19,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 use sysinfo::Pid;
 use tikv_jemalloc_ctl::epoch;
+use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 
 const TYPED_META_PREFIX: &str = "__hs_typed__";
@@ -137,14 +136,34 @@ pub async fn start_http_server(
             get(get_collection_digest).delete(delete_collection),
         )
         .route("/api/collections/{name}/insert", post(insert_vector))
-        .route("/api/collections/{name}/insert/batch", post(batch_insert_http))
+        .route(
+            "/api/collections/{name}/insert/batch",
+            post(batch_insert_http),
+        )
         .route("/api/collections/{name}/stats", get(get_stats))
-        .route("/api/collections/{name}/config", patch(update_collection_config))
-        .route("/api/collections/{name}/exists", get(collection_exists_http))
+        .route(
+            "/api/collections/{name}/config",
+            patch(update_collection_config),
+        )
+        .route(
+            "/api/collections/{name}/exists",
+            get(collection_exists_http),
+        )
+        .route(
+            "/api/collections/{name}/freeze",
+            post(freeze_collection_http),
+        )
+        .route(
+            "/api/collections/{name}/unfreeze",
+            post(unfreeze_collection_http),
+        )
         .route("/api/collections/{name}/digest", get(get_collection_digest))
         .route("/api/collections/{name}/peek", get(peek_collection))
         .route("/api/collections/{name}/search", post(search_collection))
-        .route("/api/collections/{name}/search/batch", post(search_batch_http))
+        .route(
+            "/api/collections/{name}/search/batch",
+            post(search_batch_http),
+        )
         .route("/api/analyze/geometry", post(analyze_raw_geometry))
         .route(
             "/api/collections/{name}/analyze/geometry",
@@ -186,7 +205,10 @@ pub async fn start_http_server(
         )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
         .route("/api/admin/usage", get(get_usage_report_http))
-        .route("/api/admin/migration/status", get(get_migration_service_status))
+        .route(
+            "/api/admin/migration/status",
+            get(get_migration_service_status),
+        )
         .route("/api/admin/migration/start", post(start_migration_service))
         // Delta Sync HTTP API (Task 2.1 — for WASM and REST clients)
         .route(
@@ -195,6 +217,9 @@ pub async fn start_http_server(
         )
         .route("/api/collections/{name}/sync/pull", post(sync_pull_http))
         .route("/api/collections/{name}/points", get(get_points_http))
+        .route("/api/collections/{name}/cache/stats", get(get_cache_stats_http))
+        .route("/api/collections/{name}/cache/clear", post(clear_cache_http))
+        .route("/api/collections/{name}/cache/config", post(update_cache_config_http))
         .route(
             "/api/collections/{name}/payload",
             post(update_payload_http).patch(update_payload_http),
@@ -206,7 +231,10 @@ pub async fn start_http_server(
         // P2P Swarm API (Task 3.4) — Gossip peer registry
         .route("/api/swarm/peers", get(get_swarm_peers))
         .route("/api/admin/trajectory/stream", get(stream_trajectory_sse))
-        .route("/api/admin/trajectory/history", get(get_trajectory_history_http))
+        .route(
+            "/api/admin/trajectory/history",
+            get(get_trajectory_history_http),
+        )
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -283,6 +311,7 @@ struct CollectionSummary {
     dimension: usize,
     metric: String,
     indexing_queue: u64,
+    status: String,
 }
 
 async fn get_cluster_status(
@@ -307,14 +336,28 @@ async fn list_collections(
     let names = manager.list(&ctx.user_id);
     let mut summaries = Vec::new();
     for name in names {
-        if let Some(col) = manager.get(&ctx.user_id, &name).await {
-            summaries.push(CollectionSummary {
-                name: name.clone(),
-                count: col.count(),
-                dimension: col.dimension(),
-                metric: col.metric_name().to_string(),
-                indexing_queue: col.queue_size(),
-            });
+        if manager.is_active(&ctx.user_id, &name) {
+            if let Some(col) = manager.get(&ctx.user_id, &name).await {
+                summaries.push(CollectionSummary {
+                    name: name.clone(),
+                    count: col.count(),
+                    dimension: col.dimension(),
+                    metric: col.metric_name().to_string(),
+                    indexing_queue: col.queue_size(),
+                    status: "active".to_string(),
+                });
+            }
+        } else {
+            if let Some(meta) = manager.get_metadata_no_wake(&ctx.user_id, &name) {
+                summaries.push(CollectionSummary {
+                    name: name.clone(),
+                    count: 0,
+                    dimension: meta.dimension(),
+                    metric: meta.metric_name(),
+                    indexing_queue: 0,
+                    status: "idle".to_string(),
+                });
+            }
         }
     }
     Json(summaries)
@@ -324,6 +367,8 @@ struct CreateCollectionRequest {
     name: String,
     dimension: u32,
     metric: String,
+    mrl_cutoff_dimension: Option<u32>,
+    mrl_rerank_top_k: Option<u32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -342,6 +387,16 @@ async fn create_collection(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<CreateCollectionRequest>,
 ) -> impl IntoResponse {
+    let mut cascade_pipeline = Vec::new();
+    if let Some(cutoff) = payload.mrl_cutoff_dimension {
+        cascade_pipeline.push(hyperspace_proto::hyperspace::MrlLayer {
+            component_name: "default".to_string(),
+            cutoff_dimension: cutoff,
+            store_in_ram: true,
+            rerank_top_k: payload.mrl_rerank_top_k.unwrap_or(100),
+        });
+    }
+
     let schema = hyperspace_proto::hyperspace::CollectionSchema {
         components: vec![hyperspace_proto::hyperspace::VectorComponent {
             name: "default".to_string(),
@@ -349,15 +404,11 @@ async fn create_collection(
             full_dimension: payload.dimension,
             weight: 1.0,
         }],
-        cascade_pipeline: vec![],
+        cascade_pipeline,
     };
 
     match manager
-        .create_collection(
-            &ctx.user_id,
-            &payload.name,
-            schema,
-        )
+        .create_collection(&ctx.user_id, &payload.name, schema)
         .await
     {
         Ok(()) => StatusCode::CREATED.into_response(),
@@ -463,6 +514,60 @@ async fn delete_collection(
     }
 }
 
+async fn freeze_collection_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    match manager.freeze_collection(&ctx.user_id, &name).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": format!("Collection '{}' frozen.", name)
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": e
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn unfreeze_collection_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    match manager.unfreeze_collection(&ctx.user_id, &name).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": format!("Collection '{}' unfrozen.", name)
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": e
+            })),
+        )
+            .into_response(),
+    }
+}
+
 async fn get_stats(
     Path(name): Path<String>,
     State((manager, _, _)): State<(
@@ -474,6 +579,7 @@ async fn get_stats(
 ) -> impl IntoResponse {
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
         let usage = col.get_usage();
+        let hnsw = col.get_hnsw_config();
         Json(serde_json::json!({
             "count": col.count(),
             "dimension": col.dimension(),
@@ -481,6 +587,10 @@ async fn get_stats(
             "quantization": format!("{:?}", col.quantization_mode()),
             "indexing_queue": col.queue_size(),
             "active_tasks": usage.active_indexing_tasks,
+            // Real live values from GlobalConfig atomics:
+            "ef_search": hnsw.ef_search,
+            "ef_construction": hnsw.ef_construction,
+            "m": hnsw.m,
             "usage": {
                 "disk_bytes": usage.disk_usage_bytes,
                 "ram_bytes": usage.ram_usage_bytes,
@@ -491,6 +601,7 @@ async fn get_stats(
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
     }
 }
+
 
 async fn update_collection_config(
     Path(name): Path<String>,
@@ -649,7 +760,7 @@ async fn get_prometheus_metrics(
 
     let disk_mb = calculate_dir_size("./data").unwrap_or(0) / 1_048_576;
 
-    let body = format!(
+    let mut body = format!(
         "# HELP hyperspace_active_collections Number of collections in memory\n\
          # TYPE hyperspace_active_collections gauge\n\
          hyperspace_active_collections {active}\n\
@@ -669,6 +780,16 @@ async fn get_prometheus_metrics(
          # TYPE hyperspace_cpu_usage_percent gauge\n\
          hyperspace_cpu_usage_percent {cpu_percent}\n"
     );
+
+    use prometheus::Encoder;
+    let encoder = prometheus::TextEncoder::new();
+    let metric_families = prometheus::gather();
+    let mut buffer = Vec::new();
+    if encoder.encode(&metric_families, &mut buffer).is_ok() {
+        if let Ok(registry_metrics) = String::from_utf8(buffer) {
+            body.push_str(&registry_metrics);
+        }
+    }
 
     (
         [(
@@ -701,6 +822,8 @@ fn calculate_dir_size(path: &str) -> std::io::Result<u64> {
 struct PeekParams {
     limit: Option<usize>,
     offset: Option<usize>,
+    /// Reserved: filter results to entries with logical_clock <= until_clock.
+    #[allow(dead_code)]
     until_clock: Option<u64>,
 }
 
@@ -793,6 +916,7 @@ struct HttpFilter {
     filter_type: String,
     key: Option<String>,
     value: Option<String>,
+    prefix: Option<String>,
     gte: Option<f64>,
     lte: Option<f64>,
     axes: Option<Vec<f64>>,
@@ -845,6 +969,10 @@ fn convert_filter(f: &HttpFilter) -> hyperspace_core::FilterExpr {
             key: f.key.clone().unwrap_or_default(),
             value: f.value.clone().unwrap_or_default(),
         },
+        "prefix" => hyperspace_core::FilterExpr::Prefix {
+            key: f.key.clone().unwrap_or_default(),
+            prefix: f.prefix.clone().unwrap_or_default(),
+        },
         "range" => hyperspace_core::FilterExpr::Range {
             key: f.key.clone().unwrap_or_default(),
             gte: f.gte,
@@ -896,8 +1024,9 @@ fn convert_filter(f: &HttpFilter) -> hyperspace_core::FilterExpr {
         "not" => hyperspace_core::FilterExpr::Not(Box::new(
             f.condition
                 .as_ref()
-                .map(|c| convert_filter(c))
-                .unwrap_or(hyperspace_core::FilterExpr::And(vec![])),
+                .map_or(hyperspace_core::FilterExpr::And(vec![]), |c| {
+                    convert_filter(c)
+                }),
         )),
         _ => hyperspace_core::FilterExpr::And(vec![]),
     }
@@ -918,7 +1047,7 @@ fn graph_node_from_collection(
         .collect::<Vec<_>>();
     let meta = col.metadata_by_id(id);
     let (metadata, typed_metadata) = parse_typed_metadata(&meta);
-    let vector = col.get_vector(id).ok();
+    let vector = col.get_points(&[id]).first().map(|(_, v, _)| v.clone());
 
     Ok(HttpGraphNode {
         id,
@@ -957,6 +1086,10 @@ fn graph_match_filters(
                 Some(actual) if actual == value => {}
                 _ => return false,
             },
+            hyperspace_core::FilterExpr::Prefix { key, prefix } => match metadata.get(key) {
+                Some(actual) if actual.starts_with(prefix) => {}
+                _ => return false,
+            },
             hyperspace_core::FilterExpr::Range { key, gte, lte } => {
                 let Some(val) = meta_numeric(key) else {
                     return false;
@@ -977,8 +1110,7 @@ fn graph_match_filters(
             | hyperspace_core::FilterExpr::InBall { .. } => {
                 // Geometric filters are skipped in purely metadata-based graph traversal matching
             }
-            hyperspace_core::FilterExpr::And(_conds)
-            | hyperspace_core::FilterExpr::Or(_conds) => {
+            hyperspace_core::FilterExpr::And(_conds) | hyperspace_core::FilterExpr::Or(_conds) => {
                 // Use check_meta for recursive logical filters (metadata-only context).
                 if !f.check_meta(metadata) {
                     return false;
@@ -1231,7 +1363,10 @@ async fn search_multi_http(
                 ef_search: default_ef_search(),
                 ..Default::default()
             };
-            if let Ok(res) = col.search(&payload.vector, &HashMap::new(), &[], &params).await {
+            if let Ok(res) = col
+                .search(&payload.vector, &HashMap::new(), &[], &params)
+                .await
+            {
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
                     .map(|(id, dist, meta, payload)| {
@@ -1280,7 +1415,12 @@ async fn search_batch_http(
                 .map_or_else(Vec::new, |f| convert_filters(f));
 
             if let Ok(res) = col
-                .search(&req.vector, &req.filter.unwrap_or_default(), &complex_filters, &params)
+                .search(
+                    &req.vector,
+                    &req.filter.unwrap_or_default(),
+                    &complex_filters,
+                    &params,
+                )
                 .await
             {
                 let mapped: Vec<serde_json::Value> = res
@@ -1889,7 +2029,11 @@ async fn start_migration_service() -> impl IntoResponse {
             .status();
 
         if let Err(e) = install_status {
-            return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to run npm install: {e}")).into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to run npm install: {e}"),
+            )
+                .into_response();
         }
     }
 
@@ -1901,7 +2045,11 @@ async fn start_migration_service() -> impl IntoResponse {
 
     match status {
         Ok(_) => (StatusCode::ACCEPTED, "Starting migration service...").into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to start: {e}")).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to start: {e}"),
+        )
+            .into_response(),
     }
 }
 
@@ -1940,4 +2088,74 @@ async fn get_trajectory_history_http() -> impl IntoResponse {
 
 async fn health_check_http() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ONLINE" }))
+}
+
+async fn get_cache_stats_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.cache_stats() {
+            Ok(stats_json) => {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&stats_json) {
+                    Json(value).into_response()
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "Failed to parse cache stats").into_response()
+                }
+            }
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn clear_cache_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.cache_clear() {
+            Ok(()) => Json(serde_json::json!({ "status": "success" })).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct UpdateCacheConfigReq {
+    policy: String,
+    ann_threshold: Option<f64>,
+}
+
+async fn update_cache_config_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<UpdateCacheConfigReq>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.cache_update_config(payload.policy, payload.ann_threshold) {
+            Ok(()) => Json(serde_json::json!({ "status": "success" })).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
 }

@@ -23,6 +23,8 @@ const (
 	Database_DeleteCollection_FullMethodName       = "/hyperspace.Database/DeleteCollection"
 	Database_ListCollections_FullMethodName        = "/hyperspace.Database/ListCollections"
 	Database_GetCollectionStats_FullMethodName     = "/hyperspace.Database/GetCollectionStats"
+	Database_FreezeCollection_FullMethodName       = "/hyperspace.Database/FreezeCollection"
+	Database_UnfreezeCollection_FullMethodName     = "/hyperspace.Database/UnfreezeCollection"
 	Database_Insert_FullMethodName                 = "/hyperspace.Database/Insert"
 	Database_BatchInsert_FullMethodName            = "/hyperspace.Database/BatchInsert"
 	Database_InsertText_FullMethodName             = "/hyperspace.Database/InsertText"
@@ -41,6 +43,7 @@ const (
 	Database_GetConceptParents_FullMethodName      = "/hyperspace.Database/GetConceptParents"
 	Database_Traverse_FullMethodName               = "/hyperspace.Database/Traverse"
 	Database_FindSemanticClusters_FullMethodName   = "/hyperspace.Database/FindSemanticClusters"
+	Database_GetSubsumptionTree_FullMethodName     = "/hyperspace.Database/GetSubsumptionTree"
 	Database_Monitor_FullMethodName                = "/hyperspace.Database/Monitor"
 	Database_TriggerSnapshot_FullMethodName        = "/hyperspace.Database/TriggerSnapshot"
 	Database_TriggerVacuum_FullMethodName          = "/hyperspace.Database/TriggerVacuum"
@@ -65,6 +68,8 @@ type DatabaseClient interface {
 	DeleteCollection(ctx context.Context, in *DeleteCollectionRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	ListCollections(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
 	GetCollectionStats(ctx context.Context, in *CollectionStatsRequest, opts ...grpc.CallOption) (*CollectionStatsResponse, error)
+	FreezeCollection(ctx context.Context, in *FreezeCollectionRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	UnfreezeCollection(ctx context.Context, in *UnfreezeCollectionRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// Insert vectors
 	Insert(ctx context.Context, in *InsertRequest, opts ...grpc.CallOption) (*InsertResponse, error)
 	BatchInsert(ctx context.Context, in *BatchInsertRequest, opts ...grpc.CallOption) (*InsertResponse, error)
@@ -90,6 +95,7 @@ type DatabaseClient interface {
 	GetConceptParents(ctx context.Context, in *GetConceptParentsRequest, opts ...grpc.CallOption) (*GetConceptParentsResponse, error)
 	Traverse(ctx context.Context, in *TraverseRequest, opts ...grpc.CallOption) (*TraverseResponse, error)
 	FindSemanticClusters(ctx context.Context, in *FindSemanticClustersRequest, opts ...grpc.CallOption) (*FindSemanticClustersResponse, error)
+	GetSubsumptionTree(ctx context.Context, in *GetSubsumptionTreeRequest, opts ...grpc.CallOption) (*GetSubsumptionTreeResponse, error)
 	// Stream statistics for TUI (Global or Collection tailored)
 	Monitor(ctx context.Context, in *MonitorRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SystemStats], error)
 	// Admin Controls
@@ -157,6 +163,26 @@ func (c *databaseClient) GetCollectionStats(ctx context.Context, in *CollectionS
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CollectionStatsResponse)
 	err := c.cc.Invoke(ctx, Database_GetCollectionStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) FreezeCollection(ctx context.Context, in *FreezeCollectionRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, Database_FreezeCollection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) UnfreezeCollection(ctx context.Context, in *UnfreezeCollectionRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, Database_UnfreezeCollection_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -343,6 +369,16 @@ func (c *databaseClient) FindSemanticClusters(ctx context.Context, in *FindSeman
 	return out, nil
 }
 
+func (c *databaseClient) GetSubsumptionTree(ctx context.Context, in *GetSubsumptionTreeRequest, opts ...grpc.CallOption) (*GetSubsumptionTreeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSubsumptionTreeResponse)
+	err := c.cc.Invoke(ctx, Database_GetSubsumptionTree_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *databaseClient) Monitor(ctx context.Context, in *MonitorRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SystemStats], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Database_ServiceDesc.Streams[0], Database_Monitor_FullMethodName, cOpts...)
@@ -521,6 +557,8 @@ type DatabaseServer interface {
 	DeleteCollection(context.Context, *DeleteCollectionRequest) (*StatusResponse, error)
 	ListCollections(context.Context, *Empty) (*ListCollectionsResponse, error)
 	GetCollectionStats(context.Context, *CollectionStatsRequest) (*CollectionStatsResponse, error)
+	FreezeCollection(context.Context, *FreezeCollectionRequest) (*StatusResponse, error)
+	UnfreezeCollection(context.Context, *UnfreezeCollectionRequest) (*StatusResponse, error)
 	// Insert vectors
 	Insert(context.Context, *InsertRequest) (*InsertResponse, error)
 	BatchInsert(context.Context, *BatchInsertRequest) (*InsertResponse, error)
@@ -546,6 +584,7 @@ type DatabaseServer interface {
 	GetConceptParents(context.Context, *GetConceptParentsRequest) (*GetConceptParentsResponse, error)
 	Traverse(context.Context, *TraverseRequest) (*TraverseResponse, error)
 	FindSemanticClusters(context.Context, *FindSemanticClustersRequest) (*FindSemanticClustersResponse, error)
+	GetSubsumptionTree(context.Context, *GetSubsumptionTreeRequest) (*GetSubsumptionTreeResponse, error)
 	// Stream statistics for TUI (Global or Collection tailored)
 	Monitor(*MonitorRequest, grpc.ServerStreamingServer[SystemStats]) error
 	// Admin Controls
@@ -590,6 +629,12 @@ func (UnimplementedDatabaseServer) ListCollections(context.Context, *Empty) (*Li
 }
 func (UnimplementedDatabaseServer) GetCollectionStats(context.Context, *CollectionStatsRequest) (*CollectionStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetCollectionStats not implemented")
+}
+func (UnimplementedDatabaseServer) FreezeCollection(context.Context, *FreezeCollectionRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FreezeCollection not implemented")
+}
+func (UnimplementedDatabaseServer) UnfreezeCollection(context.Context, *UnfreezeCollectionRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnfreezeCollection not implemented")
 }
 func (UnimplementedDatabaseServer) Insert(context.Context, *InsertRequest) (*InsertResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Insert not implemented")
@@ -644,6 +689,9 @@ func (UnimplementedDatabaseServer) Traverse(context.Context, *TraverseRequest) (
 }
 func (UnimplementedDatabaseServer) FindSemanticClusters(context.Context, *FindSemanticClustersRequest) (*FindSemanticClustersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FindSemanticClusters not implemented")
+}
+func (UnimplementedDatabaseServer) GetSubsumptionTree(context.Context, *GetSubsumptionTreeRequest) (*GetSubsumptionTreeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSubsumptionTree not implemented")
 }
 func (UnimplementedDatabaseServer) Monitor(*MonitorRequest, grpc.ServerStreamingServer[SystemStats]) error {
 	return status.Error(codes.Unimplemented, "method Monitor not implemented")
@@ -773,6 +821,42 @@ func _Database_GetCollectionStats_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseServer).GetCollectionStats(ctx, req.(*CollectionStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_FreezeCollection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FreezeCollectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).FreezeCollection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_FreezeCollection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).FreezeCollection(ctx, req.(*FreezeCollectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_UnfreezeCollection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnfreezeCollectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).UnfreezeCollection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_UnfreezeCollection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).UnfreezeCollection(ctx, req.(*UnfreezeCollectionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1101,6 +1185,24 @@ func _Database_FindSemanticClusters_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Database_GetSubsumptionTree_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSubsumptionTreeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).GetSubsumptionTree(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_GetSubsumptionTree_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).GetSubsumptionTree(ctx, req.(*GetSubsumptionTreeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Database_Monitor_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(MonitorRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1320,6 +1422,14 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Database_GetCollectionStats_Handler,
 		},
 		{
+			MethodName: "FreezeCollection",
+			Handler:    _Database_FreezeCollection_Handler,
+		},
+		{
+			MethodName: "UnfreezeCollection",
+			Handler:    _Database_UnfreezeCollection_Handler,
+		},
+		{
 			MethodName: "Insert",
 			Handler:    _Database_Insert_Handler,
 		},
@@ -1390,6 +1500,10 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FindSemanticClusters",
 			Handler:    _Database_FindSemanticClusters_Handler,
+		},
+		{
+			MethodName: "GetSubsumptionTree",
+			Handler:    _Database_GetSubsumptionTree_Handler,
 		},
 		{
 			MethodName: "TriggerSnapshot",

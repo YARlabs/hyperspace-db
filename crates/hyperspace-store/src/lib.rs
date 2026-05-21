@@ -6,7 +6,7 @@
 
 // Sidecar Payload Storage: available regardless of vector storage backend.
 pub mod payload_store;
-pub use payload_store::{PayloadStore, PayloadSlot, DEFAULT_ZSTD_LEVEL};
+pub use payload_store::{PayloadSlot, PayloadStore, DEFAULT_ZSTD_LEVEL};
 
 #[cfg(feature = "mmap")]
 pub mod wal;

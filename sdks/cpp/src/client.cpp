@@ -49,6 +49,41 @@ std::vector<CollectionSummaryRec> HyperspaceClient::ListCollections() {
     return output;
 }
 
+std::string HyperspaceClient::FreezeCollection(const std::string& name) {
+    ::hyperspace::FreezeCollectionRequest request;
+    request.set_name(name);
+
+    ::hyperspace::StatusResponse response;
+    ClientContext context;
+    if (!app_id_.empty()) {
+        context.AddMetadata("x-api-key", app_id_);
+    }
+
+    Status status = stub_->FreezeCollection(&context, request, &response);
+    if (status.ok()) {
+        return response.status();
+    }
+    return "Error: " + status.error_message();
+}
+
+std::string HyperspaceClient::UnfreezeCollection(const std::string& name) {
+    ::hyperspace::UnfreezeCollectionRequest request;
+    request.set_name(name);
+
+    ::hyperspace::StatusResponse response;
+    ClientContext context;
+    if (!app_id_.empty()) {
+        context.AddMetadata("x-api-key", app_id_);
+    }
+
+    Status status = stub_->UnfreezeCollection(&context, request, &response);
+    if (status.ok()) {
+        return response.status();
+    }
+    return "Error: " + status.error_message();
+}
+
+
 bool HyperspaceClient::Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection, const std::vector<uint8_t>& payload) {
     ::hyperspace::InsertRequest request;
     request.set_id(id);

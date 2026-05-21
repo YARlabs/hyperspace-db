@@ -3,7 +3,7 @@
 //! **Architecture Contract:**
 //! - **RAM Layer:** ONLY the `PayloadIndex` lives in RAM — 16 bytes per vector slot.
 //! - **Disk Layer:** All payload bytes are stored in an append-only `payloads.hyp` file,
-//!   zstd-compressed to minimize NVMe I/O. Reads happen via `FileExt::read_exact_at`
+//!   zstd-compressed to minimize `NVMe` I/O. Reads happen via `FileExt::read_exact_at`
 //!   (positional, no seek lock) wrapped inside `tokio::task::spawn_blocking`.
 //!
 //! **Invariants enforced:**
@@ -82,7 +82,7 @@ impl std::fmt::Debug for PayloadStore {
         f.debug_struct("PayloadStore")
             .field("payload_path", &self.payload_path)
             .field("zstd_level", &self.zstd_level)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -104,11 +104,10 @@ impl PayloadStore {
             .create(true)
             .read(true)
             .write(true)
+            .truncate(false)
             .open(&payload_path)?;
 
-        let read_file = OpenOptions::new()
-            .read(true)
-            .open(&payload_path)?;
+        let read_file = OpenOptions::new().read(true).open(&payload_path)?;
 
         // ── Initialize file (write magic if new) ──────────────────────────────
         let file_len = write_file.metadata()?.len();
@@ -246,7 +245,7 @@ impl PayloadStore {
     pub async fn fetch_async(store: Arc<Self>, id: u32) -> io::Result<Option<Vec<u8>>> {
         tokio::task::spawn_blocking(move || store.fetch_blocking(id))
             .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+            .map_err(io::Error::other)?
     }
 
     /// Fetch payloads for multiple IDs concurrently.
@@ -275,7 +274,7 @@ impl PayloadStore {
         self.index
             .read()
             .get(id as usize)
-            .map_or(false, |s| s.is_some())
+            .is_some_and(Option::is_some)
     }
 
     /// Remove the payload slot for `id` (used when a vector is deleted / tombstoned).
@@ -445,7 +444,9 @@ mod tests {
         let mut payloads: Vec<Vec<u8>> = Vec::new();
         for i in 0u32..10 {
             // Each payload is 50 KB of pseudo-unique bytes
-            let payload: Vec<u8> = (0..51_200).map(|j| ((i as usize + j) % 256) as u8).collect();
+            let payload: Vec<u8> = (0..51_200)
+                .map(|j| ((i as usize + j) % 256) as u8)
+                .collect();
             store.insert(i, &payload).expect("insert");
             payloads.push(payload);
         }
@@ -475,8 +476,16 @@ mod tests {
 
         // Simulates include_payload=true: fetch for final Top-K [0, 1, 2]
         let results = PayloadStore::fetch_many(Arc::clone(&store), &[0, 1, 2]).await;
-        assert_eq!(results[0].as_deref(), Some(payload.as_slice()), "id=0 must have payload");
-        assert_eq!(results[1].as_deref(), Some(payload.as_slice()), "id=1 must have payload");
+        assert_eq!(
+            results[0].as_deref(),
+            Some(payload.as_slice()),
+            "id=0 must have payload"
+        );
+        assert_eq!(
+            results[1].as_deref(),
+            Some(payload.as_slice()),
+            "id=1 must have payload"
+        );
         assert!(results[2].is_none(), "id=2 has no payload, must be None");
 
         // Simulates include_payload=false: no fetch at all — zero disk I/O
@@ -530,7 +539,7 @@ mod tests {
 
         old_store.insert(0, &payload_a).unwrap(); // active
         old_store.insert(1, &payload_d).unwrap(); // will be deleted
-        old_store.remove(1).unwrap();             // tombstone
+        old_store.remove(1).unwrap(); // tombstone
 
         let new_store = PayloadStore::open(new_dir.path(), DEFAULT_ZSTD_LEVEL).unwrap();
 
@@ -539,10 +548,16 @@ mod tests {
         new_store.compact_copy_from(&old_store, 1).unwrap(); // no-op
 
         let fetched_a = new_store.fetch_blocking(0).unwrap().unwrap();
-        assert_eq!(fetched_a, payload_a, "Active payload must survive compaction");
+        assert_eq!(
+            fetched_a, payload_a,
+            "Active payload must survive compaction"
+        );
 
         let fetched_d = new_store.fetch_blocking(1).unwrap();
-        assert!(fetched_d.is_none(), "Deleted payload must NOT appear after compaction");
+        assert!(
+            fetched_d.is_none(),
+            "Deleted payload must NOT appear after compaction"
+        );
     }
 
     // ── Test 5: Index persistence across restarts ────────────────────────────

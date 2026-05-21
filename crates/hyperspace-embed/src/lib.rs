@@ -19,6 +19,7 @@ pub enum Metric {
     Lorentz,
     L2,
     Cosine,
+    Hybrid,
     None,
 }
 
@@ -124,6 +125,7 @@ impl MultiVectorizer {
             "cosine" => "cosine",
             "poincare" => "poincare",
             "lorentz" => "lorentz",
+            "hybrid" => "hybrid",
             _ => metric,
         };
 
@@ -395,6 +397,32 @@ impl OnnxVectorizer {
                 for x in vec.iter_mut() {
                     if x.is_nan() || x.is_infinite() {
                         *x = 0.0;
+                    }
+                }
+            }
+            Metric::Hybrid => {
+                // Hybrid vector layout: first 33 dims are Lorentz, rest are Euclidean (e.g., 768)
+                let lorentz_dim = 33;
+                if vec.len() >= lorentz_dim {
+                    // Normalize the Lorentz part (first 33 elements)
+                    let spatial_norm_sq: f64 = vec[1..lorentz_dim].iter().map(|x| x * x).sum();
+                    vec[0] = (1.0 + spatial_norm_sq).sqrt(); // Enforce upper sheet constraint
+
+                    // Enforce NaN/Inf protection for Lorentz part
+                    for x in vec.iter_mut().take(lorentz_dim) {
+                        if x.is_nan() || x.is_infinite() {
+                            *x = 0.0;
+                        }
+                    }
+
+                    // For the Euclidean part (index 33 onwards), we normalize it to unit sphere (L2/Cosine)
+                    let euclidean_part = &mut vec[lorentz_dim..];
+                    let euc_norm_sq: f64 = euclidean_part.iter().map(|x| x * x).sum();
+                    let euc_norm = euc_norm_sq.sqrt();
+                    if euc_norm > 0.0 {
+                        for x in euclidean_part.iter_mut() {
+                            *x /= euc_norm;
+                        }
                     }
                 }
             }

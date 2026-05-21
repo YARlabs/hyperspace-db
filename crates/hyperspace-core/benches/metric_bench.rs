@@ -13,8 +13,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     let v2_data: [f64; DIM] =
         core::array::from_fn(|_| rng.gen_range(-0.5..0.5) / (DIM as f64).sqrt());
 
-    let v1 = HyperVector::<DIM>::new(v1_data).unwrap();
-    let v2 = HyperVector::<DIM>::new(v2_data).unwrap();
+    let v1 = HyperVector::new(v1_data.to_vec()).unwrap();
+    let v2 = HyperVector::new(v2_data.to_vec()).unwrap();
 
     let mut group = c.benchmark_group("poincare_distance");
 

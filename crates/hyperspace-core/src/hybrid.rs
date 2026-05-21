@@ -1,4 +1,4 @@
-use crate::{HyperVector, Metric, QuantizedHyperVector, BinaryHyperVector};
+use crate::{BinaryHyperVector, HyperVector, Metric, QuantizedHyperVector};
 
 pub struct HybridQuantizedVector {
     pub lorentz: Vec<f32>,
@@ -27,10 +27,14 @@ impl HybridQuantizedVector {
 
         let mut euclidean = Vec::with_capacity(euclidean_dim);
         for i in lorentz_bytes_len..alpha_offset {
-            euclidean.push(bytes[i] as i8);
+            euclidean.push(bytes[i].cast_signed());
         }
 
-        Self { lorentz, euclidean, alpha }
+        Self {
+            lorentz,
+            euclidean,
+            alpha,
+        }
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -39,7 +43,7 @@ impl HybridQuantizedVector {
             bytes.extend_from_slice(&c.to_le_bytes());
         }
         for &c in &self.euclidean {
-            bytes.push(c as u8);
+            bytes.push(c.cast_unsigned());
         }
         bytes.extend_from_slice(&self.alpha.to_le_bytes());
         bytes
@@ -94,7 +98,7 @@ impl HybridQuantizedVector {
 
         #[cfg(all(target_feature = "neon", target_arch = "aarch64"))]
         {
-            if limit % 4 == 0 {
+            if limit.is_multiple_of(4) {
                 return unsafe { self.euclidean_simd_neon(other, limit) };
             }
         }
@@ -119,7 +123,7 @@ impl HybridQuantizedVector {
         let mut sum_v = _mm256_setzero_pd();
         let scale_v = _mm256_set1_pd(1.0 / 127.0);
         let offset = self.lorentz.len();
-        
+
         for i in (0..limit).step_by(4) {
             let i8_vals = _mm_cvtsi32_si128(*(self.euclidean.as_ptr().add(i) as *const i32));
             let i32_vals = _mm_cvtepi8_epi32(i8_vals);
@@ -136,7 +140,10 @@ impl HybridQuantizedVector {
     }
 
     #[cfg(all(target_feature = "neon", target_arch = "aarch64"))]
+    /// # Safety
+    /// Caller must ensure `limit` is a multiple of 2 and within bounds of `other.coords`.
     pub unsafe fn euclidean_simd_neon(&self, other: &HyperVector, limit: usize) -> f64 {
+        #[allow(clippy::wildcard_imports)]
         use std::arch::aarch64::*;
         let mut sum_v = vdupq_n_f64(0.0);
         let scale = 1.0 / 127.0;
@@ -144,9 +151,12 @@ impl HybridQuantizedVector {
 
         for i in (0..limit).step_by(2) {
             let a0 = f64::from(self.euclidean[i]) * scale;
-            let a1 = f64::from(self.euclidean[i+1]) * scale;
+            let a1 = f64::from(self.euclidean[i + 1]) * scale;
             let b = vld1q_f64(other.coords.as_ptr().add(offset + i));
-            let a = vcombine_f64(vcreate_f64(u64::from_ne_bytes(a0.to_ne_bytes())), vcreate_f64(u64::from_ne_bytes(a1.to_ne_bytes())));
+            let a = vcombine_f64(
+                vcreate_f64(u64::from_ne_bytes(a0.to_ne_bytes())),
+                vcreate_f64(u64::from_ne_bytes(a1.to_ne_bytes())),
+            );
             let diff = vsubq_f64(a, b);
             sum_v = vfmaq_f64(sum_v, diff, diff);
         }

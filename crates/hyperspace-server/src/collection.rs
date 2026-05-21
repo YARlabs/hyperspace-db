@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::task::JoinHandle;
+use hyperspace_cache::VectorCache;
 
 #[derive(Serialize, Deserialize)]
 struct CollectionState {
@@ -77,8 +78,11 @@ pub struct CollectionImpl<M: Metric> {
     // the bytes NEVER touch RAM during HNSW traversal. Reads use pread + spawn_blocking.
     payload_store: Arc<PayloadStore>,
     dimension: usize,
+    /// Stored for introspection, schema validation, and future multi-component APIs.
+    #[allow(dead_code)]
     schema: hyperspace_proto::hyperspace::CollectionSchema,
     layout: hyperspace_core::vector::VectorLayout,
+    cache: Option<Arc<VectorCache>>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -166,6 +170,7 @@ impl<M: Metric> CollectionImpl<M> {
         Cow::Owned(normalized)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         name: String,
         node_id: String,
@@ -257,7 +262,7 @@ impl<M: Metric> CollectionImpl<M> {
             });
             offset += c.full_dimension as usize;
         }
-        
+
         let layout = hyperspace_core::vector::VectorLayout {
             dimension: offset,
             bytes_per_element: 8, // f64
@@ -271,7 +276,7 @@ impl<M: Metric> CollectionImpl<M> {
 
         let mut element_size = match mode {
             hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-            hyperspace_core::QuantizationMode::Binary => (dimension + 7) / 8,
+            hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
             hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
                 if dimension > 33 {
                     33 * 4 + (dimension - 33) + 4
@@ -281,9 +286,9 @@ impl<M: Metric> CollectionImpl<M> {
             }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
-                    dimension * 4
+                    dimension * 4 + 4
                 } else {
-                    dimension * 8
+                    dimension * 8 + 8
                 }
             }
         };
@@ -733,7 +738,7 @@ impl<M: Metric> CollectionImpl<M> {
             .unwrap_or(DEFAULT_ZSTD_LEVEL);
         let payload_store = match PayloadStore::open(&data_dir, zstd_level) {
             Ok(ps) => {
-                println!("📦 Payload Store: opened (zstd level {zstd_level})");
+                println!("📦 Payload Store: successfully opened");
                 Arc::new(ps)
             }
             Err(e) => {
@@ -744,7 +749,56 @@ impl<M: Metric> CollectionImpl<M> {
             }
         };
 
-        Ok(Self {
+        let cache = if std::env::var("HYPERSPACE_CACHE_ENABLED").map_or(true, |v| v.to_lowercase() != "false") {
+            let l1_capacity = std::env::var("HYPERSPACE_CACHE_L1_CAPACITY")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(10000);
+            
+            let eviction_policy = match std::env::var("HYPERSPACE_CACHE_EVICTION_POLICY")
+                .unwrap_or_default()
+                .to_lowercase()
+                .as_str()
+            {
+                "lfu" => hyperspace_cache::EvictionPolicy::Lfu,
+                "ttl" => hyperspace_cache::EvictionPolicy::Ttl,
+                _ => hyperspace_cache::EvictionPolicy::Lru,
+            };
+
+            let ann_threshold = std::env::var("HYPERSPACE_CACHE_ANN_THRESHOLD")
+                .ok()
+                .and_then(|s| s.parse::<f64>().ok());
+
+            let ann_rebuild_batch = std::env::var("HYPERSPACE_CACHE_REBUILD_BATCH")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(100);
+
+            let cache_metric = match M::name() {
+                "cosine" => hyperspace_cache::CacheMetricType::Cosine,
+                "poincare" => hyperspace_cache::CacheMetricType::Poincare,
+                "lorentz" => hyperspace_cache::CacheMetricType::Lorentz,
+                _ => hyperspace_cache::CacheMetricType::L2,
+            };
+
+            let cache_config = hyperspace_cache::CacheConfig {
+                l1_capacity,
+                eviction_policy,
+                ann_threshold,
+                ann_rebuild_batch,
+                collection_name: name.clone(),
+                dimension,
+                metric: cache_metric,
+            };
+
+            let c = Arc::new(VectorCache::new(cache_config));
+            c.start_background_tasks();
+            Some(c)
+        } else {
+            None
+        };
+
+        let col = Self {
             name,
             node_id,
             index_link,
@@ -774,7 +828,64 @@ impl<M: Metric> CollectionImpl<M> {
             dimension,
             schema,
             layout,
-        })
+            cache,
+        };
+
+        // FIX (Bottleneck 4): Cache warmup on startup.
+        // After a restart the L0 cache is empty, so the first N requests all fall
+        // through to the on-disk HNSW traversal. To mitigate this we pre-populate
+        // the cache in a background blocking task immediately after the collection is
+        // opened.
+        // FIX: Extended warmup to all QuantizationMode except Binary.
+        //
+        // Why not Binary: get_vector() for Binary mode reconstructs only the sign bit
+        // (±1/√dim). This is a very lossy approximation — unusable for ANN distance
+        // calculations in the cache. Every other mode (None, ScalarI8, Hybrid) returns
+        // reasonable f64 coords via proper de-quantization inside get_vector().
+        if col.mode != hyperspace_core::QuantizationMode::Binary {
+            if let Some(ref cache_arc) = col.cache {
+                let cache_clone = cache_arc.clone();
+                let idx_full = col.index_link.load_full();
+                let rev_map = col.reverse_id_map.clone();
+                let l1_cap = cache_arc.l1_capacity();
+
+                tokio::task::spawn_blocking(move || {
+                    let count = idx_full.count();
+                    if count == 0 {
+                        return;
+                    }
+                    let limit = count.min(l1_cap);
+                    let mut entries = Vec::with_capacity(limit);
+
+                    // Iterate over (internal_id -> external_id) pairs.
+                    // get_vector() always returns de-quantized f64 coords for all
+                    // quantization modes except Binary (which is excluded above).
+                    // metadata.forward contains the key-value metadata per internal_id.
+                    for r in rev_map.iter() {
+                        let internal_id = *r.key();
+                        let external_id = *r.value();
+                        if (internal_id as usize) < count {
+                            let hv = idx_full.get_vector(internal_id);
+                            // FIX (Limitation 2): Read metadata from the HNSW forward map
+                            // so warmup entries have correct key-value fields, not empty HashMaps.
+                            let meta = idx_full.metadata.forward
+                                .get(&internal_id)
+                                .map(|r| r.value().clone())
+                                .unwrap_or_default();
+                            entries.push((external_id, hv.coords.to_vec(), meta));
+                        }
+                        if entries.len() >= limit {
+                            break;
+                        }
+                    }
+
+                    cache_clone.warmup_from_entries_with_meta(entries);
+                });
+            }
+        }
+
+        Ok(col)
+
     }
 
     #[allow(clippy::too_many_arguments)] // Background worker requires all context
@@ -796,7 +907,7 @@ impl<M: Metric> CollectionImpl<M> {
         let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
         let element_size = match mode {
             hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-            hyperspace_core::QuantizationMode::Binary => (dimension + 7) / 8,
+            hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
             hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
                 if dimension > 33 {
                     33 * 4 + (dimension - 33) + 4
@@ -806,9 +917,9 @@ impl<M: Metric> CollectionImpl<M> {
             }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
-                    dimension * 4
+                    dimension * 4 + 4
                 } else {
-                    dimension * 8
+                    dimension * 8 + 8
                 }
             }
         };
@@ -966,9 +1077,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let count = self.index_link.load().count();
         let dim = self.dimension;
         let element_size = match self.mode {
-            hyperspace_core::QuantizationMode::ScalarI8 => 1,
-            hyperspace_core::QuantizationMode::Binary => 1, // simplified
-            hyperspace_core::QuantizationMode::AsymmetricHybrid801 => 1,
+            hyperspace_core::QuantizationMode::ScalarI8
+            | hyperspace_core::QuantizationMode::Binary
+            | hyperspace_core::QuantizationMode::AsymmetricHybrid801 => 1,
             hyperspace_core::QuantizationMode::None => 8, // f64
         };
 
@@ -997,6 +1108,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         Ok(())
     }
 
+    fn get_hnsw_config(&self) -> hyperspace_core::HnswConfig {
+        hyperspace_core::HnswConfig {
+            ef_search: self.config.get_ef_search(),
+            ef_construction: self.config.get_ef_construction(),
+            m: self.config.get_m(),
+        }
+    }
+
+
     fn buckets(&self) -> Vec<u64> {
         self.buckets
             .iter()
@@ -1012,15 +1132,20 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         clock: u64,
         durability: hyperspace_core::Durability,
     ) -> Result<(), String> {
-        if vector.len() != self.dimension {
+        if vector.len() < self.dimension {
             return Err(format!(
                 "Vector dimension mismatch. Expected {}, got {}",
                 self.dimension,
                 vector.len()
             ));
         }
+        let slice = if vector.len() > self.dimension {
+            &vector[..self.dimension]
+        } else {
+            vector
+        };
 
-        let processed_vector_cow = Self::normalize_if_cosine(vector);
+        let processed_vector_cow = Self::normalize_if_cosine(slice);
         // We need a slice for ops, and maybe an owned vec for storage if new
         let processed_vector = &processed_vector_cow;
 
@@ -1177,21 +1302,29 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             let _ = self.index_tx.send((internal_id, metadata.clone()));
         }
 
+        let vector_owned = processed_vector_cow.into_owned();
+
         if self.replication_tx.receiver_count() > 0 {
-            // Need owned vector for replication
-            let vector_owned = processed_vector_cow.into_owned();
             let log = ReplicationLog {
                 logical_clock: clock,
                 origin_node_id: self.node_id.clone(),
                 collection: self.name.clone(),
                 operation: Some(replication_log::Operation::Insert(InsertOp {
                     id,
-                    vector: vector_owned,
-                    metadata,
+                    vector: vector_owned.clone(),
+                    metadata: metadata.clone(),
                     typed_metadata: HashMap::new(),
                 })),
             };
             let _ = self.replication_tx.send(log);
+        }
+
+        if let Some(ref cache) = self.cache {
+            let ttl = metadata.get("__ttl")
+                .or_else(|| metadata.get("ttl"))
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(|secs| std::time::Duration::from_secs(secs));
+            cache.insert(id, vector_owned, metadata, ttl);
         }
 
         Ok(())
@@ -1205,7 +1338,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     ) -> Result<(), String> {
         // 1. Validation
         for (vec, _, _) in &vectors {
-            if vec.len() != self.dimension {
+            if vec.len() < self.dimension {
                 return Err(format!(
                     "Vector dimension mismatch. Expected {}, got {}",
                     self.dimension,
@@ -1226,8 +1359,13 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let index_reader = self.index_link.load();
 
         for (vector, id, metadata) in &vectors {
+            let slice = if vector.len() > self.dimension {
+                &vector[..self.dimension]
+            } else {
+                vector
+            };
             // Returns Borrowed for Poincare (No Allocation)
-            let processed_vector = Self::normalize_if_cosine(vector);
+            let processed_vector = Self::normalize_if_cosine(slice);
 
             // Check existing
             let existing_internal_id = self.id_map.get(id).map(|v| *v);
@@ -1415,6 +1553,21 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 let _ = self.replication_tx.send(log);
             }
         }
+        if let Some(ref cache) = self.cache {
+            for (vector, id, metadata) in &vectors {
+                let slice = if vector.len() > self.dimension {
+                    &vector[..self.dimension]
+                } else {
+                    vector
+                };
+                let processed_vector = Self::normalize_if_cosine(slice).into_owned();
+                let ttl = metadata.get("__ttl")
+                    .or_else(|| metadata.get("ttl"))
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .map(|secs| std::time::Duration::from_secs(secs));
+                cache.insert(*id, processed_vector, metadata.clone(), ttl);
+            }
+        }
 
         Ok(())
     }
@@ -1441,6 +1594,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
 
         idx.delete(internal_id);
+        if let Some(ref cache) = self.cache {
+            cache.invalidate(id);
+        }
         Ok(())
     }
 
@@ -1451,16 +1607,21 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         complex_filters: &[FilterExpr],
         params: &SearchParams,
     ) -> Result<Vec<SearchResult>, String> {
-        if query.len() != self.dimension {
+        if query.len() < self.dimension {
             return Err(format!(
                 "Query dimension mismatch. Expected {}, got {}",
                 self.dimension,
                 query.len()
             ));
         }
+        let slice = if query.len() > self.dimension {
+            &query[..self.dimension]
+        } else {
+            query
+        };
 
         // Quick Win #5: Zero-copy normalization - keep Cow until absolutely necessary
-        let processed_query_cow = Self::normalize_if_cosine(query);
+        let processed_query_cow = Self::normalize_if_cosine(slice);
 
         let index_link = self.index_link.clone();
         let reverse_id_map = self.reverse_id_map.clone();
@@ -1470,6 +1631,40 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let top_k = params.top_k;
         let ef_search = params.ef_search;
         let include_payload = params.include_payload;
+
+        if let Some(ref cache) = self.cache {
+            let known_id = filters.get("id")
+                .or_else(|| filters.get("_id"))
+                .and_then(|val| val.parse::<u32>().ok());
+            let is_pure_ann = filters.is_empty() && complex_filters.is_empty();
+            if known_id.is_some() || is_pure_ann {
+                if let Some(hits) = cache.search(&processed_query_cow, known_id, top_k) {
+                    let pre_payload: Vec<(u32, f64, HashMap<String, String>)> = hits
+                        .into_iter()
+                        .map(|hit| {
+                            let metadata_cloned = Arc::try_unwrap(hit.metadata)
+                                .unwrap_or_else(|m| (*m).clone());
+                            (hit.id, hit.distance, metadata_cloned)
+                        })
+                        .collect();
+                    
+                    if include_payload {
+                        let top_k_ids: Vec<u32> = pre_payload.iter().map(|(id, _, _)| *id).collect();
+                        let payloads = PayloadStore::fetch_many(Arc::clone(&self.payload_store), &top_k_ids).await;
+                        return Ok(pre_payload
+                            .into_iter()
+                            .zip(payloads)
+                            .map(|((id, dist, meta), payload)| (id, dist, meta, payload))
+                            .collect());
+                    } else {
+                        return Ok(pre_payload
+                            .into_iter()
+                            .map(|(id, dist, meta)| (id, dist, meta, None))
+                            .collect());
+                    }
+                }
+            }
+        }
         let rerank_enabled = std::env::var("HS_RERANK_ENABLED")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
         let rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
@@ -1489,7 +1684,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             .acquire_owned()
             .await
             .map_err(|e| format!("Search limiter failed: {e}"))?;
-            
+
         let layout_owned = self.layout.clone();
         let component_weights_owned = params.component_weights.clone();
 
@@ -1584,7 +1779,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
                     let candidate_vectors: Vec<Vec<f64>> = candidate_ids
                         .iter()
-                        .map(|id| index.get_vector(*id).coords.to_vec())
+                        .map(|id| index.get_vector(*id).coords.clone())
                         .collect();
                     let candidate_refs: Vec<&[f64]> =
                         candidate_vectors.iter().map(Vec::as_slice).collect();
@@ -1635,11 +1830,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // Zero disk I/O on the default (include_payload=false) path.
             if include_payload {
                 let top_k_ids: Vec<u32> = pre_payload.iter().map(|(id, _, _)| *id).collect();
-                let payloads = PayloadStore::fetch_many(
-                    Arc::clone(&self.payload_store),
-                    &top_k_ids,
-                )
-                .await;
+                let payloads =
+                    PayloadStore::fetch_many(Arc::clone(&self.payload_store), &top_k_ids).await;
 
                 Ok(pre_payload
                     .into_iter()
@@ -1700,11 +1892,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // === Step 3: Lazy Payload Fetch (v3.2) — inline path ================
             if include_payload {
                 let ids: Vec<u32> = raw_results.iter().map(|(id, _, _)| *id).collect();
-                let payloads = PayloadStore::fetch_many(
-                    Arc::clone(&self.payload_store),
-                    &ids,
-                )
-                .await;
+                let payloads =
+                    PayloadStore::fetch_many(Arc::clone(&self.payload_store), &ids).await;
                 let results: Vec<SearchResult> = raw_results
                     .into_iter()
                     .zip(payloads)
@@ -1736,83 +1925,87 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let filter_for_vacuum = filter.clone();
 
         // Run heavy lifting in blocking thread
-        let (new_index_arc, temp_dir, new_snap_path, all_survived_data) = tokio::task::spawn_blocking(move || {
-            use hyperspace_core::config::GlobalConfig;
-            use hyperspace_store::VectorStore;
-            use std::path::PathBuf;
+        let (new_index_arc, temp_dir, new_snap_path, all_survived_data) =
+            tokio::task::spawn_blocking(move || {
+                use hyperspace_core::config::GlobalConfig;
+                use hyperspace_store::VectorStore;
+                use std::path::PathBuf;
 
-            // 1. Get current data
-            let current_index = index_link.load().clone();
-            let mut all_data = current_index.peek_all();
-            if let Some(filter) = &filter_for_vacuum {
-                all_data.retain(|(_, _, meta)| !Self::matches_vacuum_filter(meta, filter));
-            }
-            let count = all_data.len();
-
-            if count == 0 {
-                return Ok((None, PathBuf::new(), PathBuf::new(), Vec::new())); // Nothing to do
-            }
-
-            // 2. Setup "Turbo Mode"
-            let vacuum_m = 128;
-            let vacuum_ef = 800;
-
-            let vacuum_config = Arc::new(GlobalConfig::new());
-            vacuum_config.set_m(vacuum_m);
-            vacuum_config.set_ef_construction(vacuum_ef);
-            vacuum_config.set_ef_search(original_config.get_ef_search());
-
-            println!("   Building Shadow Index (M={vacuum_m}, EF={vacuum_ef})...");
-
-            // 3. Create temp storage
-            let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
-            if let Err(e) = std::fs::create_dir_all(&temp_dir) {
-                return Err(e.to_string());
-            }
-
-            let dimension = current_index.dimension;
-            let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
-                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
-            let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
-            let element_size = match mode {
-                hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-                hyperspace_core::QuantizationMode::Binary => (dimension + 7) / 8,
-                hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                    if dimension > 33 {
-                        33 * 4 + (dimension - 33) + 4
-                    } else {
-                        dimension * 4 + 4
-                    }
+                // 1. Get current data
+                let current_index = index_link.load().clone();
+                let mut all_data = current_index.peek_all();
+                if let Some(filter) = &filter_for_vacuum {
+                    all_data.retain(|(_, _, meta)| !Self::matches_vacuum_filter(meta, filter));
                 }
-                hyperspace_core::QuantizationMode::None => {
-                    if storage_f32 {
-                        dimension * 4
-                    } else {
-                        dimension * 8
-                    }
+                let count = all_data.len();
+
+                if count == 0 {
+                    return Ok((None, PathBuf::new(), PathBuf::new(), Vec::new()));
+                    // Nothing to do
                 }
-            };
 
-            let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
-            let new_index = HnswIndex::<M>::new(temp_store, mode, vacuum_config, dimension);
+                // 2. Setup "Turbo Mode"
+                let vacuum_m = 128;
+                let vacuum_ef = 800;
 
-            // 4. Sequential Insertion
-            // No yielding needed in blocking thread, OS handles scheduling.
-            for (_old_id, vec, meta) in &all_data {
-                // Ensure insert handles internal logic
-                let _ = new_index.insert(vec, meta.clone());
-            }
+                let vacuum_config = Arc::new(GlobalConfig::new());
+                vacuum_config.set_m(vacuum_m);
+                vacuum_config.set_ef_construction(vacuum_ef);
+                vacuum_config.set_ef_search(original_config.get_ef_search());
 
-            // Save to disk
-            let new_snap_path = data_dir.join("index.snap.new");
-            if let Err(e) = new_index.save_snapshot(&new_snap_path) {
-                return Err(e.clone());
-            }
+                println!("   Building Shadow Index (M={vacuum_m}, EF={vacuum_ef})...");
 
-            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path, all_data))
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+                // 3. Create temp storage
+                let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
+                if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+                    return Err(e.to_string());
+                }
+
+                let dimension = current_index.dimension;
+                let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32").is_ok_and(|v| {
+                    matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on")
+                });
+                let storage_f32 =
+                    storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
+                let element_size = match mode {
+                    hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
+                    hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
+                    hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
+                        if dimension > 33 {
+                            33 * 4 + (dimension - 33) + 4
+                        } else {
+                            dimension * 4 + 4
+                        }
+                    }
+                    hyperspace_core::QuantizationMode::None => {
+                        if storage_f32 {
+                            dimension * 4 + 4
+                        } else {
+                            dimension * 8 + 8
+                        }
+                    }
+                };
+
+                let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
+                let new_index = HnswIndex::<M>::new(temp_store, mode, vacuum_config, dimension);
+
+                // 4. Sequential Insertion
+                // No yielding needed in blocking thread, OS handles scheduling.
+                for (_old_id, vec, meta) in &all_data {
+                    // Ensure insert handles internal logic
+                    let _ = new_index.insert(vec, meta.clone());
+                }
+
+                // Save to disk
+                let new_snap_path = data_dir.join("index.snap.new");
+                if let Err(e) = new_index.save_snapshot(&new_snap_path) {
+                    return Err(e.clone());
+                }
+
+                Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path, all_data))
+            })
+            .await
+            .map_err(|e| e.to_string())??;
 
         if let Some(new_index) = new_index_arc {
             // 5. Hot Swap
@@ -1832,13 +2025,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // for vectors that survived the vacuum filter. Deleted vectors are skipped,
             // their disk bytes are NOT copied into the new file.
             let old_payload_store = Arc::clone(&self.payload_store);
-            let new_payload_dir = self.data_dir.join(format!("payload_compact_{}", uuid::Uuid::new_v4()));
+            let new_payload_dir = self
+                .data_dir
+                .join(format!("payload_compact_{}", uuid::Uuid::new_v4()));
             let zstd_level = old_payload_store.zstd_level();
             match PayloadStore::open(&new_payload_dir, zstd_level) {
                 Ok(new_payload_store) => {
                     // compact_copy_from skips deleted (None) slots automatically
                     for (user_id, _, _) in &all_survived_data {
-                        let _ = new_payload_store.compact_copy_from(&old_payload_store, *user_id as u32);
+                        let _ = new_payload_store.compact_copy_from(&old_payload_store, *user_id);
                     }
                     // Flush the new index before atomically replacing
                     // Swap the payload store pointer on the Arc — we do this via directory rename
@@ -1849,15 +2044,22 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     let new_index_file = new_payload_dir.join("payload_index.hyp");
                     // Atomic rename: new files replace old files
                     if new_payloads.exists() {
-                        if old_payloads.exists() { let _ = std::fs::remove_file(&old_payloads); }
+                        if old_payloads.exists() {
+                            let _ = std::fs::remove_file(&old_payloads);
+                        }
                         let _ = std::fs::rename(&new_payloads, &old_payloads);
                     }
                     if new_index_file.exists() {
-                        if old_index.exists() { let _ = std::fs::remove_file(&old_index); }
+                        if old_index.exists() {
+                            let _ = std::fs::remove_file(&old_index);
+                        }
                         let _ = std::fs::rename(&new_index_file, &old_index);
                     }
                     let _ = std::fs::remove_dir_all(&new_payload_dir);
-                    println!("\u{2728} Payload Store compacted: {} surviving payloads.", all_survived_data.len());
+                    println!(
+                        "\u{2728} Payload Store compacted: {} surviving payloads.",
+                        all_survived_data.len()
+                    );
                 }
                 Err(e) => {
                     eprintln!("\u{26a0}\u{fe0f}  Payload Store compaction failed: {e}. Original store unchanged.");
@@ -1944,10 +2146,13 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         breadth_limit: usize,
     ) -> Result<Vec<u32>, String> {
         let internal_start = self.to_internal_id(start_id);
-        let traversed =
-            self.index_link
-                .load()
-                .graph_traverse(internal_start, layer, max_depth, max_nodes, breadth_limit)?;
+        let traversed = self.index_link.load().graph_traverse(
+            internal_start,
+            layer,
+            max_depth,
+            max_nodes,
+            breadth_limit,
+        )?;
         Ok(traversed.into_iter().map(|n| self.to_user_id(n)).collect())
     }
 
@@ -1974,27 +2179,27 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         if trajectory_ids.len() < 3 {
             return Err("Trust scoring requires a trajectory of at least 3 nodes".into());
         }
-        
+
         let mut vectors = Vec::new();
         for &id in trajectory_ids {
             let pts = self.get_points(&[id]);
             if pts.is_empty() {
-                return Err(format!("Node {} not found", id));
+                return Err(format!("Node {id} not found"));
             }
             vectors.push(pts[0].1.clone());
         }
 
         let attractor = &vectors[vectors.len() - 1];
         let mut v_diff_sum = 0.0;
-        
+
         for i in 0..vectors.len() - 1 {
             let v_t0 = M::distance(&vectors[i], attractor);
             let v_t1 = M::distance(&vectors[i + 1], attractor);
             v_diff_sum += v_t1 - v_t0;
         }
-        
+
         let avg_change = v_diff_sum / (vectors.len() - 1) as f64;
-        
+
         // Negative average change indicates convergence to the target.
         let score = 1.0 / (1.0 + avg_change.max(0.0).exp());
         Ok(score)
@@ -2035,6 +2240,39 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     /// for IDs with no stored payload (returns None at that index).
     async fn fetch_payloads(&self, ids: &[u32]) -> Vec<Option<Vec<u8>>> {
         PayloadStore::fetch_many(Arc::clone(&self.payload_store), ids).await
+    }
+
+    fn cache_stats(&self) -> Result<String, String> {
+        if let Some(ref cache) = self.cache {
+            let stats = cache.stats();
+            serde_json::to_string(&stats).map_err(|e| e.to_string())
+        } else {
+            Err("Cache not enabled".to_string())
+        }
+    }
+
+    fn cache_clear(&self) -> Result<(), String> {
+        if let Some(ref cache) = self.cache {
+            cache.clear();
+            Ok(())
+        } else {
+            Err("Cache not enabled".to_string())
+        }
+    }
+
+    fn cache_update_config(&self, policy: String, ann_threshold: Option<f64>) -> Result<(), String> {
+        if let Some(ref cache) = self.cache {
+            let policy_parsed = match policy.to_lowercase().as_str() {
+                "lru" => hyperspace_cache::EvictionPolicy::Lru,
+                "lfu" => hyperspace_cache::EvictionPolicy::Lfu,
+                "ttl" => hyperspace_cache::EvictionPolicy::Ttl,
+                _ => return Err("Invalid policy".to_string()),
+            };
+            cache.update_config(policy_parsed, ann_threshold);
+            Ok(())
+        } else {
+            Err("Cache not enabled".to_string())
+        }
     }
 }
 

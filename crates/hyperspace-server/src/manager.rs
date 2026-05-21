@@ -239,7 +239,8 @@ impl CollectionManager {
             _ => {
                 return Err(format!(
                     "Unsupported configuration: dim={}, metric={}",
-                    meta.dimension(), meta.metric_name()
+                    meta.dimension(),
+                    meta.metric_name()
                 )
                 .into());
             }
@@ -270,8 +271,7 @@ impl CollectionManager {
         name: &str,
         schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<(), String> {
-        self.create_collection_internal(name, schema, false)
-            .await
+        self.create_collection_internal(name, schema, false).await
     }
 
     pub async fn rebuild_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
@@ -332,8 +332,19 @@ impl CollectionManager {
         }
 
         let quantization = std::env::var("HS_QUANTIZATION_LEVEL")
-            .unwrap_or("scalar".to_string())
+            .unwrap_or("medium".to_string())
             .to_lowercase();
+        // Normalise user-facing level names to canonical storage values:
+        //   none   → "none"    (no quantization, full f64)
+        //   medium → "medium"  (ScalarI8 for standard metrics; AsymmetricHybrid801 for hybrid dim=801)
+        //   extreme → "extreme" (Binary: 1-bit per dimension)
+        // Legacy aliases: "scalar" → "medium", "binary" → "extreme", "asymmetric_hybrid_801" → "medium"
+        let quantization = match quantization.as_str() {
+            "none" => "none".to_string(),
+            "extreme" | "binary" => "extreme".to_string(),
+            "asymmetric_hybrid_801" => "medium".to_string(), // legacy alias
+            _ => "medium".to_string(), // scalar, medium, anything else
+        };
 
         let meta = CollectionMetadata {
             schema: Some(schema.clone()),
@@ -378,6 +389,25 @@ impl CollectionManager {
         self.collections
             .get(&internal_name)
             .map(|entry| entry.meta.clone())
+    }
+
+    pub fn is_active(&self, user_id: &str, name: &str) -> bool {
+        let internal_name = Self::get_internal_name(user_id, name);
+        self.collections.contains_key(&internal_name)
+    }
+
+    pub fn get_metadata_no_wake(&self, user_id: &str, name: &str) -> Option<CollectionMetadata> {
+        let internal_name = Self::get_internal_name(user_id, name);
+        if let Some(entry) = self.collections.get(&internal_name) {
+            return Some(entry.meta.clone());
+        }
+        let col_dir = self.base_path.join(&internal_name);
+        if col_dir.exists() && col_dir.join("meta.json").exists() {
+            if let Ok(meta) = CollectionMetadata::load(&col_dir) {
+                return Some(meta);
+            }
+        }
+        None
     }
 
     pub async fn get(&self, user_id: &str, name: &str) -> Option<Arc<dyn Collection>> {
@@ -453,7 +483,10 @@ impl CollectionManager {
         let mut summaries = Vec::new();
         for name in names {
             if let Some(col) = self.get(user_id, &name).await {
-                let schema = self.get_metadata(user_id, &name).await.and_then(|m| m.schema);
+                let schema = self
+                    .get_metadata(user_id, &name)
+                    .await
+                    .and_then(|m| m.schema);
                 summaries.push(hyperspace_proto::hyperspace::CollectionSummary {
                     name: name.clone(),
                     count: col.count() as u64,
@@ -491,6 +524,33 @@ impl CollectionManager {
     pub async fn delete_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
         let internal_name = Self::get_internal_name(user_id, name);
         self.delete_collection_internal(&internal_name, true).await
+    }
+
+    pub async fn freeze_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
+        let internal_name = Self::get_internal_name(user_id, name);
+        let col_dir = self.base_path.join(&internal_name);
+
+        // 1. Remove from RAM if loaded
+        if self.collections.remove(&internal_name).is_some() {
+            println!("💤 Collection '{name}' manually frozen (unloaded from memory).");
+            return Ok(());
+        }
+
+        // 2. If not in RAM, check if it exists on disk (already cold/frozen)
+        if col_dir.exists() && col_dir.join("meta.json").exists() {
+            return Ok(());
+        }
+
+        Err("Collection not found".to_string())
+    }
+
+    pub async fn unfreeze_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
+        // self.get() automatically wakes up the cold collection if it's on disk
+        if self.get(user_id, name).await.is_some() {
+            Ok(())
+        } else {
+            Err("Collection not found".to_string())
+        }
     }
 
     pub async fn delete_collection_from_replication(&self, name: &str) -> Result<(), String> {
@@ -659,24 +719,34 @@ impl CollectionMetadata {
         self.get_schema()
             .components
             .first()
-            .map(|c| c.full_dimension as usize)
-            .unwrap_or(0)
+            .map_or(0, |c| c.full_dimension as usize)
     }
 
     pub fn metric_name(&self) -> String {
         self.get_schema()
             .components
             .first()
-            .map(|c| c.metric.clone())
-            .unwrap_or_else(|| "l2".to_string())
+            .map_or_else(|| "l2".to_string(), |c| c.metric.clone())
     }
 
     fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
+        let metric = self.metric_name();
+        let dim = self.dimension();
         match self.quantization.as_str() {
-            "binary" => hyperspace_core::QuantizationMode::Binary,
             "none" => hyperspace_core::QuantizationMode::None,
-            "asymmetric_hybrid_801" => hyperspace_core::QuantizationMode::AsymmetricHybrid801,
-            _ => hyperspace_core::QuantizationMode::ScalarI8,
+            "extreme" | "binary" => hyperspace_core::QuantizationMode::Binary,
+            // "medium" (and legacy "scalar", "asymmetric_hybrid_801"):
+            // Auto-select AsymmetricHybrid801 when the collection is Hybrid+dim=801,
+            // otherwise use ScalarI8. This prevents:
+            //   - ScalarI8 corrupting Lorentz time coordinates in hybrid vecs (quality loss)
+            //   - AsymmetricHybrid801 panicking on non-801-dim collections
+            _ => {
+                if metric == "hybrid" && dim == 801 {
+                    hyperspace_core::QuantizationMode::AsymmetricHybrid801
+                } else {
+                    hyperspace_core::QuantizationMode::ScalarI8
+                }
+            }
         }
     }
 }

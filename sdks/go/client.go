@@ -61,6 +61,29 @@ func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, sc
 	return err
 }
 
+func (c *HyperspaceClient) FreezeCollection(ctx context.Context, name string) (string, error) {
+	req := &pb.FreezeCollectionRequest{
+		Name: name,
+	}
+	resp, err := c.client.FreezeCollection(c.withContext(ctx), req)
+	if err != nil {
+		return "", err
+	}
+	return resp.Status, nil
+}
+
+func (c *HyperspaceClient) UnfreezeCollection(ctx context.Context, name string) (string, error) {
+	req := &pb.UnfreezeCollectionRequest{
+		Name: name,
+	}
+	resp, err := c.client.UnfreezeCollection(c.withContext(ctx), req)
+	if err != nil {
+		return "", err
+	}
+	return resp.Status, nil
+}
+
+
 // ListCollections retrieves all active collections for the current tenant
 func (c *HyperspaceClient) ListCollections(ctx context.Context) ([]*pb.CollectionSummary, error) {
 	req := &pb.Empty{}

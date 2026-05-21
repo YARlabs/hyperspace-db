@@ -1,4 +1,4 @@
-use hyperspace_sdk::Client;
+use hyperspace_sdk::{Client, CollectionSchema, VectorComponent};
 use std::collections::HashMap;
 
 #[tokio::main]
@@ -16,7 +16,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let col_name = "sdk_test_collection";
     let _ = client.delete_collection(col_name.to_string()).await; // Cleanup
     client
-        .create_collection(col_name.to_string(), 8, "l2".to_string())
+        .create_collection(
+            col_name.to_string(),
+            CollectionSchema {
+                components: vec![VectorComponent {
+                    name: "vec".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 8,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
     println!("Created collection: {}", col_name);
 
@@ -35,7 +46,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 4. Search
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await; // Wait for indexing (async)
     let query = vec![0.1; 8];
-    let results = client.search(query, 5, Some(col_name.to_string())).await?;
+    let results = client
+        .search(
+            query,
+            5,
+            Some(col_name.to_string()),
+            None,
+            false,
+            HashMap::new(),
+        )
+        .await?;
 
     println!("Search Results:");
     for res in results {

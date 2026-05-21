@@ -213,6 +213,17 @@ function deserialize_hyperspace_FindSemanticClustersResponse(buffer_arg) {
   return hyperspace_pb.FindSemanticClustersResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_FreezeCollectionRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.FreezeCollectionRequest)) {
+    throw new Error('Expected argument of type hyperspace.FreezeCollectionRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_FreezeCollectionRequest(buffer_arg) {
+  return hyperspace_pb.FreezeCollectionRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_GetConceptParentsRequest(arg) {
   if (!(arg instanceof hyperspace_pb.GetConceptParentsRequest)) {
     throw new Error('Expected argument of type hyperspace.GetConceptParentsRequest');
@@ -288,6 +299,28 @@ function serialize_hyperspace_GetPointsResponse(arg) {
 
 function deserialize_hyperspace_GetPointsResponse(buffer_arg) {
   return hyperspace_pb.GetPointsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetSubsumptionTreeRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.GetSubsumptionTreeRequest)) {
+    throw new Error('Expected argument of type hyperspace.GetSubsumptionTreeRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetSubsumptionTreeRequest(buffer_arg) {
+  return hyperspace_pb.GetSubsumptionTreeRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_GetSubsumptionTreeResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.GetSubsumptionTreeResponse)) {
+    throw new Error('Expected argument of type hyperspace.GetSubsumptionTreeResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_GetSubsumptionTreeResponse(buffer_arg) {
+  return hyperspace_pb.GetSubsumptionTreeResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_GraphNode(arg) {
@@ -587,6 +620,17 @@ function deserialize_hyperspace_TraverseResponse(buffer_arg) {
   return hyperspace_pb.TraverseResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_UnfreezeCollectionRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.UnfreezeCollectionRequest)) {
+    throw new Error('Expected argument of type hyperspace.UnfreezeCollectionRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_UnfreezeCollectionRequest(buffer_arg) {
+  return hyperspace_pb.UnfreezeCollectionRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_UpdatePayloadRequest(arg) {
   if (!(arg instanceof hyperspace_pb.UpdatePayloadRequest)) {
     throw new Error('Expected argument of type hyperspace.UpdatePayloadRequest');
@@ -666,6 +710,28 @@ createCollection: {
     requestDeserialize: deserialize_hyperspace_CollectionStatsRequest,
     responseSerialize: serialize_hyperspace_CollectionStatsResponse,
     responseDeserialize: deserialize_hyperspace_CollectionStatsResponse,
+  },
+  freezeCollection: {
+    path: '/hyperspace.Database/FreezeCollection',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.FreezeCollectionRequest,
+    responseType: hyperspace_pb.StatusResponse,
+    requestSerialize: serialize_hyperspace_FreezeCollectionRequest,
+    requestDeserialize: deserialize_hyperspace_FreezeCollectionRequest,
+    responseSerialize: serialize_hyperspace_StatusResponse,
+    responseDeserialize: deserialize_hyperspace_StatusResponse,
+  },
+  unfreezeCollection: {
+    path: '/hyperspace.Database/UnfreezeCollection',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.UnfreezeCollectionRequest,
+    responseType: hyperspace_pb.StatusResponse,
+    requestSerialize: serialize_hyperspace_UnfreezeCollectionRequest,
+    requestDeserialize: deserialize_hyperspace_UnfreezeCollectionRequest,
+    responseSerialize: serialize_hyperspace_StatusResponse,
+    responseDeserialize: deserialize_hyperspace_StatusResponse,
   },
   // Insert vectors
 insert: {
@@ -871,6 +937,17 @@ getNode: {
     requestDeserialize: deserialize_hyperspace_FindSemanticClustersRequest,
     responseSerialize: serialize_hyperspace_FindSemanticClustersResponse,
     responseDeserialize: deserialize_hyperspace_FindSemanticClustersResponse,
+  },
+  getSubsumptionTree: {
+    path: '/hyperspace.Database/GetSubsumptionTree',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.GetSubsumptionTreeRequest,
+    responseType: hyperspace_pb.GetSubsumptionTreeResponse,
+    requestSerialize: serialize_hyperspace_GetSubsumptionTreeRequest,
+    requestDeserialize: deserialize_hyperspace_GetSubsumptionTreeRequest,
+    responseSerialize: serialize_hyperspace_GetSubsumptionTreeResponse,
+    responseDeserialize: deserialize_hyperspace_GetSubsumptionTreeResponse,
   },
   // Stream statistics for TUI (Global or Collection tailored)
 monitor: {

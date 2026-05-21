@@ -51,6 +51,8 @@ public:
     // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
     bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema);
     std::vector<CollectionSummaryRec> ListCollections();
+    std::string FreezeCollection(const std::string& name);
+    std::string UnfreezeCollection(const std::string& name);
 
     bool Insert(uint32_t id, const std::vector<double>& vector, const std::string& collection = "", const std::vector<uint8_t>& payload = {});
     bool InsertText(uint32_t id, const std::string& text, const std::string& collection = "");

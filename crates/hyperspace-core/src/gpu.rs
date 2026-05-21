@@ -708,6 +708,7 @@ pub fn batch_lorentz_distance_cpu(
 /// Exact re-ranking on full precision vectors.
 ///
 /// Returns `(candidate_id, exact_distance)` sorted by ascending distance.
+#[allow(clippy::implicit_hasher)]
 pub fn rerank_topk_exact(
     metric: GpuMetric,
     query: &[f64],
@@ -721,16 +722,16 @@ pub fn rerank_topk_exact(
     let distances = if let Some(l) = layout {
         if l.components.len() > 1 {
             let mut final_dist = vec![0.0; candidate_ids.len()];
-            
+
             for comp in &l.components {
                 let start = comp.offset;
                 let end = start + comp.dimension;
-                
+
                 // If query is smaller than component end, skip it (fallback)
                 if query.len() < end {
                     continue;
                 }
-                
+
                 let q_slice = &query[start..end];
                 let mut c_slices = Vec::with_capacity(candidate_vectors.len());
                 for c in candidate_vectors {
@@ -741,21 +742,21 @@ pub fn rerank_topk_exact(
                         c_slices.push(&c[0..0]);
                     }
                 }
-                
+
                 let comp_metric = match comp.metric.as_str() {
                     "cosine" => GpuMetric::Cosine,
                     "poincare" => GpuMetric::Poincare,
                     "lorentz" => GpuMetric::Lorentz,
                     _ => GpuMetric::L2,
                 };
-                
+
                 let (comp_dist, _) = batch_distance_auto(comp_metric, &c_slices, q_slice);
-                
+
                 let weight = weight_overrides
                     .and_then(|w| w.get(&comp.name))
                     .copied()
                     .unwrap_or(comp.weight) as f64;
-                
+
                 for i in 0..final_dist.len() {
                     final_dist[i] += comp_dist[i] * weight;
                 }

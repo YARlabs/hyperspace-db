@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import hyperspace_pb2 as hyperspace__pb2
+from . import hyperspace_pb2 as hyperspace__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
@@ -53,6 +53,16 @@ class DatabaseStub(object):
                 '/hyperspace.Database/GetCollectionStats',
                 request_serializer=hyperspace__pb2.CollectionStatsRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.CollectionStatsResponse.FromString,
+                _registered_method=True)
+        self.FreezeCollection = channel.unary_unary(
+                '/hyperspace.Database/FreezeCollection',
+                request_serializer=hyperspace__pb2.FreezeCollectionRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.UnfreezeCollection = channel.unary_unary(
+                '/hyperspace.Database/UnfreezeCollection',
+                request_serializer=hyperspace__pb2.UnfreezeCollectionRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
                 _registered_method=True)
         self.Insert = channel.unary_unary(
                 '/hyperspace.Database/Insert',
@@ -144,6 +154,11 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.FindSemanticClustersRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.FindSemanticClustersResponse.FromString,
                 _registered_method=True)
+        self.GetSubsumptionTree = channel.unary_unary(
+                '/hyperspace.Database/GetSubsumptionTree',
+                request_serializer=hyperspace__pb2.GetSubsumptionTreeRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.GetSubsumptionTreeResponse.FromString,
+                _registered_method=True)
         self.Monitor = channel.unary_stream(
                 '/hyperspace.Database/Monitor',
                 request_serializer=hyperspace__pb2.MonitorRequest.SerializeToString,
@@ -234,6 +249,18 @@ class DatabaseServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def GetCollectionStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FreezeCollection(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UnfreezeCollection(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -354,6 +381,12 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetSubsumptionTree(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Monitor(self, request, context):
         """Stream statistics for TUI (Global or Collection tailored)
         """
@@ -465,6 +498,16 @@ def add_DatabaseServicer_to_server(servicer, server):
                     request_deserializer=hyperspace__pb2.CollectionStatsRequest.FromString,
                     response_serializer=hyperspace__pb2.CollectionStatsResponse.SerializeToString,
             ),
+            'FreezeCollection': grpc.unary_unary_rpc_method_handler(
+                    servicer.FreezeCollection,
+                    request_deserializer=hyperspace__pb2.FreezeCollectionRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'UnfreezeCollection': grpc.unary_unary_rpc_method_handler(
+                    servicer.UnfreezeCollection,
+                    request_deserializer=hyperspace__pb2.UnfreezeCollectionRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
             'Insert': grpc.unary_unary_rpc_method_handler(
                     servicer.Insert,
                     request_deserializer=hyperspace__pb2.InsertRequest.FromString,
@@ -554,6 +597,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.FindSemanticClusters,
                     request_deserializer=hyperspace__pb2.FindSemanticClustersRequest.FromString,
                     response_serializer=hyperspace__pb2.FindSemanticClustersResponse.SerializeToString,
+            ),
+            'GetSubsumptionTree': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSubsumptionTree,
+                    request_deserializer=hyperspace__pb2.GetSubsumptionTreeRequest.FromString,
+                    response_serializer=hyperspace__pb2.GetSubsumptionTreeResponse.SerializeToString,
             ),
             'Monitor': grpc.unary_stream_rpc_method_handler(
                     servicer.Monitor,
@@ -729,6 +777,60 @@ class Database(object):
             '/hyperspace.Database/GetCollectionStats',
             hyperspace__pb2.CollectionStatsRequest.SerializeToString,
             hyperspace__pb2.CollectionStatsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FreezeCollection(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/FreezeCollection',
+            hyperspace__pb2.FreezeCollectionRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UnfreezeCollection(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/UnfreezeCollection',
+            hyperspace__pb2.UnfreezeCollectionRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -1215,6 +1317,33 @@ class Database(object):
             '/hyperspace.Database/FindSemanticClusters',
             hyperspace__pb2.FindSemanticClustersRequest.SerializeToString,
             hyperspace__pb2.FindSemanticClustersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSubsumptionTree(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/GetSubsumptionTree',
+            hyperspace__pb2.GetSubsumptionTreeRequest.SerializeToString,
+            hyperspace__pb2.GetSubsumptionTreeResponse.FromString,
             options,
             channel_credentials,
             insecure,

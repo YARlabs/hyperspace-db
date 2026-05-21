@@ -27,9 +27,9 @@ mod http_server;
 mod manager;
 mod meta_router;
 mod sync;
-mod wave;
 #[cfg(test)]
 mod tests;
+mod wave;
 use manager::CollectionManager;
 
 #[cfg(feature = "embed")]
@@ -42,19 +42,20 @@ use hyperspace_proto::hyperspace::{
     DigestRequest, DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
     FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
     GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
-    GetPointsRequest, GetPointsResponse, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse, GraphCluster, GraphNode, HealthCheckResponse,
-    InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse, MetadataValue,
-    MonitorRequest, ScrollRequest, ScrollResponse, SearchMultiCollectionRequest,
-    SearchMultiCollectionResponse, SearchRequest, SearchResponse, SearchResult, SearchTextRequest,
-    SyncHandshakeRequest, SyncHandshakeResponse, SyncPullRequest, SyncPushResponse, SyncVectorData,
-    SystemStats, TraverseRequest, TraverseResponse, UpdatePayloadRequest, VectorData,
-    VectorDeletedEvent, VectorInsertedEvent, VectorizeRequest, VectorizeResponse,
+    GetPointsRequest, GetPointsResponse, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse,
+    GraphCluster, GraphNode, HealthCheckResponse, InsertRequest, InsertResponse, InsertTextRequest,
+    ListCollectionsResponse, MetadataValue, MonitorRequest, ScrollRequest, ScrollResponse,
+    SearchMultiCollectionRequest, SearchMultiCollectionResponse, SearchRequest, SearchResponse,
+    SearchResult, SearchTextRequest, SyncHandshakeRequest, SyncHandshakeResponse, SyncPullRequest,
+    SyncPushResponse, SyncVectorData, SystemStats, TraverseRequest, TraverseResponse,
+    UpdatePayloadRequest, VectorData, VectorDeletedEvent, VectorInsertedEvent, VectorizeRequest,
+    VectorizeResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
 
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 #[cfg(feature = "embed")]
 use std::str::FromStr;
 use std::sync::Arc;
@@ -215,9 +216,17 @@ fn proto_filter_to_expr(f: Filter) -> Option<hyperspace_core::FilterExpr> {
             key: m.key,
             value: m.value,
         }),
+        Condition::Prefix(p) => Some(hyperspace_core::FilterExpr::Prefix {
+            key: p.key,
+            prefix: p.prefix,
+        }),
         Condition::Range(r) => {
             let (gte, lte) = range_bounds_f64(&r);
-            Some(hyperspace_core::FilterExpr::Range { key: r.key, gte, lte })
+            Some(hyperspace_core::FilterExpr::Range {
+                key: r.key,
+                gte,
+                lte,
+            })
         }
         Condition::InCone(c) => Some(hyperspace_core::FilterExpr::InCone {
             axes: c.axes,
@@ -233,12 +242,28 @@ fn proto_filter_to_expr(f: Filter) -> Option<hyperspace_core::FilterExpr> {
             radius: b.radius,
         }),
         Condition::AndOp(and) => {
-            let conds: Vec<_> = and.conditions.into_iter().filter_map(proto_filter_to_expr).collect();
-            if conds.is_empty() { None } else { Some(hyperspace_core::FilterExpr::And(conds)) }
+            let conds: Vec<_> = and
+                .conditions
+                .into_iter()
+                .filter_map(proto_filter_to_expr)
+                .collect();
+            if conds.is_empty() {
+                None
+            } else {
+                Some(hyperspace_core::FilterExpr::And(conds))
+            }
         }
         Condition::OrOp(or) => {
-            let conds: Vec<_> = or.conditions.into_iter().filter_map(proto_filter_to_expr).collect();
-            if conds.is_empty() { None } else { Some(hyperspace_core::FilterExpr::Or(conds)) }
+            let conds: Vec<_> = or
+                .conditions
+                .into_iter()
+                .filter_map(proto_filter_to_expr)
+                .collect();
+            if conds.is_empty() {
+                None
+            } else {
+                Some(hyperspace_core::FilterExpr::Or(conds))
+            }
         }
         Condition::NotOp(not) => {
             let inner = proto_filter_to_expr(*not.condition?)?;
@@ -248,7 +273,11 @@ fn proto_filter_to_expr(f: Filter) -> Option<hyperspace_core::FilterExpr> {
 }
 
 fn parse_complex_filters(filters: &[Filter]) -> Vec<hyperspace_core::FilterExpr> {
-    filters.iter().cloned().filter_map(proto_filter_to_expr).collect()
+    filters
+        .iter()
+        .cloned()
+        .filter_map(proto_filter_to_expr)
+        .collect()
 }
 
 fn build_filters(
@@ -274,7 +303,8 @@ fn build_filters(
         ef_search: default_ef_search(),
         hybrid_query: req.hybrid_query,
         hybrid_alpha: req.hybrid_alpha,
-        component_weights: (!req.component_weights.is_empty()).then(|| req.component_weights.clone()),
+        component_weights: (!req.component_weights.is_empty())
+            .then(|| req.component_weights.clone()),
         use_wasserstein: req.use_wasserstein,
         bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
         fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
@@ -392,14 +422,12 @@ fn build_graph_node(
     let neighbors = col
         .graph_neighbors(id, layer, usize::MAX)
         .unwrap_or_default();
-        
+
     let metric_name = col.metric_name();
     let edge_type = if metric_name.contains("lorentz") {
-        2 // HIERARCHY
-    } else if metric_name.contains("l2") || metric_name.contains("cosine") {
-        1 // SIMILARITY
+        2i32 // HIERARCHY
     } else {
-        0 // UNKNOWN
+        i32::from(metric_name.contains("l2") || metric_name.contains("cosine")) // 1=SIMILARITY, 0=UNKNOWN
     };
     let edge_types = vec![edge_type; neighbors.len()];
 
@@ -441,6 +469,10 @@ fn matches_filter_exprs(
                 Some(actual) if actual == value => {}
                 _ => return false,
             },
+            hyperspace_core::FilterExpr::Prefix { key, prefix } => match metadata.get(key) {
+                Some(actual) if actual.starts_with(prefix) => {}
+                _ => return false,
+            },
             hyperspace_core::FilterExpr::Range { key, gte, lte } => {
                 let Some(num) = meta_numeric(key) else {
                     return false;
@@ -464,13 +496,19 @@ fn matches_filter_exprs(
             }
             hyperspace_core::FilterExpr::And(conds) => {
                 let empty_exact = std::collections::HashMap::new();
-                if !conds.iter().all(|c| matches_filter_exprs(metadata, &empty_exact, std::slice::from_ref(c))) {
+                if !conds
+                    .iter()
+                    .all(|c| matches_filter_exprs(metadata, &empty_exact, std::slice::from_ref(c)))
+                {
                     return false;
                 }
             }
             hyperspace_core::FilterExpr::Or(conds) => {
                 let empty_exact = std::collections::HashMap::new();
-                if !conds.iter().any(|c| matches_filter_exprs(metadata, &empty_exact, std::slice::from_ref(c))) {
+                if !conds
+                    .iter()
+                    .any(|c| matches_filter_exprs(metadata, &empty_exact, std::slice::from_ref(c)))
+                {
                     return false;
                 }
             }
@@ -502,6 +540,12 @@ fn parse_graph_filters(
                         value: m.value,
                     });
                 }
+                hyperspace_proto::hyperspace::filter::Condition::Prefix(p) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::Prefix {
+                        key: p.key,
+                        prefix: p.prefix,
+                    });
+                }
                 hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
                     let (gte, lte) = range_bounds_f64(&r);
                     complex_filters.push(hyperspace_core::FilterExpr::Range {
@@ -531,8 +575,9 @@ fn parse_graph_filters(
                 }
                 // Delegate logical combinators to the shared parser
                 cond => {
-                    
-                    let f = Filter { condition: Some(cond) };
+                    let f = Filter {
+                        condition: Some(cond),
+                    };
                     if let Some(expr) = proto_filter_to_expr(f) {
                         complex_filters.push(expr);
                     }
@@ -656,6 +701,44 @@ impl Database for HyperspaceService {
         }
     }
 
+    async fn freeze_collection(
+        &self,
+        request: Request<hyperspace_proto::hyperspace::FreezeCollectionRequest>,
+    ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        if req.name.is_empty() {
+            return Err(Status::invalid_argument("Collection name cannot be empty"));
+        }
+        match self.manager.freeze_collection(&user_id, &req.name).await {
+            Ok(()) => Ok(Response::new(
+                hyperspace_proto::hyperspace::StatusResponse {
+                    status: format!("Collection '{}' frozen.", req.name),
+                },
+            )),
+            Err(e) => Err(Status::not_found(e)),
+        }
+    }
+
+    async fn unfreeze_collection(
+        &self,
+        request: Request<hyperspace_proto::hyperspace::UnfreezeCollectionRequest>,
+    ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        if req.name.is_empty() {
+            return Err(Status::invalid_argument("Collection name cannot be empty"));
+        }
+        match self.manager.unfreeze_collection(&user_id, &req.name).await {
+            Ok(()) => Ok(Response::new(
+                hyperspace_proto::hyperspace::StatusResponse {
+                    status: format!("Collection '{}' unfrozen.", req.name),
+                },
+            )),
+            Err(e) => Err(Status::not_found(e)),
+        }
+    }
+
     async fn list_collections(
         &self,
         _request: Request<Empty>,
@@ -673,7 +756,11 @@ impl Database for HyperspaceService {
         let req = request.into_inner();
         if let Some(col) = self.manager.get(&user_id, &req.name).await {
             let usage = col.get_usage();
-            let schema = self.manager.get_metadata(&user_id, &req.name).await.and_then(|m| m.schema);
+            let schema = self
+                .manager
+                .get_metadata(&user_id, &req.name)
+                .await
+                .and_then(|m| m.schema);
             Ok(Response::new(CollectionStatsResponse {
                 count: col.count() as u64,
                 indexing_queue: col.queue_size(),
@@ -745,7 +832,10 @@ impl Database for HyperspaceService {
                 if !payload_bytes.is_empty() {
                     if let Err(e) = col.insert_payload(req.id, payload_bytes).await {
                         // Non-fatal: vector is already in the index, just log
-                        eprintln!("\u{26a0}\u{fe0f}  insert_payload failed for id={}: {e}", req.id);
+                        eprintln!(
+                            "\u{26a0}\u{fe0f}  insert_payload failed for id={}: {e}",
+                            req.id
+                        );
                     }
                 }
             }
@@ -979,6 +1069,12 @@ impl Database for HyperspaceService {
                                     value: m.value,
                                 });
                             }
+                            hyperspace_proto::hyperspace::filter::Condition::Prefix(p) => {
+                                complex_filters.push(hyperspace_core::FilterExpr::Prefix {
+                                    key: p.key,
+                                    prefix: p.prefix,
+                                });
+                            }
                             hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
                                 let (gte, lte) = range_bounds_f64(&r);
                                 complex_filters.push(hyperspace_core::FilterExpr::Range {
@@ -1008,7 +1104,9 @@ impl Database for HyperspaceService {
                             }
                             // Delegate logical combinators (And/Or/Not) to shared parser
                             cond => {
-                                let f = Filter { condition: Some(cond) };
+                                let f = Filter {
+                                    condition: Some(cond),
+                                };
                                 if let Some(expr) = proto_filter_to_expr(f) {
                                     complex_filters.push(expr);
                                 }
@@ -1022,7 +1120,8 @@ impl Database for HyperspaceService {
                     ef_search: default_ef_search(),
                     hybrid_query: None,
                     hybrid_alpha: req.hybrid_alpha,
-                    component_weights: (!req.component_weights.is_empty()).then(|| req.component_weights.clone()),
+                    component_weights: (!req.component_weights.is_empty())
+                        .then(|| req.component_weights.clone()),
                     use_wasserstein: false,
                     mrl_dimension: None,
                     bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
@@ -1120,7 +1219,8 @@ impl Database for HyperspaceService {
                 .await
             {
                 Ok(res) => {
-                    let output = res.iter()
+                    let output = res
+                        .iter()
                         .map(|(id, dist, meta, payload)| {
                             let typed_metadata = extract_typed_metadata(meta);
                             let metadata = strip_internal_metadata(meta);
@@ -1134,17 +1234,27 @@ impl Database for HyperspaceService {
                             }
                         })
                         .collect();
-                    
+
                     // Broadcast to dashboard
                     if let Some(first) = res.first() {
-                        use hyperspace_proto::hyperspace::{EventMessage, EventType, TrajectoryStepEvent, event_message::Payload};
+                        use hyperspace_proto::hyperspace::{
+                            event_message::Payload, EventMessage, EventType, TrajectoryStepEvent,
+                        };
                         let _ = self.manager.event_tx.send(EventMessage {
                             r#type: EventType::TrajectoryStep as i32,
                             payload: Some(Payload::TrajectoryStep(TrajectoryStepEvent {
                                 id: first.0,
                                 collection: col_name,
-                                x: first.2.get("_x").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0),
-                                y: first.2.get("_y").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0),
+                                x: first
+                                    .2
+                                    .get("_x")
+                                    .and_then(|v| v.parse::<f32>().ok())
+                                    .unwrap_or(0.0),
+                                y: first
+                                    .2
+                                    .get("_y")
+                                    .and_then(|v| v.parse::<f32>().ok())
+                                    .unwrap_or(0.0),
                                 metadata: first.2.clone(),
                             })),
                         });
@@ -1501,10 +1611,10 @@ impl Database for HyperspaceService {
             req.max_nodes as usize
         };
         let breadth_limit = req.breadth_limit as usize;
-        
+
         let (exact_filter, complex_filters) =
             parse_graph_filters(req.filter.into_iter().collect(), req.filters);
-            
+
         let Some(col) = self.manager.get(&user_id, &col_name).await else {
             return Err(Status::not_found(format!(
                 "Collection '{col_name}' not found"
@@ -1512,24 +1622,29 @@ impl Database for HyperspaceService {
         };
 
         let mut ids;
-        
-        if req.traversal_mode == 1 /* DIFFUSIVE */ {
+
+        if req.traversal_mode == 1
+        /* DIFFUSIVE */
+        {
             let pts = col.get_points(&[req.start_id]);
             if pts.is_empty() {
                 return Err(Status::not_found("Start ID not found"));
             }
             let query = &pts[0].1;
-            
+
             let params = crate::wave::WaveInferenceParams {
                 steps: max_depth,
                 top_k: max_nodes,
                 ..Default::default()
             };
-            let results = crate::wave::WaveInferenceEngine::search_diffusive(col.clone(), query, params)
-                .await
-                .map_err(Status::internal)?;
+            let results =
+                crate::wave::WaveInferenceEngine::search_diffusive(col.clone(), query, params)
+                    .await
+                    .map_err(Status::internal)?;
             ids = results.into_iter().map(|(id, _, _)| id).collect();
-        } else if req.traversal_mode == 2 /* MOMENTUM */ {
+        } else if req.traversal_mode == 2
+        /* MOMENTUM */
+        {
             return Err(Status::unimplemented("MOMENTUM mode requires a trajectory and is not supported in Traverse API. Use explore_graph/search_momentum"));
         } else {
             // GREEDY
@@ -1546,7 +1661,6 @@ impl Database for HyperspaceService {
         }
         let nodes = ids
             .into_iter()
-
             .map(|id| build_graph_node(&col, id, layer))
             .collect();
         Ok(Response::new(TraverseResponse { nodes }))
@@ -1897,9 +2011,11 @@ impl Database for HyperspaceService {
                 m: req.m.map(|v| v as usize),
             };
             match col.update_config(update) {
-                Ok(()) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-                    status: format!("Configuration updated for '{}'", col_name),
-                })),
+                Ok(()) => Ok(Response::new(
+                    hyperspace_proto::hyperspace::StatusResponse {
+                        status: format!("Configuration updated for '{col_name}'"),
+                    },
+                )),
                 Err(e) => Err(Status::internal(e)),
             }
         } else {
@@ -2102,20 +2218,32 @@ impl Database for HyperspaceService {
     ) -> Result<Response<GetPointsResponse>, Status> {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
+        let col_name = if req.collection.is_empty() {
+            "default"
+        } else {
+            &req.collection
+        }
+        .to_string();
 
         if let Some(col) = self.manager.get(&user_id, &col_name).await {
-            let ids: Vec<u32> = req.ids.iter().copied().collect();
+            let ids: Vec<u32> = req.ids.clone();
             let points = col.get_points(&ids);
-            let proto_points = points.into_iter().map(|(id, vector, meta)| VectorData {
-                id,
-                vector,
-                metadata: meta,
-                typed_metadata: Default::default(),
-            }).collect();
-            Ok(Response::new(GetPointsResponse { points: proto_points }))
+            let proto_points = points
+                .into_iter()
+                .map(|(id, vector, meta)| VectorData {
+                    id,
+                    vector,
+                    metadata: meta,
+                    typed_metadata: HashMap::default(),
+                })
+                .collect();
+            Ok(Response::new(GetPointsResponse {
+                points: proto_points,
+            }))
         } else {
-            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+            Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )))
         }
     }
 
@@ -2128,7 +2256,12 @@ impl Database for HyperspaceService {
         }
         let user_id = get_user_id(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
+        let col_name = if req.collection.is_empty() {
+            "default"
+        } else {
+            &req.collection
+        }
+        .to_string();
 
         if let Some(col) = self.manager.get(&user_id, &col_name).await {
             let patch = merge_metadata(
@@ -2136,13 +2269,17 @@ impl Database for HyperspaceService {
                 req.typed_metadata.into_iter().collect(),
             );
             match col.update_payload(req.id, patch) {
-                Ok(()) => Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-                    status: format!("Payload for id={} updated.", req.id),
-                })),
+                Ok(()) => Ok(Response::new(
+                    hyperspace_proto::hyperspace::StatusResponse {
+                        status: format!("Payload for id={} updated.", req.id),
+                    },
+                )),
                 Err(e) => Err(Status::not_found(e)),
             }
         } else {
-            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+            Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )))
         }
     }
 
@@ -2152,22 +2289,38 @@ impl Database for HyperspaceService {
     ) -> Result<Response<ScrollResponse>, Status> {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
-        let limit = if req.limit == 0 { 100 } else { req.limit as usize };
+        let col_name = if req.collection.is_empty() {
+            "default"
+        } else {
+            &req.collection
+        }
+        .to_string();
+        let limit = if req.limit == 0 {
+            100
+        } else {
+            req.limit as usize
+        };
         let offset = req.offset as usize;
 
         if let Some(col) = self.manager.get(&user_id, &col_name).await {
             let filters = parse_complex_filters(&req.filters);
             let points = col.scroll(limit, offset, &filters);
-            let proto_points = points.into_iter().map(|(id, vector, meta)| VectorData {
-                id,
-                vector,
-                metadata: meta,
-                typed_metadata: Default::default(),
-            }).collect();
-            Ok(Response::new(ScrollResponse { points: proto_points }))
+            let proto_points = points
+                .into_iter()
+                .map(|(id, vector, meta)| VectorData {
+                    id,
+                    vector,
+                    metadata: meta,
+                    typed_metadata: HashMap::default(),
+                })
+                .collect();
+            Ok(Response::new(ScrollResponse {
+                points: proto_points,
+            }))
         } else {
-            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+            Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )))
         }
     }
 
@@ -2177,14 +2330,21 @@ impl Database for HyperspaceService {
     ) -> Result<Response<CountResponse>, Status> {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() { "default" } else { &req.collection }.to_string();
+        let col_name = if req.collection.is_empty() {
+            "default"
+        } else {
+            &req.collection
+        }
+        .to_string();
 
         if let Some(col) = self.manager.get(&user_id, &col_name).await {
             let filters = parse_complex_filters(&req.filters);
             let count = col.count_filtered(&filters) as u64;
             Ok(Response::new(CountResponse { count }))
         } else {
-            Err(Status::not_found(format!("Collection '{col_name}' not found")))
+            Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )))
         }
     }
 
@@ -2204,13 +2364,22 @@ impl Database for HyperspaceService {
                 "Collection '{col_name}' not found"
             )));
         };
-        
-        let max_depth = if req.max_depth == 0 { 3 } else { req.max_depth as usize };
+
+        let max_depth = if req.max_depth == 0 {
+            3
+        } else {
+            req.max_depth as usize
+        };
         // We do a graph traverse but we specifically look for Lorentz metrics.
         // For now, we can just use graph_traverse and let edge_types inference handle the annotation
-        let ids = col.graph_traverse(req.root_id, 0, max_depth, 100, usize::MAX).unwrap_or_default();
-        
-        let nodes = ids.into_iter().map(|id| build_graph_node(&col, id, 0)).collect();
+        let ids = col
+            .graph_traverse(req.root_id, 0, max_depth, 100, usize::MAX)
+            .unwrap_or_default();
+
+        let nodes = ids
+            .into_iter()
+            .map(|id| build_graph_node(&col, id, 0))
+            .collect();
         Ok(Response::new(GetSubsumptionTreeResponse { nodes }))
     }
 
@@ -2370,8 +2539,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                                                     });
                                                     if let Err(e) = mgr
                                                         .create_collection_from_replication(
-                                                            col_name,
-                                                            schema,
+                                                            col_name, schema,
                                                         )
                                                         .await
                                                     {
@@ -2438,7 +2606,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
         if enabled {
             let mut multi = MultiVectorizer::new();
-            for metric_name in ["l2", "cosine", "poincare", "lorentz"] {
+            for metric_name in ["l2", "cosine", "poincare", "lorentz", "hybrid"] {
                 let metric_upper = metric_name.to_uppercase();
                 let provider_key = format!("HS_EMBED_{metric_upper}_PROVIDER");
                 let provider_str = std::env::var(&provider_key)
@@ -2456,6 +2624,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
                     "poincare" => Metric::Poincare,
                     "lorentz" => Metric::Lorentz,
                     "l2" => Metric::L2,
+                    "hybrid" => Metric::Hybrid,
                     _ => Metric::Cosine,
                 };
 
@@ -2544,7 +2713,7 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         #[cfg(feature = "embed")]
         {
             let mut models_map = std::collections::HashMap::new();
-            let metrics = ["l2", "cosine", "poincare", "lorentz"];
+            let metrics = ["l2", "cosine", "poincare", "lorentz", "hybrid"];
 
             for metric in metrics {
                 let status = if let Some(multi) = &vectorizer {
@@ -2623,8 +2792,14 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     // 4. Start HTTP Dashboard
     let http_mgr = manager.clone();
     tokio::spawn(async move {
-        if let Err(e) =
-            http_server::start_http_server(http_mgr, http_port, embedding_info, peer_registry, event_tx.clone()).await
+        if let Err(e) = http_server::start_http_server(
+            http_mgr,
+            http_port,
+            embedding_info,
+            peer_registry,
+            event_tx.clone(),
+        )
+        .await
         {
             eprintln!("HTTP Server panicked: {e}");
         }

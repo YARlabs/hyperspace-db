@@ -60,9 +60,13 @@ impl HyperspaceDB {
         let metric = metric.to_lowercase();
 
         let index = match metric.as_str() {
-             "l2" | "euclidean" => IndexWrapper::L2(Arc::new(HnswIndex::new(storage, mode, config, dimension))),
-             "cosine" => IndexWrapper::Cosine(Arc::new(HnswIndex::new(storage, mode, config, dimension))),
-             _ => return Err(JsValue::from_str(&format!("Unsupported metric={metric}."))),
+            "l2" | "euclidean" => {
+                IndexWrapper::L2(Arc::new(HnswIndex::new(storage, mode, config, dimension)))
+            }
+            "cosine" => {
+                IndexWrapper::Cosine(Arc::new(HnswIndex::new(storage, mode, config, dimension)))
+            }
+            _ => return Err(JsValue::from_str(&format!("Unsupported metric={metric}."))),
         };
 
         Ok(Self {

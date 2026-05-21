@@ -23,7 +23,7 @@ proptest! {
     ) {
         let dir = tempdir().unwrap();
         let store_path = dir.path().join("store.bin");
-        let store = Arc::new(VectorStore::new(&store_path, std::mem::size_of::<HyperVector<D>>()));
+        let store = Arc::new(VectorStore::new(&store_path, D * 8 + 8));
 
         let config = Arc::new(GlobalConfig {
             ef_construction: 200.into(),
@@ -31,10 +31,11 @@ proptest! {
             ..Default::default()
         });
 
-        let index = HnswIndex::<D, EuclideanMetric>::new(
+        let index = HnswIndex::<EuclideanMetric>::new(
             store.clone(),
             QuantizationMode::None,
-            config
+            config,
+            D
         );
 
         // Insert
@@ -48,7 +49,7 @@ proptest! {
 
             // Verify storage
             let stored_bytes = store.get(id);
-            let stored_hv = HyperVector::<D>::from_bytes(stored_bytes);
+            let stored_hv = HyperVector::from_bytes(stored_bytes);
             assert_eq!(stored_hv.coords, coords, "Vector storage mismatch at index {i}");
 
             let meta = HashMap::new();
@@ -64,10 +65,12 @@ proptest! {
                 ef_search: 200,
                 hybrid_query: None,
                 hybrid_alpha: None,
+                component_weights: None,
                 use_wasserstein: false,
                 bm25_options: None,
                 fusion_method: None,
                 mrl_dimension: None,
+                include_payload: false,
             };
             let results = index.search(vec, &empty_filter, &[], &search_params);
 

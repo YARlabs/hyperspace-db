@@ -2,8 +2,8 @@ use hyperspace_core::vector::HyperVector;
 
 #[test]
 fn bench_distance_speed() {
-    let a = HyperVector::<1024>::new([0.001; 1024]).unwrap();
-    let b = HyperVector::<1024>::new([0.002; 1024]).unwrap();
+    let a = HyperVector::new([0.001; 1024].to_vec()).unwrap();
+    let b = HyperVector::new([0.002; 1024].to_vec()).unwrap();
 
     let start = std::time::Instant::now();
     let iterations = 1_000_000;

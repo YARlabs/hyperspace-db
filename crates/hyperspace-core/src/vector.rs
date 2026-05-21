@@ -1,11 +1,13 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::cast_lossless)]
+// `n` is used in nightly-simd cfg blocks but appears unused in the scalar fallback path.
+#![allow(unused_variables)]
 
 #[cfg(feature = "nightly-simd")]
 use std::simd::prelude::*;
 
-/// VectorLayout tracks the sizes of different components and how they are sliced from RAM/Disk.
+/// `VectorLayout` tracks the sizes of different components and how they are sliced from RAM/Disk.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VectorComponentLayout {
     pub name: String,
@@ -48,7 +50,7 @@ impl HyperVector {
         let mut coords = Vec::with_capacity(coords_len);
         for i in 0..coords_len {
             let mut buf = [0u8; 8];
-            buf.copy_from_slice(&bytes[i*8..(i+1)*8]);
+            buf.copy_from_slice(&bytes[i * 8..(i + 1) * 8]);
             coords.push(f64::from_le_bytes(buf));
         }
         Self { coords, alpha }
@@ -83,7 +85,7 @@ impl HyperVector {
     /// Calculates the squared Poincaré distance. Critical performance path.
     #[inline(always)]
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
-        let _n = self.coords.len();
+        let n = self.coords.len();
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
@@ -158,7 +160,7 @@ impl HyperVector {
 
     #[inline(always)]
     pub fn klein_chord_distance_sq(&self, other: &Self) -> f64 {
-        let _n = self.coords.len();
+        let n = self.coords.len();
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
@@ -209,7 +211,7 @@ impl HyperVectorF32 {
         let mut coords = Vec::with_capacity(coords_len);
         for i in 0..coords_len {
             let mut buf = [0u8; 4];
-            buf.copy_from_slice(&bytes[i*4..(i+1)*4]);
+            buf.copy_from_slice(&bytes[i * 4..(i + 1) * 4]);
             coords.push(f32::from_le_bytes(buf));
         }
         Self { coords, alpha }
@@ -266,7 +268,7 @@ impl QuantizedHyperVector {
         let coords_len = alpha_offset;
         let mut coords = Vec::with_capacity(coords_len);
         for i in 0..coords_len {
-            coords.push(bytes[i] as i8);
+            coords.push(bytes[i].cast_signed());
         }
         Self { coords, alpha }
     }
@@ -274,7 +276,7 @@ impl QuantizedHyperVector {
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.coords.len() + 4);
         for c in &self.coords {
-            bytes.push(*c as u8);
+            bytes.push((*c).cast_unsigned());
         }
         bytes.extend_from_slice(&self.alpha.to_le_bytes());
         bytes
@@ -371,7 +373,7 @@ impl QuantizedHyperVector {
 
     #[inline(always)]
     pub fn poincare_distance_sq_to_float(&self, query: &HyperVector) -> f64 {
-        let _n = self.coords.len();
+        let n = self.coords.len();
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 8;
@@ -533,7 +535,7 @@ impl BinaryHyperVector {
 
     pub fn from_float(v: &HyperVector) -> Self {
         let n = v.coords.len();
-        let bytes_len = (n + 7) / 8;
+        let bytes_len = n.div_ceil(8);
         let mut bits = vec![0u8; bytes_len];
 
         for i in 0..n {

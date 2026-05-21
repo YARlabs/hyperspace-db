@@ -13,8 +13,8 @@ fn test_concurrent_indexing_stress() {
     config.set_ef_construction(100);
 
     let storage = Arc::new(VectorStore::new(std::path::Path::new("mem"), 4)); // 1 float
-    let index: Arc<HnswIndex<1, EuclideanMetric>> =
-        Arc::new(HnswIndex::new(storage, QuantizationMode::None, config));
+    let index: Arc<HnswIndex<EuclideanMetric>> =
+        Arc::new(HnswIndex::new(storage, QuantizationMode::None, config, 1));
 
     let mut handles = vec![];
     let num_threads = 8;

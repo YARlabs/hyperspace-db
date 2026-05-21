@@ -11,6 +11,7 @@ hyperspace-proto = { workspace = true }
 hyperspace-core = { workspace = true, features = ["gpu-runtime"] }
 hyperspace-index = { workspace = true }
 hyperspace-store = { workspace = true }
+hyperspace-cache = { workspace = true }
 tokio-stream = "0.1"
 rand = "0.8"
 sha2 = "0.10.9"
@@ -30,6 +31,7 @@ sysinfo = "0.32"
 hyperspace-embed = { path = "../hyperspace-embed", optional = true }
 tikv-jemallocator = "0.6"
 tikv-jemalloc-ctl = "0.6"
+prometheus = { version = "0.13", features = ["process"] }
 
 uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true

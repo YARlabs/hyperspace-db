@@ -70,8 +70,8 @@ fn test_index_save_load() {
 
     let config = Arc::new(GlobalConfig::default());
     let storage = Arc::new(VectorStore::new(&storage_path, 4)); // 1 float dim
-    let index: HnswIndex<1, EuclideanMetric> =
-        HnswIndex::new(storage.clone(), QuantizationMode::None, config.clone());
+    let index: HnswIndex<EuclideanMetric> =
+        HnswIndex::new(storage.clone(), QuantizationMode::None, config.clone(), 1);
 
     // Add metadata
     {
@@ -89,8 +89,8 @@ fn test_index_save_load() {
 
     // Load
     let _layout_file = std::fs::File::open(&path).unwrap();
-    let loaded_index: HnswIndex<1, EuclideanMetric> =
-        HnswIndex::load_snapshot(&path, storage, QuantizationMode::None, config)
+    let loaded_index: HnswIndex<EuclideanMetric> =
+        HnswIndex::load_snapshot(&path, storage, QuantizationMode::None, config, 1)
             .expect("Load failed");
 
     // Check Metadata

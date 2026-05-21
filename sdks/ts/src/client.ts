@@ -45,6 +45,7 @@ export type TypedMetadataValue = string | number | boolean;
 
 export interface Filter {
     match?: { key: string, value: string };
+    prefix?: { key: string, prefix: string };
     range?: { key: string, gte?: number, lte?: number };
     inCone?: { axes: number[], apertures: number[], cen: number[] };
     inBall?: { center: number[], radius: number };
@@ -313,6 +314,11 @@ export class HyperspaceClient {
             m.setKey(f.match.key);
             m.setValue(f.match.value);
             pf.setMatch(m);
+        } else if (f.prefix) {
+            const p = new hyperspace_pb.Prefix();
+            p.setKey(f.prefix.key);
+            p.setPrefix(f.prefix.prefix);
+            pf.setPrefix(p);
         } else if (f.range) {
             const r = new hyperspace_pb.Range();
             r.setKey(f.range.key);
@@ -427,6 +433,30 @@ export class HyperspaceClient {
         });
     }
 
+    public freezeCollection(name: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const req = new hyperspace_pb.FreezeCollectionRequest();
+            req.setName(name);
+
+            this.client.freezeCollection(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus());
+            });
+        });
+    }
+
+    public unfreezeCollection(name: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const req = new hyperspace_pb.UnfreezeCollectionRequest();
+            req.setName(name);
+
+            this.client.unfreezeCollection(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus());
+            });
+        });
+    }
+
     public listCollections(): Promise<CollectionInfo[]> {
         return new Promise((resolve, reject) => {
             const req = new Empty();
@@ -458,6 +488,24 @@ export class HyperspaceClient {
                     return info;
                 });
                 resolve(list);
+            });
+        });
+    }
+
+    public getPoints(ids: number[], collection: string = ''): Promise<{id: number, vector: number[], metadata: {[key: string]: string}}[]> {
+        return new Promise((resolve, reject) => {
+            const req = new GetPointsRequest();
+            req.setCollection(collection);
+            req.setIdsList(ids);
+
+            this.client.getPoints(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                const points = resp.getPointsList().map((p: any) => ({
+                    id: p.getId(),
+                    vector: p.getVectorList(),
+                    metadata: p.getMetadataMap().toObject()
+                }));
+                resolve(points);
             });
         });
     }

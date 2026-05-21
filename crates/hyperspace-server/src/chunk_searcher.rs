@@ -68,7 +68,7 @@ pub fn search_chunk<M: Metric>(
     let dimension = query.len();
     let element_size = match mode {
         QuantizationMode::ScalarI8 => dimension + 4,
-        QuantizationMode::Binary => (dimension + 7) / 8,
+        QuantizationMode::Binary => dimension.div_ceil(8),
         QuantizationMode::AsymmetricHybrid801 => {
             if dimension > 33 {
                 33 * 4 + (dimension - 33) + 4

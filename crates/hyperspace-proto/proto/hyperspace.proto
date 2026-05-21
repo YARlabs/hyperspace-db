@@ -8,6 +8,8 @@ service Database {
   rpc DeleteCollection (DeleteCollectionRequest) returns (StatusResponse);
   rpc ListCollections (Empty) returns (ListCollectionsResponse);
   rpc GetCollectionStats (CollectionStatsRequest) returns (CollectionStatsResponse);
+  rpc FreezeCollection (FreezeCollectionRequest) returns (StatusResponse);
+  rpc UnfreezeCollection (UnfreezeCollectionRequest) returns (StatusResponse);
 
   // Insert vectors
   rpc Insert (InsertRequest) returns (InsertResponse);
@@ -366,6 +368,7 @@ message Filter {
     FilterAnd and_op = 6;
     FilterOr or_op = 7;
     FilterNot not_op = 8;
+    Prefix prefix = 9;
   }
 }
 
@@ -384,6 +387,11 @@ message FilterNot {
 message Match {
   string key = 1;
   string value = 2;
+}
+
+message Prefix {
+  string key = 1;
+  string prefix = 2;
 }
 
 message Range {
@@ -662,4 +670,12 @@ message SyncPushResponse {
   uint32 accepted = 1;
   uint32 rejected = 2;
   uint32 duplicates = 3;
+}
+
+message FreezeCollectionRequest {
+  string name = 1;
+}
+
+message UnfreezeCollectionRequest {
+  string name = 1;
 }

@@ -12,6 +12,8 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     deleteCollection: IDatabaseService_IDeleteCollection;
     listCollections: IDatabaseService_IListCollections;
     getCollectionStats: IDatabaseService_IGetCollectionStats;
+    freezeCollection: IDatabaseService_IFreezeCollection;
+    unfreezeCollection: IDatabaseService_IUnfreezeCollection;
     insert: IDatabaseService_IInsert;
     batchInsert: IDatabaseService_IBatchInsert;
     insertText: IDatabaseService_IInsertText;
@@ -30,6 +32,7 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     getConceptParents: IDatabaseService_IGetConceptParents;
     traverse: IDatabaseService_ITraverse;
     findSemanticClusters: IDatabaseService_IFindSemanticClusters;
+    getSubsumptionTree: IDatabaseService_IGetSubsumptionTree;
     monitor: IDatabaseService_IMonitor;
     triggerSnapshot: IDatabaseService_ITriggerSnapshot;
     triggerVacuum: IDatabaseService_ITriggerVacuum;
@@ -80,6 +83,24 @@ interface IDatabaseService_IGetCollectionStats extends grpc.MethodDefinition<hyp
     requestDeserialize: grpc.deserialize<hyperspace_pb.CollectionStatsRequest>;
     responseSerialize: grpc.serialize<hyperspace_pb.CollectionStatsResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.CollectionStatsResponse>;
+}
+interface IDatabaseService_IFreezeCollection extends grpc.MethodDefinition<hyperspace_pb.FreezeCollectionRequest, hyperspace_pb.StatusResponse> {
+    path: "/hyperspace.Database/FreezeCollection";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.FreezeCollectionRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.FreezeCollectionRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.StatusResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.StatusResponse>;
+}
+interface IDatabaseService_IUnfreezeCollection extends grpc.MethodDefinition<hyperspace_pb.UnfreezeCollectionRequest, hyperspace_pb.StatusResponse> {
+    path: "/hyperspace.Database/UnfreezeCollection";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.UnfreezeCollectionRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.UnfreezeCollectionRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.StatusResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.StatusResponse>;
 }
 interface IDatabaseService_IInsert extends grpc.MethodDefinition<hyperspace_pb.InsertRequest, hyperspace_pb.InsertResponse> {
     path: "/hyperspace.Database/Insert";
@@ -243,6 +264,15 @@ interface IDatabaseService_IFindSemanticClusters extends grpc.MethodDefinition<h
     responseSerialize: grpc.serialize<hyperspace_pb.FindSemanticClustersResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.FindSemanticClustersResponse>;
 }
+interface IDatabaseService_IGetSubsumptionTree extends grpc.MethodDefinition<hyperspace_pb.GetSubsumptionTreeRequest, hyperspace_pb.GetSubsumptionTreeResponse> {
+    path: "/hyperspace.Database/GetSubsumptionTree";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.GetSubsumptionTreeRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.GetSubsumptionTreeRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.GetSubsumptionTreeResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.GetSubsumptionTreeResponse>;
+}
 interface IDatabaseService_IMonitor extends grpc.MethodDefinition<hyperspace_pb.MonitorRequest, hyperspace_pb.SystemStats> {
     path: "/hyperspace.Database/Monitor";
     requestStream: false;
@@ -368,6 +398,8 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     deleteCollection: grpc.handleUnaryCall<hyperspace_pb.DeleteCollectionRequest, hyperspace_pb.StatusResponse>;
     listCollections: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.ListCollectionsResponse>;
     getCollectionStats: grpc.handleUnaryCall<hyperspace_pb.CollectionStatsRequest, hyperspace_pb.CollectionStatsResponse>;
+    freezeCollection: grpc.handleUnaryCall<hyperspace_pb.FreezeCollectionRequest, hyperspace_pb.StatusResponse>;
+    unfreezeCollection: grpc.handleUnaryCall<hyperspace_pb.UnfreezeCollectionRequest, hyperspace_pb.StatusResponse>;
     insert: grpc.handleUnaryCall<hyperspace_pb.InsertRequest, hyperspace_pb.InsertResponse>;
     batchInsert: grpc.handleUnaryCall<hyperspace_pb.BatchInsertRequest, hyperspace_pb.InsertResponse>;
     insertText: grpc.handleUnaryCall<hyperspace_pb.InsertTextRequest, hyperspace_pb.InsertResponse>;
@@ -386,6 +418,7 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     getConceptParents: grpc.handleUnaryCall<hyperspace_pb.GetConceptParentsRequest, hyperspace_pb.GetConceptParentsResponse>;
     traverse: grpc.handleUnaryCall<hyperspace_pb.TraverseRequest, hyperspace_pb.TraverseResponse>;
     findSemanticClusters: grpc.handleUnaryCall<hyperspace_pb.FindSemanticClustersRequest, hyperspace_pb.FindSemanticClustersResponse>;
+    getSubsumptionTree: grpc.handleUnaryCall<hyperspace_pb.GetSubsumptionTreeRequest, hyperspace_pb.GetSubsumptionTreeResponse>;
     monitor: grpc.handleServerStreamingCall<hyperspace_pb.MonitorRequest, hyperspace_pb.SystemStats>;
     triggerSnapshot: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
     triggerVacuum: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.StatusResponse>;
@@ -414,6 +447,12 @@ export interface IDatabaseClient {
     getCollectionStats(request: hyperspace_pb.CollectionStatsRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.CollectionStatsResponse) => void): grpc.ClientUnaryCall;
     getCollectionStats(request: hyperspace_pb.CollectionStatsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.CollectionStatsResponse) => void): grpc.ClientUnaryCall;
     getCollectionStats(request: hyperspace_pb.CollectionStatsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.CollectionStatsResponse) => void): grpc.ClientUnaryCall;
+    freezeCollection(request: hyperspace_pb.FreezeCollectionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    freezeCollection(request: hyperspace_pb.FreezeCollectionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    freezeCollection(request: hyperspace_pb.FreezeCollectionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    unfreezeCollection(request: hyperspace_pb.UnfreezeCollectionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    unfreezeCollection(request: hyperspace_pb.UnfreezeCollectionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    unfreezeCollection(request: hyperspace_pb.UnfreezeCollectionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     insert(request: hyperspace_pb.InsertRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     insert(request: hyperspace_pb.InsertRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     insert(request: hyperspace_pb.InsertRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
@@ -468,6 +507,9 @@ export interface IDatabaseClient {
     findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
     findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
     findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
+    getSubsumptionTree(request: hyperspace_pb.GetSubsumptionTreeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetSubsumptionTreeResponse) => void): grpc.ClientUnaryCall;
+    getSubsumptionTree(request: hyperspace_pb.GetSubsumptionTreeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetSubsumptionTreeResponse) => void): grpc.ClientUnaryCall;
+    getSubsumptionTree(request: hyperspace_pb.GetSubsumptionTreeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetSubsumptionTreeResponse) => void): grpc.ClientUnaryCall;
     monitor(request: hyperspace_pb.MonitorRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     monitor(request: hyperspace_pb.MonitorRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     triggerSnapshot(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
@@ -520,6 +562,12 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public getCollectionStats(request: hyperspace_pb.CollectionStatsRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.CollectionStatsResponse) => void): grpc.ClientUnaryCall;
     public getCollectionStats(request: hyperspace_pb.CollectionStatsRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.CollectionStatsResponse) => void): grpc.ClientUnaryCall;
     public getCollectionStats(request: hyperspace_pb.CollectionStatsRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.CollectionStatsResponse) => void): grpc.ClientUnaryCall;
+    public freezeCollection(request: hyperspace_pb.FreezeCollectionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public freezeCollection(request: hyperspace_pb.FreezeCollectionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public freezeCollection(request: hyperspace_pb.FreezeCollectionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public unfreezeCollection(request: hyperspace_pb.UnfreezeCollectionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public unfreezeCollection(request: hyperspace_pb.UnfreezeCollectionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
+    public unfreezeCollection(request: hyperspace_pb.UnfreezeCollectionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;
     public insert(request: hyperspace_pb.InsertRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     public insert(request: hyperspace_pb.InsertRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
     public insert(request: hyperspace_pb.InsertRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.InsertResponse) => void): grpc.ClientUnaryCall;
@@ -574,6 +622,9 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
     public findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
     public findSemanticClusters(request: hyperspace_pb.FindSemanticClustersRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.FindSemanticClustersResponse) => void): grpc.ClientUnaryCall;
+    public getSubsumptionTree(request: hyperspace_pb.GetSubsumptionTreeRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetSubsumptionTreeResponse) => void): grpc.ClientUnaryCall;
+    public getSubsumptionTree(request: hyperspace_pb.GetSubsumptionTreeRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetSubsumptionTreeResponse) => void): grpc.ClientUnaryCall;
+    public getSubsumptionTree(request: hyperspace_pb.GetSubsumptionTreeRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.GetSubsumptionTreeResponse) => void): grpc.ClientUnaryCall;
     public monitor(request: hyperspace_pb.MonitorRequest, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     public monitor(request: hyperspace_pb.MonitorRequest, metadata?: grpc.Metadata, options?: Partial<grpc.CallOptions>): grpc.ClientReadableStream<hyperspace_pb.SystemStats>;
     public triggerSnapshot(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.StatusResponse) => void): grpc.ClientUnaryCall;

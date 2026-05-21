@@ -1,5 +1,5 @@
 use hyperspace_sdk::fuzzy::{FuzzyQuery, TConorm, TNorm};
-use hyperspace_sdk::Client;
+use hyperspace_sdk::{Client, CollectionSchema, VectorComponent};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,7 +13,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Creating collection `{col_name}` for fuzzy queries (L2 metric)...");
     client
-        .create_collection(col_name.to_string(), 3, "l2".to_string())
+        .create_collection(
+            col_name.to_string(),
+            CollectionSchema {
+                components: vec![VectorComponent {
+                    name: "vec".to_string(),
+                    metric: "l2".to_string(),
+                    full_dimension: 3,
+                    weight: 1.0,
+                }],
+                cascade_pipeline: vec![],
+            },
+        )
         .await?;
 
     println!("Inserting test data...");

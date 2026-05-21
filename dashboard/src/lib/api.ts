@@ -79,6 +79,27 @@ export const getCollectionStats = (name: string) => api.get(`/collections/${name
 
 export const updateCollectionConfig = (name: string, config: any) => api.patch(`/collections/${name}/config`, config)
 
+// Cache management — L0 Hot Tier
+export const getCacheStats = (name: string) => api.get(`/collections/${name}/cache/stats`).then(r => r.data)
+
+export const clearCache = (name: string) => api.post(`/collections/${name}/cache/clear`).then(r => r.data)
+
+export const updateCacheConfig = (name: string, policy: string, annThreshold?: number | null) =>
+    api.post(`/collections/${name}/cache/config`, {
+        policy,
+        ann_threshold: annThreshold ?? undefined
+    }).then(r => r.data)
+
+export const freezeCollection = async (name: string) => {
+    const res = await api.post(`/collections/${name}/freeze`)
+    return res.data
+}
+
+export const unfreezeCollection = async (name: string) => {
+    const res = await api.post(`/collections/${name}/unfreeze`)
+    return res.data
+}
+
 export const getPoints = async (name: string, ids: number[]) => {
     const res = await api.get(`/collections/${name}/points`, { params: { ids: ids.join(',') } })
     return res.data
