@@ -32,6 +32,7 @@ hyperspace-embed = { path = "../hyperspace-embed", optional = true }
 tikv-jemallocator = "0.6"
 tikv-jemalloc-ctl = "0.6"
 prometheus = { version = "0.13", features = ["process"] }
+rayon = "1"
 
 uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true

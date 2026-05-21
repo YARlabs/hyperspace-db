@@ -307,6 +307,9 @@ pub trait Collection: Send + Sync + 'static {
     fn state_hash(&self) -> u64;
     fn buckets(&self) -> Vec<u64>; // New method
     fn queue_size(&self) -> u64; // Indexing queue size for eventual consistency
+    fn write_buffer_size(&self) -> usize {
+        0
+    }
     fn quantization_mode(&self) -> crate::QuantizationMode;
     fn get_usage(&self) -> CollectionUsage;
     fn get_hnsw_config(&self) -> HnswConfig {

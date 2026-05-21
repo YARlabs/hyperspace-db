@@ -586,6 +586,7 @@ async fn get_stats(
             "metric": col.metric_name(),
             "quantization": format!("{:?}", col.quantization_mode()),
             "indexing_queue": col.queue_size(),
+            "write_buffer_size": col.write_buffer_size(),
             "active_tasks": usage.active_indexing_tasks,
             // Real live values from GlobalConfig atomics:
             "ef_search": hnsw.ef_search,

@@ -653,10 +653,17 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                     </div>
                                 </div>
                             </div>
-                            <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1.5">
-                                <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">HNSW Indexing Queue</div>
-                                <div className="text-2xl font-mono font-bold text-white">{stats.indexing_queue ?? 0}</div>
-                                <div className="text-[10px] text-zinc-500">Vectors awaiting graph integration</div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1.5">
+                                    <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">HNSW Indexing Queue</div>
+                                    <div className="text-2xl font-mono font-bold text-white">{stats.indexing_queue ?? 0}</div>
+                                    <div className="text-[10px] text-zinc-500">Vectors awaiting graph integration</div>
+                                </div>
+                                <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1.5">
+                                    <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Write Buffer Status</div>
+                                    <div className="text-2xl font-mono font-bold text-emerald-400">{stats.write_buffer_size ?? 0}</div>
+                                    <div className="text-[10px] text-zinc-500">Unindexed vectors available for searching</div>
+                                </div>
                             </div>
                             <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
                                 <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 mb-1">Quantization Mode</div>

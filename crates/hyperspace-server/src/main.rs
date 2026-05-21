@@ -30,6 +30,7 @@ mod sync;
 #[cfg(test)]
 mod tests;
 mod wave;
+mod write_buffer;
 use manager::CollectionManager;
 
 #[cfg(feature = "embed")]

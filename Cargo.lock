@@ -1911,6 +1911,7 @@ dependencies = [
  "parking_lot",
  "prometheus",
  "rand 0.8.5",
+ "rayon",
  "rust-embed",
  "serde",
  "serde_json",

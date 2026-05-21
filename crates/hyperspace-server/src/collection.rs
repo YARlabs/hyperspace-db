@@ -83,6 +83,7 @@ pub struct CollectionImpl<M: Metric> {
     schema: hyperspace_proto::hyperspace::CollectionSchema,
     layout: hyperspace_core::vector::VectorLayout,
     cache: Option<Arc<VectorCache>>,
+    write_buffer: Arc<crate::write_buffer::WriteBuffer>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -513,6 +514,8 @@ impl<M: Metric> CollectionImpl<M> {
             })?;
         }
 
+        let write_buffer = Arc::new(crate::write_buffer::WriteBuffer::new());
+
         // Background Tasks
         let (index_tx, mut index_rx) = mpsc::unbounded_channel();
         let idx_link_worker = index_link.clone();
@@ -565,6 +568,7 @@ impl<M: Metric> CollectionImpl<M> {
             .unwrap_or(0.0)
             .max(0.0);
 
+        let write_buffer_for_indexer = write_buffer.clone();
         let indexer_task = tokio::spawn(async move {
             use std::sync::atomic::AtomicU64;
             let received = Arc::new(AtomicU64::new(0));
@@ -575,6 +579,7 @@ impl<M: Metric> CollectionImpl<M> {
                 let idx_link = idx_link_worker.clone();
                 let cfg = cfg_worker.clone();
                 let errors_ref = errors.clone();
+                let write_buf = write_buffer_for_indexer.clone();
                 cfg.inc_active();
 
                 tokio::spawn(async move {
@@ -587,18 +592,21 @@ impl<M: Metric> CollectionImpl<M> {
                     .await;
 
                     match result {
-                        Ok((Ok(()), _processed_id)) => {
+                        Ok((Ok(()), processed_id)) => {
+                            write_buf.remove(processed_id);
                             cfg.dec_queue();
                             cfg.dec_active();
                         }
                         Ok((Err(e), failed_id)) => {
                             eprintln!("❌ Indexer error on ID {failed_id}: {e}");
+                            write_buf.remove(failed_id);
                             cfg.dec_queue();
                             cfg.dec_active();
                             errors_ref.fetch_add(1, Ordering::Relaxed);
                         }
                         Err(join_err) => {
                             eprintln!("❌ Indexer task panicked: {join_err}");
+                            write_buf.remove(id);
                             cfg.dec_queue();
                             cfg.dec_active();
                             errors_ref.fetch_add(1, Ordering::Relaxed);
@@ -830,6 +838,7 @@ impl<M: Metric> CollectionImpl<M> {
             schema,
             layout,
             cache,
+            write_buffer,
         };
 
         // FIX (Bottleneck 4): Cache warmup on startup.
@@ -1125,6 +1134,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             .collect()
     }
 
+    fn write_buffer_size(&self) -> usize {
+        self.write_buffer.size()
+    }
+
     async fn insert(
         &self,
         vector: &[f64],
@@ -1298,6 +1311,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             if queue_size > 10_000 && queue_size.is_multiple_of(5_000) {
                 let active = self.config.active_indexing.load(Ordering::Relaxed);
                 println!("⚠️  Index queue building up: {queue_size} pending, {active} active");
+            }
+
+            if self.write_buffer.size() < 100_000 {
+                self.write_buffer.insert(internal_id, id, processed_vector.to_vec(), metadata.clone());
             }
 
             let _ = self.index_tx.send((internal_id, metadata.clone()));
@@ -1530,6 +1547,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         // Queue for indexing (Send only lightweight metadata clone + internal_id)
         for entry in &entries {
             if entry.reindex_needed {
+                if self.write_buffer.size() < 100_000 {
+                    self.write_buffer.insert(entry.internal_id, entry.id, entry.vector.to_vec(), (*entry.metadata).clone());
+                }
                 let _ = self
                     .index_tx
                     .send((entry.internal_id, entry.metadata.clone()));
@@ -1580,6 +1600,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         } else {
             id
         };
+
+        self.write_buffer.remove(internal_id);
 
         let idx = self.index_link.load();
         if self.config.is_gossip_enabled() {
@@ -1697,6 +1719,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // Convert to owned only when entering blocking task
             let processed_query = processed_query_cow.into_owned();
             let mut search_params_owned = params.clone();
+            let write_buffer_for_search = self.write_buffer.clone();
             let pre_payload = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let index = index_link.load();
@@ -1799,9 +1822,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
                 // Fetch metadata and convert IDs inside blocking worker.
                 // Payload fetch happens AFTER spawn_blocking returns (lazy I/O).
-                reranked_internal
+                let mut hnsw_mapped = reranked_internal
                     .into_iter()
-                    .take(top_k)
                     .map(|(internal_id, dist)| {
                         let meta = if include_metadata {
                             index
@@ -1822,7 +1844,28 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
                         (user_id, dist, meta)
                     })
-                    .collect::<Vec<(u32, f64, HashMap<String, String>)>>()
+                    .collect::<Vec<(u32, f64, HashMap<String, String>)>>();
+
+                let buffer_results = write_buffer_for_search.search::<M>(
+                    &processed_query,
+                    search_k,
+                    filters_ref,
+                    complex_filters_ref,
+                );
+
+                let buffer_mapped: Vec<(u32, f64, HashMap<String, String>)> = buffer_results
+                    .into_iter()
+                    .map(|(id, dist, meta, _)| (id, dist, meta))
+                    .collect();
+
+                hnsw_mapped.extend(buffer_mapped);
+                hnsw_mapped.sort_by(|a, b| a.1.total_cmp(&b.1));
+
+                let mut seen = std::collections::HashSet::new();
+                hnsw_mapped.retain(|(user_id, _, _)| seen.insert(*user_id));
+                hnsw_mapped.truncate(top_k);
+
+                hnsw_mapped
             })
             .await
             .map_err(|e| format!("Search task failed: {e}"))?;
@@ -1895,9 +1938,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // Skip chunk search for small top_k to reduce latency
 
             // === 3. Convert results ===
-            let raw_results: Vec<(u32, f64, HashMap<String, String>)> = mem_results
+            let mut raw_results: Vec<(u32, f64, HashMap<String, String>)> = mem_results
                 .into_iter()
-                .take(top_k)
                 .map(|(internal_id, dist)| {
                     let meta = if include_metadata {
                         index
@@ -1919,6 +1961,26 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     (user_id, dist, meta)
                 })
                 .collect();
+
+            // === 4. Search and merge write buffer ===
+            let buffer_results = self.write_buffer.search::<M>(
+                &processed_query,
+                top_k,
+                filters_ref,
+                complex_filters_ref,
+            );
+
+            let buffer_mapped: Vec<(u32, f64, HashMap<String, String>)> = buffer_results
+                .into_iter()
+                .map(|(id, dist, meta, _)| (id, dist, meta))
+                .collect();
+
+            raw_results.extend(buffer_mapped);
+            raw_results.sort_by(|a, b| a.1.total_cmp(&b.1));
+
+            let mut seen = std::collections::HashSet::new();
+            raw_results.retain(|(user_id, _, _)| seen.insert(*user_id));
+            raw_results.truncate(top_k);
 
             // === Step 3: Lazy Payload Fetch (v3.2) — inline path ================
             if include_payload {
