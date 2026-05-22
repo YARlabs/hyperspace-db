@@ -144,7 +144,37 @@ req := &pb.SearchRequest{
 }
 res, err := client.Search(ctx, req)
 ```
+
+## Hyperbolic & Cognitive Math SDK (Spatial AI Engine)
+
+The Go SDK includes built-in offline mathematical utilities for spatial-AI metrics and Agentic AI workflow management in Hyperbolic space:
+
+```go
+import "github.com/yarlabs/hyperspace-sdk-go"
+
+// 1. Poincaré Ball & Hyperbolic Math
+z, err := hyperspace.MobiusAdd(x, y, 1.0)
+v, err := hyperspace.ExpMap(x, tangentVec, 1.0)
+mu, err := hyperspace.FrechetMean(points, 1.0, 32, 1e-6)
+
+// 2. Hallucination Detection (Entropy approaches 1.0)
+entropy, err := hyperspace.LocalEntropy(candidateThought, neighbors, 1.0)
+if entropy > 0.8 {
+    log.Println("Potential hallucination detected!")
+}
+
+// 3. Proof of Convergence (Lyapunov energy derivative < 0 implies stability)
+stability, err := hyperspace.LyapunovConvergence(trajectory, 1.0)
+
+// 4. Predict Trajectory Momentum (Koopman linearization)
+nextThought, err := hyperspace.KoopmanExtrapolate(past, current, 1.0, 1.0)
+
+// 5. Phase-Locked Loop for topic tracking
+syncedThought, err := hyperspace.ContextResonance(thought, globalContext, 0.5, 1.0)
+```
+
 ## Embedding Pipeline (Optional)
+
 
 HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can use its own backend independently.
 

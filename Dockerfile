@@ -77,7 +77,7 @@ ENV RUST_LOG=info
 ENV HS_DATA_DIR=/app/data
 
 # Label the image
-LABEL org.opencontainers.image.source=https://github.com/yarlabs/hyperspace-db
+LABEL org.opencontainers.image.source=https://github.com/YARlabs/hyperspace-db
 
 # Expose ports
 EXPOSE 50051

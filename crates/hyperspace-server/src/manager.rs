@@ -504,6 +504,13 @@ impl CollectionManager {
             .collect()
     }
 
+    pub fn list_active_collections(&self) -> Vec<(String, Arc<dyn Collection>)> {
+        self.collections
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().collection.clone()))
+            .collect()
+    }
+
     pub fn total_vector_count(&self) -> usize {
         self.collections
             .iter()

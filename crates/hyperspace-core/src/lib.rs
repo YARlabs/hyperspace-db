@@ -456,6 +456,9 @@ pub trait Collection: Send + Sync + 'static {
         let _ = ann_threshold;
         Err("Cache not supported".to_string())
     }
+    fn create_snapshot(&self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub trait Metric: Send + Sync + 'static {

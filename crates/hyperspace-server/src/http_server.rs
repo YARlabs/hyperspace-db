@@ -5,7 +5,7 @@ use axum::{
     http::{StatusCode, Uri},
     middleware::{self, Next},
     response::{sse::Event, sse::Sse, Html, IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use base64::prelude::*;
@@ -204,6 +204,7 @@ pub async fn start_http_server(
             post(rebuild_collection_http),
         )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
+        .route("/api/admin/snapshot", post(trigger_snapshot_http))
         .route("/api/admin/usage", get(get_usage_report_http))
         .route(
             "/api/admin/migration/status",
@@ -217,6 +218,10 @@ pub async fn start_http_server(
         )
         .route("/api/collections/{name}/sync/pull", post(sync_pull_http))
         .route("/api/collections/{name}/points", get(get_points_http))
+        .route(
+            "/api/collections/{name}/points/{id}",
+            delete(delete_point_http),
+        )
         .route("/api/collections/{name}/cache/stats", get(get_cache_stats_http))
         .route("/api/collections/{name}/cache/clear", post(clear_cache_http))
         .route("/api/collections/{name}/cache/config", post(update_cache_config_http))
@@ -1240,6 +1245,25 @@ async fn get_points_http(
     }
 }
 
+async fn delete_point_http(
+    Path((name, id)): Path<(String, u32)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.delete(id) {
+            Ok(()) => StatusCode::OK.into_response(),
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct UpdatePayloadReq {
     id: u32,
@@ -1790,6 +1814,54 @@ async fn trigger_vacuum_http(
     Json(serde_json::json!({
         "status": "Success",
         "message": "System memory purged and returned to OS"
+    }))
+    .into_response()
+}
+
+async fn trigger_snapshot_http(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    if !ctx.is_admin {
+        return (StatusCode::FORBIDDEN, "Admin access required").into_response();
+    }
+
+    let active_collections = manager.list_active_collections();
+    let mut successes = std::collections::HashMap::new();
+    let mut failures = std::collections::HashMap::new();
+
+    for (name, collection) in active_collections {
+        match collection.create_snapshot() {
+            Ok(()) => {
+                successes.insert(name, "Ok".to_string());
+            }
+            Err(e) => {
+                failures.insert(name, e);
+            }
+        }
+    }
+
+    if !failures.is_empty() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "status": "Error",
+                "message": "Failed to create snapshots for some collections.",
+                "errors": failures,
+                "successes": successes
+            })),
+        )
+            .into_response();
+    }
+
+    Json(serde_json::json!({
+        "status": "Success",
+        "message": "System snapshots created successfully.",
+        "collections": successes
     }))
     .into_response()
 }

@@ -1,64 +1,131 @@
-///
-//  Generated code. Do not modify.
-//  source: hyperspace.proto
+// This is a generated file - do not edit.
 //
-// @dart = 2.12
-// ignore_for_file: annotate_overrides,camel_case_types,constant_identifier_names,directives_ordering,library_prefixes,non_constant_identifier_names,prefer_final_fields,return_of_invalid_type,unnecessary_const,unnecessary_import,unnecessary_this,unused_import,unused_shown_name
+// Generated from hyperspace.proto.
 
-// ignore_for_file: UNDEFINED_SHOWN_NAME
+// @dart = 3.3
+
+// ignore_for_file: annotate_overrides, camel_case_types, comment_references
+// ignore_for_file: constant_identifier_names
+// ignore_for_file: curly_braces_in_flow_control_structures
+// ignore_for_file: deprecated_member_use_from_same_package, library_prefixes
+// ignore_for_file: non_constant_identifier_names, prefer_relative_imports
+
 import 'dart:core' as $core;
+
 import 'package:protobuf/protobuf.dart' as $pb;
 
 class QuantizationMode extends $pb.ProtobufEnum {
-  static const QuantizationMode NONE = QuantizationMode._(0, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'NONE');
-  static const QuantizationMode SCALAR_I8 = QuantizationMode._(1, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'SCALAR_I8');
+  static const QuantizationMode NONE =
+      QuantizationMode._(0, _omitEnumNames ? '' : 'NONE');
+  static const QuantizationMode SCALAR_I8 =
+      QuantizationMode._(1, _omitEnumNames ? '' : 'SCALAR_I8');
 
-  static const $core.List<QuantizationMode> values = <QuantizationMode> [
+  static const $core.List<QuantizationMode> values = <QuantizationMode>[
     NONE,
     SCALAR_I8,
   ];
 
-  static final $core.Map<$core.int, QuantizationMode> _byValue = $pb.ProtobufEnum.initByValue(values);
-  static QuantizationMode? valueOf($core.int value) => _byValue[value];
+  static final $core.List<QuantizationMode?> _byValue =
+      $pb.ProtobufEnum.$_initByValueList(values, 1);
+  static QuantizationMode? valueOf($core.int value) =>
+      value < 0 || value >= _byValue.length ? null : _byValue[value];
 
-  const QuantizationMode._($core.int v, $core.String n) : super(v, n);
+  const QuantizationMode._(super.value, super.name);
 }
 
 class DurabilityLevel extends $pb.ProtobufEnum {
-  static const DurabilityLevel DEFAULT_LEVEL = DurabilityLevel._(0, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'DEFAULT_LEVEL');
-  static const DurabilityLevel ASYNC = DurabilityLevel._(1, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'ASYNC');
-  static const DurabilityLevel BATCH = DurabilityLevel._(2, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'BATCH');
-  static const DurabilityLevel STRICT = DurabilityLevel._(3, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'STRICT');
+  static const DurabilityLevel DEFAULT_LEVEL =
+      DurabilityLevel._(0, _omitEnumNames ? '' : 'DEFAULT_LEVEL');
+  static const DurabilityLevel ASYNC =
+      DurabilityLevel._(1, _omitEnumNames ? '' : 'ASYNC');
+  static const DurabilityLevel BATCH =
+      DurabilityLevel._(2, _omitEnumNames ? '' : 'BATCH');
+  static const DurabilityLevel STRICT =
+      DurabilityLevel._(3, _omitEnumNames ? '' : 'STRICT');
 
-  static const $core.List<DurabilityLevel> values = <DurabilityLevel> [
+  static const $core.List<DurabilityLevel> values = <DurabilityLevel>[
     DEFAULT_LEVEL,
     ASYNC,
     BATCH,
     STRICT,
   ];
 
-  static final $core.Map<$core.int, DurabilityLevel> _byValue = $pb.ProtobufEnum.initByValue(values);
-  static DurabilityLevel? valueOf($core.int value) => _byValue[value];
+  static final $core.List<DurabilityLevel?> _byValue =
+      $pb.ProtobufEnum.$_initByValueList(values, 3);
+  static DurabilityLevel? valueOf($core.int value) =>
+      value < 0 || value >= _byValue.length ? null : _byValue[value];
 
-  const DurabilityLevel._($core.int v, $core.String n) : super(v, n);
+  const DurabilityLevel._(super.value, super.name);
+}
+
+class EdgeType extends $pb.ProtobufEnum {
+  static const EdgeType UNKNOWN =
+      EdgeType._(0, _omitEnumNames ? '' : 'UNKNOWN');
+  static const EdgeType SIMILARITY =
+      EdgeType._(1, _omitEnumNames ? '' : 'SIMILARITY');
+  static const EdgeType HIERARCHY =
+      EdgeType._(2, _omitEnumNames ? '' : 'HIERARCHY');
+
+  static const $core.List<EdgeType> values = <EdgeType>[
+    UNKNOWN,
+    SIMILARITY,
+    HIERARCHY,
+  ];
+
+  static final $core.List<EdgeType?> _byValue =
+      $pb.ProtobufEnum.$_initByValueList(values, 2);
+  static EdgeType? valueOf($core.int value) =>
+      value < 0 || value >= _byValue.length ? null : _byValue[value];
+
+  const EdgeType._(super.value, super.name);
+}
+
+class TraversalMode extends $pb.ProtobufEnum {
+  static const TraversalMode GREEDY =
+      TraversalMode._(0, _omitEnumNames ? '' : 'GREEDY');
+  static const TraversalMode DIFFUSIVE =
+      TraversalMode._(1, _omitEnumNames ? '' : 'DIFFUSIVE');
+  static const TraversalMode MOMENTUM =
+      TraversalMode._(2, _omitEnumNames ? '' : 'MOMENTUM');
+
+  static const $core.List<TraversalMode> values = <TraversalMode>[
+    GREEDY,
+    DIFFUSIVE,
+    MOMENTUM,
+  ];
+
+  static final $core.List<TraversalMode?> _byValue =
+      $pb.ProtobufEnum.$_initByValueList(values, 2);
+  static TraversalMode? valueOf($core.int value) =>
+      value < 0 || value >= _byValue.length ? null : _byValue[value];
+
+  const TraversalMode._(super.value, super.name);
 }
 
 class EventType extends $pb.ProtobufEnum {
-  static const EventType EVENT_UNKNOWN = EventType._(0, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'EVENT_UNKNOWN');
-  static const EventType VECTOR_INSERTED = EventType._(1, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'VECTOR_INSERTED');
-  static const EventType VECTOR_DELETED = EventType._(2, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'VECTOR_DELETED');
-  static const EventType TRAJECTORY_STEP = EventType._(3, const $core.bool.fromEnvironment('protobuf.omit_enum_names') ? '' : 'TRAJECTORY_STEP');
+  static const EventType EVENT_UNKNOWN =
+      EventType._(0, _omitEnumNames ? '' : 'EVENT_UNKNOWN');
+  static const EventType VECTOR_INSERTED =
+      EventType._(1, _omitEnumNames ? '' : 'VECTOR_INSERTED');
+  static const EventType VECTOR_DELETED =
+      EventType._(2, _omitEnumNames ? '' : 'VECTOR_DELETED');
+  static const EventType TRAJECTORY_STEP =
+      EventType._(3, _omitEnumNames ? '' : 'TRAJECTORY_STEP');
 
-  static const $core.List<EventType> values = <EventType> [
+  static const $core.List<EventType> values = <EventType>[
     EVENT_UNKNOWN,
     VECTOR_INSERTED,
     VECTOR_DELETED,
     TRAJECTORY_STEP,
   ];
 
-  static final $core.Map<$core.int, EventType> _byValue = $pb.ProtobufEnum.initByValue(values);
-  static EventType? valueOf($core.int value) => _byValue[value];
+  static final $core.List<EventType?> _byValue =
+      $pb.ProtobufEnum.$_initByValueList(values, 3);
+  static EventType? valueOf($core.int value) =>
+      value < 0 || value >= _byValue.length ? null : _byValue[value];
 
-  const EventType._($core.int v, $core.String n) : super(v, n);
+  const EventType._(super.value, super.name);
 }
 
+const $core.bool _omitEnumNames =
+    $core.bool.fromEnvironment('protobuf.omit_enum_names');

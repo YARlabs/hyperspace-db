@@ -5,9 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - 2026-05-14
+## [3.1.0] - 2026-05-22
 
 ### Added
+* **L0 Hot Tier Cache (hyperspace-cache)**:
+    * Implemented a highly optimized, two-level vector caching layer combining a 64-shard thread-safe `DashMap` L1 exact-match cache (~1 µs lookups) with an HNSW fallback L2 ANN cache (~100 µs lookups) to bypass expensive disk reads.
+    * Added full support for TTL (Time-To-Live) evictions driven by user metadata keys (`__ttl`), scheduled background cache invalidation tickers (100 ms frequency), and automatic HNSW fallback index rebuilds when tombstone ratio exceeds 30%.
+    * Exposed gRPC-transparent administrative HTTP routes (`/cache/stats`, `/cache/clear`, `/cache/config`) allowing live cache telemetry observation and real-time eviction policy modifications (LRU, LFU, TTL) without server restarts.
+    * Added comprehensive metadata-aware cache warmup tasks during collection opening to populate cached structures cleanly.
+* **WriteBuffer + Real-time Search Ingestion**:
+    * Introduced a lock-free, thread-safe memory `WriteBuffer` (based on `DashMap`) that intercepts newly inserted vectors immediately before they are processed by the asynchronous HNSW indexer task.
+    * Engineered parallelized linear scanning using `rayon` to perform multi-threaded vector distance calculation and complex geometric/logical filter evaluations directly on the unindexed buffer.
+    * Integrated a unified scatter-gather search merger that dynamically merges, deduplicates by external ID, and re-ranks candidate lists from both the active HNSW segment and the memory `WriteBuffer` in microseconds.
+    * Exposed real-time WriteBuffer sizing in HTTP/gRPC telemetry stats and built interactive emerald UI indicators on the Web Dashboard showing live unindexed memory queue status.
+* **Synchronous Manual Snapshots**:
+    * Unified gRPC and REST (`POST /api/admin/snapshot`) endpoints to trigger manual database snapshots synchronously over all active collections.
+    * Re-implemented core `create_snapshot` traits to serialize HNSW indexes and write metadata state to disk, eliminating orphaned background tasks during shutdown.
+* **Dashboard Control Plane Settings**:
+    * Fully connected Settings Page buttons to live Axios API calls to `/admin/vacuum` and `/admin/snapshot` with error monitoring.
+* **100% Dart/Flutter SDK Parity**:
+    * Implemented all missing endpoints (`freezeCollection`, `unfreezeCollection`, `getConceptParents`, and `replicate`).
+    * Created a robust 11-group integration test suite in `sdks/dart/test/client_test.dart` checking all features, graph metrics, and event streams.
+* **Go and C++ Math Verification**:
+    * Wrote complete math verification test suites (`sdks/go/math_test.go` and `sdks/cpp/test_math.cpp`) for client-side Poincaré Möbius and Cognitive Math. Both verified successfully with 100% pass rates.
+* **Synchronized Documentation & SDK Matrix**:
+    * Standardized all SDK READMEs with detailed guides and code examples for client-side hyperbolic and cognitive math.
 * **Implicit Graph Explorer (Phase 4 / Final Release)**:
     * **Geometric Dashboards**: Real-time visualization of Poincaré and Euclidean manifolds using actual node embeddings.
     * **Momentum Path Tracing**: Glowing visual trajectories in the dashboard that predict agent "thought paths" using Koopman extrapolations.

@@ -1923,10 +1923,25 @@ impl Database for HyperspaceService {
         &self,
         _request: Request<hyperspace_proto::hyperspace::Empty>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        // Individual collections manage snapshots via background tasks.
+        let active_collections = self.manager.list_active_collections();
+        let mut failures = Vec::new();
+
+        for (name, collection) in active_collections {
+            if let Err(e) = collection.create_snapshot() {
+                failures.push(format!("{name}: {e}"));
+            }
+        }
+
+        if !failures.is_empty() {
+            return Err(Status::internal(format!(
+                "Failed to create snapshots for some collections: {}",
+                failures.join(", ")
+            )));
+        }
+
         Ok(Response::new(
             hyperspace_proto::hyperspace::StatusResponse {
-                status: "Snapshots are handled automatically by background tasks.".into(),
+                status: "System snapshots created successfully.".into(),
             },
         ))
     }

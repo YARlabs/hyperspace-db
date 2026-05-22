@@ -105,6 +105,11 @@ export const getPoints = async (name: string, ids: number[]) => {
     return res.data
 }
 
+export const deletePoint = async (name: string, id: number) => {
+    const res = await api.delete(`/collections/${name}/points/${id}`)
+    return res.data
+}
+
 export const fetchTrajectoryHistory = async () => {
     const res = await api.get("/admin/trajectory/history")
     return res.data

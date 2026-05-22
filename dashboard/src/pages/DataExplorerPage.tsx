@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { useSearchParams } from "react-router-dom"
-import { Code, Play, AlertCircle, ChevronLeft, ChevronRight, Edit3, Hash, FileJson, Download, Plus, Database, Info } from "lucide-react"
-import { scrollCollection, countFiltered, updatePayload, insertVector } from "@/lib/api"
+import { Code, Play, AlertCircle, ChevronLeft, ChevronRight, Edit3, Trash2, Hash, FileJson, Download, Plus, Database, Info } from "lucide-react"
+import { scrollCollection, countFiltered, updatePayload, insertVector, deletePoint } from "@/lib/api"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
@@ -93,6 +93,23 @@ function RawDataView({ collection }: { collection: string }) {
     const [limit] = useState(50)
     const [isEditing, setIsEditing] = useState<any>(null)
     const queryClient = useQueryClient()
+
+    const deletePointMutation = useMutation({
+        mutationFn: (id: number) => deletePoint(collection, id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['scroll', collection] })
+            queryClient.invalidateQueries({ queryKey: ['count', collection] })
+        },
+        onError: (err: any) => {
+            alert("Failed to delete point: " + (err.message || err))
+        }
+    })
+
+    const handleDelete = (id: number) => {
+        if (confirm(`Are you sure you want to delete vector ID ${id}?`)) {
+            deletePointMutation.mutate(id)
+        }
+    }
 
     const { data: items, isLoading } = useQuery({
         queryKey: ['scroll', collection, page],
@@ -185,11 +202,16 @@ function RawDataView({ collection }: { collection: string }) {
                                                     <span className="text-[10px] text-zinc-600 italic">RAM Only</span>
                                                 )}
                                             </TableCell>
-                                            <TableCell>
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-white" onClick={() => setIsEditing({ id, meta, typedMeta })}>
-                                                    <Edit3 className="h-3 w-3" />
-                                                </Button>
-                                            </TableCell>
+                                             <TableCell>
+                                                <div className="flex items-center gap-1">
+                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-white" onClick={() => setIsEditing({ id, meta, typedMeta })}>
+                                                        <Edit3 className="h-3 w-3" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-red-400" onClick={() => handleDelete(id)}>
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                             </TableCell>
                                         </TableRow>
                                     );
                                 })

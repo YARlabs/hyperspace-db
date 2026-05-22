@@ -136,6 +136,34 @@ for (const auto& col : list_res.collections()) {
 }
 ```
 
+## Hyperbolic & Cognitive Math SDK (Spatial AI Engine)
+
+The C++ SDK includes built-in offline mathematical utilities for spatial-AI metrics and Agentic AI workflow management in Hyperbolic space via the header-only `<hyperspace/math.hpp>` library:
+
+```cpp
+#include "hyperspace/math.hpp"
+
+// 1. Poincaré Ball & Hyperbolic Math
+auto z = hyperspace::math::mobius_add(x, y, 1.0);
+auto v = hyperspace::math::exp_map(x, tangent_vec, 1.0);
+auto mu = hyperspace::math::frechet_mean(points, 1.0, 32, 1e-6);
+
+// 2. Hallucination Detection (Entropy approaches 1.0)
+double entropy = hyperspace::math::local_entropy(candidate_thought, neighbors, 1.0);
+if (entropy > 0.8) {
+    std::cout << "Potential hallucination detected!" << std::endl;
+}
+
+// 3. Proof of Convergence (Lyapunov energy derivative < 0 implies stability)
+double stability = hyperspace::math::lyapunov_convergence(trajectory, 1.0);
+
+// 4. Predict Trajectory Momentum (Koopman linearization)
+auto next_thought = hyperspace::math::koopman_extrapolate(past, current, 1.0, 1.0);
+
+// 5. Phase-Locked Loop for topic tracking
+auto synced_thought = hyperspace::math::context_resonance(thought, global_context, 0.5, 1.0);
+```
+
 ## Embedding Pipeline (Optional)
 
 HyperspaceDB supports **per-geometry embeddings** configured via environment variables on the server side. Each geometry (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can use its own backend.

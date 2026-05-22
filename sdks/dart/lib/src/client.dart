@@ -176,7 +176,7 @@ class HyperspaceClient {
     final req = UpdatePayloadRequest(collection: collection, id: id);
     typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
     final resp = await _stub.updatePayload(req);
-    return resp.status == 'success';
+    return resp.status.isNotEmpty;
   }
 
   Future<bool> delete(int id, {String collection = ''}) async {
@@ -333,7 +333,7 @@ class HyperspaceClient {
   Future<bool> healthCheck() async {
     try {
       final resp = await _stub.healthCheck(Empty());
-      return resp.status == 'ready';
+      return resp.status == 'ready' || resp.status == 'SERVING';
     } catch (e) {
       return false;
     }
@@ -341,12 +341,12 @@ class HyperspaceClient {
 
   Future<bool> createSnapshot() async {
     final resp = await _stub.triggerSnapshot(Empty());
-    return resp.status == 'success';
+    return resp.status.isNotEmpty;
   }
 
   Future<bool> vacuum() async {
     final resp = await _stub.triggerVacuum(Empty());
-    return resp.status == 'success';
+    return resp.status.isNotEmpty;
   }
 
   Stream<SystemStats> getMetrics() {
@@ -394,7 +394,7 @@ class HyperspaceClient {
   Future<bool> rebuildIndex(String name) async {
     final req = RebuildIndexRequest(name: name);
     final resp = await _stub.rebuildIndex(req);
-    return resp.status == 'success';
+    return resp.status.isNotEmpty;
   }
 
   Future<DigestResponse> getDigest(String collection) {
@@ -417,7 +417,29 @@ class HyperspaceClient {
       learningRate: lr,
     );
     final resp = await _stub.triggerReconsolidation(req);
-    return resp.status == 'success';
+    return resp.status.isNotEmpty;
+  }
+
+  Future<bool> freezeCollection(String name) async {
+    final req = FreezeCollectionRequest(name: name);
+    final resp = await _stub.freezeCollection(req);
+    return resp.status.isNotEmpty;
+  }
+
+  Future<bool> unfreezeCollection(String name) async {
+    final req = UnfreezeCollectionRequest(name: name);
+    final resp = await _stub.unfreezeCollection(req);
+    return resp.status.isNotEmpty;
+  }
+
+  Future<GetConceptParentsResponse> getConceptParents(String collection, int id, int layer, {int limit = 10}) {
+    final req = GetConceptParentsRequest(collection: collection, id: id, layer: layer, limit: limit);
+    return _stub.getConceptParents(req);
+  }
+
+  Stream<ReplicationLog> replicate(int lastLogicalClock) {
+    final req = ReplicationRequest(lastLogicalClock: Int64(lastLogicalClock));
+    return _stub.replicate(req);
   }
 
 

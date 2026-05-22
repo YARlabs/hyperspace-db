@@ -3,7 +3,7 @@
 
 ![Banner](https://img.shields.io/badge/Status-v1.0_Gold-00FFFF?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-AGPL_v3-blue?style=for-the-badge)
-![Size](https://img.shields.io/docker/image-size/yarlabs/hyperspacedb/latest?style=for-the-badge)
+![Size](https://img.shields.io/docker/image-size/glukhota/hyperspace-db/latest?style=for-the-badge)
 
 **The Spatial Memory for AI.**
 HyperspaceDB is a high-performance, hyperbolic vector database written in Rust. It features 1-bit quantization, async replication, and native support for hierarchical datasets (Poincaré ball model).
@@ -12,8 +12,8 @@ HyperspaceDB is a high-performance, hyperbolic vector database written in Rust. 
 
 ## 🚀 Quick Reference
 
-* **Maintained by:** [YARlabs](https://github.com/yarlabs)
-* **Where to get help:** [GitHub Issues](https://github.com/yarlabs/hyperspace-db/issues), [Discord](https://discord.gg/hyperspace-db)
+* **Maintained by:** [YARlabs](https://github.com/YARlabs)
+* **Where to get help:** [GitHub Issues](https://github.com/YARlabs/hyperspace-db/issues), [Discord](https://discord.gg/hyperspace-db)
 * **Supported architectures:** `linux/amd64`, `linux/arm64` (Apple Silicon compatible)
 
 ---
@@ -104,7 +104,7 @@ HyperspaceDB is licensed under a dual-license model:
 1. **Open Source (AGPLv3):** Free for open source projects.
 2. **Commercial:** Required for proprietary/closed-source products.
 
-View full license details on [GitHub](https://github.com/yarlabs/hyperspace-db/blob/main/LICENSE).
+View full license details on [GitHub](https://github.com/YARlabs/hyperspace-db/blob/main/LICENSE).
 
 ```
 

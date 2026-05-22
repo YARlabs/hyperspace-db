@@ -10,6 +10,26 @@ export function SettingsPage() {
     const { data: status } = useQuery({ queryKey: ['status'], queryFn: fetchStatus })
     const apiKey = localStorage.getItem("hyperspace_api_key") || "YOUR_KEY"
 
+    const handleVacuum = async () => {
+        try {
+            const resp = await api.post('/admin/vacuum')
+            alert(`Vacuum Triggered: ${resp.data.message || 'Success'}`)
+        } catch (e: any) {
+            const msg = e.response?.data?.message || e.message
+            alert(`Vacuum Failed: ${msg}`)
+        }
+    }
+
+    const handleSnapshot = async () => {
+        try {
+            const resp = await api.post('/admin/snapshot')
+            alert(`Snapshot Created: ${resp.data.message || 'Success'}`)
+        } catch (e: any) {
+            const msg = e.response?.data?.message || e.message
+            alert(`Snapshot Failed: ${msg}`)
+        }
+    }
+
     return (
         <div className="space-y-6 fade-in">
             <div>
@@ -73,11 +93,11 @@ export function SettingsPage() {
                                 <CardDescription>Manage local NVMe WAL and HNSW segments.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <Button variant="outline" className="w-full justify-start border-white/10 text-zinc-300 hover:text-white" onClick={() => api.post('/admin/vacuum').catch(() => alert('Vacuum requires implementation/admin access'))}>
+                                <Button variant="outline" className="w-full justify-start border-white/10 text-zinc-300 hover:text-white" onClick={handleVacuum}>
                                     <RefreshCw className="mr-2 h-4 w-4" /> Trigger Hot Vacuum (Defrag)
                                 </Button>
-                                <Button variant="outline" className="w-full justify-start border-white/10 text-zinc-300 hover:text-white">
-                                    <Download className="mr-2 h-4 w-4" /> Download Local Snapshot (.hyp)
+                                <Button variant="outline" className="w-full justify-start border-white/10 text-zinc-300 hover:text-white" onClick={handleSnapshot}>
+                                    <Download className="mr-2 h-4 w-4" /> Trigger System Snapshot
                                 </Button>
                                 <Button variant="outline" className="w-full justify-start border-white/10 text-zinc-300 hover:text-white">
                                     <Archive className="mr-2 h-4 w-4" /> Restore from Snapshot

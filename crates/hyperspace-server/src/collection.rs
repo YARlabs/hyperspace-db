@@ -1138,6 +1138,45 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         self.write_buffer.size()
     }
 
+    fn create_snapshot(&self) -> Result<(), String> {
+        let snap_path = self.data_dir.join("index.snap");
+        let idx = self.index_link.load().clone();
+        if let Err(e) = idx.save_snapshot(&snap_path) {
+            return Err(e);
+        }
+
+        // Save State (DashMap iteration)
+        let map_data: HashMap<u32, u32> = self.id_map
+            .iter()
+            .map(|entry| (*entry.key(), *entry.value()))
+            .collect();
+        let reverse_map_data: HashMap<u32, u32> = self.reverse_id_map
+            .iter()
+            .map(|entry| (*entry.key(), *entry.value()))
+            .collect();
+        let buckets_data: Vec<u64> = self.buckets
+            .iter()
+            .map(|b| b.load(Ordering::Relaxed))
+            .collect();
+
+        let state = CollectionState {
+            id_map: map_data,
+            reverse_id_map: reverse_map_data,
+            buckets: buckets_data,
+            last_persisted_clock: self.last_clock.load(Ordering::Relaxed),
+        };
+
+        let state_path = self.data_dir.join("state.json");
+        if let Ok(s) = serde_json::to_string(&state) {
+            if let Err(e) = std::fs::write(&state_path, s) {
+                return Err(e.to_string());
+            }
+        } else {
+            return Err("Failed to serialize state.json".to_string());
+        }
+        Ok(())
+    }
+
     async fn insert(
         &self,
         vector: &[f64],
