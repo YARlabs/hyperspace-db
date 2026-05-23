@@ -38,6 +38,24 @@ export const collectionDescription: INodeProperties[] = [
 				action: 'Delete a collection',
 				description: 'Delete an existing collection',
 			},
+			{
+				name: 'Cache Stats',
+				value: 'cacheStats',
+				action: 'Get cache stats',
+				description: 'Retrieve cache statistics for a specific collection\'s L0 Hot Tier',
+			},
+			{
+				name: 'Clear Cache',
+				value: 'cacheClear',
+				action: 'Clear cache',
+				description: 'Purge all hot items in the L0 Cache for a specific collection',
+			},
+			{
+				name: 'Cache Config',
+				value: 'cacheConfig',
+				action: 'Update cache config',
+				description: 'Update L0 Cache configuration (eviction policy, ANN threshold)',
+			},
 		],
 		default: 'list',
 	},
@@ -49,7 +67,7 @@ export const collectionDescription: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['collection'],
-				operation: ['create', 'getStats', 'delete'],
+				operation: ['create', 'getStats', 'delete', 'cacheStats', 'cacheClear', 'cacheConfig'],
 			},
 		},
 		default: '',
@@ -88,5 +106,37 @@ export const collectionDescription: INodeProperties[] = [
 		},
 		default: 'cosine',
 		description: 'Distance metric to use',
+	},
+	{
+		displayName: 'Cache Eviction Policy',
+		name: 'policy',
+		type: 'options',
+		options: [
+			{ name: 'LRU (Least Recently Used)', value: 'lru' },
+			{ name: 'LFU (Least Frequently Used)', value: 'lfu' },
+			{ name: 'TTL (Time To Live)', value: 'ttl' },
+		],
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['collection'],
+				operation: ['cacheConfig'],
+			},
+		},
+		default: 'lru',
+		description: 'The cache eviction policy to use',
+	},
+	{
+		displayName: 'ANN Threshold',
+		name: 'annThreshold',
+		type: 'number',
+		displayOptions: {
+			show: {
+				resource: ['collection'],
+				operation: ['cacheConfig'],
+			},
+		},
+		default: 0.8,
+		description: 'ANN similarity distance threshold for cache lookup filtering',
 	},
 ];

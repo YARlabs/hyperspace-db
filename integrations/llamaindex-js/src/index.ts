@@ -25,7 +25,10 @@ export class HyperspaceVectorStore implements VectorStore {
       const collections = (await this._client.listCollections()) as any[];
       const existing = collections.find(c => c.name === this.collectionName);
       if (existing) {
-        console.log(`Using existing collection ${this.collectionName}: ${existing.dimension}d, ${existing.metric}`);
+        const comp = existing.schema?.components?.[0];
+        const dim = comp?.fullDimension;
+        const metric = comp?.metric;
+        console.log(`Using existing collection ${this.collectionName}: ${dim}d, ${metric}`);
       }
 
     } catch (e) {
@@ -43,7 +46,7 @@ export class HyperspaceVectorStore implements VectorStore {
       const metadata = node.metadata || {};
       const id = parseInt(node.id_) || Math.floor(Math.random() * 2**32);
       
-      await this._client.insert(node.embedding, id, metadata, this.collectionName);
+      await this._client.insert(id, node.embedding, metadata, this.collectionName);
     }
     return nodes.map((n) => n.id_);
   }
@@ -79,5 +82,17 @@ export class HyperspaceVectorStore implements VectorStore {
       similarities: results.map((r: any) => r.score),
       ids: results.map((r: any) => r.id.toString()),
     };
+  }
+
+  async getCacheStats(): Promise<any> {
+    return this._client.getCacheStats(this.collectionName);
+  }
+
+  async clearCache(): Promise<boolean> {
+    return this._client.clearCache(this.collectionName);
+  }
+
+  async updateCacheConfig(policy: string, annThreshold?: number): Promise<boolean> {
+    return this._client.updateCacheConfig(this.collectionName, policy, annThreshold);
   }
 }

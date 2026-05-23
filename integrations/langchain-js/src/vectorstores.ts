@@ -45,10 +45,22 @@ export class HyperspaceStore extends VectorStore {
             const collections = await this.client.listCollections();
             const existing = collections.find(c => c.name === this.collectionName);
             if (existing) {
-                 // Auto-populate properties if they were not explicitly locked in the store
-                 console.log(`Using existing collection ${this.collectionName}: ${existing.dimension}d, ${existing.metric}`);
+                 const comp = existing.schema?.components?.[0];
+                 const dim = comp?.fullDimension;
+                 const metric = comp?.metric;
+                 console.log(`Using existing collection ${this.collectionName}: ${dim}d, ${metric}`);
             } else if (desiredDim && desiredMetric) {
-                await this.client.createCollection(this.collectionName, desiredDim, desiredMetric);
+                 await this.client.createCollection(this.collectionName, {
+                     components: [
+                         {
+                             name: "default",
+                             metric: desiredMetric,
+                             fullDimension: desiredDim,
+                             weight: 1.0
+                         }
+                     ],
+                     cascadePipeline: []
+                 });
             }
         } catch (e) {
             console.error("Failed to check/create collection", e);
@@ -266,6 +278,18 @@ export class HyperspaceStore extends VectorStore {
     private computeContentHash(text: string): number {
         const hash = crypto.createHash("sha256").update(text).digest();
         return hash.readUInt32BE(0);
+    }
+
+    public async getCacheStats(): Promise<any> {
+        return this.client.getCacheStats(this.collectionName);
+    }
+
+    public async clearCache(): Promise<boolean> {
+        return this.client.clearCache(this.collectionName);
+    }
+
+    public async updateCacheConfig(policy: string, annThreshold?: number): Promise<boolean> {
+        return this.client.updateCacheConfig(this.collectionName, policy, annThreshold);
     }
 
     static async fromTexts(

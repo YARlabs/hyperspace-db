@@ -7,7 +7,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "hyperspace-sdk-ts": "^3.1.0",
+    "hyperspace-sdk-ts": "file:../../sdks/ts",
     "llamaindex": "^0.1.0"
   },
   "devDependencies": {

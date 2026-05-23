@@ -211,6 +211,18 @@ class HyperspaceVectorStore(VectorStore):
         if hasattr(self, "_client"):
             self._client.close()
 
+    def get_cache_stats(self) -> dict:
+        """Get cache statistics for L0 Hot Tier Cache of the collection."""
+        return self._client.get_cache_stats(self.collection_name)
+
+    def clear_cache(self) -> bool:
+        """Purge L0 Cache items for the collection."""
+        return self._client.clear_cache(self.collection_name)
+
+    def update_cache_config(self, policy: str, ann_threshold: Optional[float] = None) -> bool:
+        """Update L0 Cache configuration for the collection."""
+        return self._client.update_cache_config(self.collection_name, policy, ann_threshold)
+
     @classmethod
     def from_texts(
         cls: Type[HyperspaceVectorStore],

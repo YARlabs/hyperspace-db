@@ -269,6 +269,9 @@ export const HyperbolicMath = {
 export class HyperspaceClient {
     private client: DatabaseClient;
     private metadata: grpc.Metadata;
+    private host: string;
+    private apiKey?: string;
+    private userId?: string;
     private static toVectorList(vector: number[] | Float32Array | Float64Array): number[] {
         if (Array.isArray(vector)) {
             return vector;
@@ -364,6 +367,9 @@ export class HyperspaceClient {
     }
 
     constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string) {
+        this.host = host;
+        this.apiKey = apiKey;
+        this.userId = userId;
         const options = {
             'grpc.max_send_message_length': 64 * 1024 * 1024,
             'grpc.max_receive_message_length': 64 * 1024 * 1024,
@@ -1115,6 +1121,61 @@ export class HyperspaceClient {
             }
             throw e;
         }
+    }
+
+    public async getCacheStats(name: string): Promise<any> {
+        const ip = this.host.split(':')[0];
+        const url = `http://${ip}:50050/api/collections/${name}/cache/stats`;
+        const headers: { [key: string]: string } = {};
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+
+        const res = await fetch(url, { headers });
+        if (!res.ok) {
+            throw new Error(`Failed to get cache stats: ${res.statusText} (${await res.text()})`);
+        }
+        return res.json();
+    }
+
+    public async clearCache(name: string): Promise<boolean> {
+        const ip = this.host.split(':')[0];
+        const url = `http://${ip}:50050/api/collections/${name}/cache/clear`;
+        const headers: { [key: string]: string } = { 'Content-Type': 'application/json' };
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({})
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to clear cache: ${res.statusText} (${await res.text()})`);
+        }
+        const data = await res.json();
+        return data.status === 'success';
+    }
+
+    public async updateCacheConfig(name: string, policy: string, annThreshold?: number): Promise<boolean> {
+        const ip = this.host.split(':')[0];
+        const url = `http://${ip}:50050/api/collections/${name}/cache/config`;
+        const headers: { [key: string]: string } = { 'Content-Type': 'application/json' };
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                policy,
+                ann_threshold: annThreshold
+            })
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to update cache config: ${res.statusText} (${await res.text()})`);
+        }
+        const data = await res.json();
+        return data.status === 'success';
     }
 
     public updateCollection(name: string, config: CollectionConfig): Promise<boolean> {

@@ -163,3 +163,22 @@ class HyperspaceVectorStore(VectorStore):
             ids.append(str(res.get("id")))
 
         return VectorStoreQueryResult(nodes=nodes, similarities=similarities, ids=ids)
+
+    def __del__(self) -> None:
+        if hasattr(self, "_client"):
+            try:
+                self._client.close()
+            except Exception:
+                pass
+
+    def get_cache_stats(self) -> dict:
+        """Get cache statistics for L0 Hot Tier Cache of the collection."""
+        return self._client.get_cache_stats(self._collection_name)
+
+    def clear_cache(self) -> bool:
+        """Purge L0 Cache items for the collection."""
+        return self._client.clear_cache(self._collection_name)
+
+    def update_cache_config(self, policy: str, ann_threshold: Optional[float] = None) -> bool:
+        """Update L0 Cache configuration for the collection."""
+        return self._client.update_cache_config(self._collection_name, policy, ann_threshold)

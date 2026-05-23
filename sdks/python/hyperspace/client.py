@@ -29,6 +29,9 @@ class HyperspaceClient:
             ('grpc.http2.min_time_between_pings_ms', 10000),
             ('grpc.http2.min_ping_interval_without_data_ms', 5000),
         ]
+        self.host = host
+        self.api_key = api_key
+        self.user_id = user_id
         self.channel = grpc.insecure_channel(host, options=options)
         self.stub = hyperspace_pb2_grpc.DatabaseStub(self.channel)
         meta = []
@@ -1017,6 +1020,71 @@ class HyperspaceClient:
             return resp.status
         except grpc.RpcError:
             return "unreachable"
+
+    def get_cache_stats(self, name: str) -> dict:
+        import urllib.request
+        import json
+        ip = self.host.split(':')[0]
+        url = f"http://{ip}:50050/api/collections/{name}/cache/stats"
+        headers = {}
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        if self.user_id:
+            headers['x-hyperspace-user-id'] = self.user_id
+            
+        req = urllib.request.Request(url, headers=headers, method='GET')
+        try:
+            with urllib.request.urlopen(req) as response:
+                return json.loads(response.read().decode('utf-8'))
+        except Exception as e:
+            print(f"Error in get_cache_stats: {e}")
+            return {}
+
+    def clear_cache(self, name: str) -> bool:
+        import urllib.request
+        import json
+        ip = self.host.split(':')[0]
+        url = f"http://{ip}:50050/api/collections/{name}/cache/clear"
+        headers = {'Content-Type': 'application/json'}
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        if self.user_id:
+            headers['x-hyperspace-user-id'] = self.user_id
+            
+        data = json.dumps({}).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        try:
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                return res_data.get("status") == "success"
+        except Exception as e:
+            print(f"Error in clear_cache: {e}")
+            return False
+
+    def update_cache_config(self, name: str, policy: str, ann_threshold: Optional[float] = None) -> bool:
+        import urllib.request
+        import json
+        ip = self.host.split(':')[0]
+        url = f"http://{ip}:50050/api/collections/{name}/cache/config"
+        headers = {'Content-Type': 'application/json'}
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        if self.user_id:
+            headers['x-hyperspace-user-id'] = self.user_id
+            
+        payload = {"policy": policy}
+        if ann_threshold is not None:
+            payload["ann_threshold"] = ann_threshold
+            
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        try:
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                return res_data.get("status") == "success"
+        except Exception as e:
+            print(f"Error in update_cache_config: {e}")
+            return False
 
 def analyze_delta_hyperbolicity(vectors: List[List[float]], num_samples: int = 1000) -> (float, str):
     """

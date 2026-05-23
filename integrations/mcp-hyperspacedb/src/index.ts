@@ -194,11 +194,46 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_stats",
-          description: "Get detailed statistics and logical clock for a specific collection.",
+          description: "Get detailed statistics and logical clock for a specific collection. Merges metadata, cache stats and WriteBuffer size.",
           inputSchema: {
             type: "object",
             properties: { collection: { type: "string" } },
             required: ["collection"]
+          }
+        },
+        {
+          name: "hyperspace_cache_stats",
+          description: "Get cache statistics (hits, misses, policy, etc.) for a specific collection's L0 Hot Tier Cache.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The name of the collection." }
+            },
+            required: ["collection"]
+          }
+        },
+        {
+          name: "hyperspace_cache_clear",
+          description: "Clear / purge all items in the L0 Cache for a specific collection.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The name of the collection." }
+            },
+            required: ["collection"]
+          }
+        },
+        {
+          name: "hyperspace_cache_config",
+          description: "Update L0 Cache configuration (eviction policy, ANN threshold) for a specific collection.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The name of the collection." },
+              policy: { type: "string", description: "Cache eviction policy (e.g. lru, lfu, ttl)." },
+              ann_threshold: { type: "number", description: "ANN similarity distance threshold for cache lookup filtering." }
+            },
+            required: ["collection", "policy"]
           }
         }
       ]
@@ -269,9 +304,68 @@ class HyperspaceMcpServer {
             return { content: [{ type: "text", text: String(res) }] };
           }
           case "hyperspace_get_stats": {
-            const { collection } = z.object({ collection: z.string().optional() }).parse(args);
-            const stats = await this.client.getDigest(collection || "");
+            const { collection } = z.object({ collection: z.string() }).parse(args);
+            
+            // 1. Fetch gRPC CollectionStats & Digest in parallel
+            let digest: any = {};
+            let grpcStats: any = {};
+            try {
+              [digest, grpcStats] = await Promise.all([
+                this.client.getDigest(collection),
+                this.client.getCollectionStats(collection)
+              ]);
+            } catch (e: any) {
+              console.error(`gRPC stats/digest fetch failed: ${e.message}`);
+              throw e;
+            }
+
+            // 2. Fetch HTTP collection stats in parallel try-catch
+            let httpStats: any = {};
+            try {
+              const clientAny = this.client as any;
+              const host = clientAny.host || "localhost:50051";
+              const ip = host.split(':')[0];
+              const url = `http://${ip}:50050/api/collections/${collection}/stats`;
+              const headers: { [key: string]: string } = {};
+              if (clientAny.apiKey) headers['x-api-key'] = clientAny.apiKey;
+              if (clientAny.userId) headers['x-hyperspace-user-id'] = clientAny.userId;
+
+              const res = await fetch(url, { headers });
+              if (res.ok) {
+                httpStats = await res.json();
+              } else {
+                console.error(`HTTP collection stats request failed: ${res.statusText}`);
+              }
+            } catch (e: any) {
+              console.error(`HTTP collection stats fetch failed: ${e.message}`);
+            }
+
+            // 3. Merge gRPC + HTTP results
+            const stats = {
+              ...digest,
+              ...grpcStats,
+              ...httpStats
+            };
             return { content: [{ type: "text", text: JSON.stringify(stats, null, 2) }] };
+          }
+          case "hyperspace_cache_stats": {
+            const { collection } = z.object({ collection: z.string() }).parse(args);
+            const stats = await this.client.getCacheStats(collection);
+            return { content: [{ type: "text", text: JSON.stringify(stats, null, 2) }] };
+          }
+          case "hyperspace_cache_clear": {
+            const { collection } = z.object({ collection: z.string() }).parse(args);
+            const success = await this.client.clearCache(collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+          }
+          case "hyperspace_cache_config": {
+            const { collection, policy, ann_threshold } = z.object({
+              collection: z.string(),
+              policy: z.string(),
+              ann_threshold: z.number().optional()
+            }).parse(args);
+            const success = await this.client.updateCacheConfig(collection, policy, ann_threshold);
+            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
           }
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Tool not found: ${name}`);
