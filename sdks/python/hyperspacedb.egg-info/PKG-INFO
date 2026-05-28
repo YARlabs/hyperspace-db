@@ -34,6 +34,9 @@ The SDK is designed for production services and benchmark tooling:
 - collection management
 - single and batch insert
 - single and batch vector search
+- recursive logical filters (`AND`, `OR`, `NOT`)
+- bulk data management (`get_points`, `update_payload`, `scroll`, `count`)
+- system health monitoring (`health_check`)
 - graph traversal API methods
 - optional embedder integrations
 - multi-tenant metadata headers
@@ -65,7 +68,17 @@ client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
 collection = "docs_py"
 
 client.delete_collection(collection)
-client.create_collection(collection, dimension=3, metric="cosine")
+
+# New Schema-driven API (Matryoshka + Multi-Vector support)
+client.create_collection(
+    collection,
+    schema={
+        "components": [
+            {"name": "primary", "metric": "cosine", "full_dimension": 3, "weight": 1.0}
+        ],
+        "cascade_pipeline": []
+    }
+)
 
 # id is now the first argument
 client.insert(
@@ -135,11 +148,33 @@ results = client.search(
     collection="docs"
 )
 
-# Or if using query_text for auto-embedding:
 results = client.search(
     query_text="quantum computing",
     hybrid_alpha=0.7,
     collection="docs"
+)
+```
+
+## Matryoshka Representation Learning (MRL) & Cascading
+
+HyperspaceDB supports MRL through its **Cascade Pipeline**. This allows you to perform initial fast search on a truncated low-dimensional vector (e.g., 64D) and then rerank the results using the full vector (e.g., 1024D).
+
+```python
+client.create_collection(
+    "mrl_collection",
+    schema={
+        "components": [
+            {"name": "primary", "metric": "lorentz", "full_dimension": 1025, "weight": 1.0}
+        ],
+        "cascade_pipeline": [
+            {
+                "component_name": "primary",
+                "cutoff_dimension": 129, # Initial search on 128D (+1)
+                "store_in_ram": True,
+                "rerank_top_k": 100
+            }
+        ]
+    }
 )
 ```
 
@@ -164,16 +199,54 @@ results = client.search(
     vector=[0.1, 0.2, 0.3],
     filters=[ball_f, box_f] # Combine multiple filters
 )
+
+# 4. Recursive Logical Filters
+and_f = client.filter_and([
+    client.filter_match("status", "active"),
+    client.filter_or([
+        client.filter_range("score", gte=0.8),
+        client.filter_match("priority", "high")
+    ])
+])
+```
+
+## Advanced Data Operations
+
+### Bulk Retrieval (`get_points`)
+```python
+points = client.get_points(ids=[1, 2, 3], collection="docs")
+```
+
+### Metadata Updates (`update_payload`)
+```python
+client.update_payload(id=1, metadata={"status": "archived"}, collection="docs")
+```
+
+### Paginated Scanning (`scroll`)
+```python
+# Iteratively retrieve points with filters
+for points in client.scroll(limit=100, filters=[and_f], collection="docs"):
+    process(points)
+```
+
+### Point Counting (`count`)
+```python
+total = client.count(filters=[client.filter_match("category", "ai")], collection="docs")
+```
+
+### Health Check
+```python
+status = client.health_check() # Returns "ONLINE"
 ```
 
 ## API Summary
 
 ### Collection Operations
 
-- `create_collection(name, dimension, metric) -> bool`
+- `create_collection(name, schema: dict) -> bool`
 - `delete_collection(name) -> bool`
-- `list_collections() -> list[dict]`  # [{"name": str, "count": int, "dimension": int, "metric": str}]
-- `get_collection_stats(name) -> dict`  # {"count": int, "dimension": int, "metric": str, "indexing_queue": int}
+- `list_collections() -> list[dict]`  # [{"name": str, "count": int, "schema": dict}]
+- `get_collection_stats(name) -> dict`  # {"count": int, "indexing_queue": int, "schema": dict}
 
 
 ### Data Operations
@@ -191,7 +264,9 @@ results = client.search(
 - `get_node(id, layer=0, collection="") -> dict`
 - `get_neighbors(id, layer=0, limit=64, offset=0, collection="") -> list[dict]`
 - `get_concept_parents(id, layer=0, limit=32, collection="") -> list[dict]`
-- `traverse(start_id, max_depth=2, max_nodes=256, layer=0, filter=None, filters=None, collection="") -> list[dict]`
+- `get_subsumption_tree(root_id, max_depth=3, collection="") -> list[dict]`  # Lorentz hierarchy
+- `traverse(start_id, max_depth=2, max_nodes=256, layer=0, traversal_mode=0, breadth_limit=10, filter=None, filters=None, collection="") -> list[dict]`
+- `explore_graph(start_id, max_depth=2, max_nodes=256, collection="") -> dict` # Ego-Graph JSON
 - `find_semantic_clusters(layer=0, min_cluster_size=3, max_clusters=32, max_nodes=10000, collection="") -> list[list[int]]`
 
 For `filters` with `type="range"`, decimal thresholds are supported (`gte_f64/lte_f64` in gRPC payload are set automatically for non-integer values).
@@ -248,16 +323,41 @@ from hyperspace.math import (
 )
 
 # 1. Detect Hallucinations (Entropy approaches 1.0)
-entropy = local_entropy(candidate=thought_vector, neighbors=neighbors, c=1.0)
+entropy = client.local_entropy(candidate=thought_vector, neighbors=neighbors, c=1.0)
 
 # 2. Proof of Convergence (Negative derivative = convergence)
-stability = lyapunov_convergence(trajectory=chain_of_thought, c=1.0)
+stability = client.get_trust_score(trajectory_ids=[1, 2, 3], collection="docs")
 
 # 3. Extrapolate next thought (Koopman linearization)
-next_thought = koopman_extrapolate(past, current, steps=1.0, c=1.0)
+next_thought = client.predict_momentum(trajectory_ids=[10, 11], steps=1.0)
 
 # 4. Phase-Locked Loop for topic tracking
 synced_thought = context_resonance(thought, global_context, resonance_factor=0.5, c=1.0)
+
+# 5. Predict Semantic Relation (A + R ≈ B)
+relation = client.predict_relation(id_a=1, id_b=2)
+```
+
+## Implicit Graph Engine (v3.2)
+
+HyperspaceDB treats your vectors as nodes in a dynamic graph. Relationships are inferred from the geometry:
+- **Lorentz / Poincare**: Hierarchy and subsumption (light cones).
+- **L2 / Cosine**: Semantic similarity and adjacency.
+
+### Subsumption Trees
+Extract directed hierarchies from Lorentz-encoded data:
+```python
+tree = client.get_subsumption_tree(root_id=1, max_depth=5)
+```
+
+### Advanced Traversal
+Navigate the graph using physical kernels:
+```python
+results = client.traverse(
+    start_id=1,
+    traversal_mode=2, # 0: GREEDY, 1: DIFFUSIVE, 2: MOMENTUM
+    breadth_limit=5
+)
 ```
 
 ## Durability Levels
@@ -282,7 +382,7 @@ client = HyperspaceClient(
 
 ## Embedding Pipeline (Optional)
 
-HyperspaceDB supports **per-geometry embeddings** — each geometry (`l2`, `cosine`, `poincare`, `lorentz`) can use its own backend independently.
+HyperspaceDB supports **per-geometry embeddings** — each geometry (`l2`, `cosine`, `poincare`, `lorentz`, `hybrid`) can use its own backend independently.
 
 ### Quick Setup via Environment Variables
 

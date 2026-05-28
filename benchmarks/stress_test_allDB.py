@@ -12,6 +12,12 @@ from typing import List, Dict, Any
 import resource
 import warnings
 warnings.filterwarnings("ignore", category=ResourceWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+try:
+    from pymilvus import PyMilvusDeprecationWarning
+    warnings.filterwarnings("ignore", category=PyMilvusDeprecationWarning)
+except ImportError:
+    pass
 
 # Paths
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sdks", "python")))
@@ -351,6 +357,8 @@ def run_stress_test():
             except ImportError:
                 pass
 
+            chroma_clients = {}
+
             def chr_setup(c):
                 client = None
                 col = None
@@ -381,7 +389,7 @@ def run_stress_test():
                     col = client.create_collection(c, metadata={"hnsw:space": "cosine"})
                 
                 if col is not None:
-                    col._runner_client = client
+                    chroma_clients[c] = client
                 
                 return col
 
@@ -395,15 +403,13 @@ def run_stress_test():
                 col.query(query_embeddings=[v], n_results=10)
 
             def chr_cleanup(col, c):
-                try:
-                    if hasattr(col, "_runner_client"):
-                        col._runner_client.delete_collection(c)
-                except: pass
-                # Attempt to close the client if it has a way to release resources
-                if hasattr(col, "_runner_client"):
+                client = chroma_clients.pop(c, None)
+                if client is not None:
                     try:
-                        # Chroma internal db often uses persistent/sqlite
-                        if hasattr(col._runner_client, "close"): col._runner_client.close()
+                        client.delete_collection(c)
+                    except: pass
+                    try:
+                        if hasattr(client, "close"): client.close()
                     except: pass
 
             runner.run_concurrency("Chroma", chr_setup, chr_ins, chr_srch, chr_cleanup)

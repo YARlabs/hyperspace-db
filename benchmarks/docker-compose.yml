@@ -1,8 +1,10 @@
 services:
-  # HyperspaceDB (Pre-built)
+  # HyperspaceDB (Built from source)
   hyperspace:
+    build:
+      context: ..
+      dockerfile: Dockerfile
     image: glukhota/hyperspace-db:latest
-    pull_policy: always
     ports:
       - "50051:50051"
       - "50050:50050"
@@ -10,8 +12,10 @@ services:
       - RUST_LOG=info
       - HS_PORT=50051
       - HS_DIMENSION=1024
-    # volumes:
-    #   - hyperspace_data:/data
+      - HS_SEARCH_BATCH_INNER_CONCURRENCY=32
+      - HS_SEARCH_CONCURRENCY=256
+    env_file:
+      - ../.env
     networks:
       - benchmark_net
     healthcheck:

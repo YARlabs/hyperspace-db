@@ -55,7 +55,7 @@ fi
 
 # 4. Deploy Infrastructure
 echo "🐳 Deploying Docker containers (HyperspaceDB & Competitors)..."
-docker-compose up -d
+docker-compose up -d --build
 
 # echo "⏳ Waiting for HyperspaceDB to be healthy..."
 # MAX_RETRIES=30
@@ -72,7 +72,6 @@ docker-compose up -d
 #     exit 1
 # fi
 echo -e "\n✅ Infrastructure is ready!"
-clear
 
 # 4. Run Benchmark
 echo "🎯 Running Performance1536D50K Benchmark..."
