@@ -356,6 +356,7 @@ message SearchRequest {
   // Default is false — zero extra I/O for standard searches.
   bool include_payload = 11;
   map<string, float> component_weights = 12;
+  bool use_wave = 13;
 }
 
 message Filter {

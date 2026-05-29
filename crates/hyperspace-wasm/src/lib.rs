@@ -145,6 +145,7 @@ impl HyperspaceDB {
                     mrl_dimension: None,
                     include_payload: false,
                     component_weights: None,
+                    use_wave: false,
                 };
                 $idx.search(vector, &HashMap::new(), &[], &params)
             }};

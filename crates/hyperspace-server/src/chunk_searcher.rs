@@ -106,6 +106,7 @@ pub fn search_chunk<M: Metric>(
         fusion_method: None,
         mrl_dimension: None,
         include_payload: false,
+        use_wave: false,
     };
 
     let results = chunk_index.search(query, filters, complex_filters, &params);

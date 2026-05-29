@@ -75,31 +75,58 @@ class RAGStandardsEvaluator:
             print("❌ sentence-transformers package is missing. Cannot proceed.")
             sys.exit(1)
 
+    # Domains served from data/extra/ instead of data/ragbench/
+    EXTRA_DOMAINS = {"maud", "legalbench", "trec_ct", "bioasq", "scidocs"}
+
+    # Human-readable domain labels for the HTML report
+    DOMAIN_LABELS = {
+        "covidqa":    "CovidQA",
+        "finqa":      "FinQA",
+        "cuad":       "CUAD (Legal)",
+        "msmarco":    "MSMARCO",
+        "tatqa":      "TatQA",
+        "pubmedqa":   "PubMedQA",
+        "techqa":     "TechQA",
+        "hotpotqa":   "HotpotQA",
+        "maud":       "MAUD (M&A)",
+        "legalbench": "LegalBench",
+        "trec_ct":    "TREC Clinical Trials",
+        "bioasq":     "BioASQ",
+        "scidocs":    "SciDocs (Citations)",
+    }
+
     def load_domain_dataset(self, domain):
-        print(f"\n📦 Loading Galileo RAGBench ({domain} subset)...")
+        label = self.DOMAIN_LABELS.get(domain, domain.upper())
+        print(f"\n📦 Loading {label} dataset...")
         loaded_real = False
         corpus = []
         queries = []
+
+        # Route cache directory: extra datasets live in data/extra/, RAGBench in data/ragbench/
+        bench_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "data"))
+        if domain in self.EXTRA_DOMAINS:
+            data_dir = os.path.join(bench_dir, "extra")
+        else:
+            data_dir = os.path.join(bench_dir, "ragbench")
+        local_path = os.path.join(data_dir, f"{domain}_ragbench.jsonl")
         
-        if DATASETS_AVAILABLE:
+        # 1. Attempt to load from local cache file if it exists
+        if os.path.exists(local_path):
+            print(f"   💾 [Local Cache] Found real pre-downloaded dataset at: {local_path}")
             try:
-                # Attempt to stream dataset from Hugging Face
-                dataset = load_dataset("rungalileo/ragbench", domain, split="test", streaming=True)
+                rows = []
+                with open(local_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        rows.append(json.loads(line))
                 
                 passages_set = set()
                 query_list = []
                 
-                print("   Streaming and building corpus...")
-                count = 0
-                for row in tqdm(dataset, desc="Ingesting rows"):
-                    if count >= self.query_limit * 3:
-                        break
-                    
+                for row in rows[:self.query_limit * 3]:
                     q_text = row["question"]
                     doc_list = row["documents"]
                     relevant_keys = row.get("all_relevant_sentence_keys", [])
                     
-                    # Parse relevant document indices from keys (e.g. '0c' -> index 0)
                     relevant_indices = set()
                     for key in relevant_keys:
                         digits = []
@@ -111,7 +138,6 @@ class RAGStandardsEvaluator:
                         if digits:
                             relevant_indices.add(int("".join(digits)))
                             
-                    # If no relevant indices marked, assume first document is gold
                     if not relevant_indices and doc_list:
                         relevant_indices.add(0)
                         
@@ -120,7 +146,6 @@ class RAGStandardsEvaluator:
                         if idx < len(doc_list):
                             gold_passages.append(doc_list[idx])
                             
-                    # Add all passages to main corpus
                     for doc in doc_list:
                         passages_set.add(doc)
                         
@@ -129,7 +154,6 @@ class RAGStandardsEvaluator:
                         "gold_passages": gold_passages,
                         "all_passages": doc_list
                     })
-                    count += 1
                 
                 corpus = list(passages_set)[:self.limit]
                 corpus_set = set(corpus)
@@ -145,11 +169,43 @@ class RAGStandardsEvaluator:
                 
                 if len(corpus) > 0 and len(queries) > 0:
                     loaded_real = True
-                    print(f"   Successfully loaded {len(corpus)} unique documents and {len(queries)} RAG queries from Galileo HF Hub.")
+                    print(f"   💾 [Local Cache] Successfully loaded {len(corpus)} unique documents and {len(queries)} RAG queries.")
             except Exception as e:
-                print(f"⚠️ Could not load remote Hugging Face dataset (likely offline/timeout): {e}")
+                print(f"⚠️ Error reading local cache: {e}")
                 
+        # 2. If not loaded from local cache, try to auto-download via download_ragbench.py
+        if not loaded_real and DATASETS_AVAILABLE:
+            if domain in self.EXTRA_DOMAINS:
+                # For extra domains, point user to the downloader — schema is more complex
+                print(f"   ⚠️  [{domain}] not cached locally. Run to download:")
+                print(f"      python3 download_ragbench.py --domain {domain}")
+            else:
+              try:
+                print(f"   📡 [HF Streaming] Streaming and caching dataset from Hugging Face...")
+                dataset = load_dataset("rungalileo/ragbench", domain, split="test", streaming=False)
+                
+                # Save locally for future use so we never use stubs
+                os.makedirs(data_dir, exist_ok=True)
+                print(f"   💾 [Local Cache] Saving real dataset to: {local_path}")
+                with open(local_path, "w", encoding="utf-8") as f:
+                    for row in dataset:
+                        clean_row = {
+                            "question": row["question"],
+                            "documents": row["documents"],
+                            "all_relevant_sentence_keys": row.get("all_relevant_sentence_keys", [])
+                        }
+                        f.write(json.dumps(clean_row, ensure_ascii=False) + "\n")
+                
+                # Recursively call load_domain_dataset to load from the newly cached file
+                return self.load_domain_dataset(domain)
+              except Exception as e:
+                print(f"⚠️ Could not stream/cache remote Hugging Face dataset (likely offline/timeout): {e}")
+
         if not loaded_real:
+            if domain in self.EXTRA_DOMAINS:
+                print(f"   ❌ [{domain}] has no local cache. Download it first:")
+                print(f"      python3 download_ragbench.py --domain {domain}")
+                return [], []
             print("   Falling back to High-Fidelity local simulated RAGBench dataset...")
             corpus, queries = self.generate_simulated_dataset(domain)
             
@@ -177,6 +233,26 @@ class RAGStandardsEvaluator:
                 ("customer support", "To reset your password, click on the profile icon, select settings, click on security, and choose update password options."),
                 ("device pairing", "Enable Bluetooth on both devices, select discoverable mode, and enter the 6-digit pin displayed on the primary console screen."),
                 ("shipping policy", "Standard shipping takes 3-5 business days. Express shipping is delivered within 1-2 business days with flat rate pricing.")
+            ],
+            "tatqa": [
+                ("revenue segment", "Table 4.1 Segment Revenues (in millions): Enterprise Cloud Software generated $1,245.5, professional services generated $243.1, and legacy hardware generated $12.4."),
+                ("income balance", "Table 4.2 Operating Income: Gross profit expanded to $850 million, offset by R&D expense of $142 million and sales/marketing overhead of $240 million."),
+                ("debt amortization", "Table 4.3 Capitalization: Long-term debt obligations totaled $1,500 million, bearing a weighted interest rate of 4.5% amortizing through 2030.")
+            ],
+            "pubmedqa": [
+                ("biomedical QA", "Clinical studies show that treatment with beta-blockers reduces mortality in patients with chronic heart failure."),
+                ("cardiovascular health", "Cardiovascular trials indicate a clear correlation between daily aspirin intake and reduced stroke recurrence risk."),
+                ("heart study", "A randomized double-blind trial demonstrated that early reperfusion therapy improves left ventricular function.")
+            ],
+            "techqa": [
+                ("technical support", "To resolve the out-of-memory error in WebSphere Application Server, increase the maximum JVM heap size to 4096MB in the administrative console."),
+                ("database configuration", "Db2 database configurations require setting the APPLHEAPSZ parameter to at least 2048 to prevent transaction log full errors."),
+                ("server performance", "WebSphere clusters must be configured with a session replication timeout of 30 seconds for optimal failover performance.")
+            ],
+            "hotpotqa": [
+                ("multi-hop history", "Malcolm Ingram directed the documentary film Out to Win (2015), which chronicles LGBT participation in sports, featuring Jason Collins, who played for Stanford."),
+                ("film details", "Out to Win premiered at the SXSW Film Festival in Austin, Texas, receiving high praise for its historical sporting insights."),
+                ("career timeline", "Jason Collins was drafted 18th overall in the 2001 NBA draft by the Houston Rockets and later played for the New Jersey Nets.")
             ]
         }
         
@@ -211,6 +287,26 @@ class RAGStandardsEvaluator:
                 ("What are the steps to reset your account password?", "click on the profile icon, select settings"),
                 ("How do you pair two Bluetooth devices?", "select discoverable mode, and enter the 6-digit pin"),
                 ("What is the shipping time for standard orders?", "Standard shipping takes 3-5 business days")
+            ],
+            "tatqa": [
+                ("How much segment revenue did Enterprise Cloud Software generate?", "Enterprise Cloud Software generated $1,245.5"),
+                ("What was the corporate R&D expense in the Segment Income table?", "R&D expense of $142 million"),
+                ("What is the weighted interest rate on long-term debt?", "bearing a weighted interest rate of 4.5% amortizing")
+            ],
+            "pubmedqa": [
+                ("Does beta-blocker therapy reduce mortality in chronic heart failure?", "treatment with beta-blockers reduces mortality"),
+                ("What is the effect of daily aspirin intake on stroke risk?", "daily aspirin intake and reduced stroke recurrence risk"),
+                ("How does early reperfusion affect left ventricular function?", "early reperfusion therapy improves left ventricular")
+            ],
+            "techqa": [
+                ("How do I fix the out of memory error in WebSphere?", "increase the maximum JVM heap size to 4096MB"),
+                ("What should the APPLHEAPSZ parameter be set to in Db2?", "APPLHEAPSZ parameter to at least 2048"),
+                ("What session replication timeout should be set for WebSphere?", "session replication timeout of 30 seconds")
+            ],
+            "hotpotqa": [
+                ("Which documentary film featuring Jason Collins was directed by Malcolm Ingram?", "Malcolm Ingram directed the documentary film Out to Win"),
+                ("At which film festival did Out to Win premiere?", "premiered at the SXSW Film Festival in Austin"),
+                ("Who drafted Jason Collins in the 2001 NBA draft?", "drafted 18th overall in the 2001 NBA draft by the Houston Rockets")
             ]
         }
         
@@ -646,7 +742,14 @@ def main():
     parser.add_argument("--db", nargs="+", help="Specific DBs to test (hyperspace qdrant chroma milvus weaviate)")
     parser.add_argument("--limit", type=int, default=1000, help="Document corpus limit")
     parser.add_argument("--query-limit", type=int, default=200, help="RAG query limit")
-    parser.add_argument("--domain", type=str, default="covidqa", help="Hugging Face Galileo RAGBench subset (covidqa, finqa, cuad, msmarco, or all)")
+    parser.add_argument(
+        "--domain", nargs="+", default=["covidqa"],
+        help=(
+            "One or more domains to evaluate. Use 'all' for all 13 domains.\n"
+            "RAGBench: covidqa finqa cuad msmarco tatqa pubmedqa techqa hotpotqa\n"
+            "Structural: maud legalbench trec_ct bioasq scidocs"
+        )
+    )
     args = parser.parse_args()
 
     evaluator = RAGStandardsEvaluator(
@@ -654,10 +757,14 @@ def main():
         query_limit=args.query_limit
     )
     
-    if args.domain.lower() == "all":
-        domains = ["covidqa", "finqa", "cuad", "msmarco"]
+    ALL_DOMAINS = [
+        "covidqa", "finqa", "cuad", "msmarco", "tatqa", "pubmedqa", "techqa", "hotpotqa",
+        "maud", "legalbench", "trec_ct", "bioasq", "scidocs"
+    ]
+    if len(args.domain) == 1 and args.domain[0].lower() == "all":
+        domains = ALL_DOMAINS
     else:
-        domains = [args.domain]
+        domains = [d.lower() for d in args.domain]
         
     target_dbs = [d.lower() for d in args.db] if args.db else None
     
@@ -711,7 +818,7 @@ def main():
             except Exception as e:
                 print(f"❌ Hyperspace evaluation failed: {e}")
 
-        # ── HYPERSPACE (WAVE) ──
+        # ── HYPERSPACE (WAVE CLIENT) ──
         if (not target_dbs or "hyperspace-wave" in target_dbs or "hyperspace_wave" in target_dbs) and HYPERSPACE_AVAILABLE:
             try:
                 coll_name = f"rag_standards_wave_{dom}"
@@ -736,8 +843,8 @@ def main():
                         )
                 
                 def hs_srch_wave(client, q_emb, limit):
-                    # 1. Fetch top-5 global seeds
-                    seeds = client.search(q_emb, top_k=5, collection=coll_name)
+                    # 1. Fetch top-5 seeds without wave
+                    seeds = client.search(q_emb, top_k=5, collection=coll_name, use_wave=False)
                     if not seeds:
                         return []
                     
@@ -769,7 +876,6 @@ def main():
                             
                     # 3. Sort globally by consensus energy score descending
                     sorted_nodes = sorted(node_scores.items(), key=lambda x: x[1], reverse=True)
-                    
                     return [{"text": node_metas[node_id]["text"]} for node_id, _ in sorted_nodes[:limit]]
                 
                 def hs_cleanup(client):
@@ -781,6 +887,44 @@ def main():
                 results.append(res)
             except Exception as e:
                 print(f"❌ HyperspaceDB-Wave evaluation failed: {e}")
+
+        # ── HYPERSPACE (WAVE SERVER) ──
+        if (not target_dbs or "hyperspace-waveserver" in target_dbs or "hyperspace_waveserver" in target_dbs) and HYPERSPACE_AVAILABLE:
+            try:
+                coll_name = f"rag_standards_waveserver_{dom}"
+                def hs_setup():
+                    client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB", pool_size=16)
+                    try: client.delete_collection(coll_name)
+                    except: pass
+                    client.create_collection(coll_name, dimension=evaluator.dim, metric="cosine")
+                    client.configure(ef_search=32, ef_construction=100, collection=coll_name)
+                    return client
+                
+                def hs_ins(client, embs, texts):
+                    ids = list(range(len(embs)))
+                    metas = [{"text": t} for t in texts]
+                    batch_size = 2000
+                    for i in range(0, len(embs), batch_size):
+                        client.batch_insert(
+                            embs[i:i+batch_size],
+                            ids[i:i+batch_size],
+                            metas[i:i+batch_size],
+                            collection=coll_name
+                        )
+                
+                def hs_srch_waveserver(client, q_emb, limit):
+                    results = client.search(vector=q_emb, top_k=limit, collection=coll_name, use_wave=True)
+                    return [{"text": r["metadata"]["text"]} for r in results if "metadata" in r and "text" in r["metadata"]]
+                
+                def hs_cleanup(client):
+                    try: client.delete_collection(coll_name)
+                    except: pass
+                    client.close()
+                    
+                res = evaluator.run_eval("HyperspaceDB-WaveServer", corpus, queries, hs_setup, hs_ins, hs_srch_waveserver, hs_cleanup)
+                results.append(res)
+            except Exception as e:
+                print(f"❌ HyperspaceDB-WaveServer evaluation failed: {e}")
 
         # ── QDRANT ──
         if (not target_dbs or "qdrant" in target_dbs) and QDRANT_AVAILABLE:

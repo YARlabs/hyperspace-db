@@ -208,6 +208,7 @@ pub struct SearchParams {
     /// Sidecar Payload Storage (v3.2): if true, the server performs lazy disk I/O
     /// for the final Top-K results. Default false = zero extra I/O.
     pub include_payload: bool,
+    pub use_wave: bool,
 }
 
 /// A single search result: (id, distance, metadata, `optional_payload`).

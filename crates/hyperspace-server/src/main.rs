@@ -312,6 +312,7 @@ fn build_filters(
         mrl_dimension: req.mrl_dimension.map(|d| d as usize),
         // Sidecar Payload Storage (v3.2): opt-in lazy disk I/O
         include_payload: req.include_payload,
+        use_wave: req.use_wave,
     };
 
     (col_name, req.vector, exact_filter, complex_filters, params)
@@ -1128,6 +1129,7 @@ impl Database for HyperspaceService {
                     bm25_options: req.bm25_options.as_ref().map(parse_bm25_options),
                     fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
                     include_payload: req.include_payload,
+                    use_wave: false,
                 };
 
                 if let Some(col) = self.manager.get(&user_id, &col_name).await {
@@ -1215,10 +1217,107 @@ impl Database for HyperspaceService {
             build_filters(request.into_inner());
 
         if let Some(col) = self.manager.get(&user_id, &col_name).await {
-            match col
-                .search(&vector, &exact_filter, &complex_filters, &params)
-                .await
-            {
+            let wave_requested = params.use_wave;
+            let wave_enabled = std::env::var("HS_SERVER_WAVE_SEARCH_ENABLED")
+                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+
+            let search_fut = async {
+                if wave_requested {
+                    if !wave_enabled {
+                        return Err(Status::failed_precondition(
+                            "Server-side wave search is disabled on this server. Enable it by setting HS_SERVER_WAVE_SEARCH_ENABLED=true in .env"
+                        ));
+                    }
+                    let wave_depth = std::env::var("HS_SERVER_WAVE_DEPTH")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(3);
+                    let wave_damping = std::env::var("HS_SERVER_WAVE_DAMPING")
+                        .ok()
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.85);
+                    let wave_sigma = std::env::var("HS_SERVER_WAVE_SIGMA")
+                        .ok()
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(1.0);
+                    let wave_mass_sq = std::env::var("HS_SERVER_WAVE_MASS_SQ")
+                        .ok()
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.1);
+                    let wave_beam_width = std::env::var("HS_SERVER_WAVE_BEAM_WIDTH")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(200);
+                    let wave_qp_strength = std::env::var("HS_SERVER_WAVE_QUERY_POTENTIAL")
+                        .ok()
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.5);
+
+                    // 1. Klein-Gordon wave diffusion using the original query vector.
+                    //    The query-potential field V(x) inside search_diffusive handles
+                    //    re-attraction to query-relevant nodes at each step.
+                    let top_k_original = params.top_k;
+
+                    let wave_params = crate::wave::WaveInferenceParams {
+                        steps: wave_depth,
+                        top_k: top_k_original,
+                        damping: wave_damping,
+                        sigma: wave_sigma,
+                        mass_sq: wave_mass_sq,
+                        beam_width: wave_beam_width,
+                        query_potential_strength: wave_qp_strength,
+                        ..Default::default()
+                    };
+
+                    let wave_results = crate::wave::WaveInferenceEngine::search_diffusive(
+                        col.clone(),
+                        &vector,
+                        wave_params,
+                    )
+                    .await
+                    .map_err(Status::internal)?;
+
+                    if wave_results.is_empty() {
+                        return Ok(vec![]);
+                    }
+
+                    let mut node_scores: std::collections::HashMap<u32, f64> = std::collections::HashMap::new();
+                    let mut node_metas = std::collections::HashMap::new();
+
+                    for (node_id, energy, meta) in wave_results {
+                        node_scores.insert(node_id, energy);
+                        node_metas.insert(node_id, meta);
+                    }
+
+                    // Sort globally by consensus score descending
+                    let mut sorted: Vec<(u32, f64)> = node_scores.into_iter().collect();
+                    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    sorted.truncate(top_k_original);
+
+                    let sorted_ids: Vec<u32> = sorted.iter().map(|(id, _)| *id).collect();
+                    let payloads = if params.include_payload {
+                        col.fetch_payloads(&sorted_ids).await
+                    } else {
+                        vec![None; sorted.len()]
+                    };
+
+                    let mut final_res = Vec::with_capacity(sorted.len());
+                    for (i, (node_id, score)) in sorted.into_iter().enumerate() {
+                        let meta = node_metas.remove(&node_id).unwrap_or_default();
+                        // Map consensus score back to distance for Tonic SearchResult compatibility
+                        let distance = 1.0 / score - 1.0;
+                        let payload = payloads[i].clone();
+                        final_res.push((node_id, distance, meta, payload));
+                    }
+                    Ok(final_res)
+                } else {
+                    col.search(&vector, &exact_filter, &complex_filters, &params)
+                        .await
+                        .map_err(Status::internal)
+                }
+            };
+
+            match search_fut.await {
                 Ok(res) => {
                     let output = res
                         .iter()
@@ -1265,7 +1364,7 @@ impl Database for HyperspaceService {
 
                     Ok(Response::new(SearchResponse { results: output }))
                 }
-                Err(e) => Err(Status::internal(e)),
+                Err(e) => Err(e),
             }
         } else {
             Err(Status::not_found(format!(
@@ -1397,6 +1496,7 @@ impl Database for HyperspaceService {
                     bm25_options: None,
                     fusion_method: None,
                     include_payload: false,
+                    use_wave: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();
@@ -1450,6 +1550,7 @@ impl Database for HyperspaceService {
                     bm25_options: None,
                     fusion_method: None,
                     include_payload: false,
+                    use_wave: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();

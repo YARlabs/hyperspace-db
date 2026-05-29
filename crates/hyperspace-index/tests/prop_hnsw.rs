@@ -71,6 +71,7 @@ proptest! {
                 fusion_method: None,
                 mrl_dimension: None,
                 include_payload: false,
+                use_wave: false,
             };
             let results = index.search(vec, &empty_filter, &[], &search_params);
 

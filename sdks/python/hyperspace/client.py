@@ -388,7 +388,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None) -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None, use_wave: bool = False) -> List[Dict]:
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -407,7 +407,8 @@ class HyperspaceClient:
         req = hyperspace_pb2.SearchRequest(
             vector=vector,
             top_k=top_k,
-            collection=collection
+            collection=collection,
+            use_wave=use_wave
         )
         if filter:
             req.filter.update(filter)
@@ -448,8 +449,64 @@ class HyperspaceClient:
                 for r in resp.results
             ]
         except grpc.RpcError as e:
-            print(f"RPC Error: {e}")
-            return []
+            if use_wave and e.code() == grpc.StatusCode.FAILED_PRECONDITION and "Server-side wave search is disabled" in e.details():
+                # AUTOMATIC FALLBACK to client-side multi-seed consensus wave search
+                seeds = self.search(
+                    vector=vector,
+                    query_text=query_text,
+                    top_k=5,
+                    filter=filter,
+                    filters=filters,
+                    hybrid_query=hybrid_query,
+                    hybrid_alpha=hybrid_alpha,
+                    bm25=bm25,
+                    mrl_dimension=mrl_dimension,
+                    use_wasserstein=use_wasserstein,
+                    collection=collection,
+                    options=options,
+                    use_wave=False
+                )
+                if not seeds:
+                    return []
+                
+                node_scores = {}
+                node_metas = {}
+                node_typed_metas = {}
+                
+                for seed in seeds:
+                    seed_dist = seed.get("distance", 1.0)
+                    seed_weight = 1.0 / (1.0 + seed_dist)
+                    
+                    traversed = self.traverse(
+                        start_id=seed["id"],
+                        max_depth=3,
+                        max_nodes=top_k * 3,
+                        traversal_mode=1,
+                        collection=collection
+                    )
+                    
+                    for rank_n, node in enumerate(traversed):
+                        node_id = node["id"]
+                        node_score = seed_weight * (1.0 / (1.0 + rank_n))
+                        
+                        node_scores[node_id] = node_scores.get(node_id, 0.0) + node_score
+                        node_metas[node_id] = node.get("metadata", {})
+                        node_typed_metas[node_id] = node.get("typed_metadata", {})
+                        
+                sorted_nodes = sorted(node_scores.items(), key=lambda x: x[1], reverse=True)
+                
+                return [
+                    {
+                        "id": node_id,
+                        "distance": 1.0 / score - 1.0,
+                        "metadata": node_metas[node_id],
+                        "typed_metadata": node_typed_metas[node_id]
+                    }
+                    for node_id, score in sorted_nodes[:top_k]
+                ]
+            else:
+                print(f"RPC Error: {e}")
+                return []
 
     def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "") -> List[Dict]:
         proto_filters = [self._to_proto_filter(f) for f in filters] if filters else []
