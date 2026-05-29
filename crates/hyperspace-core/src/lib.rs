@@ -700,26 +700,42 @@ impl Metric for EuclideanMetric {
     #[cfg(feature = "nightly-simd")]
     #[inline(always)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
-        use std::simd::f32x8;
+        use std::simd::f32x4;
+        use std::simd::f64x4;
         use std::simd::num::SimdFloat;
 
-        let mut sum = f32x8::splat(0.0);
+        let mut sum = f32x4::splat(0.0);
         let mut i = 0;
-        const LANES: usize = 8;
         let n = a.len();
 
-        while i + LANES <= n {
-            let mut a_buf = [0.0f32; LANES];
-            let mut b_buf = [0.0f32; LANES];
-            for k in 0..LANES {
-                a_buf[k] = a[i + k] as f32;
-                b_buf[k] = b[i + k] as f32;
-            }
-            let va = f32x8::from_slice(&a_buf);
-            let vb = f32x8::from_slice(&b_buf);
+        while i + 8 <= n {
+            let a_f64_1 = f64x4::from_slice(&a[i..i + 4]);
+            let a_f64_2 = f64x4::from_slice(&a[i + 4..i + 8]);
+            let b_f64_1 = f64x4::from_slice(&b[i..i + 4]);
+            let b_f64_2 = f64x4::from_slice(&b[i + 4..i + 8]);
+
+            let va1: f32x4 = a_f64_1.cast();
+            let va2: f32x4 = a_f64_2.cast();
+            let vb1: f32x4 = b_f64_1.cast();
+            let vb2: f32x4 = b_f64_2.cast();
+
+            let diff1 = va1 - vb1;
+            let diff2 = va2 - vb2;
+
+            sum += diff1 * diff1 + diff2 * diff2;
+            i += 8;
+        }
+
+        while i + 4 <= n {
+            let a_f64 = f64x4::from_slice(&a[i..i + 4]);
+            let b_f64 = f64x4::from_slice(&b[i..i + 4]);
+
+            let va: f32x4 = a_f64.cast();
+            let vb: f32x4 = b_f64.cast();
+
             let diff = va - vb;
             sum += diff * diff;
-            i += LANES;
+            i += 4;
         }
 
         let mut total = sum.reduce_sum() as f64;
@@ -747,29 +763,43 @@ impl Metric for EuclideanMetric {
     #[cfg(feature = "nightly-simd")]
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         use std::simd::num::{SimdFloat, SimdInt};
-        use std::simd::{f32x8, i8x8};
+        use std::simd::{f32x4, i8x4, f64x4};
 
-        const LANES: usize = 8;
         const SCALE_INV: f32 = 1.0 / 127.0;
-        let scale_vec = f32x8::splat(SCALE_INV);
+        let scale_vec = f32x4::splat(SCALE_INV);
 
-        let mut sum = f32x8::splat(0.0);
+        let mut sum = f32x4::splat(0.0);
         let mut i = 0;
         let n = a.coords.len();
 
-        while i + LANES <= n {
-            let a_chunk = i8x8::from_slice(&a.coords[i..i + LANES]);
-            let mut query_buf = [0.0f32; LANES];
-            for k in 0..LANES {
-                query_buf[k] = b.coords[i + k] as f32;
-            }
-            let b_chunk = f32x8::from_slice(&query_buf);
+        while i + 8 <= n {
+            let a_chunk1 = i8x4::from_slice(&a.coords[i..i + 4]);
+            let a_chunk2 = i8x4::from_slice(&a.coords[i + 4..i + 8]);
 
-            let a_f32: f32x8 = a_chunk.cast();
-            let a_scaled = a_f32 * scale_vec;
-            let diff = a_scaled - b_chunk;
+            let b_f64_1 = f64x4::from_slice(&b.coords[i..i + 4]);
+            let b_f64_2 = f64x4::from_slice(&b.coords[i + 4..i + 8]);
+
+            let b_chunk1: f32x4 = b_f64_1.cast();
+            let b_chunk2: f32x4 = b_f64_2.cast();
+
+            let a_f32_1: f32x4 = a_chunk1.cast();
+            let a_f32_2: f32x4 = a_chunk2.cast();
+
+            let diff1 = a_f32_1 * scale_vec - b_chunk1;
+            let diff2 = a_f32_2 * scale_vec - b_chunk2;
+
+            sum += diff1 * diff1 + diff2 * diff2;
+            i += 8;
+        }
+
+        while i + 4 <= n {
+            let a_chunk = i8x4::from_slice(&a.coords[i..i + 4]);
+            let b_f64 = f64x4::from_slice(&b.coords[i..i + 4]);
+            let b_chunk: f32x4 = b_f64.cast();
+            let a_f32: f32x4 = a_chunk.cast();
+            let diff = a_f32 * scale_vec - b_chunk;
             sum += diff * diff;
-            i += LANES;
+            i += 4;
         }
 
         let mut total_sum = sum.reduce_sum() as f64;

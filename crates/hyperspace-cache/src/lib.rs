@@ -143,6 +143,10 @@ pub struct VectorCache {
     eviction: parking_lot::RwLock<EvictionManager>,
     config: parking_lot::RwLock<CacheConfig>,
 
+    collection_name: String,
+    ann_enabled: std::sync::atomic::AtomicBool,
+    ann_threshold_bits: std::sync::atomic::AtomicU64,
+
     l1_tracker: RateTracker,
     l2_tracker: RateTracker,
 
@@ -195,6 +199,10 @@ impl VectorCache {
             )),
         };
 
+        let collection_name = config.collection_name.clone();
+        let ann_enabled = std::sync::atomic::AtomicBool::new(config.ann_threshold.is_some());
+        let ann_threshold_bits = std::sync::atomic::AtomicU64::new(config.ann_threshold.unwrap_or(0.0).to_bits());
+
         let rebuild_cooldown_ms = std::env::var("HYPERSPACE_CACHE_REBUILD_COOLDOWN_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -211,6 +219,9 @@ impl VectorCache {
             ttl_wheel,
             eviction,
             config,
+            collection_name,
+            ann_enabled,
+            ann_threshold_bits,
             l1_tracker: RateTracker::new(),
             l2_tracker: RateTracker::new(),
             last_rebuild_triggered_ms: AtomicU64::new(0),
@@ -237,7 +248,7 @@ impl VectorCache {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let collection_name = self_clone.config.read().collection_name.clone();
+                        let collection_name = &self_clone.collection_name;
 
                         // Process TTL expirations
                         let expired = self_clone.ttl_wheel.tick();
@@ -305,11 +316,11 @@ impl VectorCache {
         k: usize,
     ) -> Option<Vec<CacheHit>> {
         let start_time = Instant::now();
-        let collection_name = self.config.read().collection_name.clone();
+        let collection_name = &self.collection_name;
         if let Some(id) = known_id {
             if let Some((vec, meta)) = self.l1.get_entry(id) {
-                metrics::metrics().l1_hits.with_label_values(&[&collection_name]).inc();
-                metrics::metrics().l1_latency.with_label_values(&[&collection_name])
+                metrics::metrics().l1_hits.with_label_values(&[collection_name]).inc();
+                metrics::metrics().l1_latency.with_label_values(&[collection_name])
                     .observe(start_time.elapsed().as_secs_f64());
                 self.l1_tracker.record_hit();
 
@@ -321,18 +332,22 @@ impl VectorCache {
                     tier: CacheTier::L1Exact,
                 }]);
             } else {
-                metrics::metrics().l1_misses.with_label_values(&[&collection_name]).inc();
+                metrics::metrics().l1_misses.with_label_values(&[collection_name]).inc();
                 self.l1_tracker.record_miss();
             }
         }
 
-        let ann_threshold = self.config.read().ann_threshold;
+        let ann_threshold = if self.ann_enabled.load(Ordering::Acquire) {
+            Some(f64::from_bits(self.ann_threshold_bits.load(Ordering::Acquire)))
+        } else {
+            None
+        };
         if let Some(threshold) = ann_threshold {
             let l2_start = Instant::now();
             let ann_results = self.l2.search(query, k, threshold);
             if !ann_results.is_empty() {
-                metrics::metrics().l2_hits.with_label_values(&[&collection_name]).inc();
-                metrics::metrics().l2_latency.with_label_values(&[&collection_name])
+                metrics::metrics().l2_hits.with_label_values(&[collection_name]).inc();
+                metrics::metrics().l2_latency.with_label_values(&[collection_name])
                     .observe(l2_start.elapsed().as_secs_f64());
                 self.l2_tracker.record_hit();
 
@@ -353,7 +368,7 @@ impl VectorCache {
                     return Some(hits);
                 }
             } else {
-                metrics::metrics().l2_misses.with_label_values(&[&collection_name]).inc();
+                metrics::metrics().l2_misses.with_label_values(&[collection_name]).inc();
                 self.l2_tracker.record_miss();
             }
         }
@@ -379,7 +394,11 @@ impl VectorCache {
             self.ttl_wheel.schedule(id, t);
         }
 
-        let ann_threshold = self.config.read().ann_threshold;
+        let ann_threshold = if self.ann_enabled.load(Ordering::Acquire) {
+            Some(f64::from_bits(self.ann_threshold_bits.load(Ordering::Acquire)))
+        } else {
+            None
+        };
         if ann_threshold.is_some() {
             let rebuild_needed = self.l2.enqueue(id, vector);
             if rebuild_needed {
@@ -387,22 +406,22 @@ impl VectorCache {
             }
         }
 
-        let collection_name = self.config.read().collection_name.clone();
-        metrics::metrics().inserts.with_label_values(&[&collection_name]).inc();
-        metrics::metrics().l1_size.with_label_values(&[&collection_name]).set(self.l1.len() as f64);
-        metrics::metrics().l2_pending_size.with_label_values(&[&collection_name]).set(self.l2.pending_len() as f64);
+        let collection_name = &self.collection_name;
+        metrics::metrics().inserts.with_label_values(&[collection_name]).inc();
+        metrics::metrics().l1_size.with_label_values(&[collection_name]).set(self.l1.len() as f64);
+        metrics::metrics().l2_pending_size.with_label_values(&[collection_name]).set(self.l2.pending_len() as f64);
 
         self.eviction.read().maybe_evict(&self.l1, &*self.l2);
     }
 
     pub fn invalidate(&self, id: u32) {
-        let collection_name = self.config.read().collection_name.clone();
+        let collection_name = &self.collection_name;
         if self.l1.remove(id).is_some() {
-            metrics::metrics().evictions.with_label_values(&[&collection_name, "invalidate"]).inc();
+            metrics::metrics().evictions.with_label_values(&[collection_name, "invalidate"]).inc();
         }
         self.l2.tombstone(id);
-        metrics::metrics().l1_size.with_label_values(&[&collection_name]).set(self.l1.len() as f64);
-        metrics::metrics().tombstone_size.with_label_values(&[&collection_name]).set(self.l2.tombstone_len() as f64);
+        metrics::metrics().l1_size.with_label_values(&[collection_name]).set(self.l1.len() as f64);
+        metrics::metrics().tombstone_size.with_label_values(&[collection_name]).set(self.l2.tombstone_len() as f64);
 
         // FIX (Bottleneck 2): Proactively rebuild if tombstone accumulation exceeds the
         // threshold. Without this, tombstones only got cleared on the periodic rebuild
@@ -415,11 +434,11 @@ impl VectorCache {
     pub fn clear(&self) {
         self.l1.map.clear();
         self.l2.clear();
-        let collection_name = self.config.read().collection_name.clone();
-        metrics::metrics().l1_size.with_label_values(&[&collection_name]).set(0.0);
-        metrics::metrics().l2_index_size.with_label_values(&[&collection_name]).set(0.0);
-        metrics::metrics().l2_pending_size.with_label_values(&[&collection_name]).set(0.0);
-        metrics::metrics().tombstone_size.with_label_values(&[&collection_name]).set(0.0);
+        let collection_name = &self.collection_name;
+        metrics::metrics().l1_size.with_label_values(&[collection_name]).set(0.0);
+        metrics::metrics().l2_index_size.with_label_values(&[collection_name]).set(0.0);
+        metrics::metrics().l2_pending_size.with_label_values(&[collection_name]).set(0.0);
+        metrics::metrics().tombstone_size.with_label_values(&[collection_name]).set(0.0);
     }
 
     pub fn update_config(&self, policy: EvictionPolicy, ann_threshold: Option<f64>) {
@@ -428,6 +447,8 @@ impl VectorCache {
             conf.eviction_policy = policy;
             conf.ann_threshold = ann_threshold;
         }
+        self.ann_enabled.store(ann_threshold.is_some(), Ordering::Release);
+        self.ann_threshold_bits.store(ann_threshold.unwrap_or(0.0).to_bits(), Ordering::Release);
         {
             let mut evict = self.eviction.write();
             evict.policy = policy;
@@ -490,8 +511,8 @@ impl VectorCache {
             return;
         }
 
-        let collection_name = self.config.read().collection_name.clone();
-        let ann_enabled = self.config.read().ann_threshold.is_some();
+        let collection_name = &self.collection_name;
+        let ann_enabled = self.ann_enabled.load(Ordering::Acquire);
 
         for (id, vector) in &entries {
             let entry = CacheEntry::new(vector.clone(), HashMap::new(), None);
@@ -505,7 +526,7 @@ impl VectorCache {
         }
 
         metrics::metrics().l1_size
-            .with_label_values(&[&collection_name])
+            .with_label_values(&[collection_name])
             .set(self.l1.len() as f64);
 
         // Trigger one rebuild for the entire warmup batch.
@@ -537,8 +558,8 @@ impl VectorCache {
             return;
         }
 
-        let collection_name = self.config.read().collection_name.clone();
-        let ann_enabled = self.config.read().ann_threshold.is_some();
+        let collection_name = &self.collection_name;
+        let ann_enabled = self.ann_enabled.load(Ordering::Acquire);
 
         for (id, vector, metadata) in &entries {
             let entry = CacheEntry::new(vector.clone(), metadata.clone(), None);
@@ -550,7 +571,7 @@ impl VectorCache {
         }
 
         metrics::metrics().l1_size
-            .with_label_values(&[&collection_name])
+            .with_label_values(&[collection_name])
             .set(self.l1.len() as f64);
 
         if ann_enabled {
@@ -591,7 +612,7 @@ impl VectorCache {
         // ── Collect entries ───────────────────────────────────────────────────
         let l1 = self.l1.clone();
         let l2 = self.l2.clone();
-        let collection_name = self.config.read().collection_name.clone();
+        let collection_name = self.collection_name.clone();
 
         tokio::task::spawn_blocking(move || {
             let start = Instant::now();

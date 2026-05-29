@@ -74,13 +74,8 @@ class StressTestRunner:
                 q_vecs = self.gen_vecs(self.count_srch)
                 t0 = time.time()
                 with ThreadPoolExecutor(max_workers=c) as ex:
-                    if name.lower() == "hyperspace":
-                        batch_size = 64
-                        for i in range(0, len(q_vecs), batch_size):
-                            ex.submit(search_fn, db_context, coll, q_vecs[i:i + batch_size])
-                    else:
-                        for v in q_vecs:
-                            ex.submit(search_fn, db_context, coll, v)
+                    for v in q_vecs:
+                        ex.submit(search_fn, db_context, coll, v)
                 srch_qps = self.count_srch / (time.time() - t0)
                 if c == 1: base_srch = srch_qps
                 print(f" Done. QPS: {srch_qps:8.0f}")
@@ -247,10 +242,11 @@ def run_stress_test():
         try:
             from hyperspace import HyperspaceClient
             def hs_setup(c):
-                client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+                client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB", pool_size=16)
                 try: client.delete_collection(c)
                 except: pass
                 client.create_collection(c, dimension=args.dim, metric="cosine")
+                client.configure(ef_search=16, collection=c)
                 return client
             def hs_ins(client, c, vecs, start_id): 
                 chunk_size = 4000
@@ -258,13 +254,8 @@ def run_stress_test():
                     chunk = vecs[i:i+chunk_size]
                     ids = list(range(start_id + i, start_id + i + len(chunk)))
                     client.batch_insert(chunk, ids, collection=c)
-            def hs_srch(client, c, vectors):
-                if callable(getattr(client, "search_batch", None)):
-                    payload = [v.tolist() if hasattr(v, "tolist") else v for v in vectors]
-                    client.search_batch(payload, top_k=10, collection=c)
-                    return
-                for v in vectors:
-                    client.search(v, top_k=10, collection=c)
+            def hs_srch(client, c, v):
+                client.search(v, top_k=10, collection=c)
             def hs_wait(client, coll):
                 url = f"http://localhost:50050/api/collections/{coll}/stats"
                 headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}

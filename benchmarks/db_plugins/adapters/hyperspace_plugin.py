@@ -50,7 +50,7 @@ class HyperspacePlugin(DatabasePlugin):
                     f"Skipped: mode mismatch ({server_metric})",
                 )
 
-            client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+            client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB", pool_size=16)
             coll_name = f"bench_semantic_{int(time.time())}"
 
             try:
@@ -134,22 +134,14 @@ class HyperspacePlugin(DatabasePlugin):
             # massively over-saturating the CPU and hurting throughput.
             # For single-connection workloads set HS_SEARCH_BATCH_INNER_CONCURRENCY
             # to the number of CPU cores for maximum throughput.
-            conc_batch_size = 32
             q_list = target_q_vecs[0].tolist()
 
             def hyperspace_query() -> None:
-                if callable(getattr(client, "search_batch", None)):
-                    client.search_batch(
-                        [q_list] * conc_batch_size, top_k=10, collection=coll_name
-                    )
-                    return
                 client.search(q_list, top_k=10, collection=coll_name)
 
             conc = legacy.run_concurrency_profile(
                 hyperspace_query,
-                queries_per_call=conc_batch_size
-                if callable(getattr(client, "search_batch", None))
-                else 1,
+                queries_per_call=1,
             )
 
             disk = legacy.get_hyperspace_disk_api() or legacy.get_local_disk("../data")

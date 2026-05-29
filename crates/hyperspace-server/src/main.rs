@@ -1236,29 +1236,31 @@ impl Database for HyperspaceService {
                         })
                         .collect();
 
-                    // Broadcast to dashboard
-                    if let Some(first) = res.first() {
-                        use hyperspace_proto::hyperspace::{
-                            event_message::Payload, EventMessage, EventType, TrajectoryStepEvent,
-                        };
-                        let _ = self.manager.event_tx.send(EventMessage {
-                            r#type: EventType::TrajectoryStep as i32,
-                            payload: Some(Payload::TrajectoryStep(TrajectoryStepEvent {
-                                id: first.0,
-                                collection: col_name,
-                                x: first
-                                    .2
-                                    .get("_x")
-                                    .and_then(|v| v.parse::<f32>().ok())
-                                    .unwrap_or(0.0),
-                                y: first
-                                    .2
-                                    .get("_y")
-                                    .and_then(|v| v.parse::<f32>().ok())
-                                    .unwrap_or(0.0),
-                                metadata: first.2.clone(),
-                            })),
-                        });
+                    // Broadcast to dashboard only if there are active receivers
+                    if self.manager.event_tx.receiver_count() > 0 {
+                        if let Some(first) = res.first() {
+                            use hyperspace_proto::hyperspace::{
+                                event_message::Payload, EventMessage, EventType, TrajectoryStepEvent,
+                            };
+                            let _ = self.manager.event_tx.send(EventMessage {
+                                r#type: EventType::TrajectoryStep as i32,
+                                payload: Some(Payload::TrajectoryStep(TrajectoryStepEvent {
+                                    id: first.0,
+                                    collection: col_name,
+                                    x: first
+                                        .2
+                                        .get("_x")
+                                        .and_then(|v| v.parse::<f32>().ok())
+                                        .unwrap_or(0.0),
+                                    y: first
+                                        .2
+                                        .get("_y")
+                                        .and_then(|v| v.parse::<f32>().ok())
+                                        .unwrap_or(0.0),
+                                    metadata: first.2.clone(),
+                                })),
+                            });
+                        }
                     }
 
                     Ok(Response::new(SearchResponse { results: output }))

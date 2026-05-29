@@ -17,7 +17,7 @@ class Durability:
     STRICT = 3
 
 class HyperspaceClient:
-    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None):
+    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None, pool_size: int = 8):
         # Optimized gRPC Channel with KeepAlive and Max Message Size
         options = [
             ('grpc.max_send_message_length', 64 * 1024 * 1024), # 64MB
@@ -32,8 +32,18 @@ class HyperspaceClient:
         self.host = host
         self.api_key = api_key
         self.user_id = user_id
-        self.channel = grpc.insecure_channel(host, options=options)
-        self.stub = hyperspace_pb2_grpc.DatabaseStub(self.channel)
+        
+        import threading
+        self.num_channels = pool_size
+        self._lock = threading.Lock()
+        self._thread_local = threading.local()
+        self.channels = [grpc.insecure_channel(host, options=options) for _ in range(self.num_channels)]
+        self.stubs = [hyperspace_pb2_grpc.DatabaseStub(c) for c in self.channels]
+        self._stub_index = 0
+        
+        # Backwards compatibility channel reference
+        self.channel = self.channels[0]
+        
         meta = []
         if api_key:
             meta.append(('x-api-key', api_key))
@@ -41,6 +51,18 @@ class HyperspaceClient:
             meta.append(('x-hyperspace-user-id', user_id))
         self.metadata = tuple(meta) if meta else None
         self.embedder = embedder
+
+    @property
+    def stub(self):
+        # Lock-free thread-local fast path
+        if hasattr(self._thread_local, "stub"):
+            return self._thread_local.stub
+            
+        with self._lock:
+            self._stub_index = (self._stub_index + 1) % self.num_channels
+            selected_stub = self.stubs[self._stub_index]
+            self._thread_local.stub = selected_stub
+            return selected_stub
 
     @staticmethod
     def _normalize_vector(vector: Union[List[float], tuple]) -> List[float]:
@@ -659,13 +681,14 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return []
 
-    def traverse(self, start_id: int, max_depth: int = 2, max_nodes: int = 256, layer: int = 0, filter: Dict[str, str] = None, filters: List[Dict] = None, collection: str = "") -> List[Dict]:
+    def traverse(self, start_id: int, max_depth: int = 2, max_nodes: int = 256, layer: int = 0, traversal_mode: int = 0, filter: Dict[str, str] = None, filters: List[Dict] = None, collection: str = "") -> List[Dict]:
         req = hyperspace_pb2.TraverseRequest(
             collection=collection,
             start_id=start_id,
             max_depth=max_depth,
             max_nodes=max_nodes,
             layer=layer,
+            traversal_mode=traversal_mode,
         )
         if filter:
             req.filter.update(filter)
@@ -862,7 +885,11 @@ class HyperspaceClient:
         return log_map(vec_a, vec_b, c=curvature)
 
     def close(self):
-        self.channel.close()
+        for c in self.channels:
+            try:
+                c.close()
+            except:
+                pass
 
     def __enter__(self):
         return self
