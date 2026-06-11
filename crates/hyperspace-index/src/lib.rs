@@ -199,8 +199,41 @@ impl<M: Metric> HnswIndex<M> {
             }
         }
 
-        let mut file = File::create(path).map_err(|e| e.to_string())?;
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        // L51 ATOMIC SNAPSHOT WRITE: never truncate the good snapshot in place.
+        // Write to a sibling temp file, fsync it durably, then atomically rename
+        // over the target. An interrupted or out-of-space write leaves the old
+        // index.snap fully intact instead of replacing it with a truncated stub
+        // (root cause of the 2026-06-10 corruption: 51509 -> 634 vectors).
+        let mut tmp_name = path.as_os_str().to_os_string();
+        tmp_name.push(".tmp");
+        let tmp_path = std::path::PathBuf::from(tmp_name);
+
+        {
+            let mut file = File::create(&tmp_path).map_err(|e| e.to_string())?;
+            file.write_all(&bytes).map_err(|e| e.to_string())?;
+            // Flush user-space buffers, then fsync the bytes to stable storage
+            // BEFORE the rename, so a crash can never expose a renamed-but-empty
+            // file from the page cache.
+            file.flush().map_err(|e| e.to_string())?;
+            file.sync_all().map_err(|e| e.to_string())?;
+        }
+
+        // Atomic replace: src and dst are siblings (same filesystem), so on POSIX
+        // this swaps the snapshot in a single step. Either the old or the new
+        // complete snapshot is visible -- never a partial one.
+        std::fs::rename(&tmp_path, path).map_err(|e| {
+            // Best-effort cleanup so a failed rename leaves no orphan tmp file.
+            let _ = std::fs::remove_file(&tmp_path);
+            e.to_string()
+        })?;
+
+        // fsync the parent directory so the rename itself is durable across a
+        // power loss (the new dir entry must reach disk, not just the file data).
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
 
         Ok(())
     }
