@@ -319,7 +319,20 @@ class HyperspaceMcpServer {
           }
           case "hyperspace_insert_text": {
             const { collection, id, text, metadata } = z.object({ collection: z.string(), id: z.number(), text: z.string(), metadata: z.record(z.string(), z.string()).optional() }).parse(args);
-            await this.client.insertText(id, text, metadata, collection);
+            // GUARD: silnik gRPC definiuje id jako uint32 (proto InsertTextRequest.id, max 4294967295).
+            // JS number powyzej tego (albo ujemny/ulamkowy) powoduje "serialization failure:
+            // Assertion failed" zamiast czytelnego bledu. Walidujemy zakres uint32 PRZED gRPC,
+            // zeby pulapka kolizji/przepelnienia id dawala jasny komunikat, nie crash protokolu.
+            const UINT32_MAX = 4294967295;
+            if (!Number.isInteger(id) || id < 0 || id > UINT32_MAX) {
+              return { content: [{ type: "text", text: `{"ok": false, "error": "id must be an integer in uint32 range [0, ${UINT32_MAX}]; got ${id}"}` }] };
+            }
+            // KONWENCJA ANTIGRAVITY: tresc rekordu czytana z metadata._content (NIE z natywnego
+            // pola silnika). Facade gniewka (hsdb_memory) wstrzykuje _content przy zapisie; SDK
+            // insertText tego NIE robi, wiec bez tego wpis ma pusta tresc przy odczycie (root
+            // cause "olewania bazy" / pustych encji). Wstrzykujemy by zapis = jakosc store_memory.
+            const meta = { ...(metadata || {}), _content: text.slice(0, 500) };
+            await this.client.insertText(id, text, meta, collection);
             return { content: [{ type: "text", text: `Stored ${id} in ${collection}` }] };
           }
           case "hyperspace_create_collection": {
