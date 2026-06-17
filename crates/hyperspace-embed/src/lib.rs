@@ -148,6 +148,32 @@ impl MultiVectorizer {
 
 // --- Local ONNX Vectorizer ---
 
+pub fn ensure_ort_initialized() -> anyhow::Result<()> {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    let mut err = None;
+    INIT.call_once(|| {
+        let dylib_path = "/Users/paulinajanowska/Downloads/onnxruntime-osx-x86_64-1.20.1/lib/libonnxruntime.dylib";
+        eprintln!("⚡ Programmatic ORT initialization from: {}", dylib_path);
+        match ort::init_from(dylib_path) {
+            Ok(builder) => {
+                builder.commit();
+                eprintln!("✅ Programmatic ORT initialization successful!");
+            },
+            Err(e) => {
+                let msg = format!("❌ Programmatic ORT init_from failed: {:?}", e);
+                eprintln!("{}", msg);
+                err = Some(anyhow::anyhow!(msg));
+            }
+        }
+    });
+    if let Some(e) = err {
+        Err(e)
+    } else {
+        Ok(())
+    }
+}
+
 pub struct OnnxVectorizer {
     tokenizer: Tokenizer,
     session: Mutex<Session>,
@@ -170,14 +196,16 @@ impl OnnxVectorizer {
         metric: Metric,
         metric_name: &str, // For env var lookup (e.g., "L2", "COSINE", "LORENTZ", "POINCARE")
     ) -> Result<Self> {
+        ensure_ort_initialized()?;
+
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
         let session = Session::builder()
             .map_err(|e| anyhow::anyhow!("Ort session builder failed: {e}"))?
-            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .with_optimization_level(GraphOptimizationLevel::Level1)
             .map_err(|e| anyhow::anyhow!("Ort optimization failure: {e}"))?
-            .with_intra_threads(4)
+            .with_intra_threads(8)
             .map_err(|e| anyhow::anyhow!("Ort thread configuration failure: {e}"))?
             .commit_from_file(model_path)
             .map_err(|e| anyhow::anyhow!("Ort session commit failed for path {model_path}: {e}"))?;
@@ -206,6 +234,8 @@ impl OnnxVectorizer {
         metric_name: &str, // For env var lookup (e.g., "L2", "COSINE", "LORENTZ", "POINCARE")
         model_file: Option<String>,
     ) -> Result<Self> {
+        ensure_ort_initialized()?;
+
         use hf_hub::api::sync::{ApiBuilder, ApiRepo};
         use std::path::PathBuf;
 
@@ -248,6 +278,7 @@ impl OnnxVectorizer {
         }
 
         // 5. Download/load model (hf_hub handles caching automatically)
+        eprintln!("⚙️ Initializing HF API...");
         let api = builder.build().map_err(|e| {
             eprintln!("❌ HF API error for {model_id}: {e}");
             anyhow::anyhow!("HF API error: {e}")
@@ -255,16 +286,21 @@ impl OnnxVectorizer {
         let repo: ApiRepo = api.model(model_id.to_string());
 
         let filename = model_file.unwrap_or_else(|| "model.onnx".to_string());
+        eprintln!("⚙️ Fetching model file: {filename}");
         let model_path = repo.get(&filename).map_err(|e| {
             eprintln!("❌ Failed to download {filename} for {model_id}: {e}");
             anyhow::anyhow!("Failed to download {filename}: {e}")
         })?;
 
+        eprintln!("⚙️ Checking for external data files...");
         // Try to download external data for large models (.onnx.data or .onnx_data)
         for suffix in &[".data", "_data"] {
             let data_filename = format!("{filename}{suffix}");
+            eprintln!("⚙️ Trying to fetch external data: {data_filename}");
             let _ = repo.get(&data_filename);
         }
+        
+        eprintln!("⚙️ Fetching tokenizer.json...");
         let tokenizer_path = repo.get("tokenizer.json").map_err(|e| {
             eprintln!("❌ Failed to download tokenizer.json for {model_id}: {e}");
             anyhow::anyhow!("Failed to download tokenizer.json: {e}")
@@ -287,9 +323,9 @@ impl OnnxVectorizer {
                 eprintln!("❌ Ort session builder failed: {e}");
                 anyhow::anyhow!("Ort session builder failed: {e}")
             })?
-            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .with_optimization_level(GraphOptimizationLevel::Level1)
             .map_err(|e| anyhow::anyhow!("Ort optimization failure: {e}"))?
-            .with_intra_threads(4)
+            .with_intra_threads(8)
             .map_err(|e| anyhow::anyhow!("Ort thread configuration failure: {e}"))?
             .commit_from_file(
                 model_path
