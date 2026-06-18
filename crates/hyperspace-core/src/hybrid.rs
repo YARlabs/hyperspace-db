@@ -91,7 +91,7 @@ impl HybridQuantizedVector {
 
         #[cfg(all(target_feature = "avx2", target_arch = "x86_64"))]
         {
-            if limit % 8 == 0 {
+            if limit.is_multiple_of(8) {
                 return unsafe { self.euclidean_simd_avx2(other, limit) };
             }
         }
@@ -118,14 +118,24 @@ impl HybridQuantizedVector {
 
     #[cfg(all(target_feature = "avx2", target_arch = "x86_64"))]
     #[target_feature(enable = "avx2")]
+    /// # Safety
+    /// Caller must ensure:
+    /// - `limit` is a multiple of 4.
+    /// - `limit` is within the bounds of `other.coords` and `self.euclidean`.
+    /// - The target architecture supports AVX2.
     pub unsafe fn euclidean_simd_avx2(&self, other: &HyperVector, limit: usize) -> f64 {
-        use std::arch::x86_64::*;
+        use std::arch::x86_64::{
+            _mm256_cvtepi32_pd, _mm256_fmadd_pd, _mm256_loadu_pd, _mm256_mul_pd, _mm256_set1_pd,
+            _mm256_setzero_pd, _mm256_storeu_pd, _mm256_sub_pd, _mm_cvtepi8_epi32,
+            _mm_cvtsi32_si128,
+        };
         let mut sum_v = _mm256_setzero_pd();
         let scale_v = _mm256_set1_pd(1.0 / 127.0);
         let offset = self.lorentz.len();
 
         for i in (0..limit).step_by(4) {
-            let i8_vals = _mm_cvtsi32_si128(*(self.euclidean.as_ptr().add(i) as *const i32));
+            let val_bytes = self.euclidean.as_ptr().add(i).cast::<[u8; 4]>().read_unaligned();
+            let i8_vals = _mm_cvtsi32_si128(i32::from_ne_bytes(val_bytes));
             let i32_vals = _mm_cvtepi8_epi32(i8_vals);
             let f64_vals = _mm256_cvtepi32_pd(i32_vals);
             let a = _mm256_mul_pd(f64_vals, scale_v);
