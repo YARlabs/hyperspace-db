@@ -5,7 +5,9 @@
 #![allow(clippy::missing_panics_doc)]
 
 // Sidecar Payload Storage: available regardless of vector storage backend.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod payload_store;
+#[cfg(not(target_arch = "wasm32"))]
 pub use payload_store::{PayloadSlot, PayloadStore, DEFAULT_ZSTD_LEVEL};
 
 #[cfg(feature = "mmap")]
