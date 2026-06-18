@@ -1,14 +1,14 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
     BatchInsertRequest, BatchSearchRequest, CollectionSchema, CollectionSummary, CountRequest,
-    DurabilityLevel, EventMessage, EventSubscriptionRequest, EventType,
-    Filter, Match, Prefix, Range, InCone, InBall, InBox, FilterAnd, FilterOr, FilterNot,
-    FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
-    GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
-    GetPointsRequest, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse, GraphNode,
-    InsertRequest, InsertTextRequest, MrlLayer, ScrollRequest, SearchRequest, SearchResponse,
-    SearchResult, SearchResult as ResultItem, SearchTextRequest, TraverseRequest, TraverseResponse,
-    UpdatePayloadRequest, VectorComponent, VectorData, VectorizeRequest, VectorizeResponse,
+    DurabilityLevel, EventMessage, EventSubscriptionRequest, EventType, Filter, FilterAnd,
+    FilterNot, FilterOr, FindSemanticClustersRequest, FindSemanticClustersResponse,
+    GetConceptParentsRequest, GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse,
+    GetNodeRequest, GetPointsRequest, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse,
+    GraphNode, InBall, InBox, InCone, InsertRequest, InsertTextRequest, Match, MrlLayer, Prefix,
+    Range, ScrollRequest, SearchRequest, SearchResponse, SearchResult, SearchResult as ResultItem,
+    SearchTextRequest, TraverseRequest, TraverseResponse, UpdatePayloadRequest, VectorComponent,
+    VectorData, VectorizeRequest, VectorizeResponse,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -368,6 +368,7 @@ impl Client {
     ///
     /// # Errors
     /// Returns error if search fails.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search(
         &mut self,
         vector: Vec<f64>,
@@ -376,11 +377,17 @@ impl Client {
         mrl_dimension: Option<u32>,
         use_wasserstein: bool,
         component_weights: std::collections::HashMap<String, f32>,
+        use_wave: bool,
+        restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
+        let mut filter = std::collections::HashMap::default();
+        if let Some(rf) = restart_factor {
+            filter.insert("wave_restart_factor".to_string(), rf.to_string());
+        }
         let req = SearchRequest {
             vector,
             top_k,
-            filter: std::collections::HashMap::default(),
+            filter,
             filters: vec![],
             hybrid_query: None,
             hybrid_alpha: None,
@@ -390,6 +397,7 @@ impl Client {
             mrl_dimension,
             include_payload: false,
             component_weights,
+            use_wave,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -399,6 +407,7 @@ impl Client {
     ///
     /// # Errors
     /// Returns error if search fails.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search_f32(
         &mut self,
         vector: &[f32],
@@ -407,6 +416,8 @@ impl Client {
         mrl_dimension: Option<u32>,
         use_wasserstein: bool,
         component_weights: std::collections::HashMap<String, f32>,
+        use_wave: bool,
+        restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         self.search(
             Self::vec_f32_to_f64(vector),
@@ -415,6 +426,8 @@ impl Client {
             mrl_dimension,
             use_wasserstein,
             component_weights,
+            use_wave,
+            restart_factor,
         )
         .await
     }
@@ -468,6 +481,7 @@ impl Client {
             mrl_dimension: None,
             include_payload: false,
             component_weights: std::collections::HashMap::new(),
+            use_wave: false,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -499,6 +513,7 @@ impl Client {
                 mrl_dimension: None,
                 include_payload: false,
                 component_weights: std::collections::HashMap::new(),
+                use_wave: false,
             })
             .collect();
 
@@ -556,6 +571,7 @@ impl Client {
                 mrl_dimension: None,
                 include_payload: false,
                 component_weights: std::collections::HashMap::new(),
+                use_wave: false,
             })
             .collect();
 
@@ -574,6 +590,7 @@ impl Client {
     ///
     /// # Errors
     /// Returns error if search fails.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search_advanced(
         &mut self,
         vector: Vec<f64>,
@@ -582,16 +599,23 @@ impl Client {
         hybrid: Option<(String, f32)>,
         bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
         collection: Option<String>,
+        use_wave: bool,
+        restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         let (hybrid_query, hybrid_alpha) = match hybrid {
             Some((q, a)) => (Some(q), Some(a)),
             None => (None, None),
         };
 
+        let mut filter = std::collections::HashMap::default();
+        if let Some(rf) = restart_factor {
+            filter.insert("wave_restart_factor".to_string(), rf.to_string());
+        }
+
         let req = SearchRequest {
             vector,
             top_k,
-            filter: std::collections::HashMap::default(),
+            filter,
             filters,
             hybrid_query,
             hybrid_alpha,
@@ -601,6 +625,7 @@ impl Client {
             mrl_dimension: None,
             include_payload: false,
             component_weights: std::collections::HashMap::new(),
+            use_wave,
         };
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
@@ -610,6 +635,7 @@ impl Client {
     ///
     /// # Errors
     /// Returns error if search fails.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search_hybrid(
         &mut self,
         vector: Vec<f64>,
@@ -618,6 +644,8 @@ impl Client {
         top_k: u32,
         collection: Option<String>,
         bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
+        use_wave: bool,
+        restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         self.search_advanced(
             vector,
@@ -626,6 +654,8 @@ impl Client {
             Some((text, alpha)),
             bm25_options,
             collection,
+            use_wave,
+            restart_factor,
         )
         .await
     }
@@ -836,6 +866,9 @@ impl Client {
     }
 
     /// Returns the subsumption tree (directed hierarchy) starting from a root node.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn get_subsumption_tree(
         &mut self,
         root_id: u32,
@@ -852,6 +885,9 @@ impl Client {
     }
 
     /// High-level wrapper that explores the graph and returns an ego-graph structure.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn explore_graph(
         &mut self,
         start_id: u32,
@@ -918,6 +954,9 @@ impl Client {
     }
 
     /// Triggers a snapshot of the database.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn trigger_snapshot(&mut self) -> Result<String, tonic::Status> {
         let req = hyperspace_proto::hyperspace::Empty {};
         let resp = self.inner.trigger_snapshot(req).await?;
@@ -925,6 +964,9 @@ impl Client {
     }
 
     /// Checks if a collection exists.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn exists(&mut self, name: String) -> Result<bool, tonic::Status> {
         match self.get_collection_stats(name).await {
             Ok(_) => Ok(true),
@@ -934,6 +976,9 @@ impl Client {
     }
 
     /// Bulk retrieval of vectors by ID.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn get_points(
         &mut self,
         ids: Vec<u32>,
@@ -945,6 +990,9 @@ impl Client {
     }
 
     /// Thread-safe metadata patching without re-indexing.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn update_payload(
         &mut self,
         id: u32,
@@ -962,6 +1010,9 @@ impl Client {
     }
 
     /// Pagination/iteration for database scanning.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn scroll(
         &mut self,
         limit: u32,
@@ -980,6 +1031,9 @@ impl Client {
     }
 
     /// Filtered counting of points.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn count(
         &mut self,
         filters: Vec<hyperspace_proto::hyperspace::Filter>,
@@ -994,6 +1048,9 @@ impl Client {
     }
 
     /// Operational status monitoring.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn health_check(&mut self) -> Result<String, tonic::Status> {
         let req = hyperspace_proto::hyperspace::Empty {};
         let resp = self.inner.health_check(req).await?;
@@ -1001,6 +1058,9 @@ impl Client {
     }
 
     /// Streams system metrics.
+    ///
+    /// # Errors
+    /// Returns error if the RPC call fails.
     pub async fn monitor(
         &mut self,
     ) -> Result<tonic::Streaming<hyperspace_proto::hyperspace::SystemStats>, tonic::Status> {

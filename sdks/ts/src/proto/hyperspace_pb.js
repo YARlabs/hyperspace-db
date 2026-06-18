@@ -10532,7 +10532,8 @@ proto.hyperspace.SearchRequest.toObject = function(includeInstance, msg) {
     bm25Options: (f = msg.getBm25Options()) && proto.hyperspace.Bm25Options.toObject(includeInstance, f),
     mrlDimension: jspb.Message.getFieldWithDefault(msg, 10, 0),
     includePayload: jspb.Message.getBooleanFieldWithDefault(msg, 11, false),
-    componentWeightsMap: (f = msg.getComponentWeightsMap()) ? f.toObject(includeInstance, undefined) : []
+    componentWeightsMap: (f = msg.getComponentWeightsMap()) ? f.toObject(includeInstance, undefined) : [],
+    useWave: jspb.Message.getBooleanFieldWithDefault(msg, 13, false)
   };
 
   if (includeInstance) {
@@ -10624,6 +10625,10 @@ proto.hyperspace.SearchRequest.deserializeBinaryFromReader = function(msg, reade
       reader.readMessage(value, function(message, reader) {
         jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readFloat, null, "", 0.0);
          });
+      break;
+    case 13:
+      var value = /** @type {boolean} */ (reader.readBool());
+      msg.setUseWave(value);
       break;
     default:
       reader.skipField();
@@ -10733,6 +10738,13 @@ proto.hyperspace.SearchRequest.serializeBinaryToWriter = function(message, write
   f = message.getComponentWeightsMap(true);
   if (f && f.getLength() > 0) {
     f.serializeBinary(12, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeFloat);
+  }
+  f = message.getUseWave();
+  if (f) {
+    writer.writeBool(
+      13,
+      f
+    );
   }
 };
 
@@ -11071,6 +11083,24 @@ proto.hyperspace.SearchRequest.prototype.getComponentWeightsMap = function(opt_n
 proto.hyperspace.SearchRequest.prototype.clearComponentWeightsMap = function() {
   this.getComponentWeightsMap().clear();
   return this;};
+
+
+/**
+ * optional bool use_wave = 13;
+ * @return {boolean}
+ */
+proto.hyperspace.SearchRequest.prototype.getUseWave = function() {
+  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 13, false));
+};
+
+
+/**
+ * @param {boolean} value
+ * @return {!proto.hyperspace.SearchRequest} returns this
+ */
+proto.hyperspace.SearchRequest.prototype.setUseWave = function(value) {
+  return jspb.Message.setProto3BooleanField(this, 13, value);
+};
 
 
 

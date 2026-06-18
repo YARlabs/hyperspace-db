@@ -1,4 +1,4 @@
-use hyperspace_core::{Metric, PoincareMetric, LorentzMetric, EuclideanMetric, CosineMetric};
+use hyperspace_core::{CosineMetric, EuclideanMetric, LorentzMetric, Metric, PoincareMetric};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -120,20 +120,42 @@ pub struct CacheVector {
 impl instant_distance::Point for CacheVector {
     fn distance(&self, other: &Self) -> f32 {
         let dist = match &self.metric_type {
-            CacheMetricType::L2 => <EuclideanMetric as Metric>::distance(&self.coords, &other.coords),
-            CacheMetricType::Cosine => <CosineMetric as Metric>::distance(&self.coords, &other.coords),
-            CacheMetricType::Poincare => <PoincareMetric as Metric>::distance(&self.coords, &other.coords),
-            CacheMetricType::Lorentz => <LorentzMetric as Metric>::distance(&self.coords, &other.coords),
-            CacheMetricType::Hybrid { lorentz_weight, l2_weight } => {
+            CacheMetricType::L2 => {
+                <EuclideanMetric as Metric>::distance(&self.coords, &other.coords)
+            }
+            CacheMetricType::Cosine => {
+                <CosineMetric as Metric>::distance(&self.coords, &other.coords)
+            }
+            CacheMetricType::Poincare => {
+                <PoincareMetric as Metric>::distance(&self.coords, &other.coords)
+            }
+            CacheMetricType::Lorentz => {
+                <LorentzMetric as Metric>::distance(&self.coords, &other.coords)
+            }
+            CacheMetricType::Hybrid {
+                lorentz_weight,
+                l2_weight,
+            } => {
                 if self.coords.len() < 33 || other.coords.len() < 33 {
                     0.0
                 } else {
-                    let d_lor = <LorentzMetric as Metric>::distance(&self.coords[..33], &other.coords[..33]);
-                    let d_euc = <EuclideanMetric as Metric>::distance(&self.coords[33..], &other.coords[33..]);
+                    let d_lor = <LorentzMetric as Metric>::distance(
+                        &self.coords[..33],
+                        &other.coords[..33],
+                    );
+                    let d_euc = <EuclideanMetric as Metric>::distance(
+                        &self.coords[33..],
+                        &other.coords[33..],
+                    );
                     lorentz_weight * d_lor + l2_weight * d_euc
                 }
             }
         };
-        dist as f32
+        // The `instant_distance` trait requires f32. Our f64 distances are in range [0, very_large]
+        // and represent squared Euclidean or similar bounded metrics; truncation is acceptable here.
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            dist as f32
+        }
     }
 }

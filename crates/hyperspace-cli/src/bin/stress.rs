@@ -140,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             mrl_dimension: None,
             include_payload: false,
             component_weights: std::collections::HashMap::new(),
+            use_wave: false,
         };
         client.search(req).await?;
     }

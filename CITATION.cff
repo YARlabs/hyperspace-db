@@ -9,7 +9,7 @@ title: "HyperspaceDB: High-Performance Hyperbolic Vector Database"
 version: 1.0.0
 date-released: 2026-01-25
 url: "https://github.com/yarlabs/hyperspace-db"
-license: AGPL-3.0
+license: MIT
 keywords:
   - vector-database
   - hyperbolic-geometry

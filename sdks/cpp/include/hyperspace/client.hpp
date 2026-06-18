@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 #include <memory>
+#include <optional>
 #include <grpcpp/grpcpp.h>
 #include "hyperspace.grpc.pb.h"
 #include <google/protobuf/arena.h>
@@ -59,7 +60,7 @@ public:
     bool Delete(uint32_t id, const std::string& collection = "");
     bool BatchInsert(const std::vector<uint32_t>& ids, const std::vector<std::vector<double>>& vectors, const std::string& collection = "");
     std::vector<double> Vectorize(const std::string& text, const std::string& metric = "l2");
-    std::vector<SearchResultRec> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false, bool include_payload = false, const std::unordered_map<std::string, float>& component_weights = {});
+    std::vector<SearchResultRec> Search(const std::vector<double>& vector, int top_k = 10, const std::string& collection = "", const std::string& hybrid_query = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr, uint32_t mrl_dimension = 0, bool use_wasserstein = false, bool include_payload = false, const std::unordered_map<std::string, float>& component_weights = {}, bool use_wave = false, const std::optional<float>& restart_factor = std::nullopt);
     std::vector<std::vector<SearchResultRec>> SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k = 10, const std::string& collection = "");
     std::vector<SearchResultRec> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr);
     std::unordered_map<std::string, std::vector<SearchResultRec>> SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k = 10);

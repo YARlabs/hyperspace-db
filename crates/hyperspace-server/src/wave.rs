@@ -57,6 +57,9 @@ pub struct WaveInferenceParams {
     pub query_potential_strength: f64,
     /// Number of neighbors to fetch per node per diffusion step.
     pub neighbors_per_node: usize,
+    /// Schrödinger query-potential driving strength (restart factor α for Personalized PageRank).
+    /// Inject a continuous energy stream proportional to query similarity back to seeds.
+    pub restart_factor: f64,
 }
 
 impl Default for WaveInferenceParams {
@@ -70,6 +73,7 @@ impl Default for WaveInferenceParams {
             beam_width: 200,
             query_potential_strength: 0.5,
             neighbors_per_node: 12,
+            restart_factor: 0.25,
         }
     }
 }
@@ -87,13 +91,12 @@ impl WaveInferenceEngine {
     ///
     /// 2. **Diffusion Phase** (Klein-Gordon):
     ///    For each step:
-    ///      a. Transfer energy along edges weighted by Gaussian kernel exp(−d²/σ²).
-    ///      b. Apply mass term: nodes lose energy proportional to m²·ψ (bandpass filter).
-    ///      c. Apply query-potential correction: nodes with high query similarity gain
-    ///         extra energy proportional to λ·V(x)·ψ (attraction toward query space).
-    ///      d. Apply global damping (energy decay).
-    ///      e. **Normalise** the energy map (L∞ norm) to prevent explosion or degeneration.
-    ///      f. **Beam pruning**: retain only the top `beam_width` nodes by energy.
+    ///    a. Transfer energy along edges weighted by Gaussian kernel exp(−d²/σ²).
+    ///    b. Apply mass term: nodes lose energy proportional to m²·ψ (bandpass filter).
+    ///    c. Apply query-potential correction: nodes with high query similarity gain extra energy proportional to λ·V(x)·ψ (attraction toward query space).
+    ///    d. Apply global damping (energy decay).
+    ///    e. **Normalise** the energy map (L∞ norm) to prevent explosion or degeneration.
+    ///    f. **Beam pruning**: retain only the top `beam_width` nodes by energy.
     ///
     /// 3. **Result Phase**: Return top-K nodes by final energy.
     pub async fn search_diffusive(
@@ -134,7 +137,7 @@ impl WaveInferenceEngine {
         }
 
         // ── 2. DIFFUSION PHASE (Klein-Gordon) ───────────────────────────────────────
-        for _step in 0..params.steps {
+        for step in 0..params.steps {
             // a. Transfer energy along graph edges
             let mut next_energy: HashMap<u32, f64> = HashMap::new();
 
@@ -149,7 +152,8 @@ impl WaveInferenceEngine {
                 *next_energy.entry(id).or_insert(0.0) += self_energy;
 
                 // Fetch layer-0 neighbors for edge-based diffusion
-                if let Ok(neighbors) = collection.graph_neighbors(id, 0, params.neighbors_per_node) {
+                if let Ok(neighbors) = collection.graph_neighbors(id, 0, params.neighbors_per_node)
+                {
                     if let Ok(distances) = collection.graph_neighbor_distances(id, &neighbors) {
                         for (neighbor_id, dist) in neighbors.into_iter().zip(distances) {
                             // Gaussian edge kernel: higher weight for closer neighbors
@@ -172,11 +176,33 @@ impl WaveInferenceEngine {
                 }
             }
 
+            // c. Apply query-potential driving force (Personalized PageRank / Teleportation)
+            if params.restart_factor > 0.0 {
+                // Dynamically adjust restart factor per step (decreases slightly as diffusion progresses to allow expansion)
+                let step_decay = 1.0 - (step as f64 / params.steps as f64) * 0.3;
+                let step_restart_factor = params.restart_factor * step_decay;
+
+                // Scale the entire diffused energy map by (1.0 - step_restart_factor)
+                let scale = 1.0 - step_restart_factor;
+                for e in next_energy.values_mut() {
+                    *e *= scale;
+                }
+
+                // Inject the constant query driving force back to seed nodes
+                // The driving force is dynamic per node: nodes with higher similarity (potential)
+                // receive a stronger teleportation injection, anchoring the wave to accurate seeds.
+                for (&node_id, &potential) in &query_potential {
+                    let e = next_energy.entry(node_id).or_insert(0.0);
+                    let node_restart = step_restart_factor * potential;
+                    *e += node_restart * potential;
+                }
+            }
+
             // c. Normalise: prevent explosion or degeneration.
             //    Scale all energies so that max |ψ| = 1.0 (L∞ normalisation).
             let max_e = next_energy
                 .values()
-                .cloned()
+                .copied()
                 .fold(f64::NEG_INFINITY, f64::max);
             if max_e > 1e-12 {
                 for e in next_energy.values_mut() {
@@ -216,12 +242,12 @@ impl WaveInferenceEngine {
 
 #[cfg(test)]
 mod tests {
+    use super::{WaveInferenceEngine, WaveInferenceParams};
     use crate::manager::CollectionManager;
     use hyperspace_proto::hyperspace::{CollectionSchema, VectorComponent};
     use std::collections::HashMap;
-    use tokio::sync::broadcast;
     use tempfile::tempdir;
-    use super::{WaveInferenceParams, WaveInferenceEngine};
+    use tokio::sync::broadcast;
 
     /// Test that Klein-Gordon diffusion correctly propagates energy through a
     /// chain graph: Query ≈ A → B → C
@@ -302,16 +328,20 @@ mod tests {
             beam_width: 50,
             query_potential_strength: 0.3,
             neighbors_per_node: 10,
+            restart_factor: 0.25,
         };
 
         let results = WaveInferenceEngine::search_diffusive(col, &[0.0; 8], params)
             .await
             .unwrap();
 
-        println!("Klein-Gordon diffusion results: {:?}", results);
+        println!("Klein-Gordon diffusion results: {results:?}");
 
         // A should be the top result (closest seed, highest initial energy)
-        assert!(results.len() >= 2, "Should discover at least A and B via diffusion");
+        assert!(
+            results.len() >= 2,
+            "Should discover at least A and B via diffusion"
+        );
         assert_eq!(
             results[0].2.get("name").unwrap(),
             "A",
@@ -346,14 +376,14 @@ mod tests {
 
         // Insert a small cluster of 10 vectors
         for i in 0..10u32 {
-            let v = i as f64 * 0.05;
+            let v = f64::from(i) * 0.05;
             let mut meta = HashMap::new();
             meta.insert("idx".to_string(), i.to_string());
             col.insert(
                 &[v, v, v, v],
                 i,
                 meta,
-                i as u64,
+                u64::from(i),
                 hyperspace_core::Durability::Default,
             )
             .await

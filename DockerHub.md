@@ -2,7 +2,7 @@
 # [H] HyperspaceDB
 
 ![Banner](https://img.shields.io/badge/Status-v1.0_Gold-00FFFF?style=for-the-badge)
-![License](https://img.shields.io/badge/License-AGPL_v3-blue?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 ![Size](https://img.shields.io/docker/image-size/glukhota/hyperspace-db/latest?style=for-the-badge)
 
 **The Spatial Memory for AI.**
@@ -99,10 +99,7 @@ Specific version tags. Use these in production to ensure immutability and preven
 
 ## 🔒 License
 
-HyperspaceDB is licensed under a dual-license model:
-
-1. **Open Source (AGPLv3):** Free for open source projects.
-2. **Commercial:** Required for proprietary/closed-source products.
+HyperspaceDB is licensed under the MIT License.
 
 View full license details on [GitHub](https://github.com/YARlabs/hyperspace-db/blob/main/LICENSE).
 

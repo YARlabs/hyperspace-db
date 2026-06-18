@@ -646,6 +646,7 @@ export class HyperspaceClient {
         topK: number,
         collection: string = '',
         options?: {
+            filter?: { [key: string]: string },
             filters?: Filter[],
             hybridQuery?: string,
             hybridAlpha?: number,
@@ -653,7 +654,9 @@ export class HyperspaceClient {
             mrlDimension?: number,
             useWasserstein?: boolean,
             includePayload?: boolean,
-            componentWeights?: { [key: string]: number }
+            componentWeights?: { [key: string]: number },
+            useWave?: boolean,
+            restartFactor?: number
         }
     ): Promise<SearchResult[]> {
         return new Promise((resolve, reject) => {
@@ -661,6 +664,22 @@ export class HyperspaceClient {
             req.setVectorList(HyperspaceClient.toVectorList(vector));
             req.setTopK(topK);
             req.setCollection(collection);
+
+            if (options?.filter) {
+                const map = req.getFilterMap();
+                for (const k in options.filter) {
+                    map.set(k, options.filter[k]);
+                }
+            }
+
+            if (options?.restartFactor !== undefined) {
+                const map = req.getFilterMap();
+                map.set('wave_restart_factor', options.restartFactor.toString());
+            }
+
+            if (options?.useWave !== undefined) {
+                req.setUseWave(options.useWave);
+            }
 
             if (options?.filters) {
                 req.setFiltersList(options.filters.map(f => this.toProtoFilter(f)));

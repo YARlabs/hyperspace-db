@@ -377,11 +377,11 @@ impl HyperspaceDB {
         let new_index_wrapper = match &self.index {
             IndexWrapper::L2(_) => IndexWrapper::L2(Arc::new(
                 HnswIndex::load_from_bytes(&index_bytes, storage, mode, config, self.dimension)
-                    .map_err(|e| JsValue::from_str(&e.to_string()))?,
+                    .map_err(|e| JsValue::from_str(&e.clone()))?,
             )),
             IndexWrapper::Cosine(_) => IndexWrapper::Cosine(Arc::new(
                 HnswIndex::load_from_bytes(&index_bytes, storage, mode, config, self.dimension)
-                    .map_err(|e| JsValue::from_str(&e.to_string()))?,
+                    .map_err(|e| JsValue::from_str(&e.clone()))?,
             )),
         };
 

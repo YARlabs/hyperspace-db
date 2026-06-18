@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::eviction::AnnTombstone;
+use crate::geometry::{CacheDistance, CacheVector};
 use arc_swap::ArcSwap;
 use dashmap::DashSet;
-use parking_lot::Mutex;
 use instant_distance::{Builder, HnswMap, Search};
-use crate::geometry::{CacheDistance, CacheVector};
-use crate::eviction::AnnTombstone;
+use parking_lot::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub trait AnyAnnStore: AnnTombstone + Send + Sync + 'static {
     fn enqueue(&self, id: u32, vector: Vec<f64>) -> bool; // returns true if rebuild is needed
@@ -24,7 +24,9 @@ pub trait AnyAnnStore: AnnTombstone + Send + Sync + 'static {
         if idx_len == 0 {
             0.0
         } else {
-            self.tombstone_len() as f64 / idx_len as f64
+            #[allow(clippy::cast_precision_loss)]
+            let ratio = self.tombstone_len() as f64 / idx_len as f64;
+            ratio
         }
     }
 }
@@ -37,7 +39,7 @@ pub struct L2AnnStore<D: CacheDistance> {
     tombstones: DashSet<u32>,
     pub dimension: usize,
     /// Timestamp (ms since UNIX epoch) of the last completed rebuild.
-    /// Used by VectorCache to implement cooldown and metrics.
+    /// Used by `VectorCache` to implement cooldown and metrics.
     pub last_rebuild_ms: AtomicU64,
     /// How many candidates the L2 HNSW graph explores per query.
     /// Higher values improve recall at the cost of latency.
@@ -69,7 +71,7 @@ impl<D: CacheDistance> L2AnnStore<D> {
     /// correctly returns 0 after the index is up to date. Previously the pending queue
     /// grew indefinitely because it was never cleared.
     ///
-    /// FIX (Bottleneck 5): Records the rebuild timestamp so the VectorCache cooldown
+    /// FIX (Bottleneck 5): Records the rebuild timestamp so the `VectorCache` cooldown
     /// logic can track when the last rebuild finished.
     pub fn rebuild(&self, all_entries: Vec<(u32, Vec<f64>)>) {
         // Drain the pending queue. All entries were already inserted into L1 before
@@ -116,6 +118,7 @@ impl<D: CacheDistance> L2AnnStore<D> {
     }
 
     fn record_rebuild_time(&self) {
+        #[allow(clippy::cast_possible_truncation)]
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -136,7 +139,7 @@ impl<D: CacheDistance> L2AnnStore<D> {
             let mut results = Vec::new();
             for item in index.search(&query_point, &mut search) {
                 let id = *item.value;
-                let dist = item.distance as f64;
+                let dist = f64::from(item.distance);
 
                 if self.tombstones.contains(&id) {
                     continue;
@@ -237,10 +240,7 @@ mod tests {
     #[test]
     fn test_tombstone_filters_result() {
         let store = L2AnnStore::new(L2CacheDistance, 2, 5);
-        let entries = vec![
-            (1, vec![1.0, 0.0]),
-            (2, vec![0.0, 1.0]),
-        ];
+        let entries = vec![(1, vec![1.0, 0.0]), (2, vec![0.0, 1.0])];
         store.rebuild(entries);
 
         store.tombstone(1);
@@ -251,9 +251,7 @@ mod tests {
     #[test]
     fn test_rebuild_clears_tombstones() {
         let store = L2AnnStore::new(L2CacheDistance, 2, 5);
-        let entries = vec![
-            (1, vec![1.0, 0.0]),
-        ];
+        let entries = vec![(1, vec![1.0, 0.0])];
         store.rebuild(entries);
         store.tombstone(1);
         assert_eq!(store.tombstone_len(), 1);
@@ -274,17 +272,28 @@ mod tests {
 
         // rebuild should clear the pending queue
         store.rebuild(vec![(1, vec![1.0, 0.0]), (2, vec![0.0, 1.0])]);
-        assert_eq!(store.pending_len(), 0, "pending queue must be empty after rebuild");
+        assert_eq!(
+            store.pending_len(),
+            0,
+            "pending queue must be empty after rebuild"
+        );
     }
 
-    /// FIX verification: tombstone_ratio() computed correctly.
+    /// FIX verification: `tombstone_ratio()` computed correctly.
     #[test]
     fn test_tombstone_ratio() {
         let store = L2AnnStore::new(L2CacheDistance, 2, 5);
         // Empty index → ratio is 0.0 (no division by zero)
-        assert_eq!(store.tombstone_ratio(), 0.0);
+        #[allow(clippy::float_cmp)]
+        {
+            assert_eq!(store.tombstone_ratio(), 0.0);
+        }
 
-        store.rebuild(vec![(1, vec![1.0, 0.0]), (2, vec![0.0, 1.0]), (3, vec![5.0, 5.0])]);
+        store.rebuild(vec![
+            (1, vec![1.0, 0.0]),
+            (2, vec![0.0, 1.0]),
+            (3, vec![5.0, 5.0]),
+        ]);
         assert_eq!(store.index_len(), 3);
 
         store.tombstone(1);

@@ -1214,6 +1214,8 @@ export class SearchRequest extends jspb.Message {
 
     getComponentWeightsMap(): jspb.Map<string, number>;
     clearComponentWeightsMap(): void;
+    getUseWave(): boolean;
+    setUseWave(value: boolean): SearchRequest;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
@@ -1241,6 +1243,7 @@ export namespace SearchRequest {
         includePayload: boolean,
 
         componentWeightsMap: Array<[string, number]>,
+        useWave: boolean,
     }
 }
 

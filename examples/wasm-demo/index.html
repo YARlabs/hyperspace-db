@@ -99,7 +99,7 @@
             try {
                 statusEl.textContent = 'Loading WASM...';
                 await init();
-                db = new HyperspaceDB();
+                db = new HyperspaceDB(1024, "l2");
                 log('WASM Module loaded & DB created (RAM).');
                 return true;
             } catch (e) {

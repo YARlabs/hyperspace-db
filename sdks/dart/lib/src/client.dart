@@ -217,6 +217,8 @@ class HyperspaceClient {
     Map<String, String>? filter,
     List<Filter>? filters,
     Map<String, double>? componentWeights,
+    bool useWave = false,
+    double? restartFactor,
   }) async {
     final req = SearchRequest(
       vector: vector,
@@ -230,8 +232,12 @@ class HyperspaceClient {
     if (mrlDimension != null) req.mrlDimension = mrlDimension;
     if (useWasserstein != null) req.useWasserstein = useWasserstein;
     if (filter != null) req.filter.addAll(filter);
+    if (restartFactor != null) {
+      req.filter['wave_restart_factor'] = restartFactor.toString();
+    }
     if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
     if (componentWeights != null) req.componentWeights.addAll(componentWeights);
+    if (useWave) req.useWave = useWave;
 
     final resp = await _stub.search(req);
     return resp.results;

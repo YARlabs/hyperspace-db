@@ -7,7 +7,7 @@ use tokio::runtime::Runtime;
 fn bench_cache_ops(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let _guard = rt.enter();
-    
+
     let config = CacheConfig {
         l1_capacity: 1000,
         eviction_policy: EvictionPolicy::Lru,
@@ -17,10 +17,10 @@ fn bench_cache_ops(c: &mut Criterion) {
         dimension: 128,
         metric: CacheMetricType::L2,
     };
-    
+
     let cache = Arc::new(VectorCache::new(config));
     cache.start_background_tasks();
-    
+
     // Seed some data
     let mut rng_val = 0.0;
     for i in 0..100 {
@@ -28,7 +28,7 @@ fn bench_cache_ops(c: &mut Criterion) {
         rng_val += 0.01;
         cache.insert(i, vec, HashMap::new(), None);
     }
-    
+
     // Build/rebuild L2 ANN index synchronously so L2 search has data
     rt.block_on(async {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -40,19 +40,24 @@ fn bench_cache_ops(c: &mut Criterion) {
             black_box(res);
         })
     });
-    
+
     c.bench_function("cache_ann_search", |b| {
         b.iter(|| {
             let res = cache.search(black_box(&[0.5; 128]), black_box(None), black_box(5));
             black_box(res);
         })
     });
-    
+
     c.bench_function("cache_insert", |b| {
         let mut id = 1000;
         b.iter(|| {
             id += 1;
-            cache.insert(black_box(id), black_box(vec![0.1; 128]), black_box(HashMap::new()), black_box(None));
+            cache.insert(
+                black_box(id),
+                black_box(vec![0.1; 128]),
+                black_box(HashMap::new()),
+                black_box(None),
+            );
             black_box(());
         })
     });

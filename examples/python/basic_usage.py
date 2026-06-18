@@ -18,7 +18,7 @@ def main():
     client.delete_collection(col_name)
     
     print(f"Creating collection '{col_name}'...")
-    if client.create_collection(col_name, 8, "l2"):
+    if client.create_collection(col_name, dimension=8, metric="l2"):
         print("Collection created.")
     else:
         print("Failed to create collection.")

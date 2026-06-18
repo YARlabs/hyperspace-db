@@ -20,6 +20,7 @@ pub struct EvictionManager {
 }
 
 impl EvictionManager {
+    #[must_use]
     pub fn new(policy: EvictionPolicy, capacity: usize, eviction_batch: Option<usize>) -> Self {
         let batch = eviction_batch.unwrap_or((capacity / 10).max(1));
         Self {
@@ -31,10 +32,13 @@ impl EvictionManager {
 
     pub fn maybe_evict(&self, l1: &L1ExactStore, l2: &dyn AnnTombstone) {
         if l1.len() > self.capacity {
-            let count_to_evict = l1.len().saturating_sub(self.capacity).max(self.eviction_batch);
+            let count_to_evict = l1
+                .len()
+                .saturating_sub(self.capacity)
+                .max(self.eviction_batch);
             let candidates = l1.eviction_candidates(count_to_evict, self.policy);
             for id in candidates {
-                l1.remove(id);
+                let _ = l1.remove(id);
                 l2.tombstone(id);
             }
         }

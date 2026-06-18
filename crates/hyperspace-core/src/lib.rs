@@ -315,7 +315,11 @@ pub trait Collection: Send + Sync + 'static {
     fn get_usage(&self) -> CollectionUsage;
     fn get_hnsw_config(&self) -> HnswConfig {
         // Default implementation — overridden by CollectionImpl with real atomics.
-        HnswConfig { ef_search: 0, ef_construction: 0, m: 0 }
+        HnswConfig {
+            ef_search: 0,
+            ef_construction: 0,
+            m: 0,
+        }
     }
     fn update_config(&self, config: CollectionConfigUpdate) -> Result<(), String>;
     async fn optimize(&self) -> Result<(), String> {
@@ -452,7 +456,11 @@ pub trait Collection: Send + Sync + 'static {
     fn cache_clear(&self) -> Result<(), String> {
         Err("Cache not supported".to_string())
     }
-    fn cache_update_config(&self, policy: String, ann_threshold: Option<f64>) -> Result<(), String> {
+    fn cache_update_config(
+        &self,
+        policy: String,
+        ann_threshold: Option<f64>,
+    ) -> Result<(), String> {
         let _ = policy;
         let _ = ann_threshold;
         Err("Cache not supported".to_string())
@@ -764,7 +772,7 @@ impl Metric for EuclideanMetric {
     #[cfg(feature = "nightly-simd")]
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         use std::simd::num::{SimdFloat, SimdInt};
-        use std::simd::{f32x4, i8x4, f64x4};
+        use std::simd::{f32x4, f64x4, i8x4};
 
         const SCALE_INV: f32 = 1.0 / 127.0;
         let scale_vec = f32x4::splat(SCALE_INV);

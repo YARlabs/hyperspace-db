@@ -9,13 +9,14 @@ use hyperspace_index::HnswIndex;
 use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
 use hyperspace_store::VectorStore;
 
-type LocalIndex = HnswIndex<1024, EuclideanMetric>;
+type LocalIndex = HnswIndex<EuclideanMetric>;
 
 struct AppState {
     index: Arc<LocalIndex>,
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct SearchResult {
     id: u32,
     distance: f64,
@@ -72,12 +73,12 @@ fn main() {
     let store = Arc::new(VectorStore::new(&store_path, 4096));
     
     let config = Arc::new(GlobalConfig::default());
-    let mut index = LocalIndex::new(store.clone(), QuantizationMode::None, config);
+    let mut index = LocalIndex::new(store.clone(), QuantizationMode::None, config, 1024);
     
     // Try load snapshot
     let snap_path = app_dir.join("index.snap");
     if snap_path.exists() {
-        if let Ok(loaded) = LocalIndex::load_snapshot(&snap_path, store, QuantizationMode::None, Arc::new(GlobalConfig::default())) {
+        if let Ok(loaded) = LocalIndex::load_snapshot(&snap_path, store, QuantizationMode::None, Arc::new(GlobalConfig::default()), 1024) {
              index = loaded;
              println!("Loaded snapshot with {} nodes", index.count_nodes());
         }

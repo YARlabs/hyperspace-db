@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use dashmap::DashMap;
+use hyperspace_core::{vector::HyperVector, FilterExpr, Metric, SearchResult};
 use rayon::prelude::*;
-use hyperspace_core::{Metric, FilterExpr, SearchResult, vector::HyperVector};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct WriteBufferEntry {
@@ -22,12 +22,21 @@ impl WriteBuffer {
     }
 
     /// Fast concurrent insertion
-    pub fn insert(&self, internal_id: u32, user_id: u32, vector: Vec<f64>, metadata: HashMap<String, String>) {
-        self.entries.insert(internal_id, WriteBufferEntry {
-            user_id,
-            vector,
-            metadata,
-        });
+    pub fn insert(
+        &self,
+        internal_id: u32,
+        user_id: u32,
+        vector: Vec<f64>,
+        metadata: HashMap<String, String>,
+    ) {
+        self.entries.insert(
+            internal_id,
+            WriteBufferEntry {
+                user_id,
+                vector,
+                metadata,
+            },
+        );
     }
 
     /// Removal when indexing is completed or failed
@@ -58,7 +67,8 @@ impl WriteBuffer {
 
         // Collect entries to scan them in parallel.
         // Cloning is cheap because vectors are small and we only have up to HS_WRITE_BUFFER_MAX_SIZE elements.
-        let entries_vec: Vec<(u32, WriteBufferEntry)> = self.entries
+        let entries_vec: Vec<(u32, WriteBufferEntry)> = self
+            .entries
             .iter()
             .map(|kv| (*kv.key(), kv.value().clone()))
             .collect();
@@ -149,7 +159,8 @@ mod tests {
         // Test filtering
         let mut legacy_filter = HashMap::new();
         legacy_filter.insert("tag".to_string(), "b".to_string());
-        let results_filtered = wb.search::<EuclideanMetric>(&query, 2, &legacy_filter, &complex_filters);
+        let results_filtered =
+            wb.search::<EuclideanMetric>(&query, 2, &legacy_filter, &complex_filters);
         assert_eq!(results_filtered.len(), 1);
         assert_eq!(results_filtered[0].0, 102);
 

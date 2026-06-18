@@ -1,22 +1,22 @@
+pub mod eviction;
 pub mod geometry;
 pub mod l1_exact;
 pub mod l2_ann;
-pub mod ttl;
-pub mod eviction;
 pub mod metrics;
+pub mod ttl;
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub use geometry::CacheMetricType;
+pub use eviction::EvictionManager;
 pub use eviction::EvictionPolicy;
+pub use geometry::CacheMetricType;
 pub use l1_exact::{CacheEntry, L1ExactStore};
 pub use l2_ann::AnyAnnStore;
 pub use ttl::TimerWheel;
-pub use eviction::EvictionManager;
 
 /// Default minimum milliseconds between two consecutive L2 HNSW rebuilds.
 /// Override at runtime via `HYPERSPACE_CACHE_REBUILD_COOLDOWN_MS`.
@@ -61,7 +61,7 @@ pub struct CacheStats {
     pub tombstone_count: usize,
     pub pending_rebuild: usize,
     /// Rough in-memory footprint of L1 (vectors + estimated metadata + struct overhead).
-    /// FIX (Bottleneck 3): Previous estimate ignored metadata and DashMap overhead.
+    /// FIX (Bottleneck 3): Previous estimate ignored metadata and `DashMap` overhead.
     pub estimated_memory_bytes: usize,
 }
 
@@ -111,7 +111,9 @@ impl RateTracker {
         let mut history = self.history.lock();
         history.push((now, current_hits, current_misses));
 
-        let cutoff = now - Duration::from_secs(60);
+        // std::time::Duration has no from_mins in stable Rust; from_secs(60) is idiomatic.
+        #[allow(clippy::duration_suboptimal_units)]
+        let cutoff = now.checked_sub(Duration::from_secs(60)).unwrap_or(now);
         history.retain(|(t, _, _)| *t >= cutoff);
 
         if history.len() < 2 {
@@ -119,7 +121,9 @@ impl RateTracker {
             if total == 0 {
                 0.0
             } else {
-                current_hits as f64 / total as f64
+                #[allow(clippy::cast_precision_loss)]
+                let rate = current_hits as f64 / total as f64;
+                rate
             }
         } else {
             let first = history.first().unwrap();
@@ -130,7 +134,9 @@ impl RateTracker {
             if total == 0 {
                 0.0
             } else {
-                delta_hits as f64 / total as f64
+                #[allow(clippy::cast_precision_loss)]
+                let rate = delta_hits as f64 / total as f64;
+                rate
             }
         }
     }
@@ -152,8 +158,8 @@ pub struct VectorCache {
 
     /// Timestamp (ms since epoch) of the last `trigger_rebuild()` call.
     ///
-    /// FIX (Bottleneck 1): Guards against rebuild storms. trigger_rebuild() is a
-    /// no-op if called within rebuild_cooldown_ms of the previous invocation.
+    /// FIX (Bottleneck 1): Guards against rebuild storms. `trigger_rebuild()` is a
+    /// no-op if called within `rebuild_cooldown_ms` of the previous invocation.
     last_rebuild_triggered_ms: AtomicU64,
 
     /// Minimum ms between two consecutive L2 rebuilds.
@@ -165,6 +171,7 @@ pub struct VectorCache {
 }
 
 impl VectorCache {
+    #[must_use]
     pub fn new(config: CacheConfig) -> Self {
         let l1 = Arc::new(L1ExactStore::new(config.l1_capacity));
 
@@ -189,7 +196,10 @@ impl VectorCache {
                 config.dimension,
                 config.ann_rebuild_batch,
             )),
-            CacheMetricType::Hybrid { lorentz_weight, l2_weight } => Arc::new(l2_ann::L2AnnStore::new(
+            CacheMetricType::Hybrid {
+                lorentz_weight,
+                l2_weight,
+            } => Arc::new(l2_ann::L2AnnStore::new(
                 geometry::HybridCacheDistance {
                     lorentz_weight: *lorentz_weight,
                     l2_weight: *l2_weight,
@@ -201,7 +211,8 @@ impl VectorCache {
 
         let collection_name = config.collection_name.clone();
         let ann_enabled = std::sync::atomic::AtomicBool::new(config.ann_threshold.is_some());
-        let ann_threshold_bits = std::sync::atomic::AtomicU64::new(config.ann_threshold.unwrap_or(0.0).to_bits());
+        let ann_threshold_bits =
+            std::sync::atomic::AtomicU64::new(config.ann_threshold.unwrap_or(0.0).to_bits());
 
         let rebuild_cooldown_ms = std::env::var("HYPERSPACE_CACHE_REBUILD_COOLDOWN_MS")
             .ok()
@@ -209,7 +220,11 @@ impl VectorCache {
             .unwrap_or(DEFAULT_REBUILD_COOLDOWN_MS);
 
         let ttl_wheel = Arc::new(TimerWheel::new());
-        let eviction = parking_lot::RwLock::new(EvictionManager::new(config.eviction_policy, config.l1_capacity, None));
+        let eviction = parking_lot::RwLock::new(EvictionManager::new(
+            config.eviction_policy,
+            config.l1_capacity,
+            None,
+        ));
         let config = parking_lot::RwLock::new(config);
         let (shutdown, _) = tokio::sync::watch::channel(false);
 
@@ -248,19 +263,23 @@ impl VectorCache {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let collection_name = &self_clone.collection_name;
+                        let collection_name = self_clone.collection_name.as_str();
 
                         // Process TTL expirations
                         let expired = self_clone.ttl_wheel.tick();
                         if !expired.is_empty() {
                             for id in &expired {
                                 if self_clone.l1.remove(*id).is_some() {
-                                    metrics::metrics().evictions.with_label_values(&[&collection_name, "ttl"]).inc();
+                                    metrics::metrics().evictions.with_label_values(&[collection_name, "ttl"]).inc();
                                 }
                                 self_clone.l2.tombstone(*id);
                             }
-                            metrics::metrics().l1_size.with_label_values(&[&collection_name]).set(self_clone.l1.len() as f64);
-                            metrics::metrics().tombstone_size.with_label_values(&[&collection_name]).set(self_clone.l2.tombstone_len() as f64);
+                            #[allow(clippy::cast_precision_loss)]
+                            let l1_len = self_clone.l1.len() as f64;
+                            metrics::metrics().l1_size.with_label_values(&[collection_name]).set(l1_len);
+                            #[allow(clippy::cast_precision_loss)]
+                            let tomb_len = self_clone.l2.tombstone_len() as f64;
+                            metrics::metrics().tombstone_size.with_label_values(&[collection_name]).set(tomb_len);
                         }
 
                         // Eager rebuild trigger: fire as soon as we have enough pending entries.
@@ -309,18 +328,18 @@ impl VectorCache {
         });
     }
 
-    pub fn search(
-        &self,
-        query: &[f64],
-        known_id: Option<u32>,
-        k: usize,
-    ) -> Option<Vec<CacheHit>> {
+    pub fn search(&self, query: &[f64], known_id: Option<u32>, k: usize) -> Option<Vec<CacheHit>> {
         let start_time = Instant::now();
         let collection_name = &self.collection_name;
         if let Some(id) = known_id {
             if let Some((vec, meta)) = self.l1.get_entry(id) {
-                metrics::metrics().l1_hits.with_label_values(&[collection_name]).inc();
-                metrics::metrics().l1_latency.with_label_values(&[collection_name])
+                metrics::metrics()
+                    .l1_hits
+                    .with_label_values(&[collection_name])
+                    .inc();
+                metrics::metrics()
+                    .l1_latency
+                    .with_label_values(&[collection_name])
                     .observe(start_time.elapsed().as_secs_f64());
                 self.l1_tracker.record_hit();
 
@@ -331,23 +350,38 @@ impl VectorCache {
                     distance: 0.0,
                     tier: CacheTier::L1Exact,
                 }]);
-            } else {
-                metrics::metrics().l1_misses.with_label_values(&[collection_name]).inc();
-                self.l1_tracker.record_miss();
             }
+            metrics::metrics()
+                .l1_misses
+                .with_label_values(&[collection_name])
+                .inc();
+            self.l1_tracker.record_miss();
         }
 
         let ann_threshold = if self.ann_enabled.load(Ordering::Acquire) {
-            Some(f64::from_bits(self.ann_threshold_bits.load(Ordering::Acquire)))
+            Some(f64::from_bits(
+                self.ann_threshold_bits.load(Ordering::Acquire),
+            ))
         } else {
             None
         };
         if let Some(threshold) = ann_threshold {
             let l2_start = Instant::now();
             let ann_results = self.l2.search(query, k, threshold);
-            if !ann_results.is_empty() {
-                metrics::metrics().l2_hits.with_label_values(&[collection_name]).inc();
-                metrics::metrics().l2_latency.with_label_values(&[collection_name])
+            if ann_results.is_empty() {
+                metrics::metrics()
+                    .l2_misses
+                    .with_label_values(&[collection_name])
+                    .inc();
+                self.l2_tracker.record_miss();
+            } else {
+                metrics::metrics()
+                    .l2_hits
+                    .with_label_values(&[collection_name])
+                    .inc();
+                metrics::metrics()
+                    .l2_latency
+                    .with_label_values(&[collection_name])
                     .observe(l2_start.elapsed().as_secs_f64());
                 self.l2_tracker.record_hit();
 
@@ -367,9 +401,6 @@ impl VectorCache {
                 if !hits.is_empty() {
                     return Some(hits);
                 }
-            } else {
-                metrics::metrics().l2_misses.with_label_values(&[collection_name]).inc();
-                self.l2_tracker.record_miss();
             }
         }
 
@@ -395,7 +426,9 @@ impl VectorCache {
         }
 
         let ann_threshold = if self.ann_enabled.load(Ordering::Acquire) {
-            Some(f64::from_bits(self.ann_threshold_bits.load(Ordering::Acquire)))
+            Some(f64::from_bits(
+                self.ann_threshold_bits.load(Ordering::Acquire),
+            ))
         } else {
             None
         };
@@ -407,9 +440,22 @@ impl VectorCache {
         }
 
         let collection_name = &self.collection_name;
-        metrics::metrics().inserts.with_label_values(&[collection_name]).inc();
-        metrics::metrics().l1_size.with_label_values(&[collection_name]).set(self.l1.len() as f64);
-        metrics::metrics().l2_pending_size.with_label_values(&[collection_name]).set(self.l2.pending_len() as f64);
+        metrics::metrics()
+            .inserts
+            .with_label_values(&[collection_name])
+            .inc();
+        #[allow(clippy::cast_precision_loss)]
+        let l1_len = self.l1.len() as f64;
+        metrics::metrics()
+            .l1_size
+            .with_label_values(&[collection_name])
+            .set(l1_len);
+        #[allow(clippy::cast_precision_loss)]
+        let l2_pending = self.l2.pending_len() as f64;
+        metrics::metrics()
+            .l2_pending_size
+            .with_label_values(&[collection_name])
+            .set(l2_pending);
 
         self.eviction.read().maybe_evict(&self.l1, &*self.l2);
     }
@@ -417,11 +463,24 @@ impl VectorCache {
     pub fn invalidate(&self, id: u32) {
         let collection_name = &self.collection_name;
         if self.l1.remove(id).is_some() {
-            metrics::metrics().evictions.with_label_values(&[collection_name, "invalidate"]).inc();
+            metrics::metrics()
+                .evictions
+                .with_label_values(&[collection_name, "invalidate"])
+                .inc();
         }
         self.l2.tombstone(id);
-        metrics::metrics().l1_size.with_label_values(&[collection_name]).set(self.l1.len() as f64);
-        metrics::metrics().tombstone_size.with_label_values(&[collection_name]).set(self.l2.tombstone_len() as f64);
+        #[allow(clippy::cast_precision_loss)]
+        let l1_len = self.l1.len() as f64;
+        metrics::metrics()
+            .l1_size
+            .with_label_values(&[collection_name])
+            .set(l1_len);
+        #[allow(clippy::cast_precision_loss)]
+        let tomb_len = self.l2.tombstone_len() as f64;
+        metrics::metrics()
+            .tombstone_size
+            .with_label_values(&[collection_name])
+            .set(tomb_len);
 
         // FIX (Bottleneck 2): Proactively rebuild if tombstone accumulation exceeds the
         // threshold. Without this, tombstones only got cleared on the periodic rebuild
@@ -435,10 +494,22 @@ impl VectorCache {
         self.l1.map.clear();
         self.l2.clear();
         let collection_name = &self.collection_name;
-        metrics::metrics().l1_size.with_label_values(&[collection_name]).set(0.0);
-        metrics::metrics().l2_index_size.with_label_values(&[collection_name]).set(0.0);
-        metrics::metrics().l2_pending_size.with_label_values(&[collection_name]).set(0.0);
-        metrics::metrics().tombstone_size.with_label_values(&[collection_name]).set(0.0);
+        metrics::metrics()
+            .l1_size
+            .with_label_values(&[collection_name])
+            .set(0.0);
+        metrics::metrics()
+            .l2_index_size
+            .with_label_values(&[collection_name])
+            .set(0.0);
+        metrics::metrics()
+            .l2_pending_size
+            .with_label_values(&[collection_name])
+            .set(0.0);
+        metrics::metrics()
+            .tombstone_size
+            .with_label_values(&[collection_name])
+            .set(0.0);
     }
 
     pub fn update_config(&self, policy: EvictionPolicy, ann_threshold: Option<f64>) {
@@ -447,8 +518,10 @@ impl VectorCache {
             conf.eviction_policy = policy;
             conf.ann_threshold = ann_threshold;
         }
-        self.ann_enabled.store(ann_threshold.is_some(), Ordering::Release);
-        self.ann_threshold_bits.store(ann_threshold.unwrap_or(0.0).to_bits(), Ordering::Release);
+        self.ann_enabled
+            .store(ann_threshold.is_some(), Ordering::Release);
+        self.ann_threshold_bits
+            .store(ann_threshold.unwrap_or(0.0).to_bits(), Ordering::Release);
         {
             let mut evict = self.eviction.write();
             evict.policy = policy;
@@ -469,15 +542,17 @@ impl VectorCache {
             + 2 * 24                                  // Arc shells
             + 80                                      // DashMap bucket overhead
             + 200                                     // metadata HashMap estimate
-            + 48;                                     // CacheEntry struct fields
+            + 48; // CacheEntry struct fields
 
         let estimated_memory_bytes = l1_size * bytes_per_entry;
 
         if estimated_memory_bytes > 1024 * 1024 * 1024 {
+            #[allow(clippy::cast_precision_loss)]
+            let gb = estimated_memory_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
             tracing::warn!(
                 "Collection cache '{}' memory usage is high: {:.2} GB",
                 config.collection_name,
-                estimated_memory_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+                gb
             );
         }
 
@@ -506,7 +581,7 @@ impl VectorCache {
     ///
     /// Inserts directly into L1 without TTL and schedules a single L2 rebuild after
     /// all entries are loaded (avoiding N individual rebuild triggers).
-    pub fn warmup_from_entries(&self, entries: Vec<(u32, Vec<f64>)>) {
+    pub fn warmup_from_entries(&self, entries: &[(u32, Vec<f64>)]) {
         if entries.is_empty() {
             return;
         }
@@ -514,7 +589,7 @@ impl VectorCache {
         let collection_name = &self.collection_name;
         let ann_enabled = self.ann_enabled.load(Ordering::Acquire);
 
-        for (id, vector) in &entries {
+        for (id, vector) in entries {
             let entry = CacheEntry::new(vector.clone(), HashMap::new(), None);
             self.l1.insert(*id, entry);
 
@@ -525,9 +600,12 @@ impl VectorCache {
             }
         }
 
-        metrics::metrics().l1_size
+        #[allow(clippy::cast_precision_loss)]
+        let l1_len = self.l1.len() as f64;
+        metrics::metrics()
+            .l1_size
             .with_label_values(&[collection_name])
-            .set(self.l1.len() as f64);
+            .set(l1_len);
 
         // Trigger one rebuild for the entire warmup batch.
         // The cooldown starts at 0ms so this first call always succeeds.
@@ -552,7 +630,7 @@ impl VectorCache {
     /// `metadata.forward` map, so warmup entries are fully populated from the start.
     pub fn warmup_from_entries_with_meta(
         &self,
-        entries: Vec<(u32, Vec<f64>, HashMap<String, String>)>,
+        entries: &[(u32, Vec<f64>, HashMap<String, String>)],
     ) {
         if entries.is_empty() {
             return;
@@ -561,7 +639,7 @@ impl VectorCache {
         let collection_name = &self.collection_name;
         let ann_enabled = self.ann_enabled.load(Ordering::Acquire);
 
-        for (id, vector, metadata) in &entries {
+        for (id, vector, metadata) in entries {
             let entry = CacheEntry::new(vector.clone(), metadata.clone(), None);
             self.l1.insert(*id, entry);
 
@@ -570,9 +648,12 @@ impl VectorCache {
             }
         }
 
-        metrics::metrics().l1_size
+        #[allow(clippy::cast_precision_loss)]
+        let l1_len = self.l1.len() as f64;
+        metrics::metrics()
+            .l1_size
             .with_label_values(&[collection_name])
-            .set(self.l1.len() as f64);
+            .set(l1_len);
 
         if ann_enabled {
             self.trigger_rebuild();
@@ -585,15 +666,15 @@ impl VectorCache {
         );
     }
 
-
     /// Triggers a background L2 HNSW rebuild, subject to a cooldown.
     ///
-    /// FIX (Bottleneck 1): The cooldown (REBUILD_COOLDOWN_MS) prevents multiple
+    /// FIX (Bottleneck 1): The cooldown (`REBUILD_COOLDOWN_MS`) prevents multiple
     /// concurrent rebuilds from stacking up when inserts are faster than rebuilds.
     /// The rebuild reads ALL current L1 entries so it always produces a complete,
     /// up-to-date index regardless of how many triggers were skipped.
     fn trigger_rebuild(&self) {
         // ── Cooldown check ────────────────────────────────────────────────────
+        #[allow(clippy::cast_possible_truncation)]
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -607,7 +688,8 @@ impl VectorCache {
         }
 
         // Atomically claim the rebuild slot.
-        self.last_rebuild_triggered_ms.store(now_ms, Ordering::Relaxed);
+        self.last_rebuild_triggered_ms
+            .store(now_ms, Ordering::Relaxed);
 
         // ── Collect entries ───────────────────────────────────────────────────
         let l1 = self.l1.clone();
@@ -617,7 +699,7 @@ impl VectorCache {
         tokio::task::spawn_blocking(move || {
             let start = Instant::now();
             let mut entries = Vec::with_capacity(l1.len());
-            for r in l1.map.iter() {
+            for r in &l1.map {
                 let id = *r.key();
                 // Skip entries that have already expired (lazy expiry)
                 if let Some(expires_at) = r.value().expires_at {
@@ -630,16 +712,31 @@ impl VectorCache {
 
             l2.rebuild(entries);
 
-            metrics::metrics().rebuild_duration.with_label_values(&[&collection_name])
+            metrics::metrics()
+                .rebuild_duration
+                .with_label_values(&[&collection_name])
                 .observe(start.elapsed().as_secs_f64());
-            metrics::metrics().l2_index_size.with_label_values(&[&collection_name]).set(l2.index_len() as f64);
-            metrics::metrics().tombstone_size.with_label_values(&[&collection_name]).set(l2.tombstone_len() as f64);
-            metrics::metrics().l2_pending_size.with_label_values(&[&collection_name]).set(0.0);
+            #[allow(clippy::cast_precision_loss)]
+            let l2_idx = l2.index_len() as f64;
+            metrics::metrics()
+                .l2_index_size
+                .with_label_values(&[&collection_name])
+                .set(l2_idx);
+            #[allow(clippy::cast_precision_loss)]
+            let tomb_len = l2.tombstone_len() as f64;
+            metrics::metrics()
+                .tombstone_size
+                .with_label_values(&[&collection_name])
+                .set(tomb_len);
+            metrics::metrics()
+                .l2_pending_size
+                .with_label_values(&[&collection_name])
+                .set(0.0);
         });
     }
 
     /// Resets the rebuild cooldown timer. **Test-only.** Allows unit tests to trigger
-    /// consecutive rebuilds without waiting for REBUILD_COOLDOWN_MS to elapse.
+    /// consecutive rebuilds without waiting for `REBUILD_COOLDOWN_MS` to elapse.
     #[cfg(test)]
     pub fn reset_rebuild_cooldown(&self) {
         self.last_rebuild_triggered_ms.store(0, Ordering::Relaxed);
@@ -724,7 +821,12 @@ mod tests {
         let cache = Arc::new(VectorCache::new(test_config()));
         cache.start_background_tasks();
 
-        cache.insert(42, vec![1.0, 2.0, 3.0], HashMap::new(), Some(Duration::from_millis(50)));
+        cache.insert(
+            42,
+            vec![1.0, 2.0, 3.0],
+            HashMap::new(),
+            Some(Duration::from_millis(50)),
+        );
 
         // Wait for background tick task to run and evict
         sleep(Duration::from_millis(200)).await;
@@ -740,20 +842,16 @@ mod tests {
 
         let stats = cache.stats();
         assert_eq!(stats.l1_size, 1);
-        // With improved estimate: 3*8 + 2*24 + 80 + 200 + 48 = 400 bytes
-        let expected = 1 * (3 * 8 + 2 * 24 + 80 + 200 + 48);
+        let expected = 3 * 8 + 2 * 24 + 80 + 200 + 48;
         assert_eq!(stats.estimated_memory_bytes, expected);
     }
 
-    /// FIX verification: warmup_from_entries() pre-populates L1 correctly.
+    /// FIX verification: `warmup_from_entries()` pre-populates L1 correctly.
     #[tokio::test]
     async fn test_warmup_populates_l1() {
         let cache = VectorCache::new(test_config());
-        let entries = vec![
-            (1u32, vec![1.0, 0.0, 0.0]),
-            (2u32, vec![0.0, 1.0, 0.0]),
-        ];
-        cache.warmup_from_entries(entries);
+        let entries = vec![(1u32, vec![1.0, 0.0, 0.0]), (2u32, vec![0.0, 1.0, 0.0])];
+        cache.warmup_from_entries(&entries);
 
         // Both vectors should be in L1
         assert!(cache.search(&[], Some(1), 1).is_some());
@@ -778,6 +876,7 @@ mod tests {
         // Insert more vectors. These trigger rebuild but cooldown should suppress them
         // (we're within 5s of the first rebuild).
         for i in 3u32..=12 {
+            #[allow(clippy::cast_lossless)]
             cache.insert(i, vec![i as f64, 0.0, 0.0], HashMap::new(), None);
         }
 
@@ -794,9 +893,9 @@ mod tests {
     ///
     /// Flow:
     ///  1. Insert 4 vectors → L2 HNSW built (rebuild batch = 2)
-    ///  2. Reset cooldown so next trigger_rebuild() call actually fires
-    ///  3. Invalidate 2 of 4 → ratio = 0.5, invalidate() calls trigger_rebuild()
-    ///  4. spawn_blocking runs and clears tombstones
+    ///  2. Reset cooldown so next `trigger_rebuild()` call actually fires
+    ///  3. Invalidate 2 of 4 → ratio = 0.5, `invalidate()` calls `trigger_rebuild()`
+    ///  4. `spawn_blocking` runs and clears tombstones
     #[tokio::test]
     async fn test_tombstone_triggers_rebuild() {
         let mut cfg = test_config();
@@ -806,12 +905,16 @@ mod tests {
 
         // Insert 4 vectors and wait for initial L2 build
         for i in 1u32..=4 {
+            #[allow(clippy::cast_lossless)]
             cache.insert(i, vec![i as f64, 0.0, 0.0], HashMap::new(), None);
         }
         sleep(Duration::from_millis(500)).await;
 
         let idx_size = cache.stats().l2_index_size;
-        assert!(idx_size > 0, "L2 index should have been built; got l2_index_size=0");
+        assert!(
+            idx_size > 0,
+            "L2 index should have been built; got l2_index_size=0"
+        );
 
         // Reset cooldown so the trigger from invalidate() can actually fire.
         // (The initial rebuild set last_rebuild_triggered_ms which would suppress
@@ -828,9 +931,15 @@ mod tests {
 
         // After rebuild all tombstones must be cleared.
         let stats = cache.stats();
-        assert_eq!(stats.tombstone_count, 0,
-            "tombstones must be 0 after tombstone-triggered rebuild (got {})", stats.tombstone_count);
-        assert_eq!(stats.l2_index_size, 2,
-            "L2 index must contain only the 2 surviving vectors (got {})", stats.l2_index_size);
+        assert_eq!(
+            stats.tombstone_count, 0,
+            "tombstones must be 0 after tombstone-triggered rebuild (got {})",
+            stats.tombstone_count
+        );
+        assert_eq!(
+            stats.l2_index_size, 2,
+            "L2 index must contain only the 2 surviving vectors (got {})",
+            stats.l2_index_size
+        );
     }
 }

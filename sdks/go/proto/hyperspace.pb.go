@@ -2712,6 +2712,7 @@ type SearchRequest struct {
 	// Default is false — zero extra I/O for standard searches.
 	IncludePayload   bool               `protobuf:"varint,11,opt,name=include_payload,json=includePayload,proto3" json:"include_payload,omitempty"`
 	ComponentWeights map[string]float32 `protobuf:"bytes,12,rep,name=component_weights,json=componentWeights,proto3" json:"component_weights,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
+	UseWave          bool               `protobuf:"varint,13,opt,name=use_wave,json=useWave,proto3" json:"use_wave,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2828,6 +2829,13 @@ func (x *SearchRequest) GetComponentWeights() map[string]float32 {
 		return x.ComponentWeights
 	}
 	return nil
+}
+
+func (x *SearchRequest) GetUseWave() bool {
+	if x != nil {
+		return x.UseWave
+	}
+	return false
 }
 
 type Filter struct {
@@ -6146,7 +6154,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rCountResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x04R\x05count\"-\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\"\xf9\x05\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"\x94\x06\n" +
 	"\rSearchRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -6162,7 +6170,8 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rmrl_dimension\x18\n" +
 	" \x01(\rH\x03R\fmrlDimension\x88\x01\x01\x12'\n" +
 	"\x0finclude_payload\x18\v \x01(\bR\x0eincludePayload\x12\\\n" +
-	"\x11component_weights\x18\f \x03(\v2/.hyperspace.SearchRequest.ComponentWeightsEntryR\x10componentWeights\x1a9\n" +
+	"\x11component_weights\x18\f \x03(\v2/.hyperspace.SearchRequest.ComponentWeightsEntryR\x10componentWeights\x12\x19\n" +
+	"\buse_wave\x18\r \x01(\bR\auseWave\x1a9\n" +
 	"\vFilterEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +

@@ -3,6 +3,8 @@ name = "hivemind-cli"
 version = "3.0.0"
 edition = "2021"
 
+[workspace]
+
 [dependencies]
 hyperspace-core = { path = "../../crates/hyperspace-core" }
 hyperspace-index = { path = "../../crates/hyperspace-index", features = ["persistence"] }

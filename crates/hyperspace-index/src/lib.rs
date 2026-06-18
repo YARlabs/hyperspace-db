@@ -205,6 +205,7 @@ impl<M: Metric> HnswIndex<M> {
         Ok(())
     }
 
+    #[cfg(feature = "persistence")]
     pub fn load_snapshot(
         path: &std::path::Path,
         storage: Arc<VectorStore>,
@@ -749,6 +750,14 @@ impl<M: Metric> HnswIndex<M> {
         filter: &std::collections::HashMap<String, String>,
         complex_filters: &[FilterExpr],
     ) -> Option<RoaringBitmap> {
+        fn apply_mask(bitmap: &mut Option<RoaringBitmap>, mask: &RoaringBitmap) {
+            if let Some(ref mut bm) = bitmap {
+                *bm &= mask;
+            } else {
+                *bitmap = Some(mask.clone());
+            }
+        }
+
         // PERF: Only clone the deleted bitmap when geometric filters are present.
         // Geometric filters do an O(self.dimension) scan and hold no lock during it (snapshot approach).
         // For plain metadata/range filters we keep the read guard alive (cheap shared ptr).
@@ -779,14 +788,6 @@ impl<M: Metric> HnswIndex<M> {
 
         let mut bitmap: Option<RoaringBitmap> = None;
 
-        fn apply_mask(bitmap: &mut Option<RoaringBitmap>, mask: &RoaringBitmap) {
-            if let Some(ref mut bm) = bitmap {
-                *bm &= mask;
-            } else {
-                *bitmap = Some(mask.clone());
-            }
-        }
-
         if !filter.is_empty() {
             for (key, val) in filter {
                 let tag = format!("{key}:{val}");
@@ -811,7 +812,7 @@ impl<M: Metric> HnswIndex<M> {
                 FilterExpr::Prefix { key, prefix } => {
                     let mut prefix_union = RoaringBitmap::new();
                     let prefix_tag = format!("{key}:{prefix}");
-                    for entry in self.metadata.inverted.iter() {
+                    for entry in &self.metadata.inverted {
                         if entry.key().starts_with(&prefix_tag) {
                             prefix_union |= entry.value();
                         }
@@ -850,7 +851,7 @@ impl<M: Metric> HnswIndex<M> {
 
                     if let Some(ref bm) = bitmap {
                         let mut filtered_range_union = RoaringBitmap::new();
-                        for id in bm.iter() {
+                        for id in bm {
                             if range_union.contains(id) {
                                 filtered_range_union.insert(id);
                             } else if let Some(item) = self.metadata.forward.get(&id) {
@@ -1891,10 +1892,13 @@ impl<M: Metric> HnswIndex<M> {
                 self.storage.update(id, &b.as_bytes())?;
             }
             QuantizationMode::AsymmetricHybrid801 => {
-                // AsymmetricHybrid801 stores the Euclidean portion as ScalarI8.
-                let q = QuantizedHyperVector::from_float(
+                if self.dimension != 801 {
+                    return Err("AsymmetricHybrid801 requires dimension 801".into());
+                }
+                let q = HybridQuantizedVector::from_float(
                     &q_vec_full,
-                    self.config.is_anisotropic_enabled(),
+                    33,
+                    q_vec_full.coords.len() - 33,
                 );
                 self.storage.update(id, &q.as_bytes())?;
             }
@@ -2558,12 +2562,30 @@ impl<M: Metric> HnswIndex<M> {
         text: &str,
         params: &hyperspace_core::SearchParams,
     ) -> Vec<(NodeId, f64)> {
-        // 1. Get Vector Search Results (Semantic) -> Top K*2 for recall
+        #[derive(PartialEq)]
+        struct MinHeapEntry {
+            score: f64,
+            id: u32,
+        }
+        impl Eq for MinHeapEntry {}
+        impl PartialOrd for MinHeapEntry {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+        impl Ord for MinHeapEntry {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                other.score.total_cmp(&self.score)
+            }
+        }
+
+        // 1. Get Vector Search Results (Semantic) -> Top K*10 (min 100) for recall
         // We reuse the basic search but with NO hybrid query to avoid recursion
-        let vec_k = params.top_k * 2;
+        let vec_k = (params.top_k * 10).max(100);
         let mut inner_params = params.clone();
         inner_params.hybrid_query = None;
         inner_params.top_k = vec_k;
+        inner_params.ef_search = inner_params.ef_search.max(vec_k);
 
         let vector_results = self.search(query, filter, complex_filters, &inner_params);
 
@@ -2655,23 +2677,6 @@ impl<M: Metric> HnswIndex<M> {
                 }
                 a
             });
-
-        #[derive(PartialEq)]
-        struct MinHeapEntry {
-            score: f64,
-            id: u32,
-        }
-        impl Eq for MinHeapEntry {}
-        impl PartialOrd for MinHeapEntry {
-            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-        impl Ord for MinHeapEntry {
-            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-                other.score.total_cmp(&self.score)
-            }
-        }
 
         let max_k = (params.top_k * 3).max(200);
         let mut heap = std::collections::BinaryHeap::with_capacity(max_k + 1);

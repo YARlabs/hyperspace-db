@@ -3,9 +3,8 @@
 <div align="center">
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/YARlabs/hyperspace-db/ci.yml?branch=main&style=for-the-badge)](https://github.com/YARlabs/hyperspace-db/actions)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=for-the-badge)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
-[![Commercial License](https://img.shields.io/badge/License-Commercial-purple.svg?style=for-the-badge)](COMMERCIAL_LICENSE.md)
 
 **v3.1.0** | **The World's First Schema-Driven Spatial AI Engine.**
 
@@ -676,38 +675,63 @@ HyperspaceDB follows the microservices philosophy: One Index per Instance. To ma
 
 ---
 
-## ⚡ Performance Benchmarks (v2.0)
+## ⚡ RAG Performance Benchmarks (v3.1)
 
-We tested **HyperspaceDB v2.0** against the industry leaders (Milvus, Qdrant, Weaviate) on a standard 1 Million Vector Dataset (1024 dimensions, Euclidean/Cosine metric).
+We conducted a rigorous evaluation of **HyperspaceDB v3.1** against popular vector databases (**Qdrant, ChromaDB, Milvus, Weaviate**) across 15 distinct RAGBench datasets (ranging from 1,000 to 100,000 documents). 
 
-The results demonstrate HyperspaceDB's **Lock-Free Architecture** advantage: it maintains maximum throughput even under extreme concurrency (1000 threads), while others hit bottlenecks.
+The results highlight HyperspaceDB's **Lock-Free ArcSwap Architecture** and optimized cache layers.
 
-### 🏆 Search Performance (QPS)
-*High Concurrency (1000 Clients)*
+### 📋 Benchmark: HYBRID Search (Lexical BM25 + Semantic)
+*Evaluating retrieval accuracy (Recall@10, Context Precision) and throughput (QPS, Latency) averaged across 15 domains.*
 
-| Database | Queries Per Second (QPS) | Relative Speed |
-| :--- | :--- | :--- |
-| **HyperspaceDB** | **11,964** 🚀 | **1.0x (Baseline)** |
-| Milvus | 3,798 | 3.1x Slower |
-| Qdrant | 3,547 | 3.3x Slower |
-| Weaviate | 836 | 14.3x Slower |
+#### 📊 Index Size: 1,000 Documents (HYBRID 1000x100)
+| Database | Ingest QPS | Search QPS | Latency p50 | Latency p99 | RAM Usage | Disk Usage | CPU Usage | Recall@10 | Context Precision |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **HyperspaceDB** | **55,722** 🚀 | **1,374.73** ⚡ | **0.62 ms** | **1.93 ms** | **407.5 MB** | **91.80 MB** | **8.0%** | 64.47% | 54.60% |
+| ChromaDB | 1,547 | 218.27 | 4.76 ms | 8.86 ms | 2,132.0 MB | 573.75 MB | 19.4% | 65.25% | 54.07% |
+| Milvus | 495 | 240.80 | 4.18 ms | 8.87 ms | 970.9 MB | 524.86 MB | 19.8% | 65.28% | 54.15% |
+| Qdrant | 6,801 | 204.27 | 7.69 ms | 12.61 ms | 390.0 MB | 5.58 MB | 22.5% | 65.28% | 54.12% |
+| Weaviate | 588 | 465.67 | 2.22 ms | 6.38 ms | 468.6 MB | 20.32 MB | 55.2% | 63.63% | 51.49% |
 
-### 📥 Ingestion Performance (QPS)
-*Bulk Insert (Batch Size 1000)*
+#### 📊 Index Size: 100,000 Documents (HYBRID 100000x1000)
+| Database | Ingest QPS | Search QPS | Latency p50 | Latency p99 | RAM Usage | Disk Usage | CPU Usage | Recall@10 | Context Precision |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **HyperspaceDB** | **52,572** 🚀 | **1,375.53** ⚡ | **0.74 ms** | **1.70 ms** | **1,089.3 MB** | **100.13 MB** | **11.9%** | 55.33% | 51.29% |
+| ChromaDB | 1,455 | 196.93 | 5.67 ms | 9.06 ms | 2,448.0 MB | 677.44 MB | 31.0% | 55.13% | 50.97% |
+| Milvus | 2,269 | 191.13 | 5.78 ms | 9.17 ms | 1,161.8 MB | 857.11 MB | 34.0% | 55.15% | 51.01% |
+| Qdrant | 7,023 | 193.20 | 8.45 ms | 12.50 ms | 409.2 MB | 16.48 MB | 37.1% | 55.25% | 51.03% |
+| Weaviate | 1,455 | 482.93 | 2.37 ms | 5.78 ms | 482.7 MB | 40.92 MB | 132.0% | 53.83% | 49.15% |
 
-| Database | Inserts Per Second (QPS) | Relative Speed |
-| :--- | :--- | :--- |
-| **HyperspaceDB** | **~60,000** ⚡ | **1.0x (Baseline)** |
-| Milvus | ~28,000 | 2.1x Slower |
-| Qdrant | ~2,100 | 28x Slower |
+---
 
+### 🏆 Concurrency & Stress Testing
+*Measured on the CovidQA dataset under concurrent search queries.*
 
-### 📉 Why is it so fast?
-1.  **Lock-Free Reads**: We replaced standard locks with `ArcSwap` and Atomic operations. Readers never block readers.
-2.  **SIMD f32**: We utilize AVX2/AVX-512 intrinsics for distance calculations, processing 8-16 vectors per CPU cycle.
-3.  **Zero-Copy Persistence**: Our WAL and Memory-Mapped storage ensure data is persisted without serialization overhead.
+#### 👥 100 Parallel Clients
+| Database | QPS | Latency Avg | p50 | p99 | Max RAM |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **HyperspaceDB (L2 Cache ON)** | **3,706.53** 🚀 | **3.28 ms** | **2.79 ms** | **9.27 ms** | **72.0 MB** |
+| ChromaDB | 422.46 | 185.99 ms | 165.14 ms | 414.39 ms | 3,026.9 MB |
+| Milvus | 879.17 | 91.39 ms | 91.54 ms | 165.00 ms | 1,880.1 MB |
+| Weaviate | 631.17 | 130.10 ms | 120.42 ms | 269.45 ms | 843.4 MB |
 
-> *Benchmark Config: 1M Vectors, 1024 Dimensions, M=48, EF=200. Hardware: MacMini M4Pro 64GB RAM.*
+#### 👥 1,000 Parallel Clients
+| Database | QPS | Latency Avg | p50 | p99 | Max RAM |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **HyperspaceDB (L2 Cache ON)** | **5,261.26** 🚀 | **5.63 ms** | **4.50 ms** | **21.48 ms** | **72.0 MB** |
+| ChromaDB | 386.57 | 2,014.16 ms | 1,793.00 ms | 4,897.77 ms | 3,026.9 MB |
+| Milvus | 648.27 | 1,201.19 ms | 1,198.67 ms | 2,729.93 ms | 3,708.9 MB |
+| Weaviate | 597.78 | 1,414.36 ms | 1,322.76 ms | 3,038.84 ms | 2,174.0 MB |
+
+---
+
+### 📉 Why is HyperspaceDB so fast?
+1.  **Lock-Free Architecture**: Readers never block readers using `ArcSwap` and lock-free atomic references.
+2.  **L0 Two-Level Caching**: Sharded L1 DashMap (~1 µs lookups) coupled with a background-rebuilt L2 HNSW fallback graph (~100 µs lookups).
+3.  **Anisotropic Quantization**: Custom ScaNN-inspired scalar I8 loss quantization maintains high Recall while saving 8x RAM.
+4.  **Zero-Copy Serialization**: Fast memory mapping (`mmap`) of segment files ensures immediate startup recovery without parsing overhead.
+
+> *RAG Benchmarks Hardware Config: Apple M4 Pro (64GB RAM), NVMe SSD storage.*
 
 ---
 
@@ -805,17 +829,14 @@ Official 1st-party drivers with full **Functional Parity**, Delta Sync, and Cogn
 | 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3.* |
 | 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3.* |
 | 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v3.* |
+| 🎯 **Dart/Flutter** | [hyperspacedb: ^3.1.2](https://pub.dev/packages/hyperspacedb) | ✅ v3.* |
 | 🐹 **Go** | `sdks/go` | ✅ v3.* |
-| 🎯 **Dart/Flutter** | `sdks/dart` | ✅ v3.* |
 | 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v3.* |
 
 ---
 
 ## 📄 License
 
-This project is licensed under a dual-license model:
-
-1. **Open Source (AGPLv3)**: For open source projects. Requires you to open-source your modifications. See [LICENSE](https://www.google.com/search?q=LICENSE).
-2. **Commercial**: For proprietary/closed-source products. Allows keeping modifications private. See [COMMERCIAL_LICENSE.md](https://www.google.com/search?q=COMMERCIAL_LICENSE.md).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 **Copyright © 2026 YARlabs**

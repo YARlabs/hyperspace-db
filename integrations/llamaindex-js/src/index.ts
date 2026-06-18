@@ -77,9 +77,8 @@ export class HyperspaceVectorStore implements VectorStore {
       nodes: results.map((r: any) => ({
         id_: r.id.toString(),
         metadata: r.metadata,
-        embedding: r.vector,
       } as any)),
-      similarities: results.map((r: any) => r.score),
+      similarities: results.map((r: any) => r.distance),
       ids: results.map((r: any) => r.id.toString()),
     };
   }

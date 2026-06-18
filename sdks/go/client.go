@@ -176,6 +176,8 @@ type SearchParams struct {
 	MrlDimension     uint32
 	UseWasserstein   bool
 	ComponentWeights map[string]float32
+	UseWave          bool
+	RestartFactor    *float32
 }
 
 // Search performs ANN lookup with optional geometric filters, BM25 factors, and hybrid ranking
@@ -203,6 +205,13 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 		req.Bm25Options = params.BM25Options
 		if params.ComponentWeights != nil {
 			req.ComponentWeights = params.ComponentWeights
+		}
+		req.UseWave = params.UseWave
+		if params.RestartFactor != nil {
+			if req.Filter == nil {
+				req.Filter = make(map[string]string)
+			}
+			req.Filter["wave_restart_factor"] = fmt.Sprintf("%g", *params.RestartFactor)
 		}
 	}
 

@@ -14,6 +14,7 @@ services:
       - HS_DIMENSION=1024
       - HS_SEARCH_BATCH_INNER_CONCURRENCY=32
       - HS_SEARCH_CONCURRENCY=256
+      - HS_RERANK_ENABLED=true
     env_file:
       - ../.env
     networks:

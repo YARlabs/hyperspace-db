@@ -127,6 +127,18 @@ results = client.search(
 )
 ```
 
+### 3. Wave Search & Dynamic Restart Factor
+Enable graph traversal-based Wave search using `use_wave` and control the return-to-seed coefficient with `restart_factor`:
+
+```python
+results = client.search(
+    vector=[0.1, 0.2, 0.3],
+    collection="docs",
+    use_wave=True,
+    restart_factor=0.6 # High factor (e.g., 0.7-0.8) keeps search close to seeds (factual QA); low factor (e.g., 0.2-0.3) allows deeper traversal (legal/citation exploration).
+)
+```
+
 ## Matryoshka Representation Learning (MRL) & Cascading
 
 HyperspaceDB supports MRL through its **Cascade Pipeline**. This allows you to perform initial fast search on a truncated low-dimensional vector (e.g., 64D) and then rerank the results using the full vector (e.g., 1024D).
@@ -227,7 +239,7 @@ status = client.health_check() # Returns "ONLINE"
 - `insert_text(id, text, metadata=None, collection="", durability=Durability.DEFAULT) -> bool`
 - `vectorize(text, metric="l2") -> list[float]`
 - `batch_insert(vectors, ids, metadatas=None, typed_metadatas=None, collection="", durability=Durability.DEFAULT) -> bool`
-- `search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, bm25=None, collection="") -> list[dict]`
+- `search(vector=None, query_text=None, top_k=10, filter=None, filters=None, hybrid_query=None, hybrid_alpha=None, bm25=None, collection="", options=None, use_wave=False, restart_factor=None) -> list[dict]`
 - `search_text(text, top_k=10, filter=None, filters=None, hybrid_alpha=None, bm25=None, collection="") -> list[dict]`
 - `search_batch(vectors, top_k=10, collection="") -> list[list[dict]]`
 - `search_multi_collection(vector, collections, top_k=10) -> dict[str, list[dict]]`

@@ -159,7 +159,7 @@ class HyperspaceVectorStore(VectorStore):
                  pass
             
             nodes.append(node)
-            similarities.append(res.get("score", 0.0))
+            similarities.append(res.get("distance", 0.0))
             ids.append(str(res.get("id")))
 
         return VectorStoreQueryResult(nodes=nodes, similarities=similarities, ids=ids)

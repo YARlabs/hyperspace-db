@@ -4,6 +4,7 @@ sdks/python/venv
 __pycache__
 **/*.pyc
 .DS_Store
+.dart_tool/
 Cargo.lock
 # Data files (Exclude everywhere)
 **/*.hyp
@@ -14,6 +15,7 @@ Cargo.lock
 **/*.tar.gz
 **/TODO*.md
 # Directories
+benchmarks/
 **/venv/
 venv/
 data/

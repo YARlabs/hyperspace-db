@@ -475,8 +475,10 @@ function CreateCollectionDialog() {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="33" className="text-xs">Hyperbolic Only (33d) — Extreme speed</SelectItem>
-                                                <SelectItem value="161" className="text-xs">Balanced Hybrid (161d) — 33 Lorentz + 128 L2</SelectItem>
-                                                <SelectItem value="321" className="text-xs">Deep Hybrid (321d) — 33 Lorentz + 288 L2</SelectItem>
+                                                <SelectItem value="129" className="text-xs">Balanced Hybrid (129d) — 33 Lorentz + 96 L2</SelectItem>
+                                                <SelectItem value="289" className="text-xs">Medium Hybrid (289d) — 33 Lorentz + 256 L2</SelectItem>
+                                                <SelectItem value="545" className="text-xs">Deep Hybrid (545d) — 33 Lorentz + 512 L2</SelectItem>
+                                                <SelectItem value="801" className="text-xs">Full Hybrid (801d) — 33 Lorentz + 768 L2</SelectItem>
                                                 <SelectItem value="custom" className="text-xs">Custom Hybrid Cutoff...</SelectItem>
                                             </SelectContent>
                                         </Select>

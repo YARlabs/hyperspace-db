@@ -119,6 +119,19 @@ class HyperspaceMcpServer {
             required: ["collection", "id", "text"]
           }
         },
+        {
+          name: "hyperspace_create_collection",
+          description: "Setup new memory spaces (collections) with specific vector dimension and metric geometry.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              dimension: { type: "number", default: 1024, description: "Vector dimension (e.g., 1024)" },
+              metric: { type: "string", default: "cosine", description: "Distance metric: l2, cosine, poincare, lorentz" }
+            },
+            required: ["collection"]
+          }
+        },
         // --- AGENTIC GRAPH TOOLS ---
         {
           name: "hyperspace_graph_traverse",
@@ -132,6 +145,20 @@ class HyperspaceMcpServer {
               max_nodes: { type: "number", default: 256 }
             },
             required: ["collection", "start_id"]
+          }
+        },
+        {
+          name: "hyperspace_get_neighbors",
+          description: "Explore local connectivity of a concept in the vector index graph.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              id: { type: "number", description: "The node/concept ID" },
+              layer: { type: "number", default: 0, description: "HNSW graph layer" },
+              limit: { type: "number", default: 64, description: "Max neighbors to return" }
+            },
+            required: ["collection", "id"]
           }
         },
         {
@@ -181,6 +208,24 @@ class HyperspaceMcpServer {
               collection: { type: "string" },
               learning_rate: { type: "number", default: 0.1 }
             },
+            required: ["collection"]
+          }
+        },
+        {
+          name: "hyperspace_freeze_collection",
+          description: "Freeze a collection to make it read-only, preventing new inserts.",
+          inputSchema: {
+            type: "object",
+            properties: { collection: { type: "string" } },
+            required: ["collection"]
+          }
+        },
+        {
+          name: "hyperspace_unfreeze_collection",
+          description: "Unfreeze a previously frozen collection to allow inserts again.",
+          inputSchema: {
+            type: "object",
+            properties: { collection: { type: "string" } },
             required: ["collection"]
           }
         },
@@ -277,10 +322,32 @@ class HyperspaceMcpServer {
             await this.client.insertText(id, text, metadata, collection);
             return { content: [{ type: "text", text: `Stored ${id} in ${collection}` }] };
           }
+          case "hyperspace_create_collection": {
+            const { collection, dimension, metric } = z.object({
+              collection: z.string(),
+              dimension: z.number().optional(),
+              metric: z.string().optional()
+            }).parse(args);
+            const success = await this.client.createCollection(collection, {
+              components: [{ name: 'default', metric: metric || 'cosine', fullDimension: dimension || 1024, weight: 1.0 }],
+              cascadePipeline: []
+            });
+            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+          }
           case "hyperspace_graph_traverse": {
             const { collection, start_id, max_depth, max_nodes } = z.object({ collection: z.string(), start_id: z.number(), max_depth: z.number().optional(), max_nodes: z.number().optional() }).parse(args);
             const nodes = await this.client.traverse(start_id, 0, max_depth || 3, max_nodes || 256, collection);
             return { content: [{ type: "text", text: JSON.stringify(nodes, null, 2) }] };
+          }
+          case "hyperspace_get_neighbors": {
+            const { collection, id, layer, limit } = z.object({
+              collection: z.string(),
+              id: z.number(),
+              layer: z.number().optional(),
+              limit: z.number().optional()
+            }).parse(args);
+            const res = await this.client.getNeighbors(id, layer || 0, limit || 64, 0, collection);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
           }
           case "hyperspace_find_clusters": {
             const { collection, min_cluster_size } = z.object({ collection: z.string(), min_cluster_size: z.number().optional() }).parse(args);
@@ -301,6 +368,16 @@ class HyperspaceMcpServer {
             const { collection, learning_rate } = z.object({ collection: z.string(), learning_rate: z.number().optional() }).parse(args);
             // Use Triggering natively if available in client
             const res = await (this.client as any).triggerReconsolidation?.(collection, new Array(1024).fill(0), learning_rate || 0.1) || "Reconsolidation triggered.";
+            return { content: [{ type: "text", text: String(res) }] };
+          }
+          case "hyperspace_freeze_collection": {
+            const { collection } = z.object({ collection: z.string() }).parse(args);
+            const res = await this.client.freezeCollection(collection);
+            return { content: [{ type: "text", text: String(res) }] };
+          }
+          case "hyperspace_unfreeze_collection": {
+            const { collection } = z.object({ collection: z.string() }).parse(args);
+            const res = await this.client.unfreezeCollection(collection);
             return { content: [{ type: "text", text: String(res) }] };
           }
           case "hyperspace_get_stats": {

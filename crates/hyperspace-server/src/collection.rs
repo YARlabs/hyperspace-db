@@ -3,6 +3,7 @@ use crate::meta_router::{CentroidAccumulator, ChunkMeta, MetaRouter};
 use crate::sync::CollectionDigest;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
+use hyperspace_cache::VectorCache;
 use hyperspace_core::gpu::{rerank_topk_exact, GpuMetric};
 use hyperspace_core::{
     Collection, FilterExpr, GlobalConfig, Metric, SearchParams, SearchResult, StorageMode,
@@ -19,7 +20,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::task::JoinHandle;
-use hyperspace_cache::VectorCache;
 
 #[derive(Serialize, Deserialize)]
 struct CollectionState {
@@ -757,12 +757,14 @@ impl<M: Metric> CollectionImpl<M> {
             }
         };
 
-        let cache = if std::env::var("HYPERSPACE_CACHE_ENABLED").map_or(true, |v| v.to_lowercase() != "false") {
+        let cache = if std::env::var("HYPERSPACE_CACHE_ENABLED")
+            .map_or(true, |v| v.to_lowercase() != "false")
+        {
             let l1_capacity = std::env::var("HYPERSPACE_CACHE_L1_CAPACITY")
                 .ok()
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(10000);
-            
+
             let eviction_policy = match std::env::var("HYPERSPACE_CACHE_EVICTION_POLICY")
                 .unwrap_or_default()
                 .to_lowercase()
@@ -786,7 +788,10 @@ impl<M: Metric> CollectionImpl<M> {
                 "cosine" => hyperspace_cache::CacheMetricType::Cosine,
                 "poincare" => hyperspace_cache::CacheMetricType::Poincare,
                 "lorentz" => hyperspace_cache::CacheMetricType::Lorentz,
-                "hybrid" => hyperspace_cache::CacheMetricType::Hybrid { lorentz_weight: 1.0, l2_weight: 1.0 },
+                "hybrid" => hyperspace_cache::CacheMetricType::Hybrid {
+                    lorentz_weight: 1.0,
+                    l2_weight: 1.0,
+                },
                 _ => hyperspace_cache::CacheMetricType::L2,
             };
 
@@ -878,24 +883,25 @@ impl<M: Metric> CollectionImpl<M> {
                             let hv = idx_full.get_vector(internal_id);
                             // FIX (Limitation 2): Read metadata from the HNSW forward map
                             // so warmup entries have correct key-value fields, not empty HashMaps.
-                            let meta = idx_full.metadata.forward
+                            let meta = idx_full
+                                .metadata
+                                .forward
                                 .get(&internal_id)
                                 .map(|r| r.value().clone())
                                 .unwrap_or_default();
-                            entries.push((external_id, hv.coords.to_vec(), meta));
+                            entries.push((external_id, hv.coords.clone(), meta));
                         }
                         if entries.len() >= limit {
                             break;
                         }
                     }
 
-                    cache_clone.warmup_from_entries_with_meta(entries);
+                    cache_clone.warmup_from_entries_with_meta(&entries);
                 });
             }
         }
 
         Ok(col)
-
     }
 
     #[allow(clippy::too_many_arguments)] // Background worker requires all context
@@ -1126,7 +1132,6 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
     }
 
-
     fn buckets(&self) -> Vec<u64> {
         self.buckets
             .iter()
@@ -1141,20 +1146,21 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     fn create_snapshot(&self) -> Result<(), String> {
         let snap_path = self.data_dir.join("index.snap");
         let idx = self.index_link.load().clone();
-        if let Err(e) = idx.save_snapshot(&snap_path) {
-            return Err(e);
-        }
+        idx.save_snapshot(&snap_path)?;
 
         // Save State (DashMap iteration)
-        let map_data: HashMap<u32, u32> = self.id_map
+        let map_data: HashMap<u32, u32> = self
+            .id_map
             .iter()
             .map(|entry| (*entry.key(), *entry.value()))
             .collect();
-        let reverse_map_data: HashMap<u32, u32> = self.reverse_id_map
+        let reverse_map_data: HashMap<u32, u32> = self
+            .reverse_id_map
             .iter()
             .map(|entry| (*entry.key(), *entry.value()))
             .collect();
-        let buckets_data: Vec<u64> = self.buckets
+        let buckets_data: Vec<u64> = self
+            .buckets
             .iter()
             .map(|b| b.load(Ordering::Relaxed))
             .collect();
@@ -1353,7 +1359,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             }
 
             if self.write_buffer.size() < 100_000 {
-                self.write_buffer.insert(internal_id, id, processed_vector.to_vec(), metadata.clone());
+                self.write_buffer.insert(
+                    internal_id,
+                    id,
+                    processed_vector.to_vec(),
+                    metadata.clone(),
+                );
             }
 
             let _ = self.index_tx.send((internal_id, metadata.clone()));
@@ -1377,10 +1388,11 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
 
         if let Some(ref cache) = self.cache {
-            let ttl = metadata.get("__ttl")
+            let ttl = metadata
+                .get("__ttl")
                 .or_else(|| metadata.get("ttl"))
                 .and_then(|s| s.parse::<u64>().ok())
-                .map(|secs| std::time::Duration::from_secs(secs));
+                .map(std::time::Duration::from_secs);
             cache.insert(id, vector_owned, metadata, ttl);
         }
 
@@ -1587,7 +1599,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         for entry in &entries {
             if entry.reindex_needed {
                 if self.write_buffer.size() < 100_000 {
-                    self.write_buffer.insert(entry.internal_id, entry.id, entry.vector.to_vec(), (*entry.metadata).clone());
+                    self.write_buffer.insert(
+                        entry.internal_id,
+                        entry.id,
+                        entry.vector.to_vec(),
+                        (*entry.metadata).clone(),
+                    );
                 }
                 let _ = self
                     .index_tx
@@ -1621,10 +1638,11 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     vector
                 };
                 let processed_vector = Self::normalize_if_cosine(slice).into_owned();
-                let ttl = metadata.get("__ttl")
+                let ttl = metadata
+                    .get("__ttl")
                     .or_else(|| metadata.get("ttl"))
                     .and_then(|s| s.parse::<u64>().ok())
-                    .map(|secs| std::time::Duration::from_secs(secs));
+                    .map(std::time::Duration::from_secs);
                 cache.insert(*id, processed_vector, metadata.clone(), ttl);
             }
         }
@@ -1695,40 +1713,45 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let include_payload = params.include_payload;
 
         if let Some(ref cache) = self.cache {
-            let known_id = filters.get("id")
+            let known_id = filters
+                .get("id")
                 .or_else(|| filters.get("_id"))
                 .and_then(|val| val.parse::<u32>().ok());
-            let is_pure_ann = filters.is_empty() && complex_filters.is_empty();
+            let is_pure_ann =
+                filters.is_empty() && complex_filters.is_empty() && params.hybrid_query.is_none();
             if known_id.is_some() || is_pure_ann {
                 if let Some(hits) = cache.search(&processed_query_cow, known_id, top_k) {
                     let pre_payload: Vec<(u32, f64, HashMap<String, String>)> = hits
                         .into_iter()
                         .map(|hit| {
-                            let metadata_cloned = Arc::try_unwrap(hit.metadata)
-                                .unwrap_or_else(|m| (*m).clone());
+                            let metadata_cloned =
+                                Arc::try_unwrap(hit.metadata).unwrap_or_else(|m| (*m).clone());
                             (hit.id, hit.distance, metadata_cloned)
                         })
                         .collect();
-                    
+
                     if include_payload {
-                        let top_k_ids: Vec<u32> = pre_payload.iter().map(|(id, _, _)| *id).collect();
-                        let payloads = PayloadStore::fetch_many(Arc::clone(&self.payload_store), &top_k_ids).await;
+                        let top_k_ids: Vec<u32> =
+                            pre_payload.iter().map(|(id, _, _)| *id).collect();
+                        let payloads =
+                            PayloadStore::fetch_many(Arc::clone(&self.payload_store), &top_k_ids)
+                                .await;
                         return Ok(pre_payload
                             .into_iter()
                             .zip(payloads)
                             .map(|((id, dist, meta), payload)| (id, dist, meta, payload))
                             .collect());
-                    } else {
-                        return Ok(pre_payload
-                            .into_iter()
-                            .map(|(id, dist, meta)| (id, dist, meta, None))
-                            .collect());
                     }
+                    return Ok(pre_payload
+                        .into_iter()
+                        .map(|(id, dist, meta)| (id, dist, meta, None))
+                        .collect());
                 }
             }
         }
         let rerank_enabled = std::env::var("HS_RERANK_ENABLED")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            && params.hybrid_query.is_none();
         let rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
@@ -2392,7 +2415,11 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
     }
 
-    fn cache_update_config(&self, policy: String, ann_threshold: Option<f64>) -> Result<(), String> {
+    fn cache_update_config(
+        &self,
+        policy: String,
+        ann_threshold: Option<f64>,
+    ) -> Result<(), String> {
         if let Some(ref cache) = self.cache {
             let policy_parsed = match policy.to_lowercase().as_str() {
                 "lru" => hyperspace_cache::EvictionPolicy::Lru,

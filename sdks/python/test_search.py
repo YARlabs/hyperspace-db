@@ -1,8 +1,14 @@
 import grpc
 import numpy as np
 import time
-import hyperspace_pb2
-import hyperspace_pb2_grpc
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "hyperspace"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "hyperspace", "proto"))
+
+from hyperspace.proto import hyperspace_pb2
+from hyperspace.proto import hyperspace_pb2_grpc
 
 # Config
 DIM = 8

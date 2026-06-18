@@ -342,8 +342,7 @@ impl CollectionManager {
         let quantization = match quantization.as_str() {
             "none" => "none".to_string(),
             "extreme" | "binary" => "extreme".to_string(),
-            "asymmetric_hybrid_801" => "medium".to_string(), // legacy alias
-            _ => "medium".to_string(), // scalar, medium, anything else
+            _ => "medium".to_string(), // scalar, medium, asymmetric_hybrid_801, anything else
         };
 
         let meta = CollectionMetadata {
@@ -725,12 +724,24 @@ impl CollectionMetadata {
     pub fn dimension(&self) -> usize {
         self.get_schema()
             .components
-            .first()
-            .map_or(0, |c| c.full_dimension as usize)
+            .iter()
+            .map(|c| c.full_dimension as usize)
+            .sum()
     }
 
     pub fn metric_name(&self) -> String {
-        self.get_schema()
+        let schema = self.get_schema();
+        if schema.components.len() > 1 {
+            let has_lorentz = schema.components.iter().any(|c| c.metric == "lorentz");
+            let has_euc_or_cos = schema
+                .components
+                .iter()
+                .any(|c| c.metric == "euclidean" || c.metric == "cosine" || c.metric == "l2");
+            if has_lorentz && has_euc_or_cos {
+                return "hybrid".to_string();
+            }
+        }
+        schema
             .components
             .first()
             .map_or_else(|| "l2".to_string(), |c| c.metric.clone())

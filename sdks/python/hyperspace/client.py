@@ -388,7 +388,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None, use_wave: bool = False) -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None, use_wave: bool = False, restart_factor: float = None) -> List[Dict]:
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -403,6 +403,13 @@ class HyperspaceClient:
         vector = self._normalize_vector(vector)
 
         proto_filters = [self._to_proto_filter(f) for f in filters] if filters else []
+
+        if restart_factor is not None:
+            if filter is None:
+                filter = {}
+            else:
+                filter = dict(filter)
+            filter["wave_restart_factor"] = str(restart_factor)
 
         req = hyperspace_pb2.SearchRequest(
             vector=vector,

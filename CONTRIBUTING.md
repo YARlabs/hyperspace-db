@@ -1,11 +1,6 @@
 # Contributing to HyperspaceDB
 
-By submitting contributions to HyperspaceDB, you agree that
-YARlabs may use your contributions under both the AGPLv3 license
-and under commercial licenses.
-
-This ensures that improvements contributed by the community
-can be included in both open-source and commercial releases.
+By submitting contributions to HyperspaceDB, you agree that your contributions will be licensed under the project's MIT License.
 
 ## 🛠 Development Setup
 

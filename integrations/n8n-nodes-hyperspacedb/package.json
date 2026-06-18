@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hyperspacedb",
-  "version": "3.0.15",
+  "version": "3.1.47",
   "description": "HyperspaceDB integration for n8n (Vector Store, Embeddings, API)",
   "keywords": [
     "n8n-community-node-package",
@@ -22,7 +22,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "hyperspace-sdk-ts": "3.1.1",
+    "hyperspace-sdk-ts": "3.1.2",
     "@langchain/core": "^1.1.36",
     "@n8n/ai-utilities": "^0.7.1",
     "uuid": "^9.0.0"

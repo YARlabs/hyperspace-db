@@ -77,13 +77,25 @@ impl BallRegion {
     }
 
     pub fn contains(&self, vector: &HyperVector) -> bool {
-        let mut dist_sq = 0.0;
-        for (d, coord) in vector.coords.iter().enumerate() {
-            if d < self.center.len() {
-                let diff = *coord - self.center[d];
-                dist_sq += diff * diff;
+        if self.center.len() == 33 {
+            if vector.coords.len() < 33 {
+                return false;
             }
+            let mut inner = -self.center[0] * vector.coords[0];
+            for d in 1..33 {
+                inner += self.center[d] * vector.coords[d];
+            }
+            let arg = (-inner).max(1.0 + 1e-12);
+            arg.acosh() <= self.radius
+        } else {
+            let mut dist_sq = 0.0;
+            for (d, coord) in vector.coords.iter().enumerate() {
+                if d < self.center.len() {
+                    let diff = *coord - self.center[d];
+                    dist_sq += diff * diff;
+                }
+            }
+            dist_sq.sqrt() <= self.radius
         }
-        dist_sq.sqrt() <= self.radius
     }
 }

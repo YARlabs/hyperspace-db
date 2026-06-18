@@ -34,8 +34,10 @@ async function main() {
     // Create collection (if not exists logic handled by server usually, but let's try creating)
     try {
         console.log(`Creating collection '${collectionName}'...`);
-        // We assume L2 metric and 1024 dim
-        await client.createCollection(collectionName, 1024, "l2");
+        await client.createCollection(collectionName, {
+            components: [{ name: 'default', metric: 'l2', fullDimension: 1024, weight: 1.0 }],
+            cascadePipeline: []
+        });
     } catch (e) {
         console.log("Collection might already exist, proceeding...");
     }
@@ -47,7 +49,7 @@ async function main() {
     // OPTION B: Server-side embedding (New in v3.0.0)
     const useServerSide = true; // Set to true to use server's built-in models (Qwen3/YAR)
 
-    const vectorStore = new HyperspaceStore(clientSideEmbeddings, {
+    const vectorStore = new HyperspaceStore(clientSideEmbeddings as any, {
         client,
         collectionName,
         enableDeduplication: true,

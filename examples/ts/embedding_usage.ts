@@ -16,7 +16,10 @@ async function main() {
         // 2. Create a collection (we'll use Cosine for standard text search)
         console.log(`Creating collection '${colName}' with Cosine metric...`);
         // dimension should match the server's embedding model for Cosine (e.g. 1024 for Qwen3)
-        await client.createCollection(colName, 1024, 'cosine');
+        await client.createCollection(colName, {
+            components: [{ name: 'default', metric: 'cosine', fullDimension: 1024, weight: 1.0 }],
+            cascadePipeline: []
+        });
         console.log('Collection created.');
 
         // 3. Using insertText

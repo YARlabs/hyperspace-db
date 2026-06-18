@@ -299,7 +299,12 @@ private:
             weights[request->component_weights_keys[i]] = request->component_weights_values[i];
         }
 
-        auto results = client_->Search(vec, request->top_k, request->collection, request->hybrid_query, request->hybrid_alpha, nullptr, request->mrl_dimension, request->use_wasserstein, false, weights);
+        std::optional<float> restart_factor = std::nullopt;
+        if (request->restart_factor != 0.0f) {
+            restart_factor = request->restart_factor;
+        }
+
+        auto results = client_->Search(vec, request->top_k, request->collection, request->hybrid_query, request->hybrid_alpha, nullptr, request->mrl_dimension, request->use_wasserstein, false, weights, request->use_wave, restart_factor);
         for (const auto& r : results) {
             hyperspace_interfaces::msg::SearchResult msg;
             msg.id = r.id;

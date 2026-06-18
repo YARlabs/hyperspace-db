@@ -3117,6 +3117,7 @@ class SearchRequest extends $pb.GeneratedMessage {
     $core.bool? includePayload,
     $core.Iterable<$core.MapEntry<$core.String, $core.double>>?
         componentWeights,
+    $core.bool? useWave,
   }) {
     final result = create();
     if (collection != null) result.collection = collection;
@@ -3132,6 +3133,7 @@ class SearchRequest extends $pb.GeneratedMessage {
     if (includePayload != null) result.includePayload = includePayload;
     if (componentWeights != null)
       result.componentWeights.addEntries(componentWeights);
+    if (useWave != null) result.useWave = useWave;
     return result;
   }
 
@@ -3172,6 +3174,7 @@ class SearchRequest extends $pb.GeneratedMessage {
         keyFieldType: $pb.PbFieldType.OS,
         valueFieldType: $pb.PbFieldType.OF,
         packageName: const $pb.PackageName('hyperspace'))
+    ..aOB(13, _omitFieldNames ? '' : 'useWave')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -3281,6 +3284,15 @@ class SearchRequest extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(12)
   $pb.PbMap<$core.String, $core.double> get componentWeights => $_getMap(11);
+
+  @$pb.TagNumber(13)
+  $core.bool get useWave => $_getBF(12);
+  @$pb.TagNumber(13)
+  set useWave($core.bool value) => $_setBool(12, value);
+  @$pb.TagNumber(13)
+  $core.bool hasUseWave() => $_has(12);
+  @$pb.TagNumber(13)
+  void clearUseWave() => $_clearField(13);
 }
 
 enum Filter_Condition {

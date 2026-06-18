@@ -3,7 +3,7 @@ name = "hyperspace-proto"
 version = "3.1.2"
 edition = "2021"
 description = "Protobuf definitions and generated gRPC code for HyperspaceDB"
-license = "AGPL-3.0-only"
+license = "MIT"
 repository = "https://github.com/yarlabs/hyperspacedb"
 
 [dependencies]

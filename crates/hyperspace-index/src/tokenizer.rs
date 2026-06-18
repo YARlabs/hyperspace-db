@@ -196,7 +196,7 @@ impl Tokenizer {
             .filter_map(|m| {
                 let s = m.as_str();
                 let mut token = smol_str::SmolStr::new(s);
-                if self.lowercase && s.chars().any(|c| c.is_uppercase()) {
+                if self.lowercase && s.chars().any(char::is_uppercase) {
                     token = smol_str::SmolStr::new(s.to_lowercase());
                 }
                 if let Some(ref stemmer) = self.stemmer {

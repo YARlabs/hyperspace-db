@@ -8,6 +8,8 @@ uint32 mrl_dimension
 bool use_wasserstein
 string[] component_weights_keys
 float32[] component_weights_values
+bool use_wave
+float32 restart_factor
 ---
 hyperspace_interfaces/SearchResult[] results
 bool success

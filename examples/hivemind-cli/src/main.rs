@@ -8,7 +8,7 @@ use hyperspace_index::HnswIndex;
 use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
 use hyperspace_store::VectorStore;
 
-type LocalIndex = HnswIndex<1024, EuclideanMetric>;
+type LocalIndex = HnswIndex<EuclideanMetric>;
 
 #[derive(Parser)]
 #[command(author, version, about = "HiveMind CLI - HyperspaceDB Local Demo")]
@@ -40,33 +40,46 @@ fn init_index(store_path: PathBuf, snap_path: PathBuf) -> Result<LocalIndex> {
     let config = Arc::new(GlobalConfig::default());
     
     if snap_path.exists() {
-        if let Ok(loaded) = LocalIndex::load_snapshot(&snap_path, store.clone(), QuantizationMode::None, config.clone()) {
+        if let Ok(loaded) = LocalIndex::load_snapshot(&snap_path, store.clone(), QuantizationMode::None, config.clone(), 1024) {
             return Ok(loaded);
         }
     }
     
-    Ok(LocalIndex::new(store, QuantizationMode::None, config))
+    Ok(LocalIndex::new(store, QuantizationMode::None, config, 1024))
 }
 
 fn main() -> Result<()> {
     env_logger::init();
     let cli = Cli::parse();
     let (store_path, snap_path) = get_db_paths();
-    let mut index = init_index(store_path, snap_path.clone())?;
+    let index = init_index(store_path, snap_path.clone())?;
 
     match cli.command {
         Commands::Insert { id } => {
             let vec = vec![0.1f64; 1024]; // Simple dummy
-            index.insert(&vec, HashMap::new())?;
-            index.save_snapshot(&snap_path)?;
+            index.insert(&vec, HashMap::new()).map_err(anyhow::Error::msg)?;
+            index.save_snapshot(&snap_path).map_err(anyhow::Error::msg)?;
             println!("✅ Inserted vector {} and saved snapshot.", id);
         }
-        Commands::Search { id, k } => {
+        Commands::Search { id: _, k } => {
             let query = vec![0.1f64; 1024];
-            let results = index.search(&query, k as usize)?;
+            let params = hyperspace_core::SearchParams {
+                top_k: k as usize,
+                ef_search: 100,
+                hybrid_query: None,
+                hybrid_alpha: None,
+                use_wasserstein: false,
+                bm25_options: None,
+                fusion_method: None,
+                mrl_dimension: None,
+                include_payload: false,
+                component_weights: None,
+                use_wave: false,
+            };
+            let results = index.search(&query, &HashMap::new(), &[], &params);
             println!("🔍 Top {} results:", results.len());
             for res in results {
-                println!("  ID: {}, Distance: {:.4}", res.id, res.distance);
+                println!("  ID: {}, Distance: {:.4}", res.0, res.1);
             }
         }
         Commands::Stats => {

@@ -1344,6 +1344,7 @@ const SearchRequest$json = {
       '6': '.hyperspace.SearchRequest.ComponentWeightsEntry',
       '10': 'componentWeights'
     },
+    {'1': 'use_wave', '3': 13, '4': 1, '5': 8, '10': 'useWave'},
   ],
   '3': [
     SearchRequest_FilterEntry$json,
@@ -1389,10 +1390,11 @@ final $typed_data.Uint8List searchRequestDescriptor = $convert.base64Decode(
     'gKDW1ybF9kaW1lbnNpb24YCiABKA1IA1IMbXJsRGltZW5zaW9uiAEBEicKD2luY2x1ZGVfcGF5'
     'bG9hZBgLIAEoCFIOaW5jbHVkZVBheWxvYWQSXAoRY29tcG9uZW50X3dlaWdodHMYDCADKAsyLy'
     '5oeXBlcnNwYWNlLlNlYXJjaFJlcXVlc3QuQ29tcG9uZW50V2VpZ2h0c0VudHJ5UhBjb21wb25l'
-    'bnRXZWlnaHRzGjkKC0ZpbHRlckVudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgAS'
-    'gJUgV2YWx1ZToCOAEaQwoVQ29tcG9uZW50V2VpZ2h0c0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5'
-    'EhQKBXZhbHVlGAIgASgCUgV2YWx1ZToCOAFCDwoNX2h5YnJpZF9xdWVyeUIPCg1faHlicmlkX2'
-    'FscGhhQg8KDV9ibTI1X29wdGlvbnNCEAoOX21ybF9kaW1lbnNpb24=');
+    'bnRXZWlnaHRzEhkKCHVzZV93YXZlGA0gASgIUgd1c2VXYXZlGjkKC0ZpbHRlckVudHJ5EhAKA2'
+    'tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJUgV2YWx1ZToCOAEaQwoVQ29tcG9uZW50V2Vp'
+    'Z2h0c0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgCUgV2YWx1ZToCOAFCDw'
+    'oNX2h5YnJpZF9xdWVyeUIPCg1faHlicmlkX2FscGhhQg8KDV9ibTI1X29wdGlvbnNCEAoOX21y'
+    'bF9kaW1lbnNpb24=');
 
 @$core.Deprecated('Use filterDescriptor instead')
 const Filter$json = {

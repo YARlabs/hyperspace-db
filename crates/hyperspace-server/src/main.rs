@@ -1228,10 +1228,15 @@ impl Database for HyperspaceService {
                             "Server-side wave search is disabled on this server. Enable it by setting HS_SERVER_WAVE_SEARCH_ENABLED=true in .env"
                         ));
                     }
-                    let wave_depth = std::env::var("HS_SERVER_WAVE_DEPTH")
-                        .ok()
+                    let wave_depth = exact_filter
+                        .get("wave_depth")
                         .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(3);
+                        .unwrap_or_else(|| {
+                            std::env::var("HS_SERVER_WAVE_DEPTH")
+                                .ok()
+                                .and_then(|v| v.parse::<usize>().ok())
+                                .unwrap_or(3)
+                        });
                     let wave_damping = std::env::var("HS_SERVER_WAVE_DAMPING")
                         .ok()
                         .and_then(|v| v.parse::<f64>().ok())
@@ -1240,18 +1245,37 @@ impl Database for HyperspaceService {
                         .ok()
                         .and_then(|v| v.parse::<f64>().ok())
                         .unwrap_or(1.0);
-                    let wave_mass_sq = std::env::var("HS_SERVER_WAVE_MASS_SQ")
-                        .ok()
+                    let wave_mass_sq = exact_filter
+                        .get("wave_mass_sq")
                         .and_then(|v| v.parse::<f64>().ok())
-                        .unwrap_or(0.1);
+                        .unwrap_or_else(|| {
+                            std::env::var("HS_SERVER_WAVE_MASS_SQ")
+                                .ok()
+                                .and_then(|v| v.parse::<f64>().ok())
+                                .unwrap_or(0.1)
+                        });
                     let wave_beam_width = std::env::var("HS_SERVER_WAVE_BEAM_WIDTH")
                         .ok()
                         .and_then(|v| v.parse::<usize>().ok())
                         .unwrap_or(200);
-                    let wave_qp_strength = std::env::var("HS_SERVER_WAVE_QUERY_POTENTIAL")
-                        .ok()
+                    let wave_qp_strength = exact_filter
+                        .get("wave_qp_strength")
                         .and_then(|v| v.parse::<f64>().ok())
-                        .unwrap_or(0.5);
+                        .unwrap_or_else(|| {
+                            std::env::var("HS_SERVER_WAVE_QUERY_POTENTIAL")
+                                .ok()
+                                .and_then(|v| v.parse::<f64>().ok())
+                                .unwrap_or(0.5)
+                        });
+                    let wave_restart_factor = exact_filter
+                        .get("wave_restart_factor")
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or_else(|| {
+                            std::env::var("HS_SERVER_WAVE_RESTART_FACTOR")
+                                .ok()
+                                .and_then(|v| v.parse::<f64>().ok())
+                                .unwrap_or(0.25)
+                        });
 
                     // 1. Klein-Gordon wave diffusion using the original query vector.
                     //    The query-potential field V(x) inside search_diffusive handles
@@ -1266,6 +1290,7 @@ impl Database for HyperspaceService {
                         mass_sq: wave_mass_sq,
                         beam_width: wave_beam_width,
                         query_potential_strength: wave_qp_strength,
+                        restart_factor: wave_restart_factor,
                         ..Default::default()
                     };
 
@@ -1281,7 +1306,8 @@ impl Database for HyperspaceService {
                         return Ok(vec![]);
                     }
 
-                    let mut node_scores: std::collections::HashMap<u32, f64> = std::collections::HashMap::new();
+                    let mut node_scores: std::collections::HashMap<u32, f64> =
+                        std::collections::HashMap::new();
                     let mut node_metas = std::collections::HashMap::new();
 
                     for (node_id, energy, meta) in wave_results {
@@ -1291,7 +1317,8 @@ impl Database for HyperspaceService {
 
                     // Sort globally by consensus score descending
                     let mut sorted: Vec<(u32, f64)> = node_scores.into_iter().collect();
-                    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    sorted
+                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                     sorted.truncate(top_k_original);
 
                     let sorted_ids: Vec<u32> = sorted.iter().map(|(id, _)| *id).collect();
@@ -1339,7 +1366,8 @@ impl Database for HyperspaceService {
                     if self.manager.event_tx.receiver_count() > 0 {
                         if let Some(first) = res.first() {
                             use hyperspace_proto::hyperspace::{
-                                event_message::Payload, EventMessage, EventType, TrajectoryStepEvent,
+                                event_message::Payload, EventMessage, EventType,
+                                TrajectoryStepEvent,
                             };
                             let _ = self.manager.event_tx.send(EventMessage {
                                 r#type: EventType::TrajectoryStep as i32,

@@ -79,9 +79,14 @@ Add the following to your MCP configuration file (e.g., `claude_desktop_config.j
 - **`hyperspace_analyze_thought_stability`**: Validate Chain of Thought (CoT) stability.
 - **`hyperspace_analyze_geometry`**: Run Gromov Delta analysis on raw vectors.
 
-### System Tools
+### System & Cache Tools
 - **`hyperspace_get_stats`**: Telemetry on cluster health, clocks, and vector volume.
 - **`hyperspace_trigger_reconsolidation`**: Manually trigger "AI Sleep Mode" (Flow Matching optimization) for a collection.
+- **`hyperspace_freeze_collection`**: Freeze a collection to make it read-only, preventing new inserts.
+- **`hyperspace_unfreeze_collection`**: Unfreeze a previously frozen collection to allow inserts again.
+- **`hyperspace_cache_stats`**: Get cache statistics (hits, misses, policy, etc.) for a specific collection's L0 Hot Tier Cache.
+- **`hyperspace_cache_clear`**: Clear/purge all items in the L0 Cache for a specific collection.
+- **`hyperspace_cache_config`**: Update L0 Cache configuration (eviction policy, ANN threshold) for a specific collection.
 
 ---
 

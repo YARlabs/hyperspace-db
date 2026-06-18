@@ -222,9 +222,18 @@ pub async fn start_http_server(
             "/api/collections/{name}/points/{id}",
             delete(delete_point_http),
         )
-        .route("/api/collections/{name}/cache/stats", get(get_cache_stats_http))
-        .route("/api/collections/{name}/cache/clear", post(clear_cache_http))
-        .route("/api/collections/{name}/cache/config", post(update_cache_config_http))
+        .route(
+            "/api/collections/{name}/cache/stats",
+            get(get_cache_stats_http),
+        )
+        .route(
+            "/api/collections/{name}/cache/clear",
+            post(clear_cache_http),
+        )
+        .route(
+            "/api/collections/{name}/cache/config",
+            post(update_cache_config_http),
+        )
         .route(
             "/api/collections/{name}/payload",
             post(update_payload_http).patch(update_payload_http),
@@ -352,17 +361,15 @@ async fn list_collections(
                     status: "active".to_string(),
                 });
             }
-        } else {
-            if let Some(meta) = manager.get_metadata_no_wake(&ctx.user_id, &name) {
-                summaries.push(CollectionSummary {
-                    name: name.clone(),
-                    count: 0,
-                    dimension: meta.dimension(),
-                    metric: meta.metric_name(),
-                    indexing_queue: 0,
-                    status: "idle".to_string(),
-                });
-            }
+        } else if let Some(meta) = manager.get_metadata_no_wake(&ctx.user_id, &name) {
+            summaries.push(CollectionSummary {
+                name: name.clone(),
+                count: 0,
+                dimension: meta.dimension(),
+                metric: meta.metric_name(),
+                indexing_queue: 0,
+                status: "idle".to_string(),
+            });
         }
     }
     Json(summaries)
@@ -608,7 +615,6 @@ async fn get_stats(
     }
 }
 
-
 async fn update_collection_config(
     Path(name): Path<String>,
     State((manager, _, _)): State<(
@@ -745,6 +751,7 @@ async fn get_prometheus_metrics(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
+    use prometheus::Encoder;
     if !ctx.is_admin {
         return (StatusCode::FORBIDDEN, "Admin access required").into_response();
     }
@@ -787,7 +794,6 @@ async fn get_prometheus_metrics(
          hyperspace_cpu_usage_percent {cpu_percent}\n"
     );
 
-    use prometheus::Encoder;
     let encoder = prometheus::TextEncoder::new();
     let metric_families = prometheus::gather();
     let mut buffer = Vec::new();
@@ -2179,7 +2185,11 @@ async fn get_cache_stats_http(
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&stats_json) {
                     Json(value).into_response()
                 } else {
-                    (StatusCode::INTERNAL_SERVER_ERROR, "Failed to parse cache stats").into_response()
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to parse cache stats",
+                    )
+                        .into_response()
                 }
             }
             Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),

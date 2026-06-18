@@ -172,7 +172,7 @@ std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const s
     return output;
 }
 
-std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein, bool include_payload, const std::unordered_map<std::string, float>& component_weights) {
+std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein, bool include_payload, const std::unordered_map<std::string, float>& component_weights, bool use_wave, const std::optional<float>& restart_factor) {
     ::hyperspace::SearchRequest request;
     request.set_collection(collection);
     request.set_top_k(top_k);
@@ -192,6 +192,10 @@ std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>&
     request.set_include_payload(include_payload);
     for (auto const& [k, v] : component_weights) {
         (*request.mutable_component_weights())[k] = v;
+    }
+    request.set_use_wave(use_wave);
+    if (restart_factor.has_value()) {
+        (*request.mutable_filter())["wave_restart_factor"] = std::to_string(restart_factor.value());
     }
 
     ::hyperspace::SearchResponse response;

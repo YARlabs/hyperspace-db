@@ -140,4 +140,4 @@ cargo build --release
 
 ## License
 
-Same as HyperspaceDB main project (AGPLv3 + Commercial).
+MIT License (Same as HyperspaceDB main project).

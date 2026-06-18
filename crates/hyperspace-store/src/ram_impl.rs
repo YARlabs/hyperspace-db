@@ -61,6 +61,7 @@ impl VectorStore {
             data[start..end].copy_from_slice(vector_bytes);
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         Ok(id as u32)
     }
 
@@ -70,9 +71,10 @@ impl VectorStore {
         let local_idx = id_val % CHUNK_SIZE;
 
         let segs = self.segments.read();
-        if segment_idx >= segs.len() {
-            panic!("VectorStore RAM: OOB access id {}", id);
-        }
+        assert!(
+            segment_idx < segs.len(),
+            "VectorStore RAM: OOB access id {id}"
+        );
         let segment = &segs[segment_idx];
 
         let data_guard = segment.read();

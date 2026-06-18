@@ -74,6 +74,7 @@ impl Drop for Node {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🏗️  Building server...");
     let status = Command::new("cargo")

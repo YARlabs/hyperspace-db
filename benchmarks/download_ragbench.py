@@ -47,7 +47,7 @@ RAGBENCH_DOMAINS = [
 
 # ── Group B — Extra structural / domain-specific datasets ─────────────────────
 # Each entry: (domain_id, description, download_function)
-EXTRA_DOMAINS = ["maud", "legalbench", "trec_ct", "bioasq", "scidocs"]
+EXTRA_DOMAINS = ["maud", "legalbench", "trec_ct", "bioasq", "scidocs", "frames", "rgb"]
 
 ALL_DOMAINS = RAGBENCH_DOMAINS + EXTRA_DOMAINS
 
@@ -418,6 +418,200 @@ def download_scidocs() -> bool:
         return False
 
 
+def extract_wiki_title(url):
+    if not url or url == 'None' or not isinstance(url, str):
+        return None
+    url = url.split('#')[0]
+    if '/wiki/' in url:
+        title = url.split('/wiki/')[-1]
+        import urllib.parse
+        return urllib.parse.unquote(title).strip()
+    return None
+
+
+def download_frames() -> bool:
+    """
+    Google FRAMES — Factuality, Retrieval, And Reasoning Measurement Set
+    Source: google/frames-benchmark on Hugging Face
+    Wikipedia REST API fetches page extracts for the links, cached locally.
+    """
+    print(f"\n📥 Downloading Google FRAMES (Multi-hop Wikipedia)...")
+    output_path = os.path.join(EXTRA_DIR, "frames_ragbench.jsonl")
+    cache_path = os.path.join(EXTRA_DIR, "frames_wiki_cache.json")
+    os.makedirs(EXTRA_DIR, exist_ok=True)
+
+    try:
+        import urllib.request
+        import urllib.parse
+        from concurrent.futures import ThreadPoolExecutor
+
+        print("   Loading google/frames-benchmark dataset...")
+        dataset = load_dataset("google/frames-benchmark", split="test")
+
+        # Load existing cache if available
+        wiki_cache = {}
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    wiki_cache = json.load(f)
+                print(f"   💾 Loaded {len(wiki_cache)} cached Wikipedia summaries from {cache_path}")
+            except Exception as ce:
+                print(f"   ⚠️ Could not load cache: {ce}")
+
+        # Extract all unique titles needed
+        urls_to_fetch = set()
+        for row in dataset:
+            for i in range(1, 11):
+                val = row.get(f"wikipedia_link_{i}")
+                if val and val != "None":
+                    urls_to_fetch.add(val)
+            val = row.get("wikipedia_link_11+")
+            if val and val != "None":
+                urls_to_fetch.add(val)
+
+        title_to_url = {}
+        for url in urls_to_fetch:
+            title = extract_wiki_title(url)
+            if title:
+                title_to_url[title] = url
+
+        titles_needed = [t for t in title_to_url.keys() if t not in wiki_cache]
+        print(f"   Total unique Wikipedia articles: {len(title_to_url)}")
+        print(f"   Articles to fetch (uncached): {len(titles_needed)}")
+
+        if titles_needed:
+            print(f"   Fetching abstracts via Wikipedia REST API using 15 threads...")
+            
+            def fetch_summary(title):
+                url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(title)}"
+                req = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "HyperspaceDB-Benchmark/1.0 (contact: info@hyperspacedb.com)"}
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        res_data = json.loads(response.read().decode('utf-8'))
+                        extract = res_data.get("extract", "")
+                        return title, extract
+                except Exception as e:
+                    # Return empty string to cache failure and avoid re-fetching
+                    return title, ""
+
+            with ThreadPoolExecutor(max_workers=15) as executor:
+                results = list(tqdm(executor.map(fetch_summary, titles_needed), total=len(titles_needed), desc="  fetching wiki"))
+
+            # Update cache
+            for title, extract in results:
+                wiki_cache[title] = extract
+
+            # Save cache
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(wiki_cache, f, ensure_ascii=False, indent=2)
+            print(f"   💾 Saved updated cache with {len(wiki_cache)} entries to {cache_path}")
+
+        # Now, assemble the unified dataset
+        count = 0
+        with open(output_path, "w", encoding="utf-8") as f:
+            for row in tqdm(dataset, desc="  assembling frames"):
+                prompt = row.get("Prompt", "")
+                if not prompt:
+                    continue
+
+                # Gather all associated documents (abstracts) for this row
+                docs = []
+                for i in range(1, 11):
+                    val = row.get(f"wikipedia_link_{i}")
+                    title = extract_wiki_title(val)
+                    if title and wiki_cache.get(title):
+                        docs.append(wiki_cache[title])
+                val = row.get("wikipedia_link_11+")
+                title = extract_wiki_title(val)
+                if title and wiki_cache.get(title):
+                    docs.append(wiki_cache[title])
+
+                # Deduplicate docs while preserving order
+                seen_docs = set()
+                unique_docs = []
+                for doc in docs:
+                    if doc not in seen_docs:
+                        seen_docs.add(doc)
+                        unique_docs.append(doc)
+
+                if not unique_docs:
+                    continue
+
+                relevant_keys = [f"{i}_0" for i in range(len(unique_docs))]
+                clean_row = {
+                    "question": prompt,
+                    "documents": unique_docs,
+                    "all_relevant_sentence_keys": relevant_keys
+                }
+                f.write(json.dumps(clean_row, ensure_ascii=False) + "\n")
+                count += 1
+
+        print(f"   ✅ Cached {count} FRAMES rows → {output_path}")
+        return True
+    except Exception as e:
+        print(f"   ❌ Failed to download FRAMES: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def download_rgb() -> bool:
+    """
+    RGB — Retrieval-Augmented Generation Benchmark
+    Source: chen700564/RGB GitHub repository (data/en.json)
+    Tests noise robustness and negative rejection.
+    """
+    print(f"\n📥 Downloading RGB (Noise Robustness Benchmark)...")
+    output_path = os.path.join(EXTRA_DIR, "rgb_ragbench.jsonl")
+    os.makedirs(EXTRA_DIR, exist_ok=True)
+
+    url = "https://raw.githubusercontent.com/chen700564/RGB/master/data/en.json"
+    try:
+        import urllib.request
+        print(f"   Fetching RGB English dataset from: {url}")
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "HyperspaceDB-Benchmark/1.0 (contact: info@hyperspacedb.com)"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as response:
+            content = response.read().decode('utf-8')
+
+        lines = content.strip().split('\n')
+        count = 0
+        with open(output_path, "w", encoding="utf-8") as f:
+            for line in tqdm(lines, desc="  processing rgb"):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                query = row.get("query", "")
+                positives = row.get("positive", [])
+                negatives = row.get("negative", [])
+
+                if not query or not positives:
+                    continue
+
+                # Combine positives and negatives. Positives go first, so their indices are 0 to len(positives)-1
+                combined_docs = positives + negatives
+                relevant_keys = [f"{i}_0" for i in range(len(positives))]
+
+                clean_row = {
+                    "question": query,
+                    "documents": combined_docs,
+                    "all_relevant_sentence_keys": relevant_keys
+                }
+                f.write(json.dumps(clean_row, ensure_ascii=False) + "\n")
+                count += 1
+
+        print(f"   ✅ Cached {count} RGB rows → {output_path}")
+        return True
+    except Exception as e:
+        print(f"   ❌ Failed to download RGB: {e}")
+        return False
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Dispatch table
 # ══════════════════════════════════════════════════════════════════════════════
@@ -428,6 +622,8 @@ EXTRA_DOWNLOADERS = {
     "trec_ct":    download_trec_ct,
     "bioasq":     download_bioasq,
     "scidocs":    download_scidocs,
+    "frames":     download_frames,
+    "rgb":        download_rgb,
 }
 
 

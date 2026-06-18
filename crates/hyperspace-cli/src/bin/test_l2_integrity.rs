@@ -17,6 +17,7 @@ impl Interceptor for AuthInterceptor {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Starting L2 Integrity Test");
     let channel = Channel::from_static("http://127.0.0.1:50051")
@@ -111,6 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             mrl_dimension: None,
             include_payload: false,
             component_weights: std::collections::HashMap::new(),
+            use_wave: false,
         })
         .await?;
 

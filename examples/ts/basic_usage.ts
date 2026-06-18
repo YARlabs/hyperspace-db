@@ -10,7 +10,10 @@ async function main() {
         // Cleanup if exists
         await client.deleteCollection(colName).catch(() => { });
 
-        await client.createCollection(colName, 8, 'l2');
+        await client.createCollection(colName, {
+            components: [{ name: 'default', metric: 'l2', fullDimension: 8, weight: 1.0 }],
+            cascadePipeline: []
+        });
         console.log('Collection created.');
 
         console.log('Inserting vectors...');

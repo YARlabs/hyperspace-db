@@ -16859,9 +16859,10 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
     kBm25OptionsFieldNumber = 9,
     kTopKFieldNumber = 3,
     kHybridAlphaFieldNumber = 7,
+    kMrlDimensionFieldNumber = 10,
     kUseWassersteinFieldNumber = 8,
     kIncludePayloadFieldNumber = 11,
-    kMrlDimensionFieldNumber = 10,
+    kUseWaveFieldNumber = 13,
     kFilterFieldNumber = 4,
     kComponentWeightsFieldNumber = 12,
   };
@@ -16974,6 +16975,18 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
   void _internal_set_hybrid_alpha(float value);
 
   public:
+  // optional uint32 mrl_dimension = 10;
+  [[nodiscard]] bool has_mrl_dimension()
+      const;
+  void clear_mrl_dimension() ;
+  [[nodiscard]] ::uint32_t mrl_dimension() const;
+  void set_mrl_dimension(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_mrl_dimension() const;
+  void _internal_set_mrl_dimension(::uint32_t value);
+
+  public:
   // bool use_wasserstein = 8;
   void clear_use_wasserstein() ;
   [[nodiscard]] bool use_wasserstein() const;
@@ -16994,16 +17007,14 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
   void _internal_set_include_payload(bool value);
 
   public:
-  // optional uint32 mrl_dimension = 10;
-  [[nodiscard]] bool has_mrl_dimension()
-      const;
-  void clear_mrl_dimension() ;
-  [[nodiscard]] ::uint32_t mrl_dimension() const;
-  void set_mrl_dimension(::uint32_t value);
+  // bool use_wave = 13;
+  void clear_use_wave() ;
+  [[nodiscard]] bool use_wave() const;
+  void set_use_wave(bool value);
 
   private:
-  ::uint32_t _internal_mrl_dimension() const;
-  void _internal_set_mrl_dimension(::uint32_t value);
+  bool _internal_use_wave() const;
+  void _internal_set_use_wave(bool value);
 
   public:
   // map<string, string> filter = 4;
@@ -17042,7 +17053,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<4, 12,
+  static const ::google::protobuf::internal::TcParseTable<4, 13,
                                    4, 86,
                                    2>
       _table_;
@@ -17073,9 +17084,10 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
     ::hyperspace::Bm25Options* PROTOBUF_NULLABLE bm25_options_;
     ::uint32_t top_k_;
     float hybrid_alpha_;
+    ::uint32_t mrl_dimension_;
     bool use_wasserstein_;
     bool include_payload_;
-    ::uint32_t mrl_dimension_;
+    bool use_wave_;
     ::google::protobuf::internal::MapField<SearchRequest_FilterEntry_DoNotUse, ::std::string, ::std::string> filter_;
     ::google::protobuf::internal::MapField<SearchRequest_ComponentWeightsEntry_DoNotUse, ::std::string, float> component_weights_;
     PROTOBUF_TSAN_DECLARE_MEMBER
@@ -28510,7 +28522,7 @@ inline void SearchRequest::clear_filter() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.filter_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000400U);
+                  0x00000800U);
 }
 inline const ::google::protobuf::Map<::std::string, ::std::string>& SearchRequest::_internal_filter() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -28526,7 +28538,7 @@ inline ::google::protobuf::Map<::std::string, ::std::string>* PROTOBUF_NONNULL S
 }
 inline ::google::protobuf::Map<::std::string, ::std::string>* PROTOBUF_NONNULL SearchRequest::mutable_filter()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000400U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000800U);
   // @@protoc_insertion_point(field_mutable_map:hyperspace.SearchRequest.filter)
   return _internal_mutable_filter();
 }
@@ -28690,7 +28702,7 @@ inline void SearchRequest::clear_use_wasserstein() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.use_wasserstein_ = false;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
+                  0x00000100U);
 }
 inline bool SearchRequest::use_wasserstein() const {
   // @@protoc_insertion_point(field_get:hyperspace.SearchRequest.use_wasserstein)
@@ -28698,7 +28710,7 @@ inline bool SearchRequest::use_wasserstein() const {
 }
 inline void SearchRequest::set_use_wasserstein(bool value) {
   _internal_set_use_wasserstein(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   // @@protoc_insertion_point(field_set:hyperspace.SearchRequest.use_wasserstein)
 }
 inline bool SearchRequest::_internal_use_wasserstein() const {
@@ -28811,14 +28823,14 @@ inline void SearchRequest::set_allocated_bm25_options(::hyperspace::Bm25Options*
 
 // optional uint32 mrl_dimension = 10;
 inline bool SearchRequest::has_mrl_dimension() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000200U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
   return value;
 }
 inline void SearchRequest::clear_mrl_dimension() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.mrl_dimension_ = 0u;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000200U);
+                  0x00000080U);
 }
 inline ::uint32_t SearchRequest::mrl_dimension() const {
   // @@protoc_insertion_point(field_get:hyperspace.SearchRequest.mrl_dimension)
@@ -28826,7 +28838,7 @@ inline ::uint32_t SearchRequest::mrl_dimension() const {
 }
 inline void SearchRequest::set_mrl_dimension(::uint32_t value) {
   _internal_set_mrl_dimension(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   // @@protoc_insertion_point(field_set:hyperspace.SearchRequest.mrl_dimension)
 }
 inline ::uint32_t SearchRequest::_internal_mrl_dimension() const {
@@ -28843,7 +28855,7 @@ inline void SearchRequest::clear_include_payload() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.include_payload_ = false;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000100U);
+                  0x00000200U);
 }
 inline bool SearchRequest::include_payload() const {
   // @@protoc_insertion_point(field_get:hyperspace.SearchRequest.include_payload)
@@ -28851,7 +28863,7 @@ inline bool SearchRequest::include_payload() const {
 }
 inline void SearchRequest::set_include_payload(bool value) {
   _internal_set_include_payload(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
   // @@protoc_insertion_point(field_set:hyperspace.SearchRequest.include_payload)
 }
 inline bool SearchRequest::_internal_include_payload() const {
@@ -28874,7 +28886,7 @@ inline void SearchRequest::clear_component_weights() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.component_weights_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000800U);
+                  0x00001000U);
 }
 inline const ::google::protobuf::Map<::std::string, float>& SearchRequest::_internal_component_weights() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -28890,9 +28902,34 @@ inline ::google::protobuf::Map<::std::string, float>* PROTOBUF_NONNULL SearchReq
 }
 inline ::google::protobuf::Map<::std::string, float>* PROTOBUF_NONNULL SearchRequest::mutable_component_weights()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000800U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00001000U);
   // @@protoc_insertion_point(field_mutable_map:hyperspace.SearchRequest.component_weights)
   return _internal_mutable_component_weights();
+}
+
+// bool use_wave = 13;
+inline void SearchRequest::clear_use_wave() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.use_wave_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000400U);
+}
+inline bool SearchRequest::use_wave() const {
+  // @@protoc_insertion_point(field_get:hyperspace.SearchRequest.use_wave)
+  return _internal_use_wave();
+}
+inline void SearchRequest::set_use_wave(bool value) {
+  _internal_set_use_wave(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  // @@protoc_insertion_point(field_set:hyperspace.SearchRequest.use_wave)
+}
+inline bool SearchRequest::_internal_use_wave() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.use_wave_;
+}
+inline void SearchRequest::_internal_set_use_wave(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.use_wave_ = value;
 }
 
 // -------------------------------------------------------------------
