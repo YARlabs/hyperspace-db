@@ -134,7 +134,12 @@ impl HybridQuantizedVector {
         let offset = self.lorentz.len();
 
         for i in (0..limit).step_by(4) {
-            let val_bytes = self.euclidean.as_ptr().add(i).cast::<[u8; 4]>().read_unaligned();
+            let val_bytes = self
+                .euclidean
+                .as_ptr()
+                .add(i)
+                .cast::<[u8; 4]>()
+                .read_unaligned();
             let i8_vals = _mm_cvtsi32_si128(i32::from_ne_bytes(val_bytes));
             let i32_vals = _mm_cvtepi8_epi32(i8_vals);
             let f64_vals = _mm256_cvtepi32_pd(i32_vals);
