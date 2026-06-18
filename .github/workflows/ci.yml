@@ -10,7 +10,9 @@ env:
   CARGO_TERM_COLOR: always
   RUST_LOG: info
   ORT_STRATEGY: system
-  ORT_LIB_LOCATION: /home/runner/onnxruntime
+  ORT_LIB_LOCATION: /home/runner/onnxruntime/lib
+  ORT_PREFER_DYNAMIC_LINK: "true"
+  LD_LIBRARY_PATH: /home/runner/onnxruntime/lib
 
 jobs:
   build-and-test:
