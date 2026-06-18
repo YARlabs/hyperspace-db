@@ -9,6 +9,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_LOG: info
+  ORT_STRATEGY: system
+  ORT_LIB_LOCATION: /home/runner/onnxruntime
 
 jobs:
   build-and-test:
@@ -19,6 +21,13 @@ jobs:
       # Install Protoc (Required for tonic-build)
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      # Download and Extract ONNX Runtime for building ort-sys
+      - name: Download and Extract ONNX Runtime
+        run: |
+          mkdir -p /home/runner/onnxruntime
+          curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/onnxruntime-linux-x64-1.19.2.tgz -o /home/runner/onnxruntime.tgz
+          tar -xzf /home/runner/onnxruntime.tgz -C /home/runner/onnxruntime --strip-components=1
 
       # Install Rust Nightly
       - name: Install Rust Nightly
@@ -73,6 +82,13 @@ jobs:
       # Install Protoc (Required for tonic-build)
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      # Download and Extract ONNX Runtime for building ort-sys
+      - name: Download and Extract ONNX Runtime
+        run: |
+          mkdir -p /home/runner/onnxruntime
+          curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/onnxruntime-linux-x64-1.19.2.tgz -o /home/runner/onnxruntime.tgz
+          tar -xzf /home/runner/onnxruntime.tgz -C /home/runner/onnxruntime --strip-components=1
 
       # Install Rust Nightly
       - name: Install Rust Nightly

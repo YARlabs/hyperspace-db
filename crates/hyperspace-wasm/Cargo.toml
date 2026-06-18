@@ -20,3 +20,6 @@ console_error_panic_hook = "0.1"
 parking_lot = "0.12"
 getrandom = { version = "0.2", features = ["js"] }
 rexie = "0.4"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
