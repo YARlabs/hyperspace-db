@@ -31,12 +31,12 @@ async-trait = { version = "0.1", optional = true }
 rand = "0.10.0"
 
 # Local ONNX (optional)
-ort = { version = "2.0.0-rc.12", features = ["download-binaries"], optional = true }
-tokenizers = { version = "0.15", features = ["onig"], optional = true }
-ndarray = { version = "0.17", optional = true }
+ort = { workspace = true, optional = true }
+tokenizers = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
 
 # HuggingFace Hub (optional)
-hf-hub = { version = "0.3", optional = true }
+hf-hub = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true

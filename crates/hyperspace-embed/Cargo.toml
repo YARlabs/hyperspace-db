@@ -5,9 +5,9 @@ edition = "2021"
 description = "Universal Embedding Wrapper for HyperspaceDB (Local ONNX + Remote APIs)"
 
 [dependencies]
-ort = { version = "2.0.0-rc.12", features = ["download-binaries"] } 
-tokenizers = { version = "0.22.2", features = ["onig"] }
-ndarray = "0.17"
+ort = { workspace = true } 
+tokenizers = { workspace = true }
+ndarray = { workspace = true }
 
 anyhow = "1.0"
 async-trait = "0.1"
@@ -15,7 +15,8 @@ tokio = { version = "1.0", features = ["full"] }
 reqwest = { version = "0.11", features = ["json"] } # Required for API support
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-hf-hub = "0.3"
+hf-hub = { workspace = true }
+libloading = "0.9"
 
 [features]
 default = []
