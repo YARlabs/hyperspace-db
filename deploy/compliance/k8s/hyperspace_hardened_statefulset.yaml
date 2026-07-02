@@ -1,0 +1,96 @@
+# Hardened StatefulSet Deployment Template for HyperspaceDB
+# Aligned with SOC 2 CC6.3 (Least Privilege) and CC6.5 (Host Security)
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hyperspace
+  namespace: prod
+  labels:
+    app: hyperspace-db
+spec:
+  serviceName: "hyperspace"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hyperspace-db
+  template:
+    metadata:
+      labels:
+        app: hyperspace-db
+    spec:
+      # Pod Security Context - Enforces non-root container execution
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Node scheduling: Node tolerations are empty by default.
+      # Database workloads should NOT run on Control Plane (Master) nodes.
+      tolerations: []
+      
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.36.1
+          securityContext:
+            runAsUser: 0 # Temporary root privileges to modify volume ownership
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            [
+              "sh",
+              "-c",
+              "chown -R 1000:1000 /app/data && chmod -R 700 /app/data", # Secured owner-only access (no chmod 777)
+            ]
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+
+      containers:
+        - name: hyperspace
+          image: glukhota/hyperspace-db:v3.1.0 # Fixed image version tag (no :latest)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 50051
+              name: grpc
+            - containerPort: 50050
+              name: http
+          
+          # Container Security Context - Restricts OS capability access
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true # Root filesystem is mounted as read-only
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+                
+          env:
+            - name: RUST_LOG
+              value: "info"
+            - name: HS_DATA_DIR
+              value: "/app/data"
+            # Add other necessary database environment variables here...
+            
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: tmp-dir
+              mountPath: /tmp # Mount temporary dir for read-only filesystem writes
+              
+      volumes:
+        - name: tmp-dir
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 50Gi

@@ -630,10 +630,30 @@ impl Metric for LorentzMetric {
             a.len() >= 2,
             "Lorentz metric requires at least 2 dimensions"
         );
-        let mut inner_prod = -a[0] * b[0];
-        for i in 1..a.len() {
-            inner_prod += a[i] * b[i];
+        let mut spatial_dot = 0.0;
+        let mut i = 1;
+        let n = a.len();
+
+        #[cfg(feature = "nightly-simd")]
+        {
+            use std::simd::f64x4;
+            use std::simd::num::SimdFloat;
+            let mut sum_vec = f64x4::splat(0.0);
+            while i + 4 <= n {
+                let va = f64x4::from_slice(&a[i..i + 4]);
+                let vb = f64x4::from_slice(&b[i..i + 4]);
+                sum_vec += va * vb;
+                i += 4;
+            }
+            spatial_dot += sum_vec.reduce_sum();
         }
+
+        while i < n {
+            spatial_dot += a[i] * b[i];
+            i += 1;
+        }
+
+        let inner_prod = -a[0] * b[0] + spatial_dot;
         let arg = (-inner_prod).max(1.0 + 1e-12);
         arg.acosh()
     }

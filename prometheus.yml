@@ -1,9 +1,11 @@
 # Available Metrics:
 # -----------------
-# hyperspace_active_collections: gauge
-# hyperspace_total_vectors: gauge
-# hyperspace_ram_usage_mb: gauge
-# hyperspace_disk_usage_mb: gauge
+# hyperspace_active_collections: gauge (Number of active collections in memory)
+# hyperspace_idle_collections: gauge (Number of collections unloaded/idle on disk)
+# hyperspace_total_vectors: gauge (Total vectors in active collections)
+# hyperspace_ram_usage_mb: gauge (Process memory usage in MB)
+# hyperspace_disk_usage_mb: gauge (Total on-disk size in MB)
+# hyperspace_cpu_usage_percent: gauge (Process CPU usage percent)
 # hyperspace_s3_uploads_completed: counter (Total successful S3 uploads)
 # hyperspace_s3_downloads_completed: counter (Total successful S3 cache misses)
 # hyperspace_s3_errors: counter (Total S3 request failures)
@@ -15,5 +17,7 @@ global:
 scrape_configs:
   - job_name: "hyperspace"
     metrics_path: "/metrics"
+    authorization:
+      credentials: "I_LOVE_HYPERSPACEDB"
     static_configs:
       - targets: ["hyperspace:50050"]

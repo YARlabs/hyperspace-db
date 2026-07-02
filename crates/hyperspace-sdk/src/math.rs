@@ -1,5 +1,26 @@
 fn dot(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+    let n = a.len();
+    let mut sum = 0.0;
+    let mut i = 0;
+
+    #[cfg(feature = "nightly-simd")]
+    {
+        use std::simd::prelude::*;
+        let mut sum_vec = f64x4::splat(0.0);
+        while i + 4 <= n {
+            let va = f64x4::from_slice(&a[i..i + 4]);
+            let vb = f64x4::from_slice(&b[i..i + 4]);
+            sum_vec += va * vb;
+            i += 4;
+        }
+        sum += sum_vec.reduce_sum();
+    }
+
+    while i < n {
+        sum += a[i] * b[i];
+        i += 1;
+    }
+    sum
 }
 
 fn norm_sq(v: &[f64]) -> f64 {
@@ -40,10 +61,34 @@ pub fn mobius_add(x: &[f64], y: &[f64], c: f64) -> Result<Vec<f64>, String> {
     if den.abs() < 1e-15 {
         return Err("Mobius addition denominator too small".to_string());
     }
-    Ok(x.iter()
-        .zip(y.iter())
-        .map(|(xi, yi)| (num_left * xi + num_right * yi) / den)
-        .collect())
+
+    let n = x.len();
+    let mut result = vec![0.0; n];
+    let mut i = 0;
+
+    #[cfg(feature = "nightly-simd")]
+    {
+        use std::simd::prelude::*;
+        let num_left_v = f64x4::splat(num_left);
+        let num_right_v = f64x4::splat(num_right);
+        let den_inv_v = f64x4::splat(1.0 / den);
+
+        while i + 4 <= n {
+            let vx = f64x4::from_slice(&x[i..i + 4]);
+            let vy = f64x4::from_slice(&y[i..i + 4]);
+            let res_v = (vx * num_left_v + vy * num_right_v) * den_inv_v;
+            res_v.copy_to_slice(&mut result[i..i + 4]);
+            i += 4;
+        }
+    }
+
+    let den_inv = 1.0 / den;
+    while i < n {
+        result[i] = (num_left * x[i] + num_right * y[i]) * den_inv;
+        i += 1;
+    }
+
+    Ok(result)
 }
 
 /// Maps a tangent vector `v` at point `x` to the manifold.
@@ -62,14 +107,52 @@ pub fn exp_map(x: &[f64], v: &[f64], c: f64) -> Result<Vec<f64>, String> {
         return Err("Curvature c must be > 0".to_string());
     }
     let x2 = norm_sq(x);
-    let v_norm = norm_sq(v).sqrt();
+    let v_norm_sq = norm_sq(v);
+    let v_norm = v_norm_sq.sqrt();
     if v_norm < 1e-15 {
         return Ok(x.to_vec());
     }
     let lambda_x = 2.0 / (1.0 - c * x2).max(1e-15);
     let scale = (c.sqrt() * lambda_x * v_norm / 2.0).tanh() / (c.sqrt() * v_norm);
-    let step: Vec<f64> = v.iter().map(|vi| scale * vi).collect();
-    mobius_add(x, &step, c)
+
+    let xv = dot(x, v);
+    let xy = scale * xv;
+    let y2 = scale * scale * v_norm_sq;
+
+    let num_left = 1.0 + 2.0 * c * xy + c * y2;
+    let num_right = 1.0 - c * x2;
+    let den = 1.0 + 2.0 * c * xy + c * c * x2 * y2;
+    if den.abs() < 1e-15 {
+        return Err("Mobius addition denominator too small".to_string());
+    }
+
+    let n = x.len();
+    let mut result = vec![0.0; n];
+    let mut i = 0;
+
+    #[cfg(feature = "nightly-simd")]
+    {
+        use std::simd::prelude::*;
+        let num_left_v = f64x4::splat(num_left);
+        let num_right_v = f64x4::splat(num_right * scale);
+        let den_inv_v = f64x4::splat(1.0 / den);
+
+        while i + 4 <= n {
+            let vx = f64x4::from_slice(&x[i..i + 4]);
+            let vv = f64x4::from_slice(&v[i..i + 4]);
+            let res_v = (vx * num_left_v + vv * num_right_v) * den_inv_v;
+            res_v.copy_to_slice(&mut result[i..i + 4]);
+            i += 4;
+        }
+    }
+
+    let den_inv = 1.0 / den;
+    while i < n {
+        result[i] = (num_left * x[i] + num_right * scale * v[i]) * den_inv;
+        i += 1;
+    }
+
+    Ok(result)
 }
 
 /// Maps a manifold point `y` back to the tangent space at `x`.

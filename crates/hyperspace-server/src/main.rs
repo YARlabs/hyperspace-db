@@ -11,6 +11,17 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::unused_async)]
+#![allow(clippy::map_unwrap_or)]
+#![allow(clippy::ignored_unit_patterns)]
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::ineffective_open_options)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::trivially_copy_pass_by_ref)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::result_large_err)]
 
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -19,6 +30,7 @@ use clap::Parser;
 // Access index via CollectionManager.
 // use hyperspace_index::HnswIndex;
 
+mod audit_log;
 mod chunk_backend;
 mod chunk_searcher;
 mod collection;
@@ -26,6 +38,7 @@ mod gossip;
 mod http_server;
 mod manager;
 mod meta_router;
+mod security;
 mod sync;
 #[cfg(test)]
 mod tests;
@@ -98,6 +111,13 @@ struct Args {
     replication_allowed: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct GrpcRequestContext {
+    pub user_id: String,
+    pub is_admin: bool,
+    pub role: security::UserRole,
+}
+
 #[derive(Clone)]
 struct AuthInterceptor {
     expected_hash: Option<String>,
@@ -105,41 +125,61 @@ struct AuthInterceptor {
 
 impl Interceptor for AuthInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
-        if let Some(expected) = &self.expected_hash {
-            match request.metadata().get("x-api-key") {
-                Some(t) => {
-                    // Hash the received token
-                    if let Ok(token_str) = t.to_str() {
-                        let mut hasher = Sha256::new();
-                        hasher.update(token_str.as_bytes());
-                        let result = hasher.finalize();
-                        let request_hash = hex::encode(result);
-
-                        // Constant-time comparison to prevent timing attacks
-                        if constant_time_eq(request_hash.as_bytes(), expected.as_bytes()) {
-                            return Ok(request);
-                        }
+        let provided_key = match request.metadata().get("x-api-key") {
+            Some(t) => t.to_str().ok().map(String::from),
+            None => request.metadata().get("authorization").and_then(|t| {
+                t.to_str().ok().and_then(|s| {
+                    if s.to_lowercase().starts_with("bearer ") {
+                        Some(s[7..].to_string())
+                    } else {
+                        None
                     }
-                    Err(Status::unauthenticated("Invalid API Key"))
-                }
-                None => Err(Status::unauthenticated("Missing x-api-key header")),
+                })
+            }),
+        };
+
+        let mut user_id = "anonymous".to_string();
+        let is_admin;
+        let role;
+
+        if let Some(key_str) = provided_key {
+            let mut hasher = Sha256::new();
+            hasher.update(key_str.as_bytes());
+            let request_hash = hex::encode(hasher.finalize());
+
+            if let Some((uid, r)) = security::validate_key(&request_hash) {
+                user_id = uid;
+                role = r;
+                is_admin = r == security::UserRole::Admin;
+            } else {
+                return Err(Status::unauthenticated("Invalid API Key"));
             }
         } else {
-            Ok(request)
-        }
-    }
-}
+            if let Some(uid_meta) = request.metadata().get("x-hyperspace-user-id") {
+                if let Ok(uid_str) = uid_meta.to_str() {
+                    user_id = uid_str.to_string();
+                }
+            }
 
-/// Constant-time comparison for byte slices
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
+            if self.expected_hash.is_none() {
+                if user_id == "anonymous" {
+                    user_id = "anonymous".to_string();
+                }
+                is_admin = true;
+                role = security::UserRole::Admin;
+            } else {
+                return Err(Status::unauthenticated("Missing API Key"));
+            }
+        }
+
+        let mut req = request;
+        req.extensions_mut().insert(GrpcRequestContext {
+            user_id,
+            is_admin,
+            role,
+        });
+        Ok(req)
     }
-    let mut res = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        res |= x ^ y;
-    }
-    res == 0
 }
 
 // Client-side interceptor (for Follower connecting to Leader)
@@ -646,6 +686,42 @@ fn get_user_id<T>(req: &Request<T>) -> String {
         )
 }
 
+fn get_grpc_ctx<T>(req: &Request<T>) -> GrpcRequestContext {
+    req.extensions()
+        .get::<GrpcRequestContext>()
+        .cloned()
+        .unwrap_or_else(|| GrpcRequestContext {
+            user_id: get_user_id(req),
+            is_admin: true,
+            role: security::UserRole::Admin,
+        })
+}
+
+fn resolve_collection(
+    ctx: &GrpcRequestContext,
+    req_col: &str,
+    required: security::UserRole,
+) -> Result<(String, String), Status> {
+    let col_raw = if req_col.is_empty() {
+        "default"
+    } else {
+        req_col
+    };
+    let (owner, col_name) = if let Some((o, c)) = col_raw.split_once('/') {
+        (o.to_string(), c.to_string())
+    } else {
+        (ctx.user_id.clone(), col_raw.to_string())
+    };
+
+    if !security::check_access(&ctx.user_id, &owner, &col_name, required) {
+        return Err(Status::permission_denied(format!(
+            "Access denied to collection '{owner}/{col_name}'"
+        )));
+    }
+
+    Ok((owner, col_name))
+}
+
 pub struct HyperspaceService {
     manager: Arc<CollectionManager>,
     replication_tx: broadcast::Sender<ReplicationLog>,
@@ -663,90 +739,224 @@ impl Database for HyperspaceService {
         &self,
         request: Request<CreateCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot create collections",
+            ));
+        }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
         let req = request.into_inner();
-        if req.name.is_empty() {
-            return Err(Status::invalid_argument("Collection name cannot be empty"));
-        }
+        let name = req.name.clone();
 
-        let Some(schema) = req.schema else {
-            return Err(Status::invalid_argument("CollectionSchema is required"));
+        let result = async {
+            if name.is_empty() {
+                return Err(Status::invalid_argument("Collection name cannot be empty"));
+            }
+            if name.contains('/') {
+                return Err(Status::invalid_argument(
+                    "Collection name cannot contain slashes",
+                ));
+            }
+            let Some(schema) = req.schema else {
+                return Err(Status::invalid_argument("CollectionSchema is required"));
+            };
+            self.manager
+                .create_collection(&ctx.user_id, &name, schema)
+                .await
+                .map_err(Status::already_exists)
+        }
+        .await;
+
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.message()),
         };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Low,
+            &ctx.user_id,
+            "CREATE_COLLECTION",
+            Some(&name),
+            audit_status,
+            &client_ip,
+        );
 
-        match self
-            .manager
-            .create_collection(&user_id, &req.name, schema)
-            .await
-        {
-            Ok(()) => Ok(Response::new(
-                hyperspace_proto::hyperspace::StatusResponse {
-                    status: format!("Collection '{}' created.", req.name),
-                },
-            )),
-            Err(e) => Err(Status::already_exists(e)),
-        }
+        result.map(|_| {
+            Response::new(hyperspace_proto::hyperspace::StatusResponse {
+                status: format!("Collection '{}' created.", name),
+            })
+        })
     }
 
     async fn delete_collection(
         &self,
         request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        let user_id = get_user_id(&request);
-        let req = request.into_inner();
-        match self.manager.delete_collection(&user_id, &req.name).await {
-            Ok(()) => Ok(Response::new(
-                hyperspace_proto::hyperspace::StatusResponse {
-                    status: format!("Collection '{}' deleted.", req.name),
-                },
-            )),
-            Err(e) => Err(Status::not_found(e)),
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot delete collections",
+            ));
         }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let req = request.into_inner();
+        let name = req.name.clone();
+
+        let (owner, col_name) = resolve_collection(&ctx, &name, security::UserRole::Admin)?;
+        let result = self.manager.delete_collection(&owner, &col_name).await;
+
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.as_str()),
+        };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Low,
+            &ctx.user_id,
+            "DELETE_COLLECTION",
+            Some(&name),
+            audit_status,
+            &client_ip,
+        );
+
+        result
+            .map(|_| {
+                Response::new(hyperspace_proto::hyperspace::StatusResponse {
+                    status: format!("Collection '{}' deleted.", name),
+                })
+            })
+            .map_err(Status::not_found)
     }
 
     async fn freeze_collection(
         &self,
         request: Request<hyperspace_proto::hyperspace::FreezeCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot freeze collections",
+            ));
+        }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
         let req = request.into_inner();
-        if req.name.is_empty() {
-            return Err(Status::invalid_argument("Collection name cannot be empty"));
+        let name = req.name.clone();
+
+        let (owner, col_name) = resolve_collection(&ctx, &name, security::UserRole::Admin)?;
+
+        let result = async {
+            if col_name.is_empty() {
+                return Err(Status::invalid_argument("Collection name cannot be empty"));
+            }
+            self.manager
+                .freeze_collection(&owner, &col_name)
+                .await
+                .map_err(Status::not_found)
         }
-        match self.manager.freeze_collection(&user_id, &req.name).await {
-            Ok(()) => Ok(Response::new(
-                hyperspace_proto::hyperspace::StatusResponse {
-                    status: format!("Collection '{}' frozen.", req.name),
-                },
-            )),
-            Err(e) => Err(Status::not_found(e)),
-        }
+        .await;
+
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.message()),
+        };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Low,
+            &ctx.user_id,
+            "FREEZE_COLLECTION",
+            Some(&name),
+            audit_status,
+            &client_ip,
+        );
+
+        result.map(|_| {
+            Response::new(hyperspace_proto::hyperspace::StatusResponse {
+                status: format!("Collection '{}' frozen.", name),
+            })
+        })
     }
 
     async fn unfreeze_collection(
         &self,
         request: Request<hyperspace_proto::hyperspace::UnfreezeCollectionRequest>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot unfreeze collections",
+            ));
+        }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
         let req = request.into_inner();
-        if req.name.is_empty() {
-            return Err(Status::invalid_argument("Collection name cannot be empty"));
+        let name = req.name.clone();
+
+        let (owner, col_name) = resolve_collection(&ctx, &name, security::UserRole::Admin)?;
+
+        let result = async {
+            if col_name.is_empty() {
+                return Err(Status::invalid_argument("Collection name cannot be empty"));
+            }
+            self.manager
+                .unfreeze_collection(&owner, &col_name)
+                .await
+                .map_err(Status::not_found)
         }
-        match self.manager.unfreeze_collection(&user_id, &req.name).await {
-            Ok(()) => Ok(Response::new(
-                hyperspace_proto::hyperspace::StatusResponse {
-                    status: format!("Collection '{}' unfrozen.", req.name),
-                },
-            )),
-            Err(e) => Err(Status::not_found(e)),
-        }
+        .await;
+
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.message()),
+        };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Low,
+            &ctx.user_id,
+            "UNFREEZE_COLLECTION",
+            Some(&name),
+            audit_status,
+            &client_ip,
+        );
+
+        result.map(|_| {
+            Response::new(hyperspace_proto::hyperspace::StatusResponse {
+                status: format!("Collection '{}' unfrozen.", name),
+            })
+        })
     }
 
     async fn list_collections(
         &self,
         _request: Request<Empty>,
     ) -> Result<Response<ListCollectionsResponse>, Status> {
-        let user_id = get_user_id(&_request);
-        let collections = self.manager.list_detailed(&user_id).await;
+        let ctx = get_grpc_ctx(&_request);
+        let mut collections = self.manager.list_detailed(&ctx.user_id).await;
+
+        // Add shared collections
+        let shared = security::list_shared_collections(&ctx.user_id);
+        for (owner, name, _) in shared {
+            if let Some(col) = self.manager.get(&owner, &name).await {
+                let schema = self
+                    .manager
+                    .get_metadata(&owner, &name)
+                    .await
+                    .and_then(|m| m.schema);
+                collections.push(hyperspace_proto::hyperspace::CollectionSummary {
+                    name: format!("{owner}/{name}"),
+                    count: col.count() as u64,
+                    schema,
+                });
+            }
+        }
+
         Ok(Response::new(ListCollectionsResponse { collections }))
     }
 
@@ -785,186 +995,36 @@ impl Database for HyperspaceService {
         if self.role == "follower" {
             return Err(Status::permission_denied("Followers are read-only"));
         }
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot insert vectors",
+            ));
+        }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
         let req = request.into_inner();
 
-        let col_name = if req.collection.is_empty() {
-            "default".to_string()
-        } else {
-            req.collection
-        };
-        if let Some(col) = self.manager.get(&user_id, &col_name).await {
-            let meta = merge_metadata(
-                req.metadata.into_iter().collect(),
-                req.typed_metadata.into_iter().collect(),
-            );
-            // Tick clock
-            let clock = self.manager.tick_cluster_clock().await;
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
 
-            // Durability mapping
-            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
-                req.durability,
-            )
-            .ok()
-            {
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
-                    hyperspace_core::Durability::Strict
-                }
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
-                    hyperspace_core::Durability::Async
-                }
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
-                    hyperspace_core::Durability::Batch
-                }
-                _ => hyperspace_core::Durability::Default,
-            };
+        let result: Result<Response<InsertResponse>, Status> =
+            async {
+                let col = self.manager.get(&owner, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{}' not found", col_name))
+                })?;
 
-            // id is u32 in proto.
-            if let Err(e) = col
-                .insert(&req.vector, req.id, meta, clock, durability)
-                .await
-            {
-                return Err(Status::internal(e));
-            }
+                let meta = merge_metadata(
+                    req.metadata.into_iter().collect(),
+                    req.typed_metadata.into_iter().collect(),
+                );
+                let clock = self.manager.tick_cluster_clock().await;
 
-            // Sidecar Payload Storage (v3.2): if the client included a payload blob,
-            // write it to disk AFTER the vector is safely inserted.
-            // Empty/absent payloads are silently ignored.
-            if let Some(payload_bytes) = req.payload {
-                if !payload_bytes.is_empty() {
-                    if let Err(e) = col.insert_payload(req.id, payload_bytes).await {
-                        // Non-fatal: vector is already in the index, just log
-                        eprintln!(
-                            "\u{26a0}\u{fe0f}  insert_payload failed for id={}: {e}",
-                            req.id
-                        );
-                    }
-                }
-            }
-
-            Ok(Response::new(InsertResponse { success: true }))
-        } else {
-            Err(Status::not_found(format!(
-                "Collection '{col_name}' not found"
-            )))
-        }
-    }
-
-    async fn batch_insert(
-        &self,
-        request: Request<BatchInsertRequest>,
-    ) -> Result<Response<InsertResponse>, Status> {
-        if self.role == "follower" {
-            return Err(Status::permission_denied("Followers are read-only"));
-        }
-        let user_id = get_user_id(&request);
-        let req = request.into_inner();
-
-        let col_name = if req.collection.is_empty() {
-            "default".to_string()
-        } else {
-            req.collection
-        };
-
-        if let Some(col) = self.manager.get(&user_id, &col_name).await {
-            // Convert protos to internal types
-            let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req
-                .vectors
-                .into_iter()
-                .map(|v| {
-                    (
-                        v.vector,
-                        v.id,
-                        merge_metadata(v.metadata.into_iter().collect(), v.typed_metadata),
-                    )
-                })
-                .collect();
-
-            // Tick clock
-            let clock = self.manager.tick_cluster_clock().await;
-
-            // Durability mapping
-            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
-                req.durability,
-            )
-            .ok()
-            {
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
-                    hyperspace_core::Durability::Strict
-                }
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
-                    hyperspace_core::Durability::Async
-                }
-                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
-                    hyperspace_core::Durability::Batch
-                }
-                _ => hyperspace_core::Durability::Default,
-            };
-
-            if let Err(e) = col.insert_batch(vectors, clock, durability).await {
-                return Err(Status::internal(e));
-            }
-            Ok(Response::new(InsertResponse { success: true }))
-        } else {
-            Err(Status::not_found(format!(
-                "Collection '{col_name}' not found"
-            )))
-        }
-    }
-
-    #[allow(unused_variables)]
-    async fn insert_text(
-        &self,
-        request: Request<InsertTextRequest>,
-    ) -> Result<Response<InsertResponse>, Status> {
-        #[cfg(feature = "embed")]
-        {
-            if self.role == "follower" {
-                return Err(Status::permission_denied("Followers are read-only"));
-            }
-            let user_id = get_user_id(&request);
-            let req = request.into_inner();
-
-            if let Some(multi) = &self.vectorizer {
-                let col_name = if req.collection.is_empty() {
-                    "default".to_string()
-                } else {
-                    req.collection.clone()
-                };
-
-                // Discover metric from collection to route to correct model
-                let metric = if let Some(col) = self.manager.get(&user_id, &col_name).await {
-                    col.metric_name().to_string()
-                } else {
-                    "l2".to_string()
-                };
-
-                let vectors = multi
-                    .vectorize_for(vec![req.text], &metric)
-                    .await
-                    .map_err(|e| Status::internal(format!("Embedding failed: {e}")))?;
-
-                if vectors.is_empty() {
-                    return Err(Status::internal("Empty vector result"));
-                }
-                let vector = vectors[0].clone();
-
-                let col_name = if req.collection.is_empty() {
-                    "default".to_string()
-                } else {
-                    req.collection
-                };
-
-                if let Some(col) = self.manager.get(&user_id, &col_name).await {
-                    let meta: std::collections::HashMap<String, String> =
-                        req.metadata.into_iter().collect();
-                    let clock = self.manager.tick_cluster_clock().await;
-
-                    // Durability mapping
-                    let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
-                        req.durability,
-                    )
-                    .ok()
+                let durability =
+                    match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability)
+                        .ok()
                     {
                         Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
                             hyperspace_core::Durability::Strict
@@ -978,23 +1038,236 @@ impl Database for HyperspaceService {
                         _ => hyperspace_core::Durability::Default,
                     };
 
-                    if let Err(e) = col.insert(&vector, req.id, meta, clock, durability).await {
-                        return Err(Status::internal(e));
+                col.insert(&req.vector, req.id, meta, clock, durability)
+                    .await
+                    .map_err(Status::internal)?;
+
+                if let Some(payload_bytes) = req.payload {
+                    if !payload_bytes.is_empty() {
+                        if let Err(e) = col.insert_payload(req.id, payload_bytes).await {
+                            eprintln!("⚠️  insert_payload failed for id={}: {e}", req.id);
+                        }
                     }
-                    return Ok(Response::new(InsertResponse { success: true }));
                 }
 
-                return Err(Status::not_found(format!(
-                    "Collection '{col_name}' not found"
-                )));
+                Ok(Response::new(InsertResponse { success: true }))
             }
+            .await;
 
-            return Err(Status::unimplemented(
-                "Server configured without embedding model",
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.message()),
+        };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Medium,
+            &ctx.user_id,
+            "INSERT",
+            Some(&col_name),
+            audit_status,
+            &client_ip,
+        );
+
+        result
+    }
+
+    async fn batch_insert(
+        &self,
+        request: Request<BatchInsertRequest>,
+    ) -> Result<Response<InsertResponse>, Status> {
+        if self.role == "follower" {
+            return Err(Status::permission_denied("Followers are read-only"));
+        }
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot insert vectors",
             ));
         }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let req = request.into_inner();
+
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+
+        let result: Result<Response<InsertResponse>, Status> =
+            async {
+                let col = self.manager.get(&owner, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{}' not found", col_name))
+                })?;
+
+                // Convert protos to internal types
+                let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req
+                    .vectors
+                    .into_iter()
+                    .map(|v| {
+                        (
+                            v.vector,
+                            v.id,
+                            merge_metadata(v.metadata.into_iter().collect(), v.typed_metadata),
+                        )
+                    })
+                    .collect();
+
+                // Tick clock
+                let clock = self.manager.tick_cluster_clock().await;
+
+                // Durability mapping
+                let durability =
+                    match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability)
+                        .ok()
+                    {
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
+                            hyperspace_core::Durability::Strict
+                        }
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
+                            hyperspace_core::Durability::Async
+                        }
+                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
+                            hyperspace_core::Durability::Batch
+                        }
+                        _ => hyperspace_core::Durability::Default,
+                    };
+
+                col.insert_batch(vectors, clock, durability)
+                    .await
+                    .map_err(Status::internal)?;
+
+                Ok(Response::new(InsertResponse { success: true }))
+            }
+            .await;
+
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.message()),
+        };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Medium,
+            &ctx.user_id,
+            "BATCH_INSERT",
+            Some(&col_name),
+            audit_status,
+            &client_ip,
+        );
+
+        result
+    }
+
+    #[allow(unused_variables)]
+    async fn insert_text(
+        &self,
+        request: Request<InsertTextRequest>,
+    ) -> Result<Response<InsertResponse>, Status> {
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot insert vectors",
+            ));
+        }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        #[cfg(feature = "embed")]
+        {
+            let req = request.into_inner();
+            let (owner, col_name) =
+                resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+
+            let result = async {
+                if self.role == "follower" {
+                    return Err(Status::permission_denied("Followers are read-only"));
+                }
+                if let Some(multi) = &self.vectorizer {
+                    let metric = if let Some(col) = self.manager.get(&owner, &col_name).await {
+                        col.metric_name().to_string()
+                    } else {
+                        "l2".to_string()
+                    };
+
+                    let vectors = multi
+                        .vectorize_for(vec![req.text], &metric)
+                        .await
+                        .map_err(|e| Status::internal(format!("Embedding failed: {e}")))?;
+
+                    if vectors.is_empty() {
+                        return Err(Status::internal("Empty vector result"));
+                    }
+                    let vector = vectors[0].clone();
+
+                    if let Some(col) = self.manager.get(&owner, &col_name).await {
+                        let meta: std::collections::HashMap<String, String> =
+                            req.metadata.into_iter().collect();
+                        let clock = self.manager.tick_cluster_clock().await;
+
+                        let durability =
+                            match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
+                                req.durability,
+                            )
+                            .ok()
+                            {
+                                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
+                                    hyperspace_core::Durability::Strict
+                                }
+                                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
+                                    hyperspace_core::Durability::Async
+                                }
+                                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
+                                    hyperspace_core::Durability::Batch
+                                }
+                                _ => hyperspace_core::Durability::Default,
+                            };
+
+                        col.insert(&vector, req.id, meta, clock, durability)
+                            .await
+                            .map_err(Status::internal)?;
+
+                        Ok(Response::new(InsertResponse { success: true }))
+                    } else {
+                        Err(Status::not_found(format!(
+                            "Collection '{col_name}' not found"
+                        )))
+                    }
+                } else {
+                    Err(Status::unimplemented(
+                        "Server configured without embedding model",
+                    ))
+                }
+            }
+            .await;
+
+            let audit_status = match &result {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e.message()),
+            };
+            crate::audit_log::log_action(
+                crate::audit_log::AuditLogLevel::Medium,
+                &ctx.user_id,
+                "INSERT_TEXT",
+                Some(&col_name),
+                audit_status,
+                &client_ip,
+            );
+
+            result
+        }
         #[cfg(not(feature = "embed"))]
-        return Err(Status::unimplemented("Embedding feature not compiled"));
+        {
+            let _ = request;
+            let result = Err(Status::unimplemented("Embedding feature not compiled"));
+            crate::audit_log::log_action(
+                crate::audit_log::AuditLogLevel::Medium,
+                &ctx.user_id,
+                "INSERT_TEXT",
+                None,
+                Err("Embedding feature not compiled"),
+                &client_ip,
+            );
+            result
+        }
     }
 
     async fn vectorize(
@@ -1032,18 +1305,14 @@ impl Database for HyperspaceService {
     ) -> Result<Response<SearchResponse>, Status> {
         #[cfg(feature = "embed")]
         {
-            let user_id = get_user_id(&request);
+            let ctx = get_grpc_ctx(&request);
             let req = request.into_inner();
 
             if let Some(multi) = &self.vectorizer {
-                let col_name = if req.collection.is_empty() {
-                    "default".to_string()
-                } else {
-                    req.collection.clone()
-                };
+                let (owner, col_name) =
+                    resolve_collection(&ctx, &req.collection, security::UserRole::ReadOnly)?;
 
-                // Discover metric from collection to route to correct model
-                let metric = if let Some(col) = self.manager.get(&user_id, &col_name).await {
+                let metric = if let Some(col) = self.manager.get(&owner, &col_name).await {
                     col.metric_name().to_string()
                 } else {
                     "l2".to_string()
@@ -1059,7 +1328,6 @@ impl Database for HyperspaceService {
                 }
                 let vector = vectors[0].clone();
 
-                // Build filters and search parameters
                 let exact_filter = req.filter.clone().into_iter().collect();
                 let mut complex_filters = Vec::new();
                 for f in req.filters {
@@ -1104,7 +1372,6 @@ impl Database for HyperspaceService {
                                     radius: b.radius,
                                 });
                             }
-                            // Delegate logical combinators (And/Or/Not) to shared parser
                             cond => {
                                 let f = Filter {
                                     condition: Some(cond),
@@ -1132,7 +1399,7 @@ impl Database for HyperspaceService {
                     use_wave: false,
                 };
 
-                if let Some(col) = self.manager.get(&user_id, &col_name).await {
+                if let Some(col) = self.manager.get(&owner, &col_name).await {
                     match col
                         .search(&vector, &exact_filter, &complex_filters, &params)
                         .await
@@ -1176,18 +1443,29 @@ impl Database for HyperspaceService {
         &self,
         request: Request<DeleteRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot delete vectors",
+            ));
+        }
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() {
-            "default".to_string()
-        } else {
-            req.collection
-        };
 
-        if let Some(col) = self.manager.get(&user_id, &col_name).await {
-            if let Err(e) = col.delete(req.id) {
-                return Err(Status::internal(e));
-            }
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+
+        let result: Result<Response<DeleteResponse>, Status> = async {
+            let col =
+                self.manager.get(&owner, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{}' not found", col_name))
+                })?;
+
+            col.delete(req.id).map_err(Status::internal)?;
+
             if self.replication_tx.receiver_count() > 0 {
                 let clock = self.manager.tick_cluster_clock().await;
                 let log = ReplicationLog {
@@ -1201,22 +1479,37 @@ impl Database for HyperspaceService {
                 let _ = self.replication_tx.send(log);
             }
             Ok(Response::new(DeleteResponse { success: true }))
-        } else {
-            Err(Status::not_found(format!(
-                "Collection '{col_name}' not found"
-            )))
         }
+        .await;
+
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.message()),
+        };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Medium,
+            &ctx.user_id,
+            "DELETE",
+            Some(&col_name),
+            audit_status,
+            &client_ip,
+        );
+
+        result
     }
 
     async fn search(
         &self,
         request: Request<SearchRequest>,
     ) -> Result<Response<SearchResponse>, Status> {
-        let user_id = get_user_id(&request);
-        let (col_name, vector, exact_filter, complex_filters, params) =
-            build_filters(request.into_inner());
+        let ctx = get_grpc_ctx(&request);
+        let req = request.into_inner();
+        let (col_name, vector, exact_filter, complex_filters, params) = build_filters(req);
 
-        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+        let (owner, actual_col_name) =
+            resolve_collection(&ctx, &col_name, security::UserRole::ReadOnly)?;
+
+        if let Some(col) = self.manager.get(&owner, &actual_col_name).await {
             let wave_requested = params.use_wave;
             let wave_enabled = std::env::var("HS_SERVER_WAVE_SEARCH_ENABLED")
                 .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
@@ -1405,7 +1698,7 @@ impl Database for HyperspaceService {
         &self,
         request: Request<BatchSearchRequest>,
     ) -> Result<Response<BatchSearchResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
         let req = request.into_inner();
         let inner_concurrency = search_batch_inner_concurrency();
 
@@ -1414,9 +1707,15 @@ impl Database for HyperspaceService {
             for search_req in req.searches {
                 let (col_name, vector, exact_filter, complex_filters, params) =
                     build_filters(search_req);
-                let col = self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
-                    Status::not_found(format!("Collection '{col_name}' not found"))
-                })?;
+                let (owner, actual_col_name) =
+                    resolve_collection(&ctx, &col_name, security::UserRole::ReadOnly)?;
+                let col = self
+                    .manager
+                    .get(&owner, &actual_col_name)
+                    .await
+                    .ok_or_else(|| {
+                        Status::not_found(format!("Collection '{col_name}' not found"))
+                    })?;
                 let res = col
                     .search(&vector, &exact_filter, &complex_filters, &params)
                     .await
@@ -1446,10 +1745,13 @@ impl Database for HyperspaceService {
         for (idx, search_req) in req.searches.into_iter().enumerate() {
             let (col_name, vector, exact_filter, complex_filters, params) =
                 build_filters(search_req);
-            let col =
-                self.manager.get(&user_id, &col_name).await.ok_or_else(|| {
-                    Status::not_found(format!("Collection '{col_name}' not found"))
-                })?;
+            let (owner, actual_col_name) =
+                resolve_collection(&ctx, &col_name, security::UserRole::ReadOnly)?;
+            let col = self
+                .manager
+                .get(&owner, &actual_col_name)
+                .await
+                .ok_or_else(|| Status::not_found(format!("Collection '{col_name}' not found")))?;
             let permit = semaphore
                 .clone()
                 .acquire_owned()
@@ -1640,13 +1942,10 @@ impl Database for HyperspaceService {
         &self,
         request: Request<GetNeighborsRequest>,
     ) -> Result<Response<GetNeighborsResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() {
-            "default".to_string()
-        } else {
-            req.collection
-        };
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadOnly)?;
         let layer = req.layer as usize;
         let limit = if req.limit == 0 {
             64
@@ -1654,7 +1953,7 @@ impl Database for HyperspaceService {
             req.limit as usize
         };
         let offset = req.offset as usize;
-        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+        let Some(col) = self.manager.get(&owner, &col_name).await else {
             return Err(Status::not_found(format!(
                 "Collection '{col_name}' not found"
             )));
@@ -2401,47 +2700,65 @@ impl Database for HyperspaceService {
         if self.role == "follower" {
             return Err(Status::permission_denied("Followers are read-only"));
         }
-        let user_id = get_user_id(&request);
-        let req = request.into_inner();
-        let col_name = if req.collection.is_empty() {
-            "default"
-        } else {
-            &req.collection
+        let ctx = get_grpc_ctx(&request);
+        if ctx.role == security::UserRole::ReadOnly {
+            return Err(Status::permission_denied(
+                "ReadOnly API key cannot update payload",
+            ));
         }
-        .to_string();
+        let client_ip = request
+            .remote_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let req = request.into_inner();
 
-        if let Some(col) = self.manager.get(&user_id, &col_name).await {
-            let patch = merge_metadata(
-                req.metadata.into_iter().collect(),
-                req.typed_metadata.into_iter().collect(),
-            );
-            match col.update_payload(req.id, patch) {
-                Ok(()) => Ok(Response::new(
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+
+        let result: Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> =
+            async {
+                let col = self.manager.get(&owner, &col_name).await.ok_or_else(|| {
+                    Status::not_found(format!("Collection '{}' not found", col_name))
+                })?;
+
+                let patch = merge_metadata(
+                    req.metadata.into_iter().collect(),
+                    req.typed_metadata.into_iter().collect(),
+                );
+                col.update_payload(req.id, patch)
+                    .map_err(Status::not_found)?;
+                Ok(Response::new(
                     hyperspace_proto::hyperspace::StatusResponse {
                         status: format!("Payload for id={} updated.", req.id),
                     },
-                )),
-                Err(e) => Err(Status::not_found(e)),
+                ))
             }
-        } else {
-            Err(Status::not_found(format!(
-                "Collection '{col_name}' not found"
-            )))
-        }
+            .await;
+
+        let audit_status = match &result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.message()),
+        };
+        crate::audit_log::log_action(
+            crate::audit_log::AuditLogLevel::Medium,
+            &ctx.user_id,
+            "UPDATE_PAYLOAD",
+            Some(&col_name),
+            audit_status,
+            &client_ip,
+        );
+
+        result
     }
 
     async fn scroll(
         &self,
         request: Request<ScrollRequest>,
     ) -> Result<Response<ScrollResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() {
-            "default"
-        } else {
-            &req.collection
-        }
-        .to_string();
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadOnly)?;
         let limit = if req.limit == 0 {
             100
         } else {
@@ -2449,7 +2766,7 @@ impl Database for HyperspaceService {
         };
         let offset = req.offset as usize;
 
-        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+        if let Some(col) = self.manager.get(&owner, &col_name).await {
             let filters = parse_complex_filters(&req.filters);
             let points = col.scroll(limit, offset, &filters);
             let proto_points = points
@@ -2475,16 +2792,12 @@ impl Database for HyperspaceService {
         &self,
         request: Request<CountRequest>,
     ) -> Result<Response<CountResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() {
-            "default"
-        } else {
-            &req.collection
-        }
-        .to_string();
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadOnly)?;
 
-        if let Some(col) = self.manager.get(&user_id, &col_name).await {
+        if let Some(col) = self.manager.get(&owner, &col_name).await {
             let filters = parse_complex_filters(&req.filters);
             let count = col.count_filtered(&filters) as u64;
             Ok(Response::new(CountResponse { count }))
@@ -2499,14 +2812,11 @@ impl Database for HyperspaceService {
         &self,
         request: Request<GetSubsumptionTreeRequest>,
     ) -> Result<Response<GetSubsumptionTreeResponse>, Status> {
-        let user_id = get_user_id(&request);
+        let ctx = get_grpc_ctx(&request);
         let req = request.into_inner();
-        let col_name = if req.collection.is_empty() {
-            "default".to_string()
-        } else {
-            req.collection
-        };
-        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadOnly)?;
+        let Some(col) = self.manager.get(&owner, &col_name).await else {
             return Err(Status::not_found(format!(
                 "Collection '{col_name}' not found"
             )));
@@ -2517,8 +2827,6 @@ impl Database for HyperspaceService {
         } else {
             req.max_depth as usize
         };
-        // We do a graph traverse but we specifically look for Lorentz metrics.
-        // For now, we can just use graph_traverse and let edge_types inference handle the annotation
         let ids = col
             .graph_traverse(req.root_id, 0, max_depth, 100, usize::MAX)
             .unwrap_or_default();
@@ -2543,10 +2851,22 @@ impl Database for HyperspaceService {
 async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = format!("0.0.0.0:{}", args.port).parse()?;
 
+    // Read TLS/mTLS parameters from environment
+    let tls_cert = std::env::var("HS_TLS_CERT")
+        .ok()
+        .filter(|s| !s.is_empty() && s != "off" && s != "OFF");
+    let tls_key = std::env::var("HS_TLS_KEY")
+        .ok()
+        .filter(|s| !s.is_empty() && s != "off" && s != "OFF");
+    let tls_ca = std::env::var("HS_TLS_CA")
+        .ok()
+        .filter(|s| !s.is_empty() && s != "off" && s != "OFF");
+
     // Setup Manager
     let data_dir = std::path::PathBuf::from(
         std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data".to_string()),
     );
+    security::init(&data_dir);
     let event_buffer = std::env::var("HS_EVENT_STREAM_BUFFER")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -2564,6 +2884,52 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     // Load existing
     println!("Loading collections...");
     manager.load_existing().await?;
+
+    #[cfg(feature = "eco-monitor")]
+    {
+        let data_dir_clone = manager.base_path().to_path_buf();
+        let manager_clone = manager.clone();
+        let db_path = data_dir_clone.join("eco_telemetry.bin");
+        let interval_secs = std::env::var("HS_ECO_TICK_INTERVAL_SEC")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(300);
+
+        println!(
+            "🌿 [EcoMonitor] Starting carbon footprint tracking. DB: {}, interval: {}s",
+            db_path.display(),
+            interval_secs
+        );
+        hyperspace_eco::start_eco_monitor(
+            move || {
+                let active = manager_clone.list_active_collections();
+                let mut schemas = Vec::with_capacity(active.len());
+                for (name, col) in active {
+                    let full_dim = if let Some(meta) =
+                        manager_clone.get_metadata_no_wake("default_admin", &name)
+                    {
+                        meta.dimension()
+                    } else {
+                        col.dimension()
+                    };
+
+                    let q_mode = col.quantization_mode();
+                    let quantization = q_mode;
+
+                    schemas.push(hyperspace_eco::CollectionEcoSchema {
+                        collection_name: name,
+                        vector_count: col.count() as u64,
+                        full_dimension: full_dim as u32,
+                        mrl_dimension: col.dimension() as u32,
+                        quantization,
+                    });
+                }
+                schemas
+            },
+            db_path,
+            interval_secs,
+        );
+    }
 
     // Use env vars for default
     let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
@@ -2938,6 +3304,9 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
 
     // 4. Start HTTP Dashboard
     let http_mgr = manager.clone();
+    let tls_cert_clone = tls_cert.clone();
+    let tls_key_clone = tls_key.clone();
+    let tls_ca_clone = tls_ca.clone();
     tokio::spawn(async move {
         if let Err(e) = http_server::start_http_server(
             http_mgr,
@@ -2945,6 +3314,9 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
             embedding_info,
             peer_registry,
             event_tx.clone(),
+            tls_cert_clone,
+            tls_key_clone,
+            tls_ca_clone,
         )
         .await
         {
@@ -3002,7 +3374,31 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
     let service_with_auth =
         tonic::service::interceptor::InterceptedService::new(db_service, interceptor);
 
-    Server::builder()
+    let mut server = Server::builder();
+
+    if let (Some(cert_path), Some(key_path)) = (&tls_cert, &tls_key) {
+        println!("🔒 TLS/mTLS gRPC Server Configured");
+        let cert_pem = std::fs::read(cert_path)
+            .map_err(|e| format!("Failed to read gRPC TLS certificate from {cert_path}: {e}"))?;
+        let key_pem = std::fs::read(key_path)
+            .map_err(|e| format!("Failed to read gRPC TLS private key from {key_path}: {e}"))?;
+
+        let identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
+        let mut tls_config = tonic::transport::ServerTlsConfig::new().identity(identity);
+
+        if let Some(ca_path) = &tls_ca {
+            println!("🔒 mTLS Client Certificate Verification Enabled");
+            let ca_pem = std::fs::read(ca_path).map_err(|e| {
+                format!("Failed to read gRPC client CA certificate from {ca_path}: {e}")
+            })?;
+            let client_ca = tonic::transport::Certificate::from_pem(ca_pem);
+            tls_config = tls_config.client_ca_root(client_ca);
+        }
+
+        server = server.tls_config(tls_config)?;
+    }
+
+    server
         .add_service(service_with_auth)
         .serve_with_shutdown(addr, async {
             tokio::signal::ctrl_c().await.ok();
@@ -3025,6 +3421,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     hyperspace_core::check_simd();
 
     dotenv::dotenv().ok();
+    audit_log::init();
     let args = Args::parse();
     start_server(args).await
 }

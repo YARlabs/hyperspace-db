@@ -2,9 +2,14 @@ import { Outlet, NavLink } from "react-router-dom"
 import { LayoutDashboard, Database, Search, Settings, Network, ArrowUpRight, Waves, Activity } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { fetchStatus, api } from "@/lib/api"
 
 export function DashboardLayout() {
+    const { data: status } = useQuery({
+        queryKey: ['status'],
+        queryFn: fetchStatus
+    })
+
     return (
         <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
             {/* Sidebar */}
@@ -32,7 +37,7 @@ export function DashboardLayout() {
                 <div className="p-4 border-t border-border/50">
                     <HealthIndicator />
                     <div className="text-xs text-muted-foreground mt-4">
-                        <p>Version 3.1.0</p>
+                        <p>v{status?.version}</p>
                         <p className="opacity-50">Local Control Plane</p>
                     </div>
                 </div>

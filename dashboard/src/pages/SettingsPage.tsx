@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
-import { api, fetchStatus } from "@/lib/api"
+import { api, fetchStatus, fetchLogs } from "@/lib/api"
+import { getActionColor } from "@/lib/utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -262,26 +263,74 @@ function CodeBlock({ code, onCopy }: any) {
 }
 
 function LogViewer() {
-    const { data: logs } = useQuery({
+    const { data: logs, error } = useQuery({
         queryKey: ['logs'],
-        queryFn: async () => {
-            try {
-                const r = await api.get("/logs");
-                return r.data;
-            } catch (e) {
-                return ["[WARN] Log stream unreachable. Ensure backend is running."];
-            }
-        },
-        refetchInterval: 3000
+        queryFn: fetchLogs,
+        refetchInterval: 2000,
+        retry: false,
     })
+
+    if (error) {
+        const status = (error as any).response?.status;
+        if (status === 403) {
+            return (
+                <div className="text-rose-400 font-semibold p-2">
+                    Access Denied: Only default_admin can view global system logs.
+                </div>
+            )
+        }
+        return (
+            <div className="text-zinc-500 p-2">
+                [WARN] Log stream unreachable. Ensure backend is running.
+            </div>
+        )
+    }
 
     if (!logs) return <div className="text-zinc-500 animate-pulse">Establishing secure connection...</div>
 
+    if (logs.length === 0) {
+        return <div className="text-zinc-600 p-2 italic">No logs recorded yet.</div>
+    }
+
     return (
         <div className="space-y-1 opacity-90">
-            {Array.isArray(logs) && logs.map((l: string, i: number) => (
-                <div key={i} className="hover:bg-zinc-900/50 px-2 py-0.5 rounded transition-colors opacity-90"><span className="text-zinc-500 mr-2">{new Date().toISOString().split('T')[1].split('.')[0]}</span> {l}</div>
-            ))}
+            {Array.isArray(logs) && logs.map((l: string, i: number) => {
+                try {
+                    const parsed = JSON.parse(l);
+                    const isSuccess = parsed.status === "success";
+                    const timestampStr = parsed.timestamp 
+                        ? parsed.timestamp.split('T')[1].split('.')[0].replace('Z', '')
+                        : "00:00:00";
+                    return (
+                        <div key={i} className="hover:bg-zinc-900/50 px-2 py-0.5 rounded transition-colors flex flex-wrap gap-x-2 items-center">
+                            <span className="text-zinc-500">{timestampStr}</span>
+                            <span className="text-zinc-400 font-medium">[{parsed.actor}]</span>
+                            <span className="text-zinc-500">({parsed.client_ip})</span>
+                            <span className={getActionColor(parsed.action)}>{parsed.action}</span>
+                            {parsed.collection && (
+                                <span className="text-zinc-400 font-mono text-[10px] bg-white/5 px-1.5 py-0.5 rounded">
+                                    col:{parsed.collection}
+                                </span>
+                            )}
+                            <span className={isSuccess ? "text-emerald-500" : "text-rose-500 font-medium"}>
+                                {parsed.status}
+                            </span>
+                            {parsed.error && (
+                                <span className="text-rose-400/80 italic ml-1">
+                                    ({parsed.error})
+                                </span>
+                            )}
+                        </div>
+                    );
+                } catch {
+                    return (
+                        <div key={i} className="hover:bg-zinc-900/50 px-2 py-0.5 rounded transition-colors opacity-90">
+                            <span className="text-zinc-500 mr-2">{new Date().toISOString().split('T')[1].split('.')[0]}</span>
+                            {l}
+                        </div>
+                    );
+                }
+            })}
         </div>
     )
 }

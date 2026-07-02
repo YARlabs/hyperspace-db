@@ -35,6 +35,11 @@ export const fetchHealth = async () => {
     return res.data
 }
 
+export const fetchMetrics = async () => {
+    const res = await api.get("/metrics")
+    return res.data
+}
+
 export const fetchCollections = async () => {
     const res = await api.get("/collections")
     return res.data
@@ -132,6 +137,49 @@ export const startMigrationTask = async (config: any) => {
 
 export const getMigrationTaskStatus = async (taskId: string) => {
     const res = await api.get(`/admin/migration/task/${taskId}`)
+    return res.data
+}
+
+export const deleteCollection = async (name: string) => {
+    const res = await api.delete(`/collections/${name}`)
+    return res.data
+}
+
+export const triggerVacuum = async () => {
+    const res = await api.post("/admin/vacuum")
+    return res.data
+}
+
+export const fetchEcoMetrics = async (range: string) => {
+    const res = await api.get(`/eco/metrics`, { params: { range } })
+    return res.data
+}
+
+export const fetchEsgReportBlob = async (range: string, format: "json" | "csv") => {
+    const res = await api.get(`/eco/esg-report`, {
+        params: { range, format },
+        responseType: 'blob'
+    })
+    return res.data
+}
+
+export const fetchLogs = async () => {
+    const res = await api.get("/logs")
+    return res.data
+}
+
+export const grantCollectionAccess = async (name: string, granteeId: string, privilege: string) => {
+    const res = await api.post(`/collections/${name}/grant`, { grantee_id: granteeId, privilege })
+    return res.data
+}
+
+export const revokeCollectionAccess = async (name: string, granteeId: string) => {
+    const res = await api.post(`/collections/${name}/revoke`, { grantee_id: granteeId })
+    return res.data
+}
+
+export const listCollectionGrants = async (name: string) => {
+    const res = await api.get(`/collections/${name}/grants`)
     return res.data
 }
 

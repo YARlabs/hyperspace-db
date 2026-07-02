@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-07-01
+
+### Added
+* **Role-Based Access Control (RBAC) & Cross-Tenant Sharing (REDB)**:
+    * Implemented transaction-safe central security storage `data/security.db` using `redb` v4, supporting dynamic API key hashing and multi-tenant permission records.
+    * Added `UserRole` permissions (`Admin`, `ReadWrite`, `ReadOnly`) gating all HTTP and gRPC request scopes.
+    * Enabled namespaced URL collection referencing (`owner:name` or `owner/name`) to allow secure cross-tenant index sharing.
+    * Integrated a comprehensive "Share Collection" modal, grantee privilege management, and role-based action filters in the Web Dashboard.
+* **Out-of-the-Box Mutual TLS (mTLS)**:
+    * Integrated zero-dependency TLS/mTLS configuration for both HTTP (Axum) and gRPC (Tonic) servers via environment variables (`HS_TLS_CERT`, `HS_TLS_KEY`, `HS_TLS_CA`).
+    * Implemented custom TLS connection acceptor loop for HTTPS and web dashboard endpoints supporting client certificate verification and fallback to unencrypted traffic.
+* **Application-Level Audit Logs with Tenant Isolation**:
+    * Added structured JSON-formatted audit logging (off, low, medium, high, full levels) streaming to `stdout` or a custom `audit.log` file.
+    * Designed tenant-isolated log buffers to stream secure, filtered audit histories to the Web Dashboard's Control Plane Settings based on the authenticated request context.
+* **Eco-Monitoring & Carbon Footprint Tracking (EcoMonitor)**:
+    * Integrated `hyperspace-eco` telemetry tracking carbon impact of CPU/RAM computations per node.
+    * Exposed ESG sustainability badges and metrics directly in the overview and collections web dashboard interfaces.
+* **O(1) Incremental Payload Index Storage**:
+    * Replaced full O(N) index serialization with an append-only index write-ahead log (WAL) in `payload_store.rs`, eliminating NVMe latency spikes on high-throughput payload writes.
+* **Nightly SIMD Vector Acceleration**:
+    * Enabled SIMD intrinsics via `std::simd` under the `nightly-simd` cargo feature for Lorentz metrics, Poincaré distance calculations, and Möbius additions, maximizing hardware utilization on AVX2/AVX-512/Neon platforms.
+
 ## [3.1.0] - 2026-05-22
 
 ### Added

@@ -33,6 +33,8 @@ struct FrontendAssets;
 pub struct RequestContext {
     pub user_id: String,
     pub is_admin: bool,
+    pub client_ip: String,
+    pub role: crate::security::UserRole,
 }
 
 async fn validate_api_key(
@@ -40,12 +42,19 @@ async fn validate_api_key(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    let client_ip = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|axum::extract::ConnectInfo(addr)| addr.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
     let mut ctx = RequestContext {
         user_id: "anonymous".to_string(),
         is_admin: false,
+        client_ip,
+        role: crate::security::UserRole::ReadOnly,
     };
 
-    // 1. Extract User Identity (for Multi-tenancy)
     let user_id_header = request
         .headers()
         .get("x-hyperspace-user-id")
@@ -56,41 +65,66 @@ async fn validate_api_key(
         ctx.user_id = uid;
     }
 
-    // 2. Validate API Key (for Administrative Access)
-    if let Some(expected) = expected_hash {
-        if let Some(key) = request.headers().get("x-api-key") {
-            if let Ok(key_str) = key.to_str() {
-                let mut hasher = Sha256::new();
-                hasher.update(key_str.as_bytes());
-                let hash = hex::encode(hasher.finalize());
-
-                if hash == expected {
-                    ctx.is_admin = true;
-                    // If no explicit user ID, admin acts as "default_admin"
-                    if ctx.user_id == "anonymous" {
-                        ctx.user_id = "default_admin".to_string();
-                    }
-                }
-            }
+    let mut provided_key = None;
+    if let Some(key) = request.headers().get("x-api-key") {
+        if let Ok(key_str) = key.to_str() {
+            provided_key = Some(key_str.to_string());
         }
-
-        // 3. Enforce Auth for API endpoints
-        let path = request.uri().path();
-        if path.starts_with("/api/") || path == "/metrics" {
-            // If neither valid API key nor valid x-hyperspace-user-id was provided
-            if !ctx.is_admin && ctx.user_id == "anonymous" {
-                return Err(StatusCode::UNAUTHORIZED);
+    } else if let Some(auth_header) = request.headers().get("authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if auth_str.to_lowercase().starts_with("bearer ") {
+                provided_key = Some(auth_str[7..].to_string());
             }
-        }
-    } else {
-        // No Auth configured in environment (Dev mode)
-        ctx.is_admin = true;
-        if ctx.user_id == "anonymous" {
-            ctx.user_id = "anonymous".to_string();
         }
     }
 
-    // Auth is skipped for static files by default unless handled above
+    let mut key_role = None;
+    if let Some(key_str) = provided_key {
+        let mut hasher = Sha256::new();
+        hasher.update(key_str.as_bytes());
+        let hash = hex::encode(hasher.finalize());
+
+        if let Some((uid, role)) = crate::security::validate_key(&hash) {
+            ctx.user_id = uid;
+            ctx.is_admin = role == crate::security::UserRole::Admin;
+            ctx.role = role;
+            key_role = Some(role);
+        } else {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    if key_role.is_none() {
+        if expected_hash.is_none() {
+            ctx.is_admin = true;
+            if ctx.user_id == "anonymous" {
+                ctx.user_id = "anonymous".to_string();
+            }
+            ctx.role = crate::security::UserRole::Admin;
+            key_role = Some(crate::security::UserRole::Admin);
+        } else {
+            let path = request.uri().path();
+            if path.starts_with("/api/") || path == "/metrics" {
+                if !ctx.is_admin && ctx.user_id == "anonymous" {
+                    return Err(StatusCode::UNAUTHORIZED);
+                }
+            }
+        }
+    }
+
+    let path = request.uri().path();
+    if path.starts_with("/api/") {
+        let is_write = request.method() == axum::http::Method::POST
+            || request.method() == axum::http::Method::DELETE
+            || request.method() == axum::http::Method::PATCH;
+
+        if let Some(role) = key_role {
+            if is_write && role == crate::security::UserRole::ReadOnly {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     request.extensions_mut().insert(ctx);
     Ok(next.run(request).await)
 }
@@ -109,12 +143,57 @@ pub struct EmbeddingInfo {
     pub models: HashMap<String, ModelStatus>,
 }
 
+fn load_certs(path: &str) -> std::io::Result<Vec<rustls_pki_types::CertificateDer<'static>>> {
+    let file = std::fs::File::open(path)?;
+    let mut reader = std::io::BufReader::new(file);
+    let certs = rustls_pemfile::certs(&mut reader)?
+        .into_iter()
+        .map(rustls_pki_types::CertificateDer::from)
+        .collect();
+    Ok(certs)
+}
+
+fn load_key(path: &str) -> std::io::Result<rustls_pki_types::PrivateKeyDer<'static>> {
+    let file = std::fs::File::open(path)?;
+    let mut reader = std::io::BufReader::new(file);
+    // Try pkcs8 first
+    if let Some(key) = rustls_pemfile::pkcs8_private_keys(&mut reader)?
+        .into_iter()
+        .next()
+    {
+        return Ok(rustls_pki_types::PrivateKeyDer::Pkcs8(key.into()));
+    }
+    // Try rsa
+    reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    if let Some(key) = rustls_pemfile::rsa_private_keys(&mut reader)?
+        .into_iter()
+        .next()
+    {
+        return Ok(rustls_pki_types::PrivateKeyDer::Pkcs1(key.into()));
+    }
+    // Try sec1
+    reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    if let Some(key) = rustls_pemfile::ec_private_keys(&mut reader)?
+        .into_iter()
+        .next()
+    {
+        return Ok(rustls_pki_types::PrivateKeyDer::Sec1(key.into()));
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "No private key found",
+    ))
+}
+
 pub async fn start_http_server(
     manager: Arc<CollectionManager>,
     port: u16,
     embedding_info: Option<EmbeddingInfo>,
     peer_registry: Option<PeerRegistry>,
     replication_tx: broadcast::Sender<EventMessage>,
+    tls_cert: Option<String>,
+    tls_key: Option<String>,
+    tls_ca: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Get API key hash if set
     let api_key_hash = std::env::var("HYPERSPACE_API_KEY").ok().map(|key| {
@@ -157,6 +236,18 @@ pub async fn start_http_server(
             "/api/collections/{name}/unfreeze",
             post(unfreeze_collection_http),
         )
+        .route(
+            "/api/collections/{name}/grant",
+            post(grant_collection_access),
+        )
+        .route(
+            "/api/collections/{name}/revoke",
+            post(revoke_collection_access),
+        )
+        .route(
+            "/api/collections/{name}/grants",
+            get(list_collection_grants),
+        )
         .route("/api/collections/{name}/digest", get(get_collection_digest))
         .route("/api/collections/{name}/peek", get(peek_collection))
         .route("/api/collections/{name}/search", post(search_collection))
@@ -197,6 +288,8 @@ pub async fn start_http_server(
         .route("/api/status", get(get_status))
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
+        .route("/api/eco/metrics", get(get_eco_metrics))
+        .route("/api/eco/esg-report", get(get_esg_report))
         .route("/metrics", get(get_prometheus_metrics))
         .route("/api/logs", get(get_logs))
         .route(
@@ -260,20 +353,103 @@ pub async fn start_http_server(
         .with_state((manager, start_time, embedding_state));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-    println!("HTTP Dashboard listening on http://{addr}");
-    if api_key_hash.is_some() {
-        println!("🔒 Dashboard API Key Auth Enabled");
-    } else {
-        println!("⚠️  Dashboard API Key Auth Disabled");
-    }
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
 
-    axum::serve(listener, app)
+    if let (Some(cert_path), Some(key_path)) = (tls_cert, tls_key) {
+        println!("🔒 HTTP Dashboard listening on https://{addr}");
+        if api_key_hash.is_some() {
+            println!("🔒 Dashboard API Key Auth Enabled");
+        } else {
+            println!("⚠️  Dashboard API Key Auth Disabled");
+        }
+
+        let certs = load_certs(&cert_path)?;
+        let key = load_key(&key_path)?;
+
+        let mut server_config = tokio_rustls::rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+        if let Some(ca_path) = tls_ca {
+            println!("🔒 mTLS Client Certificate Verification Enabled");
+            let ca_certs = load_certs(&ca_path)?;
+            let mut roots = tokio_rustls::rustls::RootCertStore::empty();
+            for ca in ca_certs {
+                roots
+                    .add(ca)
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            }
+            let client_verifier =
+                tokio_rustls::rustls::server::WebPkiClientVerifier::builder(roots.into())
+                    .build()
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+            server_config = tokio_rustls::rustls::ServerConfig::builder()
+                .with_client_cert_verifier(client_verifier)
+                .with_single_cert(load_certs(&cert_path)?, load_key(&key_path)?)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        }
+
+        let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(server_config));
+        let make_service = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
+
+        loop {
+            let (stream, peer_addr) = match listener.accept().await {
+                Ok(conn) => conn,
+                Err(e) => {
+                    eprintln!("Failed to accept connection: {e}");
+                    continue;
+                }
+            };
+
+            let acceptor = acceptor.clone();
+            use tower_service::Service;
+            let mut make_service_clone = make_service.clone();
+
+            tokio::spawn(async move {
+                let tower_service = match make_service_clone.call(peer_addr).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("Failed to create service: {e}");
+                        return;
+                    }
+                };
+
+                let tls_stream = match acceptor.accept(stream).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("TLS handshake failed: {e}");
+                        return;
+                    }
+                };
+
+                let hyper_service = hyper_util::service::TowerToHyperService::new(tower_service);
+                let _ = hyper_util::server::conn::auto::Builder::new(
+                    hyper_util::rt::TokioExecutor::new(),
+                )
+                .serve_connection(hyper_util::rt::TokioIo::new(tls_stream), hyper_service)
+                .await;
+            });
+        }
+    } else {
+        println!("HTTP Dashboard listening on http://{addr}");
+        if api_key_hash.is_some() {
+            println!("🔒 Dashboard API Key Auth Enabled");
+        } else {
+            println!("⚠️  Dashboard API Key Auth Disabled");
+        }
+
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
         .await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+    }
 
     Ok(())
 }
@@ -326,6 +502,11 @@ struct CollectionSummary {
     metric: String,
     indexing_queue: u64,
     status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    eco_tier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    is_eco_certified: Option<bool>,
+    privilege: String,
 }
 
 async fn get_cluster_status(
@@ -352,6 +533,27 @@ async fn list_collections(
     for name in names {
         if manager.is_active(&ctx.user_id, &name) {
             if let Some(col) = manager.get(&ctx.user_id, &name).await {
+                #[cfg(feature = "eco-monitor")]
+                let (eco_tier, is_eco_certified) = {
+                    let full_dim =
+                        if let Some(meta) = manager.get_metadata_no_wake(&ctx.user_id, &name) {
+                            meta.dimension()
+                        } else {
+                            col.dimension()
+                        };
+                    let eco_schema = hyperspace_eco::CollectionEcoSchema {
+                        collection_name: name.clone(),
+                        vector_count: col.count() as u64,
+                        full_dimension: full_dim as u32,
+                        mrl_dimension: col.dimension() as u32,
+                        quantization: col.quantization_mode(),
+                    };
+                    let tier = eco_schema.calculate_eco_tier();
+                    (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+                };
+                #[cfg(not(feature = "eco-monitor"))]
+                let (eco_tier, is_eco_certified) = (None, None);
+
                 summaries.push(CollectionSummary {
                     name: name.clone(),
                     count: col.count(),
@@ -359,9 +561,27 @@ async fn list_collections(
                     metric: col.metric_name().to_string(),
                     indexing_queue: col.queue_size(),
                     status: "active".to_string(),
+                    eco_tier,
+                    is_eco_certified,
+                    privilege: "Admin".to_string(),
                 });
             }
         } else if let Some(meta) = manager.get_metadata_no_wake(&ctx.user_id, &name) {
+            #[cfg(feature = "eco-monitor")]
+            let (eco_tier, is_eco_certified) = {
+                let eco_schema = hyperspace_eco::CollectionEcoSchema {
+                    collection_name: name.clone(),
+                    vector_count: 0,
+                    full_dimension: meta.dimension() as u32,
+                    mrl_dimension: meta.dimension() as u32,
+                    quantization: meta.quantization_mode(),
+                };
+                let tier = eco_schema.calculate_eco_tier();
+                (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+            };
+            #[cfg(not(feature = "eco-monitor"))]
+            let (eco_tier, is_eco_certified) = (None, None);
+
             summaries.push(CollectionSummary {
                 name: name.clone(),
                 count: 0,
@@ -369,6 +589,76 @@ async fn list_collections(
                 metric: meta.metric_name(),
                 indexing_queue: 0,
                 status: "idle".to_string(),
+                eco_tier,
+                is_eco_certified,
+                privilege: "Admin".to_string(),
+            });
+        }
+    }
+
+    // Append shared collections
+    let shared = crate::security::list_shared_collections(&ctx.user_id);
+    for (owner, name, role) in shared {
+        if manager.is_active(&owner, &name) {
+            if let Some(col) = manager.get(&owner, &name).await {
+                #[cfg(feature = "eco-monitor")]
+                let (eco_tier, is_eco_certified) = {
+                    let full_dim = if let Some(meta) = manager.get_metadata_no_wake(&owner, &name) {
+                        meta.dimension()
+                    } else {
+                        col.dimension()
+                    };
+                    let eco_schema = hyperspace_eco::CollectionEcoSchema {
+                        collection_name: name.clone(),
+                        vector_count: col.count() as u64,
+                        full_dimension: full_dim as u32,
+                        mrl_dimension: col.dimension() as u32,
+                        quantization: col.quantization_mode(),
+                    };
+                    let tier = eco_schema.calculate_eco_tier();
+                    (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+                };
+                #[cfg(not(feature = "eco-monitor"))]
+                let (eco_tier, is_eco_certified) = (None, None);
+
+                summaries.push(CollectionSummary {
+                    name: format!("{owner}:{name}"),
+                    count: col.count(),
+                    dimension: col.dimension(),
+                    metric: col.metric_name().to_string(),
+                    indexing_queue: col.queue_size(),
+                    status: "active".to_string(),
+                    eco_tier,
+                    is_eco_certified,
+                    privilege: role.as_str().to_string(),
+                });
+            }
+        } else if let Some(meta) = manager.get_metadata_no_wake(&owner, &name) {
+            #[cfg(feature = "eco-monitor")]
+            let (eco_tier, is_eco_certified) = {
+                let eco_schema = hyperspace_eco::CollectionEcoSchema {
+                    collection_name: name.clone(),
+                    vector_count: 0,
+                    full_dimension: meta.dimension() as u32,
+                    mrl_dimension: meta.dimension() as u32,
+                    quantization: meta.quantization_mode(),
+                };
+                let tier = eco_schema.calculate_eco_tier();
+                (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+            };
+            #[cfg(not(feature = "eco-monitor"))]
+            let (eco_tier, is_eco_certified) = (None, None);
+
+            summaries.push(CollectionSummary {
+                name: format!("{owner}:{name}"),
+                count: 0,
+                dimension: meta.dimension(),
+                metric: meta.metric_name(),
+                indexing_queue: 0,
+                status: "idle".to_string(),
+                eco_tier,
+                is_eco_certified,
+                privilege: role.as_str().to_string(),
             });
         }
     }
@@ -419,13 +709,47 @@ async fn create_collection(
         cascade_pipeline,
     };
 
-    match manager
+    let result = manager
         .create_collection(&ctx.user_id, &payload.name, schema)
-        .await
-    {
+        .await;
+
+    let audit_status = match &result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e.as_str()),
+    };
+    crate::audit_log::log_action(
+        crate::audit_log::AuditLogLevel::Low,
+        &ctx.user_id,
+        "CREATE_COLLECTION",
+        Some(&payload.name),
+        audit_status,
+        &ctx.client_ip,
+    );
+
+    match result {
         Ok(()) => StatusCode::CREATED.into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
     }
+}
+
+fn resolve_http_collection(
+    ctx: &RequestContext,
+    req_name: &str,
+    required: crate::security::UserRole,
+) -> Result<(String, String), StatusCode> {
+    let (owner, col_name) = if let Some((o, c)) = req_name.split_once(':') {
+        (o.to_string(), c.to_string())
+    } else if let Some((o, c)) = req_name.split_once('/') {
+        (o.to_string(), c.to_string())
+    } else {
+        (ctx.user_id.clone(), req_name.to_string())
+    };
+
+    if !crate::security::check_access(&ctx.user_id, &owner, &col_name, required) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    Ok((owner, col_name))
 }
 
 async fn insert_vector(
@@ -438,25 +762,51 @@ async fn insert_vector(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<InsertPayload>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadWrite) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let result = async {
+        let col = manager
+            .get(&owner, &col_name)
+            .await
+            .ok_or_else(|| (StatusCode::NOT_FOUND, "Collection not found".to_string()))?;
+
         let clock = manager.cluster_state.read().await.logical_clock;
         let meta = payload.metadata.unwrap_or_default();
 
-        match col
-            .insert(
-                &payload.vector,
-                payload.id,
-                meta,
-                clock,
-                hyperspace_core::Durability::Default,
-            )
-            .await
-        {
-            Ok(()) => StatusCode::OK.into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
-        }
-    } else {
-        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+        col.insert(
+            &payload.vector,
+            payload.id,
+            meta,
+            clock,
+            hyperspace_core::Durability::Default,
+        )
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        Ok(StatusCode::OK)
+    }
+    .await;
+
+    let audit_status = match &result {
+        Ok(_) => Ok(()),
+        Err((_, e)) => Err(e.as_ref()),
+    };
+    crate::audit_log::log_action(
+        crate::audit_log::AuditLogLevel::Medium,
+        &ctx.user_id,
+        "INSERT",
+        Some(&col_name),
+        audit_status,
+        &ctx.client_ip,
+    );
+
+    match result {
+        Ok(code) => code.into_response(),
+        Err((code, err)) => (code, err).into_response(),
     }
 }
 
@@ -475,7 +825,18 @@ async fn batch_insert_http(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<BatchInsertReq>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadWrite) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let result = async {
+        let col = manager
+            .get(&owner, &col_name)
+            .await
+            .ok_or_else(|| (StatusCode::NOT_FOUND, "Collection not found".to_string()))?;
+
         let clock = manager.cluster_state.read().await.logical_clock;
         let vectors: Vec<_> = payload
             .vectors
@@ -483,15 +844,30 @@ async fn batch_insert_http(
             .map(|p| (p.vector, p.id, p.metadata.unwrap_or_default()))
             .collect();
 
-        match col
-            .insert_batch(vectors, clock, hyperspace_core::Durability::Default)
+        col.insert_batch(vectors, clock, hyperspace_core::Durability::Default)
             .await
-        {
-            Ok(()) => StatusCode::OK.into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
-        }
-    } else {
-        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        Ok(StatusCode::OK)
+    }
+    .await;
+
+    let audit_status = match &result {
+        Ok(_) => Ok(()),
+        Err((_, e)) => Err(e.as_ref()),
+    };
+    crate::audit_log::log_action(
+        crate::audit_log::AuditLogLevel::Medium,
+        &ctx.user_id,
+        "BATCH_INSERT",
+        Some(&col_name),
+        audit_status,
+        &ctx.client_ip,
+    );
+
+    match result {
+        Ok(code) => code.into_response(),
+        Err((code, err)) => (code, err).into_response(),
     }
 }
 
@@ -504,7 +880,13 @@ async fn collection_exists_http(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if manager.get(&ctx.user_id, &name).await.is_some() {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if manager.get(&owner, &col_name).await.is_some() {
         StatusCode::OK.into_response()
     } else {
         StatusCode::NOT_FOUND.into_response()
@@ -520,7 +902,28 @@ async fn delete_collection(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    match manager.delete_collection(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::Admin) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let result = manager.delete_collection(&owner, &col_name).await;
+
+    let audit_status = match &result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e.as_str()),
+    };
+    crate::audit_log::log_action(
+        crate::audit_log::AuditLogLevel::Low,
+        &ctx.user_id,
+        "DELETE_COLLECTION",
+        Some(&col_name),
+        audit_status,
+        &ctx.client_ip,
+    );
+
+    match result {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::NOT_FOUND, e).into_response(),
     }
@@ -535,11 +938,32 @@ async fn freeze_collection_http(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    match manager.freeze_collection(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::Admin) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let result = manager.freeze_collection(&owner, &col_name).await;
+
+    let audit_status = match &result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e.as_str()),
+    };
+    crate::audit_log::log_action(
+        crate::audit_log::AuditLogLevel::Low,
+        &ctx.user_id,
+        "FREEZE_COLLECTION",
+        Some(&col_name),
+        audit_status,
+        &ctx.client_ip,
+    );
+
+    match result {
         Ok(()) => (
             StatusCode::OK,
             Json(serde_json::json!({
-                "status": format!("Collection '{}' frozen.", name)
+                "status": format!("Collection '{}' frozen.", col_name)
             })),
         )
             .into_response(),
@@ -562,11 +986,32 @@ async fn unfreeze_collection_http(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    match manager.unfreeze_collection(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::Admin) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let result = manager.unfreeze_collection(&owner, &col_name).await;
+
+    let audit_status = match &result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e.as_str()),
+    };
+    crate::audit_log::log_action(
+        crate::audit_log::AuditLogLevel::Low,
+        &ctx.user_id,
+        "UNFREEZE_COLLECTION",
+        Some(&col_name),
+        audit_status,
+        &ctx.client_ip,
+    );
+
+    match result {
         Ok(()) => (
             StatusCode::OK,
             Json(serde_json::json!({
-                "status": format!("Collection '{}' unfrozen.", name)
+                "status": format!("Collection '{}' unfrozen.", col_name)
             })),
         )
             .into_response(),
@@ -589,7 +1034,13 @@ async fn get_stats(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         let usage = col.get_usage();
         let hnsw = col.get_hnsw_config();
         Json(serde_json::json!({
@@ -600,7 +1051,6 @@ async fn get_stats(
             "indexing_queue": col.queue_size(),
             "write_buffer_size": col.write_buffer_size(),
             "active_tasks": usage.active_indexing_tasks,
-            // Real live values from GlobalConfig atomics:
             "ef_search": hnsw.ef_search,
             "ef_construction": hnsw.ef_construction,
             "m": hnsw.m,
@@ -625,7 +1075,13 @@ async fn update_collection_config(
     Extension(ctx): Extension<RequestContext>,
     Json(update): Json<hyperspace_core::CollectionConfigUpdate>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadWrite) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         match col.update_config(update) {
             Ok(()) => StatusCode::OK.into_response(),
             Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
@@ -644,10 +1100,16 @@ async fn get_collection_digest(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         let clock = manager.cluster_state.read().await.logical_clock;
         let digest =
-            crate::sync::CollectionDigest::new(name.clone(), clock, col.count(), col.buckets());
+            crate::sync::CollectionDigest::new(col_name, clock, col.count(), col.buckets());
         Json(digest).into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
@@ -741,6 +1203,107 @@ async fn get_metrics(
         "is_admin": false
     }))
     .into_response()
+}
+
+#[allow(dead_code)]
+#[derive(Debug, serde::Deserialize)]
+struct EcoParams {
+    range: Option<String>,
+}
+
+async fn get_eco_metrics(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Query(params): Query<EcoParams>,
+) -> impl IntoResponse {
+    #[cfg(feature = "eco-monitor")]
+    {
+        let range = params.range.as_deref().unwrap_or("all");
+        let db_path = manager.base_path().join("eco_telemetry.bin");
+        match hyperspace_eco::get_carbon_metrics(db_path, range).await {
+            Ok(metrics) => Json(serde_json::json!({
+                "status": "success",
+                "metrics": metrics
+            }))
+            .into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "status": "error", "message": e })),
+            )
+                .into_response(),
+        }
+    }
+    #[cfg(not(feature = "eco-monitor"))]
+    {
+        let _ = manager;
+        let _ = params;
+        (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "EcoMonitor feature is not enabled in this build"
+            })),
+        )
+            .into_response()
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, serde::Deserialize)]
+struct EsgParams {
+    range: Option<String>,
+    format: Option<String>,
+}
+
+async fn get_esg_report(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Query(params): Query<EsgParams>,
+) -> impl IntoResponse {
+    #[cfg(feature = "eco-monitor")]
+    {
+        let range = params.range.as_deref().unwrap_or("all");
+        let format = params.format.as_deref().unwrap_or("json");
+        let db_path = manager.base_path().join("eco_telemetry.bin");
+        match hyperspace_eco::generate_esg_report(db_path, range, format).await {
+            Ok(report_data) => {
+                let content_type = if format == "csv" {
+                    "text/csv"
+                } else {
+                    "application/json"
+                };
+                (
+                    [(axum::http::header::CONTENT_TYPE, content_type)],
+                    report_data,
+                )
+                    .into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "status": "error", "message": e })),
+            )
+                .into_response(),
+        }
+    }
+    #[cfg(not(feature = "eco-monitor"))]
+    {
+        let _ = manager;
+        let _ = params;
+        (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": "EcoMonitor feature is not enabled in this build"
+            })),
+        )
+            .into_response()
+    }
 }
 
 async fn get_prometheus_metrics(
@@ -851,7 +1414,14 @@ async fn peek_collection(
 ) -> impl IntoResponse {
     let limit = params.limit.unwrap_or(50).min(250);
     let offset = params.offset.unwrap_or(0);
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         let items = col.peek(limit, offset);
         Json(items).into_response()
     } else {
@@ -1164,7 +1734,14 @@ async fn search_collection(
         .filters
         .as_ref()
         .map_or_else(Vec::new, |f| convert_filters(f));
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         let dummy_params = SearchParams {
             top_k: k,
             ef_search: default_ef_search(),
@@ -1430,7 +2007,13 @@ async fn search_batch_http(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<SearchBatchReq>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         let mut results = Vec::new();
         for req in payload.searches {
             let k = req.top_k.unwrap_or(10);
@@ -1733,12 +2316,9 @@ async fn graph_explore_http(
     }
 }
 
-async fn get_logs() -> Json<Vec<String>> {
-    Json(vec![
-        "[SYSTEM] Hyperspace DB Online".into(),
-        "[INFO] Control Plane: HTTP :50050".into(),
-        "[INFO] Data Plane: gRPC :50051".into(),
-    ])
+async fn get_logs(Extension(ctx): Extension<RequestContext>) -> Json<Vec<String>> {
+    let logs = crate::audit_log::get_tenant_logs(&ctx.user_id, ctx.is_admin);
+    Json(logs)
 }
 
 async fn rebuild_collection_http(
@@ -1751,6 +2331,12 @@ async fn rebuild_collection_http(
     Extension(ctx): Extension<RequestContext>,
     payload: Option<Json<RebuildPayload>>,
 ) -> impl IntoResponse {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadWrite) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
     let filter = payload.and_then(|Json(p)| p.filter_query).and_then(|f| {
         let op = match f.op.to_lowercase().as_str() {
             "lt" => hyperspace_core::VacuumFilterOp::Lt,
@@ -1769,7 +2355,7 @@ async fn rebuild_collection_http(
     });
 
     match manager
-        .rebuild_collection_with_filter(&ctx.user_id, &name, filter)
+        .rebuild_collection_with_filter(&owner, &col_name, filter)
         .await
     {
         Ok(()) => StatusCode::OK.into_response(),
@@ -2179,7 +2765,13 @@ async fn get_cache_stats_http(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         match col.cache_stats() {
             Ok(stats_json) => {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&stats_json) {
@@ -2208,7 +2800,13 @@ async fn clear_cache_http(
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadWrite) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         match col.cache_clear() {
             Ok(()) => Json(serde_json::json!({ "status": "success" })).into_response(),
             Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
@@ -2234,7 +2832,13 @@ async fn update_cache_config_http(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<UpdateCacheConfigReq>,
 ) -> impl IntoResponse {
-    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadWrite) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
         match col.cache_update_config(payload.policy, payload.ann_threshold) {
             Ok(()) => Json(serde_json::json!({ "status": "success" })).into_response(),
             Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
@@ -2242,4 +2846,109 @@ async fn update_cache_config_http(
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
     }
+}
+
+#[derive(serde::Deserialize)]
+struct GrantAccessPayload {
+    grantee_id: String,
+    privilege: String,
+}
+
+async fn grant_collection_access(
+    Path(name): Path<String>,
+    State((_manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<GrantAccessPayload>,
+) -> impl IntoResponse {
+    let (owner, col_name) = if let Some((o, c)) = name.split_once('/') {
+        (o, c)
+    } else {
+        (ctx.user_id.as_str(), name.as_str())
+    };
+
+    if owner != ctx.user_id && ctx.user_id != "default_admin" {
+        return (
+            StatusCode::FORBIDDEN,
+            "Only collection owner can grant access",
+        )
+            .into_response();
+    }
+
+    let role = crate::security::UserRole::from_str(&payload.privilege);
+    match crate::security::grant_access(owner, col_name, &payload.grantee_id, role) {
+        Ok(_) => (StatusCode::OK, "Access granted successfully").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct RevokeAccessPayload {
+    grantee_id: String,
+}
+
+async fn revoke_collection_access(
+    Path(name): Path<String>,
+    State((_manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<RevokeAccessPayload>,
+) -> impl IntoResponse {
+    let (owner, col_name) = if let Some((o, c)) = name.split_once('/') {
+        (o, c)
+    } else {
+        (ctx.user_id.as_str(), name.as_str())
+    };
+
+    if owner != ctx.user_id && ctx.user_id != "default_admin" {
+        return (
+            StatusCode::FORBIDDEN,
+            "Only collection owner can revoke access",
+        )
+            .into_response();
+    }
+
+    match crate::security::revoke_access(owner, col_name, &payload.grantee_id) {
+        Ok(_) => (StatusCode::OK, "Access revoked successfully").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+async fn list_collection_grants(
+    Path(name): Path<String>,
+    State((_manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    let (owner, col_name) = if let Some((o, c)) = name.split_once('/') {
+        (o, c)
+    } else {
+        (ctx.user_id.as_str(), name.as_str())
+    };
+
+    if owner != ctx.user_id && ctx.user_id != "default_admin" {
+        return (StatusCode::FORBIDDEN, "Only owner can list grants").into_response();
+    }
+
+    let grants = crate::security::list_grants(owner, col_name);
+    let list: Vec<serde_json::Value> = grants
+        .into_iter()
+        .map(|(grantee, role)| {
+            serde_json::json!({
+                "grantee_id": grantee,
+                "privilege": role.as_str()
+            })
+        })
+        .collect();
+
+    Json(list).into_response()
 }

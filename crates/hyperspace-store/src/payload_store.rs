@@ -72,7 +72,8 @@ pub struct PayloadStore {
     next_offset: Mutex<u64>,
     /// Paths for crash recovery.
     payload_path: PathBuf,
-    index_path: PathBuf,
+    /// Persistent append-only writer for index metadata
+    index_writer: Mutex<BufWriter<File>>,
     /// zstd compression level (1 = fastest, 22 = best; 3 is the sweet spot).
     zstd_level: i32,
 }
@@ -136,15 +137,40 @@ impl PayloadStore {
             Vec::new()
         };
 
+        let index_writer_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&index_path)?;
+        let index_writer = Mutex::new(BufWriter::new(index_writer_file));
+
         Ok(Self {
             writer: Mutex::new(writer),
             reader: Arc::new(read_file),
             index: RwLock::new(index),
             next_offset: Mutex::new(next_offset),
             payload_path,
-            index_path,
+            index_writer,
             zstd_level,
         })
+    }
+
+    /// Helper to append a single record to the index WAL.
+    fn append_index_record(
+        &self,
+        id: u32,
+        valid: bool,
+        offset: u64,
+        compressed_len: u32,
+        uncompressed_len: u32,
+    ) -> io::Result<()> {
+        let mut w = self.index_writer.lock();
+        w.write_u32::<LittleEndian>(id)?;
+        w.write_u8(u8::from(valid))?;
+        w.write_u64::<LittleEndian>(offset)?;
+        w.write_u32::<LittleEndian>(compressed_len)?;
+        w.write_u32::<LittleEndian>(uncompressed_len)?;
+        w.flush()?;
+        Ok(())
     }
 
     /// Insert a payload for the given vector `id`.
@@ -197,8 +223,8 @@ impl PayloadStore {
             idx[id_usize] = Some(slot);
         }
 
-        // 4. Persist the index after every write (small, sequential I/O)
-        self.flush_index()?;
+        // 4. Persist the index using incremental append (O(1))
+        self.append_index_record(id, true, entry_offset, compressed_len, uncompressed_len)?;
 
         Ok(())
     }
@@ -286,7 +312,7 @@ impl PayloadStore {
                 *slot = None;
             }
         }
-        self.flush_index()?;
+        self.append_index_record(id, false, 0, 0, 0)?;
         Ok(())
     }
 
@@ -343,6 +369,14 @@ impl PayloadStore {
             idx[id_usize] = Some(new_slot);
         }
 
+        self.append_index_record(
+            id,
+            true,
+            entry_offset,
+            slot.compressed_len,
+            slot.uncompressed_len,
+        )?;
+
         Ok(())
     }
 
@@ -358,62 +392,33 @@ impl PayloadStore {
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
-    /// Persists the in-RAM index to `payload_index.hyp`.
-    /// Format: [count: u64] [slot: (valid: u8, offset: u64, comp: u32, uncomp: u32)] × count
-    fn flush_index(&self) -> io::Result<()> {
-        let idx = self.index.read();
-        let count = idx.len();
-
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&self.index_path)?;
-        let mut w = BufWriter::new(file);
-
-        w.write_u64::<LittleEndian>(count as u64)?;
-        for slot in idx.iter() {
-            match slot {
-                None => {
-                    w.write_u8(0)?;
-                    w.write_u64::<LittleEndian>(0)?;
-                    w.write_u32::<LittleEndian>(0)?;
-                    w.write_u32::<LittleEndian>(0)?;
-                }
-                Some(s) => {
-                    w.write_u8(1)?;
-                    w.write_u64::<LittleEndian>(s.offset)?;
-                    w.write_u32::<LittleEndian>(s.compressed_len)?;
-                    w.write_u32::<LittleEndian>(s.uncompressed_len)?;
-                }
-            }
-        }
-        w.flush()?;
-        Ok(())
-    }
-
     /// Loads the index from `payload_index.hyp`.
     fn load_index(path: &Path) -> io::Result<PayloadIndex> {
         let data = std::fs::read(path)?;
         let mut cursor = Cursor::new(data);
+        let mut index = Vec::new();
 
-        let count = cursor.read_u64::<LittleEndian>()? as usize;
-        let mut index = Vec::with_capacity(count);
-
-        for _ in 0..count {
+        let len = cursor.get_ref().len();
+        while cursor.position() < len as u64 {
+            let id = cursor.read_u32::<LittleEndian>()?;
             let valid = cursor.read_u8()?;
             let offset = cursor.read_u64::<LittleEndian>()?;
             let compressed_len = cursor.read_u32::<LittleEndian>()?;
             let uncompressed_len = cursor.read_u32::<LittleEndian>()?;
 
+            let id_usize = id as usize;
+            if index.len() <= id_usize {
+                index.resize(id_usize + 1, None);
+            }
+
             if valid == 1 {
-                index.push(Some(PayloadSlot {
+                index[id_usize] = Some(PayloadSlot {
                     offset,
                     compressed_len,
                     uncompressed_len,
-                }));
+                });
             } else {
-                index.push(None);
+                index[id_usize] = None;
             }
         }
 
