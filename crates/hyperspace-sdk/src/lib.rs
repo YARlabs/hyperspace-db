@@ -77,10 +77,15 @@ pub struct Client {
     #[cfg(feature = "embedders")]
     embedder: Option<Box<dyn Embedder>>,
     collection_keys: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, String>>>,
-    encryption_contexts: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, std::sync::Arc<EncryptionContext>>>>,
-    collection_metrics: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, String>>>,
-    collection_noise_sigmas: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, f64>>>,
-    collection_schemas: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, CollectionSchema>>>,
+    encryption_contexts: std::sync::Arc<
+        parking_lot::RwLock<std::collections::HashMap<String, std::sync::Arc<EncryptionContext>>>,
+    >,
+    collection_metrics:
+        std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, String>>>,
+    collection_noise_sigmas:
+        std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, f64>>>,
+    collection_schemas:
+        std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, CollectionSchema>>>,
 }
 
 impl Client {
@@ -115,11 +120,21 @@ impl Client {
             inner: client,
             #[cfg(feature = "embedders")]
             embedder: None,
-            collection_keys: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
-            encryption_contexts: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
-            collection_metrics: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
-            collection_noise_sigmas: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
-            collection_schemas: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
+            collection_keys: std::sync::Arc::new(parking_lot::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            encryption_contexts: std::sync::Arc::new(parking_lot::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            collection_metrics: std::sync::Arc::new(parking_lot::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            collection_noise_sigmas: std::sync::Arc::new(parking_lot::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            collection_schemas: std::sync::Arc::new(parking_lot::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         })
     }
 
@@ -270,7 +285,8 @@ impl Client {
         metadata: std::collections::HashMap<String, String>,
         collection: Option<String>,
     ) -> Result<bool, tonic::Status> {
-        self.insert_secure(id, vector, metadata, None, collection).await
+        self.insert_secure(id, vector, metadata, None, collection)
+            .await
     }
 
     /// Inserts a vector with an optional payload, supporting client-side ZK-privacy.
@@ -288,10 +304,15 @@ impl Client {
         let coll = collection.unwrap_or_default();
         let metric = {
             let metrics = self.collection_metrics.read();
-            metrics.get(&coll).cloned().unwrap_or_else(|| "l2".to_string())
+            metrics
+                .get(&coll)
+                .cloned()
+                .unwrap_or_else(|| "l2".to_string())
         };
 
-        let context = self.get_encryption_context(&coll, vector.len(), &metric).await;
+        let context = self
+            .get_encryption_context(&coll, vector.len(), &metric)
+            .await;
 
         let mut final_vector = vector;
         let mut final_metadata = metadata;
@@ -312,7 +333,10 @@ impl Client {
 
             // 3. Encrypt payload
             if let Some(p) = final_payload {
-                final_payload = Some(self.encrypt_payload(&p, &ctx.aes_key).map_err(tonic::Status::internal)?);
+                final_payload = Some(
+                    self.encrypt_payload(&p, &ctx.aes_key)
+                        .map_err(tonic::Status::internal)?,
+                );
             }
 
             // 4. Hash metadata
@@ -457,10 +481,15 @@ impl Client {
         let coll = collection.unwrap_or_default();
         let metric = {
             let metrics = self.collection_metrics.read();
-            metrics.get(&coll).cloned().unwrap_or_else(|| "l2".to_string())
+            metrics
+                .get(&coll)
+                .cloned()
+                .unwrap_or_else(|| "l2".to_string())
         };
 
-        let context = self.get_encryption_context(&coll, vector.len(), &metric).await;
+        let context = self
+            .get_encryption_context(&coll, vector.len(), &metric)
+            .await;
 
         let mut final_vector = vector;
         let mut filter = std::collections::HashMap::default();
@@ -719,10 +748,15 @@ impl Client {
         let coll = collection.unwrap_or_default();
         let metric = {
             let metrics = self.collection_metrics.read();
-            metrics.get(&coll).cloned().unwrap_or_else(|| "l2".to_string())
+            metrics
+                .get(&coll)
+                .cloned()
+                .unwrap_or_else(|| "l2".to_string())
         };
 
-        let context = self.get_encryption_context(&coll, vector.len(), &metric).await;
+        let context = self
+            .get_encryption_context(&coll, vector.len(), &metric)
+            .await;
 
         let mut final_vector = vector;
         let mut filter = std::collections::HashMap::default();
@@ -1293,18 +1327,26 @@ impl Client {
         noise_sigma: f64,
         schema: Option<CollectionSchema>,
     ) {
-        self.collection_keys.write().insert(collection_name.clone(), key);
-        self.collection_metrics.write().insert(collection_name.clone(), metric);
-        self.collection_noise_sigmas.write().insert(collection_name.clone(), noise_sigma);
+        self.collection_keys
+            .write()
+            .insert(collection_name.clone(), key);
+        self.collection_metrics
+            .write()
+            .insert(collection_name.clone(), metric);
+        self.collection_noise_sigmas
+            .write()
+            .insert(collection_name.clone(), noise_sigma);
         if let Some(s) = schema {
-            self.collection_schemas.write().insert(collection_name.clone(), s);
+            self.collection_schemas
+                .write()
+                .insert(collection_name.clone(), s);
         }
         self.encryption_contexts.write().remove(&collection_name);
     }
 
     fn derive_keys(&self, password: &str, collection_name: &str) -> (Vec<u8>, Vec<u8>) {
-        use sha2::{Sha256, Digest};
         use pbkdf2::pbkdf2;
+        use sha2::{Digest, Sha256};
 
         let salt_hash = Sha256::digest(collection_name.as_bytes());
         let salt = salt_hash.as_slice();
@@ -1319,10 +1361,10 @@ impl Client {
     }
 
     fn encrypt_payload(&self, plaintext: &[u8], aes_key: &[u8]) -> Result<Vec<u8>, String> {
-        use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+        use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit};
+        use pbkdf2::pbkdf2;
         use rand::RngExt;
         use sha2::Sha256;
-        use pbkdf2::pbkdf2;
 
         let mut pbkdf2_salt = vec![0u8; 16];
         rand::rng().fill(&mut pbkdf2_salt);
@@ -1347,9 +1389,9 @@ impl Client {
     }
 
     fn decrypt_payload(&self, data: &[u8], aes_key: &[u8]) -> Result<Vec<u8>, String> {
-        use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
-        use sha2::Sha256;
+        use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit};
         use pbkdf2::pbkdf2;
+        use sha2::Sha256;
 
         if data.len() < 16 + 12 + 16 {
             return Err("Invalid encrypted payload size".to_string());
@@ -1389,7 +1431,12 @@ impl Client {
         format!("val_{}", hash)
     }
 
-    async fn get_encryption_context(&mut self, collection: &str, vector_dim: usize, metric: &str) -> Option<std::sync::Arc<EncryptionContext>> {
+    async fn get_encryption_context(
+        &mut self,
+        collection: &str,
+        vector_dim: usize,
+        metric: &str,
+    ) -> Option<std::sync::Arc<EncryptionContext>> {
         if collection.is_empty() {
             return None;
         }
@@ -1406,7 +1453,9 @@ impl Client {
         if schema_needed {
             if let Ok(stats) = self.get_collection_stats(collection.to_string()).await {
                 if let Some(s) = stats.schema {
-                    self.collection_schemas.write().insert(collection.to_string(), s);
+                    self.collection_schemas
+                        .write()
+                        .insert(collection.to_string(), s);
                 }
             }
         }
@@ -1415,11 +1464,16 @@ impl Client {
             let mut contexts = self.encryption_contexts.write();
             if !contexts.contains_key(collection) {
                 let (aes, hmac) = self.derive_keys(&key, collection);
-                contexts.insert(collection.to_string(), std::sync::Arc::new(EncryptionContext {
-                    aes_key: aes,
-                    hmac_key: hmac,
-                    projection_matrices: parking_lot::RwLock::new(std::collections::HashMap::new()),
-                }));
+                contexts.insert(
+                    collection.to_string(),
+                    std::sync::Arc::new(EncryptionContext {
+                        aes_key: aes,
+                        hmac_key: hmac,
+                        projection_matrices: parking_lot::RwLock::new(
+                            std::collections::HashMap::new(),
+                        ),
+                    }),
+                );
             }
             contexts.get(collection).cloned().unwrap()
         };
@@ -1431,21 +1485,35 @@ impl Client {
                 !matrices.contains_key(&cache_key)
             };
             if matrix_needed {
-                let is_lorentz = metric.eq_ignore_ascii_case("lorentz") || metric.eq_ignore_ascii_case("poincare");
-                let matrix_dim = if metric.eq_ignore_ascii_case("poincare") { vector_dim + 1 } else { vector_dim };
+                let is_lorentz = metric.eq_ignore_ascii_case("lorentz")
+                    || metric.eq_ignore_ascii_case("poincare");
+                let matrix_dim = if metric.eq_ignore_ascii_case("poincare") {
+                    vector_dim + 1
+                } else {
+                    vector_dim
+                };
                 let matrix = if is_lorentz {
                     math::generate_lorentz_matrix(matrix_dim, &context.hmac_key)
                 } else {
                     math::generate_orthogonal_matrix(matrix_dim, &context.hmac_key)
                 };
-                context.projection_matrices.write().insert(cache_key, matrix);
+                context
+                    .projection_matrices
+                    .write()
+                    .insert(cache_key, matrix);
             }
         }
 
         Some(context)
     }
 
-    fn project_single_block(&self, sub_vec: &[f64], metric: &str, context: &EncryptionContext, block_id: Option<&str>) -> Vec<f64> {
+    fn project_single_block(
+        &self,
+        sub_vec: &[f64],
+        metric: &str,
+        context: &EncryptionContext,
+        block_id: Option<&str>,
+    ) -> Vec<f64> {
         let dim = sub_vec.len();
         if dim == 0 {
             return Vec::new();
@@ -1461,12 +1529,17 @@ impl Client {
             !matrices.contains_key(&cache_key)
         };
         if matrix_needed {
-            let is_lorentz = metric.eq_ignore_ascii_case("lorentz") || metric.eq_ignore_ascii_case("poincare");
-            let matrix_dim = if metric.eq_ignore_ascii_case("poincare") { dim + 1 } else { dim };
+            let is_lorentz =
+                metric.eq_ignore_ascii_case("lorentz") || metric.eq_ignore_ascii_case("poincare");
+            let matrix_dim = if metric.eq_ignore_ascii_case("poincare") {
+                dim + 1
+            } else {
+                dim
+            };
 
             let seed = match block_id {
                 Some(bid) => {
-                    use sha2::{Sha256, Digest};
+                    use sha2::{Digest, Sha256};
                     let mut hasher = Sha256::new();
                     hasher.update(&context.hmac_key);
                     hasher.update(bid.as_bytes());
@@ -1480,7 +1553,10 @@ impl Client {
             } else {
                 math::generate_orthogonal_matrix(matrix_dim, &seed)
             };
-            context.projection_matrices.write().insert(cache_key.clone(), matrix);
+            context
+                .projection_matrices
+                .write()
+                .insert(cache_key.clone(), matrix);
         }
 
         let matrices = context.projection_matrices.read();
@@ -1495,7 +1571,13 @@ impl Client {
         }
     }
 
-    fn project_collection_vector(&self, collection: &str, vector: &[f64], context: &EncryptionContext, metric: &str) -> Vec<f64> {
+    fn project_collection_vector(
+        &self,
+        collection: &str,
+        vector: &[f64],
+        context: &EncryptionContext,
+        metric: &str,
+    ) -> Vec<f64> {
         let schemas = self.collection_schemas.read();
         let schema = match schemas.get(collection) {
             Some(s) => s,
@@ -1556,13 +1638,23 @@ impl Client {
                 for &cutoff in &valid_cutoffs {
                     let block_data = &sub_vec[block_start..cutoff];
                     let bid = format!("{}_block_{}_{}", comp_name, block_start, cutoff);
-                    p_sub.extend(self.project_single_block(block_data, comp_metric, context, Some(&bid)));
+                    p_sub.extend(self.project_single_block(
+                        block_data,
+                        comp_metric,
+                        context,
+                        Some(&bid),
+                    ));
                     block_start = cutoff;
                 }
                 if block_start < comp_dim {
                     let block_data = &sub_vec[block_start..comp_dim];
                     let bid = format!("{}_block_{}_{}", comp_name, block_start, comp_dim);
-                    p_sub.extend(self.project_single_block(block_data, comp_metric, context, Some(&bid)));
+                    p_sub.extend(self.project_single_block(
+                        block_data,
+                        comp_metric,
+                        context,
+                        Some(&bid),
+                    ));
                 }
                 p_sub
             };

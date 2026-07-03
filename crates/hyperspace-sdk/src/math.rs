@@ -665,7 +665,10 @@ pub fn inject_anisotropic_noise(v: &[f64], seed_bytes: &[u8], sigma: f64) -> Vec
     let noise_norm = norm_sq(&noise).sqrt();
     if noise_norm > 1e-15 {
         let scale = sigma * v_norm / noise_norm;
-        v.iter().zip(noise.iter()).map(|(vi, ni)| vi + ni * scale).collect()
+        v.iter()
+            .zip(noise.iter())
+            .map(|(vi, ni)| vi + ni * scale)
+            .collect()
     } else {
         v.to_vec()
     }
@@ -818,8 +821,18 @@ mod tests {
         let u_proj = project_vector(&u, &matrix);
         let v_proj = project_vector(&v, &matrix);
 
-        let dist_orig = (u.iter().zip(v.iter()).map(|(ui, vi)| (ui - vi) * (ui - vi)).sum::<f64>()).sqrt();
-        let dist_proj = (u_proj.iter().zip(v_proj.iter()).map(|(ui, vi)| (ui - vi) * (ui - vi)).sum::<f64>()).sqrt();
+        let dist_orig = (u
+            .iter()
+            .zip(v.iter())
+            .map(|(ui, vi)| (ui - vi) * (ui - vi))
+            .sum::<f64>())
+        .sqrt();
+        let dist_proj = (u_proj
+            .iter()
+            .zip(v_proj.iter())
+            .map(|(ui, vi)| (ui - vi) * (ui - vi))
+            .sum::<f64>())
+        .sqrt();
 
         assert!((dist_orig - dist_proj).abs() < 1e-9);
 
@@ -846,7 +859,11 @@ mod tests {
         let poincare_dist = |x: &[f64], y: &[f64]| -> f64 {
             let x_sq: f64 = x.iter().map(|vi| vi * vi).sum();
             let y_sq: f64 = y.iter().map(|vi| vi * vi).sum();
-            let diff_sq: f64 = x.iter().zip(y.iter()).map(|(xi, yi)| (xi - yi) * (xi - yi)).sum();
+            let diff_sq: f64 = x
+                .iter()
+                .zip(y.iter())
+                .map(|(xi, yi)| (xi - yi) * (xi - yi))
+                .sum();
             let val = 1.0 + 2.0 * diff_sq / ((1.0 - x_sq) * (1.0 - y_sq));
             val.acosh()
         };
