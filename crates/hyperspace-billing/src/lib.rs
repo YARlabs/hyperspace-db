@@ -1,12 +1,14 @@
 pub mod accounting;
 pub mod metering;
 pub mod sync;
+pub mod tickets;
 
 use std::sync::Arc;
 
 pub use accounting::{AccountingStore, BillingBalance, BillingStatus};
 pub use metering::{MeteringEngine, UsageDelta};
 pub use sync::SyncWorker;
+pub use tickets::{PendingTicketStore, SignedTicket, TicketVerifier};
 
 /// Single shared billing context, injected into the gRPC server.
 #[derive(Clone)]

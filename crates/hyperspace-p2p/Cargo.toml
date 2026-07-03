@@ -22,3 +22,8 @@ libp2p = { workspace = true }
 ed25519-dalek = { workspace = true }
 futures = "0.3"
 blake3 = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"
+ed25519-dalek = { workspace = true }
+bytemuck = "1.14"

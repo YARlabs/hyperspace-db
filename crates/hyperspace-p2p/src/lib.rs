@@ -14,6 +14,7 @@
 
 pub mod identity;
 pub mod network;
+pub mod proofs;
 pub mod routing;
 pub mod wallet;
 

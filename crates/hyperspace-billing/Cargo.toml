@@ -14,3 +14,10 @@ hyperspace-core = { workspace = true }
 redb = { workspace = true }
 dashmap = { workspace = true }
 governor = { workspace = true }
+ed25519-dalek = { workspace = true }
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3.10"
+rand = "0.8"
+ed25519-dalek = { workspace = true }

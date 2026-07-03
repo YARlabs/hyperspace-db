@@ -2411,13 +2411,17 @@ name = "hyperspace-billing"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "dashmap 6.1.0",
+ "ed25519-dalek",
  "governor",
  "hyperspace-core",
+ "rand 0.8.5",
  "redb",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]
@@ -2535,6 +2539,7 @@ dependencies = [
  "anyhow",
  "bip39",
  "blake3",
+ "bytemuck",
  "dashmap 6.1.0",
  "ed25519-dalek",
  "futures",
@@ -2547,6 +2552,7 @@ dependencies = [
  "rs_merkle",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "zeroize",

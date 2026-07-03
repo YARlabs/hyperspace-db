@@ -38,7 +38,7 @@ impl NodeIdentity {
     /// Load from disk or generate a fresh identity.
     pub fn load_or_generate<P: AsRef<Path>>(path: P, zone: SemanticZone) -> anyhow::Result<Self> {
         let path = path.as_ref();
-        if path.exists() {
+        if path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) {
             tracing::info!("Loading node identity from {}", path.display());
             let raw = std::fs::read_to_string(path)?;
             let persisted: PersistedIdentity = serde_json::from_str(&raw)?;
