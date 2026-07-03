@@ -729,6 +729,8 @@ pub struct HyperspaceService {
     replication_allowed: bool,
     #[cfg(feature = "embed")]
     vectorizer: Option<Arc<MultiVectorizer>>,
+    #[cfg(feature = "depin")]
+    pub metering: Option<Arc<hyperspace_billing::MeteringEngine>>,
 }
 
 #[tonic::async_trait]
@@ -1017,7 +1019,7 @@ impl Database for HyperspaceService {
                 })?;
 
                 let meta = merge_metadata(
-                    req.metadata.into_iter().collect(),
+                    req.metadata.clone().into_iter().collect(),
                     req.typed_metadata.into_iter().collect(),
                 );
                 let clock = self.manager.tick_cluster_clock().await;
@@ -1050,6 +1052,14 @@ impl Database for HyperspaceService {
                     }
                 }
 
+                // --- DePIN metering hook ---
+                #[cfg(feature = "depin")]
+                if let Some(m) = &self.metering {
+                    let api_key = req.metadata.get("x-api-key").cloned().unwrap_or_default();
+                    if !api_key.is_empty() {
+                        m.record_insert(&api_key, 1);
+                    }
+                }
                 Ok(Response::new(InsertResponse { success: true }))
             }
             .await;
@@ -1639,7 +1649,7 @@ impl Database for HyperspaceService {
 
             match search_fut.await {
                 Ok(res) => {
-                    let output = res
+                    let output: Vec<SearchResult> = res
                         .iter()
                         .map(|(id, dist, meta, payload)| {
                             let typed_metadata = extract_typed_metadata(meta);
@@ -1680,6 +1690,18 @@ impl Database for HyperspaceService {
                                     metadata: first.2.clone(),
                                 })),
                             });
+                        }
+                    }
+
+                    // --- DePIN metering hook ---
+                    #[cfg(feature = "depin")]
+                    if let Some(m) = &self.metering {
+                        let api_key_header = ctx.user_id.clone();
+                        if !api_key_header.is_empty() {
+                            let payload_bytes: u64 = output.iter()
+                                .map(|r| r.payload.as_ref().map(|p| p.len() as u64).unwrap_or(0))
+                                .sum();
+                            m.record_search(&api_key_header, payload_bytes);
                         }
                     }
 
@@ -2848,7 +2870,10 @@ impl Database for HyperspaceService {
     }
 }
 
-async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn start_server(
+    args: Args,
+    #[cfg(feature = "depin")] metering_override: Option<Arc<hyperspace_billing::MeteringEngine>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = format!("0.0.0.0:{}", args.port).parse()?;
 
     // Read TLS/mTLS parameters from environment
@@ -3336,6 +3361,44 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         println!("🔒 Replication: [DISABLED] (Outgoing streams blocked)");
     }
 
+    // ─── DePIN auto-init from env vars ───────────────────────────────────────
+    // When `HS_DEPIN_MODE=1`, start_server bootstraps the billing subsystem
+    // directly (useful when running `hyperspace-server --features depin` without
+    // the separate `hyperspace-miner` binary).
+    #[cfg(feature = "depin")]
+    let metering_override = {
+        let resolved = match metering_override {
+            Some(m) => Some(m),
+            None if std::env::var("HS_DEPIN_MODE").as_deref() == Ok("1") => {
+                let coordinator = std::env::var("HS_DEPIN_COORDINATOR_URL")
+                    .unwrap_or_else(|_| "http://localhost:8080".to_string());
+                let db_path = std::env::var("HS_DEPIN_DB_PATH")
+                    .unwrap_or_else(|_| "./billing.redb".to_string());
+                let interval: u64 = std::env::var("HS_DEPIN_SYNC_INTERVAL_SECS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(600);
+                let max_rps: u32 = std::env::var("HS_DEPIN_MAX_RPS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(10_000);
+
+                match hyperspace_billing::BillingContext::start(&db_path, coordinator.clone(), max_rps, interval) {
+                    Ok(ctx) => {
+                        println!("⛏️  DePIN billing active → {}", coordinator);
+                        Some(ctx.metering)
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️  Failed to init DePIN billing: {e}");
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+        resolved
+    };
+
     let service = HyperspaceService {
         manager,
         replication_tx,
@@ -3343,6 +3406,8 @@ async fn start_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send
         replication_allowed: args.replication_allowed,
         #[cfg(feature = "embed")]
         vectorizer,
+        #[cfg(feature = "depin")]
+        metering: metering_override,
     };
 
     println!("HyperspaceDB listening on {addr}");
@@ -3423,5 +3488,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv::dotenv().ok();
     audit_log::init();
     let args = Args::parse();
-    start_server(args).await
+    start_server(
+        args,
+        #[cfg(feature = "depin")]
+        None, // metering is None in standard server mode; hyperspace-miner injects it
+    ).await
 }

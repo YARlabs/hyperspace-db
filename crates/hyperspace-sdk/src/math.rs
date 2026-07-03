@@ -485,7 +485,7 @@ pub fn generate_orthogonal_matrix(dimension: usize, seed_bytes: &[u8]) -> Vec<Ve
     for i in 0..dimension {
         for j in 0..dimension {
             if hash_offset >= 32 {
-                current_hash = Sha256::digest(&current_hash);
+                current_hash = Sha256::digest(current_hash);
                 hash_offset = 0;
             }
             let bytes = [
@@ -547,7 +547,7 @@ pub fn generate_lorentz_matrix(dimension: usize, seed_bytes: &[u8]) -> Vec<Vec<f
 
     for i in 0..d {
         if hash_offset >= 32 {
-            current_hash = Sha256::digest(&current_hash);
+            current_hash = Sha256::digest(current_hash);
             hash_offset = 0;
         }
         let bytes = [
@@ -639,7 +639,7 @@ pub fn inject_anisotropic_noise(v: &[f64], seed_bytes: &[u8], sigma: f64) -> Vec
 
     for i in 0..dim {
         if hash_offset >= 32 {
-            current_hash = Sha256::digest(&current_hash);
+            current_hash = Sha256::digest(current_hash);
             hash_offset = 0;
         }
         let bytes = [

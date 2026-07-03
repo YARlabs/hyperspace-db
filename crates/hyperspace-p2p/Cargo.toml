@@ -1,0 +1,24 @@
+[package]
+name = "hyperspace-p2p"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+reqwest = { version = "0.12", features = ["json"] }
+hex = "0.4"
+dashmap = { workspace = true }
+hyperspace-core = { workspace = true }
+hyperspace-store = { workspace = true }
+hyperspace-index = { workspace = true }
+zeroize = { workspace = true }
+bip39 = { workspace = true }
+rs_merkle = { workspace = true }
+libp2p = { workspace = true }
+ed25519-dalek = { workspace = true }
+futures = "0.3"
+blake3 = { workspace = true }

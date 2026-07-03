@@ -22,6 +22,20 @@ ratatui = "0.24" # Check recent version or use what fits
 rkyv = "0.7"
 smallvec = "1.11"
 proptest = "1.0"
+# Local DePIN crates
+hyperspace-p2p = { path = "crates/hyperspace-p2p" }
+hyperspace-billing = { path = "crates/hyperspace-billing" }
+
+# DePIN dependencies
+libp2p = { version = "0.53", features = ["tcp", "dns", "websocket", "noise", "yamux", "kad", "gossipsub", "identify", "autonat", "tokio", "quic", "macros", "ed25519"] }
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+blake3 = "1.5"
+zeroize = { version = "1.7", features = ["derive"] }
+bip39 = { version = "2.0", features = ["rand"] }
+rs_merkle = "1.4"
+governor = "0.6"
+dashmap = "6.1.0"
+redb = "4.1.0"
 
 
 [profile.release]
