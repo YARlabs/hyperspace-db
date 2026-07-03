@@ -9,6 +9,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "proto"
 from .proto import hyperspace_pb2
 from .proto import hyperspace_pb2_grpc
 from .embedders import BaseEmbedder
+from . import crypto
+from . import math as hs_math
 
 class Durability:
     DEFAULT = 0
@@ -17,7 +19,7 @@ class Durability:
     STRICT = 3
 
 class HyperspaceClient:
-    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None, pool_size: int = 8):
+    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None, pool_size: int = 8, collection_keys: Optional[Dict[str, str]] = None):
         # Optimized gRPC Channel with KeepAlive and Max Message Size
         options = [
             ('grpc.max_send_message_length', 64 * 1024 * 1024), # 64MB
@@ -51,6 +53,197 @@ class HyperspaceClient:
             meta.append(('x-hyperspace-user-id', user_id))
         self.metadata = tuple(meta) if meta else None
         self.embedder = embedder
+        
+        self.collection_keys = collection_keys or {}
+        self._encryption_contexts = {}
+        self._collection_metrics = {}
+        self._collection_noise_sigmas = {}
+        self._collection_schemas = {}
+
+    def register_collection_key(self, collection_name: str, key: str, metric: str = "l2", noise_sigma: float = 0.02, schema: Optional[Dict] = None):
+        self.collection_keys[collection_name] = key
+        self._collection_metrics[collection_name] = metric
+        self._collection_noise_sigmas[collection_name] = noise_sigma
+        if schema:
+            self._collection_schemas[collection_name] = schema
+        if collection_name in self._encryption_contexts:
+            del self._encryption_contexts[collection_name]
+
+    def _get_encryption_context(self, collection: str, vector_dim: int = None, metric: str = "l2"):
+        if not collection:
+            return None
+        
+        key = self.collection_keys.get(collection)
+        if not key:
+            return None
+
+        # Fetch schema from server lazily if not cached locally
+        if collection not in self._collection_schemas:
+            try:
+                stats = self.get_collection_stats(collection)
+                if stats and "schema" in stats and stats["schema"]:
+                    self._collection_schemas[collection] = stats["schema"]
+            except Exception:
+                pass
+            
+        if collection not in self._encryption_contexts:
+            aes_key, hmac_key = crypto.derive_keys(key, collection)
+            self._encryption_contexts[collection] = {
+                "aes_key": aes_key,
+                "hmac_key": hmac_key,
+                "projection_matrices": {}
+            }
+            
+        context = self._encryption_contexts[collection]
+        
+        if vector_dim is not None:
+            if vector_dim not in context["projection_matrices"]:
+                is_lorentz = metric.lower() in ("lorentz", "poincare")
+                matrix_dim = (vector_dim + 1) if metric.lower() == "poincare" else vector_dim
+                if is_lorentz:
+                    matrix = hs_math.generate_lorentz_matrix(matrix_dim, context["hmac_key"])
+                else:
+                    matrix = hs_math.generate_orthogonal_matrix(matrix_dim, context["hmac_key"])
+                context["projection_matrices"][vector_dim] = matrix
+                
+        return context
+
+    def _project_single_block(self, sub_vec: List[float], metric: str, context, block_id: str = None) -> List[float]:
+        dim = len(sub_vec)
+        if dim == 0:
+            return []
+            
+        cache_key = (dim, block_id) if block_id else dim
+        
+        if cache_key not in context["projection_matrices"]:
+            is_lorentz = metric.lower() in ("lorentz", "poincare")
+            matrix_dim = (dim + 1) if metric.lower() == "poincare" else dim
+            
+            import hashlib
+            seed = context["hmac_key"]
+            if block_id:
+                seed = hashlib.sha256(seed + block_id.encode('utf-8')).digest()
+                
+            if is_lorentz:
+                matrix = hs_math.generate_lorentz_matrix(matrix_dim, seed)
+            else:
+                matrix = hs_math.generate_orthogonal_matrix(matrix_dim, seed)
+            context["projection_matrices"][cache_key] = matrix
+            
+        matrix = context["projection_matrices"][cache_key]
+        
+        if metric.lower() == "poincare":
+            lorentz_vec = hs_math.poincare_to_lorentz(sub_vec)
+            proj_lorentz = hs_math.project_vector(lorentz_vec, matrix)
+            return hs_math.lorentz_to_poincare(proj_lorentz)
+        else:
+            return hs_math.project_vector(sub_vec, matrix)
+
+    def _project_collection_vector(self, collection: str, vector: List[float], context, metric: str = "l2") -> List[float]:
+        schema = self._collection_schemas.get(collection)
+        if not schema or "components" not in schema or not schema["components"]:
+            return self._project_single_block(vector, metric, context)
+            
+        components = schema["components"]
+        cascade = schema.get("cascade_pipeline", [])
+        component_cutoffs = {}
+        for layer in cascade:
+            comp_name = layer.get("component_name")
+            cutoff = layer.get("cutoff_dimension")
+            if comp_name and cutoff:
+                if comp_name not in component_cutoffs:
+                    component_cutoffs[comp_name] = []
+                component_cutoffs[comp_name].append(cutoff)
+                
+        for comp_name in component_cutoffs:
+            component_cutoffs[comp_name] = sorted(list(set(component_cutoffs[comp_name])))
+            
+        projected_parts = []
+        current_offset = 0
+        
+        for comp in components:
+            comp_name = comp["name"]
+            comp_metric = comp["metric"]
+            comp_dim = comp["full_dimension"]
+            
+            if current_offset >= len(vector):
+                break
+                
+            sub_vec = vector[current_offset : current_offset + comp_dim]
+            if len(sub_vec) < comp_dim:
+                sub_vec = sub_vec + [0.0] * (comp_dim - len(sub_vec))
+                
+            cutoffs = component_cutoffs.get(comp_name, [])
+            valid_cutoffs = [c for c in cutoffs if c < comp_dim]
+            
+            if not valid_cutoffs:
+                proj_sub = self._project_single_block(sub_vec, comp_metric, context)
+            else:
+                proj_sub = []
+                block_start = 0
+                for cutoff in valid_cutoffs:
+                    block_data = sub_vec[block_start : cutoff]
+                    proj_block = self._project_single_block(block_data, comp_metric, context, block_id=f"{comp_name}_block_{block_start}_{cutoff}")
+                    proj_sub.extend(proj_block)
+                    block_start = cutoff
+                    
+                if block_start < comp_dim:
+                    block_data = sub_vec[block_start : comp_dim]
+                    proj_block = self._project_single_block(block_data, comp_metric, context, block_id=f"{comp_name}_block_{block_start}_{comp_dim}")
+                    proj_sub.extend(proj_block)
+                    
+            projected_parts.extend(proj_sub)
+            current_offset += comp_dim
+            
+        if current_offset < len(vector):
+            projected_parts.extend(vector[current_offset:])
+            
+        return projected_parts
+
+    def _encrypt_filters(self, filters: List[Dict], context) -> List[Dict]:
+        if not filters:
+            return filters
+        
+        new_filters = []
+        for f in filters:
+            nf = dict(f)
+            f_type = nf.get("type")
+            
+            if f_type == "match" or "match" in nf:
+                match_data = dict(nf.get("match", nf))
+                match_data["key"] = crypto.hash_metadata_key(match_data["key"], context["hmac_key"])
+                match_data["value"] = crypto.hash_metadata_value(match_data["value"], context["hmac_key"])
+                if "match" in nf:
+                    nf["match"] = match_data
+                else:
+                    nf.update(match_data)
+            elif f_type == "prefix" or "prefix" in nf:
+                prefix_data = dict(nf.get("prefix", nf))
+                prefix_data["key"] = crypto.hash_metadata_key(prefix_data["key"], context["hmac_key"])
+                prefix_data["prefix"] = crypto.hash_metadata_value(prefix_data["prefix"], context["hmac_key"])
+                if "prefix" in nf:
+                    nf["prefix"] = prefix_data
+                else:
+                    nf.update(prefix_data)
+            elif f_type == "range" or "range" in nf:
+                range_data = dict(nf.get("range", nf))
+                range_data["key"] = crypto.hash_metadata_key(range_data["key"], context["hmac_key"])
+                if "range" in nf:
+                    nf["range"] = range_data
+                else:
+                    nf.update(range_data)
+            elif f_type == "and" or "and" in nf:
+                key = "and" if "and" in nf else "conditions"
+                nf[key] = self._encrypt_filters(nf[key], context)
+            elif f_type == "or" or "or" in nf:
+                key = "or" if "or" in nf else "conditions"
+                nf[key] = self._encrypt_filters(nf[key], context)
+            elif f_type == "not" or "not" in nf:
+                key = "not" if "not" in nf else "condition"
+                nf[key] = self._encrypt_filters([nf[key]], context)[0]
+                
+            new_filters.append(nf)
+        return new_filters
 
     @property
     def stub(self):
@@ -136,7 +329,17 @@ class HyperspaceClient:
 
     # ... (create/delete/list unchanged) ...
 
-    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None) -> bool:
+    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None, encryption_key: str = None, noise_sigma: float = 0.02) -> bool:
+        # Extract metric for encryption context
+        derived_metric = metric
+        if not derived_metric and isinstance(schema, dict) and "components" in schema and schema["components"]:
+            derived_metric = schema["components"][0].get("metric")
+        if not derived_metric:
+            derived_metric = "l2"
+
+        if encryption_key:
+            self.register_collection_key(name, encryption_key, derived_metric, noise_sigma)
+
         if schema is None:
             if dimension is not None and metric is not None:
                 schema = {
@@ -274,7 +477,7 @@ class HyperspaceClient:
         except grpc.RpcError:
             return False
 
-    def insert(self, id: int, vector: List[float] = None, document: str = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+    def insert(self, id: int, vector: List[float] = None, document: str = None, payload: bytes = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
         if vector is None and document is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -284,6 +487,52 @@ class HyperspaceClient:
              raise ValueError("Either 'vector' or 'document' must be provided.")
         vector = self._normalize_vector(vector)
 
+        # Handle zero-knowledge encryption if collection key exists
+        encrypted_payload = None
+        metric = self._collection_metrics.get(collection, "l2")
+        context = self._get_encryption_context(collection, len(vector), metric)
+        
+        if context:
+            # 1. Inject deterministic anisotropic noise & project vector
+            sigma = self._collection_noise_sigmas.get(collection, 0.02)
+            if sigma > 0.0 and vector:
+                vector = hs_math.inject_anisotropic_noise(vector, context["hmac_key"], sigma)
+            vector = self._project_collection_vector(collection, vector, context, metric)
+            
+            # 2. Encrypt document or payload
+            raw_payload = None
+            if document is not None:
+                raw_payload = document.encode('utf-8')
+            elif payload is not None:
+                raw_payload = payload
+                
+            if raw_payload is not None:
+                encrypted_payload = crypto.encrypt_payload(raw_payload, context["aes_key"])
+                
+            # 3. Hash metadata keys and values
+            encrypted_metadata = {}
+            if metadata:
+                for k, v in metadata.items():
+                    ek = crypto.hash_metadata_key(k, context["hmac_key"])
+                    ev = crypto.hash_metadata_value(v, context["hmac_key"])
+                    encrypted_metadata[ek] = ev
+            metadata = encrypted_metadata
+            
+            # Hash typed_metadata
+            encrypted_typed_metadata = {}
+            if typed_metadata:
+                for k, v in typed_metadata.items():
+                    ek = crypto.hash_metadata_key(k, context["hmac_key"])
+                    ev = crypto.hash_metadata_value(v, context["hmac_key"])
+                    mv = hyperspace_pb2.MetadataValue(string_value=ev)
+                    encrypted_typed_metadata[ek] = mv
+            typed_metadata = encrypted_typed_metadata
+        else:
+            if payload is not None:
+                encrypted_payload = payload
+            elif document is not None:
+                encrypted_payload = document.encode('utf-8')
+
         req = hyperspace_pb2.InsertRequest(
             id=id,
             vector=vector,
@@ -292,11 +541,20 @@ class HyperspaceClient:
             logical_clock=0,
             durability=durability
         )
+        if encrypted_payload is not None:
+            req.payload = encrypted_payload
+            
         if metadata:
             req.metadata.update(metadata)
+            
         if typed_metadata:
-            for k, v in typed_metadata.items():
-                req.typed_metadata[k].CopyFrom(self._to_proto_metadata_value(v))
+            if context:
+                for k, mv in typed_metadata.items():
+                    req.typed_metadata[k].CopyFrom(mv)
+            else:
+                for k, v in typed_metadata.items():
+                    req.typed_metadata[k].CopyFrom(self._to_proto_metadata_value(v))
+                    
         try:
             resp = self.stub.Insert(req, metadata=self.metadata)
             return resp.success
@@ -305,6 +563,12 @@ class HyperspaceClient:
             return False
 
     def insert_text(self, id: int, text: str, metadata: Dict[str, str] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
+        if collection in self.collection_keys:
+            if self.embedder is None:
+                raise ValueError("Cannot insert text into encrypted collection without an embedder. Please configure an embedder or use insert() directly with a vector.")
+            vector = self.embedder.encode(text)
+            return self.insert(id=id, vector=vector, document=text, metadata=metadata, collection=collection, durability=durability)
+
         req = hyperspace_pb2.InsertTextRequest(
             id=id,
             text=text,
@@ -402,6 +666,28 @@ class HyperspaceClient:
              raise ValueError("Either 'vector' or 'query_text' must be provided.")
         vector = self._normalize_vector(vector)
 
+        # Zero-knowledge processing if key exists
+        metric = self._collection_metrics.get(collection, "l2")
+        context = self._get_encryption_context(collection, len(vector) if vector else None, metric)
+        
+        if context:
+            if vector:
+                sigma = self._collection_noise_sigmas.get(collection, 0.02)
+                if sigma > 0.0:
+                    vector = hs_math.inject_anisotropic_noise(vector, context["hmac_key"], sigma)
+                vector = self._project_collection_vector(collection, vector, context, metric)
+            
+            if filter:
+                encrypted_filter = {}
+                for k, v in filter.items():
+                    ek = crypto.hash_metadata_key(k, context["hmac_key"])
+                    ev = crypto.hash_metadata_value(v, context["hmac_key"])
+                    encrypted_filter[ek] = ev
+                filter = encrypted_filter
+                
+            if filters:
+                filters = self._encrypt_filters(filters, context)
+
         proto_filters = [self._to_proto_filter(f) for f in filters] if filters else []
 
         if restart_factor is not None:
@@ -415,16 +701,19 @@ class HyperspaceClient:
             vector=vector,
             top_k=top_k,
             collection=collection,
-            use_wave=use_wave
+            use_wave=use_wave,
+            include_payload=True if context else False
         )
         if filter:
             req.filter.update(filter)
         if proto_filters:
             req.filters.extend(proto_filters)
         if hybrid_query is not None:
-            req.hybrid_query = hybrid_query
+            if not context:
+                req.hybrid_query = hybrid_query
         if hybrid_alpha is not None:
-            req.hybrid_alpha = hybrid_alpha
+            if not context:
+                req.hybrid_alpha = hybrid_alpha
         if mrl_dimension is not None:
             req.mrl_dimension = mrl_dimension
         if use_wasserstein is not None:
@@ -433,7 +722,7 @@ class HyperspaceClient:
              for k, v in options["component_weights"].items():
                  req.component_weights[k] = float(v)
             
-        if bm25 is not None:
+        if bm25 is not None and not context:
             bm25_msg = hyperspace_pb2.Bm25Options()
             if "method" in bm25: bm25_msg.method = bm25["method"]
             if "k1" in bm25: bm25_msg.k1 = bm25["k1"]
@@ -446,15 +735,36 @@ class HyperspaceClient:
             
         try:
             resp = self.stub.Search(req, metadata=self.metadata)
-            return [
-                {
+            results = []
+            for r in resp.results:
+                item = {
                     "id": r.id,
                     "distance": r.distance,
                     "metadata": (dict(r.metadata) if r.metadata else {}),
-                    "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {}
+                    "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {},
                 }
-                for r in resp.results
-            ]
+                
+                # Decrypt payload if context is active
+                if hasattr(r, "payload") and r.payload:
+                    if context:
+                        try:
+                            decrypted_payload = crypto.decrypt_payload(r.payload, context["aes_key"])
+                            try:
+                                item["payload"] = decrypted_payload.decode('utf-8')
+                            except UnicodeDecodeError:
+                                item["payload"] = decrypted_payload
+                        except Exception:
+                            item["payload"] = r.payload
+                    else:
+                        try:
+                            item["payload"] = r.payload.decode('utf-8')
+                        except UnicodeDecodeError:
+                            item["payload"] = r.payload
+                else:
+                    item["payload"] = None
+                    
+                results.append(item)
+            return results
         except grpc.RpcError as e:
             if use_wave and e.code() == grpc.StatusCode.FAILED_PRECONDITION and "Server-side wave search is disabled" in e.details():
                 # AUTOMATIC FALLBACK to client-side multi-seed consensus wave search
@@ -507,7 +817,8 @@ class HyperspaceClient:
                         "id": node_id,
                         "distance": 1.0 / score - 1.0,
                         "metadata": node_metas[node_id],
-                        "typed_metadata": node_typed_metas[node_id]
+                        "typed_metadata": node_typed_metas[node_id],
+                        "payload": None
                     }
                     for node_id, score in sorted_nodes[:top_k]
                 ]
@@ -516,6 +827,11 @@ class HyperspaceClient:
                 return []
 
     def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "") -> List[Dict]:
+        if collection in self.collection_keys:
+            if self.embedder is None:
+                raise ValueError("Cannot search text in encrypted collection without an embedder. Please configure an embedder or use search() directly with a vector.")
+            return self.search(query_text=text, top_k=top_k, filter=filter, filters=filters, hybrid_alpha=hybrid_alpha, bm25=bm25, collection=collection)
+
         proto_filters = [self._to_proto_filter(f) for f in filters] if filters else []
 
         req = hyperspace_pb2.SearchTextRequest(
@@ -549,7 +865,8 @@ class HyperspaceClient:
                     "id": r.id,
                     "distance": r.distance,
                     "metadata": (dict(r.metadata) if r.metadata else {}),
-                    "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {}
+                    "typed_metadata": dict(r.typed_metadata) if r.typed_metadata else {},
+                    "payload": r.payload.decode('utf-8') if (hasattr(r, "payload") and r.payload) else None
                 }
                 for r in resp.results
             ]
@@ -1069,6 +1386,15 @@ class HyperspaceClient:
             return 1.0 # Max chaos on error
 
     def update_payload(self, id: int, metadata: Dict[str, str], collection: str = "") -> bool:
+        context = self._get_encryption_context(collection)
+        if context:
+            encrypted_metadata = {}
+            for k, v in metadata.items():
+                ek = crypto.hash_metadata_key(k, context["hmac_key"])
+                ev = crypto.hash_metadata_value(v, context["hmac_key"])
+                encrypted_metadata[ek] = ev
+            metadata = encrypted_metadata
+
         req = hyperspace_pb2.UpdatePayloadRequest(id=id, metadata=metadata, collection=collection)
         try:
             resp = self.stub.UpdatePayload(req, metadata=self.metadata)
@@ -1077,6 +1403,10 @@ class HyperspaceClient:
             return False
 
     def scroll(self, limit: int, offset: int = 0, filters: Optional[List[Dict]] = None, collection: str = "") -> List[Dict]:
+        context = self._get_encryption_context(collection)
+        if context and filters:
+            filters = self._encrypt_filters(filters, context)
+            
         req = hyperspace_pb2.ScrollRequest(limit=limit, offset=offset, collection=collection)
         if filters:
             req.filters.extend([self._to_proto_filter(f) for f in filters])
@@ -1095,6 +1425,10 @@ class HyperspaceClient:
             return []
 
     def count(self, filters: Optional[List[Dict]] = None, collection: str = "") -> int:
+        context = self._get_encryption_context(collection)
+        if context and filters:
+            filters = self._encrypt_filters(filters, context)
+            
         req = hyperspace_pb2.CountRequest(collection=collection)
         if filters:
             req.filters.extend([self._to_proto_filter(f) for f in filters])

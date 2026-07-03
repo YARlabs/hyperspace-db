@@ -31,3 +31,8 @@ Set the gRPC endpoint and API key via ROS2 parameters:
 ```bash
 ros2 run ros2_hyperspace_node tribunal_router_node --ros-args -p hyperspace_endpoint:="192.168.1.50:50051" -p api_key:="YOUR_SECRET"
 ```
+
+## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
+
+Since the ROS2 node compiles and links against the C++ SDK, it natively supports Zero-Knowledge client-side encryption. Robotic developers can call `RegisterCollectionKey` and `InsertSecure` on the underlying `HyperspaceClient` instance in their custom node extensions to ensure all sensor readings, maps, and private interaction logs are projected and encrypted before sending them to the cloud or a shared DePIN server.
+

@@ -15,7 +15,7 @@ Welcome to the HyperspaceDB C++ SDK. This SDK provides gRPC generated clients an
 
 ## Generated Protobufs
 
-All protobufs (`hyperspace.pb.h` / `hyperspace.grpc.pb.h`) are pre-generated and located in the `proto/` directory. They sync perfectly with HyperspaceDB server `v3.1.0`.
+All protobufs (`hyperspace.pb.h` / `hyperspace.grpc.pb.h`) are pre-generated and located in the `proto/` directory. They sync perfectly with HyperspaceDB server `v3.1.1`.
 
 ## Using the SDK
 
@@ -220,3 +220,56 @@ grpc::Status status = stub->SearchMultiCollection(&context, req, &response);
 | `hybrid` | None | Lorentz + L2 combined metric |
 
 > **Note:** For `lorentz` geometry, dimension = spatial_dim + 1 (e.g. 129 for 128-dim spatial vectors).
+
+## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
+
+The C++ SDK supports Zero-Knowledge client-side encryption (ZK-Privacy). All sensitive vectors, metadata, and sidecar payloads are projected, noise-injected, and encrypted locally on the client machine before being sent over gRPC. Decryption is performed automatically and locally upon retrieving query results.
+
+### Usage Example
+
+```cpp
+#include <hyperspace/client.hpp>
+#include <iostream>
+
+int main() {
+    // 1. Initialize client
+    hyperspace::HyperspaceClient client("localhost:50051", "I_LOVE_HYPERSPACEDB");
+
+    std::string collection = "secure_cpp_collection";
+    std::string secret_key = "my-super-secret-key-cpp";
+
+    // 2. Set up Schema
+    ::hyperspace::CollectionSchema schema;
+    auto* comp = schema.add_components();
+    comp->set_name("primary");
+    comp->set_metric("cosine");
+    comp->set_full_dimension(3);
+    comp->set_weight(1.0);
+
+    // 3. Register Key and Create Collection Securely
+    // Noise sigma defaults to 0.02
+    client.RegisterCollectionKey(collection, secret_key, "cosine", 0.02, &schema);
+    client.CreateCollectionSecure(collection, schema);
+
+    // 4. Secure Insert
+    std::vector<double> vec = {0.1, 0.2, 0.3};
+    std::unordered_map<std::string, std::string> metadata = {{"category", "private"}};
+    std::vector<uint8_t> payload = {'S', 'e', 'c', 'r', 'e', 't'};
+
+    client.InsertSecure(1, vec, metadata, collection, payload);
+
+    // 5. Secure Search
+    auto results = client.Search(vec, 5, collection);
+
+    for (const auto& res : results) {
+        std::cout << "ID: " << res.id << ", Distance: " << res.distance << std::endl;
+        if (!res.payload.empty()) {
+            std::string dec_payload(res.payload.begin(), res.payload.end());
+            std::cout << "Decrypted Payload: " << dec_payload << std::endl;
+        }
+    }
+
+    return 0;
+}
+```
+

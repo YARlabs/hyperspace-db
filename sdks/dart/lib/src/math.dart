@@ -1,4 +1,7 @@
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 /// HyperspaceDB Spatial and Cognitive Math SDK
 /// Provides hyperbolic math functions and Cognitive AI metrics for solving LLM hallucinations.
@@ -208,4 +211,189 @@ List<double> contextResonance(List<double> thought, List<double> globalContext, 
   double factor = max(0.0, min(1.0, resonanceFactor));
   List<double> appliedPull = pullDir.map((v) => v * factor).toList();
   return expMap(thought, appliedPull, c);
+}
+
+List<List<double>> generateOrthogonalMatrix(int dimension, List<int> seedBytes) {
+  final matrix = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+  var currentHash = sha256.convert(seedBytes).bytes;
+  var hashOffset = 0;
+  final byteData = ByteData(4);
+
+  for (int i = 0; i < dimension; i++) {
+    for (int j = 0; j < dimension; j++) {
+      if (hashOffset >= 32) {
+        currentHash = sha256.convert(currentHash).bytes;
+        hashOffset = 0;
+      }
+      byteData.setUint8(0, currentHash[hashOffset]);
+      byteData.setUint8(1, currentHash[hashOffset + 1]);
+      byteData.setUint8(2, currentHash[hashOffset + 2]);
+      byteData.setUint8(3, currentHash[hashOffset + 3]);
+      final valInt = byteData.getUint32(0, Endian.little);
+      final val = (valInt / 4294967296.0) * 2.0 - 1.0;
+      matrix[i][j] = val;
+      hashOffset += 4;
+    }
+  }
+
+  // Gram-Schmidt with Reorthogonalization
+  for (int i = 0; i < dimension; i++) {
+    var v = List<double>.from(matrix[i]);
+    for (int j = 0; j < i; j++) {
+      final u = matrix[j];
+      var uDotV = dot(u, v);
+      for (int k = 0; k < dimension; k++) {
+        v[k] -= uDotV * u[k];
+      }
+      uDotV = dot(u, v);
+      for (int k = 0; k < dimension; k++) {
+        v[k] -= uDotV * u[k];
+      }
+    }
+    final vNorm = norm(v);
+    if (vNorm > 1e-15) {
+      for (int k = 0; k < dimension; k++) {
+        matrix[i][k] = v[k] / vNorm;
+      }
+    } else {
+      for (int k = 0; k < dimension; k++) {
+        matrix[i][k] = 0.0;
+      }
+      matrix[i][i] = 1.0;
+    }
+  }
+
+  return matrix;
+}
+
+List<List<double>> generateLorentzMatrix(int dimension, List<int> seedBytes) {
+  final d = dimension - 1;
+
+  final rSeed = sha256.convert([...seedBytes, ...utf8.encode("spatial")]).bytes;
+  final R = generateOrthogonalMatrix(d, rSeed);
+
+  final bSeed = sha256.convert([...seedBytes, ...utf8.encode("boost")]).bytes;
+  var beta = List<double>.filled(d, 0.0);
+  var currentHash = bSeed;
+  var hashOffset = 0;
+  final byteData = ByteData(4);
+
+  for (int i = 0; i < d; i++) {
+    if (hashOffset >= 32) {
+      currentHash = sha256.convert(currentHash).bytes;
+      hashOffset = 0;
+    }
+    byteData.setUint8(0, currentHash[hashOffset]);
+    byteData.setUint8(1, currentHash[hashOffset + 1]);
+    byteData.setUint8(2, currentHash[hashOffset + 2]);
+    byteData.setUint8(3, currentHash[hashOffset + 3]);
+    final valInt = byteData.getUint32(0, Endian.little);
+    final val = (valInt / 4294967296.0) * 2.0 - 1.0;
+    beta[i] = val;
+    hashOffset += 4;
+  }
+
+  final betaNorm = norm(beta);
+  if (betaNorm > 1e-15) {
+    for (int i = 0; i < d; i++) {
+      beta[i] = (beta[i] / betaNorm) * 0.1;
+    }
+  } else {
+    for (int i = 0; i < d; i++) {
+      beta[i] = 0.0;
+    }
+    beta[0] = 0.1;
+  }
+
+  final betaSq = dot(beta, beta);
+  final gamma = 1.0 / sqrt(1.0 - betaSq);
+
+  final Lambda_B = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+  Lambda_B[0][0] = gamma;
+  for (int j = 1; j < dimension; j++) {
+    Lambda_B[0][j] = -gamma * beta[j - 1];
+    Lambda_B[j][0] = -gamma * beta[j - 1];
+  }
+
+  final factor = (gamma - 1.0) / betaSq;
+  for (int i = 1; i < dimension; i++) {
+    for (int j = 1; j < dimension; j++) {
+      final delta = i == j ? 1.0 : 0.0;
+      Lambda_B[i][j] = delta + factor * beta[i - 1] * beta[j - 1];
+    }
+  }
+
+  final Lambda_R = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+  Lambda_R[0][0] = 1.0;
+  for (int i = 1; i < dimension; i++) {
+    for (int j = 1; j < dimension; j++) {
+      Lambda_R[i][j] = R[i - 1][j - 1];
+    }
+  }
+
+  final Lambda = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+  for (int i = 0; i < dimension; i++) {
+    for (int j = 0; j < dimension; j++) {
+      double sum = 0.0;
+      for (int k = 0; k < dimension; k++) {
+        sum += Lambda_B[i][k] * Lambda_R[k][j];
+      }
+      Lambda[i][j] = sum;
+    }
+  }
+
+  return Lambda;
+}
+
+List<double> projectVector(List<double> v, List<List<double>> matrix) {
+  final dim = v.length;
+  final projected = List<double>.filled(dim, 0.0);
+  for (int j = 0; j < dim; j++) {
+    double sum = 0.0;
+    for (int i = 0; i < dim; i++) {
+      sum += v[i] * matrix[i][j];
+    }
+    projected[j] = sum;
+  }
+  return projected;
+}
+
+List<double> injectAnisotropicNoise(List<double> v, List<int> seedBytes, double sigma) {
+  if (v.isEmpty || sigma <= 0.0) return List.from(v);
+  final dim = v.length;
+  final noise = List<double>.filled(dim, 0.0);
+  var currentHash = sha256.convert(seedBytes).bytes;
+  var hashOffset = 0;
+  final byteData = ByteData(4);
+
+  for (int i = 0; i < dim; i++) {
+    if (hashOffset >= 32) {
+      currentHash = sha256.convert(currentHash).bytes;
+      hashOffset = 0;
+    }
+    byteData.setUint8(0, currentHash[hashOffset]);
+    byteData.setUint8(1, currentHash[hashOffset + 1]);
+    byteData.setUint8(2, currentHash[hashOffset + 2]);
+    byteData.setUint8(3, currentHash[hashOffset + 3]);
+    final valInt = byteData.getUint32(0, Endian.little);
+    final val = (valInt / 4294967296.0) * 2.0 - 1.0;
+    noise[i] = val;
+    hashOffset += 4;
+  }
+
+  final vNorm = norm(v);
+  if (vNorm > 1e-15) {
+    final projLength = dot(noise, v) / (vNorm * vNorm);
+    for (int i = 0; i < dim; i++) {
+      noise[i] -= projLength * v[i];
+    }
+  }
+
+  final noiseNorm = norm(noise);
+  if (noiseNorm > 1e-15) {
+    final scale = sigma * vNorm / noiseNorm;
+    return List.generate(dim, (i) => v[i] + noise[i] * scale);
+  } else {
+    return List.from(v);
+  }
 }

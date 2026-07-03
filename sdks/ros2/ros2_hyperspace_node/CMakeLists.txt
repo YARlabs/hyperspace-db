@@ -9,6 +9,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(hyperspace_interfaces REQUIRED)
 find_package(gRPC REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(PROTO_SRC_DIR "../../cpp/src")
 set(PROTO_INC_DIR "../../cpp/include")
@@ -29,6 +30,7 @@ ament_target_dependencies(tribunal_router_node
 target_link_libraries(tribunal_router_node
   gRPC::grpc++
   protobuf::libprotobuf
+  OpenSSL::Crypto
 )
 
 install(TARGETS

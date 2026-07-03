@@ -6,7 +6,7 @@ import {
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import { HyperspaceClient, CognitiveMath, HyperbolicMath } from "hyperspace-sdk-ts";
+import { HyperspaceClient, CognitiveMathExport as CognitiveMath, HyperbolicMath } from "hyperspace-sdk-ts";
 import { z } from "zod";
 
 const HYPERSPACE_HOST = process.env.HYPERSPACE_HOST || "localhost:50051";

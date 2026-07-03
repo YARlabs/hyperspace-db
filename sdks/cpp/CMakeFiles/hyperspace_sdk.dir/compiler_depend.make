@@ -3479,8 +3479,66 @@ CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o: src/client.cpp \
   /opt/homebrew/include/grpcpp/support/stub_options.h \
   /opt/homebrew/include/grpcpp/support/sync_stream.h \
   /opt/homebrew/include/grpcpp/support/time.h \
-  /opt/homebrew/include/grpcpp/version_info.h
+  /opt/homebrew/include/grpcpp/version_info.h \
+  /opt/homebrew/include/openssl/asn1.h \
+  /opt/homebrew/include/openssl/asn1err.h \
+  /opt/homebrew/include/openssl/bio.h \
+  /opt/homebrew/include/openssl/bioerr.h \
+  /opt/homebrew/include/openssl/bn.h \
+  /opt/homebrew/include/openssl/bnerr.h \
+  /opt/homebrew/include/openssl/configuration.h \
+  /opt/homebrew/include/openssl/core.h \
+  /opt/homebrew/include/openssl/core_dispatch.h \
+  /opt/homebrew/include/openssl/crypto.h \
+  /opt/homebrew/include/openssl/cryptoerr.h \
+  /opt/homebrew/include/openssl/cryptoerr_legacy.h \
+  /opt/homebrew/include/openssl/e_os2.h \
+  /opt/homebrew/include/openssl/evp.h \
+  /opt/homebrew/include/openssl/evperr.h \
+  /opt/homebrew/include/openssl/hmac.h \
+  /opt/homebrew/include/openssl/indicator.h \
+  /opt/homebrew/include/openssl/macros.h \
+  /opt/homebrew/include/openssl/obj_mac.h \
+  /opt/homebrew/include/openssl/objects.h \
+  /opt/homebrew/include/openssl/objectserr.h \
+  /opt/homebrew/include/openssl/opensslconf.h \
+  /opt/homebrew/include/openssl/opensslv.h \
+  /opt/homebrew/include/openssl/params.h \
+  /opt/homebrew/include/openssl/rand.h \
+  /opt/homebrew/include/openssl/randerr.h \
+  /opt/homebrew/include/openssl/safestack.h \
+  /opt/homebrew/include/openssl/stack.h \
+  /opt/homebrew/include/openssl/symhacks.h \
+  /opt/homebrew/include/openssl/types.h
 
+
+/opt/homebrew/include/openssl/types.h:
+
+/opt/homebrew/include/openssl/symhacks.h:
+
+/opt/homebrew/include/openssl/randerr.h:
+
+/opt/homebrew/include/openssl/objectserr.h:
+
+/opt/homebrew/include/openssl/obj_mac.h:
+
+/opt/homebrew/include/openssl/macros.h:
+
+/opt/homebrew/include/openssl/evperr.h:
+
+/opt/homebrew/include/openssl/cryptoerr_legacy.h:
+
+/opt/homebrew/include/openssl/cryptoerr.h:
+
+/opt/homebrew/include/openssl/crypto.h:
+
+/opt/homebrew/include/openssl/core_dispatch.h:
+
+/opt/homebrew/include/openssl/bn.h:
+
+/opt/homebrew/include/openssl/bio.h:
+
+/opt/homebrew/include/openssl/asn1err.h:
 
 /opt/homebrew/include/grpcpp/security/tls_private_key_signer.h:
 
@@ -3499,6 +3557,8 @@ CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o: src/client.cpp \
 /opt/homebrew/include/grpcpp/impl/server_builder_plugin.h:
 
 /opt/homebrew/include/grpcpp/grpcpp.h:
+
+/opt/homebrew/include/openssl/indicator.h:
 
 /opt/homebrew/include/grpcpp/create_channel_posix.h:
 
@@ -3555,6 +3615,8 @@ CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o: src/client.cpp \
 /opt/homebrew/include/grpcpp/support/global_callback_hook.h:
 
 /opt/homebrew/include/grpcpp/support/callback_common.h:
+
+/opt/homebrew/include/openssl/safestack.h:
 
 /opt/homebrew/include/grpcpp/server_interface.h:
 
@@ -4186,11 +4248,15 @@ src/client.cpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdlib:
 
+/opt/homebrew/include/openssl/hmac.h:
+
 /opt/homebrew/include/absl/strings/internal/str_format/parser.h:
 
 /opt/homebrew/include/absl/log/internal/log_message.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdint:
+
+/opt/homebrew/include/openssl/stack.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__iterator/iterator.h:
 
@@ -4271,6 +4337,8 @@ src/client.cpp:
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__concepts/equality_comparable.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__utility/private_constructor_tag.h:
+
+/opt/homebrew/include/openssl/e_os2.h:
 
 /opt/homebrew/include/grpcpp/ports_def.inc:
 
@@ -4454,6 +4522,8 @@ src/client.cpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/is_member_pointer.h:
 
+/opt/homebrew/include/openssl/bnerr.h:
+
 /opt/homebrew/include/grpcpp/impl/service_type.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/is_literal_type.h:
@@ -4560,6 +4630,8 @@ src/client.cpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/has_virtual_destructor.h:
 
+/opt/homebrew/include/openssl/asn1.h:
+
 /opt/homebrew/include/absl/meta/type_traits.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__filesystem/directory_iterator.h:
@@ -4569,6 +4641,8 @@ src/client.cpp:
 /opt/homebrew/include/absl/strings/numbers.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/aligned_storage.h:
+
+/opt/homebrew/include/openssl/objects.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/add_pointer.h:
 
@@ -4627,6 +4701,8 @@ src/client.cpp:
 /opt/homebrew/include/google/protobuf/arena_align.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__std_mbstate_t.h:
+
+/opt/homebrew/include/openssl/bioerr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/remove_volatile.h:
 
@@ -4876,6 +4952,8 @@ src/client.cpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__assert:
 
+/opt/homebrew/include/openssl/rand.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__iterator/readable_traits.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/constrained_ctypes.h:
@@ -4937,6 +5015,8 @@ src/client.cpp:
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__iterator/default_sentinel.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/mem_fn.h:
+
+/opt/homebrew/include/openssl/opensslconf.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/_types/_rune_t.h:
 
@@ -5243,6 +5323,8 @@ proto/hyperspace.pb.cc:
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__system_error/error_code.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__concepts/predicate.h:
+
+/opt/homebrew/include/openssl/params.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/can_extract_key.h:
 
@@ -5638,6 +5720,8 @@ include/hyperspace/client.hpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/generate.h:
 
+/opt/homebrew/include/openssl/core.h:
+
 /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include/__stddef_max_align_t.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/nl_types.h:
@@ -5772,6 +5856,8 @@ include/hyperspace/client.hpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/cstring:
 
+/opt/homebrew/include/openssl/opensslv.h:
+
 /opt/homebrew/include/grpcpp/ports_undef.inc:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_types/_uintmax_t.h:
@@ -5838,6 +5924,8 @@ include/hyperspace/client.hpp:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_types/_intmax_t.h:
 
+/opt/homebrew/include/openssl/evp.h:
+
 /opt/homebrew/include/google/protobuf/map_entry.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/__memory/array_cookie.h:
@@ -5857,6 +5945,8 @@ include/hyperspace/client.hpp:
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_string.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/_types/_int64_t.h:
+
+/opt/homebrew/include/openssl/configuration.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/cctype:
 

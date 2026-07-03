@@ -66,10 +66,21 @@ impl Interceptor for AuthInterceptor {
     }
 }
 
+struct EncryptionContext {
+    aes_key: Vec<u8>,
+    hmac_key: Vec<u8>,
+    projection_matrices: parking_lot::RwLock<std::collections::HashMap<String, Vec<Vec<f64>>>>,
+}
+
 pub struct Client {
     inner: DatabaseClient<InterceptedService<Channel, AuthInterceptor>>,
     #[cfg(feature = "embedders")]
     embedder: Option<Box<dyn Embedder>>,
+    collection_keys: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, String>>>,
+    encryption_contexts: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, std::sync::Arc<EncryptionContext>>>>,
+    collection_metrics: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, String>>>,
+    collection_noise_sigmas: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, f64>>>,
+    collection_schemas: std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, CollectionSchema>>>,
 }
 
 impl Client {
@@ -104,6 +115,11 @@ impl Client {
             inner: client,
             #[cfg(feature = "embedders")]
             embedder: None,
+            collection_keys: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
+            encryption_contexts: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
+            collection_metrics: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
+            collection_noise_sigmas: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
+            collection_schemas: std::sync::Arc::new(parking_lot::RwLock::new(std::collections::HashMap::new())),
         })
     }
 
@@ -254,16 +270,71 @@ impl Client {
         metadata: std::collections::HashMap<String, String>,
         collection: Option<String>,
     ) -> Result<bool, tonic::Status> {
+        self.insert_secure(id, vector, metadata, None, collection).await
+    }
+
+    /// Inserts a vector with an optional payload, supporting client-side ZK-privacy.
+    ///
+    /// # Errors
+    /// Returns error if insertion fails.
+    pub async fn insert_secure(
+        &mut self,
+        id: u32,
+        vector: Vec<f64>,
+        metadata: std::collections::HashMap<String, String>,
+        payload: Option<Vec<u8>>,
+        collection: Option<String>,
+    ) -> Result<bool, tonic::Status> {
+        let coll = collection.unwrap_or_default();
+        let metric = {
+            let metrics = self.collection_metrics.read();
+            metrics.get(&coll).cloned().unwrap_or_else(|| "l2".to_string())
+        };
+
+        let context = self.get_encryption_context(&coll, vector.len(), &metric).await;
+
+        let mut final_vector = vector;
+        let mut final_metadata = metadata;
+        let mut final_payload = payload;
+
+        if let Some(ref ctx) = context {
+            // 1. Noise injection
+            let sigma = {
+                let sigmas = self.collection_noise_sigmas.read();
+                *sigmas.get(&coll).unwrap_or(&0.02)
+            };
+            if sigma > 0.0 {
+                final_vector = math::inject_anisotropic_noise(&final_vector, &ctx.hmac_key, sigma);
+            }
+
+            // 2. Vector projection
+            final_vector = self.project_collection_vector(&coll, &final_vector, ctx, &metric);
+
+            // 3. Encrypt payload
+            if let Some(p) = final_payload {
+                final_payload = Some(self.encrypt_payload(&p, &ctx.aes_key).map_err(tonic::Status::internal)?);
+            }
+
+            // 4. Hash metadata
+            let mut hashed_meta = std::collections::HashMap::new();
+            for (k, v) in final_metadata {
+                let ek = self.hash_metadata_key(&k, &ctx.hmac_key);
+                let ev = self.hash_metadata_value(&v, &ctx.hmac_key);
+                hashed_meta.insert(ek, ev);
+            }
+            final_metadata = hashed_meta;
+        }
+
         let req = InsertRequest {
             id,
-            vector,
-            metadata,
+            vector: final_vector,
+            metadata: final_metadata,
             typed_metadata: std::collections::HashMap::new(),
-            collection: collection.unwrap_or_default(),
+            collection: coll,
             origin_node_id: String::new(),
             logical_clock: 0,
             durability: 0,
-            payload: None,
+            payload: final_payload,
         };
         let resp = self.inner.insert(req).await?;
         Ok(resp.into_inner().success)
@@ -383,27 +454,67 @@ impl Client {
         use_wave: bool,
         restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
+        let coll = collection.unwrap_or_default();
+        let metric = {
+            let metrics = self.collection_metrics.read();
+            metrics.get(&coll).cloned().unwrap_or_else(|| "l2".to_string())
+        };
+
+        let context = self.get_encryption_context(&coll, vector.len(), &metric).await;
+
+        let mut final_vector = vector;
         let mut filter = std::collections::HashMap::default();
         if let Some(rf) = restart_factor {
             filter.insert("wave_restart_factor".to_string(), rf.to_string());
         }
+        let mut final_include_payload = false;
+
+        if let Some(ref ctx) = context {
+            // 1. Noise injection
+            let sigma = {
+                let sigmas = self.collection_noise_sigmas.read();
+                *sigmas.get(&coll).unwrap_or(&0.02)
+            };
+            if sigma > 0.0 {
+                final_vector = math::inject_anisotropic_noise(&final_vector, &ctx.hmac_key, sigma);
+            }
+
+            // 2. Vector projection
+            final_vector = self.project_collection_vector(&coll, &final_vector, ctx, &metric);
+
+            // 3. Force payload inclusion so we can decrypt locally
+            final_include_payload = true;
+        }
+
         let req = SearchRequest {
-            vector,
+            vector: final_vector,
             top_k,
             filter,
             filters: vec![],
             hybrid_query: None,
             hybrid_alpha: None,
             use_wasserstein,
-            collection: collection.unwrap_or_default(),
+            collection: coll,
             bm25_options: None,
             mrl_dimension,
-            include_payload: false,
+            include_payload: final_include_payload,
             component_weights,
             use_wave,
         };
         let resp = self.inner.search(req).await?;
-        Ok(resp.into_inner().results)
+        let mut results = resp.into_inner().results;
+
+        if let Some(ctx) = context {
+            for r in &mut results {
+                if let Some(p) = &r.payload {
+                    if let Ok(dec) = self.decrypt_payload(p, &ctx.aes_key) {
+                        r.payload = Some(dec);
+                    }
+                }
+            }
+        }
+
+        Ok(results)
     }
 
     /// Searches using f32 query vector (converted to protocol f64 once).
@@ -605,33 +716,85 @@ impl Client {
         use_wave: bool,
         restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
+        let coll = collection.unwrap_or_default();
+        let metric = {
+            let metrics = self.collection_metrics.read();
+            metrics.get(&coll).cloned().unwrap_or_else(|| "l2".to_string())
+        };
+
+        let context = self.get_encryption_context(&coll, vector.len(), &metric).await;
+
+        let mut final_vector = vector;
+        let mut filter = std::collections::HashMap::default();
+        if let Some(rf) = restart_factor {
+            filter.insert("wave_restart_factor".to_string(), rf.to_string());
+        }
+        let mut final_filters = filters;
+        let mut final_include_payload = false;
+
+        if let Some(ref ctx) = context {
+            // 1. Noise injection
+            let sigma = {
+                let sigmas = self.collection_noise_sigmas.read();
+                *sigmas.get(&coll).unwrap_or(&0.02)
+            };
+            if sigma > 0.0 {
+                final_vector = math::inject_anisotropic_noise(&final_vector, &ctx.hmac_key, sigma);
+            }
+
+            // 2. Vector projection
+            final_vector = self.project_collection_vector(&coll, &final_vector, ctx, &metric);
+
+            // 3. Hash metadata filters
+            let mut hashed_filter = std::collections::HashMap::new();
+            for (k, v) in filter {
+                let ek = self.hash_metadata_key(&k, &ctx.hmac_key);
+                let ev = self.hash_metadata_value(&v, &ctx.hmac_key);
+                hashed_filter.insert(ek, ev);
+            }
+            filter = hashed_filter;
+
+            // 4. Hash filters list
+            final_filters = self.encrypt_filters(final_filters, ctx);
+
+            // 5. Force include payload
+            final_include_payload = true;
+        }
+
         let (hybrid_query, hybrid_alpha) = match hybrid {
             Some((q, a)) => (Some(q), Some(a)),
             None => (None, None),
         };
 
-        let mut filter = std::collections::HashMap::default();
-        if let Some(rf) = restart_factor {
-            filter.insert("wave_restart_factor".to_string(), rf.to_string());
-        }
-
         let req = SearchRequest {
-            vector,
+            vector: final_vector,
             top_k,
             filter,
-            filters,
+            filters: final_filters,
             hybrid_query,
             hybrid_alpha,
             use_wasserstein: false,
-            collection: collection.unwrap_or_default(),
+            collection: coll,
             bm25_options,
             mrl_dimension: None,
-            include_payload: false,
+            include_payload: final_include_payload,
             component_weights: std::collections::HashMap::new(),
             use_wave,
         };
         let resp = self.inner.search(req).await?;
-        Ok(resp.into_inner().results)
+        let mut results = resp.into_inner().results;
+
+        if let Some(ctx) = context {
+            for r in &mut results {
+                if let Some(p) = &r.payload {
+                    if let Ok(dec) = self.decrypt_payload(p, &ctx.aes_key) {
+                        r.payload = Some(dec);
+                    }
+                }
+            }
+        }
+
+        Ok(results)
     }
 
     /// High-level hybrid search combining vector (semantic) and lexical (BM25) ranking.
@@ -1120,5 +1283,349 @@ impl Client {
         scored_nodes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored_nodes.truncate(usize::try_from(top_k).unwrap_or(usize::MAX));
         Ok(scored_nodes)
+    }
+
+    pub fn register_collection_key(
+        &self,
+        collection_name: String,
+        key: String,
+        metric: String,
+        noise_sigma: f64,
+        schema: Option<CollectionSchema>,
+    ) {
+        self.collection_keys.write().insert(collection_name.clone(), key);
+        self.collection_metrics.write().insert(collection_name.clone(), metric);
+        self.collection_noise_sigmas.write().insert(collection_name.clone(), noise_sigma);
+        if let Some(s) = schema {
+            self.collection_schemas.write().insert(collection_name.clone(), s);
+        }
+        self.encryption_contexts.write().remove(&collection_name);
+    }
+
+    fn derive_keys(&self, password: &str, collection_name: &str) -> (Vec<u8>, Vec<u8>) {
+        use sha2::{Sha256, Digest};
+        use pbkdf2::pbkdf2;
+
+        let salt_hash = Sha256::digest(collection_name.as_bytes());
+        let salt = salt_hash.as_slice();
+
+        let mut aes_key = vec![0u8; 32];
+        pbkdf2::<hmac::Hmac<Sha256>>(password.as_bytes(), salt, 100000, &mut aes_key).unwrap();
+
+        let mut hmac_key = vec![0u8; 32];
+        pbkdf2::<hmac::Hmac<Sha256>>(password.as_bytes(), salt, 100000, &mut hmac_key).unwrap();
+
+        (aes_key, hmac_key)
+    }
+
+    fn encrypt_payload(&self, plaintext: &[u8], aes_key: &[u8]) -> Result<Vec<u8>, String> {
+        use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+        use rand::RngExt;
+        use sha2::Sha256;
+        use pbkdf2::pbkdf2;
+
+        let mut pbkdf2_salt = vec![0u8; 16];
+        rand::rng().fill(&mut pbkdf2_salt);
+
+        let mut derived_key = vec![0u8; 32];
+        pbkdf2::<hmac::Hmac<Sha256>>(aes_key, &pbkdf2_salt, 100000, &mut derived_key).unwrap();
+
+        let cipher = Aes256Gcm::new_from_slice(&derived_key).map_err(|e| e.to_string())?;
+
+        let mut iv = vec![0u8; 12];
+        rand::rng().fill(&mut iv);
+
+        let ciphertext_and_tag = cipher
+            .encrypt(aes_gcm::Nonce::from_slice(&iv), plaintext)
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::with_capacity(16 + 12 + ciphertext_and_tag.len());
+        result.extend_from_slice(&pbkdf2_salt);
+        result.extend_from_slice(&iv);
+        result.extend_from_slice(&ciphertext_and_tag);
+        Ok(result)
+    }
+
+    fn decrypt_payload(&self, data: &[u8], aes_key: &[u8]) -> Result<Vec<u8>, String> {
+        use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+        use sha2::Sha256;
+        use pbkdf2::pbkdf2;
+
+        if data.len() < 16 + 12 + 16 {
+            return Err("Invalid encrypted payload size".to_string());
+        }
+
+        let pbkdf2_salt = &data[0..16];
+        let iv = &data[16..28];
+        let ciphertext_and_tag = &data[28..];
+
+        let mut derived_key = vec![0u8; 32];
+        pbkdf2::<hmac::Hmac<Sha256>>(aes_key, pbkdf2_salt, 100000, &mut derived_key).unwrap();
+
+        let cipher = Aes256Gcm::new_from_slice(&derived_key).map_err(|e| e.to_string())?;
+
+        cipher
+            .decrypt(aes_gcm::Nonce::from_slice(iv), ciphertext_and_tag)
+            .map_err(|e| e.to_string())
+    }
+
+    fn hash_metadata_key(&self, key: &str, hmac_key: &[u8]) -> String {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(hmac_key).unwrap();
+        mac.update(key.as_bytes());
+        let hash = hex::encode(mac.finalize().into_bytes());
+        format!("tag_{}", &hash[0..16])
+    }
+
+    fn hash_metadata_value(&self, value: &str, hmac_key: &[u8]) -> String {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(hmac_key).unwrap();
+        mac.update(value.as_bytes());
+        let hash = hex::encode(mac.finalize().into_bytes());
+        format!("val_{}", hash)
+    }
+
+    async fn get_encryption_context(&mut self, collection: &str, vector_dim: usize, metric: &str) -> Option<std::sync::Arc<EncryptionContext>> {
+        if collection.is_empty() {
+            return None;
+        }
+
+        let key = {
+            let keys = self.collection_keys.read();
+            keys.get(collection).cloned()?
+        };
+
+        let schema_needed = {
+            let schemas = self.collection_schemas.read();
+            !schemas.contains_key(collection)
+        };
+        if schema_needed {
+            if let Ok(stats) = self.get_collection_stats(collection.to_string()).await {
+                if let Some(s) = stats.schema {
+                    self.collection_schemas.write().insert(collection.to_string(), s);
+                }
+            }
+        }
+
+        let context = {
+            let mut contexts = self.encryption_contexts.write();
+            if !contexts.contains_key(collection) {
+                let (aes, hmac) = self.derive_keys(&key, collection);
+                contexts.insert(collection.to_string(), std::sync::Arc::new(EncryptionContext {
+                    aes_key: aes,
+                    hmac_key: hmac,
+                    projection_matrices: parking_lot::RwLock::new(std::collections::HashMap::new()),
+                }));
+            }
+            contexts.get(collection).cloned().unwrap()
+        };
+
+        if vector_dim > 0 {
+            let cache_key = vector_dim.to_string();
+            let matrix_needed = {
+                let matrices = context.projection_matrices.read();
+                !matrices.contains_key(&cache_key)
+            };
+            if matrix_needed {
+                let is_lorentz = metric.eq_ignore_ascii_case("lorentz") || metric.eq_ignore_ascii_case("poincare");
+                let matrix_dim = if metric.eq_ignore_ascii_case("poincare") { vector_dim + 1 } else { vector_dim };
+                let matrix = if is_lorentz {
+                    math::generate_lorentz_matrix(matrix_dim, &context.hmac_key)
+                } else {
+                    math::generate_orthogonal_matrix(matrix_dim, &context.hmac_key)
+                };
+                context.projection_matrices.write().insert(cache_key, matrix);
+            }
+        }
+
+        Some(context)
+    }
+
+    fn project_single_block(&self, sub_vec: &[f64], metric: &str, context: &EncryptionContext, block_id: Option<&str>) -> Vec<f64> {
+        let dim = sub_vec.len();
+        if dim == 0 {
+            return Vec::new();
+        }
+
+        let cache_key = match block_id {
+            Some(bid) => format!("{}_{}", dim, bid),
+            None => dim.to_string(),
+        };
+
+        let matrix_needed = {
+            let matrices = context.projection_matrices.read();
+            !matrices.contains_key(&cache_key)
+        };
+        if matrix_needed {
+            let is_lorentz = metric.eq_ignore_ascii_case("lorentz") || metric.eq_ignore_ascii_case("poincare");
+            let matrix_dim = if metric.eq_ignore_ascii_case("poincare") { dim + 1 } else { dim };
+
+            let seed = match block_id {
+                Some(bid) => {
+                    use sha2::{Sha256, Digest};
+                    let mut hasher = Sha256::new();
+                    hasher.update(&context.hmac_key);
+                    hasher.update(bid.as_bytes());
+                    hasher.finalize().to_vec()
+                }
+                None => context.hmac_key.clone(),
+            };
+
+            let matrix = if is_lorentz {
+                math::generate_lorentz_matrix(matrix_dim, &seed)
+            } else {
+                math::generate_orthogonal_matrix(matrix_dim, &seed)
+            };
+            context.projection_matrices.write().insert(cache_key.clone(), matrix);
+        }
+
+        let matrices = context.projection_matrices.read();
+        let matrix = matrices.get(&cache_key).unwrap();
+
+        if metric.eq_ignore_ascii_case("poincare") {
+            let lorentz = math::poincare_to_lorentz_f64(sub_vec);
+            let proj_lorentz = math::project_vector(&lorentz, matrix);
+            math::lorentz_to_poincare_f64(&proj_lorentz)
+        } else {
+            math::project_vector(sub_vec, matrix)
+        }
+    }
+
+    fn project_collection_vector(&self, collection: &str, vector: &[f64], context: &EncryptionContext, metric: &str) -> Vec<f64> {
+        let schemas = self.collection_schemas.read();
+        let schema = match schemas.get(collection) {
+            Some(s) => s,
+            None => return self.project_single_block(vector, metric, context, None),
+        };
+
+        if schema.components.is_empty() {
+            return self.project_single_block(vector, metric, context, None);
+        }
+
+        let mut component_cutoffs = std::collections::HashMap::<String, Vec<usize>>::new();
+        for layer in &schema.cascade_pipeline {
+            if !layer.component_name.is_empty() && layer.cutoff_dimension > 0 {
+                component_cutoffs
+                    .entry(layer.component_name.clone())
+                    .or_default()
+                    .push(layer.cutoff_dimension as usize);
+            }
+        }
+
+        for cutoffs in component_cutoffs.values_mut() {
+            cutoffs.sort_unstable();
+            cutoffs.dedup();
+        }
+
+        let mut projected_parts = Vec::new();
+        let mut current_offset = 0;
+
+        for comp in &schema.components {
+            let comp_name = &comp.name;
+            let comp_metric = &comp.metric;
+            let comp_dim = comp.full_dimension as usize;
+
+            if current_offset >= vector.len() {
+                break;
+            }
+
+            let mut end = current_offset + comp_dim;
+            if end > vector.len() {
+                end = vector.len();
+            }
+            let mut sub_vec = vector[current_offset..end].to_vec();
+            if sub_vec.len() < comp_dim {
+                sub_vec.resize(comp_dim, 0.0);
+            }
+
+            let cutoffs = component_cutoffs.get(comp_name);
+            let valid_cutoffs: Vec<usize> = match cutoffs {
+                Some(c) => c.iter().copied().filter(|&x| x < comp_dim).collect(),
+                None => Vec::new(),
+            };
+
+            let proj_sub = if valid_cutoffs.is_empty() {
+                self.project_single_block(&sub_vec, comp_metric, context, None)
+            } else {
+                let mut p_sub = Vec::new();
+                let mut block_start = 0;
+                for &cutoff in &valid_cutoffs {
+                    let block_data = &sub_vec[block_start..cutoff];
+                    let bid = format!("{}_block_{}_{}", comp_name, block_start, cutoff);
+                    p_sub.extend(self.project_single_block(block_data, comp_metric, context, Some(&bid)));
+                    block_start = cutoff;
+                }
+                if block_start < comp_dim {
+                    let block_data = &sub_vec[block_start..comp_dim];
+                    let bid = format!("{}_block_{}_{}", comp_name, block_start, comp_dim);
+                    p_sub.extend(self.project_single_block(block_data, comp_metric, context, Some(&bid)));
+                }
+                p_sub
+            };
+
+            projected_parts.extend(proj_sub);
+            current_offset += comp_dim;
+        }
+
+        if current_offset < vector.len() {
+            projected_parts.extend_from_slice(&vector[current_offset..]);
+        }
+
+        projected_parts
+    }
+
+    fn encrypt_filters(&self, filters: Vec<Filter>, context: &EncryptionContext) -> Vec<Filter> {
+        use hyperspace_proto::hyperspace::filter::Condition;
+
+        filters
+            .into_iter()
+            .map(|f| {
+                let mut nf = Filter::default();
+                if let Some(cond) = f.condition {
+                    match cond {
+                        Condition::Match(m) => {
+                            nf.condition = Some(Condition::Match(Match {
+                                key: self.hash_metadata_key(&m.key, &context.hmac_key),
+                                value: self.hash_metadata_value(&m.value, &context.hmac_key),
+                            }));
+                        }
+                        Condition::Prefix(p) => {
+                            nf.condition = Some(Condition::Prefix(Prefix {
+                                key: self.hash_metadata_key(&p.key, &context.hmac_key),
+                                prefix: self.hash_metadata_value(&p.prefix, &context.hmac_key),
+                            }));
+                        }
+                        Condition::AndOp(a) => {
+                            nf.condition = Some(Condition::AndOp(FilterAnd {
+                                conditions: self.encrypt_filters(a.conditions, context),
+                            }));
+                        }
+                        Condition::OrOp(o) => {
+                            nf.condition = Some(Condition::OrOp(FilterOr {
+                                conditions: self.encrypt_filters(o.conditions, context),
+                            }));
+                        }
+                        Condition::NotOp(n) => {
+                            let inner_filter = if let Some(cond_inner) = n.condition {
+                                self.encrypt_filters(vec![*cond_inner], context).remove(0)
+                            } else {
+                                Filter::default()
+                            };
+                            nf.condition = Some(Condition::NotOp(Box::new(FilterNot {
+                                condition: Some(Box::new(inner_filter)),
+                            })));
+                        }
+                        _ => {
+                            nf.condition = Some(cond);
+                        }
+                    }
+                }
+                nf
+            })
+            .collect()
     }
 }

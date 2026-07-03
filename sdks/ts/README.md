@@ -1,6 +1,6 @@
 # HyperspaceDB TypeScript SDK
 
-Official TypeScript client for HyperspaceDB gRPC API v3.1.0.
+Official TypeScript client for HyperspaceDB gRPC API v3.1.1.
 
 Use this SDK for:
 - collection lifecycle management
@@ -144,9 +144,9 @@ const results = await client.searchText("How to use HyperspaceDB?", 10, "coll", 
 });
 ```
 
-### Geometric Filters (New in v3.0)
+### Geometric Filters
 
-HyperspaceDB v3.0 introduces advanced spatial filters that run on the engine level:
+HyperspaceDB introduces advanced spatial filters that run on the engine level:
 
 ```ts
 // 1. Proximity Search (Ball)
@@ -323,7 +323,7 @@ const syncedThought = CognitiveMath.contextResonance(thought, globalContext, 0.5
 const relation = await client.predictRelation(1, 2);
 ```
 
-## Implicit Graph Engine (v3.2)
+## Implicit Graph Engine (v3.1.1)
 
 HyperspaceDB treats your vectors as nodes in a dynamic graph. Relationships are inferred from the geometry:
 - **Lorentz / Poincare**: Hierarchy and subsumption (light cones).
@@ -419,4 +419,59 @@ const vector = await embedder.encode("my text");
 
 All methods reject on transport/protocol errors. Targets gRPC data plane operations.
 For control plane endpoints (`/api/*`), use regular HTTP requests to the server's HTTP port.
+
+## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
+
+HyperspaceDB v3.1.1 introduces Zero-Knowledge client-side encryption (ZK-Privacy). All private data (vectors, metadata, payloads) are encrypted/obfuscated *before* they leave the client. The database server never sees the raw vectors or plaintext data, ensuring maximum security even in public or untrusted DePIN environments.
+
+### Key Features
+1. **Vector Projection**: High-dimensional vectors are projected using a deterministic orthogonal matrix (or Lorentz boost matrix for hyperbolic spaces) generated from the collection key. This preserves distances (L2, Cosine, Lorentz) while hiding the vector coordinates.
+2. **Anisotropic Noise Injection**: Injecting subtle deterministic noise into the vectors to prevent reconstruction attacks.
+3. **Payload Encryption**: Sidecar payloads are encrypted client-side using AES-256-GCM before being sent to the database.
+4. **Metadata Hashing**: Metadata keys and values are obfuscated using HMAC-SHA256.
+
+### Usage Example
+
+```ts
+import { HyperspaceClient } from "hyperspace-sdk-ts";
+
+async function main() {
+  const client = new HyperspaceClient("localhost:50051", "I_LOVE_HYPERSPACEDB");
+  
+  const collection = "encrypted_docs";
+  const secretKey = "my-super-secret-key";
+
+  // Register collection key to enable automatic client-side encryption/decryption
+  // noiseSigma defaults to 0.02 (2% anisotropic noise)
+  client.registerCollectionKey(collection, secretKey, "cosine", 0.02);
+
+  // 1. Insert vector (will be projected, noise injected, payload encrypted, metadata hashed)
+  await client.insert(
+    1, 
+    [0.1, 0.2, 0.3], 
+    { category: "confidential" }, 
+    collection,
+    undefined,
+    undefined,
+    Buffer.from("This is a highly secret document payload", "utf-8")
+  );
+
+  // 2. Search (search vector is projected and noise-injected; results are decrypted locally)
+  const results = await client.search([0.1, 0.2, 0.3], 5, collection, {
+    // Filters are automatically hashed client-side
+    filter: { category: "confidential" }
+  });
+
+  for (const res of results) {
+    console.log(`ID: ${res.id}, Distance: ${res.distance}`);
+    if (res.payload) {
+      console.log(`Decrypted Payload: ${Buffer.from(res.payload).toString("utf-8")}`);
+    }
+  }
+
+  client.close();
+}
+
+main().catch(console.error);
+```
 

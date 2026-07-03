@@ -404,10 +404,80 @@ HS_EMBED_LORENTZ_TOKENIZER_PATH=./models/lorentz_128d_tokenizer.json
 HS_EMBED_LORENTZ_DIM=129
 ```
 
-## Production Notes
-
 - Reuse long-lived clients instead of reconnecting per request.
 - Prefer `search_batch` on concurrency-heavy paths.
 - Keep collection metric/dimension consistent with your vector source.
 - For `huggingface` provider, models are cached; first startup incurs download time.
 - For `lorentz` geometry, dimension is typically spatial_dim + 1 (the time component).
+
+## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
+
+HyperspaceDB v3.1.1 supports Zero-Knowledge client-side encryption (ZK-Privacy) for Rust. Private vectors, metadata, and sidecar payloads are projected, noise-injected, and encrypted *before* they are sent to the database server. All decryption happens locally on the client.
+
+### Usage Example
+
+```rust
+use hyperspace_sdk::{Client, CollectionSchema, VectorComponent};
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Connect to server
+    let mut client = Client::connect("http://localhost:50051".to_string(), Some("I_LOVE_HYPERSPACEDB".to_string()), None).await?;
+
+    let collection = "secure_collection";
+    let secret_key = "my-super-secret-key-rust";
+
+    // 2. Configure schema
+    let schema = CollectionSchema {
+        components: vec![VectorComponent {
+            name: "primary".to_string(),
+            metric: "cosine".to_string(),
+            full_dimension: 3,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+
+    // 3. Register client key to enable ZK client-side encryption flow
+    // noise_sigma defaults to 0.02
+    client.register_collection_key(collection.to_string(), secret_key.to_string(), "cosine".to_string(), 0.02, Some(schema.clone()));
+
+    client.create_collection(collection.to_string(), schema).await?;
+
+    // 4. Insert (Auto ZK-privacy: projected, noise injected, payload encrypted, metadata obfuscated)
+    let mut metadata = HashMap::new();
+    metadata.insert("category".to_string(), "private".to_string());
+    let payload = b"Secret payload content".to_vec();
+
+    client.insert_secure(
+        1,
+        vec![0.1, 0.2, 0.3],
+        metadata,
+        Some(payload),
+        Some(collection.to_string()),
+    ).await?;
+
+    // 5. Search (Query vector projected and filters hashed; payloads decrypted locally)
+    let results = client.search(
+        vec![0.1, 0.2, 0.3],
+        5,
+        Some(collection.to_string()),
+        None,
+        false,
+        HashMap::new(),
+        false,
+        None,
+    ).await?;
+
+    for res in results {
+        println!("ID: {}, Distance: {}", res.id, res.distance);
+        if let Some(p) = res.payload {
+            println!("Decrypted Payload: {}", String::from_utf8(p)?);
+        }
+    }
+
+    Ok(())
+}
+```
+

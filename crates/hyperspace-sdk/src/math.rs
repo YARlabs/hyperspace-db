@@ -454,6 +454,223 @@ pub fn context_resonance(
     exp_map(thought, &applied_pull, c)
 }
 
+pub fn poincare_to_lorentz_f64(p: &[f64]) -> Vec<f64> {
+    let p_sq: f64 = p.iter().map(|v| v * v).sum();
+    let denom = 1.0 - p_sq;
+    let denom = if denom.abs() < 1e-7 { 1e-7 } else { denom };
+
+    let mut x = Vec::with_capacity(p.len() + 1);
+    x.push((1.0 + p_sq) / denom);
+    for pi in p {
+        x.push(2.0 * pi / denom);
+    }
+    x
+}
+
+pub fn lorentz_to_poincare_f64(x: &[f64]) -> Vec<f64> {
+    if x.is_empty() {
+        return Vec::new();
+    }
+    let denom = x[0] + 1.0;
+    let denom = if denom.abs() < 1e-7 { 1e-7 } else { denom };
+    x.iter().skip(1).map(|xi| xi / denom).collect()
+}
+
+pub fn generate_orthogonal_matrix(dimension: usize, seed_bytes: &[u8]) -> Vec<Vec<f64>> {
+    use sha2::{Digest, Sha256};
+    let mut matrix = vec![vec![0.0; dimension]; dimension];
+    let mut current_hash = Sha256::digest(seed_bytes);
+    let mut hash_offset = 0;
+
+    for i in 0..dimension {
+        for j in 0..dimension {
+            if hash_offset >= 32 {
+                current_hash = Sha256::digest(&current_hash);
+                hash_offset = 0;
+            }
+            let bytes = [
+                current_hash[hash_offset],
+                current_hash[hash_offset + 1],
+                current_hash[hash_offset + 2],
+                current_hash[hash_offset + 3],
+            ];
+            let val_uint = u32::from_le_bytes(bytes);
+            let val = (val_uint as f64 / 4_294_967_296.0) * 2.0 - 1.0;
+            matrix[i][j] = val;
+            hash_offset += 4;
+        }
+    }
+
+    // Gram-Schmidt with Reorthogonalization
+    for i in 0..dimension {
+        let mut v = matrix[i].clone();
+        for j in 0..i {
+            let u = &matrix[j];
+            let mut u_dot_v = dot(u, &v);
+            for k in 0..dimension {
+                v[k] -= u_dot_v * u[k];
+            }
+            u_dot_v = dot(u, &v);
+            for k in 0..dimension {
+                v[k] -= u_dot_v * u[k];
+            }
+        }
+        let v_norm = norm_sq(&v).sqrt();
+        if v_norm > 1e-15 {
+            for k in 0..dimension {
+                matrix[i][k] = v[k] / v_norm;
+            }
+        } else {
+            for k in 0..dimension {
+                matrix[i][k] = 0.0;
+            }
+            matrix[i][i] = 1.0;
+        }
+    }
+
+    matrix
+}
+
+pub fn generate_lorentz_matrix(dimension: usize, seed_bytes: &[u8]) -> Vec<Vec<f64>> {
+    use sha2::{Digest, Sha256};
+    let d = dimension - 1;
+
+    let mut r_seed = seed_bytes.to_vec();
+    r_seed.extend_from_slice(b"spatial");
+    let spatial_matrix = generate_orthogonal_matrix(d, &r_seed);
+
+    let mut b_seed = seed_bytes.to_vec();
+    b_seed.extend_from_slice(b"boost");
+    let mut beta = vec![0.0; d];
+    let mut current_hash = Sha256::digest(&b_seed);
+    let mut hash_offset = 0;
+
+    for i in 0..d {
+        if hash_offset >= 32 {
+            current_hash = Sha256::digest(&current_hash);
+            hash_offset = 0;
+        }
+        let bytes = [
+            current_hash[hash_offset],
+            current_hash[hash_offset + 1],
+            current_hash[hash_offset + 2],
+            current_hash[hash_offset + 3],
+        ];
+        let val_uint = u32::from_le_bytes(bytes);
+        let val = (val_uint as f64 / 4_294_967_296.0) * 2.0 - 1.0;
+        beta[i] = val;
+        hash_offset += 4;
+    }
+
+    let beta_norm = norm_sq(&beta).sqrt();
+    if beta_norm > 1e-15 {
+        for i in 0..d {
+            beta[i] = (beta[i] / beta_norm) * 0.1;
+        }
+    } else {
+        for i in 0..d {
+            beta[i] = 0.0;
+        }
+        beta[0] = 0.1;
+    }
+
+    let beta_sq = dot(&beta, &beta);
+    let gamma = 1.0 / (1.0 - beta_sq).sqrt();
+
+    let mut lambda_b = vec![vec![0.0; dimension]; dimension];
+    lambda_b[0][0] = gamma;
+    for j in 1..dimension {
+        lambda_b[0][j] = -gamma * beta[j - 1];
+        lambda_b[j][0] = -gamma * beta[j - 1];
+    }
+
+    let factor = (gamma - 1.0) / beta_sq;
+    for i in 1..dimension {
+        for j in 1..dimension {
+            let delta = if i == j { 1.0 } else { 0.0 };
+            lambda_b[i][j] = delta + factor * beta[i - 1] * beta[j - 1];
+        }
+    }
+
+    let mut lambda_r = vec![vec![0.0; dimension]; dimension];
+    lambda_r[0][0] = 1.0;
+    for i in 1..dimension {
+        for j in 1..dimension {
+            lambda_r[i][j] = spatial_matrix[i - 1][j - 1];
+        }
+    }
+
+    let mut lambda = vec![vec![0.0; dimension]; dimension];
+    for i in 0..dimension {
+        for j in 0..dimension {
+            let mut sum = 0.0;
+            for k in 0..dimension {
+                sum += lambda_b[i][k] * lambda_r[k][j];
+            }
+            lambda[i][j] = sum;
+        }
+    }
+
+    lambda
+}
+
+pub fn project_vector(v: &[f64], matrix: &[Vec<f64>]) -> Vec<f64> {
+    let dim = v.len();
+    let mut projected = vec![0.0; dim];
+    for j in 0..dim {
+        let mut sum = 0.0;
+        for i in 0..dim {
+            sum += v[i] * matrix[i][j];
+        }
+        projected[j] = sum;
+    }
+    projected
+}
+
+pub fn inject_anisotropic_noise(v: &[f64], seed_bytes: &[u8], sigma: f64) -> Vec<f64> {
+    if v.is_empty() || sigma <= 0.0 {
+        return v.to_vec();
+    }
+    let dim = v.len();
+    use sha2::{Digest, Sha256};
+    let mut noise = vec![0.0; dim];
+    let mut current_hash = Sha256::digest(seed_bytes);
+    let mut hash_offset = 0;
+
+    for i in 0..dim {
+        if hash_offset >= 32 {
+            current_hash = Sha256::digest(&current_hash);
+            hash_offset = 0;
+        }
+        let bytes = [
+            current_hash[hash_offset],
+            current_hash[hash_offset + 1],
+            current_hash[hash_offset + 2],
+            current_hash[hash_offset + 3],
+        ];
+        let val_uint = u32::from_le_bytes(bytes);
+        let val = (val_uint as f64 / 4_294_967_296.0) * 2.0 - 1.0;
+        noise[i] = val;
+        hash_offset += 4;
+    }
+
+    let v_norm = norm_sq(v).sqrt();
+    if v_norm > 1e-15 {
+        let proj_length = dot(&noise, v) / (v_norm * v_norm);
+        for i in 0..dim {
+            noise[i] -= proj_length * v[i];
+        }
+    }
+
+    let noise_norm = norm_sq(&noise).sqrt();
+    if noise_norm > 1e-15 {
+        let scale = sigma * v_norm / noise_norm;
+        v.iter().zip(noise.iter()).map(|(vi, ni)| vi + ni * scale).collect()
+    } else {
+        v.to_vec()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,5 +792,68 @@ mod tests {
         for (v_orig, v_back) in l.iter().zip(l_back.iter()) {
             assert!((v_orig - v_back).abs() < 1e-4);
         }
+    }
+
+    #[test]
+    fn test_zk_crypto_preservation() {
+        let dim = 64;
+        let seed = b"secret_seed_rust";
+        let matrix = generate_orthogonal_matrix(dim, seed);
+
+        for i in 0..dim {
+            for j in 0..dim {
+                let sum = dot(&matrix[i], &matrix[j]);
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((sum - expected).abs() < 1e-9);
+            }
+        }
+
+        let mut u = vec![0.0; dim];
+        let mut v = vec![0.0; dim];
+        for i in 0..dim {
+            u[i] = i as f64 * 0.1;
+            v[i] = (dim - i) as f64 * 0.15;
+        }
+
+        let u_proj = project_vector(&u, &matrix);
+        let v_proj = project_vector(&v, &matrix);
+
+        let dist_orig = (u.iter().zip(v.iter()).map(|(ui, vi)| (ui - vi) * (ui - vi)).sum::<f64>()).sqrt();
+        let dist_proj = (u_proj.iter().zip(v_proj.iter()).map(|(ui, vi)| (ui - vi) * (ui - vi)).sum::<f64>()).sqrt();
+
+        assert!((dist_orig - dist_proj).abs() < 1e-9);
+
+        let po_dim = 32;
+        let po_seed = b"poincare_seed_rust";
+        let po_matrix = generate_lorentz_matrix(po_dim + 1, po_seed);
+
+        let mut p_u = vec![0.0; po_dim];
+        let mut p_v = vec![0.0; po_dim];
+        for i in 0..po_dim {
+            p_u[i] = i as f64 * 0.005;
+            p_v[i] = (po_dim - i) as f64 * 0.005;
+        }
+
+        let u_lorentz = poincare_to_lorentz_f64(&p_u);
+        let v_lorentz = poincare_to_lorentz_f64(&p_v);
+
+        let u_lorentz_proj = project_vector(&u_lorentz, &po_matrix);
+        let v_lorentz_proj = project_vector(&v_lorentz, &po_matrix);
+
+        let u_proj_po = lorentz_to_poincare_f64(&u_lorentz_proj);
+        let v_proj_po = lorentz_to_poincare_f64(&v_lorentz_proj);
+
+        let poincare_dist = |x: &[f64], y: &[f64]| -> f64 {
+            let x_sq: f64 = x.iter().map(|vi| vi * vi).sum();
+            let y_sq: f64 = y.iter().map(|vi| vi * vi).sum();
+            let diff_sq: f64 = x.iter().zip(y.iter()).map(|(xi, yi)| (xi - yi) * (xi - yi)).sum();
+            let val = 1.0 + 2.0 * diff_sq / ((1.0 - x_sq) * (1.0 - y_sq));
+            val.acosh()
+        };
+
+        let d_orig = poincare_dist(&p_u, &p_v);
+        let d_proj = poincare_dist(&u_proj_po, &v_proj_po);
+
+        assert!((d_orig - d_proj).abs() < 1e-9);
     }
 }

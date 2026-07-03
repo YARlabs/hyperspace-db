@@ -2,19 +2,39 @@ package hyperspace
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"strings"
 
 	pb "github.com/yarlabs/hyperspace-sdk-go/proto"
+	"golang.org/x/crypto/pbkdf2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
 
+type EncryptionContext struct {
+	aesKey             []byte
+	hmacKey            []byte
+	projectionMatrices map[string][][]float64
+}
+
 // HyperspaceClient represents a connection to HyperspaceDB
 type HyperspaceClient struct {
-	conn   *grpc.ClientConn
-	client pb.DatabaseClient
-	apiKey string
+	conn                  *grpc.ClientConn
+	client                pb.DatabaseClient
+	apiKey                string
+	collectionKeys        map[string]string
+	encryptionContexts    map[string]*EncryptionContext
+	collectionMetrics     map[string]string
+	collectionNoiseSigmas map[string]float64
+	collectionSchemas     map[string]*pb.CollectionSchema
 }
 
 // NewClient creates a new gRPC connection pool to HyperspaceDB
@@ -31,9 +51,14 @@ func NewClient(endpoint string, apiKey string) (*HyperspaceClient, error) {
 	}
 
 	return &HyperspaceClient{
-		conn:   conn,
-		client: pb.NewDatabaseClient(conn),
-		apiKey: apiKey,
+		conn:                  conn,
+		client:                pb.NewDatabaseClient(conn),
+		apiKey:                apiKey,
+		collectionKeys:        make(map[string]string),
+		encryptionContexts:    make(map[string]*EncryptionContext),
+		collectionMetrics:     make(map[string]string),
+		collectionNoiseSigmas: make(map[string]float64),
+		collectionSchemas:     make(map[string]*pb.CollectionSchema),
 	}, nil
 }
 
@@ -51,7 +76,14 @@ func (c *HyperspaceClient) withContext(ctx context.Context) context.Context {
 	return ctx
 }
 
-func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, schema *pb.CollectionSchema) error {
+func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, schema *pb.CollectionSchema, encryptionKey string, noiseSigma float64) error {
+	metric := "l2"
+	if len(schema.Components) > 0 {
+		metric = schema.Components[0].Metric
+	}
+	if encryptionKey != "" {
+		c.RegisterCollectionKey(name, encryptionKey, metric, noiseSigma, schema)
+	}
 	req := &pb.CreateCollectionRequest{
 		Name:   name,
 		Schema: schema,
@@ -95,15 +127,108 @@ func (c *HyperspaceClient) ListCollections(ctx context.Context) ([]*pb.Collectio
 }
 
 
-// Insert pushes a new vector into the database
-func (c *HyperspaceClient) Insert(ctx context.Context, id uint32, vector []float64, collection string) error {
-	req := &pb.InsertRequest{
-		Id:         id,
-		Collection: collection,
-		Vector:     vector,
+type InsertParams struct {
+	Metadata      map[string]string
+	TypedMetadata map[string]*pb.MetadataValue
+	Payload       []byte
+	Durability    pb.DurabilityLevel
+}
+
+// Insert pushes a new vector into the database (supports ZK client-side encryption)
+func (c *HyperspaceClient) Insert(ctx context.Context, id uint32, vector []float64, collection string, params *InsertParams) error {
+	metric := "l2"
+	if c.collectionMetrics != nil {
+		if m, ok := c.collectionMetrics[collection]; ok {
+			metric = m
+		}
+	}
+	context, err := c.getEncryptionContext(ctx, collection, len(vector), metric)
+	if err != nil {
+		return err
 	}
 
-	_, err := c.client.Insert(c.withContext(ctx), req)
+	var finalVector []float64
+	var finalMetadata map[string]string
+	var finalTypedMetadata map[string]*pb.MetadataValue
+	var finalPayload []byte
+
+	if context != nil {
+		// 1. Noise injection
+		sigma := 0.02
+		if s, ok := c.collectionNoiseSigmas[collection]; ok {
+			sigma = s
+		}
+		if sigma > 0.0 {
+			finalVector = InjectAnisotropicNoise(vector, context.hmacKey, sigma)
+		} else {
+			finalVector = make([]float64, len(vector))
+			copy(finalVector, vector)
+		}
+
+		// 2. Vector projection
+		finalVector = c.projectCollectionVector(collection, finalVector, context, metric)
+
+		// 3. Payload Encryption
+		if params != nil && len(params.Payload) > 0 {
+			encPayload, err := c.encryptPayload(params.Payload, context.aesKey)
+			if err != nil {
+				return err
+			}
+			finalPayload = encPayload
+		}
+
+		// 4. Metadata Hashing
+		if params != nil && len(params.Metadata) > 0 {
+			finalMetadata = make(map[string]string)
+			for k, v := range params.Metadata {
+				ek := c.hashMetadataKey(k, context.hmacKey)
+				ev := c.hashMetadataValue(v, context.hmacKey)
+				finalMetadata[ek] = ev
+			}
+		}
+
+		if params != nil && len(params.TypedMetadata) > 0 {
+			finalTypedMetadata = make(map[string]*pb.MetadataValue)
+			for k, v := range params.TypedMetadata {
+				ek := c.hashMetadataKey(k, context.hmacKey)
+				var ev string
+				if v.GetStringValue() != "" {
+					ev = v.GetStringValue()
+				} else if v.GetIntValue() != 0 {
+					ev = fmt.Sprintf("%d", v.GetIntValue())
+				} else if v.GetBoolValue() {
+					ev = "true"
+				} else {
+					ev = "false"
+				}
+				hashedEv := c.hashMetadataValue(ev, context.hmacKey)
+				finalTypedMetadata[ek] = &pb.MetadataValue{
+					Kind: &pb.MetadataValue_StringValue{StringValue: hashedEv},
+				}
+			}
+		}
+	} else {
+		finalVector = vector
+		if params != nil {
+			finalMetadata = params.Metadata
+			finalTypedMetadata = params.TypedMetadata
+			finalPayload = params.Payload
+		}
+	}
+
+	req := &pb.InsertRequest{
+		Id:            id,
+		Collection:    collection,
+		Vector:        finalVector,
+		Metadata:      finalMetadata,
+		TypedMetadata: finalTypedMetadata,
+		Payload:       finalPayload,
+	}
+	if params != nil {
+		req.Durability = params.Durability
+	}
+
+	_, err = c.client.Insert(c.withContext(ctx), req)
 	return err
 }
 
@@ -182,14 +307,57 @@ type SearchParams struct {
 
 // Search performs ANN lookup with optional geometric filters, BM25 factors, and hybrid ranking
 func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK uint32, collection string, params *SearchParams) ([]*pb.SearchResult, error) {
+	metric := "l2"
+	if c.collectionMetrics != nil {
+		if m, ok := c.collectionMetrics[collection]; ok {
+			metric = m
+		}
+	}
+	context, err := c.getEncryptionContext(ctx, collection, len(vector), metric)
+	if err != nil {
+		return nil, err
+	}
+
+	var finalVector []float64
+	var finalFilters []*pb.Filter
+
+	if context != nil {
+		// 1. Noise injection
+		sigma := 0.02
+		if s, ok := c.collectionNoiseSigmas[collection]; ok {
+			sigma = s
+		}
+		if sigma > 0.0 {
+			finalVector = InjectAnisotropicNoise(vector, context.hmacKey, sigma)
+		} else {
+			finalVector = make([]float64, len(vector))
+			copy(finalVector, vector)
+		}
+
+		// 2. Vector projection
+		finalVector = c.projectCollectionVector(collection, finalVector, context, metric)
+
+		// 3. Encrypt filters
+		if params != nil {
+			if len(params.Filters) > 0 {
+				finalFilters = c.encryptFilters(params.Filters, context)
+			}
+		}
+	} else {
+		finalVector = vector
+		if params != nil {
+			finalFilters = params.Filters
+		}
+	}
+
 	req := &pb.SearchRequest{
-		Vector:     vector,
+		Vector:     finalVector,
 		TopK:       topK,
 		Collection: collection,
 	}
 
 	if params != nil {
-		req.Filters = params.Filters
+		req.Filters = finalFilters
 		if params.HybridQuery != "" {
 			req.HybridQuery = &params.HybridQuery
 		}
@@ -218,6 +386,18 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 	res, err := c.client.Search(c.withContext(ctx), req)
 	if err != nil {
 		return nil, err
+	}
+
+	// Decrypt result payloads if context exists
+	if context != nil {
+		for _, r := range res.Results {
+			if len(r.Payload) > 0 {
+				decPayload, err := c.decryptPayload(r.Payload, context.aesKey)
+				if err == nil {
+					r.Payload = decPayload
+				}
+			}
+		}
 	}
 
 	return res.Results, nil
@@ -440,4 +620,325 @@ func (c *HyperspaceClient) HealthCheck(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return resp.Status, nil
+}
+
+func (c *HyperspaceClient) RegisterCollectionKey(collectionName string, key string, metric string, noiseSigma float64, schema *pb.CollectionSchema) {
+	c.collectionKeys[collectionName] = key
+	c.collectionMetrics[collectionName] = metric
+	c.collectionNoiseSigmas[collectionName] = noiseSigma
+	if schema != nil {
+		c.collectionSchemas[collectionName] = schema
+	}
+	delete(c.encryptionContexts, collectionName)
+}
+
+func (c *HyperspaceClient) deriveKeys(password string, collectionName string) ([]byte, []byte) {
+	saltHash := sha256.Sum256([]byte(collectionName))
+	salt := saltHash[:]
+	aesKey := pbkdf2.Key([]byte(password), salt, 100000, 32, sha256.New)
+	hmacKey := pbkdf2.Key([]byte(password), salt, 100000, 32, sha256.New)
+	return aesKey, hmacKey
+}
+
+func (c *HyperspaceClient) encryptPayload(plaintext []byte, aesKey []byte) ([]byte, error) {
+	pbkdf2Salt := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, pbkdf2Salt); err != nil {
+		return nil, err
+	}
+
+	derivedKey := pbkdf2.Key(aesKey, pbkdf2Salt, 100000, 32, sha256.New)
+
+	block, err := aes.NewCipher(derivedKey)
+	if err != nil {
+		return nil, err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	iv := make([]byte, 12)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return nil, err
+	}
+
+	ciphertextAndTag := aesgcm.Seal(nil, iv, plaintext, nil)
+
+	result := make([]byte, 0, 16+12+len(ciphertextAndTag))
+	result = append(result, pbkdf2Salt...)
+	result = append(result, iv...)
+	result = append(result, ciphertextAndTag...)
+	return result, nil
+}
+
+func (c *HyperspaceClient) decryptPayload(data []byte, aesKey []byte) ([]byte, error) {
+	if len(data) < 16+12+16 {
+		return nil, fmt.Errorf("invalid encrypted payload size")
+	}
+
+	pbkdf2Salt := data[:16]
+	iv := data[16:28]
+	ciphertextAndTag := data[28:]
+
+	derivedKey := pbkdf2.Key(aesKey, pbkdf2Salt, 100000, 32, sha256.New)
+
+	block, err := aes.NewCipher(derivedKey)
+	if err != nil {
+		return nil, err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	return aesgcm.Open(nil, iv, ciphertextAndTag, nil)
+}
+
+func (c *HyperspaceClient) hashMetadataKey(key string, hmacKey []byte) string {
+	mac := hmac.New(sha256.New, hmacKey)
+	mac.Write([]byte(key))
+	h := hex.EncodeToString(mac.Sum(nil))
+	return "tag_" + h[:16]
+}
+
+func (c *HyperspaceClient) hashMetadataValue(value string, hmacKey []byte) string {
+	mac := hmac.New(sha256.New, hmacKey)
+	mac.Write([]byte(value))
+	h := hex.EncodeToString(mac.Sum(nil))
+	return "val_" + h
+}
+
+func (c *HyperspaceClient) getEncryptionContext(ctx context.Context, collection string, vectorDim int, metric string) (*EncryptionContext, error) {
+	if collection == "" {
+		return nil, nil
+	}
+	key, ok := c.collectionKeys[collection]
+	if !ok {
+		return nil, nil
+	}
+
+	if _, ok := c.collectionSchemas[collection]; !ok {
+		stats, err := c.GetCollectionStats(ctx, collection)
+		if err == nil && stats != nil && stats.Schema != nil {
+			c.collectionSchemas[collection] = stats.Schema
+		}
+	}
+
+	if _, ok := c.encryptionContexts[collection]; !ok {
+		aesKey, hmacKey := c.deriveKeys(key, collection)
+		c.encryptionContexts[collection] = &EncryptionContext{
+			aesKey:             aesKey,
+			hmacKey:            hmacKey,
+			projectionMatrices: make(map[string][][]float64),
+		}
+	}
+
+	context := c.encryptionContexts[collection]
+
+	if vectorDim > 0 {
+		cacheKey := fmt.Sprintf("%d", vectorDim)
+		if _, ok := context.projectionMatrices[cacheKey]; !ok {
+			isLorentz := strings.ToLower(metric) == "lorentz" || strings.ToLower(metric) == "poincare"
+			matrixDim := vectorDim
+			if strings.ToLower(metric) == "poincare" {
+				matrixDim = vectorDim + 1
+			}
+			if isLorentz {
+				context.projectionMatrices[cacheKey] = GenerateLorentzMatrix(matrixDim, context.hmacKey)
+			} else {
+				context.projectionMatrices[cacheKey] = GenerateOrthogonalMatrix(matrixDim, context.hmacKey)
+			}
+		}
+	}
+
+	return context, nil
+}
+
+func (c *HyperspaceClient) projectSingleBlock(subVec []float64, metric string, context *EncryptionContext, blockId string) []float64 {
+	dim := len(subVec)
+	if dim == 0 {
+		return []float64{}
+	}
+
+	cacheKey := fmt.Sprintf("%d", dim)
+	if blockId != "" {
+		cacheKey = fmt.Sprintf("%d_%s", dim, blockId)
+	}
+
+	if _, ok := context.projectionMatrices[cacheKey]; !ok {
+		isLorentz := strings.ToLower(metric) == "lorentz" || strings.ToLower(metric) == "poincare"
+		matrixDim := dim
+		if strings.ToLower(metric) == "poincare" {
+			matrixDim = dim + 1
+		}
+
+		seed := context.hmacKey
+		if blockId != "" {
+			h := sha256.New()
+			h.Write(seed)
+			h.Write([]byte(blockId))
+			seed = h.Sum(nil)
+		}
+
+		if isLorentz {
+			context.projectionMatrices[cacheKey] = GenerateLorentzMatrix(matrixDim, seed)
+		} else {
+			context.projectionMatrices[cacheKey] = GenerateOrthogonalMatrix(matrixDim, seed)
+		}
+	}
+
+	matrix := context.projectionMatrices[cacheKey]
+
+	if strings.ToLower(metric) == "poincare" {
+		lorentzVec := PoincareToLorentz(subVec)
+		projLorentz := ProjectVector(lorentzVec, matrix)
+		return LorentzToPoincare(projLorentz)
+	} else {
+		return ProjectVector(subVec, matrix)
+	}
+}
+
+func (c *HyperspaceClient) projectCollectionVector(collection string, vector []float64, context *EncryptionContext, metric string) []float64 {
+	schema, ok := c.collectionSchemas[collection]
+	if !ok || schema == nil || len(schema.Components) == 0 {
+		return c.projectSingleBlock(vector, metric, context, "")
+	}
+
+	componentCutoffs := make(map[string][]int)
+	for _, layer := range schema.CascadePipeline {
+		compName := layer.ComponentName
+		cutoff := int(layer.CutoffDimension)
+		if compName != "" && cutoff > 0 {
+			componentCutoffs[compName] = append(componentCutoffs[compName], cutoff)
+		}
+	}
+
+	for compName, cutoffs := range componentCutoffs {
+		unique := make(map[int]bool)
+		var sorted []int
+		for _, c := range cutoffs {
+			if !unique[c] {
+				unique[c] = true
+				sorted = append(sorted, c)
+			}
+		}
+		for i := 0; i < len(sorted); i++ {
+			for j := i + 1; j < len(sorted); j++ {
+				if sorted[i] > sorted[j] {
+					sorted[i], sorted[j] = sorted[j], sorted[i]
+				}
+			}
+		}
+		componentCutoffs[compName] = sorted
+	}
+
+	var projectedParts []float64
+	currentOffset := 0
+
+	for _, comp := range schema.Components {
+		compName := comp.Name
+		compMetric := comp.Metric
+		compDim := int(comp.FullDimension)
+
+		if currentOffset >= len(vector) {
+			break
+		}
+
+		end := currentOffset + compDim
+		if end > len(vector) {
+			end = len(vector)
+		}
+		subVec := make([]float64, compDim)
+		copy(subVec, vector[currentOffset:end])
+
+		cutoffs := componentCutoffs[compName]
+		var validCutoffs []int
+		for _, c := range cutoffs {
+			if c < compDim {
+				validCutoffs = append(validCutoffs, c)
+			}
+		}
+
+		var projSub []float64
+		if len(validCutoffs) == 0 {
+			projSub = c.projectSingleBlock(subVec, compMetric, context, "")
+		} else {
+			blockStart := 0
+			for _, cutoff := range validCutoffs {
+				blockData := subVec[blockStart:cutoff]
+				blockId := fmt.Sprintf("%s_block_%d_%d", compName, blockStart, cutoff)
+				projBlock := c.projectSingleBlock(blockData, compMetric, context, blockId)
+				projSub = append(projSub, projBlock...)
+				blockStart = cutoff
+			}
+			if blockStart < compDim {
+				blockData := subVec[blockStart:compDim]
+				blockId := fmt.Sprintf("%s_block_%d_%d", compName, blockStart, compDim)
+				projBlock := c.projectSingleBlock(blockData, compMetric, context, blockId)
+				projSub = append(projSub, projBlock...)
+			}
+		}
+
+		projectedParts = append(projectedParts, projSub...)
+		currentOffset += compDim
+	}
+
+	if currentOffset < len(vector) {
+		projectedParts = append(projectedParts, vector[currentOffset:]...)
+	}
+
+	return projectedParts
+}
+
+func (c *HyperspaceClient) encryptFilters(filters []*pb.Filter, context *EncryptionContext) []*pb.Filter {
+	if filters == nil {
+		return nil
+	}
+	res := make([]*pb.Filter, len(filters))
+	for i, f := range filters {
+		nf := &pb.Filter{}
+		if f.GetMatch() != nil {
+			ek := c.hashMetadataKey(f.GetMatch().Key, context.hmacKey)
+			ev := c.hashMetadataValue(f.GetMatch().Value, context.hmacKey)
+			nf.Condition = &pb.Filter_Match{
+				Match: &pb.Match{
+					Key:   ek,
+					Value: ev,
+				},
+			}
+		} else if f.GetPrefix() != nil {
+			ek := c.hashMetadataKey(f.GetPrefix().Key, context.hmacKey)
+			ev := c.hashMetadataValue(f.GetPrefix().Prefix, context.hmacKey)
+			nf.Condition = &pb.Filter_Prefix{
+				Prefix: &pb.Prefix{
+					Key:    ek,
+					Prefix: ev,
+				},
+			}
+		} else if f.GetAndOp() != nil {
+			nf.Condition = &pb.Filter_AndOp{
+				AndOp: &pb.FilterAnd{
+					Conditions: c.encryptFilters(f.GetAndOp().Conditions, context),
+				},
+			}
+		} else if f.GetOrOp() != nil {
+			nf.Condition = &pb.Filter_OrOp{
+				OrOp: &pb.FilterOr{
+					Conditions: c.encryptFilters(f.GetOrOp().Conditions, context),
+				},
+			}
+		} else if f.GetNotOp() != nil {
+			nf.Condition = &pb.Filter_NotOp{
+				NotOp: &pb.FilterNot{
+					Condition: c.encryptFilters([]*pb.Filter{f.GetNotOp().Condition}, context)[0],
+				},
+			}
+		} else {
+			nf.Condition = f.Condition
+		}
+		res[i] = nf
+	}
+	return res
 }

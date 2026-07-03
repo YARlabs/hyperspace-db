@@ -3,6 +3,7 @@ pyproject.toml
 hyperspace/__init__.py
 hyperspace/agents.py
 hyperspace/client.py
+hyperspace/crypto.py
 hyperspace/embedders.py
 hyperspace/math.py
 hyperspace/proto/__init__.py

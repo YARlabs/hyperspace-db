@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -18,4 +19,4 @@ add_library(hyperspace_sdk
     proto/hyperspace.pb.cc
     proto/hyperspace.grpc.pb.cc
 )
-target_link_libraries(hyperspace_sdk PUBLIC gRPC::grpc++ protobuf::libprotobuf)
+target_link_libraries(hyperspace_sdk PUBLIC gRPC::grpc++ protobuf::libprotobuf OpenSSL::Crypto)

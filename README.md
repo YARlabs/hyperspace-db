@@ -91,6 +91,10 @@ Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the N
     <td>☁️ <b>S3 Cloud Tiering</b></td>
     <td>Native <b>S3/MinIO</b> tiered storage integration. Seamlessly offload cold segments mapping Petabytes of vectors linearly without scaling local SSDs. <i>(Unlock via Cargo feature <code>s3-tiering</code> & <code>HS_STORAGE_BACKEND=s3</code>)</i>.</td>
   </tr>
+  <tr>
+    <td>🔒 <b>Zero-Knowledge ZK-Privacy</b></td>
+    <td>Protect sensitive agent memories and database operations. Supports multi-SDK Zero-Knowledge client-side encryption. Vectors are projected, noise-injected, metadata is hashed, and payloads are AES-GCM encrypted <i>before</i> leaving the client, keeping database nodes blind to raw values while preserving distance metrics.</td>
+  </tr>
 </table>
 
 ## ⚡ L0 Hot Tier Caching & WriteBuffer (Real-Time Ingestion)

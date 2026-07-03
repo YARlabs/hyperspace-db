@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: hyperspacedb
-Version: 3.1.2
+Version: 3.1.3
 Summary: Fastest Hyperbolic Vector DB Client
 Author: YARlabs
 Keywords: vector-database,ann,grpc,embeddings,hyperspace
@@ -28,7 +28,7 @@ Requires-Dist: sentence-transformers>=2.2.0; extra == "all"
 
 # HyperspaceDB Python SDK
 
-Official Python client for HyperspaceDB gRPC API v3.
+Official Python client for HyperspaceDB gRPC API v3.1.1
 
 The SDK is designed for production services and benchmark tooling:
 - collection management
@@ -190,9 +190,9 @@ client.create_collection(
 )
 ```
 
-## Geometric Filters (New in v3.0)
+## Geometric Filters
 
-HyperspaceDB v3.0 introduces advanced spatial filters that run on the engine level:
+HyperspaceDB introduces advanced spatial filters that run on the engine level:
 
 ```python
 # 1. Proximity Search (Ball)
@@ -350,7 +350,7 @@ synced_thought = context_resonance(thought, global_context, resonance_factor=0.5
 relation = client.predict_relation(id_a=1, id_b=2)
 ```
 
-## Implicit Graph Engine (v3.2)
+## Implicit Graph Engine (v3.1.1)
 
 HyperspaceDB treats your vectors as nodes in a dynamic graph. Relationships are inferred from the geometry:
 - **Lorentz / Poincare**: Hierarchy and subsumption (light cones).
@@ -456,6 +456,120 @@ vector = await embedder.encode("my text")
 | `l2` | Unit normalize | Euclidean distance |
 | `poincare` | Clamp to unit ball | Hierarchical data (ontologies) |
 | `lorentz` | None (model handles it) | Mixed hierarchical + semantic |
+
+## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
+
+HyperspaceDB v3.1.1 introduces Zero-Knowledge client-side encryption (ZK-Privacy). All private data (vectors, metadata, payloads) are encrypted/obfuscated *before* they leave the client. The database server never sees the raw vectors or plaintext data, ensuring maximum security even in public or untrusted DePIN environments.
+
+### Key Features
+
+1. **Vector Projection**: High-dimensional vectors are projected using a deterministic orthogonal matrix (or Lorentz boost matrix for hyperbolic spaces) generated from the collection key. This preserves distances (L2, Cosine, Lorentz) while hiding the vector coordinates.
+2. **Anisotropic Noise Injection**: Injecting subtle deterministic noise into the vectors to prevent reconstruction attacks.
+3. **Payload Encryption**: Sidecar payloads are encrypted client-side using AES-256-GCM before being sent to the database.
+4. **Metadata Hashing**: Metadata keys and values are obfuscated using HMAC-SHA256.
+
+### Usage Example
+
+```python
+from hyperspace import HyperspaceClient
+
+client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+
+collection = "encrypted_docs"
+secret_key = "my-super-secret-key"
+
+# Register collection key to enable automatic client-side encryption/decryption
+# noise_sigma defaults to 0.02 (2% anisotropic noise)
+client.register_collection_key(collection, secret_key, metric="cosine", noise_sigma=0.02)
+
+# 1. Insert vector (will be projected, noise injected, payload encrypted, metadata hashed)
+client.insert(
+    id=1,
+    vector=[0.1, 0.2, 0.3],
+    metadata={"category": "confidential"},
+    collection=collection,
+    payload=b"This is a highly secret document payload",
+)
+
+# 2. Search (search vector is projected and noise-injected; results are decrypted locally)
+results = client.search(
+    vector=[0.1, 0.2, 0.3],
+    top_k=5,
+    collection=collection,
+    filter={"category": "confidential"},  # Filters are automatically hashed client-side
+)
+
+for res in results:
+    print(f"ID: {res['id']}, Distance: {res['distance']}")
+    if res.get("payload"):
+        print(f"Decrypted Payload: {res['payload'].decode('utf-8')}")
+
+client.close()
+```
+
+### Low-Level Crypto API
+
+You can use the primitives directly for custom workflows (e.g., pre-encrypting payloads before batch insert):
+
+```python
+from hyperspace.crypto import derive_keys, encrypt_payload, decrypt_payload, hash_metadata_key, hash_metadata_value
+
+# Derive deterministic AES + HMAC keys from your secret and collection name
+aes_key, hmac_key = derive_keys(password="my-super-secret-key", collection_name="encrypted_docs")
+
+# Encrypt a payload
+plaintext = b"Confidential instructions for the AI agent"
+ciphertext = encrypt_payload(plaintext, aes_key)
+
+# Decrypt it back
+recovered = decrypt_payload(ciphertext, aes_key)
+assert recovered == plaintext
+
+# Hash metadata for safe server-side storage
+hashed_key   = hash_metadata_key("category", hmac_key)    # → "tag_3f8a9b..."
+hashed_value = hash_metadata_value("confidential", hmac_key)  # → "val_7c2e1d..."
+```
+
+### ZK-Privacy for All Vector Geometries
+
+ZK-Privacy is fully supported for **all geometry types** and **MRL (Matryoshka) vectors**:
+
+| Geometry | Projection Method | Notes |
+|---|---|---|
+| `cosine` | Orthogonal matrix (Gram-Schmidt) | Unit-norm preserved |
+| `l2` | Orthogonal matrix | Euclidean distance preserved |
+| `poincare` | Orthogonal matrix + ball clamp | `‖x‖ < 1` boundary enforced post-projection |
+| `lorentz` | Lorentz boost matrix `O(1,d)` | Time component x₀ recalculated after projection |
+| `hybrid` | Per-component projection | Each sub-vector projected independently |
+| `mrl` / cascade | Full vector projected, cutoffs applied after | Sub-vectors share the same projection matrix |
+
+### ZK-Privacy API Reference
+
+- `register_collection_key(collection_name, key, metric="l2", noise_sigma=0.02, schema=None)` — Register a secret key for a collection; all subsequent insert/search/filter calls on that collection are automatically ZK-encrypted.
+- `create_encrypted_collection(name, key, schema, noise_sigma=0.02)` — Create collection and register its key in a single call.
+
+### Security Model
+
+```
+Client machine (trusted)          Server / DePIN node (untrusted)
+─────────────────────────         ──────────────────────────────────
+plaintext vector                  projected + noisy vector  ← server stores this
+    │                                       ▲
+    ├── orthogonal projection ──────────────┘
+    ├── anisotropic noise injection
+    │
+plaintext payload                 AES-256-GCM ciphertext    ← server stores this
+    │                                       ▲
+    └── AES-256-GCM encrypt ───────────────┘
+
+plaintext metadata key/value      HMAC-SHA256 hash          ← server stores this
+    │                                       ▲
+    └── HMAC-SHA256 ──────────────────────-┘
+```
+
+The server **never** receives the secret key, the plaintext vectors, the plaintext payloads, or the plaintext metadata values. Decryption happens entirely on the client side.
+
+---
 
 ## Best Practices
 

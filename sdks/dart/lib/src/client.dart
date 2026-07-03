@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:convert';
 import 'package:grpc/grpc.dart';
 import 'generated/hyperspace.pbgrpc.dart' hide Filter;
 import 'generated/hyperspace.pb.dart' as pb;
 import 'package:fixnum/fixnum.dart';
+import 'package:crypto/crypto.dart';
+import 'package:pointycastle/export.dart' as pc;
+import 'math.dart' as hsMath;
 
 /// Extension to support Sidecar Payload Storage (v3.2) without requiring immediate stub regeneration
 extension SearchResultPayload on pb.SearchResult {
@@ -67,11 +72,24 @@ class Filter {
   }
 }
 
+class EncryptionContext {
+  final List<int> aesKey;
+  final List<int> hmacKey;
+  final Map<String, List<List<double>>> projectionMatrices;
+  EncryptionContext(this.aesKey, this.hmacKey) : projectionMatrices = {};
+}
+
 class HyperspaceClient {
   final ClientChannel _channel;
   late final DatabaseClient _stub;
   final String apiKey;
   final String? tenantId;
+
+  final _collectionKeys = <String, String>{};
+  final _encryptionContexts = <String, EncryptionContext>{};
+  final _collectionMetrics = <String, String>{};
+  final _collectionNoiseSigmas = <String, double>{};
+  final _collectionSchemas = <String, pb.CollectionSchema>{};
 
   HyperspaceClient(String address, int port, {this.apiKey = '', this.tenantId})
       : _channel = ClientChannel(
@@ -110,7 +128,11 @@ class HyperspaceClient {
     await _channel.shutdown();
   }
 
-  Future<bool> createCollection(String name, pb.CollectionSchema schema) async {
+  Future<bool> createCollection(String name, pb.CollectionSchema schema, {String encryptionKey = '', double noiseSigma = 0.02}) async {
+    final metric = schema.components.isNotEmpty ? schema.components[0].metric : "l2";
+    if (encryptionKey.isNotEmpty) {
+      registerCollectionKey(name, encryptionKey, metric: metric, noiseSigma: noiseSigma, schema: schema);
+    }
     final req = CreateCollectionRequest(name: name, schema: schema);
     final resp = await _stub.createCollection(req);
     return resp.status.isNotEmpty;
@@ -135,16 +157,65 @@ class HyperspaceClient {
     Map<String, dynamic>? typedMetadata,
     List<int>? payload,
   }) async {
+    final metric = _collectionMetrics[collection] ?? "l2";
+    final context = await _getEncryptionContext(collection, vectorDim: vector.length, metric: metric);
+
+    List<double> finalVector = vector;
+    Map<String, String>? finalMetadata = metadata;
+    Map<String, pb.MetadataValue>? finalTypedMetadata;
+    List<int>? finalPayload = payload;
+
+    if (context != null) {
+      // 1. Noise injection
+      final sigma = _collectionNoiseSigmas[collection] ?? 0.02;
+      if (sigma > 0.0) {
+        finalVector = hsMath.injectAnisotropicNoise(vector, context.hmacKey, sigma);
+      } else {
+        finalVector = List.from(vector);
+      }
+
+      // 2. Vector projection
+      finalVector = _projectCollectionVector(collection, finalVector, context, metric);
+
+      // 3. Payload Encryption
+      if (payload != null && payload.isNotEmpty) {
+        finalPayload = encryptPayload(payload, context.aesKey);
+      }
+
+      // 4. Metadata Hashing
+      if (metadata != null) {
+        finalMetadata = {};
+        metadata.forEach((k, v) {
+          final ek = hashMetadataKey(k, context.hmacKey);
+          final ev = hashMetadataValue(v, context.hmacKey);
+          finalMetadata![ek] = ev;
+        });
+      }
+
+      if (typedMetadata != null) {
+        finalTypedMetadata = {};
+        typedMetadata.forEach((k, v) {
+          final ek = hashMetadataKey(k, context.hmacKey);
+          final String evStr = v is String ? v : v.toString();
+          final ev = hashMetadataValue(evStr, context.hmacKey);
+          finalTypedMetadata![ek] = pb.MetadataValue()..stringValue = ev;
+        });
+      }
+    }
+
     final req = InsertRequest(
       id: id,
-      vector: vector,
+      vector: finalVector,
       collection: collection,
     );
-    if (metadata != null) req.metadata.addAll(metadata);
-    if (typedMetadata != null) {
+    if (finalMetadata != null) req.metadata.addAll(finalMetadata);
+    if (finalTypedMetadata != null) {
+      req.typedMetadata.addAll(finalTypedMetadata);
+    } else if (typedMetadata != null) {
       typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
     }
-    if (payload != null) req.payload = payload;
+    if (finalPayload != null) req.payload = finalPayload;
+
     final resp = await _stub.insert(req);
     return resp.success;
   }
@@ -220,26 +291,80 @@ class HyperspaceClient {
     bool useWave = false,
     double? restartFactor,
   }) async {
+    final metric = _collectionMetrics[collection] ?? "l2";
+    final context = await _getEncryptionContext(collection, vectorDim: vector.length, metric: metric);
+
+    List<double> finalVector = vector;
+    Map<String, String>? finalFilter = filter;
+    List<pb.Filter>? finalFilters;
+    bool finalIncludePayload = includePayload;
+
+    if (context != null) {
+      // 1. Noise injection
+      final sigma = _collectionNoiseSigmas[collection] ?? 0.02;
+      if (sigma > 0.0) {
+        finalVector = hsMath.injectAnisotropicNoise(vector, context.hmacKey, sigma);
+      } else {
+        finalVector = List.from(vector);
+      }
+
+      // 2. Vector projection
+      finalVector = _projectCollectionVector(collection, finalVector, context, metric);
+
+      // 3. Encrypt filters
+      if (filter != null) {
+        finalFilter = {};
+        filter.forEach((k, v) {
+          final ek = hashMetadataKey(k, context.hmacKey);
+          final ev = hashMetadataValue(v, context.hmacKey);
+          finalFilter![ek] = ev;
+        });
+      }
+
+      if (filters != null) {
+        finalFilters = _encryptFilters(filters.map((f) => f._proto).toList(), context);
+      }
+
+      // 4. Force payload inclusion so we can decrypt locally
+      finalIncludePayload = true;
+    }
+
     final req = SearchRequest(
-      vector: vector,
+      vector: finalVector,
       topK: topK,
       collection: collection,
     );
-    if (includePayload) req.includePayload = includePayload;
+    if (finalIncludePayload) req.includePayload = finalIncludePayload;
     if (hybridQuery != null) req.hybridQuery = hybridQuery;
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
     if (bm25Options != null) req.bm25Options = bm25Options;
     if (mrlDimension != null) req.mrlDimension = mrlDimension;
     if (useWasserstein != null) req.useWasserstein = useWasserstein;
-    if (filter != null) req.filter.addAll(filter);
+    if (finalFilter != null) req.filter.addAll(finalFilter);
     if (restartFactor != null) {
       req.filter['wave_restart_factor'] = restartFactor.toString();
     }
-    if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
+    if (finalFilters != null) {
+      req.filters.addAll(finalFilters);
+    } else if (filters != null) {
+      req.filters.addAll(filters.map((f) => f._proto));
+    }
     if (componentWeights != null) req.componentWeights.addAll(componentWeights);
     if (useWave) req.useWave = useWave;
 
     final resp = await _stub.search(req);
+
+    if (context != null) {
+      for (var r in resp.results) {
+        if (r.payload.isNotEmpty) {
+          try {
+            final dec = decryptPayload(r.payload, context.aesKey);
+            r.setField(5, dec);
+          } catch (_) {}
+        }
+      }
+    }
+
     return resp.results;
   }
 
@@ -488,5 +613,244 @@ class HyperspaceClient {
 
     final String recommendation = maxDelta < 0.15 ? 'lorentz' : (maxDelta < 0.30 ? 'poincare' : 'l2');
     return {'delta': maxDelta, 'recommendation': recommendation};
+  }
+
+  void registerCollectionKey(String collectionName, String key, {String metric = "l2", double noiseSigma = 0.02, pb.CollectionSchema? schema}) {
+    _collectionKeys[collectionName] = key;
+    _collectionMetrics[collectionName] = metric;
+    _collectionNoiseSigmas[collectionName] = noiseSigma;
+    if (schema != null) {
+      _collectionSchemas[collectionName] = schema;
+    }
+    _encryptionContexts.remove(collectionName);
+  }
+
+  List<int> pbkdf2Derive(List<int> passwordBytes, List<int> salt, int iterations, int keyLength) {
+    final kdf = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA256Digest(), 64));
+    kdf.init(pc.Pbkdf2Parameters(Uint8List.fromList(salt), iterations, keyLength));
+    return kdf.process(Uint8List.fromList(passwordBytes));
+  }
+
+  Map<String, List<int>> deriveKeys(String password, String collectionName) {
+    final salt = sha256.convert(utf8.encode(collectionName)).bytes;
+    final aesKey = pbkdf2Derive(utf8.encode(password), salt, 100000, 32);
+    final hmacKey = pbkdf2Derive(utf8.encode(password), salt, 100000, 32);
+    return {'aesKey': aesKey, 'hmacKey': hmacKey};
+  }
+
+  List<int> encryptPayload(List<int> plaintext, List<int> aesKey) {
+    final pbkdf2Salt = Uint8List(16);
+    final rng = Random.secure();
+    for (int i = 0; i < 16; i++) pbkdf2Salt[i] = rng.nextInt(256);
+
+    final derivedKey = pbkdf2Derive(aesKey, pbkdf2Salt, 100000, 32);
+
+    final iv = Uint8List(12);
+    for (int i = 0; i < 12; i++) iv[i] = rng.nextInt(256);
+
+    final cipher = pc.GCMBlockCipher(pc.AESEngine());
+    cipher.init(true, pc.AEADParameters(pc.KeyParameter(Uint8List.fromList(derivedKey)), 128, iv, Uint8List(0)));
+
+    final ciphertextAndTag = cipher.process(Uint8List.fromList(plaintext));
+
+    final builder = BytesBuilder();
+    builder.add(pbkdf2Salt);
+    builder.add(iv);
+    builder.add(ciphertextAndTag);
+    return builder.toBytes();
+  }
+
+  List<int> decryptPayload(List<int> data, List<int> aesKey) {
+    if (data.length < 16 + 12 + 16) {
+      throw ArgumentError("Invalid encrypted payload size");
+    }
+    final pbkdf2Salt = data.sublist(0, 16);
+    final iv = data.sublist(16, 28);
+    final ciphertextAndTag = data.sublist(28);
+
+    final derivedKey = pbkdf2Derive(aesKey, pbkdf2Salt, 100000, 32);
+
+    final cipher = pc.GCMBlockCipher(pc.AESEngine());
+    cipher.init(false, pc.AEADParameters(pc.KeyParameter(Uint8List.fromList(derivedKey)), 128, Uint8List.fromList(iv), Uint8List(0)));
+
+    return cipher.process(Uint8List.fromList(ciphertextAndTag));
+  }
+
+  String hashMetadataKey(String key, List<int> hmacKey) {
+    final hmac = Hmac(sha256, hmacKey);
+    final hash = hmac.convert(utf8.encode(key)).toString();
+    return "tag_" + hash.substring(0, 16);
+  }
+
+  String hashMetadataValue(String value, List<int> hmacKey) {
+    final hmac = Hmac(sha256, hmacKey);
+    final hash = hmac.convert(utf8.encode(value)).toString();
+    return "val_" + hash;
+  }
+
+  Future<EncryptionContext?> _getEncryptionContext(String collection, {int? vectorDim, String metric = "l2"}) async {
+    if (collection.isEmpty) return null;
+    final key = _collectionKeys[collection];
+    if (key == null) return null;
+
+    if (!_collectionSchemas.containsKey(collection)) {
+      try {
+        final stats = await getCollectionStats(collection);
+        if (stats.hasSchema()) {
+          _collectionSchemas[collection] = stats.schema;
+        }
+      } catch (_) {}
+    }
+
+    if (!_encryptionContexts.containsKey(collection)) {
+      final keys = deriveKeys(key, collection);
+      _encryptionContexts[collection] = EncryptionContext(keys['aesKey']!, keys['hmacKey']!);
+    }
+
+    final context = _encryptionContexts[collection]!;
+
+    if (vectorDim != null) {
+      final cacheKey = vectorDim.toString();
+      if (!context.projectionMatrices.containsKey(cacheKey)) {
+        final isLorentz = ["lorentz", "poincare"].contains(metric.toLowerCase());
+        final matrixDim = metric.toLowerCase() == "poincare" ? vectorDim + 1 : vectorDim;
+        if (isLorentz) {
+          context.projectionMatrices[cacheKey] = hsMath.generateLorentzMatrix(matrixDim, context.hmacKey);
+        } else {
+          context.projectionMatrices[cacheKey] = hsMath.generateOrthogonalMatrix(matrixDim, context.hmacKey);
+        }
+      }
+    }
+
+    return context;
+  }
+
+  List<double> _projectSingleBlock(List<double> subVec, String metric, EncryptionContext context, {String? blockId}) {
+    final dim = subVec.length;
+    if (dim == 0) return [];
+
+    final cacheKey = blockId != null ? "${dim}_$blockId" : "$dim";
+
+    if (!context.projectionMatrices.containsKey(cacheKey)) {
+      final isLorentz = ["lorentz", "poincare"].contains(metric.toLowerCase());
+      final matrixDim = metric.toLowerCase() == "poincare" ? dim + 1 : dim;
+
+      var seed = context.hmacKey;
+      if (blockId != null) {
+        seed = sha256.convert([...seed, ...utf8.encode(blockId)]).bytes;
+      }
+
+      if (isLorentz) {
+        context.projectionMatrices[cacheKey] = hsMath.generateLorentzMatrix(matrixDim, seed);
+      } else {
+        context.projectionMatrices[cacheKey] = hsMath.generateOrthogonalMatrix(matrixDim, seed);
+      }
+    }
+
+    final matrix = context.projectionMatrices[cacheKey]!;
+
+    if (metric.toLowerCase() == "poincare") {
+      final lorentzVec = hsMath.poincareToLorentz(subVec);
+      final projLorentz = hsMath.projectVector(lorentzVec, matrix);
+      return hsMath.lorentzToPoincare(projLorentz);
+    } else {
+      return hsMath.projectVector(subVec, matrix);
+    }
+  }
+
+  List<double> _projectCollectionVector(String collection, List<double> vector, EncryptionContext context, String metric) {
+    final schema = _collectionSchemas[collection];
+    if (schema == null || schema.components.isEmpty) {
+      return _projectSingleBlock(vector, metric, context);
+    }
+
+    final componentCutoffs = <String, List<int>>{};
+    for (var layer in schema.cascadePipeline) {
+      final compName = layer.componentName;
+      final cutoff = layer.cutoffDimension;
+      if (compName.isNotEmpty && cutoff > 0) {
+        componentCutoffs.putIfAbsent(compName, () => []).add(cutoff);
+      }
+    }
+
+    for (var compName in componentCutoffs.keys) {
+      final cutoffs = componentCutoffs[compName]!.toSet().toList()..sort();
+      componentCutoffs[compName] = cutoffs;
+    }
+
+    final projectedParts = <double>[];
+    var currentOffset = 0;
+
+    for (var comp in schema.components) {
+      final compName = comp.name;
+      final compMetric = comp.metric;
+      final compDim = comp.fullDimension;
+
+      if (currentOffset >= vector.length) {
+        break;
+      }
+
+      var end = currentOffset + compDim;
+      if (end > vector.length) end = vector.length;
+      var subVec = vector.sublist(currentOffset, end);
+      if (subVec.length < compDim) {
+        subVec = [...subVec, ...List<double>.filled(compDim - subVec.length, 0.0)];
+      }
+
+      final cutoffs = componentCutoffs[compName] ?? [];
+      final validCutoffs = cutoffs.where((c) => c < compDim).toList();
+
+      List<double> projSub;
+      if (validCutoffs.isEmpty) {
+        projSub = _projectSingleBlock(subVec, compMetric, context);
+      } else {
+        projSub = [];
+        var blockStart = 0;
+        for (var cutoff in validCutoffs) {
+          final blockData = subVec.sublist(blockStart, cutoff);
+          final projBlock = _projectSingleBlock(blockData, compMetric, context, blockId: "${compName}_block_${blockStart}_$cutoff");
+          projSub.addAll(projBlock);
+          blockStart = cutoff;
+        }
+        if (blockStart < compDim) {
+          final blockData = subVec.sublist(blockStart, compDim);
+          final projBlock = _projectSingleBlock(blockData, compMetric, context, blockId: "${compName}_block_${blockStart}_$compDim");
+          projSub.addAll(projBlock);
+        }
+      }
+
+      projectedParts.addAll(projSub);
+      currentOffset += compDim;
+    }
+
+    if (currentOffset < vector.length) {
+      projectedParts.addAll(vector.sublist(currentOffset));
+    }
+
+    return projectedParts;
+  }
+
+  List<pb.Filter> _encryptFilters(List<pb.Filter> filters, EncryptionContext context) {
+    return filters.map((f) {
+      final nf = pb.Filter();
+      if (f.hasMatch()) {
+        nf.match = pb.Match()
+          ..key = hashMetadataKey(f.match.key, context.hmacKey)
+          ..value = hashMetadataValue(f.match.value, context.hmacKey);
+      } else if (f.hasPrefix()) {
+        nf.prefix = pb.Prefix()
+          ..key = hashMetadataKey(f.prefix.key, context.hmacKey)
+          ..prefix = hashMetadataValue(f.prefix.prefix, context.hmacKey);
+      } else if (f.hasAndOp()) {
+        nf.andOp = pb.FilterAnd()..conditions.addAll(_encryptFilters(f.andOp.conditions, context));
+      } else if (f.hasOrOp()) {
+        nf.orOp = pb.FilterOr()..conditions.addAll(_encryptFilters(f.orOp.conditions, context));
+      } else if (f.hasNotOp()) {
+        nf.notOp = pb.FilterNot()..condition = _encryptFilters([f.notOp.condition], context)[0];
+      } else {
+        nf.mergeFromMessage(f);
+      }
+      return nf;
+    }).toList();
   }
 }
