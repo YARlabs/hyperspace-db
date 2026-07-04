@@ -14,6 +14,7 @@ categories = ["database", "api-bindings"]
 
 [features]
 default = []
+nightly-simd = []
 embedders = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait"]
 local-onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "dep:serde", "dep:async-trait"]
 huggingface = ["local-onnx", "dep:hf-hub"]

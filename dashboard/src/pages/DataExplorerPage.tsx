@@ -39,6 +39,9 @@ export function DataExplorerPage() {
         }
     }, [collections, selectedCollection])
 
+    const currentCollectionInfo = collections?.find((c: any) => (typeof c === 'string' ? c : c.name) === selectedCollection);
+    const privilege = typeof currentCollectionInfo === 'string' ? 'Admin' : (currentCollectionInfo?.privilege || 'Admin');
+
     return (
         <div className="space-y-6 fade-in h-full flex flex-col">
             <div className="flex items-center justify-between flex-none">
@@ -47,7 +50,9 @@ export function DataExplorerPage() {
                     <p className="text-muted-foreground">Inspect vectors and validate search</p>
                 </div>
                 <div className="flex items-center gap-4">
-                    <InsertVectorDialog collection={selectedCollection} />
+                    {privilege !== "ReadOnly" && (
+                        <InsertVectorDialog collection={selectedCollection} />
+                    )}
                     <div className="w-[300px]">
                         <Select value={selectedCollection} onValueChange={handleSelect}>
                             <SelectTrigger>
@@ -72,7 +77,7 @@ export function DataExplorerPage() {
                     </TabsList>
 
                     <TabsContent value="raw" className="flex-1 overflow-hidden">
-                        <RawDataView collection={selectedCollection} />
+                        <RawDataView collection={selectedCollection} privilege={privilege} />
                     </TabsContent>
 
                     <TabsContent value="playground" className="flex-1">
@@ -88,7 +93,7 @@ export function DataExplorerPage() {
     )
 }
 
-function RawDataView({ collection }: { collection: string }) {
+function RawDataView({ collection, privilege }: { collection: string, privilege: string }) {
     const [page, setPage] = useState(0)
     const [limit] = useState(50)
     const [isEditing, setIsEditing] = useState<any>(null)
@@ -152,14 +157,14 @@ function RawDataView({ collection }: { collection: string }) {
                                 <TableHead>Vector (Prefix)</TableHead>
                                 <TableHead>Metadata</TableHead>
                                 <TableHead>Payload (Disk)</TableHead>
-                                <TableHead className="w-[50px]"></TableHead>
+                                {privilege !== "ReadOnly" && <TableHead className="w-[50px]"></TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
-                                <TableRow><TableCell colSpan={5} className="text-center h-24"><div className="animate-pulse">Loading data plane...</div></TableCell></TableRow>
+                                <TableRow><TableCell colSpan={privilege === "ReadOnly" ? 4 : 5} className="text-center h-24"><div className="animate-pulse">Loading data plane...</div></TableCell></TableRow>
                             ) : (!items || items.length === 0) ? (
-                                <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">No vectors found</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={privilege === "ReadOnly" ? 4 : 5} className="text-center h-24 text-muted-foreground">No vectors found</TableCell></TableRow>
                             ) : (
                                 items.map((item: any) => {
                                     // Handle both [id, vec, meta] and {id, vector, metadata} formats
@@ -202,16 +207,18 @@ function RawDataView({ collection }: { collection: string }) {
                                                     <span className="text-[10px] text-zinc-600 italic">RAM Only</span>
                                                 )}
                                             </TableCell>
-                                             <TableCell>
-                                                <div className="flex items-center gap-1">
-                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-white" onClick={() => setIsEditing({ id, meta, typedMeta })}>
-                                                        <Edit3 className="h-3 w-3" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-red-400" onClick={() => handleDelete(id)}>
-                                                        <Trash2 className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
-                                             </TableCell>
+                                            {privilege !== "ReadOnly" && (
+                                                <TableCell>
+                                                    <div className="flex items-center gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-white" onClick={() => setIsEditing({ id, meta, typedMeta })}>
+                                                            <Edit3 className="h-3 w-3" />
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-500 hover:text-red-400" onClick={() => handleDelete(id)}>
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     );
                                 })

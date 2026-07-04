@@ -94,6 +94,11 @@ impl CollectionManager {
         format!("{user_id}_{collection_name}")
     }
 
+    #[cfg(feature = "eco-monitor")]
+    pub fn base_path(&self) -> &Path {
+        &self.base_path
+    }
+
     pub fn new(
         base_path: PathBuf,
         replication_tx: broadcast::Sender<ReplicationLog>,
@@ -747,7 +752,7 @@ impl CollectionMetadata {
             .map_or_else(|| "l2".to_string(), |c| c.metric.clone())
     }
 
-    fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
+    pub fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
         let metric = self.metric_name();
         let dim = self.dimension();
         match self.quantization.as_str() {

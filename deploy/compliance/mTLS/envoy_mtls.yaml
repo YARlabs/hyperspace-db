@@ -1,0 +1,95 @@
+# Envoy mTLS / TLS 1.3 Reverse Proxy Configuration Template
+# Routes inbound HTTPS/gRPC mTLS traffic to local HyperspaceDB instance
+
+static_resources:
+  listeners:
+  - name: hyperspacedb_mtls_listener
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 443
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          codec_type: AUTO
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              # gRPC Data Plane routing
+              - match:
+                  prefix: "/"
+                  headers:
+                  - name: "content-type"
+                    string_match:
+                      prefix: "application/grpc"
+                route:
+                  cluster: hyperspacedb_grpc
+                  timeout: 0s
+                  max_stream_duration:
+                    grpc_timeout_header_max: 0s
+              # Fallback/HTTP Management API routing
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: hyperspacedb_http
+                  timeout: 60s
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: /etc/envoy/certs/server.crt
+              private_key:
+                filename: /etc/envoy/certs/server.key
+            validation_context:
+              trusted_ca:
+                filename: /etc/envoy/certs/ca.crt
+              require_client_certificate: true
+            tls_params:
+              tls_minimum_protocol_version: TLSv1_3
+
+  clusters:
+  # HyperspaceDB gRPC Data Plane (HTTP/2 backend)
+  - name: hyperspacedb_grpc
+    connect_timeout: 0.5s
+    type: STATIC
+    dns_lookup_family: V4_ONLY
+    lb_policy: ROUND_ROBIN
+    http2_protocol_options: {}
+    load_assignment:
+      cluster_name: hyperspacedb_grpc
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 50051
+
+  # HyperspaceDB HTTP Management API (HTTP/1.1 backend)
+  - name: hyperspacedb_http
+    connect_timeout: 0.5s
+    type: STATIC
+    dns_lookup_family: V4_ONLY
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: hyperspacedb_http
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 50050

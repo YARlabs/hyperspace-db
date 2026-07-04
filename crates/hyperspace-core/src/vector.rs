@@ -514,6 +514,26 @@ pub struct BinaryHyperVector {
     pub alpha: f32, // Stored to preserve the conformal factor (for distances)
 }
 
+#[allow(dead_code)]
+const SIGN_LUT: [[f64; 4]; 16] = [
+    [-1.0, -1.0, -1.0, -1.0], // 0000
+    [1.0, -1.0, -1.0, -1.0],  // 0001
+    [-1.0, 1.0, -1.0, -1.0],  // 0010
+    [1.0, 1.0, -1.0, -1.0],   // 0011
+    [-1.0, -1.0, 1.0, -1.0],  // 0100
+    [1.0, -1.0, 1.0, -1.0],   // 0101
+    [-1.0, 1.0, 1.0, -1.0],   // 0110
+    [1.0, 1.0, 1.0, -1.0],    // 0111
+    [-1.0, -1.0, -1.0, 1.0],  // 1000
+    [1.0, -1.0, -1.0, 1.0],   // 1001
+    [-1.0, 1.0, -1.0, 1.0],   // 1010
+    [1.0, 1.0, -1.0, 1.0],    // 1011
+    [-1.0, -1.0, 1.0, 1.0],   // 1100
+    [1.0, -1.0, 1.0, 1.0],    // 1101
+    [-1.0, 1.0, 1.0, 1.0],    // 1110
+    [1.0, 1.0, 1.0, 1.0],     // 1111
+];
+
 impl BinaryHyperVector {
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let alpha_offset = bytes.len() - 4;
@@ -553,13 +573,40 @@ impl BinaryHyperVector {
     #[inline(always)]
     pub fn poincare_distance_sq_to_float(&self, query: &HyperVector) -> f64 {
         let n = query.coords.len();
+        let mut i = 0;
+
+        #[cfg(feature = "nightly-simd")]
+        let mut sum_sq_diff = {
+            use std::simd::f64x4;
+            use std::simd::num::SimdFloat;
+            let mut sum_vec = f64x4::splat(0.0);
+
+            while i + 8 <= n {
+                let byte = self.bits[i / 8];
+                let val1 = f64x4::from_array(SIGN_LUT[(byte & 0x0F) as usize]);
+                let val2 = f64x4::from_array(SIGN_LUT[(byte >> 4) as usize]);
+
+                let q1 = f64x4::from_slice(&query.coords[i..i + 4]);
+                let q2 = f64x4::from_slice(&query.coords[i + 4..i + 8]);
+
+                let diff1 = val1 - q1;
+                let diff2 = val2 - q2;
+
+                sum_vec += diff1 * diff1 + diff2 * diff2;
+                i += 8;
+            }
+            sum_vec.reduce_sum()
+        };
+
+        #[cfg(not(feature = "nightly-simd"))]
         let mut sum_sq_diff = 0.0;
 
-        for i in 0..n {
+        while i < n {
             let bit = (self.bits[i / 8] >> (i % 8)) & 1;
-            let val = if bit == 1 { 1.0 } else { -1.0 };
+            let val = (bit as f64) * 2.0 - 1.0;
             let diff = val - query.coords[i];
             sum_sq_diff += diff * diff;
+            i += 1;
         }
 
         let delta = sum_sq_diff * f64::from(self.alpha) * query.alpha;

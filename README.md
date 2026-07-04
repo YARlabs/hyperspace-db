@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v3.1.0** | **The World's First Schema-Driven Spatial AI Engine.**
+**v3.1.1** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,7 +33,7 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v3.1)
+## 🚀 Core Pillars (v3.1.1)
 
 <table>
   <tr>
@@ -41,12 +41,26 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
     <td>Built on Nightly Rust. Our <b>ArcSwap Lock-Free architecture</b> and <code>f32</code> SIMD intrinsics deliver up to <b>12,000 Search QPS</b> and <b>60,000 Ingest QPS</b> on a single node.</td>
   </tr>
   <tr>
+    <td>🔑 <b>RBAC & Cross-Tenant Sharing</b></td>
+    <td>Granular Role-Based Access Control (<b>Admin, ReadWrite, ReadOnly</b>) using transaction-safe <code>redb</code> security storage. Support for namespaced URL collection referencing (<code>owner:name</code> or <code>owner/name</code>) for secure cross-tenant index sharing.</td>
+  </tr>
+  <tr>
+    <td>🕵️‍♂️ <b>Audit Logs & Isolation</b></td>
+    <td>High-performance structured JSON audit logging (off, low, medium, high, full levels) streaming to <code>stdout</code> or files. Real-time, tenant-isolated log buffers stream secure log feeds directly to the Web Dashboard.</td>
+  </tr>
+  <tr>
+    <td>🌿 <b>Eco-Monitoring (EcoMonitor)</b></td>
+    <td>Telemetry agent tracking carbon footprints of CPU/RAM computations per node. Visualizes ESG sustainability metrics and environmental compliance certification badges inside the dashboard UI.</td>
+  </tr>
+  <tr>
     <td>⚡ <b>L0 Hot Tier Cache</b></td>
     <td>Transparent two-level vector caching. Combines a thread-safe 64-shard <b>L1 DashMap Cache</b> (~1 µs lookups) with an <b>L2 HNSW Fallback Graph</b> (~100 µs lookups), featuring background TTL invalidation and automatic self-healing graph rebuilds.</td>
   </tr>
+  <td>💾 <b>O(1) Payload Indexing</b></td>
+    <td>High-throughput O(1) incremental indexing via append-only index write-ahead logging (WAL) in <code>payload_store.rs</code>, eliminating latency spikes and write amplification.</td>
   <tr>
     <td>📝 <b>Real-Time WriteBuffer</b></td>
-    <td>Zero-latency searchability. Inserts instantly write to an in-memory <b>WriteBuffer</b>; searches execute Rayon-parallelized linear scans on the buffer and merge/deduplicate results with main HNSW results, promoting nodes upon indexing completion.</td>
+    <td>Zero-latency searchability. Inserts instantly write to an in-memory <b>WriteBuffer</b>; searches execute Rayon-parallelized linear scans on the buffer and merge/deduplicate results with main HNSW results.</td>
   </tr>
   <tr>
     <td>🧭 <b>Schema-Driven Cascade</b></td>
@@ -521,7 +535,7 @@ Open a new terminal to monitor the database:
 ### 3. Use Python SDK
 
 ```bash
-pip install hyperspacedb==3.1.0
+pip install hyperspacedb==3.1.1
 ```
 
 ```python
@@ -785,6 +799,23 @@ docker run -d \
   -v $(pwd)/hs_data:/app/data \
   glukhota/hyperspace-db:latest
 ```
+
+---
+
+## 🔒 Security & SOC 2 Compliance
+
+HyperspaceDB comes with advanced security controls out-of-the-box, ensuring compatibility with standard enterprise compliance requirements (e.g. SOC 2, ISO 27001):
+
+*   **Mutual TLS (mTLS)**: Built-in TLS and client verification support for both gRPC (port `50051`) and HTTP Dashboard/API (port `50050`). Configure via `.env`:
+    *   `HS_TLS_CERT=/path/to/server.crt`
+    *   `HS_TLS_KEY=/path/to/server.key`
+    *   `HS_TLS_CA=/path/to/ca.crt` (enables mutual TLS verification)
+*   **Role-Based Access Control (RBAC)**: Fine-grained user role permissions (`Admin`, `ReadWrite`, `ReadOnly`) managed via transaction-safe `redb` database.
+*   **Cross-Tenant Collection Sharing**: Securely share collections between tenants with read-only/read-write privileges using Namespaced URI references (`owner/collection_name`).
+*   **Structured Audit Logs**: Structured JSON audit logging (`HS_AUDIT_LOG_LEVEL=full`) written to stdout or a file, with tenant-isolated logs streamed securely to authenticated users.
+
+> [!TIP]
+> For SOC 2 compliance, we recommend deploying HyperspaceDB on **LUKS-encrypted drives** or encrypted cloud block volumes within **isolated Virtual Private Clouds (VPC)**.
 
 ---
 

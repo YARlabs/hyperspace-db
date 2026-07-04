@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api, fetchStatus } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Plus, Trash2, MoreHorizontal, Database, Search, HardDrive, Cpu, Settings2, BarChart3, Moon, Zap, Layers, FlameKindling, TrendingUp, Clock } from "lucide-react"
-import { getCollectionStats, updateCollectionConfig, freezeCollection, unfreezeCollection, getCacheStats, clearCache, updateCacheConfig } from "@/lib/api"
+import { Plus, Trash2, MoreHorizontal, Database, Search, HardDrive, Cpu, Settings2, BarChart3, Moon, Zap, Layers, FlameKindling, TrendingUp, Clock, Leaf } from "lucide-react"
+import { getCollectionStats, updateCollectionConfig, freezeCollection, unfreezeCollection, getCacheStats, clearCache, updateCacheConfig, fetchCollections, deleteCollection, grantCollectionAccess, revokeCollectionAccess, listCollectionGrants } from "@/lib/api"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,13 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useNavigate } from "react-router-dom"
 import { useEffect } from "react"
-import { getStatusColor } from "@/lib/utils"
+import { getStatusColor, cn } from "@/lib/utils"
 
 export function CollectionsPage() {
     const queryClient = useQueryClient()
     const { data: collections, isLoading } = useQuery({
         queryKey: ['collections'],
-        queryFn: () => api.get("/collections").then(r => r.data),
+        queryFn: fetchCollections,
         refetchInterval: 60000,
         refetchOnWindowFocus: false
     })
@@ -29,7 +29,7 @@ export function CollectionsPage() {
     const isStringList = collections && collections.length > 0 && typeof collections[0] === 'string'
 
     const deleteMutation = useMutation({
-        mutationFn: (name: string) => api.delete(`/collections/${name}`),
+        mutationFn: (name: string) => deleteCollection(name),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['collections'] })
     })
 
@@ -75,11 +75,124 @@ export function CollectionsPage() {
         </div>
     )
 }
+function CollectionSharingDialog({ collectionName }: { collectionName: string }) {
+    const [open, setOpen] = useState(false)
+    const [granteeId, setGranteeId] = useState("")
+    const [privilege, setPrivilege] = useState("ReadOnly")
+
+    const { data: grants, refetch } = useQuery({
+        queryKey: ['grants', collectionName],
+        queryFn: () => listCollectionGrants(collectionName),
+        enabled: open,
+    })
+
+    const grantMutation = useMutation({
+        mutationFn: () => grantCollectionAccess(collectionName, granteeId, privilege),
+        onSuccess: () => {
+            setGranteeId("")
+            refetch()
+        },
+        onError: (err: any) => {
+            alert("Failed to grant access: " + (err.response?.data || err.message))
+        }
+    })
+
+    const revokeMutation = useMutation({
+        mutationFn: (grantee: string) => revokeCollectionAccess(collectionName, grantee),
+        onSuccess: () => refetch(),
+        onError: (err: any) => {
+            alert("Failed to revoke access: " + (err.response?.data || err.message))
+        }
+    })
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                    <Settings2 className="mr-2 h-4 w-4 text-blue-400" /> Share Collection
+                </DropdownMenuItem>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader>
+                    <DialogTitle>Share Collection: {collectionName}</DialogTitle>
+                    <DialogDescription>
+                        Grant other tenants read-only or read-write access to this collection.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="grid grid-cols-3 gap-2 items-end">
+                        <div className="col-span-1.5 space-y-1">
+                            <Label htmlFor="tenantId">Grantee Tenant ID</Label>
+                            <Input
+                                id="tenantId"
+                                placeholder="tenant_a"
+                                value={granteeId}
+                                onChange={(e) => setGranteeId(e.target.value)}
+                            />
+                        </div>
+                        <div className="col-span-1 space-y-1">
+                            <Label htmlFor="privilege">Access Privilege</Label>
+                            <Select value={privilege} onValueChange={setPrivilege}>
+                                <SelectTrigger id="privilege">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ReadOnly">ReadOnly</SelectItem>
+                                    <SelectItem value="ReadWrite">ReadWrite</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <Button 
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-medium"
+                            disabled={!granteeId || grantMutation.isPending}
+                            onClick={() => grantMutation.mutate()}
+                        >
+                            Grant
+                        </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Active Access Grants</Label>
+                        <div className="rounded-md border bg-zinc-950/40 divide-y divide-zinc-800 max-h-[200px] overflow-y-auto">
+                            {!grants || grants.length === 0 ? (
+                                <div className="p-4 text-center text-xs text-muted-foreground">
+                                    Not shared with any other tenants yet.
+                                </div>
+                            ) : (
+                                grants.map((g: any) => (
+                                    <div key={g.grantee_id} className="flex items-center justify-between p-3 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-mono font-medium text-zinc-200">{g.grantee_id}</span>
+                                            <Badge variant="secondary" className="text-[10px] px-1 py-0.5">
+                                                {g.privilege}
+                                            </Badge>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/20"
+                                            disabled={revokeMutation.isPending}
+                                            onClick={() => revokeMutation.mutate(g.grantee_id)}
+                                        >
+                                            Revoke
+                                        </Button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="secondary" onClick={() => setOpen(false)}>Done</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
 
 function CollectionRow({ collection, isString, onDelete }: any) {
     const name = isString ? collection : collection.name
-    // If backend only returns strings, we can fetch detailed stats here individually if needed, 
-    // but better to fix backend. For now show placeholder if string.
+    const privilege = isString ? "Admin" : (collection.privilege || "Admin")
     const status = isString ? "active" : (collection.status || "active")
     const count = isString ? "-" : (status === "idle" ? "0 (Idle)" : collection.count)
     const schema = collection.schema
@@ -105,35 +218,61 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                 <div className="p-1.5 rounded bg-primary/10 text-primary">
                     <Database className="h-4 w-4" />
                 </div>
-                {name}
+                <div className="flex flex-col">
+                    <span className="font-semibold text-zinc-100">{name}</span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Role: {privilege}</span>
+                </div>
+                {collection.eco_tier && collection.eco_tier !== "None" && (
+                    <div className="relative group flex items-center">
+                        <Badge 
+                            variant="secondary" 
+                            className={cn(
+                                "text-[10px] font-bold tracking-tight px-1.5 py-0.5 shadow-sm ml-2 border transition-all cursor-help select-none",
+                                collection.is_eco_certified 
+                                    ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.15)] animate-pulse"
+                                    : "bg-zinc-800/80 text-zinc-400 border-zinc-700/50"
+                            )}
+                        >
+                            {collection.eco_tier === "Bronze" && "🌱"}
+                            {collection.eco_tier === "Silver" && "🌿"}
+                            {collection.eco_tier === "Gold" && "🌳"}
+                            {collection.eco_tier === "Platinum" && "🍀"}
+                        </Badge>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-zinc-950 border border-white/10 text-white text-[10px] rounded shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap z-50">
+                            Eco Savings: {collection.eco_tier} Tier
+                        </div>
+                    </div>
+                )}
             </TableCell>
             <TableCell>
                 <div className="flex items-center gap-2">
                     <Badge variant="outline" className={getStatusColor(status)}>
                         {status}
                     </Badge>
-                    {status === "active" ? (
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-6 w-6 text-zinc-400 hover:text-amber-500 hover:bg-amber-500/10 rounded" 
-                            onClick={() => freezeMutation.mutate(name)}
-                            disabled={freezeMutation.isPending}
-                            title="Put to Sleep (Freeze)"
-                        >
-                            <Moon className="h-3.5 w-3.5" />
-                        </Button>
-                    ) : (
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-6 w-6 text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded animate-pulse" 
-                            onClick={() => unfreezeMutation.mutate(name)}
-                            disabled={unfreezeMutation.isPending}
-                            title="Wake Up (Activate)"
-                        >
-                            <Zap className="h-3.5 w-3.5 animate-bounce" style={{ animationDuration: '3s' }} />
-                        </Button>
+                    {privilege === "Admin" && (
+                        status === "active" ? (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-zinc-400 hover:text-amber-500 hover:bg-amber-500/10 rounded"
+                                onClick={() => freezeMutation.mutate(name)}
+                                disabled={freezeMutation.isPending}
+                                title="Put to Sleep (Freeze)"
+                            >
+                                <Moon className="h-3.5 w-3.5" />
+                            </Button>
+                        ) : (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded animate-pulse"
+                                onClick={() => unfreezeMutation.mutate(name)}
+                                disabled={unfreezeMutation.isPending}
+                                title="Wake Up (Activate)"
+                            >
+                                <Zap className="h-3.5 w-3.5 animate-bounce" style={{ animationDuration: '3s' }} />
+                            </Button>
+                        )
                     )}
                 </div>
             </TableCell>
@@ -153,39 +292,51 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                         <DropdownMenuItem disabled>
                             Export Snapshot
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {status === "active" ? (
-                            <DropdownMenuItem onClick={() => freezeMutation.mutate(name)} disabled={freezeMutation.isPending}>
-                                <Moon className="mr-2 h-4 w-4 text-amber-500" /> Put to Sleep (Freeze)
-                            </DropdownMenuItem>
-                        ) : (
-                            <DropdownMenuItem onClick={() => unfreezeMutation.mutate(name)} disabled={unfreezeMutation.isPending}>
-                                <Zap className="mr-2 h-4 w-4 text-emerald-500" /> Wake Up (Activate)
+                        
+                        {privilege === "Admin" && (
+                            <>
+                                <DropdownMenuSeparator />
+                                <CollectionSharingDialog collectionName={name} />
+                                <DropdownMenuSeparator />
+                                {status === "active" ? (
+                                    <DropdownMenuItem onClick={() => freezeMutation.mutate(name)} disabled={freezeMutation.isPending}>
+                                        <Moon className="mr-2 h-4 w-4 text-amber-500" /> Put to Sleep (Freeze)
+                                    </DropdownMenuItem>
+                                ) : (
+                                    <DropdownMenuItem onClick={() => unfreezeMutation.mutate(name)} disabled={unfreezeMutation.isPending}>
+                                        <Zap className="mr-2 h-4 w-4 text-emerald-500" /> Wake Up (Activate)
+                                    </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onClick={() => {
+                                    if (window.confirm(`Are you sure you want to rebuild index for '${name}'? This is a heavy operation.`)) {
+                                        api.post(`/collections/${name}/rebuild`)
+                                            .then(() => alert("Index rebuild started!"))
+                                            .catch(e => alert("Failed: " + e.message))
+                                    }
+                                }}>
+                                    <Database className="mr-2 h-4 w-4" /> Rebuild Index
+                                </DropdownMenuItem>
+                            </>
+                        )}
+                        {privilege !== "ReadOnly" && (
+                            <DropdownMenuItem onClick={() => {
+                                if (window.confirm(`Flush hot cache for '${name}'? Next requests will go to disk until cache warms up.`)) {
+                                    clearCache(name)
+                                        .then(() => alert("Cache flushed!"))
+                                        .catch(e => alert("Failed: " + e.message))
+                                }
+                            }}>
+                                <FlameKindling className="mr-2 h-4 w-4 text-orange-400" /> Flush Cache
                             </DropdownMenuItem>
                         )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => {
-                            if (window.confirm(`Are you sure you want to rebuild index for '${name}'? This is a heavy operation.`)) {
-                                api.post(`/collections/${name}/rebuild`)
-                                    .then(() => alert("Index rebuild started!"))
-                                    .catch(e => alert("Failed: " + e.message))
-                            }
-                        }}>
-                            <Database className="mr-2 h-4 w-4" /> Rebuild Index
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => {
-                            if (window.confirm(`Flush hot cache for '${name}'? Next requests will go to disk until cache warms up.`)) {
-                                clearCache(name)
-                                    .then(() => alert("Cache flushed!"))
-                                    .catch(e => alert("Failed: " + e.message))
-                            }
-                        }}>
-                            <FlameKindling className="mr-2 h-4 w-4 text-orange-400" /> Flush Cache
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                        </DropdownMenuItem>
+                        {privilege === "Admin" && (
+                            <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                </DropdownMenuItem>
+                            </>
+                        )}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </TableCell>
@@ -319,7 +470,7 @@ function CreateCollectionDialog() {
                                 <SelectItem value="cosine">Cosine Similarity</SelectItem>
                                 <SelectItem value="poincare">Poincaré Ball (Hyperbolic)</SelectItem>
                                 <SelectItem value="lorentz">Lorentz / Hyperboloid (Hyperbolic)</SelectItem>
-                                <SelectItem value="hybrid">Hybrid (Lorentz + L2)</SelectItem>
+                                <SelectItem value="hybrid">v5 Hybrid (Lorentz + L2)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -336,8 +487,8 @@ function CreateCollectionDialog() {
                         <div className="space-y-2">
                             <Label htmlFor="dimension-select">Dimension</Label>
                             <div className="flex flex-col gap-2">
-                                <Select 
-                                    value={isCustomDimension ? "custom" : dimension} 
+                                <Select
+                                    value={isCustomDimension ? "custom" : dimension}
                                     onValueChange={(v) => {
                                         if (v === "custom") {
                                             setIsCustomDimension(true)
@@ -379,17 +530,17 @@ function CreateCollectionDialog() {
 
                     <div className="space-y-3 pt-2 border-t border-white/5">
                         <div className="flex items-center space-x-2">
-                            <input 
-                                type="checkbox" 
-                                id="mrl" 
-                                checked={enableMRL} 
+                            <input
+                                type="checkbox"
+                                id="mrl"
+                                checked={enableMRL}
                                 onChange={(e) => {
                                     setEnableMRL(e.target.checked)
                                     if (e.target.checked) {
                                         const dimVal = metric === "hybrid" ? 801 : (parseInt(dimension) || 1024)
                                         setMrlCutoff(metric === "hybrid" ? "161" : Math.max(Math.floor(dimVal / 8), 64).toString())
                                     }
-                                }} 
+                                }}
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-zinc-900"
                             />
                             <Label htmlFor="mrl" className="font-normal cursor-pointer text-sm">
@@ -397,13 +548,25 @@ function CreateCollectionDialog() {
                             </Label>
                         </div>
 
+                        {enableMRL && (
+                            <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/20 text-[11px] text-emerald-400 flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <Leaf className="h-4 w-4 mt-0.5 text-emerald-400 shrink-0" />
+                                <div className="space-y-0.5">
+                                    <p className="font-bold">🌿 Eco-Friendly Acceleration Active</p>
+                                    <p className="text-[10px] text-emerald-500/90 leading-relaxed">
+                                        Matryoshka Representation Learning (MRL) stores nested embeddings. By compressing representation sizes, it reduces database RAM consumption by up to 8x and slashes carbon footprints while maintaining high-fidelity search.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         {enableMRL && metric !== "hybrid" && (
                             <div className="grid grid-cols-2 gap-4 p-3 rounded-lg bg-blue-500/5 border border-blue-500/10 animate-in fade-in slide-in-from-top-1 duration-200">
                                 <div className="space-y-2 col-span-2">
                                     <Label htmlFor="mrl-cutoff-select" className="text-xs">MRL Cutoff Dimension</Label>
                                     <div className="flex flex-col gap-1.5">
-                                        <Select 
-                                            value={isCustomMrlCutoff ? "custom" : mrlCutoff} 
+                                        <Select
+                                            value={isCustomMrlCutoff ? "custom" : mrlCutoff}
                                             onValueChange={(v) => {
                                                 if (v === "custom") {
                                                     setIsCustomMrlCutoff(true)
@@ -459,8 +622,8 @@ function CreateCollectionDialog() {
                                 <div className="space-y-2 col-span-2">
                                     <Label htmlFor="hybrid-mrl-cutoff-select" className="text-xs">Hybrid Cutoff Dimension</Label>
                                     <div className="flex flex-col gap-1.5">
-                                        <Select 
-                                            value={isCustomMrlCutoff ? "custom" : mrlCutoff} 
+                                        <Select
+                                            value={isCustomMrlCutoff ? "custom" : mrlCutoff}
                                             onValueChange={(v) => {
                                                 if (v === "custom") {
                                                     setIsCustomMrlCutoff(true)
@@ -518,7 +681,7 @@ function CreateCollectionDialog() {
 
                     <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400">
                         <p className="font-bold mb-1">Architecture Warning:</p>
-                        Selected dimensions and metrics must match the capabilities of your embedding model (e.g. 129d for YAR Lorentz).
+                        Selected dimensions and metrics must match the capabilities of your embedding model (e.g. 129d for v5 Hybrid).
                     </div>
                 </div>
                 <DialogFooter>
@@ -747,15 +910,13 @@ function CacheControlPanel({ collectionName, formatBytes }: { collectionName: st
         <div className="flex items-center gap-2">
             <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
                 <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                        r >= 0.8 ? "bg-emerald-500" : r >= 0.5 ? "bg-amber-500" : "bg-red-500"
-                    }`}
+                    className={`h-full rounded-full transition-all duration-500 ${r >= 0.8 ? "bg-emerald-500" : r >= 0.5 ? "bg-amber-500" : "bg-red-500"
+                        }`}
                     style={{ width: `${Math.min(r * 100, 100)}%` }}
                 />
             </div>
-            <span className={`text-xs font-mono font-bold ${
-                r >= 0.8 ? "text-emerald-400" : r >= 0.5 ? "text-amber-400" : "text-red-400"
-            }`}>{(r * 100).toFixed(1)}%</span>
+            <span className={`text-xs font-mono font-bold ${r >= 0.8 ? "text-emerald-400" : r >= 0.5 ? "text-amber-400" : "text-red-400"
+                }`}>{(r * 100).toFixed(1)}%</span>
         </div>
     )
 

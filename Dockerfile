@@ -40,7 +40,7 @@ COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 ENV CC=clang
 ENV CXX=clang++
 ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
-RUN cargo build --release --workspace --features nightly-simd
+RUN cargo build --release --workspace --features "nightly-simd eco-monitor"
 
 # Strip binaries to reduce size
 RUN strip target/release/hyperspace-server
