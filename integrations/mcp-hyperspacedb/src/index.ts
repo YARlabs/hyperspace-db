@@ -311,10 +311,9 @@ class HyperspaceMcpServer {
           }
           case "hyperspace_search_wasserstein": {
             const { collection, text, top_k } = z.object({ collection: z.string(), text: z.string(), top_k: z.number().optional() }).parse(args);
-            // Wasserstein uses a specific internal method or we can use searchWasserstein text variant if exists.
-            // Client.ts has searchWasserstein(vector, topK, collection)
-            const vector = await this.client.vectorize(text);
-            const res = await (this.client as any).searchWasserstein(vector, top_k || 5, collection);
+            // Wasserstein requires vector already, so embed text first via vectorize, then call search with useWasserstein=true flag
+            const vector = await this.client.vectorize(text, 'lorentz');
+            const res = await this.client.search(vector, top_k || 5, collection, { useWasserstein: true, includePayload: true });
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
           }
           case "hyperspace_insert_text": {

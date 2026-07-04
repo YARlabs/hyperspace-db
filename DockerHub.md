@@ -78,7 +78,7 @@ HyperspaceDB is configured via environment variables passed to the container.
 | `RUST_LOG` | `info` | Log verbosity (`error`, `warn`, `info`, `debug`, `trace`). |
 | `HS_API_KEY` | *(None)* | If set, enables SHA-256 authentication for all requests. |
 | `HS_DIMENSION` | `1024` | Vector dimensionality (e.g. 1024, 768, 8). Must match compilation. |
-| `HS_DISTANCE_METRIC` | `poincare` | Distance metric (`poincare`, `cosine`, etc). |
+| `HS_DISTANCE_METRIC` | `lorentz` | Distance metric (`poincare`, `cosine`, etc). |
 | `HS_QUANTIZATION_LEVEL` | `scalar` | Compression level: `none`, `scalar` (i8), `binary` (1-bit). |
 | `HS_HNSW_EF_CONSTRUCT` | `100` | HNSW Index construction quality (50-500). |
 | `HS_HNSW_EF_SEARCH` | `10` | HNSW Search beam width (10-500). |

@@ -24,6 +24,8 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",
+    "axios": "^1.6.8",
+    "redis": "^4.6.13",
     "hyperspace-sdk-ts": "3.1.2",
     "zod": "^3.24.2"
   },

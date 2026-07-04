@@ -33,7 +33,7 @@ export class WeaviateExtractor extends BaseExtractor {
 
         return {
             dimension,
-            metric: 'cosine',
+            metric: 'lorentz',
             count: 0 // Weaviate doesn't return count easily in schema
         };
     }

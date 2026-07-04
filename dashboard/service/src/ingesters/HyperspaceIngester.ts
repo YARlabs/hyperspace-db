@@ -20,11 +20,17 @@ export class HyperspaceIngester {
             }
 
             console.log(`Creating collection ${collectionName} with dim=${schema.dimension}, metric=${schema.metric}`);
-            await this.client.createCollection(
-                collectionName, 
-                schema.dimension, 
-                schema.metric === 'ip' ? 'cosine' : schema.metric // Map IP to cosine if not directly supported
-            );
+            const targetMetric = schema.metric || 'lorentz';
+            const targetDim = schema.dimension || 129;
+            await this.client.createCollection(collectionName, {
+                components: [{
+                    name: 'main',
+                    metric: targetMetric,
+                    fullDimension: targetDim,
+                    weight: 1.0
+                }],
+                cascadePipeline: []
+            });
         } catch (error) {
             console.error(`Failed to prepare target collection: ${error}`);
             throw error;
