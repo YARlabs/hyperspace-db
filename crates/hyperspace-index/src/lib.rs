@@ -1305,8 +1305,18 @@ impl<M: Metric> HnswIndex<M> {
             QuantizationMode::None => {
                 if self.storage_f32 {
                     let v = HyperVectorF32::from_bytes(bytes);
-                    let v64 = v.to_float64();
-                    M::distance(&v64.coords, &query.coords)
+                    let name = M::name();
+                    if name == "l2" || name == "cosine" {
+                        let mut sum = 0.0;
+                        for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
+                            let diff = f64::from(a) - b;
+                            sum += diff * diff;
+                        }
+                        sum
+                    } else {
+                        let v64 = v.to_float64();
+                        M::distance(&v64.coords, &query.coords)
+                    }
                 } else {
                     let v = HyperVector::from_bytes(bytes);
                     M::distance(&v.coords, &query.coords)
