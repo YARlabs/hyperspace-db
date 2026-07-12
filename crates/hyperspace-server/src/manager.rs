@@ -48,6 +48,12 @@ pub struct ClusterState {
     pub logical_clock: u64,
 }
 
+impl Default for ClusterState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClusterState {
     pub fn new() -> Self {
         Self {

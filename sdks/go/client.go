@@ -464,8 +464,17 @@ func (c *HyperspaceClient) Exists(ctx context.Context, name string) (bool, error
 	return true, nil
 }
 
-func (c *HyperspaceClient) UpdateCollection(ctx context.Context, name string) error {
+func (c *HyperspaceClient) UpdateCollection(ctx context.Context, name string, efSearch, efConstruction, m *uint32) error {
 	req := &pb.ConfigUpdate{Collection: name}
+	if efSearch != nil {
+		req.EfSearch = efSearch
+	}
+	if efConstruction != nil {
+		req.EfConstruction = efConstruction
+	}
+	if m != nil {
+		req.M = m
+	}
 	_, err := c.client.Configure(c.withContext(ctx), req)
 	return err
 }

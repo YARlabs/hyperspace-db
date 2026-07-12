@@ -1,3 +1,4 @@
+#![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::module_name_repetitions)]
@@ -630,7 +631,7 @@ struct VisitedScratch {
     candidates_l0: BinaryHeap<Candidate>,
     results_l0: BinaryHeap<std::cmp::Reverse<Candidate>>,
     candidates_layer: BinaryHeap<Candidate>,
-    results_layer: BinaryHeap<Candidate>,
+    results_layer: BinaryHeap<std::cmp::Reverse<Candidate>>,
 }
 
 impl VisitedScratch {
@@ -1307,12 +1308,48 @@ impl<M: Metric> HnswIndex<M> {
                     let v = HyperVectorF32::from_bytes(bytes);
                     let name = M::name();
                     if name == "l2" || name == "cosine" {
-                        let mut sum = 0.0;
-                        for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
-                            let diff = f64::from(a) - b;
-                            sum += diff * diff;
+                        #[cfg(feature = "nightly-simd")]
+                        {
+                            use std::simd::{f32x4, f64x4, num::SimdFloat};
+                            let mut sum = f32x4::splat(0.0);
+                            let mut i = 0;
+                            let n = v.coords.len();
+                            let a = &v.coords;
+                            let b = &query.coords;
+                            while i + 8 <= n {
+                                let va1 = f32x4::from_slice(&a[i..i + 4]);
+                                let va2 = f32x4::from_slice(&a[i + 4..i + 8]);
+                                let vb1: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
+                                let vb2: f32x4 = f64x4::from_slice(&b[i + 4..i + 8]).cast();
+                                let d1 = va1 - vb1;
+                                let d2 = va2 - vb2;
+                                sum += d1 * d1 + d2 * d2;
+                                i += 8;
+                            }
+                            while i + 4 <= n {
+                                let va = f32x4::from_slice(&a[i..i + 4]);
+                                let vb: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
+                                let d = va - vb;
+                                sum += d * d;
+                                i += 4;
+                            }
+                            let mut total = sum.reduce_sum() as f64;
+                            while i < n {
+                                let diff = f64::from(a[i]) - b[i];
+                                total += diff * diff;
+                                i += 1;
+                            }
+                            total
                         }
-                        sum
+                        #[cfg(not(feature = "nightly-simd"))]
+                        {
+                            let mut sum = 0.0;
+                            for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
+                                let diff = f64::from(a) - b;
+                                sum += diff * diff;
+                            }
+                            sum
+                        }
                     } else {
                         let v64 = v.to_float64();
                         M::distance(&v64.coords, &query.coords)
@@ -1566,11 +1603,11 @@ impl<M: Metric> HnswIndex<M> {
             };
 
             candidates.push(first);
-            results.push(first);
+            results.push(std::cmp::Reverse(first));
             let _ = mark_visited(&mut scratch.marks, generation, start_node);
 
             while let Some(cand) = candidates.pop() {
-                let curr_worst = results.peek().unwrap().distance;
+                let curr_worst = results.peek().unwrap().0.distance;
                 if cand.distance > curr_worst && results.len() >= ef {
                     break;
                 }
@@ -1601,7 +1638,7 @@ impl<M: Metric> HnswIndex<M> {
                             distance: dist,
                         };
                         candidates.push(c);
-                        results.push(c);
+                        results.push(std::cmp::Reverse(c));
 
                         if results.len() > ef {
                             results.pop();
@@ -1611,7 +1648,10 @@ impl<M: Metric> HnswIndex<M> {
             }
             candidates.clear();
             scratch.candidates_layer = candidates;
-            let out = std::mem::take(&mut results);
+            let mut out = BinaryHeap::with_capacity(results.len());
+            for r in results.drain() {
+                out.push(r.0);
+            }
             results.clear();
             scratch.results_layer = results;
             out
@@ -2150,9 +2190,9 @@ impl<M: Metric> HnswIndex<M> {
             // Find new elements strictly added after our snapshot
             for &id in links_lock.iter() {
                 if !initial_links.contains(&id) {
-                    // Simple strategy: always keep new links to avoid graph tearing.
-                    // Even if we exceed M slightly, it's safer than losing connectivity.
-                    if keepers.len() < max_links {
+                    // Always keep new links to avoid graph tearing under concurrency,
+                    // even if we exceed max_links slightly.
+                    if !keepers.contains(&id) {
                         keepers.push(id);
                     }
                 }

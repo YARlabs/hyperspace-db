@@ -1709,7 +1709,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
         // Move only the required fields to avoid cloning whole params struct.
         let top_k = params.top_k;
-        let ef_search = params.ef_search;
+        let ef_search = self.config.get_ef_search();
         let include_payload = params.include_payload;
 
         if let Some(ref cache) = self.cache {

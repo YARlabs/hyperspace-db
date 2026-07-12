@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use crate::gossip::PeerRegistry;
 use crate::manager::CollectionManager;
 use axum::{
@@ -104,10 +106,11 @@ async fn validate_api_key(
             key_role = Some(crate::security::UserRole::Admin);
         } else {
             let path = request.uri().path();
-            if path.starts_with("/api/") || path == "/metrics" {
-                if !ctx.is_admin && ctx.user_id == "anonymous" {
-                    return Err(StatusCode::UNAUTHORIZED);
-                }
+            if (path.starts_with("/api/") || path == "/metrics")
+                && !ctx.is_admin
+                && ctx.user_id == "anonymous"
+            {
+                return Err(StatusCode::UNAUTHORIZED);
             }
         }
     }
@@ -185,6 +188,7 @@ fn load_key(path: &str) -> std::io::Result<rustls_pki_types::PrivateKeyDer<'stat
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_http_server(
     manager: Arc<CollectionManager>,
     port: u16,

@@ -1,11 +1,11 @@
-/// libp2p Swarm for HyperspaceDB DePIN.
-///
-/// Phase 2 scope:
-///   - QUIC transport (low-latency handshake)
-///   - Noise encryption + Yamux multiplexing
-///   - Kademlia DHT (peer discovery, chunk provider records)
-///   - GossipSub (MetaRouter update broadcasts)
-///   - Identify (peer capability exchange)
+//! libp2p Swarm for HyperspaceDB DePIN.
+//!
+//! Phase 2 scope:
+//!   - QUIC transport (low-latency handshake)
+//!   - Noise encryption + Yamux multiplexing
+//!   - Kademlia DHT (peer discovery, chunk provider records)
+//!   - GossipSub (MetaRouter update broadcasts)
+//!   - Identify (peer capability exchange)
 
 use std::time::Duration;
 
@@ -89,8 +89,8 @@ pub async fn build_swarm(
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
-    let (cmd_tx, cmd_rx) = mpsc::channel::<SwarmCommand>(64);
-    let (evt_tx, evt_rx) = mpsc::channel::<SwarmEvent2>(256);
+    let (cmd_tx, _cmd_rx) = mpsc::channel::<SwarmCommand>(64);
+    let (_evt_tx, evt_rx) = mpsc::channel::<SwarmEvent2>(256);
 
     Ok((swarm, cmd_tx, evt_rx))
 }
@@ -118,7 +118,7 @@ pub async fn run_swarm(
         tokio::select! {
             event = futures::StreamExt::next(&mut swarm) => {
                 let Some(event) = event else { break };
-                handle_event(event, &evt_tx, &topic, &mut swarm.behaviour_mut()).await;
+                handle_event(event, &evt_tx, &topic, swarm.behaviour_mut()).await;
             }
             cmd = cmd_rx.recv() => {
                 let Some(cmd) = cmd else { break };

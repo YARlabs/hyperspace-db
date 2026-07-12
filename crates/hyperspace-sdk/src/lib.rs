@@ -1012,13 +1012,14 @@ impl Client {
         &mut self,
         ef_search: Option<u32>,
         ef_construction: Option<u32>,
+        m: Option<u32>,
         collection: Option<String>,
     ) -> Result<String, tonic::Status> {
         let req = hyperspace_proto::hyperspace::ConfigUpdate {
             ef_search,
             ef_construction,
             collection: collection.unwrap_or_default(),
-            m: None,
+            m,
         };
         let resp = self.inner.configure(req).await?;
         Ok(resp.into_inner().status)

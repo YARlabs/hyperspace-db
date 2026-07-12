@@ -14,6 +14,7 @@ pub enum AuditLogLevel {
 }
 
 impl AuditLogLevel {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "low" => AuditLogLevel::Low,
@@ -67,7 +68,6 @@ pub fn init() {
         let path = std::env::var("HS_AUDIT_LOG_PATH").unwrap_or_else(|_| "audit.log".to_string());
         match std::fs::OpenOptions::new()
             .create(true)
-            .write(true)
             .append(true)
             .open(&path)
         {

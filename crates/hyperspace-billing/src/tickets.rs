@@ -1,4 +1,4 @@
-/// PHASE 3: SignedTicket — Cryptographic billing micro-receipt
+//! PHASE 3: SignedTicket — Cryptographic billing micro-receipt
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

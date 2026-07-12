@@ -1,16 +1,16 @@
-/// hyperspace-p2p — DePIN P2P networking layer
-///
-/// # Phase 2 scope
-/// - Node identity (BIP-39 mnemonic → ed25519 + libp2p PeerId)
-/// - libp2p Swarm (QUIC + Kademlia DHT + GossipSub)
-/// - MetaRouter (local chunk → peer routing cache)
-/// - Coordinator client (registration + heartbeat → api_identity_rust)
-///
-/// # Module structure
-/// - `identity`  — NodeIdentity, key derivation, persistence
-/// - `network`   — libp2p Swarm, behaviour, event loop
-/// - `routing`   — MetaRouter, MetaRouterEntry, blake3 Merkle root
-/// - `wallet`    — CoordinatorClient, registration, heartbeat
+//! hyperspace-p2p — DePIN P2P networking layer
+//!
+//! # Phase 2 scope
+//! - Node identity (BIP-39 mnemonic → ed25519 + libp2p PeerId)
+//! - libp2p Swarm (QUIC + Kademlia DHT + GossipSub)
+//! - MetaRouter (local chunk → peer routing cache)
+//! - Coordinator client (registration + heartbeat → api_identity_rust)
+//!
+//! # Module structure
+//! - `identity`  — NodeIdentity, key derivation, persistence
+//! - `network`   — libp2p Swarm, behaviour, event loop
+//! - `routing`   — MetaRouter, MetaRouterEntry, blake3 Merkle root
+//! - `wallet`    — CoordinatorClient, registration, heartbeat
 
 pub mod identity;
 pub mod network;
@@ -19,7 +19,6 @@ pub mod routing;
 pub mod wallet;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 pub use identity::{NodeIdentity, PersistedIdentity, SemanticZone};
 pub use network::{SwarmCommand, SwarmEvent2};

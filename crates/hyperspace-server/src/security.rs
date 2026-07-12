@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -12,6 +14,7 @@ pub enum UserRole {
 }
 
 impl UserRole {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "admin" => UserRole::Admin,

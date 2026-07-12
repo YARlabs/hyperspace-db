@@ -1,9 +1,9 @@
-/// Checkpoint 1 Tests — `hyperspace-billing`
-///
-/// Tests cover:
-///   - MeteringEngine: atomic counters, drain_deltas, throttle flag
-///   - AccountingStore: redb ACID persist/load/batch
-///   - BillingContext: throttle restoration from persisted state
+//! Checkpoint 1 Tests — `hyperspace-billing`
+//!
+//! Tests cover:
+//!   - MeteringEngine: atomic counters, drain_deltas, throttle flag
+//!   - AccountingStore: redb ACID persist/load/batch
+//!   - BillingContext: throttle restoration from persisted state
 
 #[cfg(test)]
 mod tests {
@@ -11,7 +11,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use hyperspace_billing::{
-        AccountingStore, BillingBalance, BillingContext, BillingStatus, MeteringEngine, UsageDelta,
+        AccountingStore, BillingBalance, BillingStatus, MeteringEngine,
     };
 
     // ─── MeteringEngine tests ───────────────────────────────────────────────

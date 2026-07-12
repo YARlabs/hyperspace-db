@@ -1,12 +1,12 @@
-/// Phase 3 Checkpoint Tests — SignedTicket Cryptographic Layer
-///
-/// Tests cover:
-///   - sign/verify roundtrip
-///   - tampered message detection
-///   - expiry check
-///   - replay protection
-///   - PendingTicketStore: push/load/settle_batch (ACID)
-///   - Crash recovery: tickets survive process restart
+//! Phase 3 Checkpoint Tests — SignedTicket Cryptographic Layer
+//!
+//! Tests cover:
+//!   - sign/verify roundtrip
+//!   - tampered message detection
+//!   - expiry check
+//!   - replay protection
+//!   - PendingTicketStore: push/load/settle_batch (ACID)
+//!   - Crash recovery: tickets survive process restart
 
 #[cfg(test)]
 mod tests {

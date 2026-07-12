@@ -1,19 +1,19 @@
-/// PHASE 4: Blake3 Merkle Inclusion Proofs
-///
-/// Protects against result falsification: after a search, the node returns a
-/// `MerkleProof` for each result vector. The client verifies the proof against
-/// the chunk's known Merkle root (obtained from the MetaRouter).
-///
-/// # Algorithm
-///   1. Each vector in a `.hyp` chunk is a leaf: `leaf = blake3(vector_bytes)`.
-///   2. A `MerkleTree` is built from all leaves using `rs_merkle` + `blake3`.
-///   3. For each result vector index, an `inclusion_proof` is generated.
-///   4. The client recomputes `leaf = blake3(received_vector_bytes)` and
-///      calls `proof.verify(root, &[leaf_index], &[leaf_hash], total_leaves)`.
-///
-/// # Why blake3?
-///   Blake3 is 5–10× faster than SHA-256 on modern CPUs (SIMD-accelerated),
-///   which makes proof generation negligible compared to HNSW search latency.
+//! PHASE 4: Blake3 Merkle Inclusion Proofs
+//!
+//! Protects against result falsification: after a search, the node returns a
+//! `MerkleProof` for each result vector. The client verifies the proof against
+//! the chunk's known Merkle root (obtained from the MetaRouter).
+//!
+//! # Algorithm
+//!   1. Each vector in a `.hyp` chunk is a leaf: `leaf = blake3(vector_bytes)`.
+//!   2. A `MerkleTree` is built from all leaves using `rs_merkle` + `blake3`.
+//!   3. For each result vector index, an `inclusion_proof` is generated.
+//!   4. The client recomputes `leaf = blake3(received_vector_bytes)` and
+//!      calls `proof.verify(root, &[leaf_index], &[leaf_hash], total_leaves)`.
+//!
+//! # Why blake3?
+//!   Blake3 is 5–10× faster than SHA-256 on modern CPUs (SIMD-accelerated),
+//!   which makes proof generation negligible compared to HNSW search latency.
 
 use rs_merkle::{Hasher, MerkleProof, MerkleTree};
 use serde::{Deserialize, Serialize};

@@ -1,9 +1,9 @@
-/// Node registration with the centralised coordinator (api_identity_rust).
-///
-/// Phase 2 scope (Web2.5):
-/// - `POST /api/depin/nodes/register` — initial registration
-/// - `POST /api/depin/nodes/heartbeat` — periodic keepalive (every 60s)
-/// - Auto-retry with exponential back-off on failure
+//! Node registration with the centralised coordinator (api_identity_rust).
+//!
+//! Phase 2 scope (Web2.5):
+//! - `POST /api/depin/nodes/register` — initial registration
+//! - `POST /api/depin/nodes/heartbeat` — periodic keepalive (every 60s)
+//! - Auto-retry with exponential back-off on failure
 
 use std::sync::Arc;
 use std::time::Duration;

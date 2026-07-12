@@ -1,7 +1,7 @@
-/// Node identity for the DePIN network.
-///
-/// Derives a persistent ed25519 + libp2p identity from a BIP-39 mnemonic.
-/// The signing key is wrapped in `Zeroizing` so memory is wiped on drop.
+//! Node identity for the DePIN network.
+//!
+//! Derives a persistent ed25519 + libp2p identity from a BIP-39 mnemonic.
+//! The signing key is wrapped in `Zeroizing` so memory is wiped on drop.
 
 use std::path::Path;
 
@@ -96,7 +96,7 @@ impl NodeIdentity {
 
     /// Sign arbitrary bytes with the node's ed25519 key.
     pub fn sign(&self, data: &[u8]) -> [u8; 64] {
-        let signing_key = SigningKey::from_bytes(&*self.secret_bytes);
+        let signing_key = SigningKey::from_bytes(&self.secret_bytes);
         signing_key.sign(data).to_bytes()
     }
 

@@ -1,15 +1,14 @@
-/// MetaRouter — DHT-backed chunk routing table.
-///
-/// Each miner node maintains a local cache of `MetaRouterEntry` records.
-/// When a new chunk is committed, the entry is:
-///   1. Published to the Kademlia DHT as a provider record.
-///   2. Broadcast over GossipSub to all reachable peers.
-///
-/// When a client requests a semantic search, the MetaRouter finds the closest
-/// chunk centroid (by Lorentz distance) and returns the holder peer addresses.
+//! MetaRouter — DHT-backed chunk routing table.
+//!
+//! Each miner node maintains a local cache of `MetaRouterEntry` records.
+//! When a new chunk is committed, the entry is:
+//!   1. Published to the Kademlia DHT as a provider record.
+//!   2. Broadcast over GossipSub to all reachable peers.
+//!
+//! When a client requests a semantic search, the MetaRouter finds the closest
+//! chunk centroid (by Lorentz distance) and returns the holder peer addresses.
 
 use dashmap::DashMap;
-use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

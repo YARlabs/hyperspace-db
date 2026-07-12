@@ -242,7 +242,7 @@ private:
         const std::shared_ptr<hyperspace_interfaces::srv::UpdateCollection::Request> request,
         std::shared_ptr<hyperspace_interfaces::srv::UpdateCollection::Response> response)
     {
-        bool ok = client_->UpdateCollection(request->collection);
+        bool ok = client_->UpdateCollection(request->collection, request->ef_search, request->ef_construction, request->m);
         response->success = ok;
     }
 

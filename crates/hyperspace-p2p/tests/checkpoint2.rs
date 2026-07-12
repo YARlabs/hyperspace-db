@@ -1,9 +1,9 @@
-/// Checkpoint 2 Tests — `hyperspace-p2p`
-///
-/// Tests cover:
-///   - NodeIdentity: generation, determinism, file persistence
-///   - MetaRouter: upsert, find_nearest (cosine), merkle root
-///   - ed25519 sign/verify via NodeIdentity
+//! Checkpoint 2 Tests — `hyperspace-p2p`
+//!
+//! Tests cover:
+//!   - NodeIdentity: generation, determinism, file persistence
+//!   - MetaRouter: upsert, find_nearest (cosine), merkle root
+//!   - ed25519 sign/verify via NodeIdentity
 
 #[cfg(test)]
 mod tests {

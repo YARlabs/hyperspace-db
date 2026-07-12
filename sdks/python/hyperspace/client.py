@@ -466,15 +466,19 @@ class HyperspaceClient:
             print(f"RPC Error in get_collection_stats: {e}")
             return {}
 
-    def configure(self, collection: str, ef_search: Optional[int] = None, ef_construction: Optional[int] = None, m: Optional[int] = None) -> bool:
+    def configure(self, collection: str = "", ef_search: Optional[int] = None, ef_construction: Optional[int] = None, m: Optional[int] = None) -> bool:
         req = hyperspace_pb2.ConfigUpdate(collection=collection)
-        if ef_search is not None: req.ef_search = ef_search
-        if ef_construction is not None: req.ef_construction = ef_construction
-        if m is not None: req.m = m
+        if ef_search is not None:
+            req.ef_search = ef_search
+        if ef_construction is not None:
+            req.ef_construction = ef_construction
+        if m is not None:
+            req.m = m
         try:
             resp = self.stub.Configure(req, metadata=self.metadata)
-            return "success" in resp.status.lower() or "updated" in resp.status.lower()
-        except grpc.RpcError:
+            return True
+        except grpc.RpcError as e:
+            print(f"RPC Error: {e}")
             return False
 
     def insert(self, id: int, vector: List[float] = None, document: str = None, payload: bytes = None, metadata: Dict[str, str] = None, typed_metadata: Dict[str, object] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
@@ -980,19 +984,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def configure(self, ef_search: int = None, ef_construction: int = None, collection: str = "") -> bool:
-        req = hyperspace_pb2.ConfigUpdate(collection=collection)
-        if ef_search is not None:
-            req.ef_search = ef_search
-        if ef_construction is not None:
-            req.ef_construction = ef_construction
-            
-        try:
-            resp = self.stub.Configure(req, metadata=self.metadata)
-            return True
-        except grpc.RpcError as e:
-            print(f"RPC Error: {e}")
-            return False
+
 
     def get_digest(self, collection: str = "") -> Dict:
         req = hyperspace_pb2.DigestRequest(collection=collection)

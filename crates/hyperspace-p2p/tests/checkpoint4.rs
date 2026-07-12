@@ -1,11 +1,11 @@
-/// Phase 4 Checkpoint Tests — Blake3 Merkle Inclusion Proofs
-///
-/// Tests cover:
-///   - Proof generation and verification (happy path)
-///   - Tampered vector detection on client side
-///   - Multi-result proof (N results from one chunk)
-///   - Empty tree edge case
-///   - Root mismatch detection
+//! Phase 4 Checkpoint Tests — Blake3 Merkle Inclusion Proofs
+//!
+//! Tests cover:
+//!   - Proof generation and verification (happy path)
+//!   - Tampered vector detection on client side
+//!   - Multi-result proof (N results from one chunk)
+//!   - Empty tree edge case
+//!   - Root mismatch detection
 
 #[cfg(test)]
 mod tests {

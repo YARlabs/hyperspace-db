@@ -476,6 +476,7 @@ pub fn lorentz_to_poincare_f64(x: &[f64]) -> Vec<f64> {
     x.iter().skip(1).map(|xi| xi / denom).collect()
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn generate_orthogonal_matrix(dimension: usize, seed_bytes: &[u8]) -> Vec<Vec<f64>> {
     use sha2::{Digest, Sha256};
     let mut matrix = vec![vec![0.0; dimension]; dimension];
@@ -531,6 +532,7 @@ pub fn generate_orthogonal_matrix(dimension: usize, seed_bytes: &[u8]) -> Vec<Ve
     matrix
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn generate_lorentz_matrix(dimension: usize, seed_bytes: &[u8]) -> Vec<Vec<f64>> {
     use sha2::{Digest, Sha256};
     let d = dimension - 1;
@@ -627,6 +629,7 @@ pub fn project_vector(v: &[f64], matrix: &[Vec<f64>]) -> Vec<f64> {
     projected
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn inject_anisotropic_noise(v: &[f64], seed_bytes: &[u8], sigma: f64) -> Vec<f64> {
     if v.is_empty() || sigma <= 0.0 {
         return v.to_vec();

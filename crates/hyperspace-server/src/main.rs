@@ -79,37 +79,8 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{service::Interceptor, transport::Server, Request, Response, Status};
 
-#[derive(Parser, Debug, Clone)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Port to listen on (gRPC)
-    #[arg(short, long, default_value = "50051")]
-    port: u16,
-
-    /// HTTP Dashboard Port
-    #[arg(long, default_value = "50050")]
-    http_port: u16,
-
-    /// Role: leader or follower
-    #[arg(long, default_value = "leader")]
-    role: String,
-
-    /// Leader address (if follower)
-    #[arg(long)]
-    leader: Option<String>,
-
-    /// User ID for multi-tenant replication (if follower)
-    #[arg(long)]
-    user_id: Option<String>,
-
-    /// Unique Node ID for this instance
-    #[arg(long)]
-    node_id: Option<String>,
-
-    /// Allow outgoing replication streams?
-    #[arg(long, default_value = "false", env = "HS_REPLICATION_ALLOWED")]
-    replication_allowed: bool,
-}
+// Args is defined in server_args.rs and re-exported via lib.rs
+use hyperspace_server::server_args::Args;
 
 #[derive(Clone, Debug)]
 pub struct GrpcRequestContext {
@@ -1009,6 +980,17 @@ impl Database for HyperspaceService {
             .unwrap_or_else(|| "unknown".to_string());
         let req = request.into_inner();
 
+        // ─── Phase B: Billing enforcement ─────────────────────────────────────────
+        // Reject requests from tenants with insufficient balance BEFORE doing any work.
+        #[cfg(feature = "depin")]
+        if let Some(m) = &self.metering {
+            if m.is_throttled(&ctx.user_id) {
+                return Err(Status::resource_exhausted(
+                    "Insufficient balance — top up your account to continue",
+                ));
+            }
+        }
+
         let (owner, col_name) =
             resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
 
@@ -1055,12 +1037,21 @@ impl Database for HyperspaceService {
                 // --- DePIN metering hook ---
                 #[cfg(feature = "depin")]
                 if let Some(m) = &self.metering {
-                    let api_key = req.metadata.get("x-api-key").cloned().unwrap_or_default();
-                    if !api_key.is_empty() {
-                        m.record_insert(&api_key, 1);
+                    // Use the authenticated user_id (from gRPC auth interceptor) as billing key.
+                    if !ctx.user_id.is_empty() && ctx.user_id != "anonymous" {
+                        m.record_insert(&ctx.user_id, 1);
+
+                        // Update storage bytes so SyncWorker can bill storage rental each tick.
+                        // col.disk_bytes() returns the total bytes of .hyp chunks for this tenant.
+                        // This is an approximation: actual storage is col.count() * avg_vector_bytes.
+                        let approx_storage_bytes = col.count() as u64
+                            * col.dimension() as u64
+                            * 4; // f32 = 4 bytes per component
+                        m.update_storage_bytes(&ctx.user_id, approx_storage_bytes);
                     }
                 }
                 Ok(Response::new(InsertResponse { success: true }))
+
             }
             .await;
 
@@ -1516,8 +1507,19 @@ impl Database for HyperspaceService {
         let req = request.into_inner();
         let (col_name, vector, exact_filter, complex_filters, params) = build_filters(req);
 
+        // ─── Phase B: Billing enforcement ─────────────────────────────────────────
+        #[cfg(feature = "depin")]
+        if let Some(m) = &self.metering {
+            if m.is_throttled(&ctx.user_id) {
+                return Err(Status::resource_exhausted(
+                    "Insufficient balance — top up your account to continue",
+                ));
+            }
+        }
+
         let (owner, actual_col_name) =
             resolve_collection(&ctx, &col_name, security::UserRole::ReadOnly)?;
+
 
         if let Some(col) = self.manager.get(&owner, &actual_col_name).await {
             let wave_requested = params.use_wave;

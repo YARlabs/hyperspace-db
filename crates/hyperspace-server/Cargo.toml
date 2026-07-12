@@ -1,6 +1,7 @@
 [package]
 name = "hyperspace-server"
 version = "3.1.1"
+default-run = "hyperspace-server"
 edition = "2021"
 
 [dependencies]
@@ -66,3 +67,12 @@ nightly-simd = ["hyperspace-core/nightly-simd", "hyperspace-index/nightly-simd"]
 s3-tiering = ["dep:hyperspace-tiering"]
 eco-monitor = ["dep:hyperspace-eco", "hyperspace-eco?/eco-monitor"]
 depin = ["dep:hyperspace-p2p", "dep:hyperspace-billing"]
+
+[[bin]]
+name = "hyperspace-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "hyperspace-miner"
+path = "src/bin/hyperspace-miner.rs"
+required-features = ["depin"]
