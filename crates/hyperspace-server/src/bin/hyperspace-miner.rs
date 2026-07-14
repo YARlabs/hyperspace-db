@@ -22,9 +22,9 @@
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-
 use clap::Parser;
 use hyperspace_billing::BillingContext;
+use hyperspace_server::{start_server, Args as ServerArgs};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -36,7 +36,11 @@ use hyperspace_billing::BillingContext;
 struct MinerArgs {
     // ─── Coordinator ──────────────────────────────────────────────────────────
     /// URL of the centralised coordinator (api_identity_rust)
-    #[arg(long, env = "HS_DEPIN_COORDINATOR_URL", default_value = "http://localhost:8080")]
+    #[arg(
+        long,
+        env = "HS_DEPIN_COORDINATOR_URL",
+        default_value = "http://localhost:8080"
+    )]
     coordinator_url: String,
 
     // ─── Identity ─────────────────────────────────────────────────────────────
@@ -128,12 +132,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ─── Forward all env vars that start_server reads ─────────────────────────
     // start_server() in main.rs reads HS_DEPIN_MODE=1 to auto-init billing,
     // but in miner mode we inject metering directly → no double-init.
-    std::env::set_var("HS_DATA_DIR",                &args.data_dir);
-    std::env::set_var("HS_DEPIN_MODE",              "1");
-    std::env::set_var("HS_DEPIN_COORDINATOR_URL",   &args.coordinator_url);
-    std::env::set_var("HS_DEPIN_DB_PATH",           &args.billing_db_path);
-    std::env::set_var("HS_DEPIN_SYNC_INTERVAL_SECS", args.sync_interval_secs.to_string());
-    std::env::set_var("HS_DEPIN_MAX_RPS",           args.max_rps.to_string());
+    std::env::set_var("HS_DATA_DIR", &args.data_dir);
+    std::env::set_var("HS_DEPIN_MODE", "1");
+    std::env::set_var("HS_DEPIN_COORDINATOR_URL", &args.coordinator_url);
+    std::env::set_var("HS_DEPIN_DB_PATH", &args.billing_db_path);
+    std::env::set_var(
+        "HS_DEPIN_SYNC_INTERVAL_SECS",
+        args.sync_interval_secs.to_string(),
+    );
+    std::env::set_var("HS_DEPIN_MAX_RPS", args.max_rps.to_string());
 
     // ─── Phase 1: Init billing subsystem ──────────────────────────────────────
     tracing::info!(
@@ -144,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "🔄 Starting billing subsystem"
     );
 
-    let _billing = BillingContext::start(
+    let billing = BillingContext::start(
         &args.billing_db_path,
         args.coordinator_url.clone(),
         args.max_rps,
@@ -153,7 +160,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     tracing::info!(
         "✅ BillingContext ready — SyncWorker → {} (every {}s)",
-        args.coordinator_url, args.sync_interval_secs
+        args.coordinator_url,
+        args.sync_interval_secs
     );
 
     // ─── Phase 2: P2P identity + coordinator registration ─────────────────────
@@ -177,40 +185,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let peer_id_str = node_identity.peer_id.to_base58();
     tracing::info!(peer_id = %peer_id_str, zone = node_identity.semantic_zone, "🆔 Node identity ready");
 
-    // ─── Phase 3: Start gRPC + HTTP server (blocks until Ctrl-C) ─────────────
-    // We can't import start_server() directly from main.rs (Rust doesn't allow
-    // cross-binary imports). Instead we re-implement the thin wiring: forward all
-    // config via env vars (already done above) and launch the server in-process
-    // by calling a helper defined in the server crate's lib.rs.
-    //
-    // ⚠️  Phase A.2 TODO: Once start_server is moved to a lib module,
-    //     replace the env-var protocol with a direct function call:
-    //
-    //     hyperspace_server::start_server(server_args, Some(billing.metering)).await?;
-    //
-    // For now: forward peer_id as node_id via env, set remaining vars, and
-    // park the tokio runtime. The billing SyncWorker + P2P heartbeat run as
-    // background tasks; the gRPC server must be started separately with:
-    //   HS_DEPIN_MODE=1 hyperspace-server --port 50051 --http-port 8080
-    //
-    // TEMPORARY workaround — will be replaced in Phase A.2:
-
-    // Forward peer_id as node_id so hyperspace-server knows its DePIN identity
-    std::env::set_var("HS_NODE_ID", &peer_id_str);
+    // Build the ServerArgs that start_server expects, forwarding our miner config
+    let server_args = ServerArgs {
+        port: args.grpc_port,
+        http_port: args.http_port,
+        role: "leader".to_string(),
+        leader: None,
+        user_id: None,
+        node_id: Some(peer_id_str),
+        replication_allowed: false,
+    };
 
     tracing::info!(
         grpc_port = args.grpc_port,
         http_port = args.http_port,
         data_dir  = %args.data_dir,
-        "🚀 DePIN miner ready — billing + P2P active"
-    );
-    tracing::info!(
-        "ℹ️  gRPC server: start with `HS_DEPIN_MODE=1 hyperspace-server --port {} --http-port {}`",
-        args.grpc_port, args.http_port
+        "🚀 DePIN miner ready — starting in-process gRPC/HTTP server"
     );
 
-    // Keep billing + P2P running
-    tokio::signal::ctrl_c().await?;
+    // start_server blocks until Ctrl-C or shutdown
+    start_server(server_args, Some(billing)).await?;
+
     tracing::info!("🛑 Miner shutting down");
     Ok(())
 }

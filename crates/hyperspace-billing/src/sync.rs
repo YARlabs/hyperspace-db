@@ -171,14 +171,15 @@ impl SyncWorker {
                                 );
 
                                 if billing_status == BillingStatus::InsufficientFunds {
-                                    let deadline = self.metering
+                                    let deadline = self
+                                        .metering
                                         .data_deletion_deadline(&delta.api_key)
                                         .map(|ts| {
                                             let days_left = ts.saturating_sub(
                                                 SystemTime::now()
                                                     .duration_since(UNIX_EPOCH)
                                                     .unwrap_or_default()
-                                                    .as_secs()
+                                                    .as_secs(),
                                             ) / 86_400;
                                             format!("{} days until data deletion", days_left)
                                         })
@@ -202,10 +203,7 @@ impl SyncWorker {
                                 });
                             }
                             Ok(sync_resp) => {
-                                error!(
-                                    "Sync failed for {}: {:?}",
-                                    delta.api_key, sync_resp.error
-                                );
+                                error!("Sync failed for {}: {:?}", delta.api_key, sync_resp.error);
                             }
                             Err(e) => {
                                 error!(

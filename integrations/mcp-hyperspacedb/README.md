@@ -68,19 +68,29 @@ Add the following to your MCP configuration file (e.g., `claude_desktop_config.j
 ### Data Tools
 - **`hyperspace_list_collections`**: Get all active collections.
 - **`hyperspace_create_collection`**: Setup new memory spaces with specific geometry.
+- **`hyperspace_delete_collection`**: Permanently delete a collection and all of its vectors.
 - **`hyperspace_insert_text`**: Store new facts into the DB.
+- **`hyperspace_delete_points`**: Delete a single vector point from a collection by its ID.
+- **`hyperspace_get_points`**: Retrieve vector coordinate and metadata for a list of point IDs.
 - **`hyperspace_search_text`**: Query the DB using semantic similarity.
 - **`hyperspace_search_wasserstein`**: Advanced cross-feature distribution search.
 
 ### Graph & AI Tools
 - **`hyperspace_get_neighbors`**: Explore local connectivity in the vector graph.
+- **`hyperspace_get_concept_parents`**: Retrieve parent concepts in a hierarchical collection.
+- **`hyperspace_get_subsumption_tree`**: Retrieve the Lorentz hierarchy subsumption tree starting from a given root ID.
+- **`hyperspace_explore_graph`**: Traverse the graph and return nodes and links in a format ready for visualization.
 - **`hyperspace_graph_traverse`**: Perform multi-hop logical exploration.
 - **`hyperspace_find_clusters`**: Identify thematic regions in vector space.
+- **`hyperspace_predict_momentum`**: Forecast future agent thought paths using Koopman momentum extrapolation.
+- **`hyperspace_get_trust_score`**: Evaluate stability and trust score for a given thought trajectory path.
 - **`hyperspace_analyze_thought_stability`**: Validate Chain of Thought (CoT) stability.
 - **`hyperspace_analyze_geometry`**: Run Gromov Delta analysis on raw vectors.
 
 ### System & Cache Tools
 - **`hyperspace_get_stats`**: Telemetry on cluster health, clocks, and vector volume.
+- **`hyperspace_rebuild_index`**: Rebuild and optimize the HNSW index on the server for a specific collection.
+- **`hyperspace_vacuum`**: Perform vacuuming on the database to permanently purge deleted vectors and reclaim disk space.
 - **`hyperspace_trigger_reconsolidation`**: Manually trigger "AI Sleep Mode" (Flow Matching optimization) for a collection.
 - **`hyperspace_freeze_collection`**: Freeze a collection to make it read-only, preventing new inserts.
 - **`hyperspace_unfreeze_collection`**: Unfreeze a previously frozen collection to allow inserts again.

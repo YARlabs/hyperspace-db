@@ -44,7 +44,7 @@ use hyperspace_store::VectorStore;
 /// `Vec<(internal_id, distance)>` — raw results from the chunk's local ID space.
 /// The caller must NOT map these IDs through the collection's id_map since chunk
 /// segments use their own internal IDs starting from 0.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
 pub fn search_chunk<M: Metric>(
     chunk_dir: &Path,
     query: &[f64],
@@ -129,7 +129,7 @@ pub fn search_chunk<M: Metric>(
 /// Merged and sorted `Vec<(internal_id_within_chunk, distance)>`, truncated to `k`.
 /// Note: IDs are chunk-local and cannot be used for metadata lookups in the main index.
 /// The caller should use only the distances for ranking merge.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
 pub async fn scatter_gather_search_async<M: Metric + Send + Sync + 'static>(
     chunk_dirs: &[std::path::PathBuf],
     query: &[f64],
@@ -195,7 +195,7 @@ pub async fn scatter_gather_search_async<M: Metric + Send + Sync + 'static>(
 
 /// Legacy synchronous wrapper for backwards compatibility.
 /// Spawns an async task and blocks on it - use scatter_gather_search_async when possible.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
 pub fn scatter_gather_search<M: Metric + Send + Sync + 'static>(
     chunk_dirs: &[std::path::PathBuf],
     query: &[f64],

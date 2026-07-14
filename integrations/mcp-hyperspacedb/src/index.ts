@@ -280,6 +280,128 @@ class HyperspaceMcpServer {
             },
             required: ["collection", "policy"]
           }
+        },
+        {
+          name: "hyperspace_delete_collection",
+          description: "Permanently delete a collection and all of its vectors.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The name of the collection to delete." }
+            },
+            required: ["collection"]
+          }
+        },
+        {
+          name: "hyperspace_delete_points",
+          description: "Delete a single vector point from a collection by its ID.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The collection name." },
+              id: { type: "number", description: "The ID of the point to delete." }
+            },
+            required: ["collection", "id"]
+          }
+        },
+        {
+          name: "hyperspace_get_points",
+          description: "Retrieve vector coordinate and metadata for a list of point IDs.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The collection name." },
+              ids: { type: "array", items: { type: "number" }, description: "Array of point IDs." }
+            },
+            required: ["collection", "ids"]
+          }
+        },
+        {
+          name: "hyperspace_rebuild_index",
+          description: "Rebuild and optimize the HNSW index on the server for a specific collection.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The name of the collection." }
+            },
+            required: ["collection"]
+          }
+        },
+        {
+          name: "hyperspace_vacuum",
+          description: "Perform vacuuming on the database to permanently purge deleted vectors and reclaim disk space.",
+          inputSchema: {
+            type: "object",
+            properties: {}
+          }
+        },
+        {
+          name: "hyperspace_get_subsumption_tree",
+          description: "Retrieve the Lorentz hierarchy subsumption tree starting from a given root ID.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The collection name." },
+              root_id: { type: "number", description: "The root node ID of the subsumption tree." },
+              max_depth: { type: "number", default: 3, description: "Maximum hierarchy depth." }
+            },
+            required: ["collection", "root_id"]
+          }
+        },
+        {
+          name: "hyperspace_get_concept_parents",
+          description: "Retrieve parent concepts in a hierarchical collection.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The collection name." },
+              id: { type: "number", description: "The concept ID." },
+              layer: { type: "number", default: 0, description: "HNSW graph layer." },
+              limit: { type: "number", default: 32, description: "Limit number of parents." }
+            },
+            required: ["collection", "id"]
+          }
+        },
+        {
+          name: "hyperspace_explore_graph",
+          description: "Traverse the graph and return nodes and links in a format ready for visualization.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The collection name." },
+              start_id: { type: "number", description: "The starting node ID." },
+              max_depth: { type: "number", default: 2, description: "Max depth traversal." },
+              max_nodes: { type: "number", default: 256, description: "Max nodes to return." }
+            },
+            required: ["collection", "start_id"]
+          }
+        },
+        {
+          name: "hyperspace_predict_momentum",
+          description: "Forecast future agent thought paths using Koopman momentum extrapolation.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The collection name." },
+              trajectory_ids: { type: "array", items: { type: "number" }, description: "Array of trajectory node IDs." },
+              steps: { type: "number", default: 1.0, description: "Steps to predict ahead." },
+              curvature: { type: "number", default: 1.0, description: "Curvature parameter." }
+            },
+            required: ["collection", "trajectory_ids"]
+          }
+        },
+        {
+          name: "hyperspace_get_trust_score",
+          description: "Evaluate stability and trust score for a given thought trajectory path.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "The collection name." },
+              trajectory_ids: { type: "array", items: { type: "number" }, description: "Array of trajectory node IDs." },
+              curvature: { type: "number", default: 1.0, description: "Curvature parameter." }
+            },
+            required: ["collection", "trajectory_ids"]
+          }
         }
       ]
     }));
@@ -443,6 +565,55 @@ class HyperspaceMcpServer {
             }).parse(args);
             const success = await this.client.updateCacheConfig(collection, policy, ann_threshold);
             return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+          }
+          case "hyperspace_delete_collection": {
+            const { collection } = z.object({ collection: z.string() }).parse(args);
+            const success = await this.client.deleteCollection(collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+          }
+          case "hyperspace_delete_points": {
+            const { collection, id } = z.object({ collection: z.string(), id: z.number() }).parse(args);
+            const success = await this.client.delete(id, collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+          }
+          case "hyperspace_get_points": {
+            const { collection, ids } = z.object({ collection: z.string(), ids: z.array(z.number()) }).parse(args);
+            const res = await this.client.getPoints(ids, collection);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          case "hyperspace_rebuild_index": {
+            const { collection } = z.object({ collection: z.string() }).parse(args);
+            const success = await this.client.rebuildIndex(collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+          }
+          case "hyperspace_vacuum": {
+            const success = await this.client.vacuum();
+            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+          }
+          case "hyperspace_get_subsumption_tree": {
+            const { collection, root_id, max_depth } = z.object({ collection: z.string(), root_id: z.number(), max_depth: z.number().optional() }).parse(args);
+            const res = await this.client.getSubsumptionTree(root_id, max_depth || 3, collection);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          case "hyperspace_get_concept_parents": {
+            const { collection, id, layer, limit } = z.object({ collection: z.string(), id: z.number(), layer: z.number().optional(), limit: z.number().optional() }).parse(args);
+            const res = await this.client.getConceptParents(id, layer || 0, limit || 32, collection);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          case "hyperspace_explore_graph": {
+            const { collection, start_id, max_depth, max_nodes } = z.object({ collection: z.string(), start_id: z.number(), max_depth: z.number().optional(), max_nodes: z.number().optional() }).parse(args);
+            const res = await this.client.exploreGraph(start_id, max_depth || 2, max_nodes || 256, collection);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          case "hyperspace_predict_momentum": {
+            const { collection, trajectory_ids, steps, curvature } = z.object({ collection: z.string(), trajectory_ids: z.array(z.number()), steps: z.number().optional(), curvature: z.number().optional() }).parse(args);
+            const res = await this.client.predictMomentum(trajectory_ids, steps || 1.0, collection, curvature || 1.0);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          case "hyperspace_get_trust_score": {
+            const { collection, trajectory_ids, curvature } = z.object({ collection: z.string(), trajectory_ids: z.array(z.number()), curvature: z.number().optional() }).parse(args);
+            const res = await this.client.getTrustScore(trajectory_ids, collection, curvature || 1.0);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
           }
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Tool not found: ${name}`);

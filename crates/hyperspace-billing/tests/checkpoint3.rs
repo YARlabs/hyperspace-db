@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 //! Phase 3 Checkpoint Tests — SignedTicket Cryptographic Layer
 //!
 //! Tests cover:
@@ -107,7 +108,10 @@ mod tests {
         let issuer = fresh_key();
         let recipient = fresh_key();
         let ticket = make_ticket(&issuer, recipient.verifying_key().to_bytes(), 100, -1); // expired 1 sec ago
-        assert!(ticket.is_expired(), "Ticket with past expires_at should be expired");
+        assert!(
+            ticket.is_expired(),
+            "Ticket with past expires_at should be expired"
+        );
     }
 
     // ─── TicketVerifier + Replay Guard ─────────────────────────────────────
@@ -136,10 +140,7 @@ mod tests {
 
         // Try to replay the same ticket
         let result = verifier.verify(&ticket);
-        assert!(
-            result.is_err(),
-            "Replayed ticket should be rejected"
-        );
+        assert!(result.is_err(), "Replayed ticket should be rejected");
         assert!(
             result.unwrap_err().to_string().contains("Replay"),
             "Error should mention replay attack"
@@ -212,7 +213,11 @@ mod tests {
         let to_settle: Vec<[u8; 16]> = tickets[..3].iter().map(|t| t.request_id).collect();
         store.settle_batch(&to_settle).unwrap();
 
-        assert_eq!(store.len().unwrap(), 2, "Should have 2 remaining after settling 3");
+        assert_eq!(
+            store.len().unwrap(),
+            2,
+            "Should have 2 remaining after settling 3"
+        );
     }
 
     /// Checkpoint 3 crash recovery test:
@@ -270,6 +275,10 @@ mod tests {
         store.settle_batch(&even_ids).unwrap();
 
         let remaining = store.load_all().unwrap();
-        assert_eq!(remaining.len(), 5, "Exactly 5 odd-indexed tickets should remain");
+        assert_eq!(
+            remaining.len(),
+            5,
+            "Exactly 5 odd-indexed tickets should remain"
+        );
     }
 }

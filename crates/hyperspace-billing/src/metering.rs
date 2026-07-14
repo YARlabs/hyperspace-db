@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use dashmap::DashMap;
-use governor::{Quota, RateLimiter};
 use governor::clock::DefaultClock;
 use governor::state::{InMemoryState, NotKeyed};
+use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Per-tenant usage accumulator (lock-free atomic counters).
 #[derive(Default)]
@@ -127,15 +127,18 @@ impl MeteringEngine {
     pub fn record_insert(&self, api_key: &str, count: u64) {
         let acc = self.get_or_create(api_key);
         acc.inserts.fetch_add(count, Ordering::Relaxed);
-        acc.cost_microusd.fetch_add(count * price_insert_microusd(), Ordering::Relaxed);
+        acc.cost_microusd
+            .fetch_add(count * price_insert_microusd(), Ordering::Relaxed);
     }
 
     /// Record a vector search operation.
     pub fn record_search(&self, api_key: &str, payload_bytes: u64) {
         let acc = self.get_or_create(api_key);
         acc.searches.fetch_add(1, Ordering::Relaxed);
-        acc.payload_bytes.fetch_add(payload_bytes, Ordering::Relaxed);
-        acc.cost_microusd.fetch_add(price_search_microusd(), Ordering::Relaxed);
+        acc.payload_bytes
+            .fetch_add(payload_bytes, Ordering::Relaxed);
+        acc.cost_microusd
+            .fetch_add(price_search_microusd(), Ordering::Relaxed);
     }
 
     /// Update persisted storage bytes for a tenant (overwrite, not delta).
@@ -158,7 +161,8 @@ impl MeteringEngine {
     /// When `throttled = false`, clears the grace period.
     pub fn set_throttled(&self, api_key: &str, throttled: bool) {
         let acc = self.get_or_create(api_key);
-        acc.throttled.store(if throttled { 1 } else { 0 }, Ordering::Relaxed);
+        acc.throttled
+            .store(if throttled { 1 } else { 0 }, Ordering::Relaxed);
         if throttled {
             // Start grace period if not already running
             let current = acc.grace_period_ends_at.load(Ordering::Relaxed);
@@ -182,7 +186,11 @@ impl MeteringEngine {
     pub fn data_deletion_deadline(&self, api_key: &str) -> Option<u64> {
         self.counters.get(api_key).and_then(|acc| {
             let ts = acc.grace_period_ends_at.load(Ordering::Relaxed);
-            if ts > 0 { Some(ts) } else { None }
+            if ts > 0 {
+                Some(ts)
+            } else {
+                None
+            }
         })
     }
 

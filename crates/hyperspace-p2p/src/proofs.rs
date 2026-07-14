@@ -52,10 +52,7 @@ pub struct VectorInclusionProof {
 ///
 /// Each element of `vectors` is the serialised bytes of one vector in the chunk.
 pub fn build_tree(vectors: &[Vec<u8>]) -> MerkleTree<Blake3Hasher> {
-    let leaves: Vec<[u8; 32]> = vectors
-        .iter()
-        .map(|v| Blake3Hasher::hash(v))
-        .collect();
+    let leaves: Vec<[u8; 32]> = vectors.iter().map(|v| Blake3Hasher::hash(v)).collect();
     MerkleTree::<Blake3Hasher>::from_leaves(&leaves)
 }
 
@@ -117,7 +114,9 @@ pub fn verify_proof(
         if claimed != recomputed {
             return Err(anyhow::anyhow!(
                 "Leaf hash mismatch at index {}: claimed {:?} != recomputed {:?}",
-                proof.indices[i], claimed, recomputed
+                proof.indices[i],
+                claimed,
+                recomputed
             ));
         }
     }

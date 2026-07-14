@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2026-07-14
+
+### Added
+* **DePIN & Decentralized Node Infrastructure**:
+    * Implemented a unified `hyperspace-miner` process coordinating gRPC/HTTP database nodes, P2P networking, and billing management.
+    * Added command line arguments for in-process configurations (grpc/http/p2p ports, public IP, identity-file, data-dir, billing-db-path).
+    * Integrated continuous storage rental billing (per byte-hour) calculating storage footprint dynamically on each background tick.
+    * Implemented account grace periods (`HS_DEPIN_GRACE_PERIOD_DAYS`, default 7 days) and automated tenant data deletion callbacks on expiration.
+    * Added write-path and read-path billing enforcement (returning `StatusCode.RESOURCE_EXHAUSTED` / gRPC 8 on depleted balance).
+* **Cryptographic SignedTicket Verification Pipeline**:
+    * Integrated gRPC metadata extraction for the `x-hs-ticket` ticket validation header.
+    * Cryptographic ticket signature verification using Ed25519-dalek public keys.
+    * In-memory replay guard cache (seen request IDs) and expiration time checks protecting against replay attacks.
+    * ACID-safe ticket storage queue (`PendingTicketStore`) using `redb` database for coordinator batch settlement.
+* **Python DePIN SDK & Interceptor**:
+    * Added `DePINClient` subclass supporting client-side Ed25519 signing keys.
+    * Implemented transparent gRPC client interceptor automatically calculating query costs (1 micro-USD for writes, 10 micro-USD for searches) and signing tickets on the fly.
+    * Integrated automatic target node public key (`recipient_pubkey`) directory queries from the coordinator.
+* **Zero-Knowledge Privacy & Client-Side Encryption**:
+    * Standardized cryptographic Zero-Knowledge transformations across multi-language SDKs (Python, TS, Go).
+    * Client-side metadata key/value hashing using HMAC-SHA256 and payload encryption using AES-256-GCM (PBKDF2 key derivation) before network transmission.
+
+### Fixed
+* **SIMD & Memory Optimizations**:
+    * Avoided heap allocations in `storage_f32` mode distance calculation.
+    * Resolved all compiler/linter warnings in the workspace under strict Clippy and pedantic checks (`cargo clippy --tests --workspace -- -W clippy::pedantic` and `-D warnings`).
+
 ## [3.1.1] - 2026-07-01
 
 ### Added

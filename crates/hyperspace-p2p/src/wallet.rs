@@ -108,18 +108,12 @@ impl CoordinatorClient {
                     match resp.json::<RegistrationResponse>().await {
                         Ok(r) if r.success => {
                             let node_id = r.node_id.clone().unwrap_or_default();
-                            info!(
-                                "✅ Node registered — id={node_id} peer={}",
-                                payload.peer_id
-                            );
+                            info!("✅ Node registered — id={node_id} peer={}", payload.peer_id);
                             return Ok(node_id);
                         }
                         Ok(r) => {
                             error!("Registration rejected: {:?}", r.error);
-                            return Err(anyhow::anyhow!(
-                                "Registration failed: {:?}",
-                                r.error
-                            ));
+                            return Err(anyhow::anyhow!("Registration failed: {:?}", r.error));
                         }
                         Err(e) => {
                             warn!("Failed to parse registration response (HTTP {status}): {e}");

@@ -79,7 +79,11 @@ pub async fn build_swarm(
         libp2p_keypair.public(),
     ));
 
-    let behaviour = HyperspaceBehaviour { kademlia, gossipsub, identify };
+    let behaviour = HyperspaceBehaviour {
+        kademlia,
+        gossipsub,
+        identify,
+    };
 
     let swarm = libp2p::SwarmBuilder::with_existing_identity(libp2p_keypair)
         .with_tokio()
@@ -158,9 +162,10 @@ async fn handle_event(
         SwarmEvent::ConnectionClosed { peer_id, .. } => {
             let _ = evt_tx.send(SwarmEvent2::PeerDisconnected(peer_id)).await;
         }
-        SwarmEvent::Behaviour(HyperspaceBehaviourEvent::Gossipsub(
-            gossipsub::Event::Message { message, .. },
-        )) => {
+        SwarmEvent::Behaviour(HyperspaceBehaviourEvent::Gossipsub(gossipsub::Event::Message {
+            message,
+            ..
+        })) => {
             if let Ok(entry) = serde_json::from_slice::<MetaRouterEntry>(&message.data) {
                 let _ = evt_tx.send(SwarmEvent2::MetaRouterUpdate(entry)).await;
             }

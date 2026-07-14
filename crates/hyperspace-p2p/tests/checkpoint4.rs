@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 //! Phase 4 Checkpoint Tests — Blake3 Merkle Inclusion Proofs
 //!
 //! Tests cover:
@@ -109,10 +110,7 @@ mod tests {
         // Client has the wrong root (stale MetaRouter data)
         let wrong_root = [0xFFu8; 32];
         let result = verify_proof(&proof, &[vectors[0].clone()], &wrong_root);
-        assert!(
-            result.is_err(),
-            "Wrong root must be detected"
-        );
+        assert!(result.is_err(), "Wrong root must be detected");
     }
 
     #[test]

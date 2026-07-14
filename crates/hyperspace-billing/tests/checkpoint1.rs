@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 //! Checkpoint 1 Tests — `hyperspace-billing`
 //!
 //! Tests cover:
@@ -10,9 +11,7 @@ mod tests {
     use std::sync::Arc;
     use tempfile::NamedTempFile;
 
-    use hyperspace_billing::{
-        AccountingStore, BillingBalance, BillingStatus, MeteringEngine,
-    };
+    use hyperspace_billing::{AccountingStore, BillingBalance, BillingStatus, MeteringEngine};
 
     // ─── MeteringEngine tests ───────────────────────────────────────────────
 
@@ -77,7 +76,10 @@ mod tests {
     #[test]
     fn test_metering_throttle_flag() {
         let engine = MeteringEngine::new(10_000);
-        assert!(!engine.is_throttled("new-tenant"), "new tenant should not be throttled");
+        assert!(
+            !engine.is_throttled("new-tenant"),
+            "new tenant should not be throttled"
+        );
 
         engine.set_throttled("new-tenant", true);
         assert!(engine.is_throttled("new-tenant"), "should be throttled");

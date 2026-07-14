@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 //! Checkpoint 2 Tests — `hyperspace-p2p`
 //!
 //! Tests cover:
@@ -155,7 +156,10 @@ mod tests {
         // Query close to x-direction
         let results = router.find_nearest(&[0.9, 0.1, 0.0], 1);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].chunk_id, 1, "Nearest to x-query should be chunk 1");
+        assert_eq!(
+            results[0].chunk_id, 1,
+            "Nearest to x-query should be chunk 1"
+        );
     }
 
     #[test]
@@ -175,9 +179,7 @@ mod tests {
 
     #[test]
     fn test_merkle_root_deterministic() {
-        let leaves: Vec<Vec<u8>> = (0..16u64)
-            .map(|i| i.to_le_bytes().to_vec())
-            .collect();
+        let leaves: Vec<Vec<u8>> = (0..16u64).map(|i| i.to_le_bytes().to_vec()).collect();
 
         let root1 = compute_merkle_root(&leaves);
         let root2 = compute_merkle_root(&leaves);
@@ -212,7 +214,8 @@ mod tests {
     fn test_three_node_simulation_routing() {
         let mnemonic1 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let mnemonic2 = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
-        let mnemonic3 = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let mnemonic3 =
+            "legal winner thank year wave sausage worth useful legal winner thank yellow";
 
         let id1 = NodeIdentity::from_mnemonic(mnemonic1, 0).unwrap();
         let id2 = NodeIdentity::from_mnemonic(mnemonic2, 1).unwrap();

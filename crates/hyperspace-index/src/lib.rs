@@ -1268,6 +1268,7 @@ impl<M: Metric> HnswIndex<M> {
         self.dist_mrl(node_id, query, None)
     }
 
+    #[allow(clippy::many_single_char_names)]
     fn dist_mrl(&self, node_id: NodeId, query: &HyperVector, mrl_dim: Option<usize>) -> f64 {
         // Defensive: Check bounds to avoid casting fallback/misaligned bytes during swaps
         if node_id as usize >= self.storage.count() {
@@ -1333,7 +1334,7 @@ impl<M: Metric> HnswIndex<M> {
                                 sum += d * d;
                                 i += 4;
                             }
-                            let mut total = sum.reduce_sum() as f64;
+                            let mut total = f64::from(sum.reduce_sum());
                             while i < n {
                                 let diff = f64::from(a[i]) - b[i];
                                 total += diff * diff;

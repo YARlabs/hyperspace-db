@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 //! hyperspace-p2p — DePIN P2P networking layer
 //!
 //! # Phase 2 scope
@@ -42,7 +43,10 @@ pub async fn bootstrap(
     public_ip: String,
 ) -> anyhow::Result<(Arc<NodeIdentity>, MetaRouter)> {
     // Step 1 — identity
-    let identity = Arc::new(NodeIdentity::load_or_generate(identity_path, semantic_zone)?);
+    let identity = Arc::new(NodeIdentity::load_or_generate(
+        identity_path,
+        semantic_zone,
+    )?);
     tracing::info!(
         "🆔 Node PeerId: {}  zone: {}",
         identity.peer_id,

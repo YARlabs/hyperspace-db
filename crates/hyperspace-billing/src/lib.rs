@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 pub mod accounting;
 pub mod metering;
 pub mod sync;
@@ -6,7 +7,7 @@ pub mod tickets;
 use std::sync::Arc;
 
 pub use accounting::{AccountingStore, BillingBalance, BillingStatus};
-pub use metering::{MeteringEngine, UsageDelta, storage_cost_microusd};
+pub use metering::{storage_cost_microusd, MeteringEngine, UsageDelta};
 pub use sync::SyncWorker;
 pub use tickets::{PendingTicketStore, SignedTicket, TicketVerifier};
 
@@ -15,6 +16,8 @@ pub use tickets::{PendingTicketStore, SignedTicket, TicketVerifier};
 pub struct BillingContext {
     pub metering: Arc<MeteringEngine>,
     pub accounting: Arc<AccountingStore>,
+    pub ticket_store: Arc<PendingTicketStore>,
+    pub ticket_verifier: Arc<std::sync::Mutex<TicketVerifier>>,
 }
 
 impl BillingContext {
@@ -29,7 +32,13 @@ impl BillingContext {
         max_rps: u32,
         sync_interval_secs: u64,
     ) -> anyhow::Result<Self> {
-        Self::start_with_callbacks(db_path, coordinator_base_url, max_rps, sync_interval_secs, None)
+        Self::start_with_callbacks(
+            db_path,
+            coordinator_base_url,
+            max_rps,
+            sync_interval_secs,
+            None,
+        )
     }
 
     /// Initialize with an optional data-deletion callback.
@@ -59,6 +68,14 @@ impl BillingContext {
         let accounting = Arc::new(AccountingStore::open(db_path)?);
         let metering = Arc::new(MeteringEngine::new(max_rps));
 
+        let tickets_db_path = if let Some(stripped) = db_path.strip_suffix(".redb") {
+            format!("{}_tickets.redb", stripped)
+        } else {
+            format!("{}_tickets", db_path)
+        };
+        let ticket_store = Arc::new(PendingTicketStore::open(&tickets_db_path)?);
+        let ticket_verifier = Arc::new(std::sync::Mutex::new(TicketVerifier::new()));
+
         // Restore throttle flags from persisted state
         let all_balances = accounting.load_all()?;
         for b in &all_balances {
@@ -81,6 +98,11 @@ impl BillingContext {
 
         Arc::new(sync_worker).spawn();
 
-        Ok(Self { metering, accounting })
+        Ok(Self {
+            metering,
+            accounting,
+            ticket_store,
+            ticket_verifier,
+        })
     }
 }

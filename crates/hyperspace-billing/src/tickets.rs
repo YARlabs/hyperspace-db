@@ -14,8 +14,8 @@ const PENDING_TICKETS: TableDefinition<&[u8], &[u8]> = TableDefinition::new("pen
 
 /// Serde serialise `[u8; 64]` as a base64 string (serde only auto-impls up to [u8;32]).
 mod sig_serde {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(sig: &[u8; 64], s: S) -> Result<S::Ok, S::Error>
     where
@@ -30,7 +30,9 @@ mod sig_serde {
     {
         let s = String::deserialize(d)?;
         let bytes = STANDARD.decode(&s).map_err(serde::de::Error::custom)?;
-        bytes.try_into().map_err(|_| serde::de::Error::custom("expected 64 bytes"))
+        bytes
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("expected 64 bytes"))
     }
 }
 
@@ -104,7 +106,9 @@ pub struct TicketVerifier {
 
 impl TicketVerifier {
     pub fn new() -> Self {
-        Self { seen: std::collections::HashSet::new() }
+        Self {
+            seen: std::collections::HashSet::new(),
+        }
     }
 
     pub fn verify(&mut self, ticket: &SignedTicket) -> anyhow::Result<()> {
@@ -115,7 +119,9 @@ impl TicketVerifier {
         }
 
         if self.seen.contains(&ticket.request_id) {
-            return Err(anyhow::anyhow!("Replay attack detected: duplicate request_id"));
+            return Err(anyhow::anyhow!(
+                "Replay attack detected: duplicate request_id"
+            ));
         }
         self.seen.insert(ticket.request_id);
         Ok(())
@@ -123,7 +129,9 @@ impl TicketVerifier {
 }
 
 impl Default for TicketVerifier {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── PendingTicketStore ───────────────────────────────────────────────────────

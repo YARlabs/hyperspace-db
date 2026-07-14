@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v3.1.1** | **The World's First Schema-Driven Spatial AI Engine.**
+**v3.1.2** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,7 +33,7 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v3.1.1)
+## 🚀 Core Pillars (v3.1.2)
 
 <table>
   <tr>
@@ -94,6 +94,10 @@ Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the N
   <tr>
     <td>🔒 <b>Zero-Knowledge ZK-Privacy</b></td>
     <td>Protect sensitive agent memories and database operations. Supports multi-SDK Zero-Knowledge client-side encryption. Vectors are projected, noise-injected, metadata is hashed, and payloads are AES-GCM encrypted <i>before</i> leaving the client, keeping database nodes blind to raw values while preserving distance metrics.</td>
+  </tr>
+  <tr>
+    <td>⛏️ <b>DePIN & Billing Enforcements</b></td>
+    <td>Decentralized Vector Network infrastructure. Includes in-process single-binary node execution, continuous storage rental billing (per byte-hour) with automated grace periods/deletion, signed ticket verification (Ed25519) on query time with replay protection, and user-throttling.</td>
   </tr>
 </table>
 
@@ -539,7 +543,7 @@ Open a new terminal to monitor the database:
 ### 3. Use Python SDK
 
 ```bash
-pip install hyperspacedb==3.1.1
+pip install hyperspacedb==3.1.2
 ```
 
 ```python
@@ -834,6 +838,7 @@ HyperspaceDB is ready for the modern AI stack with official high-level integrati
 | 🦙 **LlamaIndex** | Python | ✅ v3 | [pip install llama-index-vector-stores-hyperspace](https://pypi.org/project/llama-index-vector-stores-hyperspace/) |
 | 🦙 **LlamaIndex** | TS/JS | ✅ v3 | [npm install llamaindex-hyperspace](https://www.npmjs.com/package/llamaindex-hyperspace) |
 | 🔗 **n8n** | No-Code | ✅ v3 | [Community Node: n8n-nodes-hyperspacedb](https://www.npmjs.com/package/n8n-nodes-hyperspacedb) |
+| 🤖 **AI Agent Skills** | Any | ✅ v3.1.2 | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) |
 
 ---
 
@@ -846,11 +851,15 @@ Connect HyperspaceDB directly to **Claude Desktop**, **Cursor**, or any MCP-comp
 npx mcp-hyperspacedb@latest
 ```
 
-**Available Tools:**
-* `hyperspace_search_text`: Semantic search via natural language.
-* `hyperspace_insert_text`: Store facts and memories with auto-vectorization.
-* `hyperspace_graph_traverse`: Cross-reference and reasoning via graph paths.
-* `hyperspace_analyze_geometry`: Analyze if your prompt/data is hyperbolic or Euclidean.
+**Available Tools (30+):**
+* `hyperspace_search_text` / `hyperspace_search_wasserstein`: Semantic & Optimal Transport search.
+* `hyperspace_insert_text` / `hyperspace_delete_points` / `hyperspace_get_points`: Data CRUD.
+* `hyperspace_create_collection` / `hyperspace_delete_collection`: Collection management.
+* `hyperspace_graph_traverse` / `hyperspace_explore_graph` / `hyperspace_get_neighbors`: Graph navigation.
+* `hyperspace_get_subsumption_tree` / `hyperspace_get_concept_parents`: Hierarchy traversal.
+* `hyperspace_analyze_thought_stability` / `hyperspace_predict_momentum` / `hyperspace_get_trust_score`: Cognitive AI.
+* `hyperspace_analyze_geometry`: Gromov Delta → metric recommendation (`cosine`/`l2`/`lorentz`/`poincare`/`hybrid`).
+* `hyperspace_rebuild_index` / `hyperspace_vacuum` / `hyperspace_cache_*`: System maintenance.
 
 ---
 
@@ -867,6 +876,9 @@ Official 1st-party drivers with full **Functional Parity**, Delta Sync, and Cogn
 | 🎯 **Dart/Flutter** | [hyperspacedb: ^3.1.2](https://pub.dev/packages/hyperspacedb) | ✅ v3.* |
 | 🐹 **Go** | `sdks/go` | ✅ v3.* |
 | 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v3.* |
+| 🧠 **AI Agent Skills** | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) | ✅ v3.1.2 |
+
+> 🧠 **AI Agent Skills** (`hyperspacedb-skills`) are structured `SKILL.md` files that teach Cursor, Claude Code, Windsurf, Antigravity, and custom agents how to correctly use HyperspaceDB — covering core CRUD, graph traversal, cognitive AI (Lyapunov/Koopman), DePIN node economics, and the full 30+ MCP tool reference. Install once, all your agents understand HyperspaceDB automatically.
 
 ---
 
