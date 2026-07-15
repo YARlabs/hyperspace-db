@@ -61,6 +61,7 @@ pub enum ApiProvider {
     Mistral,
     Gemini,
     OpenRouter,
+    YarInk,
     Generic,
 }
 
@@ -75,6 +76,7 @@ impl std::str::FromStr for ApiProvider {
             "mistral" => Ok(Self::Mistral),
             "gemini" => Ok(Self::Gemini),
             "openrouter" => Ok(Self::OpenRouter),
+            "yarink" => Ok(Self::YarInk),
             "generic" => Ok(Self::Generic),
             _ => Err(()),
         }
@@ -929,6 +931,33 @@ impl Vectorizer for RemoteVectorizer {
                 Err(anyhow::anyhow!(
                     "Gemini embedding not yet implemented (use Generic if compatible)"
                 ))
+            }
+            // YarInk CDE-service (the.yar.ink/v1/embeddings) is fully OpenAI-compatible.
+            // It accepts { "input": [...], "model": "..." } and returns { "data": [{ "embedding": [...] }] }.
+            // Uses Bearer token authentication and returns 801-dimensional hybrid Lorentz+Euclidean vectors.
+            ApiProvider::YarInk => {
+                let url = self
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "https://the.yar.ink/v1/embeddings".to_string());
+
+                let req = OpenAIRequest {
+                    input: texts,
+                    model: self.model.clone(),
+                };
+                let res = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .header("Content-Type", "application/json")
+                    .header("User-Agent", "hyperspace-embed/3.1.3")
+                    .json(&req)
+                    .send()
+                    .await?
+                    .error_for_status()?;
+
+                let body: OpenAIResponse = res.json().await?;
+                Ok(body.data.into_iter().map(|d| d.embedding).collect())
             }
         }
     }

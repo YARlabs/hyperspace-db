@@ -777,6 +777,8 @@ pub struct HyperspaceService {
     vectorizer: Option<Arc<MultiVectorizer>>,
     #[cfg(feature = "depin")]
     pub billing: Option<hyperspace_billing::BillingContext>,
+    #[cfg(feature = "depin")]
+    pub is_full: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[tonic::async_trait]
@@ -1050,6 +1052,13 @@ impl Database for HyperspaceService {
             ));
         }
         #[cfg(feature = "depin")]
+        if self.is_full.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(Status::resource_exhausted(
+                "Local capacity limit reached (RAM or Disk utilization is >= 90%)",
+            ));
+        }
+
+        #[cfg(feature = "depin")]
         if let Some(billing) = &self.billing {
             verify_grpc_ticket(billing, &request)?;
             if billing.metering.is_throttled(&ctx.user_id) {
@@ -1236,6 +1245,12 @@ impl Database for HyperspaceService {
         if ctx.role == security::UserRole::ReadOnly {
             return Err(Status::permission_denied(
                 "ReadOnly API key cannot insert vectors",
+            ));
+        }
+        #[cfg(feature = "depin")]
+        if self.is_full.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(Status::resource_exhausted(
+                "Local capacity limit reached (RAM or Disk utilization is >= 90%)",
             ));
         }
         let client_ip = request
@@ -3480,6 +3495,96 @@ pub async fn start_server(
         resolved
     };
 
+    #[cfg(feature = "depin")]
+    let is_full = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    #[cfg(feature = "depin")]
+    {
+        let is_full_clone = is_full.clone();
+        tokio::spawn(async move {
+            use sysinfo::{System, Disks};
+            let mut sys = System::new_all();
+            
+            loop {
+                sys.refresh_all();
+                
+                // 1. RAM Capacity
+                let ram_capacity_bytes = if let Ok(val) = std::env::var("HS_RAM_CAPACITY_BYTES") {
+                    val.parse::<u64>().unwrap_or(0)
+                } else if let Ok(val) = std::env::var("HS_RAM_CAPACITY_GB") {
+                    val.parse::<u64>().unwrap_or(0) * 1024 * 1024 * 1024
+                } else {
+                    sys.total_memory()
+                };
+
+                // 2. RAM Used
+                let pid = sysinfo::get_current_pid().ok();
+                let ram_used_bytes = if let Some(p) = pid.and_then(|p| sys.process(p)) {
+                    p.memory()
+                } else {
+                    0
+                };
+
+                // 3. Disk Capacity
+                let disk_capacity_bytes = if let Ok(val) = std::env::var("HS_DISK_CAPACITY_BYTES") {
+                    val.parse::<u64>().unwrap_or(0)
+                } else if let Ok(val) = std::env::var("HS_DISK_CAPACITY_GB") {
+                    val.parse::<u64>().unwrap_or(0) * 1024 * 1024 * 1024
+                } else {
+                    let data_dir = std::env::var("HS_DATA_DIR").unwrap_or_else(|_| ".".to_string());
+                    let path = std::path::Path::new(&data_dir);
+                    let disks = Disks::new_with_refreshed_list();
+                    let mut best_disk_size = 100 * 1024 * 1024 * 1024;
+                    let mut max_prefix = 0;
+                    for disk in &disks {
+                        let mount_point = disk.mount_point();
+                        if path.starts_with(mount_point) {
+                            let len = mount_point.to_string_lossy().len();
+                            if len > max_prefix {
+                                max_prefix = len;
+                                best_disk_size = disk.total_space();
+                            }
+                        }
+                    }
+                    best_disk_size
+                };
+
+                // 4. Disk Used recursively
+                let data_dir = std::env::var("HS_DATA_DIR").unwrap_or_else(|_| ".".to_string());
+                fn get_dir_size(path: &std::path::Path) -> u64 {
+                    if !path.exists() {
+                        return 0;
+                    }
+                    let mut total_size = 0;
+                    if let Ok(entries) = std::fs::read_dir(path) {
+                        for entry in entries.flatten() {
+                            if let Ok(file_type) = entry.file_type() {
+                                if file_type.is_file() {
+                                    total_size += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                                } else if file_type.is_dir() {
+                                    total_size += get_dir_size(&entry.path());
+                                }
+                            }
+                        }
+                    }
+                    total_size
+                }
+                let disk_used_bytes = get_dir_size(std::path::Path::new(&data_dir));
+
+                let is_now_full = if disk_capacity_bytes > 0 && ram_capacity_bytes > 0 {
+                    (disk_used_bytes as f64 / disk_capacity_bytes as f64 >= 0.90)
+                        || (ram_used_bytes as f64 / ram_capacity_bytes as f64 >= 0.90)
+                } else {
+                    false
+                };
+                
+                is_full_clone.store(is_now_full, std::sync::atomic::Ordering::Relaxed);
+                
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+        });
+    }
+
     let service = HyperspaceService {
         manager,
         replication_tx,
@@ -3489,6 +3594,8 @@ pub async fn start_server(
         vectorizer,
         #[cfg(feature = "depin")]
         billing: billing_ctx,
+        #[cfg(feature = "depin")]
+        is_full,
     };
 
     println!("HyperspaceDB listening on {addr}");

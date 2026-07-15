@@ -47,11 +47,21 @@ class MockCoordinatorHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length) if content_length > 0 else b""
+
         if self.path == "/api/depin/nodes/register":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"success": True, "node_id": "test-node-1"}).encode("utf-8"))
+        elif self.path == "/api/depin/nodes/heartbeat":
+            payload = json.loads(post_data.decode("utf-8"))
+            print(f"💓 Heartbeat received on Mock Coordinator: {payload}")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "isFull": False}).encode("utf-8"))
         elif self.path == "/api/depin/sync":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -218,7 +228,77 @@ def main():
         print(f"Insert status after restoration: {success}")
         assert success is True, "Insert should succeed after restoration"
 
-        print("\n🎉 DePIN SDK and Server ticket validation + throttling/restoration tests PASSED successfully!")
+        # ─── Full Node Capacity Write Rejection Test ───
+        print("\n=== Testing Full Node Capacity Write Rejection ===")
+        
+        # Shut down first miner to release DB locks
+        print("Shutting down first miner to release DB locks...")
+        miner_proc.terminate()
+        try:
+            miner_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            miner_proc.kill()
+
+        env = os.environ.copy()
+        env["HS_DISK_CAPACITY_BYTES"] = "1"  # Force 1-byte capacity limit
+        env["HS_RAM_CAPACITY_BYTES"] = "1"
+        
+        cmd_full = cmd.copy()
+        for i, arg in enumerate(cmd_full):
+            if arg == "--grpc-port": cmd_full[i+1] = "50054"
+            elif arg == "--http-port": cmd_full[i+1] = "8082"
+            elif arg == "--p2p-port": cmd_full[i+1] = "7779"
+            
+        print(f"Launching second miner with 1-byte capacity: {' '.join(cmd_full)}")
+        miner_full_proc = subprocess.Popen(
+            cmd_full,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env
+        )
+        
+        time.sleep(4)
+        if miner_full_proc.poll() is not None:
+            stdout, stderr = miner_full_proc.communicate()
+            print(f"STDOUT: {stdout}")
+            print(f"STDERR: {stderr}")
+            raise RuntimeError("Second miner failed to start")
+            
+        try:
+            client_full = DePINClient(
+                host="localhost:50054",
+                coordinator_url=f"http://localhost:{coord_port}",
+                api_key="I_LOVE_HYPERSPACEDB"
+            )
+            
+            # Wait for capacity checker loop to flag the node full (runs every 5 seconds)
+            print("Waiting 6 seconds for capacity checker loop to flag the node full...")
+            time.sleep(6)
+            
+            print("Verifying insert rejection due to capacity limit...")
+            req = hyperspace_pb2.InsertRequest(
+                id=3,
+                vector=[0.1, 0.2, 0.3, 0.4],
+                collection=col_name
+            )
+            try:
+                client_full.stub.Insert(req, metadata=client_full.metadata)
+                assert False, "Insert should have been rejected due to capacity limit"
+            except grpc.RpcError as e:
+                print(f"Correctly failed with: {e.code()} - {e.details()}")
+                assert e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED, "Expected StatusCode.RESOURCE_EXHAUSTED"
+                assert "capacity limit reached" in e.details().lower(), "Expected capacity limit details"
+                
+        finally:
+            print("Shutting down second miner...")
+            miner_full_proc.terminate()
+            try:
+                miner_full_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                miner_full_proc.kill()
+
+        print("\n🎉 DePIN SDK and Server ticket validation + throttling/restoration + capacity tests PASSED successfully!")
         
     finally:
         # 5. Clean up subprocesses

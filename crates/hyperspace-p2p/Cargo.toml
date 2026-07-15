@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-p2p"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [dependencies]
@@ -8,6 +8,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
+sysinfo = "0.32"
 anyhow = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
 hex = "0.4"

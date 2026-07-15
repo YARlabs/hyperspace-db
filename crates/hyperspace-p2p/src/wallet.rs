@@ -31,6 +31,10 @@ pub struct NodeRegistration {
     pub semantic_zone: SemanticZone,
     #[serde(rename = "version")]
     pub version: String,
+    #[serde(rename = "ramCapacityBytes")]
+    pub ram_capacity_bytes: Option<u64>,
+    #[serde(rename = "diskCapacityBytes")]
+    pub disk_capacity_bytes: Option<u64>,
 }
 
 /// Response from the coordinator on successful registration.
@@ -55,6 +59,12 @@ pub struct NodeHeartbeat {
     /// Total disk used in bytes
     #[serde(rename = "diskBytes")]
     pub disk_bytes: u64,
+    #[serde(rename = "ramCapacityBytes")]
+    pub ram_capacity_bytes: u64,
+    #[serde(rename = "ramUsedBytes")]
+    pub ram_used_bytes: u64,
+    #[serde(rename = "diskCapacityBytes")]
+    pub disk_capacity_bytes: u64,
 }
 
 /// The coordinator client — handles registration + heartbeats.
@@ -89,6 +99,43 @@ impl CoordinatorClient {
 
     /// Register this node with the coordinator.  Retries up to `max_retries` times.
     pub async fn register(&self, ip: &str, max_retries: u32) -> anyhow::Result<String> {
+        use sysinfo::{System, Disks};
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        // 1. RAM Capacity
+        let ram_capacity_bytes = if let Ok(val) = std::env::var("HS_RAM_CAPACITY_BYTES") {
+            val.parse::<u64>().ok()
+        } else if let Ok(val) = std::env::var("HS_RAM_CAPACITY_GB") {
+            val.parse::<u64>().ok().map(|gb| gb * 1024 * 1024 * 1024)
+        } else {
+            Some(sys.total_memory())
+        };
+
+        // 2. Disk Capacity
+        let disk_capacity_bytes = if let Ok(val) = std::env::var("HS_DISK_CAPACITY_BYTES") {
+            val.parse::<u64>().ok()
+        } else if let Ok(val) = std::env::var("HS_DISK_CAPACITY_GB") {
+            val.parse::<u64>().ok().map(|gb| gb * 1024 * 1024 * 1024)
+        } else {
+            let data_dir = std::env::var("HS_DATA_DIR").unwrap_or_else(|_| ".".to_string());
+            let path = std::path::Path::new(&data_dir);
+            let disks = Disks::new_with_refreshed_list();
+            let mut best_disk_size = 100 * 1024 * 1024 * 1024;
+            let mut max_prefix = 0;
+            for disk in &disks {
+                let mount_point = disk.mount_point();
+                if path.starts_with(mount_point) {
+                    let len = mount_point.to_string_lossy().len();
+                    if len > max_prefix {
+                        max_prefix = len;
+                        best_disk_size = disk.total_space();
+                    }
+                }
+            }
+            Some(best_disk_size)
+        };
+
         let payload = NodeRegistration {
             peer_id: self.identity.peer_id.to_base58(),
             public_key: hex::encode(self.identity.public_key_bytes()),
@@ -97,6 +144,8 @@ impl CoordinatorClient {
             p2p_port: self.p2p_port,
             semantic_zone: self.identity.semantic_zone,
             version: env!("CARGO_PKG_VERSION").to_string(),
+            ram_capacity_bytes,
+            disk_capacity_bytes,
         };
 
         let url = format!("{}/api/depin/nodes/register", self.base_url);
@@ -148,24 +197,76 @@ impl CoordinatorClient {
         chunk_count_fn: impl Fn() -> (u64, u64) + Send + Sync + 'static,
     ) {
         tokio::spawn(async move {
+            use sysinfo::{System, Disks};
+            let mut sys = System::new_all();
+            
             let mut ticker = interval(Duration::from_secs(interval_secs));
             info!("💓 Heartbeat started (every {interval_secs}s)");
 
             loop {
                 ticker.tick().await;
 
+                sys.refresh_all();
+
+                // 1. RAM Capacity
+                let ram_capacity_bytes = if let Ok(val) = std::env::var("HS_RAM_CAPACITY_BYTES") {
+                    val.parse::<u64>().unwrap_or(0)
+                } else if let Ok(val) = std::env::var("HS_RAM_CAPACITY_GB") {
+                    val.parse::<u64>().unwrap_or(0) * 1024 * 1024 * 1024
+                } else {
+                    sys.total_memory()
+                };
+
+                // 2. RAM Used
+                let pid = sysinfo::get_current_pid().ok();
+                let ram_used_bytes = if let Some(p) = pid.and_then(|p| sys.process(p)) {
+                    p.memory()
+                } else {
+                    0
+                };
+
+                // 3. Disk Capacity
+                let disk_capacity_bytes = if let Ok(val) = std::env::var("HS_DISK_CAPACITY_BYTES") {
+                    val.parse::<u64>().unwrap_or(0)
+                } else if let Ok(val) = std::env::var("HS_DISK_CAPACITY_GB") {
+                    val.parse::<u64>().unwrap_or(0) * 1024 * 1024 * 1024
+                } else {
+                    let data_dir = std::env::var("HS_DATA_DIR").unwrap_or_else(|_| ".".to_string());
+                    let path = std::path::Path::new(&data_dir);
+                    let disks = Disks::new_with_refreshed_list();
+                    let mut best_disk_size = 100 * 1024 * 1024 * 1024;
+                    let mut max_prefix = 0;
+                    for disk in &disks {
+                        let mount_point = disk.mount_point();
+                        if path.starts_with(mount_point) {
+                            let len = mount_point.to_string_lossy().len();
+                            if len > max_prefix {
+                                max_prefix = len;
+                                best_disk_size = disk.total_space();
+                            }
+                        }
+                    }
+                    best_disk_size
+                };
+
+                // 4. CPU load
+                let load = sys.global_cpu_usage() / 100.0;
+
                 let (chunk_count, disk_bytes) = chunk_count_fn();
                 let payload = NodeHeartbeat {
                     peer_id: self.identity.peer_id.to_base58(),
-                    load: 0.5, // TODO: real CPU/IO load from sysinfo
+                    load,
                     chunk_count,
                     disk_bytes,
+                    ram_capacity_bytes,
+                    ram_used_bytes,
+                    disk_capacity_bytes,
                 };
 
                 let url = format!("{}/api/depin/nodes/heartbeat", self.base_url);
                 match self.http.post(&url).json(&payload).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        tracing::debug!("💓 Heartbeat sent — chunks={chunk_count}");
+                        tracing::debug!("💓 Heartbeat sent — chunks={chunk_count} disk={disk_bytes}");
                     }
                     Ok(resp) => {
                         warn!("Heartbeat rejected: HTTP {}", resp.status());

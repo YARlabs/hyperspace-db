@@ -67,11 +67,35 @@ pub async fn bootstrap(
         Err(e) => tracing::warn!("⚠️  Registration failed (will retry on heartbeat): {e}"),
     }
 
-    // Step 3 — heartbeat (chunk stats via placeholder fn for now)
+    // Step 3 — heartbeat (chunk stats via directory traversal)
     let coordinator_for_hb = coordinator.clone();
     coordinator_for_hb.spawn_heartbeat(60, || {
-        // TODO Phase 2.2: query CollectionManager for real chunk/disk stats
-        (0u64, 0u64)
+        let data_dir = std::env::var("HS_DATA_DIR").unwrap_or_else(|_| ".".to_string());
+        let path = std::path::Path::new(&data_dir);
+        
+        let mut chunk_count = 0;
+        let mut disk_bytes = 0;
+        
+        fn traverse(dir: &std::path::Path, chunks: &mut u64, bytes: &mut u64) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    if let Ok(file_type) = entry.file_type() {
+                        if file_type.is_file() {
+                            let len = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                            *bytes += len;
+                            if entry.path().extension().map_or(false, |ext| ext == "hyp") {
+                                *chunks += 1;
+                            }
+                        } else if file_type.is_dir() {
+                            traverse(&entry.path(), chunks, bytes);
+                        }
+                    }
+                }
+            }
+        }
+        
+        traverse(path, &mut chunk_count, &mut disk_bytes);
+        (chunk_count, disk_bytes)
     });
 
     // Step 4 — MetaRouter
