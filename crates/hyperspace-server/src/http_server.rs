@@ -439,21 +439,21 @@ pub async fn start_http_server(
                 .await;
             });
         }
-    } else {
-        println!("HTTP Dashboard listening on http://{addr}");
-        if api_key_hash.is_some() {
-            println!("🔒 Dashboard API Key Auth Enabled");
-        } else {
-            println!("⚠️  Dashboard API Key Auth Disabled");
-        }
-
-        axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-        )
-        .await
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     }
+
+    println!("HTTP Dashboard listening on http://{addr}");
+    if api_key_hash.is_some() {
+        println!("🔒 Dashboard API Key Auth Enabled");
+    } else {
+        println!("⚠️  Dashboard API Key Auth Disabled");
+    }
+
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
 
     Ok(())
 }

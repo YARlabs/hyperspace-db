@@ -656,7 +656,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None, use_wave: bool = False, restart_factor: float = None) -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None, use_wave: bool = False, restart_factor: float = None, include_payload: bool = None) -> List[Dict]:
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -675,12 +675,13 @@ class HyperspaceClient:
         context = self._get_encryption_context(collection, len(vector) if vector else None, metric)
         
         if context:
-            if vector:
-                sigma = self._collection_noise_sigmas.get(collection, 0.02)
-                if sigma > 0.0:
-                    vector = hs_math.inject_anisotropic_noise(vector, context["hmac_key"], sigma)
-                vector = self._project_collection_vector(collection, vector, context, metric)
+            # 1. Project search vector
+            sigma = self._collection_noise_sigmas.get(collection, 0.02)
+            if sigma > 0.0:
+                vector = hs_math.inject_anisotropic_noise(vector, context["hmac_key"], sigma)
+            vector = self._project_collection_vector(collection, vector, context, metric)
             
+            # 2. Hash filter keys and values
             if filter:
                 encrypted_filter = {}
                 for k, v in filter.items():
@@ -706,7 +707,7 @@ class HyperspaceClient:
             top_k=top_k,
             collection=collection,
             use_wave=use_wave,
-            include_payload=True if context else False
+            include_payload=include_payload if include_payload is not None else (True if context else False)
         )
         if filter:
             req.filter.update(filter)

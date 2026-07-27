@@ -1,3 +1,7 @@
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::items_after_statements)]
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ndarray::{Array, Array2, ArrayD, ArrayViewD};
@@ -88,6 +92,21 @@ impl std::str::FromStr for ApiProvider {
 #[async_trait]
 pub trait Vectorizer: Send + Sync {
     async fn vectorize(&self, texts: Vec<String>) -> Result<Vec<Vec<f64>>>;
+
+    /// Vectorize with a target dimension hint taken from the collection schema.
+    ///
+    /// The default implementation calls `vectorize` and then truncates each
+    /// vector to `dim` — this is correct for ONNX models.
+    /// Remote vectorizers should override this to pass `dimensions` / `output_dimension`
+    /// directly to the provider API, saving bandwidth and memory.
+    async fn vectorize_with_dim(&self, texts: Vec<String>, dim: usize) -> Result<Vec<Vec<f64>>> {
+        let mut vecs = self.vectorize(texts).await?;
+        for v in &mut vecs {
+            v.truncate(dim);
+        }
+        Ok(vecs)
+    }
+
     fn dimension(&self) -> usize;
 }
 
@@ -122,16 +141,9 @@ impl MultiVectorizer {
     /// # Errors
     /// Returns an error if no vectorizer is available or if vectorization fails.
     pub async fn vectorize_for(&self, texts: Vec<String>, metric: &str) -> Result<Vec<Vec<f64>>> {
-        let metric_key = match metric.to_lowercase().as_str() {
-            "l2" | "euclidean" => "l2",
-            "cosine" => "cosine",
-            "poincare" => "poincare",
-            "lorentz" => "lorentz",
-            "hybrid" => "hybrid",
-            _ => metric,
-        };
+        let metric_key = Self::normalize_metric(metric);
 
-        if let Some(v) = self.models.get(metric_key) {
+        if let Some(v) = self.models.get(&metric_key) {
             v.vectorize(texts).await
         } else {
             // Fallback to primary if exists
@@ -144,6 +156,50 @@ impl MultiVectorizer {
             } else {
                 Err(anyhow!("No vectorizer available"))
             }
+        }
+    }
+
+    /// Vectorizes text using a specific metric **and** requests/truncates the vector
+    /// to exactly `dim` dimensions — the dimension is read from the target collection.
+    ///
+    /// For Remote API vectorizers this causes the provider to return a shorter,
+    /// MRL-compatible vector directly (e.g. `dimensions=256` for OpenAI).
+    /// For local ONNX models the full vector is produced and then truncated.
+    ///
+    /// # Errors
+    /// Returns an error if no vectorizer is available or if vectorization fails.
+    pub async fn vectorize_for_dim(
+        &self,
+        texts: Vec<String>,
+        metric: &str,
+        dim: usize,
+    ) -> Result<Vec<Vec<f64>>> {
+        let metric_key = Self::normalize_metric(metric);
+
+        if let Some(v) = self.models.get(&metric_key) {
+            v.vectorize_with_dim(texts, dim).await
+        } else {
+            // Fallback to primary if exists
+            if let Some(v) = self
+                .models
+                .get("l2")
+                .or_else(|| self.models.values().next())
+            {
+                v.vectorize_with_dim(texts, dim).await
+            } else {
+                Err(anyhow!("No vectorizer available"))
+            }
+        }
+    }
+
+    fn normalize_metric(metric: &str) -> String {
+        match metric.to_lowercase().as_str() {
+            "l2" | "euclidean" => "l2".to_string(),
+            "cosine" => "cosine".to_string(),
+            "poincare" => "poincare".to_string(),
+            "lorentz" => "lorentz".to_string(),
+            "hybrid" => "hybrid".to_string(),
+            other => other.to_string(),
         }
     }
 }
@@ -594,6 +650,15 @@ impl Vectorizer for OnnxVectorizer {
         // No chunking - direct vectorization
         self.vectorize_direct(&texts)
     }
+
+    async fn vectorize_with_dim(&self, texts: Vec<String>, dim: usize) -> Result<Vec<Vec<f64>>> {
+        let mut vecs = self.vectorize(texts).await?;
+        for v in &mut vecs {
+            v.truncate(dim);
+            self.normalize(v);
+        }
+        Ok(vecs)
+    }
 }
 
 impl OnnxVectorizer {
@@ -777,6 +842,10 @@ impl RemoteVectorizer {
 struct OpenAIRequest {
     input: Vec<String>,
     model: String,
+    /// MRL: request a shorter embedding directly from the provider.
+    /// Supported by OpenAI text-embedding-3-* models and compatible APIs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dimensions: Option<u32>,
 }
 #[derive(Deserialize)]
 struct OpenAIResponse {
@@ -802,6 +871,9 @@ struct CohereResponse {
 struct VoyageRequest {
     input: Vec<String>,
     model: String,
+    /// MRL: request a shorter embedding from Voyage AI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_dimension: Option<u32>,
 }
 #[derive(Deserialize)]
 struct VoyageResponse {
@@ -832,6 +904,77 @@ impl Vectorizer for RemoteVectorizer {
         0
     }
 
+    /// Override: pass the collection dimension directly to the provider API
+    /// so we receive an MRL-truncated vector without wasting bandwidth.
+    async fn vectorize_with_dim(&self, texts: Vec<String>, dim: usize) -> Result<Vec<Vec<f64>>> {
+        #[allow(clippy::cast_possible_truncation)]
+        let dim_u32 = dim as u32;
+        match self.provider {
+            ApiProvider::OpenAI
+            | ApiProvider::OpenRouter
+            | ApiProvider::Generic
+            | ApiProvider::YarInk => {
+                let url = self
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| match self.provider {
+                        ApiProvider::OpenRouter => {
+                            "https://openrouter.ai/api/v1/embeddings".to_string()
+                        }
+                        ApiProvider::YarInk => "https://the.yar.ink/v1/embeddings".to_string(),
+                        _ => "https://api.openai.com/v1/embeddings".to_string(),
+                    });
+                let req = OpenAIRequest {
+                    input: texts,
+                    model: self.model.clone(),
+                    dimensions: Some(dim_u32),
+                };
+                let res = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .header("Content-Type", "application/json")
+                    .header("User-Agent", "hyperspace-embed/3.1.3")
+                    .json(&req)
+                    .send()
+                    .await?
+                    .error_for_status()?;
+                let body: OpenAIResponse = res.json().await?;
+                Ok(body.data.into_iter().map(|d| d.embedding).collect())
+            }
+            ApiProvider::Voyage => {
+                let url = self
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| "https://api.voyageai.com/v1/embeddings".to_string());
+                let req = VoyageRequest {
+                    input: texts,
+                    model: self.model.clone(),
+                    output_dimension: Some(dim_u32),
+                };
+                let res = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .json(&req)
+                    .send()
+                    .await?
+                    .error_for_status()?;
+                let body: VoyageResponse = res.json().await?;
+                Ok(body.data.into_iter().map(|d| d.embedding).collect())
+            }
+            // Mistral and Cohere do not support output dimensions — fall back to
+            // the default impl which vectorizes fully and then truncates.
+            _ => {
+                let mut vecs = self.vectorize(texts).await?;
+                for v in &mut vecs {
+                    v.truncate(dim);
+                }
+                Ok(vecs)
+            }
+        }
+    }
+
     async fn vectorize(&self, texts: Vec<String>) -> Result<Vec<Vec<f64>>> {
         match self.provider {
             ApiProvider::OpenAI | ApiProvider::OpenRouter | ApiProvider::Generic => {
@@ -848,6 +991,7 @@ impl Vectorizer for RemoteVectorizer {
                 let req = OpenAIRequest {
                     input: texts,
                     model: self.model.clone(),
+                    dimensions: None, // No MRL hint: request full-dimension vector
                 };
                 let res = self
                     .client
@@ -890,6 +1034,7 @@ impl Vectorizer for RemoteVectorizer {
                 let req = VoyageRequest {
                     input: texts,
                     model: self.model.clone(),
+                    output_dimension: None, // No MRL hint: request full-dimension vector
                 };
                 let res = self
                     .client
@@ -944,6 +1089,7 @@ impl Vectorizer for RemoteVectorizer {
                 let req = OpenAIRequest {
                     input: texts,
                     model: self.model.clone(),
+                    dimensions: None, // YarInk uses fixed 801-dim hybrid vectors
                 };
                 let res = self
                     .client
@@ -960,5 +1106,67 @@ impl Vectorizer for RemoteVectorizer {
                 Ok(body.data.into_iter().map(|d| d.embedding).collect())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hybrid_mrl_normalization_and_truncation() {
+        // Create an artificial 801D vector:
+        // Lorentz-part (first 33 coords): [x0, x1..x32]
+        // Euclidean-part (remaining 768 coords): all 1.0
+        let mut vec = vec![0.0; 801];
+        for val in &mut vec[1..33] {
+            *val = 0.1; // Spatial hyperbolic coordinates
+        }
+        for val in &mut vec[33..801] {
+            *val = 1.0; // Euclidean coordinates
+        }
+
+        // Initialize only metric and dimension fields in OnnxVectorizer using MaybeUninit
+        // to avoid zero-initializing complex types (Tokenizer, Session) which causes aborts.
+        use std::mem::MaybeUninit;
+        let mut vectorizer_uninit = MaybeUninit::<OnnxVectorizer>::uninit();
+        let vectorizer = unsafe {
+            let ptr = vectorizer_uninit.as_mut_ptr();
+            std::ptr::addr_of_mut!((*ptr).metric).write(Metric::Hybrid);
+            std::ptr::addr_of_mut!((*ptr).dimension).write(801);
+            &*ptr
+        };
+
+        // 1. First normalize the full vector
+        vectorizer.normalize(&mut vec);
+
+        // Verify Lorentz sheet constraint: x0 = sqrt(1 + sum(x_i^2) for i in 1..33)
+        let spatial_sq_sum: f64 = vec[1..33].iter().map(|&x| x * x).sum();
+        let expected_x0 = (1.0 + spatial_sq_sum).sqrt();
+        assert!((vec[0] - expected_x0).abs() < 1e-9);
+
+        // Verify Euclidean part is normalized to unit sphere: sum(euc_i^2) == 1.0
+        let euc_sq_sum: f64 = vec[33..801].iter().map(|&x| x * x).sum();
+        assert!((euc_sq_sum - 1.0).abs() < 1e-9);
+
+        // 2. Perform MRL Truncation to 161D (33 Lorentz + 128 Euclidean)
+        let target_dim = 161;
+        vec.truncate(target_dim);
+
+        // Truncation has reduced the Euclidean norm, so it's no longer normalized:
+        let euc_sq_sum_after_trunc: f64 = vec[33..target_dim].iter().map(|&x| x * x).sum();
+        assert!(euc_sq_sum_after_trunc < 1.0);
+
+        // 3. Call normalize again to verify it correctly renormalizes the truncated Euclidean sub-space
+        vectorizer.normalize(&mut vec);
+
+        // Verify Lorentz-part is still valid:
+        let spatial_sq_sum_final: f64 = vec[1..33].iter().map(|&x| x * x).sum();
+        let expected_x0_final = (1.0 + spatial_sq_sum_final).sqrt();
+        assert!((vec[0] - expected_x0_final).abs() < 1e-9);
+
+        // Verify Euclidean-part is perfectly re-normalized to 1.0:
+        let euc_sq_sum_final: f64 = vec[33..target_dim].iter().map(|&x| x * x).sum();
+        assert!((euc_sq_sum_final - 1.0).abs() < 1e-9);
     }
 }

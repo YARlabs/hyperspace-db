@@ -79,8 +79,9 @@ class HyperspaceVectorStore(VectorStore):
 
         """
         for node in nodes:
+            # Force remove_text=True to prevent heavy document texts from filling up in-memory metadata.
             metadata = node_to_metadata_dict(
-                node, remove_text=not self.stores_text, flat_metadata=True
+                node, remove_text=True, flat_metadata=True
             )
             # Hyperspace expects uint32 IDs. We'll try to parse or hash the node_id.
             try:
@@ -92,6 +93,7 @@ class HyperspaceVectorStore(VectorStore):
             self._client.insert(
                 id=hs_id,
                 vector=node.get_embedding(),
+                payload=node.get_content().encode('utf-8') if node.get_content() else None,
                 collection=self._collection_name,
                 metadata={k: str(v) for k, v in metadata.items()}
             )
@@ -141,7 +143,8 @@ class HyperspaceVectorStore(VectorStore):
             top_k=query.similarity_top_k,
             collection=self._collection_name,
             hybrid_alpha=alpha,
-            hybrid_query=query.query_str if mode == "hybrid" else None
+            hybrid_query=query.query_str if mode == "hybrid" else None,
+            include_payload=True # Retrieve the node text from the Sidecar Payload
         )
 
         nodes = []
@@ -151,12 +154,12 @@ class HyperspaceVectorStore(VectorStore):
         for res in results:
             # Reconstruct node from metadata
             metadata = res.get("metadata", {})
+            payload = res.get("payload")
             node = metadata_dict_to_node(metadata)
             
-            # If text is not in metadata, we might need to fetch it or it's a vector-only store
-            if isinstance(node, TextNode) and not node.get_text():
-                 # Handle missing text
-                 pass
+            # If text is not in metadata, restore it from the Sidecar Payload
+            if isinstance(node, TextNode) and payload:
+                 node.text = payload
             
             nodes.append(node)
             similarities.append(res.get("distance", 0.0))

@@ -1,6 +1,7 @@
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::pedantic)]
+#![allow(clippy::result_large_err)]
 
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{

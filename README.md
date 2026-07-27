@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v3.1.2** | **The World's First Schema-Driven Spatial AI Engine.**
+**v3.1.3** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,7 +33,7 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v3.1.2)
+## 🚀 Core Pillars (v3.1.3)
 
 <table>
   <tr>
@@ -56,8 +56,14 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
     <td>⚡ <b>L0 Hot Tier Cache</b></td>
     <td>Transparent two-level vector caching. Combines a thread-safe 64-shard <b>L1 DashMap Cache</b> (~1 µs lookups) with an <b>L2 HNSW Fallback Graph</b> (~100 µs lookups), featuring background TTL invalidation and automatic self-healing graph rebuilds.</td>
   </tr>
-  <td>💾 <b>O(1) Payload Indexing</b></td>
+  <tr>
+    <td>💾 <b>O(1) Payload Indexing</b></td>
     <td>High-throughput O(1) incremental indexing via append-only index write-ahead logging (WAL) in <code>payload_store.rs</code>, eliminating latency spikes and write amplification.</td>
+  </tr>
+  <tr>
+    <td>🤖 <b>Cognitive MCP & Zero-RAM Sidecar</b></td>
+    <td>Native Model Context Protocol (MCP) server for IDE agents (Claude, Cursor, Antigravity) with 6 cognitive tools. Zero-RAM Sidecar Payload streaming for LangChain and LlamaIndex to keep RAM lightweight.</td>
+  </tr>
   <tr>
     <td>📝 <b>Real-Time WriteBuffer</b></td>
     <td>Zero-latency searchability. Inserts instantly write to an in-memory <b>WriteBuffer</b>; searches execute Rayon-parallelized linear scans on the buffer and merge/deduplicate results with main HNSW results.</td>

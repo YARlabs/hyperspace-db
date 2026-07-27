@@ -1243,23 +1243,36 @@ impl Database for HyperspaceService {
                     return Err(Status::permission_denied("Followers are read-only"));
                 }
                 if let Some(multi) = &self.vectorizer {
-                    let metric = if let Some(col) = self.manager.get(&owner, &col_name).await {
-                        col.metric_name().to_string()
+                    // Get the collection once to read both metric and full dimension.
+                    // The dimension is passed to the vectorizer so that:
+                    //   - Remote API providers (OpenAI, Voyage) request an MRL-truncated
+                    //     vector of exactly this size, saving bandwidth and RAM.
+                    //   - Local ONNX models produce their full output which is then
+                    //     truncated to this dimension as a safety guard.
+                    let col = self.manager.get(&owner, &col_name).await;
+
+                    let (metric, col_dim) = if let Some(ref c) = col {
+                        (c.metric_name().to_string(), c.dimension())
                     } else {
-                        "l2".to_string()
+                        return Err(Status::not_found(format!(
+                            "Collection '{col_name}' not found"
+                        )));
                     };
 
                     let vectors = multi
-                        .vectorize_for(vec![req.text], &metric)
+                        .vectorize_for_dim(vec![req.text], &metric, col_dim)
                         .await
                         .map_err(|e| Status::internal(format!("Embedding failed: {e}")))?;
 
                     if vectors.is_empty() {
                         return Err(Status::internal("Empty vector result"));
                     }
-                    let vector = vectors[0].clone();
+                    // Safety truncation: guarantee the vector exactly matches the
+                    // collection dimension regardless of what the model returned.
+                    let mut vector = vectors.into_iter().next().unwrap();
+                    vector.truncate(col_dim);
 
-                    if let Some(col) = self.manager.get(&owner, &col_name).await {
+                    if let Some(col) = col {
                         let meta: std::collections::HashMap<String, String> =
                             req.metadata.into_iter().collect();
                         let clock = self.manager.tick_cluster_clock().await;

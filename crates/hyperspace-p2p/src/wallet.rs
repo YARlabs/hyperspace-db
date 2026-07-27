@@ -99,7 +99,7 @@ impl CoordinatorClient {
 
     /// Register this node with the coordinator.  Retries up to `max_retries` times.
     pub async fn register(&self, ip: &str, max_retries: u32) -> anyhow::Result<String> {
-        use sysinfo::{System, Disks};
+        use sysinfo::{Disks, System};
         let mut sys = System::new_all();
         sys.refresh_all();
 
@@ -197,9 +197,9 @@ impl CoordinatorClient {
         chunk_count_fn: impl Fn() -> (u64, u64) + Send + Sync + 'static,
     ) {
         tokio::spawn(async move {
-            use sysinfo::{System, Disks};
+            use sysinfo::{Disks, System};
             let mut sys = System::new_all();
-            
+
             let mut ticker = interval(Duration::from_secs(interval_secs));
             info!("💓 Heartbeat started (every {interval_secs}s)");
 
@@ -266,7 +266,9 @@ impl CoordinatorClient {
                 let url = format!("{}/api/depin/nodes/heartbeat", self.base_url);
                 match self.http.post(&url).json(&payload).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        tracing::debug!("💓 Heartbeat sent — chunks={chunk_count} disk={disk_bytes}");
+                        tracing::debug!(
+                            "💓 Heartbeat sent — chunks={chunk_count} disk={disk_bytes}"
+                        );
                     }
                     Ok(resp) => {
                         warn!("Heartbeat rejected: HTTP {}", resp.status());

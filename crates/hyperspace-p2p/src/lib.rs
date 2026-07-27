@@ -72,10 +72,10 @@ pub async fn bootstrap(
     coordinator_for_hb.spawn_heartbeat(60, || {
         let data_dir = std::env::var("HS_DATA_DIR").unwrap_or_else(|_| ".".to_string());
         let path = std::path::Path::new(&data_dir);
-        
+
         let mut chunk_count = 0;
         let mut disk_bytes = 0;
-        
+
         fn traverse(dir: &std::path::Path, chunks: &mut u64, bytes: &mut u64) {
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
@@ -83,7 +83,7 @@ pub async fn bootstrap(
                         if file_type.is_file() {
                             let len = entry.metadata().map(|m| m.len()).unwrap_or(0);
                             *bytes += len;
-                            if entry.path().extension().map_or(false, |ext| ext == "hyp") {
+                            if entry.path().extension().is_some_and(|ext| ext == "hyp") {
                                 *chunks += 1;
                             }
                         } else if file_type.is_dir() {
@@ -93,7 +93,7 @@ pub async fn bootstrap(
                 }
             }
         }
-        
+
         traverse(path, &mut chunk_count, &mut disk_bytes);
         (chunk_count, disk_bytes)
     });

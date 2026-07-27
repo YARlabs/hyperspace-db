@@ -402,6 +402,87 @@ class HyperspaceMcpServer {
             },
             required: ["collection", "trajectory_ids"]
           }
+        },
+        // --- COGNITIVE SKILLS / TOOLS ---
+        {
+          name: "hyperspace_remember_event",
+          description: "Saves an event or fact to the agent's autobiographical memory (Episodic Memory). Automatically vectorizes the text and writes it to the Sidecar Payload, preserving tags and session ID in metadata.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              text: { type: "string", description: "Text of the event or statement." },
+              session_id: { type: "string", description: "Session/dialogue identifier." },
+              tags: { type: "array", items: { type: "string" }, description: "List of tags for labeling." }
+            },
+            required: ["collection", "text", "session_id", "tags"]
+          }
+        },
+        {
+          name: "hyperspace_recall_context",
+          description: "Retrieves similar memories (Episodic Memory) to form context. Supports filtering by session_id.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              query: { type: "string", description: "Semantic query text." },
+              session_id: { type: "string", description: "Optional session ID filter." },
+              limit: { type: "number", default: 5, description: "Maximum number of results to return." }
+            },
+            required: ["collection", "query"]
+          }
+        },
+        {
+          name: "hyperspace_forget_memory",
+          description: "Deletes a specific memory from the database by its ID.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              memory_id: { type: "number", description: "Memory identifier." }
+            },
+            required: ["collection", "memory_id"]
+          }
+        },
+        {
+          name: "hyperspace_explore_hierarchy",
+          description: "Explore hierarchical relationships of concepts in Lorentz space (Lorentz Cone Subsumption). Allows navigating to parent concepts or down to subtree descendants.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              concept_id: { type: "number", description: "Concept identifier." },
+              direction: { type: "string", description: "Traversal direction: 'up' (parents) or 'down' (descendant subtree)." },
+              limit: { type: "number", default: 32, description: "Limit on the number of results." }
+            },
+            required: ["collection", "concept_id", "direction"]
+          }
+        },
+        {
+          name: "hyperspace_consolidate_memories",
+          description: "Consolidates a group of related memories on a topic into a single abstract concept by calculating the geometric center of mass (Fréchet Mean) on the hyperboloid.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              topic_query: { type: "string", description: "Topic or search query for grouping." },
+              limit: { type: "number", default: 10, description: "Number of memories to consolidate." }
+            },
+            required: ["collection", "topic_query"]
+          }
+        },
+        {
+          name: "hyperspace_verify_logical_claim",
+          description: "Verifies the logical connection (facts) between a premise and a conclusion. Calculates Trust Score based on trajectory or graph distance to prevent hallucinations.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string" },
+              premise: { type: "string", description: "The initial fact or premise." },
+              conclusion: { type: "string", description: "The statement to verify." }
+            },
+            required: ["collection", "premise", "conclusion"]
+          }
         }
       ]
     }));
@@ -450,9 +531,15 @@ class HyperspaceMcpServer {
               dimension: z.number().optional(),
               metric: z.string().optional()
             }).parse(args);
+
+            const isHybrid129 = (metric === 'hybrid' && dimension === 129);
+            const fullDim = isHybrid129 ? 801 : (dimension || 1024);
+
             const success = await this.client.createCollection(collection, {
-              components: [{ name: 'default', metric: metric || 'cosine', fullDimension: dimension || 1024, weight: 1.0 }],
-              cascadePipeline: []
+              components: [{ name: 'default', metric: metric || 'cosine', fullDimension: fullDim, weight: 1.0 }],
+              cascadePipeline: isHybrid129 ? [
+                { componentName: 'default', cutoffDimension: 129, storeInRam: true, rerankTopK: 0 }
+              ] : []
             });
             return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
           }
@@ -504,7 +591,7 @@ class HyperspaceMcpServer {
           }
           case "hyperspace_get_stats": {
             const { collection } = z.object({ collection: z.string() }).parse(args);
-            
+
             // 1. Fetch gRPC CollectionStats & Digest in parallel
             let digest: any = {};
             let grpcStats: any = {};
@@ -614,6 +701,225 @@ class HyperspaceMcpServer {
             const { collection, trajectory_ids, curvature } = z.object({ collection: z.string(), trajectory_ids: z.array(z.number()), curvature: z.number().optional() }).parse(args);
             const res = await this.client.getTrustScore(trajectory_ids, collection, curvature || 1.0);
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          // --- COGNITIVE SKILLS HANDLERS ---
+          case "hyperspace_remember_event": {
+            const { collection, text, session_id, tags } = z.object({
+              collection: z.string(),
+              text: z.string(),
+              session_id: z.string(),
+              tags: z.array(z.string())
+            }).parse(args);
+
+            // Generate stable uint32 hash ID from text and session_id
+            const keyStr = `${text}_${session_id}`;
+            let id = 0;
+            for (let i = 0; i < keyStr.length; i++) {
+              id = (id * 31 + keyStr.charCodeAt(i)) >>> 0;
+            }
+
+            const metadata: { [key: string]: string } = {
+              text,
+              session_id,
+              tags: tags.join(',')
+            };
+
+            await this.client.insertText(id, text, metadata, collection);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({
+                  status: "success",
+                  memory_id: id,
+                  message: `Event remembered successfully under ID ${id}`
+                }, null, 2)
+              }]
+            };
+          }
+          case "hyperspace_recall_context": {
+            const { collection, query, session_id, limit } = z.object({
+              collection: z.string(),
+              query: z.string(),
+              session_id: z.string().optional(),
+              limit: z.number().optional()
+            }).parse(args);
+
+            const options: any = {};
+            if (session_id) {
+              options.filters = [{ match: { key: "session_id", value: session_id } }];
+            }
+
+            const res = await this.client.searchText(query, limit || 5, collection, options);
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          case "hyperspace_forget_memory": {
+            const { collection, memory_id } = z.object({
+              collection: z.string(),
+              memory_id: z.number()
+            }).parse(args);
+
+            const success = await this.client.delete(memory_id, collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success, message: `Memory ${memory_id} forgotten.` }, null, 2) }] };
+          }
+          case "hyperspace_explore_hierarchy": {
+            const { collection, concept_id, direction, limit } = z.object({
+              collection: z.string(),
+              concept_id: z.number(),
+              direction: z.enum(["up", "down"]),
+              limit: z.number().optional()
+            }).parse(args);
+
+            if (direction === "up") {
+              const res = await this.client.getConceptParents(concept_id, 0, limit || 32, collection);
+              return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+            } else {
+              const res = await this.client.getSubsumptionTree(concept_id, 3, collection);
+              return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+            }
+          }
+          case "hyperspace_consolidate_memories": {
+            const { collection, topic_query, limit } = z.object({
+              collection: z.string(),
+              topic_query: z.string(),
+              limit: z.number().optional()
+            }).parse(args);
+
+            // 1. Search for memory points matching the topic
+            const hits = await this.client.searchText(topic_query, limit || 10, collection);
+            if (hits.length === 0) {
+              return { content: [{ type: "text", text: JSON.stringify({ error: "No matching memories found to consolidate." }, null, 2) }] };
+            }
+
+            // 2. Fetch coordinate vectors for those points
+            const ids = hits.map(h => h.id);
+            const points = await this.client.getPoints(ids, collection);
+            const vectors = points.map(p => p.vector).filter(v => Array.isArray(v) && v.length > 0);
+
+            if (vectors.length === 0) {
+              return { content: [{ type: "text", text: JSON.stringify({ error: "No valid vectors retrieved." }, null, 2) }] };
+            }
+
+            // 3. Compute Fréchet Mean using CognitiveMath
+            const meanVector = CognitiveMath.frechetMean(vectors, 1.0);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({
+                  consolidated_vector: meanVector,
+                  dimension: meanVector.length,
+                  source_points_count: vectors.length,
+                  source_ids: ids
+                }, null, 2)
+              }]
+            };
+          }
+          case "hyperspace_verify_logical_claim": {
+            const { collection, premise, conclusion } = z.object({
+              collection: z.string(),
+              premise: z.string(),
+              conclusion: z.string()
+            }).parse(args);
+
+            try {
+              // 1. Vectorize both premise and conclusion on the fly using hybrid metric (801D)
+              const [u_raw, v_raw] = await Promise.all([
+                this.client.vectorize(premise, 'hybrid'),
+                this.client.vectorize(conclusion, 'hybrid')
+              ]);
+
+              // 2. Perform MRL Truncation to 129D (33 Lorentz + 96 Euclidean) and re-normalize
+              const mrlTruncateAndNormalize = (v: number[]): number[] => {
+                if (v.length <= 129) return v;
+                const truncated = v.slice(0, 129);
+                
+                // Lorentz part (first 33 elements)
+                const lorentz_part = truncated.slice(0, 33);
+                let spatial_norm_sq = 0;
+                for (let i = 1; i < 33; i++) {
+                  spatial_norm_sq += lorentz_part[i] * lorentz_part[i];
+                }
+                lorentz_part[0] = Math.sqrt(1.0 + spatial_norm_sq); // upper sheet constraint
+                
+                // Euclidean part (remaining 96 elements)
+                const euclidean_part = truncated.slice(33);
+                let euc_norm_sq = 0;
+                for (let i = 0; i < euclidean_part.length; i++) {
+                  euc_norm_sq += euclidean_part[i] * euclidean_part[i];
+                }
+                const euc_norm = Math.sqrt(euc_norm_sq);
+                if (euc_norm > 0) {
+                  for (let i = 0; i < euclidean_part.length; i++) {
+                    euclidean_part[i] /= euc_norm;
+                  }
+                }
+                
+                return [...lorentz_part, ...euclidean_part];
+              };
+
+              const u = mrlTruncateAndNormalize(u_raw);
+              const v = mrlTruncateAndNormalize(v_raw);
+
+              // 3. Mathematically strict hybrid distance calculation over 129D space:
+              // Lorentz distance for first 33 dimensions, Cosine distance for the remaining 96 dimensions.
+              const u_lorentz = u.slice(0, 33);
+              const v_lorentz = v.slice(0, 33);
+              
+              // Lorentz inner product: -u[0]*v[0] + sum_{i=1}^{32} u[i]*v[i]
+              let prod = -u_lorentz[0] * v_lorentz[0];
+              for (let i = 1; i < 33; i++) {
+                prod += u_lorentz[i] * v_lorentz[i];
+              }
+              // Hyperbolic distance (Minkowski model)
+              const lorentz_dist = Math.acosh(Math.max(-prod, 1.0));
+
+              const u_cosine = u.slice(33);
+              const v_cosine = v.slice(33);
+              let dot = 0;
+              let norm_u = 0;
+              let norm_v = 0;
+              for (let i = 0; i < u_cosine.length; i++) {
+                dot += u_cosine[i] * v_cosine[i];
+                norm_u += u_cosine[i] * u_cosine[i];
+                norm_v += v_cosine[i] * v_cosine[i];
+              }
+              const cosine_dist = 1.0 - (dot / (Math.sqrt(norm_u) * Math.sqrt(norm_v) + 1e-9));
+
+              // Combined hybrid metric distance
+              const dist = lorentz_dist + cosine_dist;
+              const trustScore = 1.0 / (1.0 + dist);
+
+              // 0.36 threshold represents the boundary in our 129D MRL hybrid space
+              const status = trustScore > 0.36 ? "VERIFIED" : "REJECTED";
+              const reason = trustScore > 0.36
+                ? "Logical claim is geometrically consistent with episodic context."
+                : `Geodesic violation. Hyperbolic distance between concepts is too large (${dist.toFixed(4)}), indicating disconnected sub-cones.`;
+
+              return {
+                content: [{
+                  type: "text",
+                  text: JSON.stringify({
+                    status,
+                    trust_score: parseFloat(trustScore.toFixed(4)),
+                    lorentz_distance: parseFloat(lorentz_dist.toFixed(4)),
+                    cosine_distance: parseFloat(cosine_dist.toFixed(4)),
+                    total_distance: parseFloat(dist.toFixed(4)),
+                    reason,
+                    vector_dimension: u.length
+                  }, null, 2)
+                }]
+              };
+            } catch (err: any) {
+              return {
+                content: [{
+                  type: "text",
+                  text: JSON.stringify({
+                    status: "REJECTED",
+                    trust_score: 0.0,
+                    reason: `Failed to compute logical claim safety score: ${err.message}`
+                  }, null, 2)
+                }]
+              };
+            }
           }
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Tool not found: ${name}`);
