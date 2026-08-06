@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-core"
-version = "3.1.1"
+version = "3.1.3"
 edition = "2021"
 
 [dependencies]

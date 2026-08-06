@@ -2,7 +2,7 @@
 
 Official Go client for the **HyperspaceDB** gRPC API. 
 
-This SDK features pre-generated protocol buffers (`proto/`) to interact directly with the high-performance HyperspaceDB server (`v3.1.0`). It is tailored for high-concurrency event-streaming systems, CDC syncs, and microservices managing hyperspatial graph databases.
+This SDK features pre-generated protocol buffers (`proto/`) to interact directly with the high-performance HyperspaceDB server (`v3.1.1`). It is tailored for high-concurrency event-streaming systems, CDC syncs, and microservices managing hyperspatial graph databases.
 
 ## Integration
 
@@ -101,9 +101,9 @@ schema := &pb.CollectionSchema{
 client.CreateCollection(ctx, "mrl_collection", schema)
 ```
 
-## Geometric Filters (New in v3.0)
+## Geometric Filters
 
-HyperspaceDB v3.0 introduces advanced spatial filters that run on the engine level:
+HyperspaceDB introduces advanced spatial filters that run on the engine level:
 
 ```go
 // 1. Proximity Search (Ball)
@@ -229,3 +229,88 @@ res, err := client.SearchMultiCollection(ctx, req)
 | `poincare` | Clamp to unit ball | Hierarchical data (ontologies, taxonomies) |
 | `lorentz` | None | Mixed hierarchical + semantic (knowledge graphs) |
 | `hybrid` | None | Lorentz + L2 combined metric |
+
+## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
+
+HyperspaceDB v3.1.1 supports Zero-Knowledge client-side encryption (ZK-Privacy) for Go. Private vectors, metadata, and sidecar payloads are projected, noise-injected, and encrypted *before* transmitting over the wire. The database server only processes the projected vectors and obfuscated metadata.
+
+### Usage Example
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/yarlabs/hyperspace-sdk-go"
+	pb "github.com/yarlabs/hyperspace-sdk-go/proto"
+)
+
+func main() {
+	client, err := hyperspace.NewClient("localhost:50051", "I_LOVE_HYPERSPACEDB")
+	if err != nil {
+		log.Fatalf("failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	ctx := context.Background()
+	collection := "secure_docs"
+	secretKey := "my-secret-key-go"
+
+	// Create schema
+	schema := &pb.CollectionSchema{
+		Components: []*pb.VectorComponent{
+			{Name: "primary", Metric: "cosine", FullDimension: 3, Weight: 1.0},
+		},
+	}
+
+	// Register the key to enable ZK client-side encryption
+	// noiseSigma defaults to 0.02 (anisotropic noise fraction)
+	client.RegisterCollectionKey(collection, secretKey, "cosine", 0.02, schema)
+
+	err = client.CreateCollection(ctx, collection, schema, secretKey, 0.02)
+	if err != nil {
+		log.Fatalf("failed to create collection: %v", err)
+	}
+
+	// 1. Insert (Vector will be projected, noise injected, payload encrypted, and metadata hashed)
+	insertParams := &hyperspace.InsertParams{
+		Metadata: map[string]string{
+			"category": "secret",
+		},
+		Payload: []byte("Top secret data payload"),
+	}
+	err = client.Insert(ctx, 1, []float64{0.1, 0.2, 0.3}, collection, insertParams)
+	if err != nil {
+		log.Fatalf("failed to insert: %v", err)
+	}
+
+	// 2. Search (Query vector projected and filters hashed; payloads decrypted locally)
+	searchParams := &hyperspace.SearchParams{
+		Filters: []*pb.Filter{
+			{
+				Condition: &pb.Filter_Match{
+					Match: &pb.Match{
+						Key:   "category",
+						Value: "secret",
+					},
+				},
+			},
+		},
+	}
+	results, err := client.Search(ctx, []float64{0.1, 0.2, 0.3}, 5, collection, searchParams)
+	if err != nil {
+		log.Fatalf("failed to search: %v", err)
+	}
+
+	for _, res := range results {
+		fmt.Printf("ID: %d, Distance: %f\n", res.Id, res.Distance)
+		if len(res.Payload) > 0 {
+			fmt.Printf("Decrypted Payload: %s\n", string(res.Payload))
+		}
+	}
+}
+```
+

@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.3] - 2026-07-19
+
+### Added
+* **DePIN Hardware & Node Resource Telemetry**:
+    * Implemented continuous system resource monitoring (`sysinfo`) tracking real-time RAM consumption, total RAM, CPU usage/core counts, and disk space usage per P2P miner node.
+    * Extended `NodeRegistrationPacket` and `HeartbeatPacket` protocols to stream hardware metrics across the P2P swarm.
+    * Integrated encrypted `CryptoWallet` key storage (AES-256-GCM, PBKDF2/SHA256) supporting local export and import of node operator credentials.
+* **AsymmetricHybrid801 Quantization & Matryoshka (MRL) 129D Cascades**:
+    * Resolved hybrid quantization panic during `HS_QUANTIZATION_LEVEL=medium` by introducing specialized `AsymmetricHybrid801` mode (preserving 33 Lorentz dimensions as exact `f32` while compressing 768 Euclidean dimensions to `i8`).
+    * Added native `distance_mrl` calculation enabling sub-millisecond 129D HNSW search over 801D base vectors without accuracy loss.
+* **Cognitive Skills Schemas & Model Context Protocol (MCP)**:
+    * Standardized 6 cognitive tools (`remember_event`, `recall_context`, `forget_memory`, `explore_hierarchy`, `consolidate_memories`, `verify_logical_claim`) in TypeScript MCP server (`integrations/mcp-hyperspacedb`).
+    * Updated `verify_logical_claim` logic with a calibrated Trust Score threshold (`0.36`) and Minkowski/Lorentz light-cone path evaluation.
+    * Integrated taxonomy subsumption tree exploration via `explore_hierarchy` (`getSubsumptionTree` & `getConceptParents`).
+* **Zero-RAM Sidecar Payload Storage (LangChain & LlamaIndex)**:
+    * Refactored Python LangChain (`HyperspaceVectorStore`) and LlamaIndex (`HyperspaceVectorStore`) adapters to write large document texts directly to zstd-compressed `.hyp` Sidecar Payload disk files.
+    * Kept RAM metadata lightweight to eliminate write amplification and memory bloat on large-scale text ingestion.
+    * Enabled transparent `include_payload=True` query flags in Python SDK to seamlessly reconstruct original document texts on retrieval.
+* **Built-in Embeddings & Local CDE Provider**:
+    * Added `yarink` embedder provider in `crates/hyperspace-embed` for local/remote Context Diffusion Engine (`v5_Light` 801D hybrid model).
+
+## [3.1.2] - 2026-07-14
+
+### Added
+* **DePIN & Decentralized Node Infrastructure**:
+    * Implemented a unified `hyperspace-miner` process coordinating gRPC/HTTP database nodes, P2P networking, and billing management.
+    * Added command line arguments for in-process configurations (grpc/http/p2p ports, public IP, identity-file, data-dir, billing-db-path).
+    * Integrated continuous storage rental billing (per byte-hour) calculating storage footprint dynamically on each background tick.
+    * Implemented account grace periods (`HS_DEPIN_GRACE_PERIOD_DAYS`, default 7 days) and automated tenant data deletion callbacks on expiration.
+    * Added write-path and read-path billing enforcement (returning `StatusCode.RESOURCE_EXHAUSTED` / gRPC 8 on depleted balance).
+* **Cryptographic SignedTicket Verification Pipeline**:
+    * Integrated gRPC metadata extraction for the `x-hs-ticket` ticket validation header.
+    * Cryptographic ticket signature verification using Ed25519-dalek public keys.
+    * In-memory replay guard cache (seen request IDs) and expiration time checks protecting against replay attacks.
+    * ACID-safe ticket storage queue (`PendingTicketStore`) using `redb` database for coordinator batch settlement.
+* **Python DePIN SDK & Interceptor**:
+    * Added `DePINClient` subclass supporting client-side Ed25519 signing keys.
+    * Implemented transparent gRPC client interceptor automatically calculating query costs (1 micro-USD for writes, 10 micro-USD for searches) and signing tickets on the fly.
+    * Integrated automatic target node public key (`recipient_pubkey`) directory queries from the coordinator.
+* **Zero-Knowledge Privacy & Client-Side Encryption**:
+    * Standardized cryptographic Zero-Knowledge transformations across multi-language SDKs (Python, TS, Go).
+    * Client-side metadata key/value hashing using HMAC-SHA256 and payload encryption using AES-256-GCM (PBKDF2 key derivation) before network transmission.
+
+### Fixed
+* **SIMD & Memory Optimizations**:
+    * Avoided heap allocations in `storage_f32` mode distance calculation.
+    * Resolved all compiler/linter warnings in the workspace under strict Clippy and pedantic checks (`cargo clippy --tests --workspace -- -W clippy::pedantic` and `-D warnings`).
+
 ## [3.1.1] - 2026-07-01
 
 ### Added

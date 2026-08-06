@@ -1,4 +1,5 @@
 from .client import HyperspaceClient, Durability
+from .depin import DePINClient
 from .embedders import (
     BaseEmbedder,
     OpenAIEmbedder,
@@ -24,6 +25,7 @@ from .agents import TribunalContext
 
 __all__ = [
     "HyperspaceClient",
+    "DePINClient",
     "Durability",
     "BaseEmbedder",
     "OpenAIEmbedder",

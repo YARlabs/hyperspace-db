@@ -10,6 +10,7 @@ import { NodesPage } from "./pages/NodesPage"
 import { SettingsPage } from "./pages/SettingsPage"
 import { MigrationPage } from "./pages/MigrationPage"
 import { TrajectoryPage } from "./pages/TrajectoryPage"
+import { AgentSkillsPage } from "./pages/AgentSkillsPage"
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/migration" element={<MigrationPage />} />
           <Route path="/trajectory" element={<TrajectoryPage />} />
+          <Route path="/agent-skills" element={<AgentSkillsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

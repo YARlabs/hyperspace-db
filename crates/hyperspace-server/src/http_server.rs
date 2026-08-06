@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use crate::gossip::PeerRegistry;
 use crate::manager::CollectionManager;
 use axum::{
@@ -104,10 +106,11 @@ async fn validate_api_key(
             key_role = Some(crate::security::UserRole::Admin);
         } else {
             let path = request.uri().path();
-            if path.starts_with("/api/") || path == "/metrics" {
-                if !ctx.is_admin && ctx.user_id == "anonymous" {
-                    return Err(StatusCode::UNAUTHORIZED);
-                }
+            if (path.starts_with("/api/") || path == "/metrics")
+                && !ctx.is_admin
+                && ctx.user_id == "anonymous"
+            {
+                return Err(StatusCode::UNAUTHORIZED);
             }
         }
     }
@@ -185,6 +188,7 @@ fn load_key(path: &str) -> std::io::Result<rustls_pki_types::PrivateKeyDer<'stat
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_http_server(
     manager: Arc<CollectionManager>,
     port: u16,
@@ -435,21 +439,21 @@ pub async fn start_http_server(
                 .await;
             });
         }
-    } else {
-        println!("HTTP Dashboard listening on http://{addr}");
-        if api_key_hash.is_some() {
-            println!("🔒 Dashboard API Key Auth Enabled");
-        } else {
-            println!("⚠️  Dashboard API Key Auth Disabled");
-        }
-
-        axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-        )
-        .await
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     }
+
+    println!("HTTP Dashboard listening on http://{addr}");
+    if api_key_hash.is_some() {
+        println!("🔒 Dashboard API Key Auth Enabled");
+    } else {
+        println!("⚠️  Dashboard API Key Auth Disabled");
+    }
+
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
 
     Ok(())
 }
@@ -1123,7 +1127,7 @@ async fn get_status(
         Arc<Option<EmbeddingInfo>>,
     )>,
 ) -> Json<serde_json::Value> {
-    let dim = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
+    let dim = std::env::var("HS_DIMENSION").unwrap_or("129".to_string());
     let metric = std::env::var("HS_METRIC").unwrap_or("l2".to_string());
     let quantization = std::env::var("HS_QUANTIZATION_LEVEL").unwrap_or("scalar".to_string());
     let uptime_secs = start_time.elapsed().as_secs();

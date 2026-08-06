@@ -37,8 +37,9 @@ import {
 } from './proto/hyperspace_pb';
 
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
+import * as CognitiveMath from './math';
 
-export * as CognitiveMath from './math';
+export * as CognitiveMathExport from './math';
 export { TribunalContext } from './agents';
 export { DurabilityLevel };
 export type TypedMetadataValue = string | number | boolean;
@@ -272,6 +273,12 @@ export class HyperspaceClient {
     private host: string;
     private apiKey?: string;
     private userId?: string;
+    public embedder?: { encode: (text: string) => Promise<number[]> | number[] };
+    private collectionKeys: { [key: string]: string } = {};
+    private encryptionContexts: { [key: string]: any } = {};
+    private collectionMetrics: { [key: string]: string } = {};
+    private collectionNoiseSigmas: { [key: string]: number } = {};
+    private collectionSchemas: { [key: string]: CollectionSchema } = {};
     private static toVectorList(vector: number[] | Float32Array | Float64Array): number[] {
         if (Array.isArray(vector)) {
             return vector;
@@ -389,9 +396,250 @@ export class HyperspaceClient {
         }
     }
 
+    public registerCollectionKey(collectionName: string, key: string, metric: string = "l2", noiseSigma: number = 0.02, schema?: CollectionSchema) {
+        this.collectionKeys[collectionName] = key;
+        this.collectionMetrics[collectionName] = metric;
+        this.collectionNoiseSigmas[collectionName] = noiseSigma;
+        if (schema) {
+            this.collectionSchemas[collectionName] = schema;
+        }
+        if (this.encryptionContexts[collectionName]) {
+            delete this.encryptionContexts[collectionName];
+        }
+    }
+
+    private deriveKeys(password: string, collectionName: string): { aesKey: Buffer, hmacKey: Buffer } {
+        const crypto = require('crypto');
+        const salt = crypto.createHash('sha256').update(collectionName).digest();
+        const aesKey = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+        const hmacKey = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+        return { aesKey, hmacKey };
+    }
+
+    private encryptPayload(plaintext: Buffer, aesKey: Buffer): Buffer {
+        const crypto = require('crypto');
+        const iv = crypto.randomBytes(12);
+        const pbkdf2Salt = crypto.randomBytes(16);
+        const derivedAesKey = crypto.pbkdf2Sync(aesKey, pbkdf2Salt, 100000, 32, 'sha256');
+        const cipherPayload = crypto.createCipheriv('aes-256-gcm', derivedAesKey, iv);
+        const encryptedPayload = Buffer.concat([cipherPayload.update(plaintext), cipherPayload.final()]);
+        const payloadTag = cipherPayload.getAuthTag();
+        return Buffer.concat([pbkdf2Salt, iv, encryptedPayload, payloadTag]);
+    }
+
+    private decryptPayload(data: Buffer, aesKey: Buffer): Buffer {
+        const crypto = require('crypto');
+        if (data.length < 16 + 12 + 16) {
+            throw new Error("Invalid encrypted payload size");
+        }
+        const pbkdf2Salt = data.subarray(0, 16);
+        const iv = data.subarray(16, 28);
+        const ciphertext = data.subarray(28, data.length - 16);
+        const tag = data.subarray(data.length - 16);
+        
+        const derivedAesKey = crypto.pbkdf2Sync(aesKey, pbkdf2Salt, 100000, 32, 'sha256');
+        const decipher = crypto.createDecipheriv('aes-256-gcm', derivedAesKey, iv);
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    }
+
+    private hashMetadataKey(key: string, hmacKey: Buffer): string {
+        const crypto = require('crypto');
+        const hash = crypto.createHmac('sha256', hmacKey).update(key).digest('hex');
+        return "tag_" + hash.slice(0, 16);
+    }
+
+    private hashMetadataValue(value: string, hmacKey: Buffer): string {
+        const crypto = require('crypto');
+        const hash = crypto.createHmac('sha256', hmacKey).update(value).digest('hex');
+        return "val_" + hash;
+    }
+
+    private async _getEncryptionContext(collection: string, vectorDim?: number, metric: string = "l2"): Promise<any | null> {
+        if (!collection) return null;
+        const key = this.collectionKeys[collection];
+        if (!key) return null;
+
+        if (!this.collectionSchemas[collection]) {
+            try {
+                const stats = await this.getCollectionStats(collection);
+                if (stats && stats.schema) {
+                    this.collectionSchemas[collection] = stats.schema;
+                }
+            } catch (e) {}
+        }
+
+        if (!this.encryptionContexts[collection]) {
+            const { aesKey, hmacKey } = this.deriveKeys(key, collection);
+            this.encryptionContexts[collection] = {
+                aesKey,
+                hmacKey,
+                projectionMatrices: {}
+            };
+        }
+
+        const context = this.encryptionContexts[collection];
+
+        if (vectorDim !== undefined) {
+            if (!context.projectionMatrices[vectorDim]) {
+                const isLorentz = ["lorentz", "poincare"].includes(metric.toLowerCase());
+                const matrixDim = metric.toLowerCase() === "poincare" ? vectorDim + 1 : vectorDim;
+                if (isLorentz) {
+                    context.projectionMatrices[vectorDim] = CognitiveMath.generateLorentzMatrix(matrixDim, context.hmacKey);
+                } else {
+                    context.projectionMatrices[vectorDim] = CognitiveMath.generateOrthogonalMatrix(matrixDim, context.hmacKey);
+                }
+            }
+        }
+
+        return context;
+    }
+
+    private _projectSingleBlock(subVec: number[], metric: string, context: any, blockId?: string): number[] {
+        const dim = subVec.length;
+        if (dim === 0) return [];
+
+        const cacheKey = blockId ? `${dim}_${blockId}` : `${dim}`;
+
+        if (!context.projectionMatrices[cacheKey]) {
+            const isLorentz = ["lorentz", "poincare"].includes(metric.toLowerCase());
+            const matrixDim = metric.toLowerCase() === "poincare" ? dim + 1 : dim;
+
+            const crypto = require('crypto');
+            let seed = context.hmacKey;
+            if (blockId) {
+                seed = crypto.createHash('sha256').update(seed).update(blockId).digest();
+            }
+
+            if (isLorentz) {
+                context.projectionMatrices[cacheKey] = CognitiveMath.generateLorentzMatrix(matrixDim, seed);
+            } else {
+                context.projectionMatrices[cacheKey] = CognitiveMath.generateOrthogonalMatrix(matrixDim, seed);
+            }
+        }
+
+        const matrix = context.projectionMatrices[cacheKey];
+
+        if (metric.toLowerCase() === "poincare") {
+            const lorentzVec = CognitiveMath.poincareToLorentz(subVec);
+            const projLorentz = CognitiveMath.projectVector(lorentzVec, matrix);
+            return CognitiveMath.lorentzToPoincare(projLorentz);
+        } else {
+            return CognitiveMath.projectVector(subVec, matrix);
+        }
+    }
+
+    private _projectCollectionVector(collection: string, vector: number[], context: any, metric: string = "l2"): number[] {
+        const schema = this.collectionSchemas[collection];
+        if (!schema || !schema.components || schema.components.length === 0) {
+            return this._projectSingleBlock(vector, metric, context);
+        }
+
+        const components = schema.components;
+        const cascade = schema.cascadePipeline || [];
+        const componentCutoffs: { [key: string]: number[] } = {};
+
+        for (const layer of cascade) {
+            const compName = layer.componentName;
+            const cutoff = layer.cutoffDimension;
+            if (compName && cutoff) {
+                if (!componentCutoffs[compName]) {
+                    componentCutoffs[compName] = [];
+                }
+                componentCutoffs[compName].push(cutoff);
+            }
+        }
+
+        for (const compName in componentCutoffs) {
+            componentCutoffs[compName] = Array.from(new Set(componentCutoffs[compName])).sort((a, b) => a - b);
+        }
+
+        const projectedParts: number[] = [];
+        let currentOffset = 0;
+
+        for (const comp of components) {
+            const compName = comp.name;
+            const compMetric = comp.metric;
+            const compDim = comp.fullDimension;
+
+            if (currentOffset >= vector.length) {
+                break;
+            }
+
+            let subVec = vector.slice(currentOffset, currentOffset + compDim);
+            if (subVec.length < compDim) {
+                subVec = subVec.concat(new Array(compDim - subVec.length).fill(0));
+            }
+
+            const cutoffs = componentCutoffs[compName] || [];
+            const validCutoffs = cutoffs.filter(c => c < compDim);
+
+            let projSub: number[] = [];
+            if (validCutoffs.length === 0) {
+                projSub = this._projectSingleBlock(subVec, compMetric, context);
+            } else {
+                let blockStart = 0;
+                for (const cutoff of validCutoffs) {
+                    const blockData = subVec.slice(blockStart, cutoff);
+                    const projBlock = this._projectSingleBlock(blockData, compMetric, context, `${compName}_block_${blockStart}_${cutoff}`);
+                    projSub = projSub.concat(projBlock);
+                    blockStart = cutoff;
+                }
+
+                if (blockStart < compDim) {
+                    const blockData = subVec.slice(blockStart, compDim);
+                    const projBlock = this._projectSingleBlock(blockData, compMetric, context, `${compName}_block_${blockStart}_${compDim}`);
+                    projSub = projSub.concat(projBlock);
+                }
+            }
+
+            projectedParts.push(...projSub);
+            currentOffset += compDim;
+        }
+
+        if (currentOffset < vector.length) {
+            projectedParts.push(...vector.slice(currentOffset));
+        }
+
+        return projectedParts;
+    }
+
+    private _encryptFilters(filters: Filter[], context: any): Filter[] {
+        if (!filters) return filters;
+        return filters.map(f => {
+            const nf = { ...f };
+            if (nf.match) {
+                nf.match = {
+                    key: this.hashMetadataKey(nf.match.key, context.hmacKey),
+                    value: this.hashMetadataValue(nf.match.value, context.hmacKey)
+                };
+            }
+            if (nf.prefix) {
+                nf.prefix = {
+                    key: this.hashMetadataKey(nf.prefix.key, context.hmacKey),
+                    prefix: this.hashMetadataValue(nf.prefix.prefix, context.hmacKey)
+                };
+            }
+            if (nf.and) {
+                nf.and = this._encryptFilters(nf.and, context);
+            }
+            if (nf.or) {
+                nf.or = this._encryptFilters(nf.or, context);
+            }
+            if (nf.not) {
+                nf.not = this._encryptFilters([nf.not], context)[0];
+            }
+            return nf;
+        });
+    }
+
     // ... (create/delete unchanged) ...
 
-    public createCollection(name: string, schema: CollectionSchema): Promise<boolean> {
+    public createCollection(name: string, schema: CollectionSchema, encryptionKey: string = '', noiseSigma: number = 0.02): Promise<boolean> {
+        const metric = (schema.components && schema.components[0]) ? schema.components[0].metric : "l2";
+        if (encryptionKey) {
+            this.registerCollectionKey(name, encryptionKey, metric, noiseSigma, schema);
+        }
         return new Promise((resolve, reject) => {
             const req = new CreateCollectionRequest();
             req.setName(name);
@@ -538,30 +786,74 @@ export class HyperspaceClient {
         typedMetadata?: { [key: string]: TypedMetadataValue },
         payload?: Uint8Array // Sidecar Payload Storage (v3.2)
     ): Promise<boolean> {
-        return new Promise((resolve, reject) => {
-            const req = new InsertRequest();
-            req.setVectorList(HyperspaceClient.toVectorList(vector));
-            req.setId(id);
-            if (meta) {
-                const map = req.getMetadataMap();
-                for (const k in meta) map.set(k, meta[k]);
-            }
-            if (typedMetadata) {
-                const map = req.getTypedMetadataMap();
-                for (const k in typedMetadata) map.set(k, HyperspaceClient.toProtoMetadataValue(typedMetadata[k]));
-            }
-            req.setCollection(collection);
-            req.setOriginNodeId('');
-            req.setLogicalClock(0);
-            req.setDurability(durability);
-            if (payload) {
-                req.setPayload(payload);
-            }
+        return new Promise(async (resolve, reject) => {
+            try {
+                const req = new InsertRequest();
+                let vectorList = HyperspaceClient.toVectorList(vector);
+                
+                const metric = this.collectionMetrics[collection] || "l2";
+                const context = await this._getEncryptionContext(collection, vectorList.length, metric);
+                
+                if (context) {
+                    const sigma = this.collectionNoiseSigmas[collection] ?? 0.02;
+                    if (sigma > 0.0) {
+                        vectorList = CognitiveMath.injectAnisotropicNoise(vectorList, context.hmacKey, sigma);
+                    }
+                    vectorList = this._projectCollectionVector(collection, vectorList, context, metric);
+                    
+                    let rawPayload: Buffer | null = null;
+                    if (payload) {
+                        rawPayload = Buffer.from(payload);
+                    }
+                    if (rawPayload) {
+                        const encrypted = this.encryptPayload(rawPayload, context.aesKey);
+                        req.setPayload(new Uint8Array(encrypted));
+                    }
+                    
+                    if (meta) {
+                        const map = req.getMetadataMap();
+                        for (const k in meta) {
+                            const ek = this.hashMetadataKey(k, context.hmacKey);
+                            const ev = this.hashMetadataValue(meta[k], context.hmacKey);
+                            map.set(ek, ev);
+                        }
+                    }
+                    if (typedMetadata) {
+                        const map = req.getTypedMetadataMap();
+                        for (const k in typedMetadata) {
+                            const ek = this.hashMetadataKey(k, context.hmacKey);
+                            const ev = this.hashMetadataValue(String(typedMetadata[k]), context.hmacKey);
+                            map.set(ek, HyperspaceClient.toProtoMetadataValue(ev));
+                        }
+                    }
+                } else {
+                    if (meta) {
+                        const map = req.getMetadataMap();
+                        for (const k in meta) map.set(k, meta[k]);
+                    }
+                    if (typedMetadata) {
+                        const map = req.getTypedMetadataMap();
+                        for (const k in typedMetadata) map.set(k, HyperspaceClient.toProtoMetadataValue(typedMetadata[k]));
+                    }
+                    if (payload) {
+                        req.setPayload(payload);
+                    }
+                }
+                
+                req.setVectorList(vectorList);
+                req.setId(id);
+                req.setCollection(collection);
+                req.setOriginNodeId('');
+                req.setLogicalClock(0);
+                req.setDurability(durability);
 
-            this.client.insert(req, this.metadata, (err, resp) => {
-                if (err) return reject(err);
-                resolve(resp.getSuccess());
-            });
+                this.client.insert(req, this.metadata, (err, resp) => {
+                    if (err) return reject(err);
+                    resolve(resp.getSuccess());
+                });
+            } catch (e) {
+                reject(e);
+            }
         });
     }
 
@@ -572,6 +864,14 @@ export class HyperspaceClient {
         collection: string = '',
         durability: DurabilityLevel = DurabilityLevel.DEFAULT_LEVEL
     ): Promise<boolean> {
+        if (this.collectionKeys[collection]) {
+            if (!this.embedder) {
+                return Promise.reject(new Error("An embedder must be configured to use insertText on encrypted collections."));
+            }
+            return Promise.resolve(this.embedder.encode(text)).then(vector => {
+                return this.insert(id, vector, meta, collection, durability, undefined, Buffer.from(text, 'utf-8'));
+            });
+        }
         return new Promise((resolve, reject) => {
             const req = new InsertTextRequest();
             req.setText(text);
@@ -659,76 +959,121 @@ export class HyperspaceClient {
             restartFactor?: number
         }
     ): Promise<SearchResult[]> {
-        return new Promise((resolve, reject) => {
-            const req = new SearchRequest();
-            req.setVectorList(HyperspaceClient.toVectorList(vector));
-            req.setTopK(topK);
-            req.setCollection(collection);
-
-            if (options?.filter) {
-                const map = req.getFilterMap();
-                for (const k in options.filter) {
-                    map.set(k, options.filter[k]);
-                }
-            }
-
-            if (options?.restartFactor !== undefined) {
-                const map = req.getFilterMap();
-                map.set('wave_restart_factor', options.restartFactor.toString());
-            }
-
-            if (options?.useWave !== undefined) {
-                req.setUseWave(options.useWave);
-            }
-
-            if (options?.filters) {
-                req.setFiltersList(options.filters.map(f => this.toProtoFilter(f)));
-            }
-
-            if (options?.hybridQuery) req.setHybridQuery(options.hybridQuery);
-            if (options?.hybridAlpha !== undefined) req.setHybridAlpha(options.hybridAlpha);
-            if (options?.mrlDimension !== undefined) req.setMrlDimension(options.mrlDimension);
-            if (options?.useWasserstein !== undefined) req.setUseWasserstein(options.useWasserstein);
-            if (options?.includePayload !== undefined) req.setIncludePayload(options.includePayload);
-            if (options?.componentWeights) {
-                const map = req.getComponentWeightsMap();
-                for (const k in options.componentWeights) {
-                    map.set(k, options.componentWeights[k]);
-                }
-            }
-            
-            if (options?.bm25) {
-                const bm25Msg = new ProtoBm25Options();
-                if (options.bm25.method !== undefined) bm25Msg.setMethod(options.bm25.method);
-                if (options.bm25.k1 !== undefined) bm25Msg.setK1(options.bm25.k1);
-                if (options.bm25.b !== undefined) bm25Msg.setB(options.bm25.b);
-                if (options.bm25.delta !== undefined) bm25Msg.setDelta(options.bm25.delta);
-                if (options.bm25.language !== undefined) bm25Msg.setLanguage(options.bm25.language);
-                if (options.bm25.ngrams !== undefined) bm25Msg.setNgrams(options.bm25.ngrams);
-                if (options.bm25.fusionMethod !== undefined) bm25Msg.setFusionMethod(options.bm25.fusionMethod);
-                req.setBm25Options(bm25Msg);
-            }
-
-            this.client.search(req, this.metadata, (err, resp) => {
-                if (err) return reject(err);
-                const results = resp.getResultsList().map(r => {
-                    const metaMap = r.getMetadataMap();
-                    const meta: { [key: string]: string } = {};
-                    if (metaMap.getLength() > 0) {
-                        metaMap.forEach((entry: string, key: string) => {
-                            meta[key] = entry;
-                        });
+        return new Promise(async (resolve, reject) => {
+            try {
+                const req = new SearchRequest();
+                let vectorList = HyperspaceClient.toVectorList(vector);
+                req.setTopK(topK);
+                req.setCollection(collection);
+                
+                const metric = this.collectionMetrics[collection] || "l2";
+                const context = await this._getEncryptionContext(collection, vectorList.length, metric);
+                
+                let optFilters = options?.filters;
+                let optFilter = options?.filter;
+                let includePayload = options?.includePayload;
+                
+                if (context) {
+                    const sigma = this.collectionNoiseSigmas[collection] ?? 0.02;
+                    if (sigma > 0.0) {
+                        vectorList = CognitiveMath.injectAnisotropicNoise(vectorList, context.hmacKey, sigma);
                     }
-                    return {
-                        id: r.getId(),
-                        distance: r.getDistance(),
-                        metadata: meta,
-                        typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap()),
-                        payload: r.getPayload_asU8()
-                    };
+                    vectorList = this._projectCollectionVector(collection, vectorList, context, metric);
+                    
+                    if (optFilter) {
+                        const hashedFilter: { [key: string]: string } = {};
+                        for (const k in optFilter) {
+                            const ek = this.hashMetadataKey(k, context.hmacKey);
+                            const ev = this.hashMetadataValue(optFilter[k], context.hmacKey);
+                            hashedFilter[ek] = ev;
+                        }
+                        optFilter = hashedFilter;
+                    }
+                    if (optFilters) {
+                        optFilters = this._encryptFilters(optFilters, context);
+                    }
+                    
+                    includePayload = true;
+                }
+                
+                req.setVectorList(vectorList);
+                
+                if (optFilter) {
+                    const map = req.getFilterMap();
+                    for (const k in optFilter) {
+                        map.set(k, optFilter[k]);
+                    }
+                }
+                
+                if (options?.restartFactor !== undefined) {
+                    const map = req.getFilterMap();
+                    map.set('wave_restart_factor', options.restartFactor.toString());
+                }
+                if (options?.useWave !== undefined) {
+                    req.setUseWave(options.useWave);
+                }
+                if (optFilters) {
+                    req.setFiltersList(optFilters.map(f => this.toProtoFilter(f)));
+                }
+                if (options?.hybridQuery) req.setHybridQuery(options.hybridQuery);
+                if (options?.hybridAlpha !== undefined) req.setHybridAlpha(options.hybridAlpha);
+                if (options?.mrlDimension !== undefined) req.setMrlDimension(options.mrlDimension);
+                if (options?.useWasserstein !== undefined) req.setUseWasserstein(options.useWasserstein);
+                if (includePayload !== undefined) req.setIncludePayload(includePayload);
+                
+                if (options?.componentWeights) {
+                    const map = req.getComponentWeightsMap();
+                    for (const k in options.componentWeights) {
+                        map.set(k, options.componentWeights[k]);
+                    }
+                }
+                
+                if (options?.bm25) {
+                    const bm25Msg = new ProtoBm25Options();
+                    if (options.bm25.method !== undefined) bm25Msg.setMethod(options.bm25.method);
+                    if (options.bm25.k1 !== undefined) bm25Msg.setK1(options.bm25.k1);
+                    if (options.bm25.b !== undefined) bm25Msg.setB(options.bm25.b);
+                    if (options.bm25.delta !== undefined) bm25Msg.setDelta(options.bm25.delta);
+                    if (options.bm25.language !== undefined) bm25Msg.setLanguage(options.bm25.language);
+                    if (options.bm25.ngrams !== undefined) bm25Msg.setNgrams(options.bm25.ngrams);
+                    if (options.bm25.fusionMethod !== undefined) bm25Msg.setFusionMethod(options.bm25.fusionMethod);
+                    req.setBm25Options(bm25Msg);
+                }
+
+                this.client.search(req, this.metadata, (err, resp) => {
+                    if (err) return reject(err);
+                    const results = resp.getResultsList().map(r => {
+                        const metaMap = r.getMetadataMap();
+                        const meta: { [key: string]: string } = {};
+                        if (metaMap.getLength() > 0) {
+                            metaMap.forEach((entry: string, key: string) => {
+                                meta[key] = entry;
+                            });
+                        }
+                        
+                        let payloadBytes = r.getPayload_asU8();
+                        if (context && payloadBytes && payloadBytes.length > 0) {
+                            try {
+                                const decrypted = this.decryptPayload(Buffer.from(payloadBytes), context.aesKey);
+                                payloadBytes = new Uint8Array(decrypted);
+                            } catch (e) {
+                                // Decryption error
+                            }
+                        }
+                        
+                        return {
+                            id: r.getId(),
+                            distance: r.getDistance(),
+                            metadata: meta,
+                            typedMetadata: HyperspaceClient.parseTypedMetadata(r.getTypedMetadataMap()),
+                            payload: payloadBytes
+                        };
+                    });
+                    resolve(results);
                 });
-                resolve(results);
-            });
+            } catch (e) {
+                reject(e);
+            }
         });
     }
 
@@ -743,6 +1088,14 @@ export class HyperspaceClient {
             includePayload?: boolean
         }
     ): Promise<SearchResult[]> {
+        if (this.collectionKeys[collection]) {
+            if (!this.embedder) {
+                return Promise.reject(new Error("An embedder must be configured to use searchText on encrypted collections."));
+            }
+            return Promise.resolve(this.embedder.encode(text)).then(vector => {
+                return this.search(vector, topK, collection, options);
+            });
+        }
         return new Promise((resolve, reject) => {
             const req = new SearchTextRequest();
             req.setText(text);

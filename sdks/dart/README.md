@@ -4,7 +4,7 @@ Official Dart/Flutter SDK for [HyperspaceDB](https://github.com/yarlabs/hyperspa
 
 ## 🚀 Features
 
-- **100% Feature Parity**: Supports all gRPC v3.1.0 operations (Parity with TS/Python).
+- **100% Feature Parity**: Supports all gRPC v3.1.1 operations (Parity with TS/Python).
 - **Multi-Geometry**: Native support for `Euclidean`, `Cosine`, `Poincaré`, and `Lorentz` metrics.
 - **Hybrid Retrieval**: Seamlessly combine semantic vector search with BM25 lexical ranking.
 - **Recursive Filtering**: Complex logical filters (`AND`, `OR`, `NOT`) and spatial constraints (`InCone`, `InBall`, `InBox`).
@@ -130,7 +130,7 @@ await client.createCollection('mrl_docs', schema);
 - `getSubsumptionTree(collection, rootId, maxDepth)`: Extract directed hierarchy from Lorentz/Poincare data.
 - `exploreGraph(startId, {maxDepth, maxNodes})`: High-level ego-graph retrieval for visualization.
 
-### Spatial Filtering (New in v3.1)
+### Spatial Filtering
 Build complex filters using the `Filter` class:
 ```dart
 final filter = Filter.or([
@@ -182,6 +182,67 @@ final relation = await client.predictRelation(idA, idB);
 - **Typed Metadata**: Use `typedMetadata` instead of `metadata` (string-only) for efficient range filtering.
 - **Streams**: Use `subscribeToEvents` for real-time UI updates in Flutter.
 
+## 🔐 Zero-Knowledge Client-Side Encryption (ZK-Privacy)
+
+HyperspaceDB v3.1.1 supports Zero-Knowledge client-side encryption (ZK-Privacy) for Dart and Flutter. Private vectors, metadata, and sidecar payloads are projected, noise-injected, and encrypted *before* they are sent to the database server. All decryption happens locally on the client.
+
+### Usage Example
+
+```dart
+import 'dart:convert';
+import 'package:hyperspacedb/hyperspacedb.dart';
+import 'package:hyperspacedb/src/generated/hyperspace.pb.dart' as pb;
+
+void main() async {
+  final client = HyperspaceClient('localhost', 50051, apiKey: 'I_LOVE_HYPERSPACEDB');
+
+  final collection = 'confidential_notes';
+  final secretKey = 'my-super-secret-key-dart';
+
+  // 1. Create collection schema
+  final schema = pb.CollectionSchema()
+    ..components.add(
+      pb.VectorComponent()
+        ..name = 'primary'
+        ..metric = 'cosine'
+        ..fullDimension = 3
+        ..weight = 1.0,
+    );
+
+  // 2. Register key to enable client-side encryption
+  client.registerCollectionKey(collection, secretKey, metric: 'cosine', noiseSigma: 0.02, schema: schema);
+
+  await client.createCollection(collection, schema, encryptionKey: secretKey, noiseSigma: 0.02);
+
+  // 3. Insert point (auto-projected, noise injected, payload encrypted)
+  await client.insert(
+    1,
+    [0.1, 0.2, 0.3],
+    collection: collection,
+    metadata: {'category': 'private'},
+    payload: utf8.encode('Top secret database entry content'),
+  );
+
+  // 4. Search (query vector projected, filter hashed, payloads decrypted automatically)
+  final results = await client.search(
+    [0.1, 0.2, 0.3],
+    5,
+    collection: collection,
+    filters: [
+      Filter.match('category', 'private'),
+    ],
+  );
+
+  for (var res in results) {
+    print('ID: ${res.id}, Distance: ${res.distance}');
+    if (res.payload != null && res.payload!.isNotEmpty) {
+      print('Decrypted Payload: ${utf8.decode(res.payload!)}');
+    }
+  }
+}
+```
+
 ## 📄 License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+

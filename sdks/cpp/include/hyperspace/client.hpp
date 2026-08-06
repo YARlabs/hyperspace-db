@@ -96,9 +96,37 @@ public:
     uint64_t Count(const std::vector<::hyperspace::Filter>& filters = {}, const std::string& collection = "");
     std::string HealthCheck();
 
+    // Zero-Knowledge Client-Side Encryption
+    void RegisterCollectionKey(const std::string& collection_name, const std::string& key, const std::string& metric = "l2", double noise_sigma = 0.02, const ::hyperspace::CollectionSchema* schema = nullptr);
+    bool CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key = "", double noise_sigma = 0.02);
+    bool InsertSecure(uint32_t id, const std::vector<double>& vector, const std::unordered_map<std::string, std::string>& metadata = {}, const std::string& collection = "", const std::vector<uint8_t>& payload = {});
+
 private:
+    struct EncryptionContext {
+        std::vector<uint8_t> aes_key;
+        std::vector<uint8_t> hmac_key;
+        mutable std::unordered_map<std::string, std::vector<std::vector<double>>> projection_matrices;
+    };
+
     std::unique_ptr<::hyperspace::Database::Stub> stub_;
     std::string app_id_;
+
+    std::unordered_map<std::string, std::string> collection_keys_;
+    std::unordered_map<std::string, std::shared_ptr<EncryptionContext>> encryption_contexts_;
+    std::unordered_map<std::string, std::string> collection_metrics_;
+    std::unordered_map<std::string, double> collection_noise_sigmas_;
+    std::unordered_map<std::string, ::hyperspace::CollectionSchema> collection_schemas_;
+
+    std::vector<uint8_t> derive_pbkdf2(const std::vector<uint8_t>& password, const std::vector<uint8_t>& salt, int iterations, int key_len);
+    std::pair<std::vector<uint8_t>, std::vector<uint8_t>> derive_keys(const std::string& password, const std::string& collection_name);
+    std::vector<uint8_t> encrypt_payload(const std::vector<uint8_t>& plaintext, const std::vector<uint8_t>& aes_key);
+    std::vector<uint8_t> decrypt_payload(const std::vector<uint8_t>& ciphertext, const std::vector<uint8_t>& aes_key);
+    std::string hash_metadata_key(const std::string& key, const std::vector<uint8_t>& hmac_key);
+    std::string hash_metadata_value(const std::string& value, const std::vector<uint8_t>& hmac_key);
+    std::shared_ptr<EncryptionContext> get_encryption_context(const std::string& collection, size_t vector_dim, const std::string& metric);
+    std::vector<double> project_single_block(const std::vector<double>& sub_vec, const std::string& metric, const EncryptionContext& context, const std::string& block_id = "");
+    std::vector<double> project_collection_vector(const std::string& collection, const std::vector<double>& vector, const EncryptionContext& context, const std::string& metric);
+    std::vector<::hyperspace::Filter> encrypt_filters(const std::vector<::hyperspace::Filter>& filters, const EncryptionContext& context);
 };
 
 } // namespace hyperspace

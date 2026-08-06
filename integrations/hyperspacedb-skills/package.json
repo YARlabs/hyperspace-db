@@ -1,0 +1,42 @@
+{
+  "name": "hyperspacedb-skills",
+  "version": "3.1.5",
+  "description": "AI agent skills (SKILL.md files) for HyperspaceDB integration in Cursor, Claude Code, Antigravity, Windsurf, and custom agents.",
+  "keywords": [
+    "hyperspacedb",
+    "vector-database",
+    "ai-agent",
+    "skills",
+    "mcp",
+    "cursor",
+    "claude",
+    "langchain",
+    "llamaindex",
+    "cognitive-ai",
+    "depin",
+    "rag",
+    "knowledge-graph"
+  ],
+  "author": "YAR Labs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yarlabs/hyperspace-db",
+    "directory": "integrations/hyperspacedb-skills"
+  },
+  "homepage": "https://hyperspacedb.io/docs/integrations/skills",
+  "files": [
+    "skills/",
+    "agents/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "peerDependencies": {
+    "hyperspace-sdk-ts": ">=3.1.5"
+  },
+  "peerDependenciesOptional": {
+    "hyperspace-sdk-ts": true
+  }
+}

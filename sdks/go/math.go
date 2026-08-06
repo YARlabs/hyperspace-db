@@ -1,6 +1,8 @@
 package hyperspace
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"math"
 )
@@ -361,4 +363,217 @@ func ContextResonance(thought, globalContext []float64, resonanceFactor float64,
 		appliedPull[i] = v * factor
 	}
 	return ExpMap(thought, appliedPull, c)
+}
+
+// GenerateOrthogonalMatrix generates a deterministic orthogonal matrix from seedBytes.
+func GenerateOrthogonalMatrix(dimension int, seedBytes []byte) [][]float64 {
+	matrix := make([][]float64, dimension)
+	for i := range matrix {
+		matrix[i] = make([]float64, dimension)
+	}
+
+	hash := sha256.Sum256(seedBytes)
+	currentHash := hash[:]
+	hashOffset := 0
+
+	for i := 0; i < dimension; i++ {
+		for j := 0; j < dimension; j++ {
+			if hashOffset >= 32 {
+				nextHash := sha256.Sum256(currentHash)
+				currentHash = nextHash[:]
+				hashOffset = 0
+			}
+			valInt := binary.LittleEndian.Uint32(currentHash[hashOffset : hashOffset+4])
+			val := (float64(valInt)/4294967296.0)*2.0 - 1.0
+			matrix[i][j] = val
+			hashOffset += 4
+		}
+	}
+
+	// Gram-Schmidt Orthonormalization with Reorthogonalization
+	for i := 0; i < dimension; i++ {
+		v := make([]float64, dimension)
+		copy(v, matrix[i])
+		for j := 0; j < i; j++ {
+			u := matrix[j]
+			uDotV := dot(u, v)
+			for k := 0; k < dimension; k++ {
+				v[k] -= uDotV * u[k]
+			}
+			// Reorthogonalize
+			uDotV = dot(u, v)
+			for k := 0; k < dimension; k++ {
+				v[k] -= uDotV * u[k]
+			}
+		}
+		vNorm := norm(v)
+		if vNorm > 1e-15 {
+			for k := 0; k < dimension; k++ {
+				matrix[i][k] = v[k] / vNorm
+			}
+		} else {
+			for k := 0; k < dimension; k++ {
+				matrix[i][k] = 0.0
+			}
+			matrix[i][i] = 1.0
+		}
+	}
+
+	return matrix
+}
+
+// GenerateLorentzMatrix generates a deterministic Lorentz boost matrix from seedBytes.
+func GenerateLorentzMatrix(dimension int, seedBytes []byte) [][]float64 {
+	d := dimension - 1
+
+	// R Matrix
+	rSeedHash := sha256.New()
+	rSeedHash.Write(seedBytes)
+	rSeedHash.Write([]byte("spatial"))
+	rSeed := rSeedHash.Sum(nil)
+	R := GenerateOrthogonalMatrix(d, rSeed)
+
+	// Boost vector beta
+	bSeedHash := sha256.New()
+	bSeedHash.Write(seedBytes)
+	bSeedHash.Write([]byte("boost"))
+	bSeed := bSeedHash.Sum(nil)
+
+	beta := make([]float64, d)
+	currentHash := bSeed
+	hashOffset := 0
+	for i := 0; i < d; i++ {
+		if hashOffset >= 32 {
+			nextHash := sha256.Sum256(currentHash)
+			currentHash = nextHash[:]
+			hashOffset = 0
+		}
+		valInt := binary.LittleEndian.Uint32(currentHash[hashOffset : hashOffset+4])
+		val := (float64(valInt)/4294967296.0)*2.0 - 1.0
+		beta[i] = val
+		hashOffset += 4
+	}
+
+	betaNorm := norm(beta)
+	if betaNorm > 1e-15 {
+		for i := 0; i < d; i++ {
+			beta[i] = (beta[i] / betaNorm) * 0.1
+		}
+	} else {
+		for i := 0; i < d; i++ {
+			beta[i] = 0.0
+		}
+		beta[0] = 0.1
+	}
+
+	betaSq := dot(beta, beta)
+	gamma := 1.0 / math.Sqrt(1.0-betaSq)
+
+	Lambda_B := make([][]float64, dimension)
+	for i := range Lambda_B {
+		Lambda_B[i] = make([]float64, dimension)
+	}
+
+	Lambda_B[0][0] = gamma
+	for j := 1; j < dimension; j++ {
+		Lambda_B[0][j] = -gamma * beta[j-1]
+		Lambda_B[j][0] = -gamma * beta[j-1]
+	}
+
+	factor := (gamma - 1.0) / betaSq
+	for i := 1; i < dimension; i++ {
+		for j := 1; j < dimension; j++ {
+			delta := 0.0
+			if i == j {
+				delta = 1.0
+			}
+			Lambda_B[i][j] = delta + factor*beta[i-1]*beta[j-1]
+		}
+	}
+
+	Lambda_R := make([][]float64, dimension)
+	for i := range Lambda_R {
+		Lambda_R[i] = make([]float64, dimension)
+	}
+	Lambda_R[0][0] = 1.0
+	for i := 1; i < dimension; i++ {
+		for j := 1; j < dimension; j++ {
+			Lambda_R[i][j] = R[i-1][j-1]
+		}
+	}
+
+	// Multiply Lambda = Lambda_B * Lambda_R
+	Lambda := make([][]float64, dimension)
+	for i := range Lambda {
+		Lambda[i] = make([]float64, dimension)
+		for j := 0; j < dimension; j++ {
+			sum := 0.0
+			for k := 0; k < dimension; k++ {
+				sum += Lambda_B[i][k] * Lambda_R[k][j]
+			}
+			Lambda[i][j] = sum
+		}
+	}
+
+	return Lambda
+}
+
+// ProjectVector projects a vector using the given matrix.
+func ProjectVector(v []float64, matrix [][]float64) []float64 {
+	dim := len(v)
+	projected := make([]float64, dim)
+	for j := 0; j < dim; j++ {
+		sum := 0.0
+		for i := 0; i < dim; i++ {
+			sum += v[i] * matrix[i][j]
+		}
+		projected[j] = sum
+	}
+	return projected
+}
+
+// InjectAnisotropicNoise injects deterministic anisotropic noise to prevent reconstruction.
+func InjectAnisotropicNoise(v []float64, seedBytes []byte, sigma float64) []float64 {
+	if len(v) == 0 || sigma <= 0.0 {
+		return v
+	}
+	dim := len(v)
+	noise := make([]float64, dim)
+	hash := sha256.Sum256(seedBytes)
+	currentHash := hash[:]
+	hashOffset := 0
+
+	for i := 0; i < dim; i++ {
+		if hashOffset >= 32 {
+			nextHash := sha256.Sum256(currentHash)
+			currentHash = nextHash[:]
+			hashOffset = 0
+		}
+		valInt := binary.LittleEndian.Uint32(currentHash[hashOffset : hashOffset+4])
+		val := (float64(valInt)/4294967296.0)*2.0 - 1.0
+		noise[i] = val
+		hashOffset += 4
+	}
+
+	// Gram-Schmidt projection of noise to orthogonal direction
+	vNorm := norm(v)
+	if vNorm > 1e-15 {
+		projLength := dot(noise, v) / (vNorm * vNorm)
+		for i := 0; i < dim; i++ {
+			noise[i] -= projLength * v[i]
+		}
+	}
+
+	noiseNorm := norm(noise)
+	res := make([]float64, dim)
+	if noiseNorm > 1e-15 {
+		scale := sigma * vNorm / noiseNorm
+		for i := 0; i < dim; i++ {
+			res[i] = v[i] + noise[i]*scale
+		}
+	} else {
+		copy(res, v)
+	}
+
+	return res
 }

@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <numeric>
 #include <algorithm>
+#include <cstring>
+#include <openssl/sha.h>
 
 namespace hyperspace {
 namespace math {
@@ -229,6 +231,194 @@ inline std::vector<double> context_resonance(const std::vector<double>& thought,
     double factor = std::max(0.0, std::min(1.0, resonance_factor));
     for(auto& v : pull_dir) v *= factor;
     return exp_map(thought, pull_dir, c);
+}
+
+inline std::vector<uint8_t> sha256_hash(const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> hash(SHA256_DIGEST_LENGTH);
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, data.data(), data.size());
+    SHA256_Final(hash.data(), &sha256);
+    return hash;
+}
+
+inline std::vector<std::vector<double>> generate_orthogonal_matrix(size_t dimension, const std::vector<uint8_t>& seed_bytes) {
+    std::vector<std::vector<double>> matrix(dimension, std::vector<double>(dimension, 0.0));
+    std::vector<uint8_t> current_hash = sha256_hash(seed_bytes);
+    size_t hash_offset = 0;
+
+    for (size_t i = 0; i < dimension; ++i) {
+        for (size_t j = 0; j < dimension; ++j) {
+            if (hash_offset >= 32) {
+                current_hash = sha256_hash(current_hash);
+                hash_offset = 0;
+            }
+            uint32_t val_uint = 0;
+            std::memcpy(&val_uint, &current_hash[hash_offset], 4);
+            double val = (static_cast<double>(val_uint) / 4294967296.0) * 2.0 - 1.0;
+            matrix[i][j] = val;
+            hash_offset += 4;
+        }
+    }
+
+    // Gram-Schmidt with Reorthogonalization
+    for (size_t i = 0; i < dimension; ++i) {
+        std::vector<double> v = matrix[i];
+        for (size_t j = 0; j < i; ++j) {
+            const auto& u = matrix[j];
+            double u_dot_v = dot(u, v);
+            for (size_t k = 0; k < dimension; ++k) {
+                v[k] -= u_dot_v * u[k];
+            }
+            u_dot_v = dot(u, v);
+            for (size_t k = 0; k < dimension; ++k) {
+                v[k] -= u_dot_v * u[k];
+            }
+        }
+        double v_norm = std::sqrt(std::max(norm_sq(v), 0.0));
+        if (v_norm > 1e-15) {
+            for (size_t k = 0; k < dimension; ++k) {
+                matrix[i][k] = v[k] / v_norm;
+            }
+        } else {
+            for (size_t k = 0; k < dimension; ++k) {
+                matrix[i][k] = 0.0;
+            }
+            matrix[i][i] = 1.0;
+        }
+    }
+
+    return matrix;
+}
+
+inline std::vector<std::vector<double>> generate_lorentz_matrix(size_t dimension, const std::vector<uint8_t>& seed_bytes) {
+    size_t d = dimension - 1;
+
+    std::vector<uint8_t> r_seed = seed_bytes;
+    std::string spatial_tag = "spatial";
+    r_seed.insert(r_seed.end(), spatial_tag.begin(), spatial_tag.end());
+    auto R = generate_orthogonal_matrix(d, r_seed);
+
+    std::vector<uint8_t> b_seed = seed_bytes;
+    std::string boost_tag = "boost";
+    b_seed.insert(b_seed.end(), boost_tag.begin(), boost_tag.end());
+    std::vector<double> beta(d, 0.0);
+    std::vector<uint8_t> current_hash = sha256_hash(b_seed);
+    size_t hash_offset = 0;
+
+    for (size_t i = 0; i < d; ++i) {
+        if (hash_offset >= 32) {
+            current_hash = sha256_hash(current_hash);
+            hash_offset = 0;
+        }
+        uint32_t val_uint = 0;
+        std::memcpy(&val_uint, &current_hash[hash_offset], 4);
+        double val = (static_cast<double>(val_uint) / 4294967296.0) * 2.0 - 1.0;
+        beta[i] = val;
+        hash_offset += 4;
+    }
+
+    double beta_norm = std::sqrt(std::max(norm_sq(beta), 0.0));
+    if (beta_norm > 1e-15) {
+        for (size_t i = 0; i < d; ++i) {
+            beta[i] = (beta[i] / beta_norm) * 0.1;
+        }
+    } else {
+        std::fill(beta.begin(), beta.end(), 0.0);
+        beta[0] = 0.1;
+    }
+
+    double beta_sq = dot(beta, beta);
+    double gamma = 1.0 / std::sqrt(1.0 - beta_sq);
+
+    std::vector<std::vector<double>> Lambda_B(dimension, std::vector<double>(dimension, 0.0));
+    Lambda_B[0][0] = gamma;
+    for (size_t j = 1; j < dimension; ++j) {
+        Lambda_B[0][j] = -gamma * beta[j - 1];
+        Lambda_B[j][0] = -gamma * beta[j - 1];
+    }
+
+    double factor = (gamma - 1.0) / beta_sq;
+    for (size_t i = 1; i < dimension; ++i) {
+        for (size_t j = 1; j < dimension; ++j) {
+            double delta = i == j ? 1.0 : 0.0;
+            Lambda_B[i][j] = delta + factor * beta[i - 1] * beta[j - 1];
+        }
+    }
+
+    std::vector<std::vector<double>> Lambda_R(dimension, std::vector<double>(dimension, 0.0));
+    Lambda_R[0][0] = 1.0;
+    for (size_t i = 1; i < dimension; ++i) {
+        for (size_t j = 1; j < dimension; ++j) {
+            Lambda_R[i][j] = R[i - 1][j - 1];
+        }
+    }
+
+    std::vector<std::vector<double>> Lambda(dimension, std::vector<double>(dimension, 0.0));
+    for (size_t i = 0; i < dimension; ++i) {
+        for (size_t j = 0; j < dimension; ++j) {
+            double sum = 0.0;
+            for (size_t k = 0; k < dimension; ++k) {
+                sum += Lambda_B[i][k] * Lambda_R[k][j];
+            }
+            Lambda[i][j] = sum;
+        }
+    }
+
+    return Lambda;
+}
+
+inline std::vector<double> project_vector(const std::vector<double>& v, const std::vector<std::vector<double>>& matrix) {
+    size_t dim = v.size();
+    std::vector<double> projected(dim, 0.0);
+    for (size_t j = 0; j < dim; ++j) {
+        double sum = 0.0;
+        for (size_t i = 0; i < dim; ++i) {
+            sum += v[i] * matrix[i][j];
+        }
+        projected[j] = sum;
+    }
+    return projected;
+}
+
+inline std::vector<double> inject_anisotropic_noise(const std::vector<double>& v, const std::vector<uint8_t>& seed_bytes, double sigma) {
+    if (v.empty() || sigma <= 0.0) return v;
+    size_t dim = v.size();
+    std::vector<double> noise(dim, 0.0);
+    std::vector<uint8_t> current_hash = sha256_hash(seed_bytes);
+    size_t hash_offset = 0;
+
+    for (size_t i = 0; i < dim; ++i) {
+        if (hash_offset >= 32) {
+            current_hash = sha256_hash(current_hash);
+            hash_offset = 0;
+        }
+        uint32_t val_uint = 0;
+        std::memcpy(&val_uint, &current_hash[hash_offset], 4);
+        double val = (static_cast<double>(val_uint) / 4294967296.0) * 2.0 - 1.0;
+        noise[i] = val;
+        hash_offset += 4;
+    }
+
+    double v_norm = std::sqrt(std::max(norm_sq(v), 0.0));
+    if (v_norm > 1e-15) {
+        double proj_length = dot(noise, v) / (v_norm * v_norm);
+        for (size_t i = 0; i < dim; ++i) {
+            noise[i] -= proj_length * v[i];
+        }
+    }
+
+    double noise_norm = std::sqrt(std::max(norm_sq(noise), 0.0));
+    if (noise_norm > 1e-15) {
+        double scale = sigma * v_norm / noise_norm;
+        std::vector<double> result(dim);
+        for (size_t i = 0; i < dim; ++i) {
+            result[i] = v[i] + noise[i] * scale;
+        }
+        return result;
+    } else {
+        return v;
+    }
 }
 
 } // namespace math

@@ -1,4 +1,7 @@
 string collection
+uint32 ef_search
+uint32 ef_construction
+uint32 m
 ---
 bool success
 string message

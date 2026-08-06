@@ -111,6 +111,8 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v3.0-alpha.2**: ✅ **Multi-Geometry Benchmark & SDK Sync**. Graph Diagnostics in SDK, Multi-Geometry Search API, Wasserstein metric (native O(N) 1D), dependency pruning. *Completed.*
 * **v3.0-alpha.3**: ✅ **Anisotropic SQ8 & Per-Geometry Embedding System**. ScaNN-inspired coordinate-descent quantization for Cosine/L2 (+5.3% / +3.8% Recall@10). Full embedding service with Local ONNX, HuggingFace Hub, and 6 remote API providers. Documentation overhaul. *Completed.*
 * **v3.1.0**: ✅ **Schema-Driven Cascade & MRL**. Transition to `CollectionSchema` for multi-vector support. Native Matryoshka (MRL) cascading for RAM-optimized sub-millisecond search. *Completed.*
+* **v3.1.2**: ✅ **DePIN Infrastructure & Zero-Knowledge Privacy**. Unified `hyperspace-miner` node, signed ticket validation, per-byte storage billing, and client-side ZK-encryption. *Completed.*
+* **v3.1.3**: ✅ **AsymmetricHybrid801 Quantization & Cognitive MCP**. hardware resource telemetry (`sysinfo`), Zero-RAM Sidecar Payload integration for LangChain/LlamaIndex, and 6 standardized Cognitive Skills tools. *Completed.*
 * **v3.2**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
 
 Join us in pushing the boundaries of hyperbolic vector search!

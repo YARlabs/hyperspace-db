@@ -207,3 +207,171 @@ export function contextResonance(thought: number[], globalContext: number[], res
     const appliedPull = pullDir.map(v => v * factor);
     return expMap(thought, appliedPull, c);
 }
+
+
+export function generateOrthogonalMatrix(dimension: number, seedBytes: Uint8Array): number[][] {
+    const crypto = require('crypto');
+    const matrix: number[][] = [];
+    let currentHash = crypto.createHash('sha256').update(seedBytes).digest();
+    let hashOffset = 0;
+    
+    for (let i = 0; i < dimension; i++) {
+        const row: number[] = [];
+        for (let j = 0; j < dimension; j++) {
+            if (hashOffset >= 32) {
+                currentHash = crypto.createHash('sha256').update(currentHash).digest();
+                hashOffset = 0;
+            }
+            const val = (currentHash.readUInt32LE(hashOffset) / 4294967296.0) * 2.0 - 1.0;
+            row.push(val);
+            hashOffset += 4;
+        }
+        matrix.push(row);
+    }
+    
+    // Gram-Schmidt Orthonormalization with Reorthogonalization (twice is enough)
+    for (let i = 0; i < dimension; i++) {
+        let v = matrix[i];
+        for (let j = 0; j < i; j++) {
+            const u = matrix[j];
+            let uDotV = dot(u, v);
+            v = v.map((vi, k) => vi - uDotV * u[k]);
+            
+            // Re-project to eliminate floating-point leakage
+            uDotV = dot(u, v);
+            v = v.map((vi, k) => vi - uDotV * u[k]);
+        }
+        const vNorm = norm(v);
+        if (vNorm > 1e-15) {
+            matrix[i] = v.map(vi => vi / vNorm);
+        } else {
+            matrix[i] = new Array(dimension).fill(0);
+            matrix[i][i] = 1.0;
+        }
+    }
+    
+    return matrix;
+}
+
+export function generateLorentzMatrix(dimension: number, seedBytes: Uint8Array): number[][] {
+    const d = dimension - 1;
+    const crypto = require('crypto');
+    const rSeed = crypto.createHash('sha256').update(seedBytes).update("spatial").digest();
+    const R = generateOrthogonalMatrix(d, rSeed);
+    
+    const bSeed = crypto.createHash('sha256').update(seedBytes).update("boost").digest();
+    let beta: number[] = [];
+    let currentHash = bSeed;
+    let hashOffset = 0;
+    for (let i = 0; i < d; i++) {
+        if (hashOffset >= 32) {
+            currentHash = crypto.createHash('sha256').update(currentHash).digest();
+            hashOffset = 0;
+        }
+        const val = (currentHash.readUInt32LE(hashOffset) / 4294967296.0) * 2.0 - 1.0;
+        beta.push(val);
+        hashOffset += 4;
+    }
+    
+    const betaNorm = norm(beta);
+    if (betaNorm > 1e-15) {
+        beta = beta.map(v => (v / betaNorm) * 0.1);
+    } else {
+        beta = new Array(d).fill(0);
+        beta[0] = 0.1;
+    }
+    
+    const betaSq = dot(beta, beta);
+    const gamma = 1.0 / Math.sqrt(1.0 - betaSq);
+    
+    const Lambda_B: number[][] = [];
+    for (let i = 0; i < dimension; i++) {
+        Lambda_B.push(new Array(dimension).fill(0));
+    }
+    
+    Lambda_B[0][0] = gamma;
+    for (let j = 1; j < dimension; j++) {
+        Lambda_B[0][j] = -gamma * beta[j - 1];
+        Lambda_B[j][0] = -gamma * beta[j - 1];
+    }
+    
+    const factor = (gamma - 1.0) / betaSq;
+    for (let i = 1; i < dimension; i++) {
+        for (let j = 1; j < dimension; j++) {
+            const delta = i === j ? 1.0 : 0.0;
+            Lambda_B[i][j] = delta + factor * beta[i - 1] * beta[j - 1];
+        }
+    }
+    
+    const Lambda_R: number[][] = [];
+    for (let i = 0; i < dimension; i++) {
+        Lambda_R.push(new Array(dimension).fill(0));
+    }
+    Lambda_R[0][0] = 1.0;
+    for (let i = 1; i < dimension; i++) {
+        for (let j = 1; j < dimension; j++) {
+            Lambda_R[i][j] = R[i - 1][j - 1];
+        }
+    }
+    
+    const Lambda: number[][] = [];
+    for (let i = 0; i < dimension; i++) {
+        const row: number[] = [];
+        for (let j = 0; j < dimension; j++) {
+            let sum = 0;
+            for (let k = 0; k < dimension; k++) {
+                sum += Lambda_R[i][k] * Lambda_B[k][j];
+            }
+            row.push(sum);
+        }
+        Lambda.push(row);
+    }
+    
+    return Lambda;
+}
+
+export function projectVector(v: number[], projectionMatrix: number[][]): number[] {
+    const dimension = v.length;
+    const projected: number[] = new Array(dimension).fill(0);
+    for (let j = 0; j < dimension; j++) {
+        let sum = 0;
+        for (let i = 0; i < dimension; i++) {
+            sum += v[i] * projectionMatrix[i][j];
+        }
+        projected[j] = sum;
+    }
+    return projected;
+}
+
+export function injectAnisotropicNoise(vector: number[], noiseSeed: Uint8Array, sigma: number = 0.02): number[] {
+    if (sigma <= 0.0) return [...vector];
+    
+    const crypto = require('crypto');
+    const vecBytes = Buffer.from(vector.toString());
+    const hash = crypto.createHash('sha256').update(noiseSeed).update(vecBytes).digest();
+    
+    let currentHash = hash;
+    const noise: number[] = [];
+    for (let i = 0; i < vector.length; i++) {
+        if (currentHash.length < 16) {
+            currentHash = crypto.createHash('sha256').update(currentHash).digest();
+        }
+        
+        const u1 = Math.max(1e-15, (currentHash.readUInt32LE(0) + 1) / 4294967296);
+        const u2 = Math.max(1e-15, (currentHash.readUInt32LE(4) + 1) / 4294967296);
+        
+        const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+        noise.push(z0 * sigma);
+        
+        currentHash = currentHash.subarray(8);
+    }
+    
+    const noisy = vector.map((v, i) => v + noise[i]);
+    const origNorm = norm(vector);
+    const noisyNorm = norm(noisy);
+    if (noisyNorm > 1e-15) {
+        return noisy.map(v => (v / noisyNorm) * origNorm);
+    }
+    return noisy;
+}
+

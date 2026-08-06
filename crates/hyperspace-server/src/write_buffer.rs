@@ -14,6 +14,12 @@ pub struct WriteBuffer {
     entries: DashMap<u32, WriteBufferEntry>, // Key: internal_id
 }
 
+impl Default for WriteBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WriteBuffer {
     pub fn new() -> Self {
         Self {

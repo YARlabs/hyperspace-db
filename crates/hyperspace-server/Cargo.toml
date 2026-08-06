@@ -1,6 +1,7 @@
 [package]
 name = "hyperspace-server"
-version = "3.1.1"
+version = "3.1.3"
+default-run = "hyperspace-server"
 edition = "2021"
 
 [dependencies]
@@ -42,6 +43,8 @@ tikv-jemalloc-ctl = "0.6"
 prometheus = { version = "0.13", features = ["process"] }
 rayon = "1"
 
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
 uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true
 async-trait = "0.1.89"
@@ -51,6 +54,8 @@ futures = "0.3.32"
 ordered-float = "3"
 hyperspace-tiering = { workspace = true, optional = true }
 hyperspace-eco = { workspace = true, optional = true }
+hyperspace-p2p = { workspace = true, optional = true }
+hyperspace-billing = { workspace = true, optional = true }
 
 [features]
 default = ["embed"]
@@ -61,3 +66,13 @@ nightly-simd = ["hyperspace-core/nightly-simd", "hyperspace-index/nightly-simd"]
 # Enable with: cargo build --features s3-tiering
 s3-tiering = ["dep:hyperspace-tiering"]
 eco-monitor = ["dep:hyperspace-eco", "hyperspace-eco?/eco-monitor"]
+depin = ["dep:hyperspace-p2p", "dep:hyperspace-billing"]
+
+[[bin]]
+name = "hyperspace-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "hyperspace-miner"
+path = "src/bin/hyperspace-miner.rs"
+required-features = ["depin"]

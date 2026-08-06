@@ -97,8 +97,8 @@ class HyperspaceVectorStore(VectorStore):
         if metadatas is None:
             metadatas = [{} for _ in texts_list]
         
-        for i, text in enumerate(texts_list):
-            metadatas[i]["text"] = text
+        # Note: We do NOT inject "text" into the in-memory metadata.
+        # This keeps the database RAM footprint minimal.
         
         if ids is None:
             if self.enable_deduplication:
@@ -120,15 +120,18 @@ class HyperspaceVectorStore(VectorStore):
                 if self._embedding_function is None:
                     raise ValueError("Embedding function is required")
                 embeddings_data = self._embedding_function.embed_documents(texts_list)
-                self._client.batch_insert(
-                    vectors=embeddings_data,
-                    ids=ids,
-                    metadatas=[{str(k): str(v) for k, v in m.items()} for m in metadatas],
-                    collection=self.collection_name,
-                )
+                # Store text in the Sidecar Payload (on-disk) instead of in-memory metadata to save RAM.
+                for i, text in enumerate(texts_list):
+                    self._client.insert(
+                        id=ids[i],
+                        vector=embeddings_data[i],
+                        payload=text.encode('utf-8'),
+                        metadata={str(k): str(v) for k, v in metadatas[i].items() if k != "text"},
+                        collection=self.collection_name
+                    )
             return [str(x) for x in ids]
         except Exception as e:
-            logger.error(f"Failed to batch insert vectors: {e}")
+            logger.error(f"Failed to insert vectors: {e}")
             raise
 
     def similarity_search_with_score(
@@ -157,7 +160,8 @@ class HyperspaceVectorStore(VectorStore):
                 top_k=k, 
                 collection=self.collection_name, 
                 hybrid_alpha=hybrid_alpha,
-                hybrid_query=hybrid_query
+                hybrid_query=hybrid_query,
+                include_payload=True # Retrieve the document text from the Sidecar Payload
             )
         
         return self._parse_hits(hits)
@@ -167,7 +171,9 @@ class HyperspaceVectorStore(VectorStore):
         for hit in hits:
             metadata = getattr(hit, "metadata", {}) if not isinstance(hit, dict) else hit.get("metadata", {})
             distance = getattr(hit, "distance", 0.0) if not isinstance(hit, dict) else hit.get("distance", 0.0)
-            text = metadata.get("text", "")
+            # Retrieve text from payload (Sidecar) if available, fallback to metadata
+            payload = getattr(hit, "payload", None) if not isinstance(hit, dict) else hit.get("payload", None)
+            text = payload if payload is not None else metadata.get("text", "")
             doc = Document(page_content=text, metadata=dict(metadata))
             results.append((doc, float(distance)))
         return results

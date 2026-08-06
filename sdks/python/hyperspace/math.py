@@ -236,3 +236,116 @@ def context_resonance(thought: Sequence[float], global_context: Sequence[float],
     factor = max(0.0, min(1.0, resonance_factor))
     applied_pull = [v * factor for v in pull_dir]
     return exp_map(thought, applied_pull, c=c)
+
+
+# ==========================================
+# Private Projection / Mathematical Obfuscation (ZK-Privacy)
+# ==========================================
+
+def generate_orthogonal_matrix(dimension: int, seed_bytes: bytes):
+    """
+    Generates a deterministic, seed-based orthogonal matrix of shape (dimension, dimension).
+    Preserves Euclidean distance and inner products (L2 / Cosine).
+    """
+    import numpy as np
+    import hashlib
+    seed_int = int.from_bytes(hashlib.sha256(seed_bytes).digest()[:8], 'big')
+    rng = np.random.default_rng(seed_int)
+    H = rng.standard_normal((dimension, dimension))
+    Q, R = np.linalg.qr(H)
+    d = np.diag(R)
+    # Avoid division by zero
+    d_abs = np.abs(d)
+    d_abs[d_abs < 1e-15] = 1e-15
+    ph = d / d_abs
+    Q = Q * ph
+    return Q
+
+
+def generate_lorentz_matrix(dimension: int, seed_bytes: bytes):
+    """
+    Generates a deterministic, seed-based Lorentz transformation matrix of shape (dimension, dimension).
+    Preserves Minkowski inner product (Lorentz distance / Hyperbolic metric).
+    """
+    import numpy as np
+    import hashlib
+    if dimension < 2:
+        raise ValueError("Lorentz space dimension must be >= 2")
+    d = dimension - 1
+    seed_int = int.from_bytes(hashlib.sha256(seed_bytes).digest()[:8], 'big')
+    rng = np.random.default_rng(seed_int)
+    
+    # 1. Generate random spatial rotation R
+    H = rng.standard_normal((d, d))
+    R, R_r = np.linalg.qr(H)
+    d_diag = np.diag(R_r)
+    d_diag_abs = np.abs(d_diag)
+    d_diag_abs[d_diag_abs < 1e-15] = 1e-15
+    ph = d_diag / d_diag_abs
+    R = R * ph
+    
+    Lambda_R = np.eye(dimension)
+    Lambda_R[1:, 1:] = R
+    
+    # 2. Generate random boost vector beta in R^d with ||beta|| in [0.1, 0.8]
+    beta_dir = rng.standard_normal(d)
+    norm = np.linalg.norm(beta_dir)
+    if norm < 1e-9:
+        beta_dir = np.zeros(d)
+        beta_dir[0] = 1.0
+        norm = 1.0
+    beta_dir = beta_dir / norm
+    v = 0.1 + 0.7 * rng.random()
+    beta = v * beta_dir
+    
+    beta_sq = np.dot(beta, beta)
+    gamma = 1.0 / np.sqrt(1.0 - beta_sq)
+    
+    Lambda_B = np.zeros((dimension, dimension))
+    Lambda_B[0, 0] = gamma
+    Lambda_B[0, 1:] = -gamma * beta
+    Lambda_B[1:, 0] = -gamma * beta
+    
+    factor = (gamma - 1.0) / beta_sq
+    spatial_part = np.eye(d) + factor * np.outer(beta, beta)
+    Lambda_B[1:, 1:] = spatial_part
+    
+    return np.matmul(Lambda_R, Lambda_B)
+
+
+def project_vector(v: Sequence[float], projection_matrix) -> List[float]:
+    """Projects a vector using the provided projection matrix (v' = v * P)."""
+    import numpy as np
+    v_arr = np.array(v, dtype=np.float64)
+    v_projected = np.matmul(v_arr, projection_matrix)
+    return v_projected.tolist()
+
+
+def inject_anisotropic_noise(vector: Sequence[float], noise_seed: bytes, sigma: float = 0.02) -> List[float]:
+    """
+    Injects deterministic, anisotropic noise calibrated to the vector norm.
+    Protects against Manifold Alignment Attacks (Manifold Reconstruction).
+    """
+    if sigma <= 0.0:
+        return list(vector)
+    import numpy as np
+    import hashlib
+    vec_arr = np.array(vector, dtype=np.float64)
+    # Generate deterministic seed from the vector data + noise_seed
+    vec_bytes = str(vector).encode('utf-8')
+    vec_hash = hashlib.sha256(noise_seed + vec_bytes).digest()
+    seed_int = int.from_bytes(vec_hash[:8], 'big')
+    rng = np.random.default_rng(seed_int)
+    
+    noise = rng.normal(0, sigma, len(vector))
+    noisy = vec_arr + noise
+    
+    # Re-normalize to original norm to preserve cosine / lorentz distance metrics
+    orig_norm = np.linalg.norm(vec_arr)
+    noisy_norm = np.linalg.norm(noisy)
+    if noisy_norm > 1e-15:
+        noisy = (noisy / noisy_norm) * orig_norm
+        
+    return noisy.tolist()
+
+
