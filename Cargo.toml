@@ -36,6 +36,12 @@ rs_merkle = "1.4"
 governor = "0.6"
 dashmap = "6.1.0"
 redb = "4.1.0"
+# Local ONNX embedder stack (shared by hyperspace-embed + optional sdk features)
+# load-dynamic + hardcoded dylib path in embed crate for Paulina's macOS ORT install
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "load-dynamic", "api-20", "tracing", "coreml"] }
+tokenizers = { version = "0.22.2", features = ["onig"] }
+ndarray = "0.17"
+hf-hub = "0.3"
 
 
 [profile.release]
