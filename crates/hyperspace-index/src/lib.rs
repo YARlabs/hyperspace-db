@@ -651,12 +651,44 @@ impl VisitedScratch {
 #[inline]
 fn mark_visited(marks: &mut [u32], generation: u32, id: u32) -> bool {
     let idx = id as usize;
+    // Guard against an out-of-bounds NodeId (e.g. a stale neighbor link left
+    // in a rebuilt graph whose node count shrank). Fail closed by treating the
+    // out-of-range id as already visited rather than indexing out of bounds
+    // and panicking the search worker.
+    if idx >= marks.len() {
+        return false;
+    }
     let slot = &mut marks[idx];
     if *slot == generation {
         false
     } else {
         *slot = generation;
         true
+    }
+}
+
+#[cfg(test)]
+mod mark_visited_tests {
+    use super::mark_visited;
+
+    #[test]
+    fn out_of_bounds_id_returns_false_without_panicking() {
+        // Regression: previously `marks[i]` with i == marks.len() panicked
+        // with "index out of bounds". Guard must fail closed.
+        let mut marks = vec![0u32; 3];
+        assert!(!mark_visited(&mut marks, 1, 3)); // id == len
+        assert!(!mark_visited(&mut marks, 1, 9)); // id > len
+    }
+
+    #[test]
+    fn in_range_id_is_marked_per_generation() {
+        let mut marks = vec![0u32; 3];
+        // first visit in generation 1
+        assert!(mark_visited(&mut marks, 1, 1));
+        // repeat visit in same generation -> already visited
+        assert!(!mark_visited(&mut marks, 1, 1));
+        // fresh generation re-marks
+        assert!(mark_visited(&mut marks, 2, 1));
     }
 }
 
