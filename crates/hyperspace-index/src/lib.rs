@@ -651,6 +651,13 @@ impl VisitedScratch {
 #[inline]
 fn mark_visited(marks: &mut [u32], generation: u32, id: u32) -> bool {
     let idx = id as usize;
+    // Guard against an out-of-bounds NodeId (e.g. a stale neighbor link left
+    // in a rebuilt graph whose node count shrank). Fail closed by treating the
+    // out-of-range id as already visited rather than indexing out of bounds
+    // and panicking the search worker.
+    if idx >= marks.len() {
+        return false;
+    }
     let slot = &mut marks[idx];
     if *slot == generation {
         false
