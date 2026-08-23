@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import socket
 import json
+import plistlib
 import numpy as np
 import psutil
 from concurrent.futures import ThreadPoolExecutor
@@ -24,7 +25,7 @@ from typing import List, Dict, Tuple, Any
 
 # Ensure we can import the SDK
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sdk_path = os.path.abspath(os.path.join(_HERE, "../sdks/python"))
+sdk_path = os.path.abspath("/Users/paulinajanowska/AI/ANTIGRAVITY/EXTERNAL/hyperspace-db/sdks/python")
 sys.path.append(sdk_path)
 
 from hyperspace import HyperspaceClient
@@ -37,6 +38,18 @@ try:
 except ImportError:
     QDRANT_AVAILABLE = False
 
+
+class _QdrantCompat(QdrantClient):
+    """qdrant-client >=1.10 removed .search(); route through query_points()."""
+
+    def search(self, collection_name, query_vector=None, limit=10, **kwargs):
+        if isinstance(query_vector, tuple) and len(query_vector) == 2:
+            name, vec = query_vector
+            res = self.query_points(name, query=vec, limit=limit)
+        else:
+            res = self.query_points(collection_name, query=query_vector, limit=limit)
+        return res.points
+
 try:
     import chromadb
     CHROMA_AVAILABLE = True
@@ -48,14 +61,18 @@ except ImportError:
 # 1. PROCESS & SERVER CONTROL
 # =============================================================================
 def kill_existing_server():
-    """Kills any running hyperspace-server process to prevent port conflicts."""
+    """Port-isolated bench: production server on 50051 stays untouched.
+    Only ensure no leftover BENCH server (port 15051) from a previous run."""
     try:
-        subprocess.run(["pkill", "-f", "hyperspace-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(1.0)
+        subprocess.run(
+            ["pkill", "-f", "hyperspace-server.*--port 15051"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.5)
     except Exception:
         pass
 
-def wait_for_port(port=50051, timeout=15):
+def wait_for_port(port=15051, timeout=120):
     """Waits for the server to bind to the specified port."""
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -86,20 +103,43 @@ def start_hyperspace_server() -> subprocess.Popen:
     env["HS_HNSW_EF_CONSTRUCT"] = "200"
     env["HS_SEARCH_BATCH_INNER_CONCURRENCY"] = "1"
     env["HYPERSPACE_WAL_SYNC_MODE"] = "async"
+    env["HS_DATA_DIR"] = os.path.join(_HERE, "data")  # isolated from production
+    os.makedirs(env["HS_DATA_DIR"], exist_ok=True)    # server panics if missing
 
-    server_bin = os.path.abspath(os.path.join(_HERE, "../target/release/hyperspace-server"))
+    # Embedding provider: inherit the LOCAL ONNX config from the production
+    # launchd service by reading its plist (launchd per-service env is NOT
+    # visible via launchctl getenv from user sessions). Without these the
+    # bench server attempts an HF Hub download and never binds in time.
+    try:
+        with open(os.path.expanduser(
+                "~/Library/LaunchAgents/com.antigravity.hyperspacedb.plist"),
+                "rb") as _pf:
+            _plenv = plistlib.load(_pf).get("EnvironmentVariables", {})
+        for _var in ("HS_EMBED_LORENTZ_PROVIDER",
+                     "HS_EMBED_LORENTZ_MODEL_PATH",
+                     "HS_EMBED_LORENTZ_TOKENIZER_PATH",
+                     "HS_EMBED_LORENTZ_DIM",
+                     "HS_METRIC",
+                     "HS_DIMENSION"):
+            if _var in _plenv:
+                env[_var] = str(_plenv[_var])
+    except Exception as _e:
+        print(f"warning: could not inherit launchd env: {_e}")
+
+    server_bin = os.path.abspath("/Users/paulinajanowska/AI/ANTIGRAVITY/EXTERNAL/hyperspace-db/target/release/hyperspace-server")
     if not os.path.exists(server_bin):
         print(f"❌ Error: Compiled server not found at {server_bin}. Please run 'cargo build --release' first.")
         sys.exit(1)
 
+    _srv_log = open(os.path.join(_HERE, "bench_server_live.log"), "w")
     server = subprocess.Popen(
-        [server_bin],
+        [server_bin, "--port", "15051", "--http-port", "15050"],
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stdout=_srv_log,
+        stderr=subprocess.STDOUT
     )
     
-    if not wait_for_port(50051):
+    if not wait_for_port(15051):
         print("❌ Error: HyperspaceDB server failed to start within timeout.")
         server.terminate()
         sys.exit(1)
@@ -254,14 +294,14 @@ class YarGrandBenchmark:
         # Launch HyperspaceDB Server
         print("🚀 Starting HyperspaceDB Release Server...")
         self.server_process = start_hyperspace_server()
-        self.client_hs = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+        self.client_hs = HyperspaceClient("localhost:15051", api_key="I_LOVE_HYPERSPACEDB")
         print("✅ HyperspaceDB Server successfully started and connected.")
         
         # Initialize in-memory Qdrant and ChromaDB
         self.client_qdrant = None
         if QDRANT_AVAILABLE:
             try:
-                self.client_qdrant = QdrantClient(":memory:")
+                self.client_qdrant = _QdrantCompat(":memory:")
                 print("✅ Qdrant in-memory client initialized.")
             except Exception as e:
                 print(f"⚠️ Qdrant failed to start: {e}")
@@ -280,13 +320,22 @@ class YarGrandBenchmark:
         
         # Vectors:
         # HyperspaceDB: YAR Hybrid 801D
-        self.vecs_hs = np.array([generate_yar_hybrid_vector() for _ in range(self.limit)])
-        # Competitors: Standard 768D (Euclidean)
-        self.vecs_comp = np.array([generate_standard_vector(768) for _ in range(self.limit)])
-        
-        # Queries:
-        self.q_vecs_hs = np.array([generate_yar_hybrid_vector() for _ in range(self.queries_count)])
-        self.q_vecs_comp = np.array([generate_standard_vector(768) for _ in range(self.queries_count)])
+        # FAIR-PAIRING FIX: competitors index the SAME documents as
+        # HyperspaceDB - their 768D vector IS the normalized euclidean MRL
+        # part of the hybrid vector. Independent random vectors make cross-
+        # engine ground truth meaningless (~1% overlap by chance).
+        _hyb_docs = [generate_yar_hybrid_vector() for _ in range(self.limit)]
+        self.vecs_hs = np.array(_hyb_docs)
+        _euc_docs = [np.asarray(v[33:], dtype=float) for v in _hyb_docs]
+        _euc_docs = [v / np.linalg.norm(v) for v in _euc_docs]
+        self.vecs_comp = np.array(_euc_docs)
+
+        # Queries: same pairing.
+        _hyb_q = [generate_yar_hybrid_vector() for _ in range(self.queries_count)]
+        self.q_vecs_hs = np.array(_hyb_q)
+        _euc_q = [np.asarray(q[33:], dtype=float) for q in _hyb_q]
+        _euc_q = [q / np.linalg.norm(q) for q in _euc_q]
+        self.q_vecs_comp = np.array(_euc_q)
         
         # Calculate Euclidean Brute Force Ground Truth (Cosine/L2)
         print("Calculating ground truth...")
@@ -296,7 +345,22 @@ class YarGrandBenchmark:
             top_k = np.argpartition(dists, 10)[:10]
             top_k = top_k[np.argsort(dists[top_k])]
             self.gt_euc.append([str(idx) for idx in top_k])
-            
+
+        # Hybrid-metric brute-force ground truth for HyperspaceDB searches.
+        # The hybrid metric (Lorentz inner product + euclidean part) does not
+        # rank documents identically to euclidean-only distance; scoring
+        # hybrid searches against an euclidean-only ground truth measures the
+        # metric mismatch, not retrieval quality (measured: 73% vs 13%).
+        def _hyb_dist(a, b):
+            lor = float(np.dot(a[1:33], b[1:33]) - a[0] * b[0])
+            return abs(lor) + float(np.sum((a[33:] - b[33:]) ** 2))
+
+        self.gt_hyb = []
+        for q in self.q_vecs_hs:
+            dists = [_hyb_dist(q, v) for v in self.vecs_hs]
+            top_k = np.argsort(dists)[:10]
+            self.gt_hyb.append([str(idx) for idx in top_k])
+
         print("Initialization Complete.\n" + "="*80)
 
     def shutdown(self):
@@ -469,7 +533,13 @@ class YarGrandBenchmark:
                 collection=coll_name
             )
             
-        time.sleep(1.0)
+        # Wait for the indexing queue to fully drain before benchmarking;
+        # searching a half-indexed collection measures the queue, not recall.
+        for _ in range(60):
+            _st = self.client_hs.get_collection_stats(coll_name)
+            if _st.get("indexing_queue", 0) == 0:
+                break
+            time.sleep(1.0)
         
         # Search & measure accuracy
         recalls = []
@@ -482,7 +552,7 @@ class YarGrandBenchmark:
             latencies.append((time.time() - t_start) * 1000)
             
             retrieved = [h["metadata"]["doc_id"] for h in hits]
-            expected = self.gt_euc[idx]
+            expected = self.gt_hyb[idx]  # hybrid-metric ground truth
             
             # Simple Recall@10 calculation
             matches = set(retrieved) & set(expected)
@@ -705,70 +775,136 @@ class YarGrandBenchmark:
         # HyperspaceDB filters out distractors using a Lorentz cone/diffusion filter.
         # Standard DBs return distractors because of sheer flat vector overlap.
         
+        # REAL RGB protocol v2 (post pairing-fix): use the corpus itself.
+        # For each trial query: relevant = its 10 nearest documents by hybrid
+        # brute-force distance; distractors = 50 random documents from OTHER
+        # topics inserted alongside. Precision@10 over the combined pool.
+        rng = np.random.default_rng(42)
+        n_distract = 50
+        K = 10
+        coll_rgb = "level3_rgb"
+        try:
+            self.client_hs.delete_collection(coll_rgb)
+        except Exception:
+            pass
+        self.client_hs.create_collection(coll_rgb, dimension=801, metric="hybrid")
+        self.client_hs.configure(ef_search=100, collection=coll_rgb)
+
         context_precision_hs = []
         context_precision_comp = []
-        
-        for i in range(10):
-            # In Lorentz space, distractors are placed in a different hyperbolic branch
-            # Even if their L2 part is close, their Lorentz inner product is far.
-            # Thus, Context Precision remains high.
-            context_precision_hs.append(0.95)
-            # Euclidean DBs get completely confused by high overlap in flat cosine
-            context_precision_comp.append(0.55)
-            
-        # Phase B: Vector NIAH (Needle in a Haystack)
-        # Haystack: self.limit (e.g. 1000) highly overlapping technical vectors.
-        # Needle: A unique, highly specific vector injected at a random index.
-        # We query the needle and check if it can be extracted in Top-10.
-        
-        needle_idx = np.random.randint(0, self.limit)
-        needle_vec_hs = self.vecs_hs[needle_idx]
-        needle_vec_comp = self.vecs_comp[needle_idx]
-        
-        # 1. HyperspaceDB Search for needle
-        coll_name = "level3_niah"
-        try:
-            self.client_hs.delete_collection(coll_name)
-        except: pass
-        
-        self.client_hs.create_collection(coll_name, dimension=801, metric="hybrid")
-        self.client_hs.configure(ef_search=100, collection=coll_name)
-        
-        self.client_hs.batch_insert(
-            self.vecs_hs.tolist(),
-            list(range(self.limit)),
-            [{"doc_id": str(i)} for i in range(self.limit)],
-            collection=coll_name
-        )
-        time.sleep(1.0)
-        
-        hits_hs = self.client_hs.search(needle_vec_hs.tolist(), top_k=10, collection=coll_name)
-        retrieved_ids_hs = [h["id"] for h in hits_hs]
-        needle_found_hs = needle_idx in retrieved_ids_hs
-        
-        # 2. Competitor (Qdrant) Search for needle
-        needle_found_comp = False
-        if self.client_qdrant:
+
+        def _hyb_dist(a, b):
+            lor = float(np.dot(a[1:33], b[1:33]) - a[0] * b[0])
+            return abs(lor) + float(np.sum((a[33:] - b[33:]) ** 2))
+
+        for trial in range(10):
+            q = self.q_vecs_hs[trial]
+            dists = [_hyb_dist(q, v) for v in self.vecs_hs]
+            order = np.argsort(dists)
+            relevant_ids = {int(i) for i in order[:K]}
+            # distractors: far in hybrid space, sampled deterministically
+            far = [int(i) for i in order[-4 * n_distract:]]
+            distractor_ids = list(rng.choice(far, size=n_distract, replace=False))
+            pool_ids = sorted(relevant_ids | set(distractor_ids))
+            pool_docs = [self.vecs_hs[i] for i in pool_ids]
+
             try:
-                self.client_qdrant.delete_collection("niah_bench")
-            except: pass
-            self.client_qdrant.create_collection("niah_bench", vectors_config=VectorParams(size=768, distance=Distance.COSINE))
-            
-            points = [PointStruct(id=i, vector=self.vecs_comp[i].tolist()) for i in range(self.limit)]
-            self.client_qdrant.upsert("niah_bench", points, wait=True)
-            
-            hits_q = self.client_qdrant.search("niah_bench", needle_vec_comp.tolist(), limit=10)
-            retrieved_ids_q = [hit.id for hit in hits_q]
-            needle_found_comp = needle_idx in retrieved_ids_q
-            self.client_qdrant.delete_collection("niah_bench")
-            
-        self.client_hs.delete_collection(coll_name)
-        
+                self.client_hs.delete_collection(coll_rgb)
+            except Exception:
+                pass
+            self.client_hs.create_collection(coll_rgb, dimension=801, metric="hybrid")
+            self.client_hs.configure(ef_search=100, collection=coll_rgb)
+            self.client_hs.batch_insert(
+                [v.tolist() for v in pool_docs], pool_ids,
+                [{"doc_id": str(i)} for i in pool_ids], collection=coll_rgb,
+            )
+            time.sleep(0.5)
+            hits = self.client_hs.search(q.tolist(), top_k=K, collection=coll_rgb)
+            got = {int(h["id"]) for h in hits}
+            context_precision_hs.append(len(got & relevant_ids) / K)
+
+            if self.client_qdrant:
+                try:
+                    self.client_qdrant.delete_collection("rgb_bench")
+                except Exception:
+                    pass
+                self.client_qdrant.create_collection(
+                    "rgb_bench",
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                )
+                pts = [PointStruct(id=int(i), vector=self.vecs_comp[i].tolist())
+                       for i in pool_ids]
+                self.client_qdrant.upsert("rgb_bench", pts, wait=True)
+                hq = self.client_qdrant.query_points("rgb_bench", query=q[33:].tolist(), limit=K)
+                got_q = {int(pt.id) for pt in hq.points}
+                context_precision_comp.append(len(got_q & relevant_ids) / K)
+
+        try:
+            self.client_hs.delete_collection(coll_rgb)
+        except Exception:
+            pass
+        try:
+            self.client_qdrant.delete_collection("rgb_bench")
+        except Exception:
+            pass
+
         results["NoiseRobustness"] = {
             "context_precision_hs": np.mean(context_precision_hs),
             "context_precision_comp": np.mean(context_precision_comp)
         }
-        
+
+        # Phase B: Vector NIAH - inject a unique needle into a copy of the
+        # corpus, query with the needle's own vector, check top-10 recovery.
+        coll_niah = "level3_niah"
+        try:
+            self.client_hs.delete_collection(coll_niah)
+        except Exception:
+            pass
+        self.client_hs.create_collection(coll_niah, dimension=801, metric="hybrid")
+        self.client_hs.configure(ef_search=100, collection=coll_niah)
+        self.client_hs.batch_insert(
+            self.vecs_hs.tolist(), list(range(self.limit)),
+            [{"doc_id": str(i)} for i in range(self.limit)],
+            collection=coll_niah,
+        )
+        time.sleep(1.0)
+        for _ in range(60):
+            st = self.client_hs.get_collection_stats(coll_niah)
+            if st.get("indexing_queue", 0) == 0:
+                break
+            time.sleep(1.0)
+
+        rng_n = np.random.default_rng(7)
+        needle_idx = int(rng_n.integers(0, self.limit))
+        needle_vec_hs = self.vecs_hs[needle_idx]
+        hits_hs = self.client_hs.search(needle_vec_hs.tolist(), top_k=10, collection=coll_niah)
+        retrieved_ids_hs = [h["id"] for h in hits_hs]
+        needle_found_hs = needle_idx in retrieved_ids_hs
+
+        needle_found_comp = False
+        if self.client_qdrant:
+            try:
+                self.client_qdrant.delete_collection("niah_bench")
+            except Exception:
+                pass
+            self.client_qdrant.create_collection(
+                "niah_bench",
+                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            )
+            points = [PointStruct(id=i, vector=self.vecs_comp[i].tolist())
+                      for i in range(self.limit)]
+            self.client_qdrant.upsert("niah_bench", points, wait=True)
+            comp_needle = int(rng_n.integers(0, self.limit))
+            hq = self.client_qdrant.query_points(
+                "niah_bench", query=self.vecs_comp[comp_needle].tolist(), limit=10)
+            retrieved_ids_q = [pt.id for pt in hq.points]
+            needle_found_comp = comp_needle in retrieved_ids_q
+            self.client_qdrant.delete_collection("niah_bench")
+        try:
+            self.client_hs.delete_collection(coll_niah)
+        except Exception:
+            pass
+
         results["VectorNIAH"] = {
             "found_hs": needle_found_hs,
             "found_comp": needle_found_comp if self.client_qdrant else False
@@ -801,8 +937,8 @@ def generate_reports(l1_sidecar: Dict, l1_cascade: Dict, l2: Dict, l3: Dict, lim
         f.write("## 1. Executive Summary Table\n\n")
         f.write("| Evaluation Level | Metric measured | HyperspaceDB (YAR-801D) | Competitors (Flat-768D) | Win Margin / Architectual Advantage |\n")
         f.write("| :--- | :--- | :--- | :--- | :--- |\n")
-        f.write(f"| **Level 1 (Sidecar)** | RAM Footprint (4KB metadata) | **{l1_sidecar['HyperspaceDB']['ram_mb']:.1f} MB** | {l1_sidecar.get('Qdrant', {}).get('ram_mb', 0.0):.1f} MB | **{l1_sidecar.get('Qdrant', {}).get('ram_mb', 0.0) / l1_sidecar['HyperspaceDB']['ram_mb']:.1f}x RAM reduction** (Sidecar Payload vs. In-Memory) |\n")
-        f.write(f"| **Level 1 (Sidecar)** | Concurrent Search QPS | **{1000 / l1_sidecar['HyperspaceDB']['p50_ms'] * 8:.1f} QPS** | {1000 / l1_sidecar.get('Qdrant', {}).get('p50_ms', 1.0) * 8:.1f} QPS | **+{((1000 / l1_sidecar['HyperspaceDB']['p50_ms']) / (1000 / l1_sidecar.get('Qdrant', {}).get('p50_ms', 1.0)) - 1)*100:.1f}% higher throughput** |\n")
+        f.write(f"| **Level 1 (Sidecar)** | RAM Footprint (4KB metadata) | **{l1_sidecar['HyperspaceDB']['ram_mb']:.1f} MB** | {l1_sidecar.get('Qdrant', {}).get('ram_mb', 0.0):.1f} MB | **{(l1_sidecar.get('Qdrant', {}).get('ram_mb', 0.0) / l1_sidecar['HyperspaceDB']['ram_mb']) if l1_sidecar['HyperspaceDB'].get('ram_mb') else float('nan'):.1f}x RAM reduction** (Sidecar Payload vs. In-Memory) |\n")
+        f.write(f"| **Level 1 (Sidecar)** | Concurrent Search QPS | **{(1000 / l1_sidecar['HyperspaceDB']['p50_ms'] * 8) if l1_sidecar['HyperspaceDB'].get('p50_ms') else 0.0:.1f} QPS** | {1000 / l1_sidecar.get('Qdrant', {}).get('p50_ms', 1.0) * 8:.1f} QPS | **+{((1000 / l1_sidecar['HyperspaceDB']['p50_ms']) / max(1000 / max(l1_sidecar.get('Qdrant', {}).get('p50_ms', 1.0), 1e-9), 1e-9) - 1)*100 if l1_sidecar['HyperspaceDB'].get('p50_ms') else 0.0:.1f}% higher throughput** |\n")
         f.write(f"| **Level 1 (Cascade)**| Search Accuracy (Recall@10) | **{l1_cascade['HyperspaceDB']['recall']:.1%}** | {l1_cascade.get('Qdrant', {}).get('recall', 0.0):.1%} | Equal/Superior quality using **{l1_cascade.get('Qdrant', {}).get('ram_index_mb', 1.0)/l1_cascade['HyperspaceDB']['ram_index_mb']:.1f}x less index RAM** via MRL Cascade |\n")
         f.write(f"| **Level 2 (Hierarchy)**| Topological Accuracy (ISA-95) | **{l2['HyperspaceDB']['topological_accuracy']:.1%}** | {l2['Competitors']['topological_accuracy']:.1%} | **Hyperbolic Lorentz space** prevents taxonomic distortion |\n")
         f.write(f"| **Level 2 (Hierarchy)**| Traversal Roundtrips (Depth 3) | **{l2['HyperspaceDB']['roundtrips']:.0f} Query** | {l2['Competitors']['roundtrips']:.0f} Queries | **1-pass Cone Subsumption** eliminates multi-hop database requests |\n")
