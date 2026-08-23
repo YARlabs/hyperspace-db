@@ -16,13 +16,22 @@ use std::time::Duration;
 use tonic::transport::Channel;
 use ui::ui;
 
+fn auth_req<T>(payload: T, key: &str) -> tonic::Request<T> {
+    let mut req = tonic::Request::new(payload);
+    if let Ok(val) = key.parse() {
+        req.metadata_mut().insert("x-api-key", val);
+    }
+    req
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // 1. Setup Network
-    let mut client = DatabaseClient::connect("http://[::1]:50051").await?;
+    let api_key = std::env::var("HYPERSPACE_API_KEY").unwrap_or_else(|_| "I_LOVE_HYPERSPACEDB".to_string());
+    
+    let mut client = DatabaseClient::connect("http://127.0.0.1:50051").await?;
 
     // Start Monitor Stream
-    let mut monitor_stream = client.monitor(MonitorRequest {}).await?.into_inner();
+    let mut monitor_stream = client.monitor(auth_req(MonitorRequest {}, &api_key)).await?.into_inner();
 
     // Channel for Async -> Sync UI
     let (tx, mut rx) = tokio::sync::mpsc::channel::<SystemStats>(10);
@@ -47,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
 
     // 4. Run UI Loop
-    let res = run_app(&mut terminal, &mut app, &mut rx, &client);
+    let res = run_app(&mut terminal, &mut app, &mut rx, &client, &api_key);
 
     // 5. Restore Terminal
     disable_raw_mode()?;
@@ -70,14 +79,16 @@ fn run_app<B: ratatui::backend::Backend>(
     app: &mut App,
     rx: &mut tokio::sync::mpsc::Receiver<SystemStats>,
     client: &DatabaseClient<Channel>,
+    api_key: &str,
 ) -> io::Result<()> {
     // List Collections Thread
     let (tx_col, mut rx_col) =
         tokio::sync::mpsc::channel::<Vec<hyperspace_proto::hyperspace::CollectionSummary>>(1);
     let mut client_col = client.clone();
+    let api_key_col = api_key.to_string();
     tokio::spawn(async move {
         loop {
-            if let Ok(resp) = client_col.list_collections(Empty {}).await {
+            if let Ok(resp) = client_col.list_collections(auth_req(Empty {}, &api_key_col)).await {
                 let list = resp.into_inner().collections;
                 if tx_col.send(list).await.is_err() {
                     break;
@@ -110,15 +121,17 @@ fn run_app<B: ratatui::backend::Backend>(
                     KeyCode::Char('4') => app.current_tab = CurrentTab::Admin,
                     KeyCode::Char('s') => {
                         let mut c = client.clone();
+                        let k = api_key.to_string();
                         tokio::spawn(async move {
-                            let _ = c.trigger_snapshot(Empty {}).await;
+                            let _ = c.trigger_snapshot(auth_req(Empty {}, &k)).await;
                         });
                         app.logs.push("Snapshot triggered...".to_string());
                     }
                     KeyCode::Char('v') => {
                         let mut c = client.clone();
+                        let k = api_key.to_string();
                         tokio::spawn(async move {
-                            let _ = c.trigger_vacuum(Empty {}).await;
+                            let _ = c.trigger_vacuum(auth_req(Empty {}, &k)).await;
                         });
                         app.logs.push("Vacuum triggered...".to_string());
                     }

@@ -73,7 +73,7 @@ class HyperspaceMcpServer {
         // --- DATA PLANE TOOLS ---
         {
           name: "hyperspace_search_text",
-          description: "Search for semanticly similar information using natural language query. Supports hybrid search (BM25 + Semantic).",
+          description: "Search a `collection` for entries semantically similar to `text` (natural language query). Returns a JSON array of up to `top_k` results, each with id, score, and stored payload.",
           inputSchema: {
             type: "object",
             properties: {
@@ -94,7 +94,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_search_wasserstein",
-          description: "Advanced Optimal Transport (Wasserstein) search for comparing distributions or complex concept overlap.",
+          description: "Advanced Optimal Transport (Wasserstein) search inside `collection` for `text`. Compares distributions/complex concept overlap. Returns a JSON array of `top_k` matches ranked by Wasserstein distance, each with id, score, payload.",
           inputSchema: {
             type: "object",
             properties: {
@@ -107,7 +107,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_insert_text",
-          description: "Store a new factual claim or memory. Automatically handles vectorization.",
+          description: "Store a new factual claim or memory: insert `text` into `collection` under numeric `id` (auto-vectorized). Returns a JSON object {ok: true, id} on success or {ok: false, error} on failure.",
           inputSchema: {
             type: "object",
             properties: {
@@ -135,7 +135,7 @@ class HyperspaceMcpServer {
         // --- AGENTIC GRAPH TOOLS ---
         {
           name: "hyperspace_graph_traverse",
-          description: "Deep graph exploration. Finds logical paths between concept A and context B. Use this for complex reasoning or cross-referencing.",
+          description: "Deep graph exploration starting from node `start_id` inside `collection`. Finds logical paths between concept A and context B for complex reasoning/cross-referencing. Returns a JSON object {paths: [...], nodes: [...], edges: [...]} bounded by max_depth and max_nodes.",
           inputSchema: {
             type: "object",
             properties: {
@@ -163,7 +163,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_find_clusters",
-          description: "Detect emergent structure and hierarchy in the current knowledge base.",
+          description: "Detect emergent structure/hierarchy in `collection`. Returns a JSON array of clusters, each {cluster_id, members: [...], centroid, size}, filtered by min_cluster_size.",
           inputSchema: {
             type: "object",
             properties: {
@@ -176,7 +176,7 @@ class HyperspaceMcpServer {
         // --- ANALYTICS TOOLS (Standalone) ---
         {
           name: "hyperspace_analyze_geometry",
-          description: "Calculates Gromov Delta-hyperbolicity to determine if your data is best suited for Flat (Cosine/L2) or Curved (Poincare/Lorentz) space.",
+          description: "Calculate Gromov Delta-hyperbolicity over the supplied `vectors` (array of numeric arrays). Returns a JSON object {delta, recommendation: 'flat'|'curved'} indicating whether data is best in Flat (Cosine/L2) or Curved (Poincare/Lorentz) space.",
           inputSchema: {
             type: "object",
             properties: {
@@ -188,7 +188,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_analyze_thought_stability",
-          description: "Calculates Lyapunov Convergence of a trajectory (Chain of Thought). Negative means stable/converging. Positive means chaotic/hallucinating.",
+          description: "Calculate Lyapunov Convergence of a `trajectory` (Chain of Thought). Returns a JSON object {lyapunov_exponent, classification: 'stable'|'chaotic'} - negative result means stable/converging, positive means chaotic/hallucinating.",
           inputSchema: {
             type: "object",
             properties: {
@@ -201,7 +201,7 @@ class HyperspaceMcpServer {
         // --- COGNITIVE SYSTEM TOOLS ---
         {
           name: "hyperspace_trigger_reconsolidation",
-          description: "AI Sleep Mode: Triggers Flow Matching on the server to optimize the geometric representation of concepts based on their usage/context.",
+          description: "AI Sleep Mode: trigger Flow Matching on the server to optimize the geometric representation of concepts in `collection` based on usage/context. Returns a JSON object {ok, iterations, loss_before, loss_after}.",
           inputSchema: {
             type: "object",
             properties: {
@@ -231,7 +231,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_list_collections",
-          description: "List all active collections with their metadata (dimension, metric, count).",
+          description: "List all active collections. Returns a JSON array of objects, each with {name, dimension, metric, count} metadata fields.",
           inputSchema: {
             type: "object",
             properties: {}
@@ -239,7 +239,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_stats",
-          description: "Get detailed statistics and logical clock for a specific collection. Merges metadata, cache stats and WriteBuffer size.",
+          description: "Get detailed statistics for the named `collection`. Returns a JSON object with count, dimension, metric, logical_clock, and storage stats. Merges metadata, cache stats and WriteBuffer size.",
           inputSchema: {
             type: "object",
             properties: { collection: { type: "string" } },
@@ -514,15 +514,27 @@ class HyperspaceMcpServer {
           }
           case "hyperspace_search_wasserstein": {
             const { collection, text, top_k } = z.object({ collection: z.string(), text: z.string(), top_k: z.number().optional() }).parse(args);
-            // Wasserstein uses a specific internal method or we can use searchWasserstein text variant if exists.
-            // Client.ts has searchWasserstein(vector, topK, collection)
-            const vector = await this.client.vectorize(text);
-            const res = await (this.client as any).searchWasserstein(vector, top_k || 5, collection);
+            // Wasserstein requires vector already, so embed text first via vectorize, then call search with useWasserstein=true flag
+            const vector = await this.client.vectorize(text, 'lorentz');
+            const res = await this.client.search(vector, top_k || 5, collection, { useWasserstein: true, includePayload: true });
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
           }
           case "hyperspace_insert_text": {
             const { collection, id, text, metadata } = z.object({ collection: z.string(), id: z.number(), text: z.string(), metadata: z.record(z.string(), z.string()).optional() }).parse(args);
-            await this.client.insertText(id, text, metadata, collection);
+            // GUARD: silnik gRPC definiuje id jako uint32 (proto InsertTextRequest.id, max 4294967295).
+            // JS number powyzej tego (albo ujemny/ulamkowy) powoduje "serialization failure:
+            // Assertion failed" zamiast czytelnego bledu. Walidujemy zakres uint32 PRZED gRPC,
+            // zeby pulapka kolizji/przepelnienia id dawala jasny komunikat, nie crash protokolu.
+            const UINT32_MAX = 4294967295;
+            if (!Number.isInteger(id) || id < 0 || id > UINT32_MAX) {
+              return { content: [{ type: "text", text: `{"ok": false, "error": "id must be an integer in uint32 range [0, ${UINT32_MAX}]; got ${id}"}` }] };
+            }
+            // KONWENCJA ANTIGRAVITY: tresc rekordu czytana z metadata._content (NIE z natywnego
+            // pola silnika). Facade gniewka (hsdb_memory) wstrzykuje _content przy zapisie; SDK
+            // insertText tego NIE robi, wiec bez tego wpis ma pusta tresc przy odczycie (root
+            // cause "olewania bazy" / pustych encji). Wstrzykujemy by zapis = jakosc store_memory.
+            const meta = { ...(metadata || {}), _content: text.slice(0, 500) };
+            await this.client.insertText(id, text, meta, collection);
             return { content: [{ type: "text", text: `Stored ${id} in ${collection}` }] };
           }
           case "hyperspace_create_collection": {

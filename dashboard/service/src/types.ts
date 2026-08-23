@@ -6,7 +6,7 @@ export interface VectorData {
 
 export interface CollectionSchema {
     dimension: number;
-    metric: 'cosine' | 'l2' | 'ip' | 'lorentz' | 'poincare';
+    metric: 'lorentz' | 'poincare' | 'l2' | 'cosine' | 'ip';
     count?: number;
 }
 

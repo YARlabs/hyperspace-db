@@ -24,7 +24,7 @@ export class PineconeExtractor extends BaseExtractor {
 
         return {
             dimension: meta?.dimension || 0,
-            metric: (meta?.metric as any) || 'cosine',
+            metric: (meta?.metric as any) || 'lorentz',
             count: stats.totalRecordCount
         };
     }

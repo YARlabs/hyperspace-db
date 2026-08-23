@@ -467,7 +467,7 @@ function CreateCollectionDialog() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="l2">Euclidean (L2)</SelectItem>
-                                <SelectItem value="cosine">Cosine Similarity</SelectItem>
+                                <SelectItem value="lorentz">Lorentz (Hyperboloid)</SelectItem>
                                 <SelectItem value="poincare">Poincaré Ball (Hyperbolic)</SelectItem>
                                 <SelectItem value="lorentz">Lorentz / Hyperboloid (Hyperbolic)</SelectItem>
                                 <SelectItem value="hybrid">v5 Hybrid (Lorentz + L2)</SelectItem>

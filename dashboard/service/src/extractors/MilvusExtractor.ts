@@ -26,7 +26,7 @@ export class MilvusExtractor extends BaseExtractor {
 
         return {
             dimension,
-            metric: 'cosine', // Defaulting for example
+            metric: 'lorentz',
             count
         };
     }

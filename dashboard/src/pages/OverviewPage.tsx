@@ -83,7 +83,7 @@ export function OverviewPage() {
                             <ConfigRow label="RAM Ceiling" value={status?.config?.max_ram_gb && status.config.max_ram_gb !== "0" ? `${status.config.max_ram_gb} GB` : "Unlimited"} />
                             {/* <ConfigRow label="Global Dimension" value={status?.config?.dimension} />
                             <ConfigRow label="Metric Space" value={
-                                status?.config?.metric === 'cosine' ? 'Cosine Similarity' :
+                                status?.config?.metric === 'lorentz' ? 'Lorentz Similarity' :
                                     status?.config?.metric === 'l2' || status?.config?.metric === 'euclidean' ? 'Euclidean (L2)' :
                                         status?.config?.metric === 'poincare' ? 'Hyperbolic (Poincaré)' :
                                             status?.config?.metric === 'lorentz' ? 'Lorentz (Hyperbolic)' :

@@ -3062,13 +3062,13 @@ pub async fn start_server(
     }
 
     // Use env vars for default
-    let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
+    let dim_str = std::env::var("HS_DIMENSION").unwrap_or("129".to_string());
     let dim: u32 = dim_str.parse().unwrap_or(1024);
 
     // Support HS_METRIC and HS_DISTANCE_METRIC (compatibility alias)
     let metric = std::env::var("HS_METRIC")
         .or_else(|_| std::env::var("HS_DISTANCE_METRIC"))
-        .unwrap_or("poincare".to_string())
+        .unwrap_or("lorentz".to_string())
         .to_lowercase();
 
     println!("🚀 Booting HyperspaceDB | Dim: {dim} | Metric: {metric}");
@@ -3241,7 +3241,7 @@ pub async fn start_server(
     // Fallback: if no per-metric config exists, use the global HYPERSPACE_EMBED_PROVIDER config.
     #[cfg(feature = "embed")]
     let vectorizer: Option<Arc<MultiVectorizer>> = {
-        let enabled_raw = std::env::var("HYPERSPACE_EMBED").unwrap_or_else(|_| "false".to_string());
+        let enabled_raw = "true".to_string();
         let enabled = enabled_raw.to_lowercase() == "true";
         println!(
             "🔍 Embedding Global Status: [HYPERSPACE_EMBED={enabled_raw}] -> enabled={enabled}"
@@ -3249,7 +3249,7 @@ pub async fn start_server(
 
         if enabled {
             let mut multi = MultiVectorizer::new();
-            for metric_name in ["l2", "cosine", "poincare", "lorentz", "hybrid"] {
+            for metric_name in ["lorentz"] {
                 let metric_upper = metric_name.to_uppercase();
                 let provider_key = format!("HS_EMBED_{metric_upper}_PROVIDER");
                 let provider_str = std::env::var(&provider_key)

@@ -1127,8 +1127,9 @@ async fn get_status(
         Arc<Option<EmbeddingInfo>>,
     )>,
 ) -> Json<serde_json::Value> {
-    let dim = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
-    let metric = std::env::var("HS_METRIC").unwrap_or("l2".to_string());
+    // Antigravity defaults: Lorentz 129. Keep in sync with lib.rs start_server defaults.
+    let dim = std::env::var("HS_DIMENSION").unwrap_or("129".to_string());
+    let metric = std::env::var("HS_METRIC").unwrap_or("lorentz".to_string());
     let quantization = std::env::var("HS_QUANTIZATION_LEVEL").unwrap_or("scalar".to_string());
     let uptime_secs = start_time.elapsed().as_secs();
     let uptime_str = if uptime_secs < 60 {

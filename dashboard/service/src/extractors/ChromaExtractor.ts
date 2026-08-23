@@ -25,7 +25,7 @@ export class ChromaExtractor extends BaseExtractor {
 
         return {
             dimension,
-            metric: 'cosine', // Chroma default
+            metric: 'lorentz',
             count
         };
     }

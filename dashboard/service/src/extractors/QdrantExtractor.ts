@@ -20,7 +20,7 @@ export class QdrantExtractor extends BaseExtractor {
         const config = info.config.params;
         
         // Qdrant uses 'Distance' enum: Cosine, Euclid, Dot
-        let metric: CollectionSchema['metric'] = 'cosine';
+        let metric: CollectionSchema['metric'] = 'lorentz';
         const qMetric = info.config.hnsw_config ? 'cosine' : 'cosine'; // Simplified for example
 
         return {
