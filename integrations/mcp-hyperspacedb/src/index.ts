@@ -73,7 +73,7 @@ class HyperspaceMcpServer {
         // --- DATA PLANE TOOLS ---
         {
           name: "hyperspace_search_text",
-          description: "Search for semanticly similar information using natural language query. Supports hybrid search (BM25 + Semantic).",
+          description: "Search a `collection` for entries semantically similar to `text` (natural language query). Returns a JSON array of up to `top_k` results, each with id, score, and stored payload.",
           inputSchema: {
             type: "object",
             properties: {
@@ -94,7 +94,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_search_wasserstein",
-          description: "Advanced Optimal Transport (Wasserstein) search for comparing distributions or complex concept overlap.",
+          description: "Advanced Optimal Transport (Wasserstein) search inside `collection` for `text`. Compares distributions/complex concept overlap. Returns a JSON array of `top_k` matches ranked by Wasserstein distance, each with id, score, payload.",
           inputSchema: {
             type: "object",
             properties: {
@@ -107,7 +107,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_insert_text",
-          description: "Store a new factual claim or memory. Automatically handles vectorization.",
+          description: "Store a new factual claim or memory: insert `text` into `collection` under numeric `id` (auto-vectorized). Returns a JSON object {ok: true, id} on success or {ok: false, error} on failure.",
           inputSchema: {
             type: "object",
             properties: {
@@ -121,7 +121,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_create_collection",
-          description: "Setup new memory spaces (collections) with specific vector dimension and metric geometry.",
+          description: "Setup new memory spaces (collections) with specific vector dimension and metric geometry. Returns the created collection config as JSON result.",
           inputSchema: {
             type: "object",
             properties: {
@@ -135,7 +135,7 @@ class HyperspaceMcpServer {
         // --- AGENTIC GRAPH TOOLS ---
         {
           name: "hyperspace_graph_traverse",
-          description: "Deep graph exploration. Finds logical paths between concept A and context B. Use this for complex reasoning or cross-referencing.",
+          description: "Deep graph exploration starting from node `start_id` inside `collection`. Finds logical paths between concept A and context B for complex reasoning/cross-referencing. Returns a JSON object {paths: [...], nodes: [...], edges: [...]} bounded by max_depth and max_nodes.",
           inputSchema: {
             type: "object",
             properties: {
@@ -149,7 +149,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_neighbors",
-          description: "Explore local connectivity of a concept in the vector index graph.",
+          description: "Explore local connectivity of a concept in the vector index graph. Requires `collection` name and `id` of the node/concept. Returns a list of neighboring nodes as JSON result.",
           inputSchema: {
             type: "object",
             properties: {
@@ -163,7 +163,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_find_clusters",
-          description: "Detect emergent structure and hierarchy in the current knowledge base.",
+          description: "Detect emergent structure/hierarchy in `collection`. Returns a JSON array of clusters, each {cluster_id, members: [...], centroid, size}, filtered by min_cluster_size.",
           inputSchema: {
             type: "object",
             properties: {
@@ -176,7 +176,7 @@ class HyperspaceMcpServer {
         // --- ANALYTICS TOOLS (Standalone) ---
         {
           name: "hyperspace_analyze_geometry",
-          description: "Calculates Gromov Delta-hyperbolicity to determine if your data is best suited for Flat (Cosine/L2) or Curved (Poincare/Lorentz) space.",
+          description: "Calculate Gromov Delta-hyperbolicity over the supplied `vectors` (array of numeric arrays). Returns a JSON object {delta, recommendation: 'flat'|'curved'} indicating whether data is best in Flat (Cosine/L2) or Curved (Poincare/Lorentz) space.",
           inputSchema: {
             type: "object",
             properties: {
@@ -188,7 +188,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_analyze_thought_stability",
-          description: "Calculates Lyapunov Convergence of a trajectory (Chain of Thought). Negative means stable/converging. Positive means chaotic/hallucinating.",
+          description: "Calculate Lyapunov Convergence of a `trajectory` (Chain of Thought). Returns a JSON object {lyapunov_exponent, classification: 'stable'|'chaotic'} - negative result means stable/converging, positive means chaotic/hallucinating.",
           inputSchema: {
             type: "object",
             properties: {
@@ -201,7 +201,7 @@ class HyperspaceMcpServer {
         // --- COGNITIVE SYSTEM TOOLS ---
         {
           name: "hyperspace_trigger_reconsolidation",
-          description: "AI Sleep Mode: Triggers Flow Matching on the server to optimize the geometric representation of concepts based on their usage/context.",
+          description: "AI Sleep Mode: trigger Flow Matching on the server to optimize the geometric representation of concepts in `collection` based on usage/context. Returns a JSON object {ok, iterations, loss_before, loss_after}.",
           inputSchema: {
             type: "object",
             properties: {
@@ -213,7 +213,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_freeze_collection",
-          description: "Freeze a collection to make it read-only, preventing new inserts.",
+          description: "Freeze a collection to make it read-only, preventing new inserts. Returns ok/error status object.",
           inputSchema: {
             type: "object",
             properties: { collection: { type: "string" } },
@@ -222,7 +222,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_unfreeze_collection",
-          description: "Unfreeze a previously frozen collection to allow inserts again.",
+          description: "Unfreeze a previously frozen collection to allow inserts again. Returns ok/error status object.",
           inputSchema: {
             type: "object",
             properties: { collection: { type: "string" } },
@@ -231,7 +231,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_list_collections",
-          description: "List all active collections with their metadata (dimension, metric, count).",
+          description: "List all active collections. Returns a JSON array of objects, each with {name, dimension, metric, count} metadata fields.",
           inputSchema: {
             type: "object",
             properties: {}
@@ -239,7 +239,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_stats",
-          description: "Get detailed statistics and logical clock for a specific collection. Merges metadata, cache stats and WriteBuffer size.",
+          description: "Get detailed statistics for the named `collection`. Returns a JSON object with count, dimension, metric, logical_clock, and storage stats. Merges metadata, cache stats and WriteBuffer size.",
           inputSchema: {
             type: "object",
             properties: { collection: { type: "string" } },
@@ -248,7 +248,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_cache_stats",
-          description: "Get cache statistics (hits, misses, policy, etc.) for a specific collection's L0 Hot Tier Cache.",
+          description: "Get cache statistics (hits, misses, policy, etc.) for a specific collection's L0 Hot Tier Cache. Returns stats object as JSON result.",
           inputSchema: {
             type: "object",
             properties: {
@@ -259,7 +259,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_cache_clear",
-          description: "Clear / purge all items in the L0 Cache for a specific collection.",
+          description: "Clear / purge all items in the L0 Cache for a specific collection. Returns ok/error status object.",
           inputSchema: {
             type: "object",
             properties: {
@@ -270,7 +270,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_cache_config",
-          description: "Update L0 Cache configuration (eviction policy, ANN threshold) for a specific collection.",
+          description: "Update L0 Cache configuration (eviction policy, ANN threshold) for a specific collection. Returns updated config as JSON result.",
           inputSchema: {
             type: "object",
             properties: {
@@ -283,7 +283,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_delete_collection",
-          description: "Permanently delete a collection and all of its vectors.",
+          description: "Permanently delete a collection and all of its vectors. Returns a result object with ok status or error.",
           inputSchema: {
             type: "object",
             properties: {
@@ -294,7 +294,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_delete_points",
-          description: "Delete a single vector point from a collection by its ID.",
+          description: "Delete a single vector point from a collection by its ID. Returns a result object with ok status or error.",
           inputSchema: {
             type: "object",
             properties: {
@@ -306,7 +306,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_points",
-          description: "Retrieve vector coordinate and metadata for a list of point IDs.",
+          description: "Retrieve vector coordinate and metadata for a list of point IDs. Requires `collection` name and `ids` array of point IDs.",
           inputSchema: {
             type: "object",
             properties: {
@@ -318,7 +318,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_rebuild_index",
-          description: "Rebuild and optimize the HNSW index on the server for a specific collection.",
+          description: "Rebuild and optimize the HNSW index on the server for a specific collection. Returns rebuild status/result as JSON.",
           inputSchema: {
             type: "object",
             properties: {
@@ -329,7 +329,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_vacuum",
-          description: "Perform vacuuming on the database to permanently purge deleted vectors and reclaim disk space.",
+          description: "Perform vacuuming on the database to permanently purge deleted vectors and reclaim disk space. Returns vacuum status and reclaimed-space result.",
           inputSchema: {
             type: "object",
             properties: {}
@@ -337,7 +337,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_subsumption_tree",
-          description: "Retrieve the Lorentz hierarchy subsumption tree starting from a given root ID.",
+          description: "Retrieve the Lorentz hierarchy subsumption tree starting from a given `root_id`; returns the tree as JSON in the given `collection`.",
           inputSchema: {
             type: "object",
             properties: {
@@ -350,7 +350,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_concept_parents",
-          description: "Retrieve parent concepts in a hierarchical collection.",
+          description: "Retrieve parent concepts in a hierarchical collection. Requires `collection` and the concept `id`. Returns a JSON list of parent nodes.",
           inputSchema: {
             type: "object",
             properties: {
@@ -364,7 +364,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_explore_graph",
-          description: "Traverse the graph and return nodes and links in a format ready for visualization.",
+          description: "Traverse the graph and return nodes and links in a format ready for visualization. Requires `collection` and `start_id` of the starting node.",
           inputSchema: {
             type: "object",
             properties: {
@@ -378,7 +378,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_predict_momentum",
-          description: "Forecast future agent thought paths using Koopman momentum extrapolation.",
+          description: "Forecast future agent thought paths using Koopman momentum extrapolation. Requires `collection` and `trajectory_ids` array; `steps` sets prediction horizon. Returns predicted trajectory summary as JSON.",
           inputSchema: {
             type: "object",
             properties: {
@@ -392,7 +392,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_get_trust_score",
-          description: "Evaluate stability and trust score for a given thought trajectory path.",
+          description: "Evaluate stability and trust score for a given thought trajectory path. Requires `collection` and `trajectory_ids` array of trajectory node IDs.",
           inputSchema: {
             type: "object",
             properties: {
@@ -406,7 +406,7 @@ class HyperspaceMcpServer {
         // --- COGNITIVE SKILLS / TOOLS ---
         {
           name: "hyperspace_remember_event",
-          description: "Saves an event or fact to the agent's autobiographical memory (Episodic Memory). Automatically vectorizes the text and writes it to the Sidecar Payload, preserving tags and session ID in metadata.",
+          description: "Saves an event or fact to the agent's autobiographical memory (Episodic Memory) into the given `collection`. Automatically vectorizes the `text`, requires `session_id`, writes tags to the Sidecar Payload. Returns stored memory id/status as JSON result.",
           inputSchema: {
             type: "object",
             properties: {
@@ -420,7 +420,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_recall_context",
-          description: "Retrieves similar memories (Episodic Memory) to form context. Supports filtering by session_id.",
+          description: "Retrieves similar memories from a `collection` (Episodic Memory) matching the semantic `query` text; returns a list of matching memories with scores. Supports filtering by session_id.",
           inputSchema: {
             type: "object",
             properties: {
@@ -434,7 +434,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_forget_memory",
-          description: "Deletes a specific memory from the database by its ID.",
+          description: "Deletes a specific memory from the database by its ID. Requires `collection` name and numeric `memory_id`. Returns ok/error status object.",
           inputSchema: {
             type: "object",
             properties: {
@@ -446,7 +446,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_explore_hierarchy",
-          description: "Explore hierarchical relationships of concepts in Lorentz space (Lorentz Cone Subsumption). Allows navigating to parent concepts or down to subtree descendants.",
+          description: "Explore hierarchical relationships of concepts in Lorentz space (Lorentz Cone Subsumption). Requires `collection`, `concept_id`, and `direction`: 'up' (parents) or 'down' (descendant subtree). Returns a JSON list of related concept nodes.",
           inputSchema: {
             type: "object",
             properties: {
@@ -460,7 +460,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_consolidate_memories",
-          description: "Consolidates a group of related memories on a topic into a single abstract concept by calculating the geometric center of mass (Fréchet Mean) on the hyperboloid.",
+          description: "Consolidates a group of related memories on a topic into a single abstract concept by calculating the geometric center of mass (Frechet Mean) on the hyperboloid. Requires `collection` and `topic_query`. Returns the consolidated concept as JSON.",
           inputSchema: {
             type: "object",
             properties: {
@@ -473,7 +473,7 @@ class HyperspaceMcpServer {
         },
         {
           name: "hyperspace_verify_logical_claim",
-          description: "Verifies the logical connection (facts) between a premise and a conclusion. Calculates Trust Score based on trajectory or graph distance to prevent hallucinations.",
+          description: "Verifies the logical connection (facts) between a premise and a conclusion within a `collection`. Calculates Trust Score based on trajectory or graph distance to prevent hallucinations. Returns verdict with trust score as JSON.",
           inputSchema: {
             type: "object",
             properties: {
