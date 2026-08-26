@@ -285,3 +285,66 @@ fn test_lorentz_binary_still_panics() {
     let b = BinaryHyperVector::from_float(&v);
     let _ = LorentzMetric::distance_binary(&b, &v);
 }
+
+// ── Lorentz validation tolerance for near-hyperboloid vectors ────────────────
+
+#[test]
+fn test_lorentz_validate_accepts_small_numerical_drift() {
+    // Externally-produced embeddings (and quantization round-trips) can land
+    // slightly off the ideal hyperboloid: -t^2 + |x|^2 == -1 only up to a small
+    // numerical drift. `distance` already tolerates this via the acosh domain
+    // clamp `(-inner_prod).max(1.0 + 1e-12)`, so a relaxed `validate` tolerance
+    // must accept vectors the distance math handles fine.
+    //
+    // Test the tolerance directly (deterministic, independent of the
+    // HS_LORENTZ_VALIDATE_TOL environment variable).
+    let tol = 0.1_f64;
+    let spatial = [0.30_f64, 0.20, 0.10];
+    let spatial_sq: f64 = spatial.iter().map(|v| v * v).sum();
+    for &drift in &[0.0_f64, 0.01, 0.05, 0.09] {
+        // -t^2 + spatial_sq = -1 + drift  =>  t = sqrt(spatial_sq + 1 - drift)
+        let t = (spatial_sq + 1.0 - drift).sqrt();
+        let v = [t, spatial[0], spatial[1], spatial[2]];
+        assert!(
+            LorentzMetric::validate_with_tolerance(&v, tol).is_ok(),
+            "drift {drift} within tolerance {tol} should validate"
+        );
+        // distance to itself must be finite (acosh domain is respected).
+        let d = LorentzMetric::distance(&v, &v);
+        assert!(
+            d.is_finite(),
+            "self-distance must be finite for drift {drift}"
+        );
+    }
+}
+
+#[test]
+fn test_lorentz_validate_default_is_strict() {
+    // With the default strict tolerance, a vector even slightly off the
+    // hyperboloid is rejected — this preserves historical behaviour.
+    let spatial = [0.30_f64, 0.20, 0.10];
+    let spatial_sq: f64 = spatial.iter().map(|v| v * v).sum();
+    let t = (spatial_sq + 1.0 - 0.05).sqrt(); // drift 0.05, well past 1e-6
+    let v = [t, spatial[0], spatial[1], spatial[2]];
+    assert!(
+        LorentzMetric::validate_with_tolerance(&v, LORENTZ_VALIDATE_DEFAULT_TOL).is_err(),
+        "drift 0.05 must be rejected at the strict default tolerance"
+    );
+    // The same vector passes once the tolerance is relaxed.
+    assert!(LorentzMetric::validate_with_tolerance(&v, 0.1).is_ok());
+}
+
+#[test]
+fn test_lorentz_validate_still_rejects_garbage() {
+    // A guard against gross violations must remain regardless of tolerance:
+    // a vector far off the hyperboloid, non-finite values, and the lower sheet
+    // are all invalid.
+    let far_off = [1.0_f64, 5.0, 5.0, 5.0]; // -1 + 74 == 73, way past tolerance
+    assert!(LorentzMetric::validate_with_tolerance(&far_off, 0.1).is_err());
+
+    let nan = [f64::NAN, 0.0, 0.0, 0.0];
+    assert!(LorentzMetric::validate_with_tolerance(&nan, 0.1).is_err());
+
+    let lower_sheet = [-2.0_f64, 0.0, 0.0, 0.0];
+    assert!(LorentzMetric::validate_with_tolerance(&lower_sheet, 0.1).is_err());
+}
