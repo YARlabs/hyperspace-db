@@ -76,6 +76,20 @@ pub fn search_chunk<M: Metric>(
                 dimension * 4 + 4
             }
         }
+        QuantizationMode::AsymmetricHybridLowBit => {
+            if dimension > 33 {
+                let euc_dim = dimension - 33;
+                let num_blocks = euc_dim.div_ceil(16);
+                33 * 4 + 4 + num_blocks * 12
+            } else {
+                dimension * 4 + 4
+            }
+        }
+        QuantizationMode::ScalarI4 => {
+            let num_blocks = dimension.div_ceil(16);
+            4 + num_blocks * 12
+        }
+        QuantizationMode::Turbo => dimension.div_ceil(2) + 8,
         QuantizationMode::None => {
             if storage_f32 {
                 dimension * 4

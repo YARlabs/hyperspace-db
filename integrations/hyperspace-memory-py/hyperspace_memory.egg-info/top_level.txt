@@ -1,0 +1,4 @@
+dist
+hyperspace_memory
+tests
+venv_deploy

@@ -349,6 +349,7 @@ function CreateCollectionDialog() {
     const [open, setOpen] = useState(false)
     const [dimension, setDimension] = useState<string>("1024")
     const [metric, setMetric] = useState<string>("l2")
+    const [quantization, setQuantization] = useState<string>("default")
     const [enableMRL, setEnableMRL] = useState<boolean>(false)
     const [mrlCutoff, setMrlCutoff] = useState<string>("128")
     const [mrlRerankTopK, setMrlRerankTopK] = useState<string>("100")
@@ -387,6 +388,7 @@ function CreateCollectionDialog() {
             metric: metric || "l2",
             mrl_cutoff_dimension: enableMRL ? (parseInt(mrlCutoff) || Math.max(Math.floor(fullDim / 8), 64)) : undefined,
             mrl_rerank_top_k: enableMRL ? (parseInt(mrlRerankTopK) || 100) : undefined,
+            quantization: quantization !== "default" ? quantization : undefined,
         })
     }
 
@@ -473,6 +475,26 @@ function CreateCollectionDialog() {
                                 <SelectItem value="hybrid">v5 Hybrid (Lorentz + L2)</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="quantization">Quantization Level</Label>
+                        <Select value={quantization} onValueChange={setQuantization}>
+                            <SelectTrigger id="quantization" className="bg-zinc-900 border-white/10">
+                                <SelectValue placeholder="Select Quantization Level" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="default">Default (System HS_QUANTIZATION_LEVEL)</SelectItem>
+                                <SelectItem value="medium_plus">Medium Plus (4-Bit Universal Block Quantization)</SelectItem>
+                                <SelectItem value="turbo">Turbo (4-Bit Lloyd-Max Spherical)</SelectItem>
+                                <SelectItem value="medium">Medium (8-Bit Scalar / Hybrid 801)</SelectItem>
+                                <SelectItem value="none">None (Full f64 Precision)</SelectItem>
+                                <SelectItem value="extreme">Extreme (1-Bit Binary ADC)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p className="text-[10px] text-zinc-500">
+                            Per-collection quantization level overrides system environment defaults.
+                        </p>
                     </div>
 
                     {metric === "hybrid" ? (

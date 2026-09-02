@@ -50,7 +50,7 @@ public:
     ~HyperspaceClient() = default;
 
     // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
-    bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema);
+    bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "");
     std::vector<CollectionSummaryRec> ListCollections();
     std::string FreezeCollection(const std::string& name);
     std::string UnfreezeCollection(const std::string& name);
@@ -98,7 +98,7 @@ public:
 
     // Zero-Knowledge Client-Side Encryption
     void RegisterCollectionKey(const std::string& collection_name, const std::string& key, const std::string& metric = "l2", double noise_sigma = 0.02, const ::hyperspace::CollectionSchema* schema = nullptr);
-    bool CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key = "", double noise_sigma = 0.02);
+    bool CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key = "", double noise_sigma = 0.02, const std::string& quantization = "");
     bool InsertSecure(uint32_t id, const std::vector<double>& vector, const std::unordered_map<std::string, std::string>& metadata = {}, const std::string& collection = "", const std::vector<uint8_t>& payload = {});
 
 private:

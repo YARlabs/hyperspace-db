@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.4] - 2026-09-02
+
+### Added
+* **True Turbo Quantization (`turbo`)**:
+  * Implemented 4-bit spherical Lloyd-Max quantization with non-linear centroid codebooks (`[-2.401, ..., 2.401]`), random orthogonal rotation, and exact $L_2$ norm preservation (`QuantizationMode::Turbo`).
+  * Renamed string quantization key to `turbo` across all 7 SDKs (Python, TypeScript, Rust, Go, Dart, C++, ROS2), HTTP REST API, Dashboard UI, and MCP server.
+* **Asymmetric Distance Computation (ADC) & 1-Bit Rotated `extreme` Mode**:
+  * Upgraded 1-bit binary `extreme` mode with Asymmetric Distance Computation (ADC) and vector norm scaling $\|V\|_2$.
+  * Single-pass 1-bit Recall@10 boosted to 62.8%, and Two-Pass candidate filtering ($Top\text{-}100 \to Rerank$) achieves **99.9% Recall@10 at 107× speedup** over float baseline.
+* **Universal 4-Bit Block Quantization (`medium_plus`)**:
+  * Extended 4-bit block-wise scalar quantization ($B=16$) across all vector metrics ($L_2$, Cosine, Poincaré, Lorentz, MRL Hybrid), delivering 10.6× RAM savings with 93.6% Recall@10.
+* **Completed-Run Behavior & Agent Trajectory Analysis**:
+  * Added REST endpoints `/api/admin/runs/start`, `/api/admin/runs/step`, `/api/admin/runs/end` for multi-step agent trajectory tracking and tenant-isolated run logging.
+  * Integrated **Lyapunov Thought Stability Exponent ($\lambda$)** and Trust Score calculations on Poincaré disk ($H^{33}$) to detect agent hallucinations and reasoning drift.
+  * Added interactive trajectory visualizer dashboard on `/trajectory`.
+
 ## [3.1.3] - 2026-07-19
 
 ### Added

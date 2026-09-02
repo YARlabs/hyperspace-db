@@ -779,10 +779,23 @@ impl Database for HyperspaceService {
             let Some(schema) = req.schema else {
                 return Err(Status::invalid_argument("CollectionSchema is required"));
             };
-            self.manager
-                .create_collection(&ctx.user_id, &name, schema)
-                .await
-                .map_err(Status::already_exists)
+            let quant_meta = request
+                .metadata()
+                .get("x-quantization-level")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            if let Some(q) = quant_meta {
+                self.manager
+                    .create_collection_with_quantization(&ctx.user_id, &name, schema, Some(q))
+                    .await
+                    .map_err(Status::already_exists)
+            } else {
+                self.manager
+                    .create_collection(&ctx.user_id, &name, schema)
+                    .await
+                    .map_err(Status::already_exists)
+            }
         }
         .await;
 

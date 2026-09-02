@@ -270,7 +270,7 @@ func main() {
 	// noiseSigma defaults to 0.02 (anisotropic noise fraction)
 	client.RegisterCollectionKey(collection, secretKey, "cosine", 0.02, schema)
 
-	err = client.CreateCollection(ctx, collection, schema, secretKey, 0.02)
+	err = client.CreateCollectionWithQuantization(ctx, collection, schema, secretKey, 0.02, "turbo")
 	if err != nil {
 		log.Fatalf("failed to create collection: %v", err)
 	}

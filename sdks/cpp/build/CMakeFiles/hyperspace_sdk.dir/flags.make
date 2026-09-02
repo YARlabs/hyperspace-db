@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = -DPROTOBUF_USE_DLLS
 
-CXX_INCLUDES = -I/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/include -I/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/build/proto -isystem /opt/homebrew/include
+CXX_INCLUDES = -I/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/include -I/Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/sdks/cpp/proto -isystem /opt/homebrew/include
 
 CXX_FLAGSarm64 = -std=gnu++17 -arch arm64
 

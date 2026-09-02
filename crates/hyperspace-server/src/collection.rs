@@ -285,6 +285,34 @@ impl<M: Metric> CollectionImpl<M> {
                     dimension * 4 + 4
                 }
             }
+            hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
+                if dimension > 33 {
+                    let euc_dim = dimension - 33;
+                    let num_blocks = euc_dim.div_ceil(16);
+                    33 * 4 + 4 + num_blocks * 12
+                } else {
+                    dimension * 4 + 4
+                }
+            }
+            hyperspace_core::QuantizationMode::ScalarI4 => {
+                let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = dimension.saturating_sub(head_dim);
+                let num_blocks = tail_dim.div_ceil(16);
+                head_dim * 4 + 4 + num_blocks * 12
+            }
+            hyperspace_core::QuantizationMode::Turbo => {
+                let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = dimension.saturating_sub(head_dim);
+                head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
+            }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
                     dimension * 4 + 4
@@ -931,6 +959,34 @@ impl<M: Metric> CollectionImpl<M> {
                     dimension * 4 + 4
                 }
             }
+            hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
+                if dimension > 33 {
+                    let euc_dim = dimension - 33;
+                    let num_blocks = euc_dim.div_ceil(16);
+                    33 * 4 + 4 + num_blocks * 12
+                } else {
+                    dimension * 4 + 4
+                }
+            }
+            hyperspace_core::QuantizationMode::ScalarI4 => {
+                let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = dimension.saturating_sub(head_dim);
+                let num_blocks = tail_dim.div_ceil(16);
+                head_dim * 4 + 4 + num_blocks * 12
+            }
+            hyperspace_core::QuantizationMode::Turbo => {
+                let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = dimension.saturating_sub(head_dim);
+                head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
+            }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
                     dimension * 4 + 4
@@ -1092,17 +1148,50 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
         let count = self.index_link.load().count();
         let dim = self.dimension;
-        let element_size = match self.mode {
-            hyperspace_core::QuantizationMode::ScalarI8
-            | hyperspace_core::QuantizationMode::Binary
-            | hyperspace_core::QuantizationMode::AsymmetricHybrid801 => 1,
-            hyperspace_core::QuantizationMode::None => 8, // f64
+        let vector_bytes_per_doc: u64 = match self.mode {
+            hyperspace_core::QuantizationMode::None => dim as u64 * 8,
+            hyperspace_core::QuantizationMode::ScalarI8 => dim as u64,
+            hyperspace_core::QuantizationMode::Binary => (dim as u64).div_ceil(8),
+            hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
+                if dim == 801 {
+                    33 * 4 + 768
+                } else {
+                    dim as u64
+                }
+            }
+            hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
+                if dim >= 33 {
+                    let euc = dim as u64 - 33;
+                    33 * 4 + euc.div_ceil(2) + euc.div_ceil(16) * 4
+                } else {
+                    dim as u64
+                }
+            }
+            hyperspace_core::QuantizationMode::ScalarI4 => {
+                let head_dim = if dim == 801 && self.metric_name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = (dim as u64).saturating_sub(head_dim as u64);
+                let num_blocks = tail_dim.div_ceil(16);
+                head_dim as u64 * 4 + tail_dim.div_ceil(2) + num_blocks * 4
+            }
+            hyperspace_core::QuantizationMode::Turbo => {
+                let head_dim = if dim == 801 && self.metric_name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = (dim as u64).saturating_sub(head_dim as u64);
+                head_dim as u64 * 4 + tail_dim.div_ceil(2) + 4
+            }
         };
 
         // Estimate RAM: Vectors + Graph Topology (approx M neighbors per node * 4 bytes)
         let m = self.config.get_m();
         let graph_ram = count as u64 * m as u64 * 4;
-        let vector_ram = count as u64 * dim as u64 * element_size as u64;
+        let vector_ram = count as u64 * vector_bytes_per_doc;
 
         hyperspace_core::CollectionUsage {
             disk_usage_bytes: disk_usage,
@@ -2131,6 +2220,34 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                         } else {
                             dimension * 4 + 4
                         }
+                    }
+                    hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
+                        if dimension > 33 {
+                            let euc_dim = dimension - 33;
+                            let num_blocks = euc_dim.div_ceil(16);
+                            33 * 4 + 4 + num_blocks * 12
+                        } else {
+                            dimension * 4 + 4
+                        }
+                    }
+                    hyperspace_core::QuantizationMode::ScalarI4 => {
+                        let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                            33
+                        } else {
+                            0
+                        };
+                        let tail_dim = dimension.saturating_sub(head_dim);
+                        let num_blocks = tail_dim.div_ceil(16);
+                        head_dim * 4 + 4 + num_blocks * 12
+                    }
+                    hyperspace_core::QuantizationMode::Turbo => {
+                        let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                            33
+                        } else {
+                            0
+                        };
+                        let tail_dim = dimension.saturating_sub(head_dim);
+                        head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
                     }
                     hyperspace_core::QuantizationMode::None => {
                         if storage_f32 {

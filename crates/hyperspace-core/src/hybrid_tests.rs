@@ -84,4 +84,34 @@ mod tests {
         // Should be small because we compare q with its own source v
         assert!(d_768 < 0.1, "d_768={d_768} should be < 0.1");
     }
+
+    #[test]
+    fn test_low_bit_hybrid_quantization() {
+        use crate::hybrid::HybridLowBitQuantizedVector;
+        let mut v_coords = vec![0.0f64; 801];
+        v_coords[0] = 2.0; // Lorentz
+        v_coords[1] = 1.73205;
+        v_coords[33] = 0.5; // Euclidean
+        v_coords[34] = -0.25;
+
+        let v = HyperVector::new_unchecked(v_coords);
+        let q = HybridLowBitQuantizedVector::from_float(&v, LORENTZ_DIM, EUCLIDEAN_DIM);
+
+        // Verify Lorentz parts are preserved as f32
+        assert!((f64::from(q.lorentz[0]) - 2.0).abs() < 1e-6);
+        assert!((f64::from(q.lorentz[1]) - 1.73205).abs() < 1e-4);
+
+        // Verify Euclidean parts are packed in 4-bit block-wise quantization
+        let packed_byte = q.euclidean_packed[0];
+        let u1 = packed_byte >> 4;
+        let u2 = packed_byte & 0x0F;
+        assert_eq!(u1, 15);
+        assert_eq!(u2, 4);
+
+        // Distance to self should be near zero
+        let d = q.lorentz_distance_to_float(&v);
+        assert!(d < 0.01);
+        let d_euc = q.euclidean_distance_sq_mrl(&v, EUCLIDEAN_DIM);
+        assert!(d_euc < 0.01);
+    }
 }

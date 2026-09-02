@@ -246,10 +246,9 @@ int main() {
     comp->set_full_dimension(3);
     comp->set_weight(1.0);
 
-    // 3. Register Key and Create Collection Securely
-    // Noise sigma defaults to 0.02
+    // 3. Register Key and Create Collection Securely (with 4-bit turbo quantization)
     client.RegisterCollectionKey(collection, secret_key, "cosine", 0.02, &schema);
-    client.CreateCollectionSecure(collection, schema);
+    client.CreateCollectionSecure(collection, schema, secret_key, 0.02, "turbo");
 
     // 4. Secure Insert
     std::vector<double> vec = {0.1, 0.2, 0.3};

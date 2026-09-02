@@ -120,6 +120,16 @@ export const fetchTrajectoryHistory = async () => {
     return res.data
 }
 
+export const fetchAgentRuns = async () => {
+    const res = await api.get("/admin/runs")
+    return res.data
+}
+
+export const fetchAgentRunById = async (sessionId: string) => {
+    const res = await api.get(`/admin/runs/${sessionId}`)
+    return res.data
+}
+
 export const startMigrationService = async () => {
     const res = await api.post("/admin/migration/start")
     return res.data

@@ -42,12 +42,37 @@ class HyperspaceClient:
         return meta
     
     def create_collection(self, name: str, dimension: int, metric: str = "l2") -> bool:
-        req = hyperspace_pb2.CreateCollectionRequest(name=name, dimension=dimension, metric=metric)
-        self._stub.CreateCollection(req, metadata=self._get_metadata())
-        return True
+        try:
+            schema = hyperspace_pb2.CollectionSchema(
+                components=[
+                    hyperspace_pb2.VectorComponent(
+                        name="default",
+                        metric=metric,
+                        full_dimension=dimension,
+                        weight=1.0
+                    )
+                ]
+            )
+            req = hyperspace_pb2.CreateCollectionRequest(name=name, schema=schema)
+            self._stub.CreateCollection(req, metadata=self._get_metadata())
+            return True
+        except Exception:
+            return False
+
+    def list_collections(self) -> List[Dict[str, Any]]:
+        try:
+            req = hyperspace_pb2.Empty()
+            res = self._stub.ListCollections(req, metadata=self._get_metadata())
+            return [{"name": getattr(c, "name", str(c))} for c in res.collections]
+        except Exception:
+            return []
     
-    def insert(self, collection: str, id: int, vector: List[float], metadata: Dict[str, str]) -> bool:
-        req = hyperspace_pb2.InsertRequest(collection=collection, id=id, vector=vector, metadata=metadata)
+    def insert(self, id: int = None, vector: List[float] = None, metadata: Dict[str, str] = None, collection: str = "", payload: bytes = None, **kwargs) -> bool:
+        col = collection or kwargs.get("collection", "")
+        item_id = id if id is not None else kwargs.get("id", 0)
+        vec = vector if vector is not None else kwargs.get("vector", [])
+        meta = metadata if metadata is not None else kwargs.get("metadata", {})
+        req = hyperspace_pb2.InsertRequest(collection=col, id=item_id, vector=vec, metadata=meta)
         res = self._stub.Insert(req, metadata=self._get_metadata())
         return res.success
 
@@ -65,7 +90,7 @@ class HyperspaceClient:
         res = self._stub.BatchInsert(req, metadata=self._get_metadata())
         return res.success
 
-    def search(self, vector: List[float], top_k: int, collection: str, filters: List[Any] = None, hybrid_alpha: float = None, hybrid_query: str = None) -> List[Any]:
+    def search(self, vector: List[float], top_k: int, collection: str, filters: List[Any] = None, hybrid_alpha: float = None, hybrid_query: str = None, **kwargs) -> List[Any]:
         req = hyperspace_pb2.SearchRequest(collection=collection, vector=vector, top_k=top_k)
         if hybrid_alpha is not None:
             req.hybrid_alpha = hybrid_alpha
@@ -84,7 +109,12 @@ class HyperspaceClient:
     def get_digest(self, collection: str) -> Dict[str, Any]:
         req = hyperspace_pb2.DigestRequest(collection=collection)
         res = self._stub.GetDigest(req, metadata=self._get_metadata())
-        return {"count": res.count, "logical_clock": res.logical_clock}
+        return {
+            "count": getattr(res, "count", 0),
+            "logical_clock": getattr(res, "logical_clock", 0),
+            "state_hash": getattr(res, "state_hash", 0),
+            "buckets": list(getattr(res, "buckets", [0] * 256)) or [0] * 256
+        }
 
     def delete(self, collection: str, id: int) -> bool:
         req = hyperspace_pb2.DeleteRequest(collection=collection, id=id)

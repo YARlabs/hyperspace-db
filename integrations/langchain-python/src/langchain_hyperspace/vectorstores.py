@@ -49,28 +49,22 @@ class HyperspaceVectorStore(VectorStore):
             user_id=user_id,
         )
         
-        if not use_server_side_embedding and embedding_function is None:
-            raise ValueError("embedding_function is required when use_server_side_embedding is False")
-
         self._ensure_collection()
         logger.info(f"Initialized HyperspaceVectorStore: {host}:{port}/{collection_name}")
 
+    def _get_metadata(self) -> List[Tuple[str, str]]:
+        return self._client._get_metadata()
+
+    def get_digest(self) -> Dict[str, Any]:
+        return self._client.get_digest(self.collection_name)
+
     def _ensure_collection(self) -> None:
         try:
-            # Try to fetch existing collection metadata to avoid mismatch
-            collections = self._client.list_collections()
-            existing = next((c for c in collections if c["name"] == self.collection_name), None)
-            
-            if existing:
-                self.dimension = int(existing["dimension"])
-                self.metric = str(existing["metric"])
-                logger.info(f"Using existing collection {self.collection_name}: {self.dimension}d, {self.metric}")
-            else:
-                self._client.create_collection(
-                    self.collection_name, 
-                    dimension=self.dimension, 
-                    metric=self.metric
-                )
+            self._client.create_collection(
+                self.collection_name, 
+                dimension=self.dimension, 
+                metric=self.metric
+            )
         except Exception as e:
             logger.debug(f"Collection creation/fetching skipped: {e}")
 
@@ -105,7 +99,7 @@ class HyperspaceVectorStore(VectorStore):
                 ids = [self._compute_content_hash(text) for text in texts_list]
             else:
                 import time, random
-                ids = [int(time.time() * 1000) + random.randint(0, 1000) for _ in texts_list]
+                ids = [(int(time.time() * 1000) + random.randint(0, 1000)) % 4294967295 for _ in texts_list]
         
         try:
             if self.use_server_side_embedding:
@@ -118,15 +112,16 @@ class HyperspaceVectorStore(VectorStore):
                     )
             else:
                 if self._embedding_function is None:
-                    raise ValueError("Embedding function is required")
+                    raise ValueError("embedding_function is required")
                 embeddings_data = self._embedding_function.embed_documents(texts_list)
-                # Store text in the Sidecar Payload (on-disk) instead of in-memory metadata to save RAM.
                 for i, text in enumerate(texts_list):
+                    meta = {str(k): str(v) for k, v in metadatas[i].items()}
+                    if "text" not in meta:
+                        meta["text"] = text
                     self._client.insert(
                         id=ids[i],
                         vector=embeddings_data[i],
-                        payload=text.encode('utf-8'),
-                        metadata={str(k): str(v) for k, v in metadatas[i].items() if k != "text"},
+                        metadata=meta,
                         collection=self.collection_name
                     )
             return [str(x) for x in ids]
@@ -153,7 +148,7 @@ class HyperspaceVectorStore(VectorStore):
             )
         else:
             if self._embedding_function is None:
-                raise ValueError("Embedding function is required")
+                raise ValueError("embedding_function is required")
             embedding = self._embedding_function.embed_query(query)
             hits = self._client.search(
                 vector=embedding, 

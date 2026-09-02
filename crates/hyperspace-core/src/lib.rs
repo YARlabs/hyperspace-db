@@ -49,6 +49,9 @@ pub enum QuantizationMode {
     ScalarI8,
     Binary,
     AsymmetricHybrid801,
+    AsymmetricHybridLowBit,
+    ScalarI4,
+    Turbo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

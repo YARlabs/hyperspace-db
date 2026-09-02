@@ -49,7 +49,8 @@ client.create_collection(
             {"name": "primary", "metric": "cosine", "full_dimension": 3, "weight": 1.0}
         ],
         "cascade_pipeline": []
-    }
+    },
+    quantization="medium_plus" # 'none', 'medium', 'medium_plus', 'turbo', or 'extreme'
 )
 
 # id is now the first argument

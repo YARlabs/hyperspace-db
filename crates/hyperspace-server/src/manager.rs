@@ -273,7 +273,19 @@ impl CollectionManager {
         schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<(), String> {
         let internal_name = Self::get_internal_name(user_id, name);
-        self.create_collection_internal(&internal_name, schema, true)
+        self.create_collection_internal(&internal_name, schema, true, None)
+            .await
+    }
+
+    pub async fn create_collection_with_quantization(
+        &self,
+        user_id: &str,
+        name: &str,
+        schema: hyperspace_proto::hyperspace::CollectionSchema,
+        quantization: Option<String>,
+    ) -> Result<(), String> {
+        let internal_name = Self::get_internal_name(user_id, name);
+        self.create_collection_internal(&internal_name, schema, true, quantization)
             .await
     }
 
@@ -282,7 +294,8 @@ impl CollectionManager {
         name: &str,
         schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<(), String> {
-        self.create_collection_internal(name, schema, false).await
+        self.create_collection_internal(name, schema, false, None)
+            .await
     }
 
     pub async fn rebuild_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
@@ -332,6 +345,7 @@ impl CollectionManager {
         name: &str,
         schema: hyperspace_proto::hyperspace::CollectionSchema,
         replicate: bool,
+        quantization_override: Option<String>,
     ) -> Result<(), String> {
         if self.collections.contains_key(name) {
             return Err(format!("Collection '{name}' already exists"));
@@ -342,8 +356,9 @@ impl CollectionManager {
             fs::create_dir_all(&col_dir).map_err(|e| e.to_string())?;
         }
 
-        let quantization = std::env::var("HS_QUANTIZATION_LEVEL")
-            .unwrap_or("medium".to_string())
+        let quantization = quantization_override
+            .or_else(|| std::env::var("HS_QUANTIZATION_LEVEL").ok())
+            .unwrap_or_else(|| "medium".to_string())
             .to_lowercase();
         // Normalise user-facing level names to canonical storage values:
         //   none   → "none"    (no quantization, full f64)
@@ -353,6 +368,8 @@ impl CollectionManager {
         let quantization = match quantization.as_str() {
             "none" => "none".to_string(),
             "extreme" | "binary" => "extreme".to_string(),
+            "medium_plus" => "medium_plus".to_string(),
+            "turbo" => "turbo".to_string(),
             _ => "medium".to_string(), // scalar, medium, asymmetric_hybrid_801, anything else
         };
 
@@ -418,6 +435,13 @@ impl CollectionManager {
             }
         }
         None
+    }
+
+    pub fn get_active_no_lru(&self, user_id: &str, name: &str) -> Option<Arc<dyn Collection>> {
+        let internal_name = Self::get_internal_name(user_id, name);
+        self.collections
+            .get(&internal_name)
+            .map(|entry| entry.collection.clone())
     }
 
     pub async fn get(&self, user_id: &str, name: &str) -> Option<Arc<dyn Collection>> {
@@ -623,7 +647,7 @@ impl CollectionManager {
         if let Ok(entries) = std::fs::read_dir(&self.base_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                if path.is_dir() && path.join("meta.json").exists() {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if name.starts_with(&prefix) {
                             usage.disk_usage_bytes += calculate_dir_size(&path).unwrap_or(0);
@@ -764,6 +788,14 @@ impl CollectionMetadata {
         match self.quantization.as_str() {
             "none" => hyperspace_core::QuantizationMode::None,
             "extreme" | "binary" => hyperspace_core::QuantizationMode::Binary,
+            "turbo" | "turboquant" => hyperspace_core::QuantizationMode::Turbo,
+            "medium_plus" => {
+                if metric == "hybrid" && dim == 801 {
+                    hyperspace_core::QuantizationMode::AsymmetricHybridLowBit
+                } else {
+                    hyperspace_core::QuantizationMode::ScalarI4
+                }
+            }
             // "medium" (and legacy "scalar", "asymmetric_hybrid_801"):
             // Auto-select AsymmetricHybrid801 when the collection is Hybrid+dim=801,
             // otherwise use ScalarI8. This prevents:

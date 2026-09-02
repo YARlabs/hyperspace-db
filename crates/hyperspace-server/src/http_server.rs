@@ -253,7 +253,10 @@ pub async fn start_http_server(
             get(list_collection_grants),
         )
         .route("/api/collections/{name}/digest", get(get_collection_digest))
-        .route("/api/collections/{name}/peek", get(peek_collection))
+        .route(
+            "/api/collections/{name}/peek",
+            post(peek_collection_post).get(peek_collection),
+        )
         .route("/api/collections/{name}/search", post(search_collection))
         .route(
             "/api/collections/{name}/search/batch",
@@ -346,6 +349,11 @@ pub async fn start_http_server(
             "/api/admin/trajectory/history",
             get(get_trajectory_history_http),
         )
+        .route("/api/admin/runs/start", post(start_run_http))
+        .route("/api/admin/runs/step", post(step_run_http))
+        .route("/api/admin/runs/end", post(end_run_http))
+        .route("/api/admin/runs", get(get_runs_http))
+        .route("/api/admin/runs/{session_id}", get(get_run_by_id_http))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -536,7 +544,7 @@ async fn list_collections(
     let mut summaries = Vec::new();
     for name in names {
         if manager.is_active(&ctx.user_id, &name) {
-            if let Some(col) = manager.get(&ctx.user_id, &name).await {
+            if let Some(col) = manager.get_active_no_lru(&ctx.user_id, &name) {
                 #[cfg(feature = "eco-monitor")]
                 let (eco_tier, is_eco_certified) = {
                     let full_dim =
@@ -604,7 +612,7 @@ async fn list_collections(
     let shared = crate::security::list_shared_collections(&ctx.user_id);
     for (owner, name, role) in shared {
         if manager.is_active(&owner, &name) {
-            if let Some(col) = manager.get(&owner, &name).await {
+            if let Some(col) = manager.get_active_no_lru(&owner, &name) {
                 #[cfg(feature = "eco-monitor")]
                 let (eco_tier, is_eco_certified) = {
                     let full_dim = if let Some(meta) = manager.get_metadata_no_wake(&owner, &name) {
@@ -675,6 +683,7 @@ struct CreateCollectionRequest {
     metric: String,
     mrl_cutoff_dimension: Option<u32>,
     mrl_rerank_top_k: Option<u32>,
+    quantization: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -714,7 +723,12 @@ async fn create_collection(
     };
 
     let result = manager
-        .create_collection(&ctx.user_id, &payload.name, schema)
+        .create_collection_with_quantization(
+            &ctx.user_id,
+            &payload.name,
+            schema,
+            payload.quantization,
+        )
         .await;
 
     let audit_status = match &result {
@@ -1404,6 +1418,41 @@ struct PeekParams {
     /// Reserved: filter results to entries with logical_clock <= until_clock.
     #[allow(dead_code)]
     until_clock: Option<u64>,
+}
+
+#[derive(serde::Deserialize)]
+struct PeekPayload {
+    limit: Option<usize>,
+    offset: Option<usize>,
+    #[allow(dead_code)]
+    filter: Option<serde_json::Value>,
+}
+
+async fn peek_collection_post(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<PeekPayload>,
+) -> impl IntoResponse {
+    let limit = payload.limit.unwrap_or(50).min(250);
+    let offset = payload.offset.unwrap_or(0);
+
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadOnly) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    if let Some(col) = manager.get(&owner, &col_name).await {
+        let items = col.peek(limit, offset);
+        Json(items).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
 }
 
 async fn peek_collection(
@@ -2955,4 +3004,189 @@ async fn list_collection_grants(
         .collect();
 
     Json(list).into_response()
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RunStep {
+    pub x: f64,
+    pub y: f64,
+    pub timestamp: u64,
+    pub metadata: serde_json::Value,
+}
+
+fn default_user_id() -> String {
+    "anonymous".to_string()
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AgentRun {
+    pub session_id: String,
+    #[serde(default = "default_user_id")]
+    pub user_id: String,
+    pub task_description: String,
+    pub status: String,
+    pub steps: Vec<RunStep>,
+    pub created_at: u64,
+    pub completed_at: Option<u64>,
+    pub total_latency_ms: u64,
+    pub lyapunov_stability: f64,
+    pub trust_score: f64,
+}
+
+static AGENT_RUNS_STORE: OnceLock<
+    tokio::sync::RwLock<std::collections::HashMap<String, AgentRun>>,
+> = OnceLock::new();
+
+fn get_runs_store() -> &'static tokio::sync::RwLock<std::collections::HashMap<String, AgentRun>> {
+    AGENT_RUNS_STORE.get_or_init(|| {
+        let mut runs = std::collections::HashMap::new();
+        // Try loading from data/agent_runs.json
+        if let Ok(content) = std::fs::read_to_string("data/agent_runs.json") {
+            if let Ok(parsed) = serde_json::from_str(&content) {
+                runs = parsed;
+            }
+        }
+        tokio::sync::RwLock::new(runs)
+    })
+}
+
+async fn save_runs_store(runs: &std::collections::HashMap<String, AgentRun>) {
+    // Ensure data directory exists
+    let _ = std::fs::create_dir_all("data");
+    if let Ok(serialized) = serde_json::to_string_pretty(runs) {
+        let _ = std::fs::write("data/agent_runs.json", serialized);
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct StartRunPayload {
+    pub session_id: String,
+    pub task_description: String,
+}
+
+async fn start_run_http(
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<StartRunPayload>,
+) -> impl IntoResponse {
+    let mut store = get_runs_store().write().await;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let run = AgentRun {
+        session_id: payload.session_id.clone(),
+        user_id: ctx.user_id.clone(),
+        task_description: payload.task_description,
+        status: "running".to_string(),
+        steps: Vec::new(),
+        created_at: now,
+        completed_at: None,
+        total_latency_ms: 0,
+        lyapunov_stability: 0.0,
+        trust_score: 0.0,
+    };
+
+    store.insert(payload.session_id, run);
+    save_runs_store(&store).await;
+
+    (StatusCode::OK, "Run started").into_response()
+}
+
+#[derive(serde::Deserialize)]
+pub struct StepRunPayload {
+    pub session_id: String,
+    pub x: f64,
+    pub y: f64,
+    pub metadata: Option<serde_json::Value>,
+}
+
+async fn step_run_http(
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<StepRunPayload>,
+) -> impl IntoResponse {
+    let mut store = get_runs_store().write().await;
+    if let Some(run) = store.get_mut(&payload.session_id) {
+        if run.user_id != ctx.user_id && !ctx.is_admin {
+            return (StatusCode::FORBIDDEN, "Access denied").into_response();
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        run.steps.push(RunStep {
+            x: payload.x,
+            y: payload.y,
+            timestamp: now,
+            metadata: payload.metadata.unwrap_or_else(|| serde_json::json!({})),
+        });
+        save_runs_store(&store).await;
+        (StatusCode::OK, "Step recorded").into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "Run session not found").into_response()
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct EndRunPayload {
+    pub session_id: String,
+    pub status: String,
+    pub final_score: Option<f64>,
+    pub lyapunov_stability: Option<f64>,
+}
+
+async fn end_run_http(
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<EndRunPayload>,
+) -> impl IntoResponse {
+    let mut store = get_runs_store().write().await;
+    if let Some(run) = store.get_mut(&payload.session_id) {
+        if run.user_id != ctx.user_id && !ctx.is_admin {
+            return (StatusCode::FORBIDDEN, "Access denied").into_response();
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        run.completed_at = Some(now);
+        run.status = payload.status;
+        run.total_latency_ms = now.saturating_sub(run.created_at);
+        run.trust_score = payload.final_score.unwrap_or(0.0);
+        run.lyapunov_stability = payload.lyapunov_stability.unwrap_or(0.0);
+
+        save_runs_store(&store).await;
+        (StatusCode::OK, "Run ended").into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "Run session not found").into_response()
+    }
+}
+
+async fn get_runs_http(Extension(ctx): Extension<RequestContext>) -> impl IntoResponse {
+    let store = get_runs_store().read().await;
+    let list: Vec<AgentRun> = store
+        .values()
+        .filter(|run| run.user_id == ctx.user_id || ctx.is_admin)
+        .cloned()
+        .collect();
+    Json(list).into_response()
+}
+
+async fn get_run_by_id_http(
+    Extension(ctx): Extension<RequestContext>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    let store = get_runs_store().read().await;
+    if let Some(run) = store.get(&session_id) {
+        if run.user_id == ctx.user_id || ctx.is_admin {
+            Json(run.clone()).into_response()
+        } else {
+            (StatusCode::FORBIDDEN, "Access denied").into_response()
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Run session not found").into_response()
+    }
 }

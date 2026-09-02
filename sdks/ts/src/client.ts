@@ -374,7 +374,10 @@ export class HyperspaceClient {
     }
 
     constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string) {
-        this.host = host;
+        const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        const isSecure = cleanHost.endsWith(':443') || (!cleanHost.includes('localhost') && !cleanHost.includes('127.0.0.1') && !cleanHost.includes(':50051') && !cleanHost.includes(':50050') && cleanHost.includes('.'));
+        const formattedHost = isSecure && !cleanHost.includes(':') ? `${cleanHost}:443` : cleanHost;
+        this.host = formattedHost;
         this.apiKey = apiKey;
         this.userId = userId;
         const options = {
@@ -386,7 +389,8 @@ export class HyperspaceClient {
             'grpc.http2.min_time_between_pings_ms': 10000,
             'grpc.http2.min_ping_interval_without_data_ms': 5000,
         };
-        this.client = new DatabaseClient(host, grpc.credentials.createInsecure(), options);
+        const creds = isSecure ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+        this.client = new DatabaseClient(formattedHost, creds, options);
         this.metadata = new grpc.Metadata();
         if (apiKey) {
             this.metadata.add('x-api-key', apiKey);
@@ -635,11 +639,47 @@ export class HyperspaceClient {
 
     // ... (create/delete unchanged) ...
 
-    public createCollection(name: string, schema: CollectionSchema, encryptionKey: string = '', noiseSigma: number = 0.02): Promise<boolean> {
+    public createCollection(name: string, schema: CollectionSchema, encryptionKey: string = '', noiseSigma: number = 0.02, quantization?: string): Promise<boolean> {
         const metric = (schema.components && schema.components[0]) ? schema.components[0].metric : "l2";
         if (encryptionKey) {
             this.registerCollectionKey(name, encryptionKey, metric, noiseSigma, schema);
         }
+        if (quantization) {
+            const isYarSaaS = this.host.includes('yar.ink') || (!this.host.includes('localhost') && !this.host.includes('127.0.0.1'));
+            const hostOnly = this.host.split(':')[0];
+            const url = isYarSaaS ? 'https://the.yar.ink/api/collections' : `http://${hostOnly}:50050/api/collections`;
+            const comp = schema.components && schema.components[0];
+            const payload: any = {
+                name,
+                dimension: comp ? comp.fullDimension : 1024,
+                metric: comp ? comp.metric : "l2",
+                quantization,
+            };
+            if (schema.cascadePipeline && schema.cascadePipeline.length > 0) {
+                payload.mrl_cutoff_dimension = schema.cascadePipeline[0].cutoffDimension;
+                payload.mrl_rerank_top_k = schema.cascadePipeline[0].rerankTopK || 100;
+            }
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(this.apiKey ? { 'x-api-key': this.apiKey, 'Authorization': `Bearer ${this.apiKey}` } : {}),
+                    ...(this.userId ? { 'x-hyperspace-user-id': this.userId } : {}),
+                },
+                body: JSON.stringify(payload),
+            })
+            .then(async r => {
+                if (r.ok) {
+                    return true;
+                }
+                return this.createCollectionGrpc(name, schema);
+            })
+            .catch(() => this.createCollectionGrpc(name, schema));
+        }
+        return this.createCollectionGrpc(name, schema);
+    }
+
+    private createCollectionGrpc(name: string, schema: CollectionSchema): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new CreateCollectionRequest();
             req.setName(name);
@@ -656,7 +696,7 @@ export class HyperspaceClient {
             });
             protoSchema.setComponentsList(components);
             
-            const pipeline = schema.cascadePipeline.map(l => {
+            const pipeline = (schema.cascadePipeline || []).map(l => {
                 const layer = new hyperspace_pb.MrlLayer();
                 layer.setComponentName(l.componentName);
                 layer.setCutoffDimension(l.cutoffDimension);
@@ -872,7 +912,7 @@ export class HyperspaceClient {
                 return this.insert(id, vector, meta, collection, durability, undefined, Buffer.from(text, 'utf-8'));
             });
         }
-        return new Promise((resolve, reject) => {
+        return new Promise<boolean>((resolve, reject) => {
             const req = new InsertTextRequest();
             req.setText(text);
             req.setId(id);
@@ -887,20 +927,71 @@ export class HyperspaceClient {
                 if (err) return reject(err);
                 resolve(resp.getSuccess());
             });
+        }).catch(async (err: any) => {
+            const errStr = (err ? String(err.message || '') + ' ' + String(err.details || '') : '');
+            const isUnavail = err && (
+                err.code === 14 || err.code === 12 || err.code === 9 ||
+                errStr.includes('UNIMPLEMENTED') ||
+                errStr.includes('Embedding engine disabled') ||
+                errStr.includes('embedding model') ||
+                errStr.includes('FAILED_PRECONDITION') ||
+                errStr.includes('502') ||
+                errStr.includes('UNAVAILABLE')
+            );
+            if (isUnavail) {
+                const vec = await this.vectorize(text, 'hybrid');
+                return this.insert(id, vec, meta, collection, durability, undefined, Buffer.from(text, 'utf-8'));
+            }
+            throw err;
         });
     }
 
-    public vectorize(text: string, metric: string = 'l2'): Promise<number[]> {
-        return new Promise((resolve, reject) => {
-            const req = new VectorizeRequest();
-            req.setText(text);
-            req.setMetric(metric);
+    public async vectorize(text: string, metric: string = 'l2'): Promise<number[]> {
+        if (this.embedder) {
+            return Promise.resolve(this.embedder.encode(text));
+        }
+        try {
+            return await new Promise<number[]>((resolve, reject) => {
+                const req = new VectorizeRequest();
+                req.setText(text);
+                req.setMetric(metric);
 
-            this.client.vectorize(req, this.metadata, (err, resp) => {
-                if (err) return reject(err);
-                resolve(resp.getVectorList());
+                this.client.vectorize(req, this.metadata, (err, resp) => {
+                    if (err) return reject(err);
+                    resolve(resp.getVectorList());
+                });
             });
-        });
+        } catch (grpcErr: any) {
+            const urls = [
+                'https://the.yar.ink/v1/embeddings',
+                `http://${this.host.split(':')[0]}:8080/v1/embeddings`
+            ];
+            const apiKey = process.env.CDE_API_KEY || ((this.apiKey && this.apiKey.startsWith('sk_')) ? this.apiKey : '') || process.env.HYPERSPACE_API_KEY || '';
+            for (const url of urls) {
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: 'v5_Light',
+                            input: text
+                        })
+                    });
+                    if (res.ok) {
+                        const json: any = await res.json();
+                        if (json.data && json.data[0] && json.data[0].embedding) {
+                            return json.data[0].embedding;
+                        }
+                    }
+                } catch (httpErr) {
+                    // try next
+                }
+            }
+            throw grpcErr;
+        }
     }
 
     public batchInsert(
@@ -1096,7 +1187,7 @@ export class HyperspaceClient {
                 return this.search(vector, topK, collection, options);
             });
         }
-        return new Promise((resolve, reject) => {
+        return new Promise<SearchResult[]>((resolve, reject) => {
             const req = new SearchTextRequest();
             req.setText(text);
             req.setTopK(topK);
@@ -1144,6 +1235,22 @@ export class HyperspaceClient {
                 });
                 resolve(results);
             });
+        }).catch(async (err: any) => {
+            const errStr = (err ? String(err.message || '') + ' ' + String(err.details || '') : '');
+            const isUnavail = err && (
+                err.code === 14 || err.code === 12 || err.code === 9 ||
+                errStr.includes('UNIMPLEMENTED') ||
+                errStr.includes('Embedding engine disabled') ||
+                errStr.includes('embedding model') ||
+                errStr.includes('FAILED_PRECONDITION') ||
+                errStr.includes('502') ||
+                errStr.includes('UNAVAILABLE')
+            );
+            if (isUnavail) {
+                const vec = await this.vectorize(text, 'hybrid');
+                return this.search(vec, topK, collection, options);
+            }
+            throw err;
         });
     }
 
@@ -1700,6 +1807,73 @@ export class HyperspaceClient {
         }
     }
 
+
+    public async startRun(sessionId: string, taskDescription: string): Promise<boolean> {
+        const ip = this.host.split(':')[0];
+        const url = `http://${ip}:50050/api/admin/runs/start`;
+        const headers: { [key: string]: string } = { 'Content-Type': 'application/json' };
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                session_id: sessionId,
+                task_description: taskDescription
+            })
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to start run: ${res.statusText} (${await res.text()})`);
+        }
+        return res.status === 200;
+    }
+
+    public async stepRun(sessionId: string, x: number, y: number, metadata?: any): Promise<boolean> {
+        const ip = this.host.split(':')[0];
+        const url = `http://${ip}:50050/api/admin/runs/step`;
+        const headers: { [key: string]: string } = { 'Content-Type': 'application/json' };
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                session_id: sessionId,
+                x,
+                y,
+                metadata
+            })
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to record run step: ${res.statusText} (${await res.text()})`);
+        }
+        return res.status === 200;
+    }
+
+    public async endRun(sessionId: string, status: string, finalScore?: number, lyapunovStability?: number): Promise<boolean> {
+        const ip = this.host.split(':')[0];
+        const url = `http://${ip}:50050/api/admin/runs/end`;
+        const headers: { [key: string]: string } = { 'Content-Type': 'application/json' };
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                session_id: sessionId,
+                status,
+                final_score: finalScore,
+                lyapunov_stability: lyapunovStability
+            })
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to end run: ${res.statusText} (${await res.text()})`);
+        }
+        return res.status === 200;
+    }
 
     public close() {
         this.client.close();

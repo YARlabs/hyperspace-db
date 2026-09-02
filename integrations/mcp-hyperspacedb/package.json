@@ -1,7 +1,7 @@
 {
   "name": "mcp-hyperspacedb",
-  "version": "3.1.6",
-  "description": "MCP server for HyperspaceDB - high performance multi-geometry vector database",
+  "version": "3.1.8",
+  "description": "MCP server for HyperspaceDB — full vector DB client (local + SaaS). Cognitive memory tools are in mcp-hyperspace-memory.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -24,7 +24,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",
-    "hyperspace-sdk-ts": "3.1.6",
+    "hyperspace-sdk-ts": "3.1.8",
     "zod": "^3.24.2"
   },
   "devDependencies": {

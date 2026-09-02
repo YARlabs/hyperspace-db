@@ -2,10 +2,9 @@ import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
     Copy, Check, Bot, Cpu, Brain, GitBranch, Coins, Wrench,
-    ChevronRight, ExternalLink, Terminal, Package
+    ChevronRight, ExternalLink, Terminal, Package, Sparkles
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -38,6 +37,15 @@ const SKILLS = [
         triggers: ["thought stability", "CoT", "hallucination", "momentum", "trust score"],
     },
     {
+        id: "memory",
+        name: "hyperspacedb-memory",
+        icon: Sparkles,
+        color: "text-rose-400",
+        bg: "bg-rose-500/10 border-rose-500/20",
+        description: "Episodic agent memory, Mem0 drop-in, Fréchet consolidation, 129D MRL cascade",
+        triggers: ["agent memory", "Mem0", "episodic memory", "remember", "recall", "forget"],
+    },
+    {
         id: "depin",
         name: "hyperspacedb-depin",
         icon: Coins,
@@ -52,8 +60,8 @@ const SKILLS = [
         icon: Wrench,
         color: "text-cyan-400",
         bg: "bg-cyan-500/10 border-cyan-500/20",
-        description: "Full 30+ MCP tool reference, config, return types",
-        triggers: ["MCP", "Claude Desktop", "Cursor MCP", "hyperspace_search"],
+        description: "Full 35 MCP tool reference, config, return types",
+        triggers: ["MCP", "Claude Desktop", "Cursor MCP", "hyperspace_search", "memory_remember"],
     },
 ]
 
@@ -112,9 +120,10 @@ function Step({ number, title, children }: { number: number; title: string; chil
 }
 
 export function AgentSkillsPage() {
-    const host = window.location.hostname === "localhost"
+    const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    const host = isLocal
         ? "localhost:50051"
-        : `${window.location.hostname}:50051`
+        : window.location.hostname
     const apiKey = localStorage.getItem("hyperspace_api_key") || "YOUR_API_KEY"
 
     const mcpConfig = JSON.stringify({
@@ -122,6 +131,14 @@ export function AgentSkillsPage() {
             hyperspacedb: {
                 command: "npx",
                 args: ["-y", "mcp-hyperspacedb"],
+                env: {
+                    HYPERSPACE_HOST: host,
+                    HYPERSPACE_API_KEY: apiKey,
+                }
+            },
+            "hyperspace-memory": {
+                command: "npx",
+                args: ["-y", "mcp-hyperspace-memory"],
                 env: {
                     HYPERSPACE_HOST: host,
                     HYPERSPACE_API_KEY: apiKey,
@@ -154,9 +171,6 @@ export function AgentSkillsPage() {
                     <div className="flex items-center gap-2 mb-2">
                         <Bot className="h-7 w-7 text-violet-400" />
                         <h1 className="text-3xl font-bold tracking-tight text-white">AI Agent Skills</h1>
-                        <Badge variant="outline" className="border-violet-500/40 text-violet-400 text-xs">
-                            v3.1.2
-                        </Badge>
                     </div>
                     <p className="text-muted-foreground max-w-2xl">
                         Install <code className="text-violet-300 bg-violet-500/10 px-1.5 py-0.5 rounded text-xs font-mono">hyperspacedb-skills</code> to
@@ -237,9 +251,9 @@ export function AgentSkillsPage() {
                                 {/* Step 2: agent-specific */}
                                 <Step number={2} title={
                                     agent.id === "cursor" ? "Copy skills rules" :
-                                    agent.id === "claude" ? "Append to CLAUDE.md" :
-                                    agent.id === "windsurf" ? "Copy skills to .agents/" :
-                                    "Copy skills to your project"
+                                        agent.id === "claude" ? "Append to CLAUDE.md" :
+                                            agent.id === "windsurf" ? "Copy skills to .agents/" :
+                                                "Copy skills to your project"
                                 }>
                                     {agent.id === "cursor" && (
                                         <div className="space-y-3">
@@ -302,12 +316,13 @@ export function AgentSkillsPage() {
             {/* MCP tools reference */}
             <Card className="bg-zinc-950/50 border-white/5">
                 <CardHeader>
-                    <CardTitle className="text-white text-base">Available MCP Tools (30+)</CardTitle>
-                    <CardDescription>All tools are accessible once MCP is connected</CardDescription>
+                    <CardTitle className="text-white text-base">Available MCP Tools (35)</CardTitle>
+                    <CardDescription>All tools are accessible across mcp-hyperspacedb and mcp-hyperspace-memory</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
                         {[
+                            ["Agent Memory", "memory_remember, memory_recall, memory_forget, memory_update, memory_list_sessions, memory_explore_hierarchy, memory_consolidate, memory_verify_claim"],
                             ["Collections", "hyperspace_list_collections, hyperspace_create_collection, hyperspace_delete_collection, hyperspace_freeze_collection, hyperspace_unfreeze_collection"],
                             ["Data", "hyperspace_insert_text, hyperspace_delete_points, hyperspace_get_points"],
                             ["Search", "hyperspace_search_text (+ hybridAlpha), hyperspace_search_wasserstein"],

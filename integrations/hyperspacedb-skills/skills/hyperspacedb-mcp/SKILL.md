@@ -8,23 +8,15 @@ description: >
   "hyperspace_insert", "model context protocol", "mcp-hyperspacedb", "tool use".
 ---
 
-# HyperspaceDB MCP Server
+# HyperspaceDB MCP Servers
 
-The `mcp-hyperspacedb` server exposes all HyperspaceDB capabilities as MCP tools,
-letting any MCP-compatible AI host (Claude, Cursor, Windsurf, Antigravity, etc.)
-directly interact with the database — **without writing any integration code**.
+HyperspaceDB provides two official Model Context Protocol (MCP) servers:
+1. **`mcp-hyperspacedb`** (Database Plane, v4.0.0): 27 tools for collection DDL, vector CRUD, HNSW graph traversal, Lyapunov stability analysis, Gromov delta hyperbolicity, and Koopman momentum.
+2. **`mcp-hyperspace-memory`** (Cognitive Memory Plane, v1.0.0): 8 tools for autonomous agent memory, episodic facts, session isolation, Fréchet mean consolidation, and hallucination verification.
 
 ---
 
-## Setup
-
-### Quick Start (Recommended)
-
-```bash
-npx mcp-hyperspacedb
-```
-
-### MCP Host Configuration
+## Setup & Configuration
 
 Add to your MCP config file (e.g., `claude_desktop_config.json`, `.cursor/mcp.json`):
 
@@ -35,8 +27,16 @@ Add to your MCP config file (e.g., `claude_desktop_config.json`, `.cursor/mcp.js
       "command": "npx",
       "args": ["-y", "mcp-hyperspacedb"],
       "env": {
-        "HYPERSPACE_HOST": "your-node.example.com:50051",
-        "HYPERSPACE_API_KEY": "your_secret_key"
+        "HYPERSPACE_HOST": "the.yar.ink",
+        "HYPERSPACE_API_KEY": "YOUR_YARINK_API_KEY"
+      }
+    },
+    "hyperspace-memory": {
+      "command": "npx",
+      "args": ["-y", "mcp-hyperspace-memory"],
+      "env": {
+        "HYPERSPACE_HOST": "the.yar.ink",
+        "HYPERSPACE_API_KEY": "YOUR_YARINK_API_KEY"
       }
     }
   }

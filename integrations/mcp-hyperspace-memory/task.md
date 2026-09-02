@@ -1,0 +1,13 @@
+- [x] Refactor mcp-hyperspacedb: remove cognitive tools
+  - [x] Remove COGNITIVE SKILLS tool definitions from ListTools
+  - [x] Remove COGNITIVE SKILLS handlers from CallTool switch
+  - [x] Update package.json (version 4.0.0, description)
+  - [x] Update server name/version in constructor
+- [x] Create mcp-hyperspace-memory package
+  - [x] package.json
+  - [x] tsconfig.json
+  - [x] src/index.ts (8 memory tools, MEMORY_COLLECTION env, SaaS default host)
+  - [x] README.md
+- [x] Verify: tsc --noEmit on both packages (0 errors each)
+- [x] Verify: no cognitive tools in mcp-hyperspacedb
+- [x] Verify: no admin tools in mcp-hyperspace-memory

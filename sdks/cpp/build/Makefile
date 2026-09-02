@@ -129,6 +129,54 @@ hyperspace_sdk/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/build
 .PHONY : hyperspace_sdk/fast
 
+proto/hyperspace.grpc.pb.o: proto/hyperspace.grpc.pb.cc.o
+.PHONY : proto/hyperspace.grpc.pb.o
+
+# target to build an object file
+proto/hyperspace.grpc.pb.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o
+.PHONY : proto/hyperspace.grpc.pb.cc.o
+
+proto/hyperspace.grpc.pb.i: proto/hyperspace.grpc.pb.cc.i
+.PHONY : proto/hyperspace.grpc.pb.i
+
+# target to preprocess a source file
+proto/hyperspace.grpc.pb.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.i
+.PHONY : proto/hyperspace.grpc.pb.cc.i
+
+proto/hyperspace.grpc.pb.s: proto/hyperspace.grpc.pb.cc.s
+.PHONY : proto/hyperspace.grpc.pb.s
+
+# target to generate assembly for a file
+proto/hyperspace.grpc.pb.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.s
+.PHONY : proto/hyperspace.grpc.pb.cc.s
+
+proto/hyperspace.pb.o: proto/hyperspace.pb.cc.o
+.PHONY : proto/hyperspace.pb.o
+
+# target to build an object file
+proto/hyperspace.pb.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o
+.PHONY : proto/hyperspace.pb.cc.o
+
+proto/hyperspace.pb.i: proto/hyperspace.pb.cc.i
+.PHONY : proto/hyperspace.pb.i
+
+# target to preprocess a source file
+proto/hyperspace.pb.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.i
+.PHONY : proto/hyperspace.pb.cc.i
+
+proto/hyperspace.pb.s: proto/hyperspace.pb.cc.s
+.PHONY : proto/hyperspace.pb.s
+
+# target to generate assembly for a file
+proto/hyperspace.pb.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/hyperspace_sdk.dir/build.make CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.s
+.PHONY : proto/hyperspace.pb.cc.s
+
 src/client.o: src/client.cpp.o
 .PHONY : src/client.o
 
@@ -162,6 +210,12 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... hyperspace_sdk"
+	@echo "... proto/hyperspace.grpc.pb.o"
+	@echo "... proto/hyperspace.grpc.pb.i"
+	@echo "... proto/hyperspace.grpc.pb.s"
+	@echo "... proto/hyperspace.pb.o"
+	@echo "... proto/hyperspace.pb.i"
+	@echo "... proto/hyperspace.pb.s"
 	@echo "... src/client.o"
 	@echo "... src/client.i"
 	@echo "... src/client.s"

@@ -31,12 +31,12 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 // Imports
-use hyperspace_core::hybrid::HybridQuantizedVector;
+use hyperspace_core::hybrid::{HybridLowBitQuantizedVector, HybridQuantizedVector, ScalarI4Vector};
 use hyperspace_core::vector::{
     BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector,
 };
 use hyperspace_core::QuantizationMode;
-use hyperspace_core::{GlobalConfig, Metric};
+use hyperspace_core::{GlobalConfig, LorentzMetric, Metric, PoincareMetric};
 use hyperspace_store::VectorStore;
 use std::marker::PhantomData;
 
@@ -1300,6 +1300,70 @@ impl<M: Metric> HnswIndex<M> {
                     d_lor + d_euc
                 }
             }
+            QuantizationMode::AsymmetricHybridLowBit => {
+                assert!(self.dimension == 801, "AsymmetricHybridLowBit quantization mode is only supported for 801-dimensional vectors");
+                let q = HybridLowBitQuantizedVector::from_bytes(bytes);
+                if let Some(dim) = mrl_dim {
+                    q.distance_mrl(
+                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
+                        dim,
+                    )
+                } else {
+                    let d_lor = q.lorentz_distance_to_float(unsafe {
+                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
+                    });
+                    let d_euc = q.euclidean_distance_sq_mrl(
+                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
+                        768,
+                    );
+                    d_lor + d_euc
+                }
+            }
+            QuantizationMode::ScalarI4 => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let q = ScalarI4Vector::from_bytes(bytes, self.dimension, head_dim);
+                let active_dim = mrl_dim.unwrap_or(self.dimension);
+                let name = M::name();
+                if name == "hybrid" && self.dimension == 801 {
+                    let d_lor = <LorentzMetric as Metric>::distance(
+                        &q.reconstruct(self.dimension)[..33],
+                        &query.coords[..33],
+                    );
+                    let d_euc = q.distance_l2_sq_mrl(query, active_dim);
+                    d_lor + d_euc
+                } else if name == "poincare" {
+                    let deq = q.reconstruct(active_dim);
+                    <PoincareMetric as Metric>::distance(&deq, &query.coords[..active_dim])
+                } else if name == "lorentz" {
+                    let deq = q.reconstruct(active_dim);
+                    <LorentzMetric as Metric>::distance(&deq, &query.coords[..active_dim])
+                } else {
+                    q.distance_l2_sq_mrl(query, active_dim)
+                }
+            }
+            QuantizationMode::Turbo => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = self.dimension - head_dim;
+                let q = hyperspace_core::hybrid::TurboQuantVector::from_bytes(bytes, tail_dim);
+                if let Some(tq) = q {
+                    let deq = tq.reconstruct(tail_dim);
+                    let active_dim = mrl_dim.unwrap_or(self.dimension);
+                    M::distance(
+                        &deq[..active_dim.min(deq.len())],
+                        &query.coords[..active_dim],
+                    )
+                } else {
+                    f64::MAX
+                }
+            }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::from_bytes(bytes);
                 M::distance_binary(&b, query)
@@ -1803,6 +1867,66 @@ impl<M: Metric> HnswIndex<M> {
                     alpha: f64::from(q.alpha),
                 }
             }
+            QuantizationMode::AsymmetricHybridLowBit => {
+                assert!(
+                    self.dimension == 801,
+                    "AsymmetricHybridLowBit requires self.dimension=801"
+                );
+                let q = HybridLowBitQuantizedVector::from_bytes(bytes);
+                let mut coords = vec![0.0; self.dimension];
+                for (coord, &val) in coords[..33].iter_mut().zip(q.lorentz.iter()) {
+                    *coord = f64::from(val);
+                }
+                let block_size = 16;
+                let euc_dim = self.dimension - 33;
+                let num_blocks = euc_dim.div_ceil(16);
+                for b in 0..num_blocks {
+                    let start = b * block_size;
+                    let end = (start + block_size).min(euc_dim);
+                    let scale = f64::from(q.scales[b]);
+                    let packed_block_offset = b * 8;
+                    for i in start..end {
+                        let relative_idx = i - start;
+                        let pair_idx = relative_idx / 2;
+                        let is_second = relative_idx % 2 == 1;
+
+                        let packed_byte = q.euclidean_packed[packed_block_offset + pair_idx];
+                        let u_val = if is_second {
+                            packed_byte & 0x0F
+                        } else {
+                            packed_byte >> 4
+                        };
+                        #[allow(clippy::cast_possible_wrap)]
+                        let val = (u_val as i8) - 8;
+                        coords[33 + i] = f64::from(val) * scale;
+                    }
+                }
+                HyperVector::new_unchecked(coords)
+            }
+            QuantizationMode::ScalarI4 => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let q = ScalarI4Vector::from_bytes(bytes, self.dimension, head_dim);
+                let coords = q.reconstruct(self.dimension);
+                HyperVector::new_unchecked(coords)
+            }
+            QuantizationMode::Turbo => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = self.dimension - head_dim;
+                let q = hyperspace_core::hybrid::TurboQuantVector::from_bytes(bytes, tail_dim);
+                if let Some(tq) = q {
+                    HyperVector::new_unchecked(tq.reconstruct(tail_dim))
+                } else {
+                    HyperVector::new_unchecked(vec![0.0; self.dimension])
+                }
+            }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::from_bytes(bytes);
                 let mut coords = vec![0.0; self.dimension];
@@ -1864,6 +1988,39 @@ impl<M: Metric> HnswIndex<M> {
                     33,
                     q_vec_full.coords.len() - 33,
                 );
+                q_bytes = q.as_bytes();
+                0
+            }
+            QuantizationMode::AsymmetricHybridLowBit => {
+                if self.dimension != 801 {
+                    return Err("AsymmetricHybridLowBit requires dimension 801".into());
+                }
+                let q = HybridLowBitQuantizedVector::from_float(
+                    &q_vec_full,
+                    33,
+                    q_vec_full.coords.len() - 33,
+                );
+                q_bytes = q.as_bytes();
+                0
+            }
+            QuantizationMode::ScalarI4 => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let q = ScalarI4Vector::from_float(&q_vec_full, head_dim);
+                q_bytes = q.as_bytes();
+                0
+            }
+            QuantizationMode::Turbo => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let q =
+                    hyperspace_core::hybrid::TurboQuantVector::from_float(&q_vec_full, head_dim);
                 q_bytes = q.as_bytes();
                 0
             }
@@ -1951,6 +2108,36 @@ impl<M: Metric> HnswIndex<M> {
                     33,
                     q_vec_full.coords.len() - 33,
                 );
+                self.storage.update(id, &q.as_bytes())?;
+            }
+            QuantizationMode::AsymmetricHybridLowBit => {
+                if self.dimension != 801 {
+                    return Err("AsymmetricHybridLowBit requires dimension 801".into());
+                }
+                let q = HybridLowBitQuantizedVector::from_float(
+                    &q_vec_full,
+                    33,
+                    q_vec_full.coords.len() - 33,
+                );
+                self.storage.update(id, &q.as_bytes())?;
+            }
+            QuantizationMode::ScalarI4 => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let q = ScalarI4Vector::from_float(&q_vec_full, head_dim);
+                self.storage.update(id, &q.as_bytes())?;
+            }
+            QuantizationMode::Turbo => {
+                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let q =
+                    hyperspace_core::hybrid::TurboQuantVector::from_float(&q_vec_full, head_dim);
                 self.storage.update(id, &q.as_bytes())?;
             }
         }

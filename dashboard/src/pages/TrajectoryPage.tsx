@@ -5,13 +5,15 @@ import {
     Maximize2, 
     Play, 
     Square,
-    Waves
+    Waves,
+    Terminal,
+    ArrowRight
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { fetchTrajectoryHistory } from "@/lib/api"
+import { fetchTrajectoryHistory, fetchAgentRuns, fetchAgentRunById } from "@/lib/api"
 
 interface TrajectoryPoint {
     id: string;
@@ -32,17 +34,71 @@ interface Ripple {
     resonance?: number;
 }
 
+interface RunStep {
+    x: number;
+    y: number;
+    timestamp: number;
+    metadata: any;
+}
+
+interface AgentRun {
+    session_id: string;
+    task_description: string;
+    status: string;
+    steps: RunStep[];
+    created_at: number;
+    completed_at?: number;
+    total_latency_ms: number;
+    lyapunov_stability: number;
+    trust_score: number;
+}
+
 export function TrajectoryPage() {
     const [allPoints, setAllPoints] = useState<TrajectoryPoint[]>([]);
-    const [, setRipples] = useState<Ripple[]>([]);
+    const [_ripples, setRipples] = useState<Ripple[]>([]);
     const [visiblePointsCount, setVisiblePointsCount] = useState(0);
     const [isStreaming, setIsStreaming] = useState(false);
+    const [runs, setRuns] = useState<AgentRun[]>([]);
+    const [selectedRun, setSelectedRun] = useState<AgentRun | null>(null);
+    
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
+        loadRuns();
         fetchHistory();
     }, []);
+
+    const loadRuns = async () => {
+        try {
+            const data = await fetchAgentRuns();
+            setRuns(data);
+        } catch (err) {
+            console.error("Failed to load agent runs", err);
+        }
+    };
+
+    const selectRun = async (sessionId: string) => {
+        setIsStreaming(false);
+        try {
+            const run = await fetchAgentRunById(sessionId);
+            setSelectedRun(run);
+            
+            // Map run steps to trajectory points
+            const points = (run.steps || []).map((step: any, idx: number) => ({
+                id: `${run.session_id}_step_${idx}`,
+                x: step.x,
+                y: step.y,
+                timestamp: step.timestamp,
+                metadata: step.metadata || {}
+            }));
+            
+            setAllPoints(points);
+            setVisiblePointsCount(points.length);
+        } catch (err) {
+            console.error("Failed to load run detail", err);
+        }
+    };
 
     const fetchHistory = async () => {
         try {
@@ -56,6 +112,7 @@ export function TrajectoryPage() {
             }));
             setAllPoints(history);
             setVisiblePointsCount(history.length);
+            setSelectedRun(null);
         } catch (err) {
             console.error("Failed to fetch history", err);
         }
@@ -71,6 +128,7 @@ export function TrajectoryPage() {
     }, [isStreaming]);
 
     const startStreaming = () => {
+        setSelectedRun(null);
         const es = new EventSource("/api/admin/trajectory/stream");
         es.onmessage = (event) => {
             const msg = JSON.parse(event.data);
@@ -80,7 +138,7 @@ export function TrajectoryPage() {
                 y: msg.y || (Math.random() * 2 - 1),
                 timestamp: Date.now(),
                 metadata: msg.metadata || {},
-                resonance: msg.metadata?.resonance || (Math.random() * 0.5) // Fallback for demo
+                resonance: msg.metadata?.resonance || (Math.random() * 0.5)
             };
 
             setRipples(prev => [...prev, {
@@ -95,7 +153,6 @@ export function TrajectoryPage() {
 
             setAllPoints(prev => {
                 const updated = [...prev.slice(-1000), newPoint];
-                // If we were at the end, keep following the stream
                 if (visiblePointsCount === prev.length) {
                     setVisiblePointsCount(updated.length);
                 }
@@ -217,7 +274,6 @@ export function TrajectoryPage() {
                     ctx.strokeStyle = `rgba(112, 0, 255, ${rippleOpacity * 0.5})`;
                     ctx.stroke();
 
-                    // Task 10: Hybrid Resonance Visualization
                     if (r.resonance && r.resonance > 0.6) {
                         ctx.beginPath();
                         ctx.arc(
@@ -254,11 +310,14 @@ export function TrajectoryPage() {
                     <div className="flex gap-2">
                         <Button 
                             variant="outline"
-                            onClick={fetchHistory}
+                            onClick={() => {
+                                loadRuns();
+                                fetchHistory();
+                            }}
                             className="gap-2"
                         >
                             <Clock className="h-4 w-4" />
-                            Load History
+                            Refresh History
                         </Button>
                         <Button 
                             variant={isStreaming ? "destructive" : "default"}
@@ -266,7 +325,7 @@ export function TrajectoryPage() {
                             className="gap-2"
                         >
                             {isStreaming ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                            {isStreaming ? "Stop Monitoring" : "Start Real-time Sync"}
+                            {isStreaming ? "Stop Monitoring" : "Start Live Feed"}
                         </Button>
                     </div>
                 </div>
@@ -275,10 +334,57 @@ export function TrajectoryPage() {
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card className="lg:col-span-2 bg-black/40 border-white/5 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                {/* Runs Selector Sidebar */}
+                <Card className="bg-black/40 border-white/5 shadow-2xl backdrop-blur-xl h-[700px] flex flex-col">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground font-mono">Agent Runs</CardTitle>
+                        <CardDescription>Select historical tracing session</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-1 overflow-hidden p-0">
+                        <ScrollArea className="h-full px-4 pb-4">
+                            <div className="space-y-2">
+                                {runs.map(run => (
+                                    <div 
+                                        key={run.session_id}
+                                        onClick={() => selectRun(run.session_id)}
+                                        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                                            selectedRun?.session_id === run.session_id 
+                                            ? 'bg-primary/10 border-primary text-white' 
+                                            : 'bg-white/5 border-white/5 text-white/70 hover:bg-white/10'
+                                        }`}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="font-mono text-xs font-semibold truncate max-w-[120px]">{run.session_id}</span>
+                                            <Badge 
+                                                variant="outline" 
+                                                className={
+                                                    run.status === 'SUCCESS' 
+                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                    : run.status === 'FAILED'
+                                                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                }
+                                            >
+                                                {run.status}
+                                            </Badge>
+                                        </div>
+                                        <p className="text-[10px] text-muted-foreground line-clamp-2">{run.task_description}</p>
+                                        <div className="flex justify-between items-center mt-2 text-[9px] font-mono text-muted-foreground">
+                                            <span>{(run.total_latency_ms / 1000).toFixed(2)}s</span>
+                                            <span>Steps: {run.steps?.length || 0}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </ScrollArea>
+                    </CardContent>
+                </Card>
+
+                {/* Poincaré Disk canvas */}
+                <Card className="lg:col-span-2 bg-black/40 border-white/5 shadow-2xl relative overflow-hidden backdrop-blur-xl h-[700px] flex flex-col justify-between">
                     <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-                    <CardHeader className="flex flex-row items-center justify-between">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <div>
                             <CardTitle className="text-xl flex items-center gap-2">
                                 <Maximize2 className="h-4 w-4 text-primary" />
@@ -288,20 +394,20 @@ export function TrajectoryPage() {
                         </div>
                         <div className="flex items-center gap-4">
                             <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
-                                {isStreaming ? "Live Feed Active" : "Time Travel Mode"}
+                                {selectedRun ? "Telemetry Replay" : isStreaming ? "Live Feed Active" : "Static History"}
                             </Badge>
                         </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col items-center justify-center p-0 pb-8">
+                    <CardContent className="flex-1 flex flex-col items-center justify-center p-0">
                         <canvas 
                             ref={canvasRef} 
-                            width={600} 
-                            height={600} 
+                            width={480} 
+                            height={480} 
                             className="max-w-full h-auto drop-shadow-[0_0_50px_rgba(0,243,255,0.1)]"
                         />
                         
                         {/* Time Slider Overlay */}
-                        <div className="w-full px-12 mt-4 space-y-2">
+                        <div className="w-full px-12 mt-4 space-y-2 pb-6">
                             <div className="flex justify-between text-[10px] uppercase tracking-widest text-muted-foreground font-mono">
                                 <span>Past</span>
                                 <span>Present</span>
@@ -324,52 +430,75 @@ export function TrajectoryPage() {
                     </CardContent>
                 </Card>
 
-                <div className="space-y-6">
+                {/* Metrics and Trace Logs */}
+                <div className="space-y-6 h-[700px] flex flex-col justify-between">
                     <Card className="bg-card/50 backdrop-blur-md">
-                        <CardHeader>
+                        <CardHeader className="py-3">
                             <CardTitle className="text-sm flex items-center gap-2">
                                 <Activity className="h-4 w-4 text-primary" />
-                                Semantic Resonance
+                                Run Analytics
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex justify-between items-center p-3 rounded-lg bg-white/5 border border-white/5">
-                                <span className="text-xs text-muted-foreground">Momentum</span>
-                                <span className="font-mono text-emerald-400">0.942 λ</span>
+                        <CardContent className="space-y-3 pb-4">
+                            <div className="flex justify-between items-center p-2 rounded-lg bg-white/5 border border-white/5">
+                                <span className="text-xs text-muted-foreground">Stability (Lyapunov)</span>
+                                <span className={`font-mono text-xs ${
+                                    selectedRun 
+                                    ? selectedRun.lyapunov_stability < 0 ? 'text-emerald-400' : 'text-rose-400'
+                                    : 'text-amber-400'
+                                }`}>
+                                    {selectedRun ? `${selectedRun.lyapunov_stability.toFixed(3)} (${selectedRun.lyapunov_stability < 0 ? 'STABLE' : 'CHAOTIC'})` : 'N/A'}
+                                </span>
                             </div>
-                            <div className="flex justify-between items-center p-3 rounded-lg bg-white/5 border border-white/5">
-                                <span className="text-xs text-muted-foreground">Entropy</span>
-                                <span className="font-mono text-amber-400">0.021 Δ</span>
+                            <div className="flex justify-between items-center p-2 rounded-lg bg-white/5 border border-white/5">
+                                <span className="text-xs text-muted-foreground">Trust Score</span>
+                                <span className="font-mono text-xs text-emerald-400">
+                                    {selectedRun ? `${(selectedRun.trust_score * 100).toFixed(1)}%` : 'N/A'}
+                                </span>
                             </div>
-                            <div className="flex justify-between items-center p-3 rounded-lg bg-white/5 border border-white/5">
-                                <span className="text-xs text-muted-foreground">Inertia</span>
-                                <span className="font-mono text-primary">High</span>
+                            <div className="flex justify-between items-center p-2 rounded-lg bg-white/5 border border-white/5">
+                                <span className="text-xs text-muted-foreground">Execution Latency</span>
+                                <span className="font-mono text-xs text-primary">
+                                    {selectedRun ? `${(selectedRun.total_latency_ms / 1000).toFixed(2)}s` : 'N/A'}
+                                </span>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-black/20 border-white/5 h-[400px]">
-                        <CardHeader className="pb-2">
+                    <Card className="bg-black/20 border-white/5 flex-1 flex flex-col overflow-hidden">
+                        <CardHeader className="pb-2 pt-3">
                             <CardTitle className="text-xs font-mono uppercase text-muted-foreground flex items-center gap-2">
-                                <Clock className="h-3 w-3" />
-                                Event Timeline
+                                <Terminal className="h-3 w-3" />
+                                Execution Trace Logs
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="p-0">
-                            <ScrollArea className="h-[320px] px-4">
+                        <CardContent className="p-0 flex-1 overflow-hidden">
+                            <ScrollArea className="h-full px-4 pb-4">
                                 <div className="space-y-4">
                                     {visiblePoints.slice().reverse().map((p, i) => (
                                         <div key={p.id} className="relative pl-4 border-l border-white/10 py-1 animate-in slide-in-from-left-2 duration-300">
                                             <div className="absolute left-[-5px] top-2 h-2 w-2 rounded-full bg-primary" />
-                                            <p className="text-[10px] text-muted-foreground">
-                                                {new Date(p.timestamp).toLocaleTimeString()}
+                                            <div className="flex justify-between text-[9px] text-muted-foreground">
+                                                <span>Step {visiblePoints.length - i}</span>
+                                                <span>{new Date(p.timestamp).toLocaleTimeString()}</span>
+                                            </div>
+                                            <p className="text-xs font-semibold text-white/90 truncate">
+                                                {p.metadata?.operation || "Vector Operation"}
                                             </p>
-                                            <p className="text-sm font-medium text-white/90">
-                                                Step {visiblePoints.length - i}: Concept Hop
+                                            <p className="text-[10px] text-muted-foreground font-mono leading-tight truncate">
+                                                {p.metadata?.query || `Coord: (${p.x.toFixed(3)}, ${p.y.toFixed(3)})`}
                                             </p>
-                                            <p className="text-[10px] text-primary/70 font-mono">
-                                                Coord: ({p.x.toFixed(3)}, {p.y.toFixed(3)})
-                                            </p>
+                                            {p.metadata?.latency_ms && (
+                                                <div className="flex gap-2 text-[9px] font-mono text-primary/60 mt-0.5">
+                                                    <span>{p.metadata.latency_ms}ms</span>
+                                                    {p.metadata.provider && (
+                                                        <>
+                                                            <ArrowRight className="h-2 w-2 self-center" />
+                                                            <span>{p.metadata.provider}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>

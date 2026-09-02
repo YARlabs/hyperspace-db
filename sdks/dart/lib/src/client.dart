@@ -128,7 +128,7 @@ class HyperspaceClient {
     await _channel.shutdown();
   }
 
-  Future<bool> createCollection(String name, pb.CollectionSchema schema, {String encryptionKey = '', double noiseSigma = 0.02}) async {
+  Future<bool> createCollection(String name, pb.CollectionSchema schema, {String encryptionKey = '', double noiseSigma = 0.02, String? quantization}) async {
     final metric = schema.components.isNotEmpty ? schema.components[0].metric : "l2";
     if (encryptionKey.isNotEmpty) {
       registerCollectionKey(name, encryptionKey, metric: metric, noiseSigma: noiseSigma, schema: schema);

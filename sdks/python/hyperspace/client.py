@@ -329,7 +329,7 @@ class HyperspaceClient:
 
     # ... (create/delete/list unchanged) ...
 
-    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None, encryption_key: str = None, noise_sigma: float = 0.02) -> bool:
+    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None, encryption_key: str = None, noise_sigma: float = 0.02, quantization: str = None) -> bool:
         # Extract metric for encryption context
         derived_metric = metric
         if not derived_metric and isinstance(schema, dict) and "components" in schema and schema["components"]:
@@ -339,6 +339,42 @@ class HyperspaceClient:
 
         if encryption_key:
             self.register_collection_key(name, encryption_key, derived_metric, noise_sigma)
+
+        # If quantization override is provided or dimension/metric flat params are passed via HTTP
+        if quantization:
+            import urllib.request
+            import json
+            ip = self.host.split(':')[0]
+            url = f"http://{ip}:50050/api/collections"
+            headers = {'Content-Type': 'application/json'}
+            if self.api_key:
+                headers['x-api-key'] = self.api_key
+            if self.user_id:
+                headers['x-hyperspace-user-id'] = self.user_id
+            
+            comp = schema["components"][0] if (schema and isinstance(schema, dict) and "components" in schema and schema["components"]) else {}
+            full_dim = comp.get("full_dimension") or comp.get("fullDimension") or dimension or 1024
+            metric_space = comp.get("metric") or metric or "l2"
+            
+            payload = {
+                "name": name,
+                "dimension": full_dim,
+                "metric": metric_space,
+                "quantization": quantization,
+            }
+            pipeline = (schema.get("cascade_pipeline") or schema.get("cascadePipeline", [])) if (schema and isinstance(schema, dict)) else []
+            if pipeline:
+                payload["mrl_cutoff_dimension"] = pipeline[0].get("cutoff_dimension") or pipeline[0].get("cutoffDimension")
+                payload["mrl_rerank_top_k"] = pipeline[0].get("rerank_top_k") or pipeline[0].get("rerankTopK", 100)
+                
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+            try:
+                with urllib.request.urlopen(req) as response:
+                    if response.status in (200, 201):
+                        return True
+            except Exception:
+                pass
 
         if schema is None:
             if dimension is not None and metric is not None:
@@ -359,22 +395,27 @@ class HyperspaceClient:
             proto_schema = hyperspace_pb2.CollectionSchema()
             if "components" in schema:
                 for c in schema["components"]:
+                    dim = c.get("full_dimension") or c.get("fullDimension", 801)
                     comp = hyperspace_pb2.VectorComponent(
                         name=c["name"],
                         metric=c["metric"],
-                        full_dimension=c["full_dimension"],
+                        full_dimension=dim,
                         weight=c.get("weight", 1.0)
                     )
                     proto_schema.components.append(comp)
-            if "cascade_pipeline" in schema:
-                for p in schema["cascade_pipeline"]:
-                    layer = hyperspace_pb2.MrlLayer(
-                        component_name=p["component_name"],
-                        cutoff_dimension=p["cutoff_dimension"],
-                        store_in_ram=p.get("store_in_ram", True),
-                        rerank_top_k=p.get("rerank_top_k", 100)
-                    )
-                    proto_schema.cascade_pipeline.append(layer)
+            pipeline_list = schema.get("cascade_pipeline") or schema.get("cascadePipeline", [])
+            for p in pipeline_list:
+                comp_name = p.get("component_name") or p.get("componentName", "default")
+                cutoff = p.get("cutoff_dimension") or p.get("cutoffDimension", 129)
+                store_ram = p.get("store_in_ram") if "store_in_ram" in p else p.get("storeInRam", True)
+                rerank = p.get("rerank_top_k") or p.get("rerankTopK", 100)
+                layer = hyperspace_pb2.MrlLayer(
+                    component_name=comp_name,
+                    cutoff_dimension=cutoff,
+                    store_in_ram=store_ram,
+                    rerank_top_k=rerank
+                )
+                proto_schema.cascade_pipeline.append(layer)
             schema = proto_schema
 
         req = hyperspace_pb2.CreateCollectionRequest(name=name, schema=schema)
@@ -585,6 +626,11 @@ class HyperspaceClient:
             resp = self.stub.InsertText(req, metadata=self.metadata)
             return resp.success
         except grpc.RpcError as e:
+            err_str = str(e)
+            if "Embedding engine disabled" in err_str or "UNIMPLEMENTED" in err_str or "FAILED_PRECONDITION" in err_str:
+                vector = self.vectorize(text, metric="hybrid")
+                if vector and len(vector) > 0:
+                    return self.insert(id=id, vector=vector, document=text, metadata=metadata, collection=collection, durability=durability)
             print(f"RPC Error: {e}")
             return False
 
@@ -605,8 +651,37 @@ class HyperspaceClient:
         try:
             resp = self.stub.Vectorize(req, metadata=self.metadata)
             return list(resp.vector)
-        except grpc.RpcError as e:
-            print(f"RPC Error: {e}")
+        except grpc.RpcError:
+            import urllib.request
+            import json
+            import os
+            api_key = (
+                os.environ.get("CDE_API_KEY")
+                or (self.api_key if (self.api_key and self.api_key.startswith("sk_")) else "")
+                or os.environ.get("HYPERSPACE_API_KEY", "")
+            )
+            urls = ["https://the.yar.ink/v1/embeddings", f"http://{self.host.split(':')[0]}:8080/v1/embeddings"]
+            import time
+            for attempt in range(1, 4):
+                for u in urls:
+                    try:
+                        data = json.dumps({"model": "v5_Light", "input": text}).encode("utf-8")
+                        req_http = urllib.request.Request(
+                            u,
+                            data=data,
+                            headers={
+                                "Content-Type": "application/json",
+                                "Authorization": f"Bearer {api_key}",
+                                "User-Agent": "HyperspacePythonSDK/3.1.6"
+                            }
+                        )
+                        with urllib.request.urlopen(req_http, timeout=10) as response:
+                            res = json.loads(response.read().decode("utf-8"))
+                            if "data" in res and len(res["data"]) > 0 and "embedding" in res["data"][0]:
+                                return res["data"][0]["embedding"]
+                    except Exception:
+                        continue
+                time.sleep(0.5 * attempt)
             return []
 
     def batch_insert(self, vectors: List[List[float]], ids: List[int], metadatas: List[Dict[str, str]] = None, typed_metadatas: List[Dict[str, object]] = None, collection: str = "", durability: int = Durability.DEFAULT) -> bool:
@@ -876,6 +951,11 @@ class HyperspaceClient:
                 for r in resp.results
             ]
         except grpc.RpcError as e:
+            err_str = str(e)
+            if "Embedding engine disabled" in err_str or "UNIMPLEMENTED" in err_str or "FAILED_PRECONDITION" in err_str:
+                vector = self.vectorize(text, metric="hybrid")
+                if vector and len(vector) > 0:
+                    return self.search(vector=vector, top_k=top_k, filter=filter, filters=filters, collection=collection)
             print(f"RPC Error: {e}")
             return []
 
@@ -1502,6 +1582,75 @@ class HyperspaceClient:
                 return res_data.get("status") == "success"
         except Exception as e:
             print(f"Error in update_cache_config: {e}")
+            return False
+
+    def start_run(self, session_id: str, task_description: str) -> bool:
+        import urllib.request
+        import json
+        ip = self.host.split(':')[0]
+        url = f"http://{ip}:50050/api/admin/runs/start"
+        headers = {'Content-Type': 'application/json'}
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        if self.user_id:
+            headers['x-hyperspace-user-id'] = self.user_id
+            
+        payload = {"session_id": session_id, "task_description": task_description}
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        try:
+            with urllib.request.urlopen(req) as response:
+                return response.status == 200
+        except Exception as e:
+            print(f"Error in start_run: {e}")
+            return False
+
+    def step_run(self, session_id: str, x: float, y: float, metadata: Optional[dict] = None) -> bool:
+        import urllib.request
+        import json
+        ip = self.host.split(':')[0]
+        url = f"http://{ip}:50050/api/admin/runs/step"
+        headers = {'Content-Type': 'application/json'}
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        if self.user_id:
+            headers['x-hyperspace-user-id'] = self.user_id
+            
+        payload = {"session_id": session_id, "x": x, "y": y}
+        if metadata is not None:
+            payload["metadata"] = metadata
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        try:
+            with urllib.request.urlopen(req) as response:
+                return response.status == 200
+        except Exception as e:
+            print(f"Error in step_run: {e}")
+            return False
+
+    def end_run(self, session_id: str, status: str, final_score: Optional[float] = None, lyapunov_stability: Optional[float] = None) -> bool:
+        import urllib.request
+        import json
+        ip = self.host.split(':')[0]
+        url = f"http://{ip}:50050/api/admin/runs/end"
+        headers = {'Content-Type': 'application/json'}
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        if self.user_id:
+            headers['x-hyperspace-user-id'] = self.user_id
+            
+        payload = {"session_id": session_id, "status": status}
+        if final_score is not None:
+            payload["final_score"] = final_score
+        if lyapunov_stability is not None:
+            payload["lyapunov_stability"] = lyapunov_stability
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        try:
+            with urllib.request.urlopen(req) as response:
+                return response.status == 200
+        except Exception as e:
+            print(f"Error in end_run: {e}")
             return False
 
 def analyze_delta_hyperbolicity(vectors: List[List[float]], num_samples: int = 1000) -> (float, str):

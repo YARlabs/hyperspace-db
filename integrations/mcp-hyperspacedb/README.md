@@ -46,6 +46,23 @@ npx mcp-hyperspacedb
 
 Add the following to your MCP configuration file (e.g., `claude_desktop_config.json` or Cursor settings):
 
+#### ☁️ YAR.INK Cloud SaaS Connection (Recommended)
+```json
+{
+  "mcpServers": {
+    "hyperspacedb": {
+      "command": "npx",
+      "args": ["-y", "mcp-hyperspacedb"],
+      "env": {
+        "HYPERSPACE_HOST": "the.yar.ink",
+        "HYPERSPACE_API_KEY": "sk_YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+#### 🏠 Local / Self-Hosted Instance
 ```json
 {
   "mcpServers": {
@@ -62,6 +79,13 @@ Add the following to your MCP configuration file (e.g., `claude_desktop_config.j
 ```
 
 ---
+
+## 🧠 Agent Memory & Hyperbolic Hierarchy
+HyperspaceDB operates on a hybrid $H^{33} \times \mathbb{R}^{768}$ vector geometry native space. When using **Agent Memory**, LLM agents can query and manipulate cognitive structures via:
+- **`hyperspace_get_concept_parents`**: Retrieve parent hypernym concepts in Lorentz space ($H^{33}$).
+- **`hyperspace_get_subsumption_tree`**: Trace full taxonomic subsumption trees starting from any concept ID.
+- **`hyperspace_analyze_thought_stability`**: Check Chain-of-Thought (CoT) convergence using Lyapunov exponents to detect hallucinations.
+- **`hyperspace_search_text`**: Natural language memory lookup with 96D MRL RAM HNSW scan + 801D Disk payload rerank.
 
 ## 🧩 Available Tools
 

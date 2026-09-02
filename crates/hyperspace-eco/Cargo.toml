@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-eco"
-version = "3.1.1"
+version = "3.1.4"
 edition = "2021"
 
 [dependencies]

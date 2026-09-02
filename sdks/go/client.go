@@ -77,6 +77,10 @@ func (c *HyperspaceClient) withContext(ctx context.Context) context.Context {
 }
 
 func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, schema *pb.CollectionSchema, encryptionKey string, noiseSigma float64) error {
+	return c.CreateCollectionWithQuantization(ctx, name, schema, encryptionKey, noiseSigma, "")
+}
+
+func (c *HyperspaceClient) CreateCollectionWithQuantization(ctx context.Context, name string, schema *pb.CollectionSchema, encryptionKey string, noiseSigma float64, quantization string) error {
 	metric := "l2"
 	if len(schema.Components) > 0 {
 		metric = schema.Components[0].Metric

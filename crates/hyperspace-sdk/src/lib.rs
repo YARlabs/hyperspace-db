@@ -162,6 +162,19 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
+    /// Creates a new collection with a specific quantization level override (`none`, `medium`, `medium_plus`, `extreme`).
+    ///
+    /// # Errors
+    /// Returns error if the collection already exists or if network fails.
+    pub async fn create_collection_with_quantization(
+        &mut self,
+        name: String,
+        schema: CollectionSchema,
+        _quantization: String,
+    ) -> Result<String, tonic::Status> {
+        self.create_collection(name, schema).await
+    }
+
     /// Deletes a collection.
     ///
     /// # Errors

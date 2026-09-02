@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: hyperspacedb
-Version: 3.1.6
+Version: 3.1.8
 Summary: Fastest Hyperbolic Vector DB Client
 Author: YARlabs
 Keywords: vector-database,ann,grpc,embeddings,hyperspace
@@ -77,7 +77,8 @@ client.create_collection(
             {"name": "primary", "metric": "cosine", "full_dimension": 3, "weight": 1.0}
         ],
         "cascade_pipeline": []
-    }
+    },
+    quantization="medium_plus" # 'none', 'medium', 'medium_plus', 'turbo', or 'extreme'
 )
 
 # id is now the first argument

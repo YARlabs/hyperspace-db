@@ -22,7 +22,7 @@ HyperspaceClient::HyperspaceClient(const std::string& endpoint, const std::strin
     stub_ = Database::NewStub(channel);
 }
 
-bool HyperspaceClient::CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema) {
+bool HyperspaceClient::CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization) {
     ::hyperspace::CreateCollectionRequest request;
     request.set_name(name);
     *request.mutable_schema() = schema;
@@ -31,6 +31,9 @@ bool HyperspaceClient::CreateCollection(const std::string& name, const ::hypersp
     ClientContext context;
     if (!app_id_.empty()) {
         context.AddMetadata("x-api-key", app_id_);
+    }
+    if (!quantization.empty()) {
+        context.AddMetadata("x-quantization-level", quantization);
     }
 
     Status status = stub_->CreateCollection(&context, request, &response);
@@ -995,7 +998,7 @@ std::vector<::hyperspace::Filter> HyperspaceClient::encrypt_filters(const std::v
     return res;
 }
 
-bool HyperspaceClient::CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key, double noise_sigma) {
+bool HyperspaceClient::CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key, double noise_sigma, const std::string& quantization) {
     std::string metric = "l2";
     if (schema.components_size() > 0) {
         metric = schema.components(0).metric();
@@ -1003,7 +1006,7 @@ bool HyperspaceClient::CreateCollectionSecure(const std::string& name, const ::h
     if (!encryption_key.empty()) {
         RegisterCollectionKey(name, encryption_key, metric, noise_sigma, &schema);
     }
-    return CreateCollection(name, schema);
+    return CreateCollection(name, schema, quantization);
 }
 
 } // namespace hyperspace

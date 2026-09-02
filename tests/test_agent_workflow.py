@@ -55,67 +55,70 @@ def main():
     signal.signal(signal.SIGINT, lambda sig, frame: (cleanup(), sys.exit(1)))
     signal.signal(signal.SIGTERM, lambda sig, frame: (cleanup(), sys.exit(1)))
 
-    try:
-        # Clean up old database directories to prevent replay/version conflicts
-        import shutil
-        for folder in ["default_admin_agent_cognitive_memories", "default_admin_agent_cognitive_memories_129"]:
-            path = os.path.join(DB_DIR, "data", folder)
-            if os.path.exists(path):
-                print(f"🧹 Removing old database collection folder: {path}")
-                try:
-                    shutil.rmtree(path)
-                except Exception as e:
-                    print(f"⚠️ Failed to remove {path}: {e}")
+    import argparse
+    parser = argparse.ArgumentParser(description="Test Agent Workflow")
+    parser.add_argument("--mode", choices=["local", "cloud"], default="local", help="Execution mode (local or cloud)")
+    parser.add_argument("--api-key", default=os.getenv("HYPERSPACE_API_KEY"), help="API Key for YAR.INK cloud")
+    parser.add_argument("--host", default="the.yar.ink", help="Cloud HyperspaceDB host")
+    args = parser.parse_args()
 
-        # 1. Start CDE Inference Service locally on port 8080
-        print("🚀 Starting CDE Inference Service...")
-        cde_env = os.environ.copy()
-        cde_proc = subprocess.Popen(
-            ["./target/debug/cde-service", "serve", "--port", "8080", "--config", "configs/default.json"],
-            cwd=CDE_DIR,
-            env=cde_env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        processes.append(cde_proc)
+    api_key = args.api_key or "sk_lhyGkxjD25eZUaeJokRTTmk_i69YFc-EJNTv07em2Yg"
+
+    try:
+        if args.mode == "local":
+            # Clean up old database directories to prevent replay/version conflicts
+            import shutil
+            for folder in ["default_admin_agent_cognitive_memories", "default_admin_agent_cognitive_memories_129"]:
+                path = os.path.join(DB_DIR, "data", folder)
+                if os.path.exists(path):
+                    print(f"🧹 Removing old database collection folder: {path}")
+                    try:
+                        shutil.rmtree(path)
+                    except Exception as e:
+                        print(f"⚠️ Failed to remove {path}: {e}")
+
+            # Start HyperspaceDB Server locally on port 50051 (gRPC) / 50050 (HTTP)
+            print("🚀 Starting HyperspaceDB Server with YarInk Hybrid 129D (MRL) and Medium Quantization...")
+            db_env = os.environ.copy()
+            db_env["HYPERSPACE_EMBED"] = "true"
+            
+            # Disable unused embedding providers to prevent heavy HF model downloads
+            db_env["HS_EMBED_L2_PROVIDER"] = "disabled"
+            db_env["HS_EMBED_COSINE_PROVIDER"] = "disabled"
+            db_env["HS_EMBED_POINCARE_PROVIDER"] = "disabled"
+            db_env["HS_EMBED_LORENTZ_PROVIDER"] = "disabled"
+            
+            # Configure hybrid geometry provider to use CLOUD model directly
+            db_env["HS_EMBED_HYBRID_PROVIDER"] = "yarink"
+            db_env["HS_EMBED_HYBRID_API_BASE"] = "https://the.yar.ink/v1/embeddings"
+            db_env["HS_EMBED_HYBRID_EMBED_MODEL"] = "v5_Light"
+            db_env["HS_EMBED_HYBRID_DIM"] = "801"  # Embedder outputs full 801D vector
+            db_env["HS_EMBED_HYBRID_API_KEY"] = api_key
+            db_env["HS_QUANTIZATION_LEVEL"] = "medium"  # Enable AsymmetricHybrid801 quantization mode
+            db_env["HYPERSPACE_API_KEY"] = "I_LOVE_HYPERSPACEDB"
+            
+            db_proc = subprocess.Popen(
+                ["./target/release/hyperspace-server"],
+                cwd=DB_DIR,
+                env=db_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            processes.append(db_proc)
+            
+            # Give server some time to spin up (and bind port 50051)
+            print("⏳ Waiting for server to initialize (8 seconds)...")
+            time.sleep(8)
         
-        # 2. Start HyperspaceDB Server locally on port 50051 (gRPC) / 50050 (HTTP)
-        print("🚀 Starting HyperspaceDB Server with YarInk Hybrid 129D (MRL) and Medium Quantization...")
-        db_env = os.environ.copy()
-        db_env["HYPERSPACE_EMBED"] = "true"
-        
-        # Disable unused embedding providers to prevent heavy HF model downloads
-        db_env["HS_EMBED_L2_PROVIDER"] = "disabled"
-        db_env["HS_EMBED_COSINE_PROVIDER"] = "disabled"
-        db_env["HS_EMBED_POINCARE_PROVIDER"] = "disabled"
-        db_env["HS_EMBED_LORENTZ_PROVIDER"] = "disabled"
-        
-        # Configure hybrid geometry provider to use our local CDE/yarink API
-        db_env["HS_EMBED_HYBRID_PROVIDER"] = "yarink"
-        db_env["HS_EMBED_HYBRID_API_BASE"] = "http://localhost:8080/v1/embeddings"
-        db_env["HS_EMBED_HYBRID_EMBED_MODEL"] = "v5_Light"
-        db_env["HS_EMBED_HYBRID_DIM"] = "801"  # Embedder outputs full 801D vector
-        db_env["HS_QUANTIZATION_LEVEL"] = "medium"  # Enable AsymmetricHybrid801 quantization mode
-        db_env["HYPERSPACE_API_KEY"] = "I_LOVE_HYPERSPACEDB"
-        
-        db_proc = subprocess.Popen(
-            ["./target/release/hyperspace-server"],
-            cwd=DB_DIR,
-            env=db_env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        processes.append(db_proc)
-        
-        # Give servers some time to spin up (and bind port 50051)
-        print("⏳ Waiting for servers to initialize (12 seconds)...")
-        time.sleep(12)
-        
-        # 3. Launch MCP Server
-        print("🚀 Launching MCP Server via node...")
+        # Launch MCP Server
+        print(f"🚀 Launching MCP Server via node (Mode: {args.mode})...")
         mcp_env = os.environ.copy()
-        mcp_env["HYPERSPACE_HOST"] = "127.0.0.1:50051"
-        mcp_env["HYPERSPACE_API_KEY"] = "I_LOVE_HYPERSPACEDB"
+        if args.mode == "cloud":
+            mcp_env["HYPERSPACE_HOST"] = args.host
+            mcp_env["HYPERSPACE_API_KEY"] = api_key
+        else:
+            mcp_env["HYPERSPACE_HOST"] = "127.0.0.1:50051"
+            mcp_env["HYPERSPACE_API_KEY"] = "I_LOVE_HYPERSPACEDB"
         
         mcp_proc = subprocess.Popen(
             ["node", "dist/index.js"],

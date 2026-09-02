@@ -169,21 +169,47 @@ export function localEntropy(candidate: number[], neighbors: number[][], c: numb
     return 1.0 - Math.exp(-meanDeviation);
 }
 
+/** Computes hybrid distance (Lorentz H³² over 0..33 + Euclidean over 33..801). */
+export function hybridDistance(u: number[], v: number[]): number {
+    if (u.length >= 801 && v.length >= 801) {
+        let mink = -u[0] * v[0];
+        for (let i = 1; i < 33; i++) mink += u[i] * v[i];
+        const lorDist = Math.acosh(Math.max(1.0, -mink));
+
+        let eucSq = 0.0;
+        for (let i = 33; i < u.length; i++) {
+            const diff = u[i] - v[i];
+            eucSq += diff * diff;
+        }
+        return lorDist + Math.sqrt(eucSq);
+    } else {
+        let sumSq = 0.0;
+        for (let i = 0; i < u.length; i++) {
+            const diff = u[i] - v[i];
+            sumSq += diff * diff;
+        }
+        return Math.sqrt(sumSq);
+    }
+}
+
 /**
- * Evaluates if a trajectory of vectors (e.g. Chain of Thought) converges to an attractor.
- * Calculates the average energy derivative (Lyapunov function derivative).
- * Negative values indicate convergence (stable), positive indicate divergence (chaos/hallucination).
+ * Evaluates if a trajectory of vectors (e.g. Chain of Thought) converges toward a solution goal attractor.
+ * Negative values indicate distance contraction (stable convergence), positive indicate goal divergence (hallucination).
  */
 export function lyapunovConvergence(trajectory: number[][], c: number = 1.0): number {
     if (trajectory.length < 3) throw new Error("Need at least 3 points");
-    const attractor = frechetMean(trajectory, c, 32, 1e-6);
-    let vDiffSum = 0.0;
-    for (let i = 0; i < trajectory.length - 1; i++) {
-        const vt0 = norm(logMap(attractor, trajectory[i], c));
-        const vt1 = norm(logMap(attractor, trajectory[i + 1], c));
-        vDiffSum += (vt1 - vt0);
+    const goal = trajectory[trajectory.length - 1];
+    let lyapSum = 0.0;
+    let count = 0;
+    for (let i = 0; i < trajectory.length - 2; i++) {
+        const d0 = hybridDistance(trajectory[i], goal);
+        const d1 = hybridDistance(trajectory[i+1], goal);
+        if (d0 > 1e-12) {
+            lyapSum += (d1 - d0) / d0;
+            count++;
+        }
     }
-    return vDiffSum / (trajectory.length - 1);
+    return count > 0 ? lyapSum / count : 0.0;
 }
 
 /**

@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v3.1.3** | **The World's First Schema-Driven Spatial AI Engine.**
+**v3.1.4** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -837,23 +837,54 @@ HyperspaceDB comes with advanced security controls out-of-the-box, ensuring comp
 
 HyperspaceDB is ready for the modern AI stack with official high-level integrations:
 
-| Integration | Language | status | Install |
+| Integration | Language | Status | Install |
 | --- | --- | --- | --- |
+| 🧠 **Hyperspace Memory (Mem0 Drop-In)** | Python | ✅ v3 | [pip install hyperspace-memory](https://pypi.org/project/hyperspace-memory/) |
+| 🧠 **Hyperspace Memory (Mem0 Drop-In)** | TS/JS | ✅ v3 | [npm install hyperspace-memory](https://www.npmjs.com/package/hyperspace-memory) |
 | 🦜 **LangChain** | Python | ✅ v3 | [pip install langchain-hyperspace](https://pypi.org/project/langchain-hyperspace/) |
 | 🦜 **LangChain** | TS/JS | ✅ v3 | [npm install langchain-hyperspace](https://www.npmjs.com/package/langchain-hyperspace) |
 | 🦙 **LlamaIndex** | Python | ✅ v3 | [pip install llama-index-vector-stores-hyperspace](https://pypi.org/project/llama-index-vector-stores-hyperspace/) |
 | 🦙 **LlamaIndex** | TS/JS | ✅ v3 | [npm install llamaindex-hyperspace](https://www.npmjs.com/package/llamaindex-hyperspace) |
 | 🔗 **n8n** | No-Code | ✅ v3 | [Community Node: n8n-nodes-hyperspacedb](https://www.npmjs.com/package/n8n-nodes-hyperspacedb) |
-| 🤖 **AI Agent Skills** | Any | ✅ v3.1.2 | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) |
+| 🤖 **AI Agent Skills** | Any | ✅ v3 | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) |
 
 ---
 
 ## 🛠️ Model Context Protocol (MCP)
 
-Connect HyperspaceDB directly to **Claude Desktop**, **Cursor**, or any MCP-compliant agent to give them a high-performance spatial memory.
+Connect HyperspaceDB directly to **Claude Desktop**, **Cursor**, **Windsurf**, **Antigravity**, or any MCP-compliant agent to give them persistent cognitive spatial memory.
+
+### 🧠 1. Zero-Code Cognitive Agent Memory (`mcp-hyperspace-memory`)
+
+Drop-in cognitive agent memory server with **8 specialized memory tools** (`memory_remember`, `memory_recall`, `memory_forget`, `memory_update`, `memory_list_sessions`, `memory_explore_hierarchy`, etc.):
 
 ```bash
-# Start MCP server via npx
+# Start Memory MCP server via npx
+npx mcp-hyperspace-memory@latest
+```
+
+**Cursor / Claude Desktop Config:**
+```json
+{
+  "mcpServers": {
+    "hyperspace-memory": {
+      "command": "npx",
+      "args": ["-y", "mcp-hyperspace-memory@latest"],
+      "env": {
+        "HYPERSPACE_API_KEY": "YOUR_API_KEY",
+        "MEMORY_COLLECTION": "agent_memory"
+      }
+    }
+  }
+}
+```
+
+### ⚡ 2. Full Vector Database & Graph MCP Server (`mcp-hyperspacedb`)
+
+Complete database administration, graph traversal, and cognitive analytics:
+
+```bash
+# Start Full Database MCP server via npx
 npx mcp-hyperspacedb@latest
 ```
 
@@ -869,7 +900,7 @@ npx mcp-hyperspacedb@latest
 
 ---
 
-## 📦 SDKs (v3.0.x Milestone)
+## 📦 SDKs (v3.x Milestone)
 
 Official 1st-party drivers with full **Functional Parity**, Delta Sync, and Cognitive Math:
 
@@ -882,7 +913,7 @@ Official 1st-party drivers with full **Functional Parity**, Delta Sync, and Cogn
 | 🎯 **Dart/Flutter** | [hyperspacedb: ^3.1.2](https://pub.dev/packages/hyperspacedb) | ✅ v3.* |
 | 🐹 **Go** | `sdks/go` | ✅ v3.* |
 | 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v3.* |
-| 🧠 **AI Agent Skills** | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) | ✅ v3.1.2 |
+| 🧠 **AI Agent Skills** | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) | ✅ v3.* |
 
 > 🧠 **AI Agent Skills** (`hyperspacedb-skills`) are structured `SKILL.md` files that teach Cursor, Claude Code, Windsurf, Antigravity, and custom agents how to correctly use HyperspaceDB — covering core CRUD, graph traversal, cognitive AI (Lyapunov/Koopman), DePIN node economics, and the full 30+ MCP tool reference. Install once, all your agents understand HyperspaceDB automatically.
 

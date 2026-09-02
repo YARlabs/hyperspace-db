@@ -33,6 +33,24 @@ impl CollectionEcoSchema {
                     (dim * 4 + 4) as u64
                 }
             }
+            QuantizationMode::AsymmetricHybridLowBit => {
+                if dim > 33 {
+                    let euc_dim = dim - 33;
+                    let num_blocks = (euc_dim + 15) / 16;
+                    (33 * 4 + 4 + num_blocks * 12) as u64
+                } else {
+                    (dim * 4 + 4) as u64
+                }
+            }
+            QuantizationMode::ScalarI4 => {
+                let block_size = 16;
+                let num_blocks = (dim + 15) / 16;
+                (num_blocks * (block_size / 2 + 4) + 4) as u64
+            }
+            QuantizationMode::Turbo => {
+                let tail_bytes = dim.div_ceil(2);
+                (tail_bytes + 8) as u64
+            }
             QuantizationMode::None => {
                 let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32").is_ok_and(|v| {
                     matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on")

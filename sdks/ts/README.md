@@ -42,10 +42,10 @@ async function main() {
   await client.deleteCollection(collection).catch(() => {});
   await client.createCollection(collection, {
     components: [
-      { name: "primary", metric: "cosine", full_dimension: 3, weight: 1.0 }
+      { name: "primary", metric: "cosine", fullDimension: 3, weight: 1.0 }
     ],
-    cascade_pipeline: []
-  });
+    cascadePipeline: []
+  }, '', 0.02, 'medium_plus');
 
   await client.insert(1, [0.1, 0.2, 0.3], { source: "demo" }, collection);
   await client.insert(2, [0.2, 0.1, 0.4], { source: "demo" }, collection);

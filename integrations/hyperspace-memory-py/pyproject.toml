@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hyperspace-memory"
+version = "3.1.8"
+description = "Drop-in Mem0, Zep, and MemGPT replacement powered by HyperspaceDB native memory engine with 1-bit ADC and Lorentz hyperbolic spaces"
+readme = "README.md"
+authors = [
+  { name = "YARlabs", email = "info@yar.ink" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+  "hyperspacedb>=3.1.6"
+]
+keywords = ["mem0", "memory", "ai-memory", "agent-memory", "hyperspacedb", "vectordb", "rag", "langchain", "llamaindex"]
+
+[project.urls]
+Homepage = "https://yar.ink"
+Documentation = "https://yar.ink/docs/hyperspacedb"
+Repository = "https://github.com/YARlabs/hyperspace-db"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,0 +1,33 @@
+{
+  "name": "hyperspace-memory",
+  "version": "3.1.8",
+  "description": "Drop-in Mem0, Zep, and MemGPT replacement in TypeScript powered by HyperspaceDB native memory engine with 1-bit ADC and Lorentz hyperbolic spaces",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "node dist/test_memory.js"
+  },
+  "keywords": [
+    "mem0",
+    "memory",
+    "ai-memory",
+    "agent-memory",
+    "hyperspacedb",
+    "vectordb",
+    "rag",
+    "langchain",
+    "llamaindex"
+  ],
+  "author": "YARlabs",
+  "license": "MIT",
+  "dependencies": {
+    "hyperspace-sdk-ts": "3.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}

@@ -214,6 +214,26 @@ export class HyperspaceStore extends VectorStore {
         return super.similaritySearch(query, k, filter);
     }
 
+    async similaritySearchWithScore(
+        query: string,
+        k: number,
+        filter?: Record<string, any> & { hybridAlpha?: number; hybridQuery?: string }
+    ): Promise<[Document, number][]> {
+        if (this.useServerSideEmbedding) {
+            const { hybridAlpha, hybridQuery, ...cleanFilter } = filter || {};
+            const filters = this.parseFilters(Object.keys(cleanFilter).length ? cleanFilter : undefined);
+            const results = await this.client.searchText(query, k, this.collectionName, { 
+                filters,
+                hybridAlpha
+            });
+            return this.resultsToDocuments(results);
+        }
+        if (!this.embeddings || typeof (this.embeddings as any).embedQuery !== "function") {
+            throw new Error("Embeddings required when useServerSideEmbedding is false");
+        }
+        return super.similaritySearchWithScore(query, k, filter);
+    }
+
     async maxMarginalRelevanceSearch(
         query: string,
         options: { k: number; fetchK?: number; lambda?: number; filter?: Record<string, any> }

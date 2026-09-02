@@ -212,12 +212,17 @@ class TestHyperspaceVectorStoreIntegration:
         This test requires a running HyperspaceDB server on localhost:50051.
         Skip if server is not available.
         """
+        import os
+        api_key = os.environ.get("HYPERSPACE_API_KEY", "I_LOVE_HYPERSPACEDB")
+        if api_key.startswith("sk_"):
+            api_key = "I_LOVE_HYPERSPACEDB"
         try:
             vectorstore = HyperspaceVectorStore(
                 host="localhost",
                 port=50051,
                 collection_name="integration_test",
                 embedding_function=mock_embeddings,
+                api_key=api_key
             )
             
             # Try to add a text

@@ -35,10 +35,11 @@ automatically loads the relevant skill when it detects you're working with Hyper
 | Skill | Description |
 |-------|-------------|
 | [`hyperspacedb-core`](./skills/hyperspacedb-core/SKILL.md) | Collections, insert, search, point operations |
+| [`hyperspacedb-memory`](./skills/hyperspacedb-memory/SKILL.md) | Cognitive memory, Mem0 drop-in SDK & mcp-hyperspace-memory |
 | [`hyperspacedb-graph`](./skills/hyperspacedb-graph/SKILL.md) | Graph traversal, Lorentz hierarchy, concept parents |
 | [`hyperspacedb-cognitive`](./skills/hyperspacedb-cognitive/SKILL.md) | CoT stability, Koopman momentum, trust score |
 | [`hyperspacedb-depin`](./skills/hyperspacedb-depin/SKILL.md) | DePIN nodes, billing, storage economics |
-| [`hyperspacedb-mcp`](./skills/hyperspacedb-mcp/SKILL.md) | MCP server setup and all 30+ tool reference |
+| [`hyperspacedb-mcp`](./skills/hyperspacedb-mcp/SKILL.md) | MCP servers (mcp-hyperspacedb & mcp-hyperspace-memory) |
 
 ## Agent Config Files
 

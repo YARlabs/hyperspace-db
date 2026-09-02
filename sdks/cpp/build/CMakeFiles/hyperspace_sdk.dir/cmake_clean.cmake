@@ -1,4 +1,8 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o"
+  "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.grpc.pb.cc.o.d"
+  "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o"
+  "CMakeFiles/hyperspace_sdk.dir/proto/hyperspace.pb.cc.o.d"
   "CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o"
   "CMakeFiles/hyperspace_sdk.dir/src/client.cpp.o.d"
   "libhyperspace_sdk.a"
