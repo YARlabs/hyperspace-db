@@ -7,13 +7,16 @@ import {
     Square,
     Waves,
     Terminal,
-    ArrowRight
+    ArrowRight,
+    Database,
+    AlertCircle,
+    Sparkles
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { fetchTrajectoryHistory, fetchAgentRuns, fetchAgentRunById } from "@/lib/api"
+import { fetchTrajectoryHistory, fetchAgentRuns, fetchAgentRunById, fetchCollections } from "@/lib/api"
 
 interface TrajectoryPoint {
     id: string;
@@ -54,6 +57,8 @@ interface AgentRun {
 }
 
 export function TrajectoryPage() {
+    const [collections, setCollections] = useState<any[]>([]);
+    const [selectedCollection, setSelectedCollection] = useState<string>("");
     const [allPoints, setAllPoints] = useState<TrajectoryPoint[]>([]);
     const [_ripples, setRipples] = useState<Ripple[]>([]);
     const [visiblePointsCount, setVisiblePointsCount] = useState(0);
@@ -65,9 +70,30 @@ export function TrajectoryPage() {
     const eventSourceRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
+        loadCollections();
         loadRuns();
         fetchHistory();
     }, []);
+
+    const loadCollections = async () => {
+        try {
+            const data = await fetchCollections();
+            const normalized = Array.isArray(data) ? data.map(c => typeof c === 'string' ? { name: c, metric: 'cosine' } : c) : [];
+            setCollections(normalized);
+            const hyperbolicCol = normalized.find(c => {
+                const m = (c.metric || '').toLowerCase();
+                const n = (c.name || '').toLowerCase();
+                return m === 'lorentz' || m === 'poincare' || m === 'hybrid' || n.includes('cognitive') || n.includes('memory');
+            });
+            if (hyperbolicCol) {
+                setSelectedCollection(hyperbolicCol.name);
+            } else if (normalized.length > 0) {
+                setSelectedCollection(normalized[0].name);
+            }
+        } catch (err) {
+            console.error("Failed to load collections", err);
+        }
+    };
 
     const loadRuns = async () => {
         try {
@@ -190,7 +216,7 @@ export function TrajectoryPage() {
             // Draw Poincaré Disk Border
             ctx.beginPath();
             ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0, 243, 255, 0.2)';
+            ctx.strokeStyle = isHyperbolic ? 'rgba(0, 243, 255, 0.25)' : 'rgba(234, 179, 8, 0.3)';
             ctx.lineWidth = 2;
             ctx.stroke();
             
@@ -296,17 +322,64 @@ export function TrajectoryPage() {
 
         const animId = requestAnimationFrame(render);
         return () => cancelAnimationFrame(animId);
-    }, [visiblePoints]);
+    }, [visiblePoints, selectedCollection, collections]);
+
+    const activeColObj = collections.find(c => c.name === selectedCollection);
+    const activeMetric = (activeColObj?.metric || '').toLowerCase();
+    const isHyperbolic = activeMetric === 'lorentz' || activeMetric === 'poincare' || activeMetric === 'hybrid' ||
+        (selectedCollection.toLowerCase().includes('cognitive')) || (selectedCollection.toLowerCase().includes('memory'));
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-20">
-            <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-primary">
-                    <Waves className="h-5 w-5" />
-                    <span className="text-sm font-semibold uppercase tracking-wider">Cognitive Engine</span>
+        <div className="space-y-6 animate-in fade-in duration-700 pb-20">
+            {/* Header Section with Collection Selector & Controls */}
+            <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-primary">
+                        <Waves className="h-5 w-5" />
+                        <span className="text-sm font-semibold uppercase tracking-wider">Cognitive Engine & Geometry Analysis</span>
+                    </div>
+
+                    {/* Collection Selector */}
+                    <div className="flex items-center gap-2">
+                        <Database className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground font-mono">Collection:</span>
+                        <select
+                            value={selectedCollection}
+                            onChange={(e) => setSelectedCollection(e.target.value)}
+                            className="bg-zinc-900 border border-white/10 text-zinc-100 text-xs rounded px-2.5 py-1.5 font-mono focus:outline-none focus:border-cyan-500"
+                        >
+                            {collections.map(c => {
+                                const m = (c.metric || '').toLowerCase();
+                                const isH = m === 'lorentz' || m === 'poincare' || m === 'hybrid';
+                                return (
+                                    <option key={c.name} value={c.name}>
+                                        {c.name} ({c.metric || 'default'}) {isH ? '✨ Hyperbolic' : 'Flat'}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
                 </div>
+
                 <div className="flex justify-between items-center">
-                    <h1 className="text-4xl font-bold tracking-tight">Trajectory Visualizer</h1>
+                    <div>
+                        <h1 className="text-4xl font-bold tracking-tight text-white flex items-center gap-3">
+                            Trajectory Visualizer
+                            {isHyperbolic ? (
+                                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs gap-1 py-0.5">
+                                    <Sparkles className="h-3 w-3" /> Hyperbolic Space ({activeMetric || 'Lorentz'})
+                                </Badge>
+                            ) : (
+                                <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs gap-1 py-0.5">
+                                    <AlertCircle className="h-3 w-3" /> Euclidean Flat Space ({activeMetric || 'Cosine/L2'})
+                                </Badge>
+                            )}
+                        </h1>
+                        <p className="text-muted-foreground text-sm max-w-3xl mt-1">
+                            Observing agent Chain of Thought (CoT) through Klein-Gordon diffusion patterns in Poincaré projection (x&sup2; + y&sup2; &lt; 1).
+                        </p>
+                    </div>
+
                     <div className="flex gap-2">
                         <Button 
                             variant="outline"
@@ -329,9 +402,16 @@ export function TrajectoryPage() {
                         </Button>
                     </div>
                 </div>
-                <p className="text-muted-foreground text-lg max-w-2xl">
-                    Observing agent "Chain of Thought" through Klein-Gordon diffusion patterns in Lorentz space.
-                </p>
+
+                {/* Geometry Warning Notice if Euclidean */}
+                {!isHyperbolic && selectedCollection && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-start gap-3 text-xs text-amber-300">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+                        <div>
+                            <span className="font-semibold">Geometry Warning:</span> Poincaré disk projection represents negatively curved Riemannian space (&kappa; &lt; 0). Collection <code className="font-mono bg-amber-950/60 px-1 py-0.5 rounded">{selectedCollection}</code> uses Euclidean metric (&kappa; = 0). For mathematical coherence, trajectory analysis requires a collection with <strong className="underline">Lorentz</strong>, <strong className="underline">Poincaré</strong>, or <strong className="underline">Hybrid 801D</strong> metric.
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
