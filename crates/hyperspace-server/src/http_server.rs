@@ -106,7 +106,9 @@ async fn validate_api_key(
             key_role = Some(crate::security::UserRole::Admin);
         } else {
             let path = request.uri().path();
-            if (path.starts_with("/api/") || path == "/metrics")
+            if path != "/api/health"
+                && path != "/health"
+                && (path.starts_with("/api/") || path == "/metrics")
                 && !ctx.is_admin
                 && ctx.user_id == "anonymous"
             {
@@ -342,6 +344,7 @@ pub async fn start_http_server(
         .route("/api/collections/{name}/count", post(count_http))
         .route("/api/search/multi", post(search_multi_http))
         .route("/api/health", get(health_check_http))
+        .route("/health", get(health_check_http))
         // P2P Swarm API (Task 3.4) — Gossip peer registry
         .route("/api/swarm/peers", get(get_swarm_peers))
         .route("/api/admin/trajectory/stream", get(stream_trajectory_sse))

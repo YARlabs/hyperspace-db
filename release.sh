@@ -45,14 +45,25 @@ else
 fi
 
 if docker buildx version >/dev/null 2>&1; then
+    echo "🐳 Building & Pushing Full Image (amd64 & arm64)..."
     docker buildx build --platform linux/amd64,linux/arm64 \
+        -f Dockerfile \
         -t glukhota/hyperspace-db:latest \
         -t glukhota/hyperspace-db:$VERSION \
         -t ghcr.io/yarlabs/hyperspace-db:latest \
         -t ghcr.io/yarlabs/hyperspace-db:$VERSION \
         --push .
+
+    echo "⚡ Building & Pushing SaaS Image (AMD64 optimized, no-embed, s3-tiering)..."
+    docker buildx build --platform linux/amd64 \
+        -f Dockerfile.saas \
+        -t glukhota/hyperspace-db:latest-saas \
+        -t glukhota/hyperspace-db:${VERSION}-saas \
+        -t ghcr.io/yarlabs/hyperspace-db:latest-saas \
+        -t ghcr.io/yarlabs/hyperspace-db:${VERSION}-saas \
+        --push .
 else
-    echo "❌ docker buildx not found. Cannot push multi-arch."
+    echo "❌ docker buildx not found. Cannot push images."
     exit 1
 fi
 echo "✅ Docker images pushed."

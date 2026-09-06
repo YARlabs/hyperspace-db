@@ -1,3 +1,4 @@
+use crate::chunk_backend::ChunkBackend;
 use crate::chunk_searcher;
 use crate::meta_router::{CentroidAccumulator, ChunkMeta, MetaRouter};
 use crate::sync::CollectionDigest;
@@ -84,6 +85,7 @@ pub struct CollectionImpl<M: Metric> {
     layout: hyperspace_core::vector::VectorLayout,
     cache: Option<Arc<VectorCache>>,
     write_buffer: Arc<crate::write_buffer::WriteBuffer>,
+    chunk_backend: Arc<dyn ChunkBackend>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -840,6 +842,8 @@ impl<M: Metric> CollectionImpl<M> {
             None
         };
 
+        let chunk_backend = crate::chunk_backend::create_backend(data_dir.clone());
+
         let col = Self {
             name,
             node_id,
@@ -872,6 +876,7 @@ impl<M: Metric> CollectionImpl<M> {
             layout,
             cache,
             write_buffer,
+            chunk_backend,
         };
 
         // FIX (Bottleneck 4): Cache warmup on startup.
@@ -945,6 +950,7 @@ impl<M: Metric> CollectionImpl<M> {
         _reverse_id_map: Arc<DashMap<u32, u32>>,
         flushing_vector_count: Arc<AtomicUsize>,
         dimension: usize,
+        chunk_backend: Arc<dyn ChunkBackend>,
     ) {
         let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
@@ -1086,6 +1092,9 @@ impl<M: Metric> CollectionImpl<M> {
                         });
                         println!("🗺️  MetaRouter: Registered chunk {chunk_name} ({insert_count} vectors)");
                     }
+
+                    // S3/Cloud storage tiering: trigger async upload + cache registration
+                    chunk_backend.on_chunk_created(&chunk_name, &chunk_dir);
 
                     // === MemTable Swap (LSM-Tree Core) ===
                     // Create a fresh empty HNSW index to replace the current MemTable.
@@ -1434,6 +1443,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 self.reverse_id_map.clone(),
                 self.flushing_vector_count.clone(),
                 self.index_link.load().dimension,
+                self.chunk_backend.clone(),
             );
         }
 
@@ -1676,6 +1686,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 self.reverse_id_map.clone(),
                 self.flushing_vector_count.clone(),
                 self.index_link.load().dimension,
+                self.chunk_backend.clone(),
             );
         }
 
@@ -1850,6 +1861,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let filters_owned = (!filters.is_empty()).then(|| filters.clone());
         let complex_filters_owned = (!complex_filters.is_empty()).then(|| complex_filters.to_vec());
         let meta_router_ref = self.meta_router.clone();
+        let chunk_backend_ref = self.chunk_backend.clone();
         let mode_for_search = self.mode;
         let config_for_search = self.config.clone();
         let permit = self
@@ -1868,14 +1880,21 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let index_link_for_cache = index_link.clone();
         if use_blocking {
             // Convert to owned only when entering blocking task
-            let processed_query = processed_query_cow.into_owned();
-            let mut search_params_owned = params.clone();
+            let (query_owned, filters_owned, complex_filters_owned) = (
+                processed_query_cow.into_owned(),
+                filters_owned,
+                complex_filters_owned,
+            );
             let write_buffer_for_search = self.write_buffer.clone();
+            let mut search_params_owned = params.clone();
             let pre_payload = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
+                let processed_query = query_owned;
                 let index = index_link.load();
                 let include_metadata = index.has_nonempty_metadata();
-                let filters_ref = filters_owned.as_ref().unwrap_or(&EMPTY_LEGACY_FILTERS);
+                let filters_ref = filters_owned
+                    .as_ref()
+                    .map_or(&*EMPTY_LEGACY_FILTERS, |f| f);
                 let complex_filters_ref = complex_filters_owned
                     .as_ref()
                     .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
@@ -1893,16 +1912,24 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     &search_params_owned,
                 );
 
-                // === 2. Search cold chunks via MetaRouter (disk mmap) ===
+                // === 2. Search cold chunks via MetaRouter (disk mmap / S3 tiering) ===
                 let probe_k = std::env::var("HS_CHUNK_PROBE_K")
                     .ok()
                     .and_then(|v| v.parse::<usize>().ok())
                     .unwrap_or(3);
                 let routed_chunks = meta_router_ref.route(&processed_query, probe_k);
-                let chunk_dirs: Vec<std::path::PathBuf> = routed_chunks
-                    .iter()
-                    .map(|(_, path, _)| path.clone())
-                    .collect();
+                let mut chunk_dirs: Vec<std::path::PathBuf> = Vec::with_capacity(routed_chunks.len());
+                for (chunk_id, default_path, _) in &routed_chunks {
+                    match chunk_backend_ref.resolve(chunk_id) {
+                        Ok(resolved) => chunk_dirs.push(resolved),
+                        Err(e) => {
+                            eprintln!("⚠️ Failed to resolve chunk {chunk_id} via backend: {e}. Falling back to default path.");
+                            if default_path.exists() {
+                                chunk_dirs.push(default_path.clone());
+                            }
+                        }
+                    }
+                }
 
                 let chunk_results = if chunk_dirs.is_empty() {
                     Vec::new()

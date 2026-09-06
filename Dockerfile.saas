@@ -6,18 +6,15 @@ RUN npm install
 COPY dashboard/ .
 RUN npm run build
 
-# === Stage 2: Rust Builder ===
-# We use Ubuntu 24.04 to get GLIBC 2.39+ (required by newest ORT binaries for __isoc23 symbols)
+# === Stage 2: Rust Builder (AMD64 SaaS Optimized) ===
 FROM ubuntu:24.04 AS builder
 
-# Install build dependencies
+# Install build dependencies (no ONNX runtime or clang++ required)
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     protobuf-compiler \
     cmake \
-    clang \
-    lld \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -35,12 +32,9 @@ RUN rm -f rust-toolchain.toml .cargo/config.toml
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Build Release
-# We use clang++ as linker for better C++ compatibility with 'ort'
-ENV CC=clang
-ENV CXX=clang++
-ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
-RUN cargo build --release --workspace --features "nightly-simd eco-monitor s3-tiering"
+# Build Release: No embed (client provides vectors), s3-tiering enabled, nightly-simd for AMD64 AVX2/AVX-512
+RUN cargo build --release -p hyperspace-server -p hyperspace-cli \
+    --no-default-features --features "nightly-simd s3-tiering eco-monitor"
 
 # Strip binaries to reduce size
 RUN strip target/release/hyperspace-server
@@ -53,13 +47,10 @@ FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     openssl \
-    libstdc++6 \
-    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN useradd -m -u 1001 -U -s /bin/sh -d /app hyperspace
-
 
 WORKDIR /app
 
@@ -76,13 +67,10 @@ USER hyperspace
 ENV RUST_LOG=info
 ENV HS_DATA_DIR=/app/data
 
-# Label the image
 LABEL org.opencontainers.image.source=https://github.com/YARlabs/hyperspace-db
+LABEL profile=saas
 
-# Expose ports
 EXPOSE 50051
 EXPOSE 50050
 
-# Default command
 CMD ["hyperspace-server"]
-

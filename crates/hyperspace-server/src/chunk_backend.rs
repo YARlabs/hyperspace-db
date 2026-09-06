@@ -22,6 +22,8 @@ mod inner {
         fn on_chunk_created(&self, chunk_id: &str, local_path: &Path);
         fn evict(&self, chunk_id: &str) -> Result<(), String>;
         fn name(&self) -> &'static str;
+        fn chunk_count(&self) -> usize;
+        fn local_disk_usage_bytes(&self) -> u64;
     }
 
     pub struct LocalBackend {
@@ -50,6 +52,12 @@ mod inner {
         }
         fn name(&self) -> &'static str {
             "local"
+        }
+        fn chunk_count(&self) -> usize {
+            0
+        }
+        fn local_disk_usage_bytes(&self) -> u64 {
+            0
         }
     }
 
