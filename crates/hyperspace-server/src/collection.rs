@@ -296,6 +296,14 @@ impl<M: Metric> CollectionImpl<M> {
                     dimension * 4 + 4
                 }
             }
+            hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
+                if dimension > 33 {
+                    let euc_dim = dimension - 33;
+                    33 * 4 + 4 + euc_dim.div_ceil(8)
+                } else {
+                    dimension * 4 + 4
+                }
+            }
             hyperspace_core::QuantizationMode::ScalarI4 => {
                 let head_dim = if dimension == 801 && M::name() == "hybrid" {
                     33
@@ -974,6 +982,14 @@ impl<M: Metric> CollectionImpl<M> {
                     dimension * 4 + 4
                 }
             }
+            hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
+                if dimension > 33 {
+                    let euc_dim = dimension - 33;
+                    33 * 4 + 4 + euc_dim.div_ceil(8)
+                } else {
+                    dimension * 4 + 4
+                }
+            }
             hyperspace_core::QuantizationMode::ScalarI4 => {
                 let head_dim = if dimension == 801 && M::name() == "hybrid" {
                     33
@@ -1172,6 +1188,14 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 if dim >= 33 {
                     let euc = dim as u64 - 33;
                     33 * 4 + euc.div_ceil(2) + euc.div_ceil(16) * 4
+                } else {
+                    dim as u64
+                }
+            }
+            hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
+                if dim >= 33 {
+                    let euc = dim as u64 - 33;
+                    33 * 4 + 4 + euc.div_ceil(8)
                 } else {
                     dim as u64
                 }
@@ -1849,9 +1873,20 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 }
             }
         }
-        let rerank_enabled = std::env::var("HS_RERANK_ENABLED")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-            && params.hybrid_query.is_none();
+        let schema_rerank_top_k = self.schema.cascade_pipeline.iter().find_map(|layer| {
+            if layer.rerank_top_k > 0 {
+                Some(layer.rerank_top_k as usize)
+            } else {
+                None
+            }
+        });
+
+        let env_rerank_enabled = std::env::var("HS_RERANK_ENABLED")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+
+        let rerank_enabled =
+            (env_rerank_enabled || schema_rerank_top_k.is_some()) && params.hybrid_query.is_none();
+
         let rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
@@ -1899,7 +1934,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     .as_ref()
                     .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
                 let search_k = if rerank_enabled {
-                    top_k.saturating_mul(rerank_oversample).max(top_k)
+                    let min_k = schema_rerank_top_k.unwrap_or(0);
+                    top_k.saturating_mul(rerank_oversample).max(top_k).max(min_k)
                 } else {
                     top_k
                 };
@@ -1979,21 +2015,34 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
-                    let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
-                    let candidate_vectors: Vec<Vec<f64>> = candidate_ids
-                        .iter()
-                        .map(|id| index.get_vector(*id).coords.clone())
-                        .collect();
-                    let candidate_refs: Vec<&[f64]> =
-                        candidate_vectors.iter().map(Vec::as_slice).collect();
-                    rerank_topk_exact(
-                        metric_tag,
-                        &processed_query,
-                        &candidate_ids,
-                        &candidate_refs,
-                        Some(&layout_owned),
-                        component_weights_owned.as_ref(),
-                    )
+                    if layout_owned.components.len() > 1 {
+                        let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
+                        let candidate_vectors: Vec<Vec<f64>> = candidate_ids
+                            .iter()
+                            .map(|id| index.get_vector(*id).coords.clone())
+                            .collect();
+                        let candidate_refs: Vec<&[f64]> =
+                            candidate_vectors.iter().map(Vec::as_slice).collect();
+                        rerank_topk_exact(
+                            metric_tag,
+                            &processed_query,
+                            &candidate_ids,
+                            &candidate_refs,
+                            Some(&layout_owned),
+                            component_weights_owned.as_ref(),
+                        )
+                    } else {
+                        let mut exact_scores: Vec<(u32, f64)> = results
+                            .iter()
+                            .map(|(id, _)| {
+                                let vec_obj = index.get_vector(*id);
+                                let exact_d = M::distance(&vec_obj.coords, &processed_query);
+                                (*id, exact_d)
+                            })
+                            .collect();
+                        exact_scores.sort_by(|a, b| a.1.total_cmp(&b.1));
+                        exact_scores
+                    }
                 } else {
                     results
                 };
@@ -2253,6 +2302,14 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                             let euc_dim = dimension - 33;
                             let num_blocks = euc_dim.div_ceil(16);
                             33 * 4 + 4 + num_blocks * 12
+                        } else {
+                            dimension * 4 + 4
+                        }
+                    }
+                    hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
+                        if dimension > 33 {
+                            let euc_dim = dimension - 33;
+                            33 * 4 + 4 + euc_dim.div_ceil(8)
                         } else {
                             dimension * 4 + 4
                         }

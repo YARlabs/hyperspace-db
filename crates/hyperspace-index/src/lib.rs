@@ -31,7 +31,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 // Imports
-use hyperspace_core::hybrid::{HybridLowBitQuantizedVector, HybridQuantizedVector, ScalarI4Vector};
+use hyperspace_core::hybrid::{
+    HybridExtremeQuantizedVector, HybridLowBitQuantizedVector, HybridQuantizedVector,
+    ScalarI4Vector,
+};
 use hyperspace_core::vector::{
     BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector,
 };
@@ -1322,6 +1325,26 @@ impl<M: Metric> HnswIndex<M> {
                     d_lor + d_euc
                 }
             }
+            QuantizationMode::AsymmetricHybridExtreme => {
+                assert!(self.dimension == 801, "AsymmetricHybridExtreme quantization mode is only supported for 801-dimensional vectors");
+                let q = HybridExtremeQuantizedVector::from_bytes(bytes);
+                if let Some(dim) = mrl_dim {
+                    let euc_cutoff = dim.saturating_sub(33);
+                    q.distance_mrl(
+                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
+                        euc_cutoff,
+                    )
+                } else {
+                    let d_lor = q.lorentz_distance_to_float(unsafe {
+                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
+                    });
+                    let d_euc = q.euclidean_distance_sq_mrl(
+                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
+                        768,
+                    );
+                    d_lor + d_euc
+                }
+            }
             QuantizationMode::ScalarI4 => {
                 let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
                     33
@@ -1906,6 +1929,25 @@ impl<M: Metric> HnswIndex<M> {
                 }
                 HyperVector::new_unchecked(coords)
             }
+            QuantizationMode::AsymmetricHybridExtreme => {
+                assert!(
+                    self.dimension == 801,
+                    "AsymmetricHybridExtreme requires self.dimension=801"
+                );
+                let q = HybridExtremeQuantizedVector::from_bytes(bytes);
+                let mut coords = vec![0.0; self.dimension];
+                for (coord, &val) in coords[..33].iter_mut().zip(q.lorentz.iter()) {
+                    *coord = f64::from(val);
+                }
+                let scale = f64::from(q.alpha);
+                let euc_dim = self.dimension - 33;
+                for i in 0..euc_dim {
+                    let byte = q.euclidean_bits[i / 8];
+                    let bit = (byte >> (i % 8)) & 1;
+                    coords[33 + i] = if bit == 1 { scale } else { -scale };
+                }
+                HyperVector::new_unchecked(coords)
+            }
             QuantizationMode::ScalarI4 => {
                 let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
                     33
@@ -1999,6 +2041,18 @@ impl<M: Metric> HnswIndex<M> {
                     return Err("AsymmetricHybridLowBit requires dimension 801".into());
                 }
                 let q = HybridLowBitQuantizedVector::from_float(
+                    &q_vec_full,
+                    33,
+                    q_vec_full.coords.len() - 33,
+                );
+                q_bytes = q.as_bytes();
+                0
+            }
+            QuantizationMode::AsymmetricHybridExtreme => {
+                if self.dimension != 801 {
+                    return Err("AsymmetricHybridExtreme requires dimension 801".into());
+                }
+                let q = HybridExtremeQuantizedVector::from_float(
                     &q_vec_full,
                     33,
                     q_vec_full.coords.len() - 33,
@@ -2118,6 +2172,17 @@ impl<M: Metric> HnswIndex<M> {
                     return Err("AsymmetricHybridLowBit requires dimension 801".into());
                 }
                 let q = HybridLowBitQuantizedVector::from_float(
+                    &q_vec_full,
+                    33,
+                    q_vec_full.coords.len() - 33,
+                );
+                self.storage.update(id, &q.as_bytes())?;
+            }
+            QuantizationMode::AsymmetricHybridExtreme => {
+                if self.dimension != 801 {
+                    return Err("AsymmetricHybridExtreme requires dimension 801".into());
+                }
+                let q = HybridExtremeQuantizedVector::from_float(
                     &q_vec_full,
                     33,
                     q_vec_full.coords.len() - 33,

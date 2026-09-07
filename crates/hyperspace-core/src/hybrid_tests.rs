@@ -114,4 +114,37 @@ mod tests {
         let d_euc = q.euclidean_distance_sq_mrl(&v, EUCLIDEAN_DIM);
         assert!(d_euc < 0.01);
     }
+
+    #[test]
+    fn test_extreme_quantization_1bit() {
+        use crate::hybrid::HybridExtremeQuantizedVector;
+        let mut v_coords = vec![0.0f64; 801];
+        v_coords[0] = 2.0; // Lorentz t
+        v_coords[1] = 1.73205;
+        v_coords[33] = 0.5; // Euclidean positive -> bit 1
+        v_coords[34] = -0.25; // Euclidean negative -> bit 0
+
+        let v = HyperVector::new_unchecked(v_coords);
+        let q = HybridExtremeQuantizedVector::from_float(&v, LORENTZ_DIM, EUCLIDEAN_DIM);
+
+        // Verify Lorentz parts are preserved as f32
+        assert!((f64::from(q.lorentz[0]) - 2.0).abs() < 1e-6);
+        assert!((f64::from(q.lorentz[1]) - 1.73205).abs() < 1e-4);
+
+        // Verify Euclidean parts are packed in 1-bit per dim
+        // Bit 0 is 1 (v[33] > 0), Bit 1 is 0 (v[34] <= 0)
+        assert_eq!(q.euclidean_bits[0] & 0x01, 1);
+        assert_eq!((q.euclidean_bits[0] >> 1) & 0x01, 0);
+
+        // Serialization roundtrip
+        let bytes = q.as_bytes();
+        assert_eq!(bytes.len(), 33 * 4 + 4 + 768 / 8); // 132 + 4 + 96 = 232 bytes
+        let q_deq = HybridExtremeQuantizedVector::from_bytes(&bytes);
+        assert_eq!(q_deq.euclidean_bits, q.euclidean_bits);
+        assert_eq!(q_deq.lorentz, q.lorentz);
+
+        // Distance to self Lorentz part should be ~0
+        let d_lor = q.lorentz_distance_to_float(&v);
+        assert!(d_lor < 0.01);
+    }
 }

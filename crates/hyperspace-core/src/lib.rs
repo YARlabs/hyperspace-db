@@ -18,7 +18,7 @@ pub mod hybrid;
 pub mod optim;
 pub mod region;
 pub mod vector;
-pub use hybrid::HybridMetric;
+pub use hybrid::{HybridExtremeQuantizedVector, HybridMetric};
 pub mod wasserstein;
 
 pub use config::GlobalConfig;
@@ -50,6 +50,7 @@ pub enum QuantizationMode {
     Binary,
     AsymmetricHybrid801,
     AsymmetricHybridLowBit,
+    AsymmetricHybridExtreme,
     ScalarI4,
     Turbo,
 }

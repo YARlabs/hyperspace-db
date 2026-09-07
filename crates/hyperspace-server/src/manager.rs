@@ -787,7 +787,13 @@ impl CollectionMetadata {
         let dim = self.dimension();
         match self.quantization.as_str() {
             "none" => hyperspace_core::QuantizationMode::None,
-            "extreme" | "binary" => hyperspace_core::QuantizationMode::Binary,
+            "extreme" | "binary" => {
+                if metric == "hybrid" && dim == 801 {
+                    hyperspace_core::QuantizationMode::AsymmetricHybridExtreme
+                } else {
+                    hyperspace_core::QuantizationMode::Binary
+                }
+            }
             "turbo" | "turboquant" => hyperspace_core::QuantizationMode::Turbo,
             "medium_plus" => {
                 if metric == "hybrid" && dim == 801 {

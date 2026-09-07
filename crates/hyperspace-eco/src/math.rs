@@ -42,6 +42,14 @@ impl CollectionEcoSchema {
                     (dim * 4 + 4) as u64
                 }
             }
+            QuantizationMode::AsymmetricHybridExtreme => {
+                if dim > 33 {
+                    let euc_dim = dim - 33;
+                    (33 * 4 + 4 + (euc_dim + 7) / 8) as u64
+                } else {
+                    (dim * 4 + 4) as u64
+                }
+            }
             QuantizationMode::ScalarI4 => {
                 let block_size = 16;
                 let num_blocks = (dim + 15) / 16;

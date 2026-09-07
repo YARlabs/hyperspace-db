@@ -85,6 +85,14 @@ pub fn search_chunk<M: Metric>(
                 dimension * 4 + 4
             }
         }
+        QuantizationMode::AsymmetricHybridExtreme => {
+            if dimension > 33 {
+                let euc_dim = dimension - 33;
+                33 * 4 + 4 + euc_dim.div_ceil(8)
+            } else {
+                dimension * 4 + 4
+            }
+        }
         QuantizationMode::ScalarI4 => {
             let num_blocks = dimension.div_ceil(16);
             4 + num_blocks * 12

@@ -426,6 +426,114 @@ impl HybridLowBitQuantizedVector {
     }
 }
 
+pub struct HybridExtremeQuantizedVector {
+    pub lorentz: Vec<f32>,
+    pub euclidean_bits: Vec<u8>,
+    pub alpha: f32,
+}
+
+impl HybridExtremeQuantizedVector {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let lorentz_dim = 33;
+        let lorentz_bytes_len = lorentz_dim * 4;
+
+        let mut lorentz = Vec::with_capacity(lorentz_dim);
+        for i in 0..lorentz_dim {
+            let mut buf = [0u8; 4];
+            buf.copy_from_slice(&bytes[i * 4..(i + 1) * 4]);
+            lorentz.push(f32::from_le_bytes(buf));
+        }
+
+        let mut alpha_buf = [0u8; 4];
+        alpha_buf.copy_from_slice(&bytes[lorentz_bytes_len..lorentz_bytes_len + 4]);
+        let alpha = f32::from_le_bytes(alpha_buf);
+
+        let euclidean_bits = bytes[lorentz_bytes_len + 4..].to_vec();
+
+        Self {
+            lorentz,
+            euclidean_bits,
+            alpha,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(33 * 4 + 4 + self.euclidean_bits.len());
+        for &c in &self.lorentz {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.alpha.to_le_bytes());
+        bytes.extend_from_slice(&self.euclidean_bits);
+        bytes
+    }
+
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    pub fn from_float(v: &HyperVector, lorentz_dim: usize, euclidean_dim: usize) -> Self {
+        let mut lorentz = vec![0.0f32; lorentz_dim];
+        for i in 0..lorentz_dim {
+            lorentz[i] = v.coords[i] as f32;
+        }
+
+        let num_bytes = euclidean_dim.div_ceil(8);
+        let mut euclidean_bits = vec![0u8; num_bytes];
+
+        let mut sum_abs = 0.0f64;
+        for i in 0..euclidean_dim {
+            let val = v.coords[lorentz_dim + i];
+            sum_abs += val.abs();
+            if val > 0.0 {
+                euclidean_bits[i / 8] |= 1 << (i % 8);
+            }
+        }
+
+        let alpha = if euclidean_dim > 0 {
+            (sum_abs / (euclidean_dim as f64)) as f32
+        } else {
+            1.0
+        };
+
+        Self {
+            lorentz,
+            euclidean_bits,
+            alpha,
+        }
+    }
+
+    #[inline(always)]
+    pub fn lorentz_distance_to_float(&self, other: &HyperVector) -> f64 {
+        let dim = self.lorentz.len();
+        let mut inner = -f64::from(self.lorentz[0]) * other.coords[0];
+        for i in 1..dim {
+            inner += f64::from(self.lorentz[i]) * other.coords[i];
+        }
+        let arg = (-inner).max(1.0 + 1e-12);
+        arg.acosh()
+    }
+
+    #[inline(always)]
+    pub fn euclidean_distance_sq_mrl(&self, other: &HyperVector, euc_dim: usize) -> f64 {
+        let offset = self.lorentz.len();
+        let scale = f64::from(self.alpha);
+        let mut sum = 0.0;
+
+        for i in 0..euc_dim {
+            let byte = self.euclidean_bits[i / 8];
+            let bit = (byte >> (i % 8)) & 1;
+            let val = if bit == 1 { scale } else { -scale };
+            let diff = val - other.coords[offset + i];
+            sum += diff * diff;
+        }
+        sum
+    }
+
+    #[inline(always)]
+    pub fn distance_mrl(&self, other: &HyperVector, euc_dim: usize) -> f64 {
+        let d_lor = self.lorentz_distance_to_float(other);
+        let d_euc = self.euclidean_distance_sq_mrl(other, euc_dim);
+        d_lor + d_euc
+    }
+}
+
 pub struct ScalarI4Vector {
     pub head: Vec<f32>,
     pub scales: Vec<f32>,
