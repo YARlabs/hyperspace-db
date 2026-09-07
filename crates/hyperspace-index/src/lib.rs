@@ -651,6 +651,9 @@ impl VisitedScratch {
 #[inline]
 fn mark_visited(marks: &mut [u32], generation: u32, id: u32) -> bool {
     let idx = id as usize;
+    if idx >= marks.len() {
+        return false;
+    }
     let slot = &mut marks[idx];
     if *slot == generation {
         false
