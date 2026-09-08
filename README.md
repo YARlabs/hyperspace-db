@@ -874,7 +874,7 @@ npx mcp-hyperspace-memory@latest
 }
 ```
 
-#### Option B: Local DB Instance + Cloud v5 Embedding API Key (Privacy + Cloud AI)
+#### Option B: Local DB Instance + Cloud v5 Embedding API Key (Default Auth)
 Run `glukhota/hyperspace-db:latest` locally on your machine. Your vector graph and memory payloads stay 100% private on `localhost`, while text is vectorized via the state-of-the-art continuous `v5_Embedding_801` model in the cloud:
 
 ```json
@@ -892,6 +892,27 @@ Run `glukhota/hyperspace-db:latest` locally on your machine. Your vector graph a
   }
 }
 ```
+
+#### Option C: Local DB with Custom Password + Cloud v5 Embedding API Key (Two Keys)
+If your local `.env` has a custom security password (`HYPERSPACE_API_KEY=my_local_secret`), provide **two separate keys**:
+```json
+{
+  "mcpServers": {
+    "hyperspace-memory": {
+      "command": "npx",
+      "args": ["-y", "mcp-hyperspace-memory@latest"],
+      "env": {
+        "HYPERSPACE_HOST": "localhost:50051",
+        "HYPERSPACE_API_KEY": "my_local_secret",
+        "CDE_API_KEY": "sk_YOUR_YAR_API_KEY",
+        "MEMORY_COLLECTION": "agent_memory"
+      }
+    }
+  }
+}
+```
+* `HYPERSPACE_API_KEY`: Authenticates to local gRPC database (`localhost:50051`).
+* `CDE_API_KEY` (or `YAR_API_KEY`): Authenticates to cloud `https://the.yar.ink/v1/embeddings` (`v5_Embedding_801`).
 *(Get your `sk_` API key at [yar.ink/dashboard](https://yar.ink/dashboard))*.
 
 ### ⚡ 2. Full Vector Database & Graph MCP Server (`mcp-hyperspacedb`)

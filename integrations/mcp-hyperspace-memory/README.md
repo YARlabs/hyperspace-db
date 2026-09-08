@@ -42,11 +42,46 @@ Get your API key at **[yar.ink/dashboard](https://yar.ink/dashboard)**.
 
 | Variable | Default | Required | Description |
 |:---------|:--------|:--------:|:------------|
-| `HYPERSPACE_API_KEY` | — | ✅ | Your HyperspaceDB SaaS API key |
+| `HYPERSPACE_API_KEY` | — | ✅ | Database API key (`sk_...` for SaaS or your local DB password) |
+| `CDE_API_KEY` / `YAR_API_KEY` | — | — | Cloud API key for `v5_Embedding_801` (used when local DB has a custom password) |
 | `MEMORY_COLLECTION` | `agent_memory` | — | Collection name to store memories in |
-| `HYPERSPACE_HOST` | `the.yar.ink` | — | Override to use a self-hosted instance |
+| `HYPERSPACE_HOST` | `the.yar.ink` | — | Set to `localhost:50051` to run with a self-hosted instance |
 
 ---
+
+## 🔑 Authentication Architecture: How Keys Work
+
+### Scenario 1: Managed Cloud SaaS (`the.yar.ink`)
+```json
+{
+  "HYPERSPACE_API_KEY": "sk_YOUR_YAR_API_KEY",
+  "MEMORY_COLLECTION": "agent_memory"
+}
+```
+A single `sk_` key authenticates both your HyperspaceDB SaaS database storage and the `v5_Embedding_801` vectorizer.
+
+### Scenario 2: Local DB (Default Security) + Cloud v5 Embeddings
+```json
+{
+  "HYPERSPACE_HOST": "localhost:50051",
+  "HYPERSPACE_API_KEY": "sk_YOUR_YAR_API_KEY",
+  "MEMORY_COLLECTION": "agent_memory"
+}
+```
+Because the host is `localhost` and the key starts with `sk_`, the client connects to your local DB with default credentials (`I_LOVE_HYPERSPACEDB`), while forwarding `sk_...` to `https://the.yar.ink/v1/embeddings` for high-dimensional vectorization. **Data stays 100% on your local disk!**
+
+### Scenario 3: Local DB (Custom Password) + Cloud v5 Embeddings (Two Separate Keys)
+If you configured a custom password in your local `.env` (`HYPERSPACE_API_KEY=my_local_secret`), provide **two distinct keys**:
+```json
+{
+  "HYPERSPACE_HOST": "localhost:50051",
+  "HYPERSPACE_API_KEY": "my_local_secret",
+  "CDE_API_KEY": "sk_YOUR_YAR_API_KEY",
+  "MEMORY_COLLECTION": "agent_memory"
+}
+```
+* `HYPERSPACE_API_KEY`: Authenticates to the local gRPC server (`localhost:50051`).
+* `CDE_API_KEY`: Authenticates to the cloud embedding API (`https://the.yar.ink/v1/embeddings`).
 
 ## Available Tools
 
