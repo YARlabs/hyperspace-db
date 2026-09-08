@@ -11,7 +11,7 @@ import { z } from "zod";
 
 const rawHost = process.env.HYPERSPACE_HOST || "localhost:50051";
 const HYPERSPACE_HOST = rawHost.replace(/^https?:\/\//, '').replace(/\/$/, '');
-const HYPERSPACE_API_KEY = process.env.HYPERSPACE_API_KEY || process.env.YAR_API_KEY || "I_LOVE_HYPERSPACEDB";
+const HYPERSPACE_API_KEY = process.env.HYPERSPACE_API_KEY || process.env.YAR_API_KEY || process.env.CDE_API_KEY || "I_LOVE_HYPERSPACEDB";
 
 // Helper for Gromov Delta (Ported from Rust SDK)
 function analyzeDeltaHyperbolicity(vectors: number[][], numSamples: number = 100): { delta: number, recommendation: "lorentz" | "poincare" | "cosine" | "l2" } {

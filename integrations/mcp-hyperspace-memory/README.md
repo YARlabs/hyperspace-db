@@ -76,12 +76,12 @@ If you configured a custom password in your local `.env` (`HYPERSPACE_API_KEY=my
 {
   "HYPERSPACE_HOST": "localhost:50051",
   "HYPERSPACE_API_KEY": "my_local_secret",
-  "CDE_API_KEY": "sk_YOUR_YAR_API_KEY",
+  "YAR_API_KEY": "sk_YOUR_YAR_API_KEY",
   "MEMORY_COLLECTION": "agent_memory"
 }
 ```
 * `HYPERSPACE_API_KEY`: Authenticates to the local gRPC server (`localhost:50051`).
-* `CDE_API_KEY`: Authenticates to the cloud embedding API (`https://the.yar.ink/v1/embeddings`).
+* `YAR_API_KEY`: Authenticates to the cloud embedding API (`https://the.yar.ink/v1/embeddings`).
 
 ## Available Tools
 

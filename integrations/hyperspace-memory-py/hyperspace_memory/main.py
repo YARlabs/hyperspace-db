@@ -22,7 +22,7 @@ class Memory:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         config = config or {}
         self.host = config.get("host") or config.get("vector_store", {}).get("config", {}).get("host") or os.environ.get("HYPERSPACE_HOST") or "the.yar.ink"
-        self.api_key = config.get("api_key") or config.get("vector_store", {}).get("config", {}).get("api_key") or os.environ.get("HYPERSPACE_API_KEY") or "YOUR_YARINK_API_KEY"
+        self.api_key = config.get("api_key") or config.get("vector_store", {}).get("config", {}).get("api_key") or os.environ.get("HYPERSPACE_API_KEY") or os.environ.get("YAR_API_KEY") or os.environ.get("CDE_API_KEY") or "YOUR_YARINK_API_KEY"
         self.collection = config.get("collection_name") or "agent_memories"
         self.quantization = config.get("quantization") or "extreme"
         

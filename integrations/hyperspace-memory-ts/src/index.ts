@@ -47,7 +47,7 @@ export class Memory {
   private quantization: string;
   constructor(config: MemoryConfig = {}) {
     const host = config.host || config.vectorStore?.config?.host || process.env.HYPERSPACE_HOST || "the.yar.ink";
-    const apiKey = config.apiKey || config.vectorStore?.config?.apiKey || process.env.HYPERSPACE_API_KEY || "YOUR_YARINK_API_KEY";
+    const apiKey = config.apiKey || config.vectorStore?.config?.apiKey || process.env.HYPERSPACE_API_KEY || process.env.YAR_API_KEY || process.env.CDE_API_KEY || "YOUR_YARINK_API_KEY";
     this.collection = config.collectionName || "agent_memories";
     this.quantization = config.quantization || "extreme";
 

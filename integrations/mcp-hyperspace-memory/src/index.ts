@@ -13,7 +13,7 @@ import { z } from "zod";
 // SaaS endpoint is the default — no HYPERSPACE_HOST needed for most users.
 const rawHost = process.env.HYPERSPACE_HOST || "the.yar.ink";
 const HYPERSPACE_HOST = rawHost.replace(/^https?:\/\//, "").replace(/\/$/, "");
-const HYPERSPACE_API_KEY = process.env.HYPERSPACE_API_KEY || process.env.YAR_API_KEY || "";
+const HYPERSPACE_API_KEY = process.env.HYPERSPACE_API_KEY || process.env.YAR_API_KEY || process.env.CDE_API_KEY || "";
 
 // MEMORY_COLLECTION: set once in env, agent never needs to pass it per-call.
 // Defaults to "agent_cognitive_memories_129" on SaaS for zero-config experience.

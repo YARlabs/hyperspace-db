@@ -79,7 +79,7 @@ Add the following to your MCP configuration file (e.g., `claude_desktop_config.j
 ```
 
 #### 🔒 Local / Self-Hosted Instance + Cloud v5 Embedding API Key (Two Keys)
-When running a local engine secured with custom password, pass `HYPERSPACE_API_KEY` for the database and `CDE_API_KEY` (or `YAR_API_KEY`) for continuous 801D cloud embeddings:
+When running a local engine secured with custom password, pass `HYPERSPACE_API_KEY` for the database and or `YAR_API_KEY` for continuous 801D cloud embeddings:
 ```json
 {
   "mcpServers": {
@@ -89,7 +89,7 @@ When running a local engine secured with custom password, pass `HYPERSPACE_API_K
       "env": {
         "HYPERSPACE_HOST": "localhost:50051",
         "HYPERSPACE_API_KEY": "my_local_secret",
-        "CDE_API_KEY": "sk_YOUR_YAR_API_KEY"
+        "YAR_API_KEY": "sk_YOUR_YAR_API_KEY"
       }
     }
   }

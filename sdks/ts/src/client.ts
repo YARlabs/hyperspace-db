@@ -966,7 +966,7 @@ export class HyperspaceClient {
                 'https://the.yar.ink/v1/embeddings',
                 `http://${this.host.split(':')[0]}:8080/v1/embeddings`
             ];
-            const apiKey = process.env.CDE_API_KEY || ((this.apiKey && this.apiKey.startsWith('sk_')) ? this.apiKey : '') || process.env.HYPERSPACE_API_KEY || '';
+            const apiKey = process.env.YAR_API_KEY || process.env.CDE_API_KEY || ((this.apiKey && this.apiKey.startsWith('sk_')) ? this.apiKey : '') || process.env.HYPERSPACE_API_KEY || '';
             for (const url of urls) {
                 try {
                     const res = await fetch(url, {

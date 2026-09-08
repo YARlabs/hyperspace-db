@@ -904,7 +904,7 @@ If your local `.env` has a custom security password (`HYPERSPACE_API_KEY=my_loca
       "env": {
         "HYPERSPACE_HOST": "localhost:50051",
         "HYPERSPACE_API_KEY": "my_local_secret",
-        "CDE_API_KEY": "sk_YOUR_YAR_API_KEY",
+        "YAR_API_KEY": "sk_YOUR_YAR_API_KEY",
         "MEMORY_COLLECTION": "agent_memory"
       }
     }
@@ -912,7 +912,7 @@ If your local `.env` has a custom security password (`HYPERSPACE_API_KEY=my_loca
 }
 ```
 * `HYPERSPACE_API_KEY`: Authenticates to local gRPC database (`localhost:50051`).
-* `CDE_API_KEY` (or `YAR_API_KEY`): Authenticates to cloud `https://the.yar.ink/v1/embeddings` (`v5_Embedding_801`).
+* `YAR_API_KEY` (or legacy `CDE_API_KEY`): Authenticates to cloud `https://the.yar.ink/v1/embeddings` (`v5_Embedding_801`).
 *(Get your `sk_` API key at [yar.ink/dashboard](https://yar.ink/dashboard))*.
 
 ### ⚡ 2. Full Vector Database & Graph MCP Server (`mcp-hyperspacedb`)
