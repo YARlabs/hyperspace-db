@@ -6,8 +6,7 @@ RUN npm install
 COPY dashboard/ .
 RUN npm run build
 
-# === Stage 2: Rust Builder ===
-# We use Ubuntu 24.04 to get GLIBC 2.39+ (required by newest ORT binaries for __isoc23 symbols)
+# === Stage 2: Rust Builder (With Embedding Pipeline) ===
 FROM ubuntu:24.04 AS builder
 
 # Install build dependencies
@@ -35,12 +34,11 @@ RUN rm -f rust-toolchain.toml .cargo/config.toml
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Build Release
-# We use clang++ as linker for better C++ compatibility with 'ort'
+# Build Release with local embedding pipeline and ONNX Runtime
 ENV CC=clang
 ENV CXX=clang++
 ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
-RUN cargo build --release --workspace --no-default-features --features "nightly-simd eco-monitor s3-tiering"
+RUN cargo build --release --workspace --features "embed nightly-simd eco-monitor s3-tiering"
 
 # Strip binaries to reduce size
 RUN strip target/release/hyperspace-server
@@ -60,29 +58,17 @@ RUN apt-get update && apt-get install -y \
 # Create a non-root user
 RUN useradd -m -u 1001 -U -s /bin/sh -d /app hyperspace
 
-
 WORKDIR /app
 
 # Copy binaries
 COPY --from=builder /app/target/release/hyperspace-server /usr/local/bin/
 COPY --from=builder /app/target/release/hyperspace-cli /usr/local/bin/
 
-# Create data dir
+# Prepare data directory
 RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
 
-# Switch to non-root user
 USER hyperspace
 
-ENV RUST_LOG=info
-ENV HS_DATA_DIR=/app/data
+EXPOSE 50051 50050
 
-# Label the image
-LABEL org.opencontainers.image.source=https://github.com/YARlabs/hyperspace-db
-
-# Expose ports
-EXPOSE 50051
-EXPOSE 50050
-
-# Default command
 CMD ["hyperspace-server"]
-

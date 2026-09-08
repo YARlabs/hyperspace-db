@@ -45,7 +45,7 @@ else
 fi
 
 if docker buildx version >/dev/null 2>&1; then
-    echo "🐳 Building & Pushing Full Image (amd64 & arm64)..."
+    echo "🐳 Building & Pushing Standard Base Image (amd64 & arm64, no-embed, fast & lightweight)..."
     docker buildx build --platform linux/amd64,linux/arm64 \
         -f Dockerfile \
         -t glukhota/hyperspace-db:latest \
@@ -61,6 +61,15 @@ if docker buildx version >/dev/null 2>&1; then
         -t glukhota/hyperspace-db:${VERSION}-saas \
         -t ghcr.io/yarlabs/hyperspace-db:latest-saas \
         -t ghcr.io/yarlabs/hyperspace-db:${VERSION}-saas \
+        --push .
+
+    echo "🧠 Building & Pushing All-in-One Image with Embedded Pipeline (amd64 & arm64)..."
+    docker buildx build --platform linux/amd64,linux/arm64 \
+        -f Dockerfile.embed \
+        -t glukhota/hyperspace-db:latest-embed \
+        -t glukhota/hyperspace-db:${VERSION}-embed \
+        -t ghcr.io/yarlabs/hyperspace-db:latest-embed \
+        -t ghcr.io/yarlabs/hyperspace-db:${VERSION}-embed \
         --push .
 else
     echo "❌ docker buildx not found. Cannot push images."

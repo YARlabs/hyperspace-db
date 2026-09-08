@@ -765,46 +765,21 @@ The results highlight HyperspaceDB's **Lock-Free ArcSwap Architecture** and opti
 
 ## 🐳 Deployment
 
-### Docker
+### Official Docker Images
 
-HyperspaceDB is available as a lightweight Docker image.
+HyperspaceDB publishes three specialized Docker distribution tags to match different deployment architectures:
 
-```bash
-# Build
-docker build -t hyperspacedb:latest .
+| Image Tag | Embedder | Architecture | Size | Ideal Use Case |
+| :--- | :---: | :---: | :---: | :--- |
+| 🚀 **`glukhota/hyperspace-db:latest`** | ❌ None (Client / API provides vectors) | Multi-Arch (`amd64`, `arm64`) | **~45 MB** | **Default / Recommended**: Ultra-fast, lightweight vector database for production, local dev, edge, and microservices. |
+| 🧠 **`glukhota/hyperspace-db:latest-embed`** | ✅ Built-in (ONNX Runtime / Local Models) | Multi-Arch (`amd64`, `arm64`) | **~650 MB** | **All-in-One**: Self-contained server that vectorizes raw text directly in-database without external APIs or client-side embedding libraries. |
+| ⚡ **`glukhota/hyperspace-db:latest-saas`** | ❌ None (Client / API provides vectors) | `linux/amd64` | **~43 MB** | **Managed Cloud SaaS**: Engineered specifically for high-throughput cloud clusters with S3/Cloudflare R2 chunk tiering, AVX-512 SIMD, and EcoMonitor telemetry. |
 
-# Run
-docker run -p 50051:50051 -p 50050:50050 hyperspacedb:latest
-```
+---
 
-### Docker Compose
+### Quick Start
 
-Run the full stack (Server + Client Tool):
-
-```bash
-docker-compose up -d
-```
-
-## 🐳 How to use this image
-
-### 1. Start a single instance
-
-To start the database and expose both gRPC (50051) and Dashboard (50050) ports:
-
-```bash
-docker run -d \
-  --name hyperspace \
-  -p 50051:50051 \
-  -p 50050:50050 \
-  glukhota/hyperspace-db:latest
-```
-
-Access the dashboard at `http://localhost:50050`
-
-### 2. Persisting Data (Critical)
-
-By default, data is stored inside the container. To prevent data loss when the container is removed, you **must** mount a volume to `/app/data`.
-
+#### 1. Run Standard Engine (Lightweight, Default)
 ```bash
 docker run -d \
   --name hyperspace \
@@ -812,6 +787,26 @@ docker run -d \
   -p 50050:50050 \
   -v $(pwd)/hs_data:/app/data \
   glukhota/hyperspace-db:latest
+```
+
+#### 2. Run All-in-One Engine (With Built-In Embedding Model)
+```bash
+docker run -d \
+  --name hyperspace-embed \
+  -p 50051:50051 \
+  -p 50050:50050 \
+  -v $(pwd)/hs_data:/app/data \
+  glukhota/hyperspace-db:latest-embed
+```
+
+Access the HTTP Dashboard at `http://localhost:50050` and gRPC at `localhost:50051`.
+
+### Docker Compose
+
+Run the full stack:
+
+```bash
+docker-compose up -d
 ```
 
 ---
@@ -856,14 +851,14 @@ Connect HyperspaceDB directly to **Claude Desktop**, **Cursor**, **Windsurf**, *
 
 ### 🧠 1. Zero-Code Cognitive Agent Memory (`mcp-hyperspace-memory`)
 
-Drop-in cognitive agent memory server with **8 specialized memory tools** (`memory_remember`, `memory_recall`, `memory_forget`, `memory_update`, `memory_list_sessions`, `memory_explore_hierarchy`, etc.):
+Drop-in cognitive agent memory server with **8 specialized memory tools** (`memory_remember`, `memory_recall`, `memory_forget`, `memory_update`, `memory_list_sessions`, `memory_explore_hierarchy`, `memory_consolidate`, `memory_verify_claim`):
 
 ```bash
 # Start Memory MCP server via npx
 npx mcp-hyperspace-memory@latest
 ```
 
-**Cursor / Claude Desktop Config:**
+#### Option A: Managed Cloud Memory (Zero Infrastructure)
 ```json
 {
   "mcpServers": {
@@ -871,13 +866,33 @@ npx mcp-hyperspace-memory@latest
       "command": "npx",
       "args": ["-y", "mcp-hyperspace-memory@latest"],
       "env": {
-        "HYPERSPACE_API_KEY": "YOUR_API_KEY",
+        "HYPERSPACE_API_KEY": "sk_YOUR_YAR_API_KEY",
         "MEMORY_COLLECTION": "agent_memory"
       }
     }
   }
 }
 ```
+
+#### Option B: Local DB Instance + Cloud v5 Embedding API Key (Privacy + Cloud AI)
+Run `glukhota/hyperspace-db:latest` locally on your machine. Your vector graph and memory payloads stay 100% private on `localhost`, while text is vectorized via the state-of-the-art continuous `v5_Embedding_801` model in the cloud:
+
+```json
+{
+  "mcpServers": {
+    "hyperspace-memory": {
+      "command": "npx",
+      "args": ["-y", "mcp-hyperspace-memory@latest"],
+      "env": {
+        "HYPERSPACE_HOST": "localhost:50051",
+        "HYPERSPACE_API_KEY": "sk_YOUR_YAR_API_KEY",
+        "MEMORY_COLLECTION": "agent_memory"
+      }
+    }
+  }
+}
+```
+*(Get your `sk_` API key at [yar.ink/dashboard](https://yar.ink/dashboard))*.
 
 ### ⚡ 2. Full Vector Database & Graph MCP Server (`mcp-hyperspacedb`)
 
