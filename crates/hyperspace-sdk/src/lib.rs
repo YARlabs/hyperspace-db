@@ -44,6 +44,190 @@ pub struct EgoGraph {
     pub nodes: Vec<EgoGraphNode>,
 }
 
+/// Options for configuring vector search requests across single and batch searches.
+#[derive(Debug, Clone, Default)]
+pub struct SearchOptions {
+    /// Name of the target collection.
+    pub collection: Option<String>,
+    /// MRL cutoff dimension for early cascade truncation (e.g. 64, 128, 256).
+    pub mrl_dimension: Option<u32>,
+    /// Whether to use Wasserstein distance metric.
+    pub use_wasserstein: bool,
+    /// Weights for multi-component vectors.
+    pub component_weights: std::collections::HashMap<String, f32>,
+    /// Whether to activate diffusive wave graph search traversal.
+    pub use_wave: bool,
+    /// Restart factor for wave exploration.
+    pub restart_factor: Option<f32>,
+    /// Exact key-value metadata equality filters.
+    pub filter: std::collections::HashMap<String, String>,
+    /// Advanced structured filters (Range, InCone, InBox, InBall, And, Or, Not, Prefix).
+    pub filters: Vec<hyperspace_proto::hyperspace::Filter>,
+    /// Optional hybrid text query for BM25 fusion.
+    pub hybrid_query: Option<String>,
+    /// Weight alpha for hybrid text search (0.0 = vector only, 1.0 = BM25 only).
+    pub hybrid_alpha: Option<f32>,
+    /// Options for BM25 lexical ranking.
+    pub bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
+    /// Whether to include sidecar stored payloads in search results.
+    pub include_payload: Option<bool>,
+}
+
+impl SearchOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn collection(mut self, c: impl Into<String>) -> Self {
+        self.collection = Some(c.into());
+        self
+    }
+
+    pub fn mrl_dimension(mut self, dim: u32) -> Self {
+        self.mrl_dimension = Some(dim);
+        self
+    }
+
+    pub fn use_wasserstein(mut self, val: bool) -> Self {
+        self.use_wasserstein = val;
+        self
+    }
+
+    pub fn component_weights(mut self, weights: std::collections::HashMap<String, f32>) -> Self {
+        self.component_weights = weights;
+        self
+    }
+
+    pub fn use_wave(mut self, val: bool) -> Self {
+        self.use_wave = val;
+        self
+    }
+
+    pub fn restart_factor(mut self, rf: f32) -> Self {
+        self.restart_factor = Some(rf);
+        self
+    }
+
+    pub fn filter(mut self, filter: std::collections::HashMap<String, String>) -> Self {
+        self.filter = filter;
+        self
+    }
+
+    pub fn filters(mut self, filters: Vec<hyperspace_proto::hyperspace::Filter>) -> Self {
+        self.filters = filters;
+        self
+    }
+
+    pub fn hybrid(mut self, query: impl Into<String>, alpha: f32) -> Self {
+        self.hybrid_query = Some(query.into());
+        self.hybrid_alpha = Some(alpha);
+        self
+    }
+
+    pub fn bm25_options(mut self, opts: hyperspace_proto::hyperspace::Bm25Options) -> Self {
+        self.bm25_options = Some(opts);
+        self
+    }
+
+    pub fn include_payload(mut self, inc: bool) -> Self {
+        self.include_payload = Some(inc);
+        self
+    }
+}
+
+/// Helper builder to construct [`CollectionSchema`] instances including MRL cascade pipelines.
+#[derive(Debug, Clone, Default)]
+pub struct CollectionSchemaBuilder {
+    components: Vec<hyperspace_proto::hyperspace::VectorComponent>,
+    cascade_pipeline: Vec<hyperspace_proto::hyperspace::MrlLayer>,
+}
+
+impl CollectionSchemaBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Single component collection without MRL cascade (e.g. 768D Cosine).
+    pub fn simple(full_dimension: u32, metric: impl Into<String>) -> CollectionSchema {
+        CollectionSchema {
+            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                name: "default".to_string(),
+                metric: metric.into(),
+                full_dimension,
+                weight: 1.0,
+            }],
+            cascade_pipeline: vec![],
+        }
+    }
+
+    /// Single component with MRL cascade layers (e.g. 801D with 129D cutoff, top-k 100 reranking).
+    pub fn mrl(
+        full_dimension: u32,
+        metric: impl Into<String>,
+        mrl_cutoffs: &[(u32, u32)], // (cutoff_dimension, rerank_top_k)
+    ) -> CollectionSchema {
+        let cascade_pipeline = mrl_cutoffs
+            .iter()
+            .map(|&(cutoff, rerank)| hyperspace_proto::hyperspace::MrlLayer {
+                component_name: "default".to_string(),
+                cutoff_dimension: cutoff,
+                store_in_ram: true,
+                rerank_top_k: rerank,
+            })
+            .collect();
+
+        CollectionSchema {
+            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                name: "default".to_string(),
+                metric: metric.into(),
+                full_dimension,
+                weight: 1.0,
+            }],
+            cascade_pipeline,
+        }
+    }
+
+    pub fn add_component(
+        mut self,
+        name: impl Into<String>,
+        metric: impl Into<String>,
+        full_dimension: u32,
+        weight: f32,
+    ) -> Self {
+        self.components.push(hyperspace_proto::hyperspace::VectorComponent {
+            name: name.into(),
+            metric: metric.into(),
+            full_dimension,
+            weight,
+        });
+        self
+    }
+
+    pub fn add_mrl_layer(
+        mut self,
+        component_name: impl Into<String>,
+        cutoff_dimension: u32,
+        store_in_ram: bool,
+        rerank_top_k: u32,
+    ) -> Self {
+        self.cascade_pipeline.push(hyperspace_proto::hyperspace::MrlLayer {
+            component_name: component_name.into(),
+            cutoff_dimension,
+            store_in_ram,
+            rerank_top_k,
+        });
+        self
+    }
+
+    pub fn build(self) -> CollectionSchema {
+        CollectionSchema {
+            components: self.components,
+            cascade_pipeline: self.cascade_pipeline,
+        }
+    }
+}
+
+
 #[derive(Clone)]
 pub struct AuthInterceptor {
     api_key: Option<String>,
@@ -162,7 +346,9 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
-    /// Creates a new collection with a specific quantization level override (`none`, `medium`, `medium_plus`, `extreme`).
+    /// Creates a new collection with a specific quantization level override (`none`, `medium`, `medium_plus`, `turbo`, `extreme`).
+    ///
+    /// Sends the quantization level to HyperspaceDB via the `x-quantization-level` gRPC metadata header.
     ///
     /// # Errors
     /// Returns error if the collection already exists or if network fails.
@@ -170,9 +356,59 @@ impl Client {
         &mut self,
         name: String,
         schema: CollectionSchema,
-        _quantization: String,
+        quantization: String,
     ) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::CreateCollectionRequest {
+            name,
+            schema: Some(schema),
+        };
+        let mut tonic_req = tonic::Request::new(req);
+        if let Ok(val) = quantization.parse() {
+            tonic_req.metadata_mut().insert("x-quantization-level", val);
+        }
+        let resp = self.inner.create_collection(tonic_req).await?;
+        Ok(resp.into_inner().status)
+    }
+
+    /// Convenience helper to create a simple single-component collection without cascade pipeline.
+    pub async fn create_collection_simple(
+        &mut self,
+        name: String,
+        dimension: u32,
+        metric: impl Into<String>,
+    ) -> Result<String, tonic::Status> {
+        let schema = CollectionSchemaBuilder::simple(dimension, metric);
         self.create_collection(name, schema).await
+    }
+
+    /// Convenience helper to create a simple single-component collection with quantization.
+    pub async fn create_collection_simple_with_quantization(
+        &mut self,
+        name: String,
+        dimension: u32,
+        metric: impl Into<String>,
+        quantization: String,
+    ) -> Result<String, tonic::Status> {
+        let schema = CollectionSchemaBuilder::simple(dimension, metric);
+        self.create_collection_with_quantization(name, schema, quantization).await
+    }
+
+    /// Convenience helper to create an MRL (Matryoshka Representation Learning) cascade collection.
+    /// `mrl_cutoffs` is a slice of `(cutoff_dimension, rerank_top_k)` tuples.
+    pub async fn create_collection_mrl(
+        &mut self,
+        name: String,
+        dimension: u32,
+        metric: impl Into<String>,
+        mrl_cutoffs: &[(u32, u32)],
+        quantization: Option<String>,
+    ) -> Result<String, tonic::Status> {
+        let schema = CollectionSchemaBuilder::mrl(dimension, metric, mrl_cutoffs);
+        if let Some(q) = quantization {
+            self.create_collection_with_quantization(name, schema, q).await
+        } else {
+            self.create_collection(name, schema).await
+        }
     }
 
     /// Deletes a collection.
@@ -477,6 +713,119 @@ impl Client {
         self.batch_insert(items_f64, collection, durability).await
     }
 
+    /// Searches for nearest neighbors using flexible [`SearchOptions`].
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_with_options(
+        &mut self,
+        vector: Vec<f64>,
+        top_k: u32,
+        options: SearchOptions,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
+        let coll = options.collection.unwrap_or_default();
+        let metric = {
+            let metrics = self.collection_metrics.read();
+            metrics
+                .get(&coll)
+                .cloned()
+                .unwrap_or_else(|| "l2".to_string())
+        };
+
+        let context = self
+            .get_encryption_context(&coll, vector.len(), &metric)
+            .await;
+
+        let mut final_vector = vector;
+        let mut filter = options.filter;
+        if let Some(rf) = options.restart_factor {
+            filter.insert("wave_restart_factor".to_string(), rf.to_string());
+        }
+        let mut final_filters = options.filters;
+        let mut final_include_payload = options.include_payload.unwrap_or(false);
+
+        if let Some(ref ctx) = context {
+            // 1. Noise injection
+            let sigma = {
+                let sigmas = self.collection_noise_sigmas.read();
+                *sigmas.get(&coll).unwrap_or(&0.02)
+            };
+            if sigma > 0.0 {
+                final_vector = math::inject_anisotropic_noise(&final_vector, &ctx.hmac_key, sigma);
+            }
+
+            // 2. Vector projection
+            final_vector = self.project_collection_vector(&coll, &final_vector, ctx, &metric);
+
+            // 3. Hash metadata filters
+            let mut hashed_filter = std::collections::HashMap::new();
+            for (k, v) in filter {
+                let ek = self.hash_metadata_key(&k, &ctx.hmac_key);
+                let ev = self.hash_metadata_value(&v, &ctx.hmac_key);
+                hashed_filter.insert(ek, ev);
+            }
+            filter = hashed_filter;
+
+            // 4. Hash filters list
+            final_filters = self.encrypt_filters(final_filters, ctx);
+
+            // 5. Force payload inclusion so we can decrypt locally
+            if options.include_payload.is_none() {
+                final_include_payload = true;
+            }
+        }
+
+        let (hybrid_query, hybrid_alpha) = if context.is_some() {
+            (None, None)
+        } else {
+            (options.hybrid_query, options.hybrid_alpha)
+        };
+
+        let req = SearchRequest {
+            vector: final_vector,
+            top_k,
+            filter,
+            filters: final_filters,
+            hybrid_query,
+            hybrid_alpha,
+            use_wasserstein: options.use_wasserstein,
+            collection: coll,
+            bm25_options: if context.is_some() { None } else { options.bm25_options },
+            mrl_dimension: options.mrl_dimension,
+            include_payload: final_include_payload,
+            component_weights: options.component_weights,
+            use_wave: options.use_wave,
+        };
+        let resp = self.inner.search(req).await?;
+        let mut results = resp.into_inner().results;
+
+        if let Some(ctx) = context {
+            for r in &mut results {
+                if let Some(p) = &r.payload {
+                    if let Ok(dec) = self.decrypt_payload(p, &ctx.aes_key) {
+                        r.payload = Some(dec);
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Searches using f32 query vector with [`SearchOptions`].
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_f32_with_options(
+        &mut self,
+        vector: &[f32],
+        top_k: u32,
+        options: SearchOptions,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
+        self.search_with_options(Self::vec_f32_to_f64(vector), top_k, options)
+            .await
+    }
+
     /// Searches for nearest neighbors.
     ///
     /// # Errors
@@ -493,72 +842,20 @@ impl Client {
         use_wave: bool,
         restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
-        let coll = collection.unwrap_or_default();
-        let metric = {
-            let metrics = self.collection_metrics.read();
-            metrics
-                .get(&coll)
-                .cloned()
-                .unwrap_or_else(|| "l2".to_string())
-        };
-
-        let context = self
-            .get_encryption_context(&coll, vector.len(), &metric)
-            .await;
-
-        let mut final_vector = vector;
-        let mut filter = std::collections::HashMap::default();
-        if let Some(rf) = restart_factor {
-            filter.insert("wave_restart_factor".to_string(), rf.to_string());
-        }
-        let mut final_include_payload = false;
-
-        if let Some(ref ctx) = context {
-            // 1. Noise injection
-            let sigma = {
-                let sigmas = self.collection_noise_sigmas.read();
-                *sigmas.get(&coll).unwrap_or(&0.02)
-            };
-            if sigma > 0.0 {
-                final_vector = math::inject_anisotropic_noise(&final_vector, &ctx.hmac_key, sigma);
-            }
-
-            // 2. Vector projection
-            final_vector = self.project_collection_vector(&coll, &final_vector, ctx, &metric);
-
-            // 3. Force payload inclusion so we can decrypt locally
-            final_include_payload = true;
-        }
-
-        let req = SearchRequest {
-            vector: final_vector,
+        self.search_with_options(
+            vector,
             top_k,
-            filter,
-            filters: vec![],
-            hybrid_query: None,
-            hybrid_alpha: None,
-            use_wasserstein,
-            collection: coll,
-            bm25_options: None,
-            mrl_dimension,
-            include_payload: final_include_payload,
-            component_weights,
-            use_wave,
-        };
-        let resp = self.inner.search(req).await?;
-        let mut results = resp.into_inner().results;
-
-        if let Some(ctx) = context {
-            for r in &mut results {
-                if let Some(p) = &r.payload {
-                    if let Ok(dec) = self.decrypt_payload(p, &ctx.aes_key) {
-                        r.payload = Some(dec);
-                    }
-                }
-            }
-        }
-
-        Ok(results)
+            SearchOptions {
+                collection,
+                mrl_dimension,
+                use_wasserstein,
+                component_weights,
+                use_wave,
+                restart_factor,
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// Searches using f32 query vector (converted to protocol f64 once).
@@ -645,6 +942,143 @@ impl Client {
         Ok(resp.into_inner().results)
     }
 
+    /// Batch search for multiple vectors in a single RPC using [`SearchOptions`].
+    ///
+    /// Supports MRL cutoff dimension, structured filters, component weights, wave search, and client-side ZK-privacy.
+    ///
+    /// # Errors
+    /// Returns error if the batch search fails.
+    pub async fn search_batch_with_options(
+        &mut self,
+        vectors: Vec<Vec<f64>>,
+        top_k: u32,
+        options: SearchOptions,
+    ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
+        if vectors.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let coll = options.collection.clone().unwrap_or_default();
+        let metric = {
+            let metrics = self.collection_metrics.read();
+            metrics
+                .get(&coll)
+                .cloned()
+                .unwrap_or_else(|| "l2".to_string())
+        };
+
+        let sample_len = vectors.first().map(|v| v.len()).unwrap_or(0);
+        let context = self
+            .get_encryption_context(&coll, sample_len, &metric)
+            .await;
+
+        let mut filter = options.filter.clone();
+        if let Some(rf) = options.restart_factor {
+            filter.insert("wave_restart_factor".to_string(), rf.to_string());
+        }
+        let mut final_filters = options.filters.clone();
+        let mut final_include_payload = options.include_payload.unwrap_or(false);
+
+        let sigma = if context.is_some() {
+            let sigmas = self.collection_noise_sigmas.read();
+            *sigmas.get(&coll).unwrap_or(&0.02)
+        } else {
+            0.0
+        };
+
+        if let Some(ref ctx) = context {
+            let mut hashed_filter = std::collections::HashMap::new();
+            for (k, v) in filter {
+                let ek = self.hash_metadata_key(&k, &ctx.hmac_key);
+                let ev = self.hash_metadata_value(&v, &ctx.hmac_key);
+                hashed_filter.insert(ek, ev);
+            }
+            filter = hashed_filter;
+            final_filters = self.encrypt_filters(final_filters, ctx);
+            if options.include_payload.is_none() {
+                final_include_payload = true;
+            }
+        }
+
+        let (hybrid_query, hybrid_alpha) = if context.is_some() {
+            (None, None)
+        } else {
+            (options.hybrid_query.clone(), options.hybrid_alpha)
+        };
+        let bm25_opts = if context.is_some() {
+            None
+        } else {
+            options.bm25_options.clone()
+        };
+
+        let searches = vectors
+            .into_iter()
+            .map(|mut vec| {
+                if let Some(ref ctx) = context {
+                    if sigma > 0.0 {
+                        vec = math::inject_anisotropic_noise(&vec, &ctx.hmac_key, sigma);
+                    }
+                    vec = self.project_collection_vector(&coll, &vec, ctx, &metric);
+                }
+                SearchRequest {
+                    vector: vec,
+                    top_k,
+                    filter: filter.clone(),
+                    filters: final_filters.clone(),
+                    hybrid_query: hybrid_query.clone(),
+                    hybrid_alpha,
+                    use_wasserstein: options.use_wasserstein,
+                    collection: coll.clone(),
+                    bm25_options: bm25_opts.clone(),
+                    mrl_dimension: options.mrl_dimension,
+                    include_payload: final_include_payload,
+                    component_weights: options.component_weights.clone(),
+                    use_wave: options.use_wave,
+                }
+            })
+            .collect();
+
+        let req = BatchSearchRequest { searches };
+        let resp = self.inner.search_batch(req).await?;
+        let mut batch_results: Vec<Vec<SearchResult>> = resp
+            .into_inner()
+            .responses
+            .into_iter()
+            .map(|SearchResponse { results }| results)
+            .collect();
+
+        if let Some(ref ctx) = context {
+            for results in &mut batch_results {
+                for r in results {
+                    if let Some(p) = &r.payload {
+                        if let Ok(dec) = self.decrypt_payload(p, &ctx.aes_key) {
+                            r.payload = Some(dec);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(batch_results)
+    }
+
+    /// Batch search from f32 vectors using [`SearchOptions`].
+    ///
+    /// # Errors
+    /// Returns error if the batch search fails.
+    pub async fn search_batch_f32_with_options(
+        &mut self,
+        vectors: &[Vec<f32>],
+        top_k: u32,
+        options: SearchOptions,
+    ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
+        let vectors_f64 = vectors
+            .iter()
+            .map(|v| Self::vec_f32_to_f64(v))
+            .collect::<Vec<_>>();
+        self.search_batch_with_options(vectors_f64, top_k, options).await
+    }
+
     /// Batch search for multiple vectors in a single RPC.
     ///
     /// # Errors
@@ -655,34 +1089,15 @@ impl Client {
         top_k: u32,
         collection: Option<String>,
     ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
-        let collection_name = collection.unwrap_or_default();
-        let searches = vectors
-            .into_iter()
-            .map(|vector| SearchRequest {
-                vector,
-                top_k,
-                filter: std::collections::HashMap::default(),
-                filters: vec![],
-                hybrid_query: None,
-                hybrid_alpha: None,
-                use_wasserstein: false,
-                collection: collection_name.clone(),
-                bm25_options: None,
-                mrl_dimension: None,
-                include_payload: false,
-                component_weights: std::collections::HashMap::new(),
-                use_wave: false,
-            })
-            .collect();
-
-        let req = BatchSearchRequest { searches };
-        let resp = self.inner.search_batch(req).await?;
-        Ok(resp
-            .into_inner()
-            .responses
-            .into_iter()
-            .map(|SearchResponse { results }| results)
-            .collect())
+        self.search_batch_with_options(
+            vectors,
+            top_k,
+            SearchOptions {
+                collection,
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// Batch search from f32 vectors (converted to protocol f64 once).
@@ -695,11 +1110,55 @@ impl Client {
         top_k: u32,
         collection: Option<String>,
     ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
-        let vectors_f64 = vectors
-            .iter()
-            .map(|v| Self::vec_f32_to_f64(v))
-            .collect::<Vec<_>>();
-        self.search_batch(vectors_f64, top_k, collection).await
+        self.search_batch_f32_with_options(
+            vectors,
+            top_k,
+            SearchOptions {
+                collection,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    /// Batch search with MRL cutoff dimension.
+    pub async fn search_batch_mrl(
+        &mut self,
+        vectors: Vec<Vec<f64>>,
+        top_k: u32,
+        collection: Option<String>,
+        mrl_dimension: Option<u32>,
+    ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
+        self.search_batch_with_options(
+            vectors,
+            top_k,
+            SearchOptions {
+                collection,
+                mrl_dimension,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    /// Batch search from f32 vectors with MRL cutoff dimension.
+    pub async fn search_batch_f32_mrl(
+        &mut self,
+        vectors: &[Vec<f32>],
+        top_k: u32,
+        collection: Option<String>,
+        mrl_dimension: Option<u32>,
+    ) -> Result<Vec<Vec<SearchResult>>, tonic::Status> {
+        self.search_batch_f32_with_options(
+            vectors,
+            top_k,
+            SearchOptions {
+                collection,
+                mrl_dimension,
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// Multi-Geometry Benchmark Endpoint (10.3)
@@ -744,6 +1203,45 @@ impl Client {
         Ok(result_map)
     }
 
+    /// Advanced search with filters, hybrid query, and optional MRL cutoff dimension.
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn search_advanced_with_mrl(
+        &mut self,
+        vector: Vec<f64>,
+        top_k: u32,
+        filters: Vec<hyperspace_proto::hyperspace::Filter>,
+        hybrid: Option<(String, f32)>,
+        bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
+        mrl_dimension: Option<u32>,
+        collection: Option<String>,
+        use_wave: bool,
+        restart_factor: Option<f32>,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
+        let (hybrid_query, hybrid_alpha) = match hybrid {
+            Some((q, a)) => (Some(q), Some(a)),
+            None => (None, None),
+        };
+        self.search_with_options(
+            vector,
+            top_k,
+            SearchOptions {
+                collection,
+                filters,
+                hybrid_query,
+                hybrid_alpha,
+                bm25_options,
+                mrl_dimension,
+                use_wave,
+                restart_factor,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
     /// Advanced search with filters and hybrid query.
     ///
     /// # Errors
@@ -760,90 +1258,18 @@ impl Client {
         use_wave: bool,
         restart_factor: Option<f32>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
-        let coll = collection.unwrap_or_default();
-        let metric = {
-            let metrics = self.collection_metrics.read();
-            metrics
-                .get(&coll)
-                .cloned()
-                .unwrap_or_else(|| "l2".to_string())
-        };
-
-        let context = self
-            .get_encryption_context(&coll, vector.len(), &metric)
-            .await;
-
-        let mut final_vector = vector;
-        let mut filter = std::collections::HashMap::default();
-        if let Some(rf) = restart_factor {
-            filter.insert("wave_restart_factor".to_string(), rf.to_string());
-        }
-        let mut final_filters = filters;
-        let mut final_include_payload = false;
-
-        if let Some(ref ctx) = context {
-            // 1. Noise injection
-            let sigma = {
-                let sigmas = self.collection_noise_sigmas.read();
-                *sigmas.get(&coll).unwrap_or(&0.02)
-            };
-            if sigma > 0.0 {
-                final_vector = math::inject_anisotropic_noise(&final_vector, &ctx.hmac_key, sigma);
-            }
-
-            // 2. Vector projection
-            final_vector = self.project_collection_vector(&coll, &final_vector, ctx, &metric);
-
-            // 3. Hash metadata filters
-            let mut hashed_filter = std::collections::HashMap::new();
-            for (k, v) in filter {
-                let ek = self.hash_metadata_key(&k, &ctx.hmac_key);
-                let ev = self.hash_metadata_value(&v, &ctx.hmac_key);
-                hashed_filter.insert(ek, ev);
-            }
-            filter = hashed_filter;
-
-            // 4. Hash filters list
-            final_filters = self.encrypt_filters(final_filters, ctx);
-
-            // 5. Force include payload
-            final_include_payload = true;
-        }
-
-        let (hybrid_query, hybrid_alpha) = match hybrid {
-            Some((q, a)) => (Some(q), Some(a)),
-            None => (None, None),
-        };
-
-        let req = SearchRequest {
-            vector: final_vector,
+        self.search_advanced_with_mrl(
+            vector,
             top_k,
-            filter,
-            filters: final_filters,
-            hybrid_query,
-            hybrid_alpha,
-            use_wasserstein: false,
-            collection: coll,
+            filters,
+            hybrid,
             bm25_options,
-            mrl_dimension: None,
-            include_payload: final_include_payload,
-            component_weights: std::collections::HashMap::new(),
+            None,
+            collection,
             use_wave,
-        };
-        let resp = self.inner.search(req).await?;
-        let mut results = resp.into_inner().results;
-
-        if let Some(ctx) = context {
-            for r in &mut results {
-                if let Some(p) = &r.payload {
-                    if let Ok(dec) = self.decrypt_payload(p, &ctx.aes_key) {
-                        r.payload = Some(dec);
-                    }
-                }
-            }
-        }
-
-        Ok(results)
+            restart_factor,
+        )
+        .await
     }
 
     /// High-level hybrid search combining vector (semantic) and lexical (BM25) ranking.
@@ -1735,5 +2161,77 @@ impl Client {
                 nf
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_collection_schema_builder_simple() {
+        let schema = CollectionSchemaBuilder::simple(801, "cosine");
+        assert_eq!(schema.components.len(), 1);
+        assert_eq!(schema.components[0].full_dimension, 801);
+        assert_eq!(schema.components[0].metric, "cosine");
+        assert!(schema.cascade_pipeline.is_empty());
+    }
+
+    #[test]
+    fn test_collection_schema_builder_mrl() {
+        let schema = CollectionSchemaBuilder::mrl(801, "cosine", &[(129, 100), (256, 50)]);
+        assert_eq!(schema.components.len(), 1);
+        assert_eq!(schema.components[0].full_dimension, 801);
+        assert_eq!(schema.cascade_pipeline.len(), 2);
+        assert_eq!(schema.cascade_pipeline[0].cutoff_dimension, 129);
+        assert_eq!(schema.cascade_pipeline[0].rerank_top_k, 100);
+        assert!(schema.cascade_pipeline[0].store_in_ram);
+        assert_eq!(schema.cascade_pipeline[1].cutoff_dimension, 256);
+        assert_eq!(schema.cascade_pipeline[1].rerank_top_k, 50);
+    }
+
+    #[test]
+    fn test_collection_schema_builder_custom() {
+        let schema = CollectionSchemaBuilder::new()
+            .add_component("text", "cosine", 768, 0.7)
+            .add_component("code", "l2", 384, 0.3)
+            .add_mrl_layer("text", 128, true, 50)
+            .build();
+
+        assert_eq!(schema.components.len(), 2);
+        assert_eq!(schema.components[0].name, "text");
+        assert_eq!(schema.components[0].full_dimension, 768);
+        assert_eq!(schema.components[1].name, "code");
+        assert_eq!(schema.cascade_pipeline.len(), 1);
+        assert_eq!(schema.cascade_pipeline[0].component_name, "text");
+        assert_eq!(schema.cascade_pipeline[0].cutoff_dimension, 128);
+    }
+
+    #[test]
+    fn test_search_options_builder() {
+        let opts = SearchOptions::new()
+            .collection("my_col")
+            .mrl_dimension(129)
+            .use_wave(true)
+            .restart_factor(0.75)
+            .hybrid("search text", 0.5)
+            .include_payload(true);
+
+        assert_eq!(opts.collection.as_deref(), Some("my_col"));
+        assert_eq!(opts.mrl_dimension, Some(129));
+        assert!(opts.use_wave);
+        assert_eq!(opts.restart_factor, Some(0.75));
+        assert_eq!(opts.hybrid_query.as_deref(), Some("search text"));
+        assert_eq!(opts.hybrid_alpha, Some(0.5));
+        assert_eq!(opts.include_payload, Some(true));
+    }
+
+    #[test]
+    fn test_quantization_header_parsing() {
+        let levels = ["none", "medium", "medium_plus", "turbo", "extreme"];
+        for level in levels {
+            let parsed: Result<tonic::metadata::MetadataValue<tonic::metadata::Ascii>, _> = level.parse();
+            assert!(parsed.is_ok(), "Failed to parse quantization level: {}", level);
+        }
     }
 }
