@@ -274,6 +274,21 @@ pub struct Client {
         std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, CollectionSchema>>>,
 }
 
+impl Clone for Client {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            #[cfg(feature = "embedders")]
+            embedder: None,
+            collection_keys: self.collection_keys.clone(),
+            encryption_contexts: self.encryption_contexts.clone(),
+            collection_metrics: self.collection_metrics.clone(),
+            collection_noise_sigmas: self.collection_noise_sigmas.clone(),
+            collection_schemas: self.collection_schemas.clone(),
+        }
+    }
+}
+
 impl Client {
     #[inline]
     fn vec_f32_to_f64(vector: &[f32]) -> Vec<f64> {
