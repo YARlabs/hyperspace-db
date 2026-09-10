@@ -1097,16 +1097,15 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         // 1. Create HyperVector from query.
+        if query.len() != self.dimension {
+            return Vec::new();
+        }
         let mut aligned_query = vec![0.0; self.dimension];
-        assert!(
-            query.len() == self.dimension,
-            "Query dimension mismatch provided {}, expected {}",
-            query.len(),
-            self.dimension
-        );
         aligned_query.copy_from_slice(query);
 
-        M::validate(&aligned_query).expect("Invalid Query Vector for this Metric");
+        if M::validate(&aligned_query).is_err() {
+            return Vec::new();
+        }
         let q_vec = HyperVector::new_unchecked(aligned_query);
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);

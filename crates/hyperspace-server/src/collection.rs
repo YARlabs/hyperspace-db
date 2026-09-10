@@ -1824,6 +1824,14 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             query
         };
 
+        if let Err(e) = M::validate(slice) {
+            return Err(format!(
+                "Invalid query vector for metric '{}': {}",
+                M::name(),
+                e
+            ));
+        }
+
         // Quick Win #5: Zero-copy normalization - keep Cow until absolutely necessary
         let processed_query_cow = Self::normalize_if_cosine(slice);
 
