@@ -623,6 +623,58 @@ impl Metric for PoincareMetric {
     }
 }
 
+/// Default tolerance for the Lorentz hyperboloid membership check
+/// (`|-t^2 + |x|^2 + 1|`). Preserves historical strict behaviour.
+pub const LORENTZ_VALIDATE_DEFAULT_TOL: f64 = 1e-6;
+
+/// Effective Lorentz validation tolerance, read once from the environment.
+///
+/// Externally-produced embeddings and quantization round-trips can land
+/// slightly off the ideal hyperboloid. `distance` already tolerates this via
+/// its acosh domain clamp `(-inner_prod).max(1.0 + 1e-12)`, but `validate`
+/// historically rejected anything past `1e-6`. Operators ingesting such
+/// vectors can relax the check by setting `HS_LORENTZ_VALIDATE_TOL` (e.g.
+/// `0.1`). Invalid or non-positive values fall back to the strict default, so
+/// existing deployments are unaffected.
+pub fn lorentz_validate_tolerance() -> f64 {
+    use std::sync::OnceLock;
+    static TOL: OnceLock<f64> = OnceLock::new();
+    *TOL.get_or_init(|| {
+        std::env::var("HS_LORENTZ_VALIDATE_TOL")
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .unwrap_or(LORENTZ_VALIDATE_DEFAULT_TOL)
+    })
+}
+
+impl LorentzMetric {
+    /// Hyperboloid membership check with an explicit tolerance.
+    ///
+    /// Kept separate from the env-driven `validate` so the geometry can be
+    /// tested deterministically without touching process environment.
+    pub fn validate_with_tolerance(vector: &[f64], tolerance: f64) -> Result<(), String> {
+        if !vector.iter().all(|v| v.is_finite()) {
+            return Err("Lorentz vector contains non-finite values".to_string());
+        }
+        if vector[0] <= 0.0 {
+            return Err("Lorentz vector must be on the upper sheet (t > 0)".to_string());
+        }
+
+        let mut spatial_sq = 0.0_f64;
+        for i in 1..vector.len() {
+            spatial_sq += vector[i] * vector[i];
+        }
+        let minkowski_norm = -vector[0] * vector[0] + spatial_sq;
+        if (minkowski_norm + 1.0).abs() > tolerance {
+            return Err(format!(
+                "Lorentz vector is not on unit hyperboloid: -t^2+|x|^2={minkowski_norm}, expected -1"
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl Metric for LorentzMetric {
     fn name() -> &'static str {
         "lorentz"
@@ -663,24 +715,7 @@ impl Metric for LorentzMetric {
     }
 
     fn validate(vector: &[f64]) -> Result<(), String> {
-        if !vector.iter().all(|v| v.is_finite()) {
-            return Err("Lorentz vector contains non-finite values".to_string());
-        }
-        if vector[0] <= 0.0 {
-            return Err("Lorentz vector must be on the upper sheet (t > 0)".to_string());
-        }
-
-        let mut spatial_sq = 0.0_f64;
-        for i in 1..vector.len() {
-            spatial_sq += vector[i] * vector[i];
-        }
-        let minkowski_norm = -vector[0] * vector[0] + spatial_sq;
-        if (minkowski_norm + 1.0).abs() > 1e-6 {
-            return Err(format!(
-                "Lorentz vector is not on unit hyperboloid: -t^2+|x|^2={minkowski_norm}, expected -1"
-            ));
-        }
-        Ok(())
+        Self::validate_with_tolerance(vector, lorentz_validate_tolerance())
     }
 
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
