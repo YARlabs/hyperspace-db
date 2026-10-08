@@ -19,6 +19,9 @@
 #![allow(clippy::redundant_closure_for_method_calls)]
 #![allow(clippy::uninlined_format_args)]
 #![allow(clippy::unreadable_literal)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
 
 pub mod config;
 pub mod fuzzy;

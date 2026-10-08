@@ -1,3 +1,7 @@
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
+
 pub mod eviction;
 pub mod geometry;
 pub mod l1_exact;

@@ -1,4 +1,6 @@
 #![allow(clippy::pedantic)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
 //! Checkpoint 1 Tests — `hyperspace-billing`
 //!
 //! Tests cover:

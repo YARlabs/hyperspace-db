@@ -36,6 +36,10 @@
 //! HS_S3_UPLOAD_CONCURRENCY=4             # Parallel upload slots
 //! ```
 
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
+
 pub mod backend;
 pub mod config;
 pub mod local;

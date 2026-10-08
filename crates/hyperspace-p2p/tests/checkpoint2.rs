@@ -1,4 +1,6 @@
 #![allow(clippy::pedantic)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
 //! Checkpoint 2 Tests — `hyperspace-p2p`
 //!
 //! Tests cover:

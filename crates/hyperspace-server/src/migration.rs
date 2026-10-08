@@ -81,10 +81,7 @@ impl MigrationEngine {
                 }
             }
             // 3. Collection is already archived in legacy_v3_migrated
-            if migrated_archive_dir.join(col_name).exists() {
-                return true;
-            }
-            false
+            migrated_archive_dir.join(col_name).exists()
         };
 
         let mut candidate_dirs: Vec<(String, PathBuf)> = Vec::new();

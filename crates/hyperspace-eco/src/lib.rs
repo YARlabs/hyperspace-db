@@ -12,6 +12,9 @@
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::manual_div_ceil)]
 #![allow(clippy::unused_async)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
 
 #[cfg(feature = "eco-monitor")]
 pub mod esg_reporter;

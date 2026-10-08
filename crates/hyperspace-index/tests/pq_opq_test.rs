@@ -1,3 +1,6 @@
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+
 use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode, SearchParams};
 use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore;

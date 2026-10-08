@@ -1,6 +1,9 @@
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::items_after_statements)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;

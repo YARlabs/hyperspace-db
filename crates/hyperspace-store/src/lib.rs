@@ -8,6 +8,9 @@
 #![allow(clippy::map_unwrap_or)]
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::uninlined_format_args)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
 
 // Direct I/O storage engine (v4.0.0)
 #[cfg(not(target_arch = "wasm32"))]

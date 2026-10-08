@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 memmap2 = { workspace = true, optional = true }
-thiserror = { workspace = true }
 byteorder = "1.5.0"
 parking_lot.workspace = true
 crc32fast = "1.5.0"

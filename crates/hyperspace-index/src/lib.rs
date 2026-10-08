@@ -12,6 +12,9 @@
 #![allow(clippy::inline_always)]
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::ref_as_ptr)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
 
 pub mod spatial_aabb;
 pub mod stopwords;

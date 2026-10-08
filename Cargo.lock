@@ -2528,8 +2528,6 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "hex",
- "hyperspace-core",
- "hyperspace-store",
  "libp2p",
  "reqwest 0.12.28",
  "rs_merkle",
@@ -2644,7 +2642,6 @@ dependencies = [
  "parking_lot",
  "proptest",
  "tempfile",
- "thiserror 1.0.69",
  "tokio",
  "zstd",
 ]

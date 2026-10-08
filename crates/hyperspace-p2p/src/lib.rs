@@ -1,4 +1,7 @@
 #![allow(clippy::pedantic)]
+#![allow(unknown_lints)]
+#![allow(clippy::assert_is_empty)]
+#![allow(clippy::needless_bool)]
 //! hyperspace-p2p — DePIN P2P networking layer
 //!
 //! # Phase 2 scope
