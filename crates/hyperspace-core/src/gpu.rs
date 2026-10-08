@@ -137,6 +137,14 @@ struct GpuRuntime {
     scratch_pool: std::sync::Mutex<Vec<GpuScratch>>,
 }
 
+// SAFETY: All fields in GpuRuntime (wgpu device, queue, pipelines, layout, and Mutex-guarded scratches)
+// are thread-safe primitives. Explicitly implementing Send and Sync short-circuits the compiler's
+// auto-trait resolution recursion limit through deeply nested wgpu-core hubs.
+#[cfg(feature = "gpu-runtime")]
+unsafe impl Send for GpuRuntime {}
+#[cfg(feature = "gpu-runtime")]
+unsafe impl Sync for GpuRuntime {}
+
 #[cfg(feature = "gpu-runtime")]
 struct GpuScratch {
     vectors: wgpu::Buffer,
@@ -148,6 +156,11 @@ struct GpuScratch {
     query_f32_capacity: usize,
     output_f32_capacity: usize,
 }
+
+#[cfg(feature = "gpu-runtime")]
+unsafe impl Send for GpuScratch {}
+#[cfg(feature = "gpu-runtime")]
+unsafe impl Sync for GpuScratch {}
 
 #[cfg(feature = "gpu-runtime")]
 impl GpuRuntime {

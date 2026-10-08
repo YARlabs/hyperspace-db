@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]

@@ -2428,7 +2428,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cache"
-version = "3.1.0"
+version = "4.0.0"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -2461,7 +2461,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "3.1.4"
+version = "4.0.0"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2669,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-tiering"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "backoff",
  "bytes",
@@ -2685,7 +2685,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-wasm"
-version = "3.1.0"
+version = "4.0.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",
