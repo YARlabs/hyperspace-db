@@ -4,7 +4,6 @@ version = "4.0.0"
 edition = "2021"
 
 [dependencies]
-thiserror = { workspace = true }
 rand = "~0.8"
 serde = { workspace = true }
 async-trait = "0.1.89"

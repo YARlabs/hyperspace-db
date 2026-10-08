@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 #[cfg(unix)]
 use std::os::unix::fs::FileExt;
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::os::unix::io::AsRawFd;
 
 /// Standard NVMe / Direct I/O hardware alignment boundary (4096 bytes).
@@ -139,18 +139,27 @@ impl DirectFile {
             }
         }
 
-        let file = match options.open(path) {
-            Ok(f) => f,
+        #[cfg(target_os = "linux")]
+        let (file, is_direct) = match options.open(path) {
+            Ok(f) => {
+                let direct_enabled =
+                    std::env::var("HS_DIRECT_IO").unwrap_or_else(|_| "1".to_string()) != "0";
+                (f, direct_enabled)
+            }
             Err(_e) => {
                 // If O_DIRECT failed (e.g. tmpfs or filesystem without O_DIRECT support), fallback to standard OpenOptions
-                OpenOptions::new()
+                let f = OpenOptions::new()
                     .read(read)
                     .write(write)
                     .create(create)
-                    .open(path)?
+                    .open(path)?;
+                (f, false)
             }
         };
 
+        #[cfg(not(target_os = "linux"))]
+        let file = options.open(path)?;
+        #[cfg(not(target_os = "linux"))]
         let mut is_direct = false;
 
         #[cfg(all(target_os = "macos", unix))]
@@ -165,11 +174,6 @@ impl DirectFile {
                     is_direct = true;
                 }
             }
-        }
-
-        #[cfg(all(target_os = "linux", unix))]
-        {
-            is_direct = true;
         }
 
         Ok(Self {

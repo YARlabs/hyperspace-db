@@ -15,7 +15,6 @@ hex = "0.4"
 dashmap = { workspace = true }
 hyperspace-core = { workspace = true }
 hyperspace-store = { workspace = true }
-hyperspace-index = { workspace = true }
 zeroize = { workspace = true }
 bip39 = { workspace = true }
 rs_merkle = { workspace = true }

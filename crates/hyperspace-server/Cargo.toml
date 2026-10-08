@@ -43,19 +43,21 @@ tikv-jemalloc-ctl = "0.6"
 prometheus = { version = "0.13", features = ["process"] }
 rayon = "1"
 
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true
 async-trait = "0.1.89"
 async-stream = "0.3.5"
-tempfile = "3.10"
 futures = "0.3.32"
 ordered-float = "3"
 hyperspace-tiering = { workspace = true, optional = true }
 hyperspace-eco = { workspace = true, optional = true }
 hyperspace-p2p = { workspace = true, optional = true }
 hyperspace-billing = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = "3.10"
 
 [features]
 default = ["embed"]
@@ -66,7 +68,7 @@ nightly-simd = ["hyperspace-core/nightly-simd", "hyperspace-index/nightly-simd"]
 # Enable with: cargo build --features s3-tiering
 s3-tiering = ["dep:hyperspace-tiering"]
 eco-monitor = ["dep:hyperspace-eco", "hyperspace-eco?/eco-monitor"]
-depin = ["dep:hyperspace-p2p", "dep:hyperspace-billing"]
+depin = ["dep:hyperspace-p2p", "dep:hyperspace-billing", "dep:tracing-subscriber"]
 
 [[bin]]
 name = "hyperspace-server"

@@ -444,20 +444,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "backoff"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b62ddb9cb1ec0a098ad4bbf9344d0713fa193ae1a80af55febcff2627b6a00c1"
-dependencies = [
- "futures-core",
- "getrandom 0.2.17",
- "instant",
- "pin-project-lite",
- "rand 0.8.5",
- "tokio",
-]
-
-[[package]]
 name = "base-x"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2415,7 +2401,6 @@ dependencies = [
  "dashmap 6.1.0",
  "ed25519-dalek",
  "governor",
- "hyperspace-core",
  "rand 0.8.5",
  "redb",
  "reqwest 0.12.28",
@@ -2470,13 +2455,12 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "serde",
- "thiserror 1.0.69",
  "wgpu",
 ]
 
 [[package]]
 name = "hyperspace-eco"
-version = "3.1.4"
+version = "4.0.0"
 dependencies = [
  "hyperspace-core",
  "memmap2",
@@ -2545,7 +2529,6 @@ dependencies = [
  "futures",
  "hex",
  "hyperspace-core",
- "hyperspace-index",
  "hyperspace-store",
  "libp2p",
  "reqwest 0.12.28",
@@ -2656,7 +2639,6 @@ dependencies = [
  "arc-swap",
  "byteorder",
  "crc32fast",
- "hyperspace-core",
  "libc",
  "memmap2",
  "parking_lot",
@@ -2671,7 +2653,6 @@ dependencies = [
 name = "hyperspace-tiering"
 version = "4.0.0"
 dependencies = [
- "backoff",
  "bytes",
  "futures",
  "moka",

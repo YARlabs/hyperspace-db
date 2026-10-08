@@ -11,8 +11,6 @@ tokio = { workspace = true }
 object_store = { version = "0.11", features = ["aws"] }
 # LRU cache for local chunk eviction policy
 moka = { version = "0.12", features = ["sync"] }
-# Retry / backoff for transient S3 failures
-backoff = { version = "0.4", features = ["tokio"] }
 # Byte handling
 bytes = "1.9"
 # Async stream handling
