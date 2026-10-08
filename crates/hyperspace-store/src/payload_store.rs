@@ -229,6 +229,75 @@ impl PayloadStore {
         Ok(())
     }
 
+    /// Insert payloads in batch for high-throughput ingestion.
+    pub fn insert_batch(&self, entries: &[(u32, Vec<u8>)]) -> io::Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let compressed_entries: Vec<(u32, Vec<u8>, u32)> = entries
+            .iter()
+            .map(|(id, raw)| {
+                let comp = zstd::encode_all(raw.as_slice(), self.zstd_level)?;
+                let raw_len = raw.len() as u32;
+                Ok((*id, comp, raw_len))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+
+        let mut off_guard = self.next_offset.lock();
+        let mut cur_offset = *off_guard;
+
+        let mut w = self.writer.lock();
+        w.seek(SeekFrom::End(0))?;
+
+        let mut slots_to_update = Vec::with_capacity(compressed_entries.len());
+
+        for (id, comp, raw_len) in &compressed_entries {
+            let comp_len = comp.len() as u32;
+            let entry_offset = cur_offset;
+
+            w.write_u32::<LittleEndian>(comp_len)?;
+            w.write_u32::<LittleEndian>(*raw_len)?;
+            w.write_all(comp)?;
+
+            cur_offset += 8 + u64::from(comp_len);
+
+            slots_to_update.push((
+                *id,
+                PayloadSlot {
+                    offset: entry_offset,
+                    compressed_len: comp_len,
+                    uncompressed_len: *raw_len,
+                },
+            ));
+        }
+        w.flush()?;
+        *off_guard = cur_offset;
+
+        {
+            let mut idx = self.index.write();
+            for &(id, slot) in &slots_to_update {
+                let id_usize = id as usize;
+                if idx.len() <= id_usize {
+                    idx.resize(id_usize + 1, None);
+                }
+                idx[id_usize] = Some(slot);
+            }
+        }
+
+        for &(id, slot) in &slots_to_update {
+            self.append_index_record(
+                id,
+                true,
+                slot.offset,
+                slot.compressed_len,
+                slot.uncompressed_len,
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// Fetch the decompressed payload for `id` using a positional read.
     ///
     /// This function is **synchronous** and blocking — it MUST be wrapped in

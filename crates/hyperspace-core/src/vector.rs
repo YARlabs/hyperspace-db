@@ -558,8 +558,11 @@ impl BinaryHyperVector {
         let bytes_len = n.div_ceil(8);
         let mut bits = vec![0u8; bytes_len];
 
+        let mut rotated_f32: Vec<f32> = v.coords.iter().map(|&x| x as f32).collect();
+        crate::turbo_rot::rotate_vector_in_place(&mut rotated_f32);
+
         for i in 0..n {
-            if v.coords[i] > 0.0 {
+            if rotated_f32[i] > 0.0 {
                 bits[i / 8] |= 1 << (i % 8);
             }
         }
@@ -611,6 +614,67 @@ impl BinaryHyperVector {
 
         let delta = sum_sq_diff * f64::from(self.alpha) * query.alpha;
         1.0 + 2.0 * delta
+    }
+
+    #[inline(always)]
+    pub fn adc_distance_to_float(&self, query: &HyperVector) -> f64 {
+        let n = query.coords.len();
+        if n == 0 {
+            return 0.0;
+        }
+        let scale = 1.0 / (n as f64).sqrt();
+        let mut i = 0;
+        let n_full = (n / 8) * 8;
+
+        #[cfg(feature = "nightly-simd")]
+        let mut dot = {
+            use std::simd::f64x4;
+            use std::simd::num::SimdFloat;
+
+            let mut sum_vec = f64x4::splat(0.0);
+            while i < n_full {
+                let byte = self.bits[i / 8];
+                let val1 = f64x4::from_array(SIGN_LUT[(byte & 0x0F) as usize]);
+                let val2 = f64x4::from_array(SIGN_LUT[(byte >> 4) as usize]);
+
+                let q1 = f64x4::from_slice(&query.coords[i..i + 4]);
+                let q2 = f64x4::from_slice(&query.coords[i + 4..i + 8]);
+
+                sum_vec += val1 * q1 + val2 * q2;
+                i += 8;
+            }
+            sum_vec.reduce_sum()
+        };
+
+        #[cfg(not(feature = "nightly-simd"))]
+        let mut dot = {
+            let mut d = 0.0;
+            while i < n_full {
+                let byte = self.bits[i / 8];
+                let s1 = SIGN_LUT[(byte & 0x0F) as usize];
+                let s2 = SIGN_LUT[(byte >> 4) as usize];
+                d += s1[0] * query.coords[i]
+                    + s1[1] * query.coords[i + 1]
+                    + s1[2] * query.coords[i + 2]
+                    + s1[3] * query.coords[i + 3]
+                    + s2[0] * query.coords[i + 4]
+                    + s2[1] * query.coords[i + 5]
+                    + s2[2] * query.coords[i + 6]
+                    + s2[3] * query.coords[i + 7];
+                i += 8;
+            }
+            d
+        };
+
+        while i < n {
+            let bit = (self.bits[i / 8] >> (i % 8)) & 1;
+            let val = if bit == 1 { 1.0 } else { -1.0 };
+            dot += val * query.coords[i];
+            i += 1;
+        }
+
+        let cos_dist = 2.0 * (1.0 - (dot * scale).clamp(-1.0, 1.0));
+        cos_dist.max(0.0)
     }
 }
 

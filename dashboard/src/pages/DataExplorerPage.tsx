@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { useSearchParams } from "react-router-dom"
-import { Code, Play, AlertCircle, ChevronLeft, ChevronRight, Edit3, Trash2, Hash, FileJson, Download, Plus, Database, Info } from "lucide-react"
+import { Code, Play, AlertCircle, ChevronLeft, ChevronRight, Edit3, Trash2, Hash, FileJson, Download, Plus, Database, Info, Layers } from "lucide-react"
 import { scrollCollection, countFiltered, updatePayload, insertVector, deletePoint } from "@/lib/api"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
@@ -41,6 +41,19 @@ export function DataExplorerPage() {
 
     const currentCollectionInfo = collections?.find((c: any) => (typeof c === 'string' ? c : c.name) === selectedCollection);
     const privilege = typeof currentCollectionInfo === 'string' ? 'Admin' : (currentCollectionInfo?.privilege || 'Admin');
+    const isCurrentMrl = Boolean(
+        typeof currentCollectionInfo === 'object' && (
+            currentCollectionInfo?.is_mrl ||
+            currentCollectionInfo?.mrl_cutoff_dimension ||
+            currentCollectionInfo?.schema?.cascade_pipeline?.mrl_layer
+        )
+    );
+    const currentMrlCutoff = typeof currentCollectionInfo === 'object'
+        ? (currentCollectionInfo?.mrl_cutoff_dimension ?? currentCollectionInfo?.schema?.cascade_pipeline?.mrl_layer?.cutoff_dimension)
+        : undefined;
+    const currentDim = typeof currentCollectionInfo === 'object'
+        ? (currentCollectionInfo?.dimension ?? currentCollectionInfo?.schema?.components?.map((c: any) => c.full_dimension).reduce((a: number, b: number) => a + b, 0))
+        : undefined;
 
     return (
         <div className="space-y-6 fade-in h-full flex flex-col">
@@ -49,7 +62,13 @@ export function DataExplorerPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Data Explorer</h1>
                     <p className="text-muted-foreground">Inspect vectors and validate search</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                    {isCurrentMrl && (
+                        <Badge variant="secondary" className="bg-sky-950/70 text-sky-300 border border-sky-500/30 text-xs font-mono px-2.5 py-1 flex items-center gap-1.5 shadow-sm">
+                            <Layers className="h-3.5 w-3.5 text-sky-400" />
+                            MRL Cutoff: {currentMrlCutoff}d / {currentDim}d
+                        </Badge>
+                    )}
                     {privilege !== "ReadOnly" && (
                         <InsertVectorDialog collection={selectedCollection} />
                     )}
@@ -61,7 +80,13 @@ export function DataExplorerPage() {
                             <SelectContent>
                                 {collections?.map((col: any) => {
                                     const name = typeof col === 'string' ? col : col.name
-                                    return <SelectItem key={name} value={name}>{name}</SelectItem>
+                                    const isMrl = typeof col === 'object' && (col.is_mrl || col.mrl_cutoff_dimension)
+                                    const cutoff = typeof col === 'object' ? col.mrl_cutoff_dimension : null
+                                    return (
+                                        <SelectItem key={name} value={name}>
+                                            {name} {isMrl && cutoff ? `(MRL ${cutoff}d)` : ""}
+                                        </SelectItem>
+                                    )
                                 })}
                             </SelectContent>
                         </Select>
@@ -309,6 +334,24 @@ function SearchPlayground({ collection }: { collection: string }) {
         queryFn: () => api.get("/collections").then(r => r.data)
     })
 
+    const currentInfo = allCollections?.find((c: any) => (typeof c === 'string' ? c : c.name) === collection)
+    const isMrl = Boolean(
+        typeof currentInfo === 'object' && (
+            currentInfo?.is_mrl ||
+            currentInfo?.mrl_cutoff_dimension ||
+            currentInfo?.schema?.cascade_pipeline?.mrl_layer
+        )
+    )
+    const mrlCutoff = typeof currentInfo === 'object'
+        ? (currentInfo?.mrl_cutoff_dimension ?? currentInfo?.schema?.cascade_pipeline?.mrl_layer?.cutoff_dimension)
+        : undefined
+    const mrlDim = typeof currentInfo === 'object'
+        ? (currentInfo?.dimension ?? currentInfo?.schema?.components?.map((c: any) => c.full_dimension).reduce((a: number, b: number) => a + b, 0))
+        : undefined
+    const mrlTopK = typeof currentInfo === 'object'
+        ? (currentInfo?.mrl_rerank_top_k ?? currentInfo?.schema?.cascade_pipeline?.mrl_layer?.rerank_top_k)
+        : undefined
+
     const searchMutation = useMutation({
         mutationFn: (payload: any) => {
             if (isMultiSearch) {
@@ -368,7 +411,6 @@ function SearchPlayground({ collection }: { collection: string }) {
         const nodes = Number(graphNodes)
         if (Number.isNaN(sid) || Number.isNaN(layer) || Number.isNaN(depth) || Number.isNaN(nodes)) {
             setError("Graph inputs must be valid numbers")
-            return
         }
         try {
             const parsedExact = JSON.parse(exactFilterJson)
@@ -400,6 +442,22 @@ function SearchPlayground({ collection }: { collection: string }) {
                         <CardDescription>Use filters and inspect typed metadata</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                        {isMrl && (
+                            <div className="p-3 rounded-lg bg-sky-950/20 border border-sky-500/20 text-xs text-sky-300 flex items-start gap-2.5">
+                                <Layers className="h-4 w-4 mt-0.5 text-sky-400 shrink-0" />
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-sky-200">MRL Cascade Active</span>
+                                        <Badge className="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[9px] font-mono px-1.5 py-0">
+                                            Cutoff: {mrlCutoff}d / Full: {mrlDim}d
+                                        </Badge>
+                                    </div>
+                                    <p className="text-[11px] text-sky-300/80 leading-relaxed">
+                                        2-stage search: fast candidate screening using first <span className="font-mono font-bold text-sky-200">{mrlCutoff}d</span> prefix coordinates, then rescoring top <span className="font-mono font-bold text-sky-200">{mrlTopK || 100}</span> candidates with full <span className="font-mono font-bold text-sky-200">{mrlDim}d</span> precision.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 gap-3">
                             <div className="grid gap-2">
                                 <Label htmlFor="topk">Top K</Label>

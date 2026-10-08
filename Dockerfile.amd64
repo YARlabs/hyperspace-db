@@ -33,7 +33,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
-RUN useradd -m -u 1000 -U -s /bin/sh -d /app hyperspace
+RUN useradd -m -u 1001 -U -s /bin/sh -d /app hyperspace
 
 WORKDIR /app
 
@@ -48,6 +48,7 @@ RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
 USER hyperspace
 
 ENV RUST_LOG=info
+ENV HS_DATA_DIR=/app/data
 
 # Label the image
 LABEL org.opencontainers.image.source=https://github.com/yarlabs/hyperspace-db

@@ -113,6 +113,16 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v3.1.0**: ✅ **Schema-Driven Cascade & MRL**. Transition to `CollectionSchema` for multi-vector support. Native Matryoshka (MRL) cascading for RAM-optimized sub-millisecond search. *Completed.*
 * **v3.1.2**: ✅ **DePIN Infrastructure & Zero-Knowledge Privacy**. Unified `hyperspace-miner` node, signed ticket validation, per-byte storage billing, and client-side ZK-encryption. *Completed.*
 * **v3.1.3**: ✅ **AsymmetricHybrid801 Quantization & Cognitive MCP**. hardware resource telemetry (`sysinfo`), Zero-RAM Sidecar Payload integration for LangChain/LlamaIndex, and 6 standardized Cognitive Skills tools. *Completed.*
-* **v3.2**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
+
+### Phase 4: Thread-per-Core & Hardware Direct I/O (v4.x)
+*The goal: Reflex-Level Speed, Zero Lock Contention, and Hardware NVMe Alignment.*
+
+* **v4.0.0**: ✅ **Thread-per-Core Shared-Nothing Sharding & Direct I/O**. *Completed.*
+  - `ShardedCollection` eliminating cross-core lock contention (0 ns lock contention).
+  - `DirectVectorStore` hardware page-aligned DMA (`O_DIRECT` / `fcntl F_NOCACHE`), reducing NVMe jitter to < 0.35 ms and MRL cascade tail latency (P99) to 3.14 ms.
+  - Hierarchical Spatial AABB index with 95–99.9% candidate pruning (1,774 QPS).
+  - Autonomous zero-downtime startup migration engine (`data/` -> `data_v4/`).
+  - Production Product Quantization (`hyperspace-core::pq`) with OPQ and RaBitQ 1-bit ADC.
+  - Server core ingest rate of 67,500 vec/s and index construction in 78.54 s.
 
 Join us in pushing the boundaries of hyperbolic vector search!

@@ -1,7 +1,8 @@
 use dashmap::DashMap;
 use hyperspace_core::{vector::HyperVector, FilterExpr, Metric, SearchResult};
-use rayon::prelude::*;
 use std::collections::HashMap;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone)]
 pub struct WriteBufferEntry {
@@ -12,6 +13,7 @@ pub struct WriteBufferEntry {
 
 pub struct WriteBuffer {
     entries: DashMap<u32, WriteBufferEntry>, // Key: internal_id
+    count: AtomicUsize,
 }
 
 impl Default for WriteBuffer {
@@ -24,6 +26,7 @@ impl WriteBuffer {
     pub fn new() -> Self {
         Self {
             entries: DashMap::new(),
+            count: AtomicUsize::new(0),
         }
     }
 
@@ -35,31 +38,41 @@ impl WriteBuffer {
         vector: Vec<f64>,
         metadata: HashMap<String, String>,
     ) {
-        self.entries.insert(
-            internal_id,
-            WriteBufferEntry {
-                user_id,
-                vector,
-                metadata,
-            },
-        );
+        if self
+            .entries
+            .insert(
+                internal_id,
+                WriteBufferEntry {
+                    user_id,
+                    vector,
+                    metadata,
+                },
+            )
+            .is_none()
+        {
+            self.count.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     /// Removal when indexing is completed or failed
     pub fn remove(&self, internal_id: u32) {
-        self.entries.remove(&internal_id);
+        if self.entries.remove(&internal_id).is_some() {
+            self.count.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 
+    #[inline]
     pub fn size(&self) -> usize {
-        self.entries.len()
+        self.count.load(Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.count.load(Ordering::Relaxed) == 0
     }
 
-    /// Parallel scan across in-memory entries using Rayon.
-    /// Filters and distances are evaluated in parallel on CPU.
+    /// Zero-copy scan across in-memory write buffer entries.
+    /// Filters and distances are evaluated by reference; only top-K winners clone metadata.
     pub fn search<M: Metric>(
         &self,
         query: &[f64],
@@ -71,49 +84,56 @@ impl WriteBuffer {
             return Vec::new();
         }
 
-        // Collect entries to scan them in parallel.
-        // Cloning is cheap because vectors are small and we only have up to HS_WRITE_BUFFER_MAX_SIZE elements.
-        let entries_vec: Vec<(u32, WriteBufferEntry)> = self
-            .entries
-            .iter()
-            .map(|kv| (*kv.key(), kv.value().clone()))
-            .collect();
+        let mut scored: Vec<(u32, f64)> = Vec::with_capacity(self.entries.len().min(1024));
 
-        // Perform parallel filtering and distance scoring
-        let mut candidates: Vec<SearchResult> = entries_vec
-            .into_par_iter()
-            .filter(|(_, entry)| {
-                // 1. Match legacy exact key-value filters
-                for (k, v) in filters {
-                    if entry.metadata.get(k) != Some(v) {
-                        return false;
+        for kv in &self.entries {
+            let entry = kv.value();
+            // 1. Match legacy exact key-value filters
+            let mut matches = true;
+            for (kf, vf) in filters {
+                if entry.metadata.get(kf) != Some(vf) {
+                    matches = false;
+                    break;
+                }
+            }
+            if !matches {
+                continue;
+            }
+
+            // 2. Match advanced semantic/geometric/logical FilterExprs
+            if !complex_filters.is_empty() {
+                let hv = HyperVector {
+                    coords: entry.vector.clone(),
+                    alpha: 1.0,
+                };
+                for expr in complex_filters {
+                    if !expr.check(&hv, &entry.metadata) {
+                        matches = false;
+                        break;
                     }
                 }
-
-                // 2. Match advanced semantic/geometric/logical FilterExprs
-                if !complex_filters.is_empty() {
-                    let hv = HyperVector {
-                        coords: entry.vector.clone(),
-                        alpha: 1.0, // Geometric regions only read .coords, so 1.0 is perfectly safe and avoids Poincaré bounds checks
-                    };
-                    for expr in complex_filters {
-                        if !expr.check(&hv, &entry.metadata) {
-                            return false;
-                        }
-                    }
+                if !matches {
+                    continue;
                 }
-                true
-            })
-            .map(|(_, entry)| {
-                let dist = M::distance(query, &entry.vector);
-                (entry.user_id, dist, entry.metadata.clone(), None)
-            })
-            .collect();
+            }
+
+            let dist = M::distance(query, &entry.vector);
+            scored.push((*kv.key(), dist));
+        }
 
         // Sort ascending by distance (closest first)
-        candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
-        candidates.truncate(k);
-        candidates
+        scored.sort_by(|a, b| a.1.total_cmp(&b.1));
+        scored.truncate(k);
+
+        // Only clone metadata for the top-k winners
+        scored
+            .into_iter()
+            .filter_map(|(internal_id, dist)| {
+                self.entries
+                    .get(&internal_id)
+                    .map(|entry| (entry.user_id, dist, entry.metadata.clone(), None))
+            })
+            .collect()
     }
 }
 

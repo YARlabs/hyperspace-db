@@ -20,7 +20,9 @@ benchmarks/
 **/venv/
 venv/
 data/
+data_v4/
 docs/book/
 node_modules/
 dist/
 package-lock.json
+BENCHMARK*.*

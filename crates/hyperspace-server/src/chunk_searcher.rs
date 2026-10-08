@@ -98,6 +98,9 @@ pub fn search_chunk<M: Metric>(
             4 + num_blocks * 12
         }
         QuantizationMode::Turbo => dimension.div_ceil(2) + 8,
+        QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+            hyperspace_core::pq::default_num_subvectors(dimension)
+        }
         QuantizationMode::None => {
             if storage_f32 {
                 dimension * 4

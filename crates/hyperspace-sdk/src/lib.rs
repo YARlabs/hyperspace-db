@@ -194,12 +194,13 @@ impl CollectionSchemaBuilder {
         full_dimension: u32,
         weight: f32,
     ) -> Self {
-        self.components.push(hyperspace_proto::hyperspace::VectorComponent {
-            name: name.into(),
-            metric: metric.into(),
-            full_dimension,
-            weight,
-        });
+        self.components
+            .push(hyperspace_proto::hyperspace::VectorComponent {
+                name: name.into(),
+                metric: metric.into(),
+                full_dimension,
+                weight,
+            });
         self
     }
 
@@ -210,12 +211,13 @@ impl CollectionSchemaBuilder {
         store_in_ram: bool,
         rerank_top_k: u32,
     ) -> Self {
-        self.cascade_pipeline.push(hyperspace_proto::hyperspace::MrlLayer {
-            component_name: component_name.into(),
-            cutoff_dimension,
-            store_in_ram,
-            rerank_top_k,
-        });
+        self.cascade_pipeline
+            .push(hyperspace_proto::hyperspace::MrlLayer {
+                component_name: component_name.into(),
+                cutoff_dimension,
+                store_in_ram,
+                rerank_top_k,
+            });
         self
     }
 
@@ -226,7 +228,6 @@ impl CollectionSchemaBuilder {
         }
     }
 }
-
 
 #[derive(Clone)]
 pub struct AuthInterceptor {
@@ -304,7 +305,27 @@ impl Client {
         api_key: Option<String>,
         user_id: Option<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let channel = Channel::from_shared(dst)?
+        let effective_dst = if let Ok(uri) = dst.parse::<tonic::transport::Uri>() {
+            if let Some(host) = uri.host() {
+                let port = uri.port_u16().unwrap_or(50051);
+                if let Ok(mut addrs) = tokio::net::lookup_host(format!("{}:{}", host, port)).await {
+                    if let Some(ipv4) = addrs.find(|a| a.is_ipv4()) {
+                        let scheme = uri.scheme_str().unwrap_or("http");
+                        format!("{}://{}", scheme, ipv4)
+                    } else {
+                        dst
+                    }
+                } else {
+                    dst
+                }
+            } else {
+                dst
+            }
+        } else {
+            dst
+        };
+
+        let channel = Channel::from_shared(effective_dst)?
             .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
             .tcp_nodelay(true)
             .keep_alive_while_idle(true)
@@ -405,7 +426,8 @@ impl Client {
         quantization: String,
     ) -> Result<String, tonic::Status> {
         let schema = CollectionSchemaBuilder::simple(dimension, metric);
-        self.create_collection_with_quantization(name, schema, quantization).await
+        self.create_collection_with_quantization(name, schema, quantization)
+            .await
     }
 
     /// Convenience helper to create an MRL (Matryoshka Representation Learning) cascade collection.
@@ -420,7 +442,8 @@ impl Client {
     ) -> Result<String, tonic::Status> {
         let schema = CollectionSchemaBuilder::mrl(dimension, metric, mrl_cutoffs);
         if let Some(q) = quantization {
-            self.create_collection_with_quantization(name, schema, q).await
+            self.create_collection_with_quantization(name, schema, q)
+                .await
         } else {
             self.create_collection(name, schema).await
         }
@@ -805,7 +828,11 @@ impl Client {
             hybrid_alpha,
             use_wasserstein: options.use_wasserstein,
             collection: coll,
-            bm25_options: if context.is_some() { None } else { options.bm25_options },
+            bm25_options: if context.is_some() {
+                None
+            } else {
+                options.bm25_options
+            },
             mrl_dimension: options.mrl_dimension,
             include_payload: final_include_payload,
             component_weights: options.component_weights,
@@ -1091,7 +1118,8 @@ impl Client {
             .iter()
             .map(|v| Self::vec_f32_to_f64(v))
             .collect::<Vec<_>>();
-        self.search_batch_with_options(vectors_f64, top_k, options).await
+        self.search_batch_with_options(vectors_f64, top_k, options)
+            .await
     }
 
     /// Batch search for multiple vectors in a single RPC.
@@ -2245,8 +2273,13 @@ mod tests {
     fn test_quantization_header_parsing() {
         let levels = ["none", "medium", "medium_plus", "turbo", "extreme"];
         for level in levels {
-            let parsed: Result<tonic::metadata::MetadataValue<tonic::metadata::Ascii>, _> = level.parse();
-            assert!(parsed.is_ok(), "Failed to parse quantization level: {}", level);
+            let parsed: Result<tonic::metadata::MetadataValue<tonic::metadata::Ascii>, _> =
+                level.parse();
+            assert!(
+                parsed.is_ok(),
+                "Failed to parse quantization level: {}",
+                level
+            );
         }
     }
 }

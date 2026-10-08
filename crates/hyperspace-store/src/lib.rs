@@ -3,6 +3,17 @@
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::missing_panics_doc)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::len_without_is_empty)]
+#![allow(clippy::map_unwrap_or)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::uninlined_format_args)]
+
+// Direct I/O storage engine (v4.0.0)
+#[cfg(not(target_arch = "wasm32"))]
+pub mod direct_io;
+#[cfg(not(target_arch = "wasm32"))]
+pub use direct_io::{AlignedBuffer, DirectFile, DirectVectorStore, DIRECT_IO_ALIGNMENT};
 
 // Sidecar Payload Storage: available regardless of vector storage backend.
 #[cfg(not(target_arch = "wasm32"))]

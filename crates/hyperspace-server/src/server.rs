@@ -3125,12 +3125,10 @@ pub async fn start_server(
                             };
                             let mut client = DatabaseClient::with_interceptor(channel, interceptor);
 
-                            println!("Connected! Requesting replication stream...");
-                            let current_clock = manager_weak.upgrade().map_or(0, |m| {
-                                futures::executor::block_on(async {
-                                    m.cluster_state.read().await.logical_clock
-                                })
-                            });
+                            let current_clock = match manager_weak.upgrade() {
+                                Some(m) => m.cluster_state.read().await.logical_clock,
+                                None => 0,
+                            };
 
                             let req = hyperspace_proto::hyperspace::ReplicationRequest {
                                 last_logical_clock: current_clock,

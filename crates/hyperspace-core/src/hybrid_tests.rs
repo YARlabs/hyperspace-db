@@ -1,4 +1,9 @@
 #[cfg(test)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::uninlined_format_args,
+    clippy::needless_range_loop
+)]
 mod tests {
     use crate::hybrid::HybridQuantizedVector;
     use crate::vector::HyperVector;
@@ -146,5 +151,60 @@ mod tests {
         // Distance to self Lorentz part should be ~0
         let d_lor = q.lorentz_distance_to_float(&v);
         assert!(d_lor < 0.01);
+    }
+
+    #[test]
+    fn test_turbo_quant_vector_accuracy_and_reconstruction() {
+        use crate::hybrid::TurboQuantVector;
+
+        // Generate synthetic normalized vector (1024D)
+        let dim = 1024;
+        let mut coords = Vec::with_capacity(dim);
+        for i in 0..dim {
+            coords.push(((i as f64 * 0.1234).sin() + (i as f64 * 0.5678).cos()) * 0.1);
+        }
+        let norm_sq: f64 = coords.iter().map(|&x| x * x).sum();
+        let norm = norm_sq.sqrt();
+        for x in &mut coords {
+            *x /= norm;
+        }
+
+        let v = HyperVector::new_unchecked(coords.clone());
+        let tq = TurboQuantVector::from_float(&v, 0);
+
+        // Serialization roundtrip
+        let bytes = tq.as_bytes();
+        assert_eq!(bytes.len(), 4 + 4 + 512); // norm(4) + head_len(4) + packed_tail(512)
+        let tq_loaded = TurboQuantVector::from_bytes(&bytes, dim).expect("Deserialization failed");
+        assert_eq!(tq_loaded.packed_tail, tq.packed_tail);
+
+        // Reconstruction
+        let reconstructed = tq.reconstruct_unrotated(dim);
+        assert_eq!(reconstructed.len(), dim);
+
+        // Cosine similarity to self
+        let mut dot = 0.0;
+        let mut rec_norm_sq = 0.0;
+        for i in 0..dim {
+            dot += coords[i] * reconstructed[i];
+            rec_norm_sq += reconstructed[i] * reconstructed[i];
+        }
+        let cos_sim = dot / (rec_norm_sq.sqrt());
+        assert!(
+            cos_sim > 0.95,
+            "Reconstruction cosine similarity to original should be >0.95, got {cos_sim}"
+        );
+
+        // Rotate query before distance_bytes_cosine, as done in HnswIndex::search
+        let coords_f32: Vec<f32> = coords.iter().map(|&x| x as f32).collect();
+        let rotated_q_f32 = crate::turbo_rot::rotate_vector(&coords_f32, dim);
+        let rotated_q: Vec<f64> = rotated_q_f32.iter().map(|&x| f64::from(x)).collect();
+
+        // Distance bytes cosine to self should be near 0 (||x - x||^2 ≈ 0)
+        let dist = TurboQuantVector::distance_bytes_cosine(&bytes, &rotated_q, dim);
+        assert!(
+            dist < 0.15,
+            "Self-distance should be close to 0 (<0.15), got {dist}"
+        );
     }
 }

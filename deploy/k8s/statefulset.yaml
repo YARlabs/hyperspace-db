@@ -13,12 +13,46 @@ spec:
       labels:
         app: hyperspace
     spec:
+      securityContext:
+        fsGroup: 1001
+        runAsUser: 1001
+        runAsNonRoot: true
       containers:
         - name: db
           image: glukhota/hyperspace-db:latest
+          env:
+            - name: HS_DATA_DIR
+              value: "/app/data"
+            - name: HS_HTTP_PORT
+              value: "50050"
+            - name: HS_GRPC_PORT
+              value: "50051"
+            - name: HS_V4_ENGINE
+              value: "true"
           ports:
-            - containerPort: 50051 # gRPC
-            - containerPort: 50050 # Dashboard
+            - containerPort: 50051
+              name: grpc
+            - containerPort: 50050
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 50050
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 50050
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"
           volumeMounts:
             - name: data
               mountPath: /app/data

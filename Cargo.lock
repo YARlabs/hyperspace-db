@@ -2507,8 +2507,9 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "3.1.4"
+version = "4.0.0"
 dependencies = [
+ "arc-swap",
  "boxcar",
  "crossbeam-skiplist",
  "dashmap 6.1.0",
@@ -2595,7 +2596,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "3.1.4"
+version = "4.0.0"
 dependencies = [
  "arc-swap",
  "async-stream",
@@ -2650,12 +2651,13 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "3.1.1"
+version = "4.0.0"
 dependencies = [
  "arc-swap",
  "byteorder",
  "crc32fast",
  "hyperspace-core",
+ "libc",
  "memmap2",
  "parking_lot",
  "proptest",

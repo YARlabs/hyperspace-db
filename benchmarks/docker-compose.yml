@@ -20,7 +20,7 @@ services:
     networks:
       - benchmark_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:50050/api/metrics"]
+      test: ["CMD", "/usr/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/50051"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -36,7 +36,7 @@ services:
     networks:
       - benchmark_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD", "/usr/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/6333"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -59,7 +59,7 @@ services:
     networks:
       - benchmark_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/.well-known/ready"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -79,7 +79,7 @@ services:
       - benchmark_net
 
   milvus-minio:
-    image: minio/minio:latest
+    image: milvusdb/minio:RELEASE.2024-12-18T13-15-44Z
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -127,7 +127,7 @@ services:
     networks:
       - benchmark_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "/usr/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
       interval: 5s
       timeout: 3s
       retries: 10

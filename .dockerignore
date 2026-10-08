@@ -25,6 +25,7 @@ integrations/
 
 # Data
 data/
+data_v4/
 *.hyp
 *.log
 *.snap

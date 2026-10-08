@@ -365,7 +365,13 @@ export function GraphExplorerPage() {
                                     <SelectContent className="bg-zinc-900 border-white/10 text-white">
                                         {(collections || []).map((c: any) => {
                                             const name = typeof c === "string" ? c : c.name
-                                            return <SelectItem key={name} value={name}>{name}</SelectItem>
+                                            const isMrl = typeof c === "object" && (c.is_mrl || c.mrl_cutoff_dimension)
+                                            const cutoff = typeof c === "object" ? c.mrl_cutoff_dimension : null
+                                            return (
+                                                <SelectItem key={name} value={name}>
+                                                    {name} {isMrl && cutoff ? `(MRL ${cutoff}d)` : ""}
+                                                </SelectItem>
+                                            )
                                         })}
                                     </SelectContent>
                                 </Select>

@@ -6,9 +6,18 @@
 #![allow(clippy::inline_always)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::cast_possible_truncation)]
-#![allow(clippy::cast_lossless)]
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::needless_range_loop)]
+#![allow(clippy::cast_lossless)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::many_single_char_names)]
+#![allow(clippy::unsafe_derive_deserialize)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::bool_to_int_with_if)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::unreadable_literal)]
 
 pub mod config;
 pub mod fuzzy;
@@ -16,9 +25,12 @@ pub mod gpu;
 pub mod gromov;
 pub mod hybrid;
 pub mod optim;
+pub mod pq;
 pub mod region;
+pub mod turbo_rot;
 pub mod vector;
 pub use hybrid::{HybridExtremeQuantizedVector, HybridMetric};
+pub use pq::{PQLookupTable, PQVector, ProductQuantizer};
 pub mod wasserstein;
 
 pub use config::GlobalConfig;
@@ -53,6 +65,8 @@ pub enum QuantizationMode {
     AsymmetricHybridExtreme,
     ScalarI4,
     Turbo,
+    ProductQuantization,
+    OPQ,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -410,6 +424,15 @@ pub trait Collection: Send + Sync + 'static {
     /// before hitting disk. This method MUST NOT store any bytes in RAM.
     /// Default no-op: implementors without payload support silently ignore it.
     async fn insert_payload(&self, _id: u32, _payload: Vec<u8>) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Write a batch of payload blobs to disk in a single I/O transaction.
+    /// Default implementation loops over `insert_payload`.
+    async fn insert_payload_batch(&self, entries: Vec<(u32, Vec<u8>)>) -> Result<(), String> {
+        for (id, payload) in entries {
+            self.insert_payload(id, payload).await?;
+        }
         Ok(())
     }
 
@@ -860,7 +883,7 @@ impl Metric for EuclideanMetric {
     }
 
     fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
-        a.poincare_distance_sq_to_float(b)
+        a.adc_distance_to_float(b)
     }
 
     fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
@@ -896,7 +919,7 @@ impl Metric for CosineMetric {
     }
 
     fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
-        a.poincare_distance_sq_to_float(b)
+        a.adc_distance_to_float(b)
     }
 
     fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {

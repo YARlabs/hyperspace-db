@@ -522,6 +522,15 @@ struct CollectionSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     is_eco_certified: Option<bool>,
     privilege: String,
+    is_mrl: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mrl_cutoff_dimension: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mrl_rerank_top_k: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quantization: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<hyperspace_proto::hyperspace::CollectionSchema>,
 }
 
 async fn get_cluster_status(
@@ -546,21 +555,25 @@ async fn list_collections(
     let names = manager.list(&ctx.user_id);
     let mut summaries = Vec::new();
     for name in names {
+        let meta_opt = manager.get_metadata_no_wake(&ctx.user_id, &name);
+        let is_mrl = meta_opt.as_ref().map_or(false, |m| m.is_mrl());
+        let mrl_cutoff_dimension = meta_opt.as_ref().and_then(|m| m.mrl_cutoff_dimension());
+        let mrl_rerank_top_k = meta_opt.as_ref().and_then(|m| m.mrl_rerank_top_k());
+        let quantization = meta_opt.as_ref().map(|m| m.quantization.clone());
+        let schema = meta_opt.as_ref().and_then(|m| m.schema.clone());
+
         if manager.is_active(&ctx.user_id, &name) {
             if let Some(col) = manager.get_active_no_lru(&ctx.user_id, &name) {
                 #[cfg(feature = "eco-monitor")]
                 let (eco_tier, is_eco_certified) = {
-                    let full_dim =
-                        if let Some(meta) = manager.get_metadata_no_wake(&ctx.user_id, &name) {
-                            meta.dimension()
-                        } else {
-                            col.dimension()
-                        };
+                    let full_dim = meta_opt
+                        .as_ref()
+                        .map_or_else(|| col.dimension(), |meta| meta.dimension());
                     let eco_schema = hyperspace_eco::CollectionEcoSchema {
                         collection_name: name.clone(),
                         vector_count: col.count() as u64,
                         full_dimension: full_dim as u32,
-                        mrl_dimension: col.dimension() as u32,
+                        mrl_dimension: mrl_cutoff_dimension.unwrap_or(col.dimension() as u32),
                         quantization: col.quantization_mode(),
                     };
                     let tier = eco_schema.calculate_eco_tier();
@@ -579,16 +592,21 @@ async fn list_collections(
                     eco_tier,
                     is_eco_certified,
                     privilege: "Admin".to_string(),
+                    is_mrl,
+                    mrl_cutoff_dimension,
+                    mrl_rerank_top_k,
+                    quantization,
+                    schema,
                 });
             }
-        } else if let Some(meta) = manager.get_metadata_no_wake(&ctx.user_id, &name) {
+        } else if let Some(meta) = meta_opt {
             #[cfg(feature = "eco-monitor")]
             let (eco_tier, is_eco_certified) = {
                 let eco_schema = hyperspace_eco::CollectionEcoSchema {
                     collection_name: name.clone(),
                     vector_count: 0,
                     full_dimension: meta.dimension() as u32,
-                    mrl_dimension: meta.dimension() as u32,
+                    mrl_dimension: mrl_cutoff_dimension.unwrap_or(meta.dimension() as u32),
                     quantization: meta.quantization_mode(),
                 };
                 let tier = eco_schema.calculate_eco_tier();
@@ -607,6 +625,11 @@ async fn list_collections(
                 eco_tier,
                 is_eco_certified,
                 privilege: "Admin".to_string(),
+                is_mrl,
+                mrl_cutoff_dimension,
+                mrl_rerank_top_k,
+                quantization,
+                schema,
             });
         }
     }
@@ -614,20 +637,25 @@ async fn list_collections(
     // Append shared collections
     let shared = crate::security::list_shared_collections(&ctx.user_id);
     for (owner, name, role) in shared {
+        let meta_opt = manager.get_metadata_no_wake(&owner, &name);
+        let is_mrl = meta_opt.as_ref().map_or(false, |m| m.is_mrl());
+        let mrl_cutoff_dimension = meta_opt.as_ref().and_then(|m| m.mrl_cutoff_dimension());
+        let mrl_rerank_top_k = meta_opt.as_ref().and_then(|m| m.mrl_rerank_top_k());
+        let quantization = meta_opt.as_ref().map(|m| m.quantization.clone());
+        let schema = meta_opt.as_ref().and_then(|m| m.schema.clone());
+
         if manager.is_active(&owner, &name) {
             if let Some(col) = manager.get_active_no_lru(&owner, &name) {
                 #[cfg(feature = "eco-monitor")]
                 let (eco_tier, is_eco_certified) = {
-                    let full_dim = if let Some(meta) = manager.get_metadata_no_wake(&owner, &name) {
-                        meta.dimension()
-                    } else {
-                        col.dimension()
-                    };
+                    let full_dim = meta_opt
+                        .as_ref()
+                        .map_or_else(|| col.dimension(), |meta| meta.dimension());
                     let eco_schema = hyperspace_eco::CollectionEcoSchema {
                         collection_name: name.clone(),
                         vector_count: col.count() as u64,
                         full_dimension: full_dim as u32,
-                        mrl_dimension: col.dimension() as u32,
+                        mrl_dimension: mrl_cutoff_dimension.unwrap_or(col.dimension() as u32),
                         quantization: col.quantization_mode(),
                     };
                     let tier = eco_schema.calculate_eco_tier();
@@ -646,16 +674,21 @@ async fn list_collections(
                     eco_tier,
                     is_eco_certified,
                     privilege: role.as_str().to_string(),
+                    is_mrl,
+                    mrl_cutoff_dimension,
+                    mrl_rerank_top_k,
+                    quantization,
+                    schema,
                 });
             }
-        } else if let Some(meta) = manager.get_metadata_no_wake(&owner, &name) {
+        } else if let Some(meta) = meta_opt {
             #[cfg(feature = "eco-monitor")]
             let (eco_tier, is_eco_certified) = {
                 let eco_schema = hyperspace_eco::CollectionEcoSchema {
                     collection_name: name.clone(),
                     vector_count: 0,
                     full_dimension: meta.dimension() as u32,
-                    mrl_dimension: meta.dimension() as u32,
+                    mrl_dimension: mrl_cutoff_dimension.unwrap_or(meta.dimension() as u32),
                     quantization: meta.quantization_mode(),
                 };
                 let tier = eco_schema.calculate_eco_tier();
@@ -674,6 +707,11 @@ async fn list_collections(
                 eco_tier,
                 is_eco_certified,
                 privilege: role.as_str().to_string(),
+                is_mrl,
+                mrl_cutoff_dimension,
+                mrl_rerank_top_k,
+                quantization,
+                schema,
             });
         }
     }
@@ -1064,6 +1102,11 @@ async fn get_stats(
     if let Some(col) = manager.get(&owner, &col_name).await {
         let usage = col.get_usage();
         let hnsw = col.get_hnsw_config();
+        let meta_opt = manager.get_metadata_no_wake(&owner, &col_name);
+        let is_mrl = meta_opt.as_ref().map_or(false, |m| m.is_mrl());
+        let mrl_cutoff_dimension = meta_opt.as_ref().and_then(|m| m.mrl_cutoff_dimension());
+        let mrl_rerank_top_k = meta_opt.as_ref().and_then(|m| m.mrl_rerank_top_k());
+        let schema = meta_opt.as_ref().and_then(|m| m.schema.clone());
         Json(serde_json::json!({
             "count": col.count(),
             "dimension": col.dimension(),
@@ -1078,7 +1121,11 @@ async fn get_stats(
             "usage": {
                 "disk_bytes": usage.disk_usage_bytes,
                 "ram_bytes": usage.ram_usage_bytes,
-            }
+            },
+            "is_mrl": is_mrl,
+            "mrl_cutoff_dimension": mrl_cutoff_dimension,
+            "mrl_rerank_top_k": mrl_rerank_top_k,
+            "schema": schema,
         }))
         .into_response()
     } else {
@@ -1182,7 +1229,10 @@ async fn get_metrics(
     if ctx.is_admin && ctx.user_id == "default_admin" {
         // --- Full Administrative Metrics ---
         let total_vecs = manager.total_vector_count();
-        let disk_usage_bytes = calculate_dir_size("./data").unwrap_or(0);
+        let disk_usage_bytes = calculate_dir_size(
+            &std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data_v4".to_string()),
+        )
+        .unwrap_or(0);
         let disk_usage_mb = (disk_usage_bytes as f64 / 1_048_576.0).round() as u64;
 
         let sys = manager.system.lock();
@@ -1355,7 +1405,10 @@ async fn get_prometheus_metrics(
         (0, 0)
     };
 
-    let disk_mb = calculate_dir_size("./data").unwrap_or(0) / 1_048_576;
+    let disk_mb =
+        calculate_dir_size(&std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data_v4".to_string()))
+            .unwrap_or(0)
+            / 1_048_576;
 
     let mut body = format!(
         "# HELP hyperspace_active_collections Number of collections in memory\n\

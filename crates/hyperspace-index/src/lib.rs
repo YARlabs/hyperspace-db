@@ -8,10 +8,16 @@
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::inline_always)]
+#![allow(clippy::cast_lossless)]
+#![allow(clippy::ref_as_ptr)]
 
+pub mod spatial_aabb;
 pub mod stopwords;
 pub mod tokenizer;
 
+use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
 use rand::Rng;
@@ -129,8 +135,8 @@ impl<M: Metric> HnswIndex<M> {
 
         for (_, node) in &self.nodes {
             let mut layers = Vec::new();
-            for layer_lock in &node.layers {
-                layers.push(layer_lock.read().clone());
+            for layer_swap in &node.layers {
+                layers.push((**layer_swap.load()).clone());
             }
             snapshot_nodes.push(SnapshotNode {
                 id: node.id,
@@ -205,6 +211,13 @@ impl<M: Metric> HnswIndex<M> {
 
         let mut file = File::create(path).map_err(|e| e.to_string())?;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
+
+        if let Some(ref pq) = self.pq {
+            if let Some(parent) = path.parent() {
+                let codebook_path = parent.join("pq_codebook.bin");
+                let _ = pq.save_to_file(&codebook_path);
+            }
+        }
 
         Ok(())
     }
@@ -288,7 +301,7 @@ impl<M: Metric> HnswIndex<M> {
             // Reconstruct node
             let mut layers = Vec::with_capacity(s_node.layers.len());
             for s_layer in s_node.layers {
-                layers.push(RwLock::new(s_layer));
+                layers.push(ArcSwap::from_pointee(s_layer));
             }
             // boxcar::Vec — push in order; index == s_node.id is guaranteed by sequential snapshot
             nodes_bc.push(Node {
@@ -353,6 +366,35 @@ impl<M: Metric> HnswIndex<M> {
             std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true");
 
         let node_count = storage.count();
+        let pq = match mode {
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+                let codebook_path = path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .join("pq_codebook.bin");
+                if codebook_path.exists() {
+                    if let Ok(loaded) =
+                        hyperspace_core::pq::ProductQuantizer::load_from_file(&codebook_path)
+                    {
+                        Some(Arc::new(loaded))
+                    } else {
+                        let is_opq = mode == QuantizationMode::OPQ;
+                        let num_sub = hyperspace_core::pq::default_num_subvectors(dimension);
+                        Some(Arc::new(hyperspace_core::pq::ProductQuantizer::new(
+                            dimension, num_sub, is_opq,
+                        )))
+                    }
+                } else {
+                    let is_opq = mode == QuantizationMode::OPQ;
+                    let num_sub = hyperspace_core::pq::default_num_subvectors(dimension);
+                    Some(Arc::new(hyperspace_core::pq::ProductQuantizer::new(
+                        dimension, num_sub, is_opq,
+                    )))
+                }
+            }
+            _ => None,
+        };
+
         let index = Self {
             nodes: nodes_bc,
             append_lock: Mutex::new(()),
@@ -378,6 +420,8 @@ impl<M: Metric> HnswIndex<M> {
             zonal,
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(node_count as u32),
+            spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
+            pq,
             _marker: PhantomData,
             dimension,
         };
@@ -393,7 +437,7 @@ impl<M: Metric> HnswIndex<M> {
         for (_, node) in &self.nodes {
             let mut layers = Vec::new();
             for layer in &node.layers {
-                layers.push(layer.read().clone());
+                layers.push((**layer.load()).clone());
             }
             snapshot_nodes.push(SnapshotNode {
                 id: node.id,
@@ -476,7 +520,7 @@ impl<M: Metric> HnswIndex<M> {
         for s_node in deserialized.nodes {
             let mut layers = Vec::new();
             for s_layer in s_node.layers {
-                layers.push(RwLock::new(s_layer));
+                layers.push(ArcSwap::from_pointee(s_layer));
             }
             nodes_bc.push(Node {
                 id: s_node.id,
@@ -529,6 +573,22 @@ impl<M: Metric> HnswIndex<M> {
             std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true");
 
         let node_count = storage.count();
+        let pq = match mode {
+            QuantizationMode::ProductQuantization => {
+                let num_sub = hyperspace_core::pq::default_num_subvectors(dimension);
+                Some(Arc::new(hyperspace_core::pq::ProductQuantizer::new(
+                    dimension, num_sub, false,
+                )))
+            }
+            QuantizationMode::OPQ => {
+                let num_sub = hyperspace_core::pq::default_num_subvectors(dimension);
+                Some(Arc::new(hyperspace_core::pq::ProductQuantizer::new(
+                    dimension, num_sub, true,
+                )))
+            }
+            _ => None,
+        };
+
         let index = Self {
             nodes: nodes_bc,
             append_lock: Mutex::new(()),
@@ -554,6 +614,8 @@ impl<M: Metric> HnswIndex<M> {
             zonal,
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(node_count as u32),
+            spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
+            pq,
             _marker: PhantomData,
             dimension,
         };
@@ -615,8 +677,26 @@ pub struct HnswIndex<M: Metric> {
     pub zonal: bool,
     pub zonal_storage: dashmap::DashMap<NodeId, hyperspace_core::vector::ZonalVector>,
     pub node_counter: AtomicU32,
+    pub spatial_index: Arc<spatial_aabb::SpatialAabbIndex>,
+    pub pq: Option<Arc<hyperspace_core::pq::ProductQuantizer>>,
 
     _marker: PhantomData<M>,
+}
+
+#[inline(always)]
+fn prefetch_l1<T>(ptr: *const T) {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::x86_64::_mm_prefetch(ptr as *const i8, core::arch::x86_64::_MM_HINT_T0);
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        core::arch::asm!("prfm pldl1keep, [{0}]", in(reg) ptr, options(nostack, readonly));
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        let _ = ptr;
+    }
 }
 
 #[derive(Debug, Default)]
@@ -624,13 +704,13 @@ struct Node {
     id: NodeId,
     // Neighbor lists by layer.
     // layers[0] - detailed layer.
-    layers: Vec<RwLock<Vec<NodeId>>>,
+    layers: Vec<ArcSwap<Vec<NodeId>>>,
 }
 
 #[derive(Default)]
 struct VisitedScratch {
-    marks: Vec<u32>,
-    generation: u32,
+    marks: Vec<u64>,
+    generation: u64,
     candidates_l0: BinaryHeap<Candidate>,
     results_l0: BinaryHeap<std::cmp::Reverse<Candidate>>,
     candidates_layer: BinaryHeap<Candidate>,
@@ -638,7 +718,7 @@ struct VisitedScratch {
 }
 
 impl VisitedScratch {
-    fn prepare(&mut self, len: usize) -> u32 {
+    fn prepare(&mut self, len: usize) -> u64 {
         if self.marks.len() < len {
             self.marks.resize(len, 0);
         }
@@ -652,7 +732,7 @@ impl VisitedScratch {
 }
 
 #[inline]
-fn mark_visited(marks: &mut [u32], generation: u32, id: u32) -> bool {
+fn mark_visited(marks: &mut [u64], generation: u64, id: u32) -> bool {
     let idx = id as usize;
     if idx >= marks.len() {
         return false;
@@ -721,6 +801,22 @@ impl<M: Metric> HnswIndex<M> {
         let zonal =
             std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true");
 
+        let pq = match mode {
+            QuantizationMode::ProductQuantization => {
+                let num_sub = hyperspace_core::pq::default_num_subvectors(dimension);
+                Some(Arc::new(hyperspace_core::pq::ProductQuantizer::new(
+                    dimension, num_sub, false,
+                )))
+            }
+            QuantizationMode::OPQ => {
+                let num_sub = hyperspace_core::pq::default_num_subvectors(dimension);
+                Some(Arc::new(hyperspace_core::pq::ProductQuantizer::new(
+                    dimension, num_sub, true,
+                )))
+            }
+            _ => None,
+        };
+
         Self {
             nodes: boxcar::Vec::new(),
             dimension,
@@ -738,7 +834,18 @@ impl<M: Metric> HnswIndex<M> {
             zonal,
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(0),
+            spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
+            pq,
             _marker: PhantomData,
+        }
+    }
+
+    /// Fine-tune the Product Quantizer codebooks on training samples.
+    pub fn train_pq(&mut self, samples: &[&[f32]], iterations: usize) {
+        if let Some(ref mut pq) = self.pq {
+            let mut new_pq = (**pq).clone();
+            new_pq.train(samples, iterations);
+            self.pq = Some(Arc::new(new_pq));
         }
     }
 
@@ -898,24 +1005,23 @@ impl<M: Metric> HnswIndex<M> {
                         min_bounds.clone(),
                         max_bounds.clone(),
                     );
-                    let ids: Vec<u32> = if let Some(ref bm) = bitmap {
-                        if bm.len() > 1024 {
-                            bm.iter()
-                                .collect::<Vec<_>>()
-                                .into_par_iter()
-                                .filter(|&i| !deleted.contains(i))
-                                .filter(|&i| region.contains(&self.get_vector(i)))
-                                .collect()
-                        } else {
-                            bm.iter()
-                                .filter(|&i| !deleted.contains(i))
-                                .filter(|&i| region.contains(&self.get_vector(i)))
-                                .collect()
-                        }
-                    } else {
-                        (0..count)
+                    let candidate_bm = self.spatial_index.query_candidates_box(
+                        min_bounds,
+                        max_bounds,
+                        bitmap.as_ref(),
+                        deleted,
+                        count,
+                    );
+                    let ids: Vec<u32> = if candidate_bm.len() > 1024 {
+                        candidate_bm
+                            .iter()
+                            .collect::<Vec<_>>()
                             .into_par_iter()
-                            .filter(|&i| !deleted.contains(i))
+                            .filter(|&i| region.contains(&self.get_vector(i)))
+                            .collect()
+                    } else {
+                        candidate_bm
+                            .iter()
                             .filter(|&i| region.contains(&self.get_vector(i)))
                             .collect()
                     };
@@ -966,24 +1072,23 @@ impl<M: Metric> HnswIndex<M> {
                 FilterExpr::InBall { center, radius } => {
                     let count = self.count_nodes() as u32;
                     let region = hyperspace_core::region::BallRegion::new(center.clone(), *radius);
-                    let ids: Vec<u32> = if let Some(ref bm) = bitmap {
-                        if bm.len() > 1024 {
-                            bm.iter()
-                                .collect::<Vec<_>>()
-                                .into_par_iter()
-                                .filter(|&i| !deleted.contains(i))
-                                .filter(|&i| region.contains(&self.get_vector(i)))
-                                .collect()
-                        } else {
-                            bm.iter()
-                                .filter(|&i| !deleted.contains(i))
-                                .filter(|&i| region.contains(&self.get_vector(i)))
-                                .collect()
-                        }
-                    } else {
-                        (0..count)
+                    let candidate_bm = self.spatial_index.query_candidates_ball(
+                        center,
+                        *radius,
+                        bitmap.as_ref(),
+                        deleted,
+                        count,
+                    );
+                    let ids: Vec<u32> = if candidate_bm.len() > 1024 {
+                        candidate_bm
+                            .iter()
+                            .collect::<Vec<_>>()
                             .into_par_iter()
-                            .filter(|&i| !deleted.contains(i))
+                            .filter(|&i| region.contains(&self.get_vector(i)))
+                            .collect()
+                    } else {
+                        candidate_bm
+                            .iter()
                             .filter(|&i| region.contains(&self.get_vector(i)))
                             .collect()
                     };
@@ -1107,7 +1212,27 @@ impl<M: Metric> HnswIndex<M> {
         aligned_query.copy_from_slice(query);
 
         M::validate(&aligned_query).expect("Invalid Query Vector for this Metric");
-        let q_vec = HyperVector::new_unchecked(aligned_query);
+        let mut q_vec = HyperVector::new_unchecked(aligned_query);
+        if self.mode == QuantizationMode::Turbo {
+            let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                33
+            } else {
+                0
+            };
+            let tail_dim = self.dimension.saturating_sub(head_dim);
+            let mut tail_f32: Vec<f32> =
+                q_vec.coords[head_dim..].iter().map(|&x| x as f32).collect();
+            tail_f32 = hyperspace_core::turbo_rot::rotate_vector(&tail_f32, tail_dim);
+            for i in 0..tail_dim {
+                q_vec.coords[head_dim + i] = tail_f32[i] as f64;
+            }
+        } else if self.mode == QuantizationMode::Binary {
+            let mut q_f32: Vec<f32> = q_vec.coords.iter().map(|&x| x as f32).collect();
+            hyperspace_core::turbo_rot::rotate_vector_in_place(&mut q_f32);
+            for i in 0..q_vec.coords.len() {
+                q_vec.coords[i] = q_f32[i] as f64;
+            }
+        }
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);
 
@@ -1128,10 +1253,21 @@ impl<M: Metric> HnswIndex<M> {
             None
         };
 
+        let pq_lut_buf = if self.mode == QuantizationMode::ProductQuantization
+            || self.mode == QuantizationMode::OPQ
+        {
+            let q_f32: Vec<f32> = q_vec.coords.iter().map(|&x| x as f32).collect();
+            self.pq.as_ref().map(|pq| pq.compute_lut(&q_f32))
+        } else {
+            None
+        };
+        let pq_lut_ref = pq_lut_buf.as_ref();
+
         let mut curr_dist = self.dist_upper(
             entry_node,
             &q_vec,
             query_klein.as_ref(),
+            pq_lut_ref,
             params.mrl_dimension,
         );
         let mut curr_node = entry_node;
@@ -1153,12 +1289,13 @@ impl<M: Metric> HnswIndex<M> {
                     if node.layers.len() <= level {
                         break;
                     }
-                    let neighbors = node.layers[level].read();
+                    let neighbors = node.layers[level].load();
                     for &neighbor in neighbors.iter() {
                         let d = self.dist_upper(
                             neighbor,
                             &q_vec,
                             query_klein.as_ref(),
+                            pq_lut_ref,
                             params.mrl_dimension,
                         );
                         if d < curr_dist {
@@ -1172,12 +1309,17 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         // 2. Local search phase: Layer 0 with Filter
+        // RECALL FIX #4: Enforce ef >= top_k. Per HNSW spec the beam size must
+        // be at least as large as the number of results requested, or the
+        // result set is truncated to ef < top_k silently.
+        let ef_for_search = params.ef_search.max(params.top_k);
         let mut candidates = self.search_layer0(
             curr_node,
             &q_vec,
             params.top_k,
-            params.ef_search,
+            ef_for_search,
             allowed_bitmap.as_ref(),
+            pq_lut_ref,
             params.mrl_dimension,
         );
 
@@ -1191,7 +1333,7 @@ impl<M: Metric> HnswIndex<M> {
 
         if params.use_wasserstein {
             for cand in &mut candidates {
-                let vec = self.get_vector(cand.0);
+                let vec = self.get_vector_original(cand.0);
                 cand.1 =
                     hyperspace_core::wasserstein::WassersteinDistance::compute(query, &vec.coords);
             }
@@ -1231,7 +1373,7 @@ impl<M: Metric> HnswIndex<M> {
                 continue;
             }
 
-            let vec = self.get_vector(id).coords.clone();
+            let vec = self.get_vector_original(id).coords.clone();
             let meta = self
                 .metadata
                 .forward
@@ -1256,7 +1398,7 @@ impl<M: Metric> HnswIndex<M> {
             if deleted.contains(id) {
                 continue;
             }
-            let vec = self.get_vector(id).coords.clone();
+            let vec = self.get_vector_original(id).coords.clone();
             let meta = self
                 .metadata
                 .forward
@@ -1275,7 +1417,15 @@ impl<M: Metric> HnswIndex<M> {
     }
 
     #[allow(clippy::many_single_char_names)]
-    fn dist_mrl(&self, node_id: NodeId, query: &HyperVector, mrl_dim: Option<usize>) -> f64 {
+    fn dist_mrl_opt(
+        &self,
+        node_id: NodeId,
+        query: &HyperVector,
+        query_f32: Option<&[f32]>,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
+        mrl_dim: Option<usize>,
+        threshold: Option<f64>,
+    ) -> f64 {
         // Defensive: Check bounds to avoid casting fallback/misaligned bytes during swaps
         if node_id as usize >= self.storage.count() {
             return f64::MAX;
@@ -1283,6 +1433,22 @@ impl<M: Metric> HnswIndex<M> {
 
         let bytes = self.storage.get(node_id);
         match self.mode {
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+                if let Some(lut) = pq_lut {
+                    f64::from(lut.distance_bytes(bytes))
+                } else if let Some(ref pq) = self.pq {
+                    if let Some(buf) = query_f32 {
+                        let lut = pq.compute_lut(buf);
+                        f64::from(lut.distance_bytes(bytes))
+                    } else {
+                        let q_f32: Vec<f32> = query.coords.iter().map(|&x| x as f32).collect();
+                        let lut = pq.compute_lut(&q_f32);
+                        f64::from(lut.distance_bytes(bytes))
+                    }
+                } else {
+                    0.0
+                }
+            }
             QuantizationMode::ScalarI8 => {
                 let q = QuantizedHyperVector::from_bytes(bytes);
                 M::distance_quantized(&q, query)
@@ -1377,17 +1543,20 @@ impl<M: Metric> HnswIndex<M> {
                 } else {
                     0
                 };
-                let tail_dim = self.dimension - head_dim;
-                let q = hyperspace_core::hybrid::TurboQuantVector::from_bytes(bytes, tail_dim);
-                if let Some(tq) = q {
-                    let deq = tq.reconstruct(tail_dim);
-                    let active_dim = mrl_dim.unwrap_or(self.dimension);
-                    M::distance(
-                        &deq[..active_dim.min(deq.len())],
+                let tail_dim = self.dimension.saturating_sub(head_dim);
+                let active_dim = mrl_dim.unwrap_or(self.dimension);
+                if M::name() == "cosine" {
+                    hyperspace_core::hybrid::TurboQuantVector::distance_bytes_cosine(
+                        bytes,
                         &query.coords[..active_dim],
+                        tail_dim,
                     )
                 } else {
-                    f64::MAX
+                    hyperspace_core::hybrid::TurboQuantVector::distance_bytes_l2_sq(
+                        bytes,
+                        &query.coords[..active_dim],
+                        tail_dim,
+                    )
                 }
             }
             QuantizationMode::Binary => {
@@ -1399,47 +1568,106 @@ impl<M: Metric> HnswIndex<M> {
                     let v = HyperVectorF32::from_bytes(bytes);
                     let name = M::name();
                     if name == "l2" || name == "cosine" {
-                        #[cfg(feature = "nightly-simd")]
-                        {
-                            use std::simd::{f32x4, f64x4, num::SimdFloat};
-                            let mut sum = f32x4::splat(0.0);
-                            let mut i = 0;
-                            let n = v.coords.len();
+                        if let Some(b) = query_f32 {
+                            let n = v.coords.len().min(b.len());
                             let a = &v.coords;
-                            let b = &query.coords;
-                            while i + 8 <= n {
-                                let va1 = f32x4::from_slice(&a[i..i + 4]);
-                                let va2 = f32x4::from_slice(&a[i + 4..i + 8]);
-                                let vb1: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
-                                let vb2: f32x4 = f64x4::from_slice(&b[i + 4..i + 8]).cast();
-                                let d1 = va1 - vb1;
-                                let d2 = va2 - vb2;
-                                sum += d1 * d1 + d2 * d2;
-                                i += 8;
+                            let thresh_f32 = threshold.map(|t| t as f32);
+
+                            #[cfg(feature = "nightly-simd")]
+                            {
+                                use std::simd::{f32x8, num::SimdFloat};
+                                let mut sum = f32x8::splat(0.0);
+                                let mut i = 0;
+                                while i + 16 <= n {
+                                    let va1 = f32x8::from_slice(&a[i..i + 8]);
+                                    let vb1 = f32x8::from_slice(&b[i..i + 8]);
+                                    let va2 = f32x8::from_slice(&a[i + 8..i + 16]);
+                                    let vb2 = f32x8::from_slice(&b[i + 8..i + 16]);
+                                    let d1 = va1 - vb1;
+                                    let d2 = va2 - vb2;
+                                    sum += d1 * d1 + d2 * d2;
+                                    i += 16;
+
+                                    if let Some(t) = thresh_f32 {
+                                        if i % 32 == 0 && sum.reduce_sum() > t {
+                                            return sum.reduce_sum() as f64;
+                                        }
+                                    }
+                                }
+                                while i + 8 <= n {
+                                    let va = f32x8::from_slice(&a[i..i + 8]);
+                                    let vb = f32x8::from_slice(&b[i..i + 8]);
+                                    let d = va - vb;
+                                    sum += d * d;
+                                    i += 8;
+                                }
+                                let mut total = f64::from(sum.reduce_sum());
+                                while i < n {
+                                    let diff = a[i] - b[i];
+                                    total += f64::from(diff * diff);
+                                    i += 1;
+                                }
+                                total
                             }
-                            while i + 4 <= n {
-                                let va = f32x4::from_slice(&a[i..i + 4]);
-                                let vb: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
-                                let d = va - vb;
-                                sum += d * d;
-                                i += 4;
+                            #[cfg(not(feature = "nightly-simd"))]
+                            {
+                                let mut sum = 0.0f32;
+                                for (idx, (&a_val, &b_val)) in
+                                    a[..n].iter().zip(b[..n].iter()).enumerate()
+                                {
+                                    let diff = a_val - b_val;
+                                    sum += diff * diff;
+                                    if let Some(t) = thresh_f32 {
+                                        if idx % 32 == 31 && sum > t {
+                                            return sum as f64;
+                                        }
+                                    }
+                                }
+                                f64::from(sum)
                             }
-                            let mut total = f64::from(sum.reduce_sum());
-                            while i < n {
-                                let diff = f64::from(a[i]) - b[i];
-                                total += diff * diff;
-                                i += 1;
+                        } else {
+                            #[cfg(feature = "nightly-simd")]
+                            {
+                                use std::simd::{f32x4, f64x4, num::SimdFloat};
+                                let mut sum = f32x4::splat(0.0);
+                                let mut i = 0;
+                                let n = v.coords.len();
+                                let a = &v.coords;
+                                let b = &query.coords;
+                                while i + 8 <= n {
+                                    let va1 = f32x4::from_slice(&a[i..i + 4]);
+                                    let va2 = f32x4::from_slice(&a[i + 4..i + 8]);
+                                    let vb1: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
+                                    let vb2: f32x4 = f64x4::from_slice(&b[i + 4..i + 8]).cast();
+                                    let d1 = va1 - vb1;
+                                    let d2 = va2 - vb2;
+                                    sum += d1 * d1 + d2 * d2;
+                                    i += 8;
+                                }
+                                while i + 4 <= n {
+                                    let va = f32x4::from_slice(&a[i..i + 4]);
+                                    let vb: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
+                                    let d = va - vb;
+                                    sum += d * d;
+                                    i += 4;
+                                }
+                                let mut total = f64::from(sum.reduce_sum());
+                                while i < n {
+                                    let diff = f64::from(a[i]) - b[i];
+                                    total += diff * diff;
+                                    i += 1;
+                                }
+                                total
                             }
-                            total
-                        }
-                        #[cfg(not(feature = "nightly-simd"))]
-                        {
-                            let mut sum = 0.0;
-                            for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
-                                let diff = f64::from(a) - b;
-                                sum += diff * diff;
+                            #[cfg(not(feature = "nightly-simd"))]
+                            {
+                                let mut sum = 0.0;
+                                for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
+                                    let diff = f64::from(a) - b;
+                                    sum += diff * diff;
+                                }
+                                sum
                             }
-                            sum
                         }
                     } else {
                         let v64 = v.to_float64();
@@ -1447,10 +1675,62 @@ impl<M: Metric> HnswIndex<M> {
                     }
                 } else {
                     let v = HyperVector::from_bytes(bytes);
-                    M::distance(&v.coords, &query.coords)
+                    let name = M::name();
+                    if name == "l2" || name == "cosine" {
+                        #[cfg(feature = "nightly-simd")]
+                        {
+                            use std::simd::{f64x4, num::SimdFloat};
+                            let mut sum = f64x4::splat(0.0);
+                            let mut i = 0;
+                            let n = v.coords.len().min(query.coords.len());
+                            let a = &v.coords;
+                            let b = &query.coords;
+                            while i + 8 <= n {
+                                let va1 = f64x4::from_slice(&a[i..i + 4]);
+                                let vb1 = f64x4::from_slice(&b[i..i + 4]);
+                                let va2 = f64x4::from_slice(&a[i + 4..i + 8]);
+                                let vb2 = f64x4::from_slice(&b[i + 4..i + 8]);
+                                let d1 = va1 - vb1;
+                                let d2 = va2 - vb2;
+                                sum += d1 * d1 + d2 * d2;
+                                i += 8;
+
+                                if let Some(t) = threshold {
+                                    if i % 32 == 0 && sum.reduce_sum() > t {
+                                        return sum.reduce_sum();
+                                    }
+                                }
+                            }
+                            while i + 4 <= n {
+                                let va = f64x4::from_slice(&a[i..i + 4]);
+                                let vb = f64x4::from_slice(&b[i..i + 4]);
+                                let d = va - vb;
+                                sum += d * d;
+                                i += 4;
+                            }
+                            let mut total = sum.reduce_sum();
+                            while i < n {
+                                let diff = a[i] - b[i];
+                                total += diff * diff;
+                                i += 1;
+                            }
+                            total
+                        }
+                        #[cfg(not(feature = "nightly-simd"))]
+                        {
+                            M::distance(&v.coords, &query.coords)
+                        }
+                    } else {
+                        M::distance(&v.coords, &query.coords)
+                    }
                 }
             }
         }
+    }
+
+    #[inline(always)]
+    fn dist_mrl(&self, node_id: NodeId, query: &HyperVector, mrl_dim: Option<usize>) -> f64 {
+        self.dist_mrl_opt(node_id, query, None, None, mrl_dim, None)
     }
 
     fn dist_upper(
@@ -1458,6 +1738,7 @@ impl<M: Metric> HnswIndex<M> {
         node_id: NodeId,
         query: &HyperVector,
         query_klein: Option<&HyperVector>,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
         mrl_dim: Option<usize>,
     ) -> f64 {
         if let Some(qk) = query_klein {
@@ -1474,7 +1755,7 @@ impl<M: Metric> HnswIndex<M> {
             let v = HyperVector::from_bytes(bytes);
             return v.to_klein().klein_chord_distance_sq(qk);
         }
-        self.dist_mrl(node_id, query, mrl_dim)
+        self.dist_mrl_opt(node_id, query, None, pq_lut, mrl_dim, None)
     }
 
     fn filtered_bruteforce_threshold() -> u64 {
@@ -1512,6 +1793,7 @@ impl<M: Metric> HnswIndex<M> {
         out
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn search_layer0(
         &self,
         start_node: NodeId,
@@ -1519,6 +1801,7 @@ impl<M: Metric> HnswIndex<M> {
         k: usize,
         ef: usize,
         allowed: Option<&RoaringBitmap>,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
         mrl_dim: Option<usize>,
     ) -> Vec<(NodeId, f64)> {
         // LOCK-FREE: boxcar::Vec — no global read lock needed.
@@ -1569,7 +1852,14 @@ impl<M: Metric> HnswIndex<M> {
                 results.reserve(ef_capacity - results.capacity());
             }
 
-            let d = self.dist_mrl(start_node, query, mrl_dim);
+            let query_f32_buf = if self.storage_f32 {
+                Some(query.coords.iter().map(|&x| x as f32).collect::<Vec<f32>>())
+            } else {
+                None
+            };
+            let q_f32_ref = query_f32_buf.as_deref();
+
+            let d = self.dist_mrl_opt(start_node, query, q_f32_ref, pq_lut, mrl_dim, None);
             let first = Candidate {
                 id: start_node,
                 distance: d,
@@ -1601,17 +1891,34 @@ impl<M: Metric> HnswIndex<M> {
                     continue;
                 }
 
-                let neighbors = node.layers[0].read();
-                for &neighbor in neighbors.iter() {
+                let neighbors = node.layers[0].load();
+                let n_len = neighbors.len();
+                for (idx, &neighbor) in neighbors.iter().enumerate() {
+                    if idx + 1 < n_len {
+                        let next_n = neighbors[idx + 1];
+                        if let Some(next_node) = self.nodes.get(next_n as usize) {
+                            prefetch_l1(next_node as *const Node);
+                        }
+                        let bytes = self.storage.get(next_n);
+                        prefetch_l1(bytes.as_ptr());
+                    }
+
                     if !mark_visited(&mut scratch.marks, generation, neighbor) {
                         continue;
                     }
 
-                    let dist = self.dist_mrl(neighbor, query, mrl_dim);
+                    let thresh = if results.len() >= ef {
+                        results.peek().map(|worst| worst.0.distance)
+                    } else {
+                        None
+                    };
+
+                    let dist =
+                        self.dist_mrl_opt(neighbor, query, q_f32_ref, pq_lut, mrl_dim, thresh);
 
                     let mut add_to_candidates = true;
-                    if let Some(std::cmp::Reverse(worst)) = results.peek() {
-                        if results.len() >= ef && dist > worst.distance {
+                    if let Some(worst_dist) = thresh {
+                        if dist > worst_dist {
                             add_to_candidates = false;
                         }
                     }
@@ -1654,6 +1961,7 @@ impl<M: Metric> HnswIndex<M> {
         start_node: NodeId,
         query: &HyperVector,
         query_klein: Option<&HyperVector>,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
         level: usize,
         ef: usize,
     ) -> BinaryHeap<Candidate> {
@@ -1687,7 +1995,7 @@ impl<M: Metric> HnswIndex<M> {
                 results.reserve(ef_capacity - results.capacity());
             }
 
-            let d = self.dist_upper(start_node, query, query_klein, None);
+            let d = self.dist_upper(start_node, query, query_klein, pq_lut, None);
             let first = Candidate {
                 id: start_node,
                 distance: d,
@@ -1715,13 +2023,23 @@ impl<M: Metric> HnswIndex<M> {
                     continue;
                 }
 
-                let neighbors = node.layers[level].read();
-                for &neighbor in neighbors.iter() {
+                let neighbors = node.layers[level].load();
+                let n_len = neighbors.len();
+                for (idx, &neighbor) in neighbors.iter().enumerate() {
+                    if idx + 1 < n_len {
+                        let next_n = neighbors[idx + 1];
+                        if let Some(next_node) = self.nodes.get(next_n as usize) {
+                            prefetch_l1(next_node as *const Node);
+                        }
+                        let bytes = self.storage.get(next_n);
+                        prefetch_l1(bytes.as_ptr());
+                    }
+
                     if !mark_visited(&mut scratch.marks, generation, neighbor) {
                         continue;
                     }
 
-                    let dist = self.dist_upper(neighbor, query, query_klein, None);
+                    let dist = self.dist_upper(neighbor, query, query_klein, pq_lut, None);
 
                     if results.len() < ef || dist < curr_worst {
                         let c = Candidate {
@@ -1769,9 +2087,16 @@ impl<M: Metric> HnswIndex<M> {
             }
             let avg_dist = sum_dist / (n_samples as f64);
 
-            // If average distance to nearest candidates is large, we are in a sparse "void".
-            // We can aggressively prune connections to M/2 without significantly hurting recall.
-            if avg_dist > 1.2 {
+            // RECALL FIX #2: The original threshold of 1.2 was incorrect for L2-normalized
+            // vectors in high-dimensional spaces. In 1024D, average pairwise Euclidean
+            // distance between random unit vectors ≈ sqrt(2) ≈ 1.41, which is ALWAYS
+            // above 1.2. This caused density pruning to fire for virtually every insert,
+            // halving M from 16→8 and crippling graph connectivity.
+            //
+            // Euclidean distance for unit vectors lies in [0, 2]. We only prune M
+            // in the extreme tail (>1.95) — genuinely sparse boundary regions —
+            // leaving the vast majority of inserts with the full M connections.
+            if avg_dist > 1.95 {
                 actual_m = (m / 2).max(1);
             }
         }
@@ -1990,6 +2315,42 @@ impl<M: Metric> HnswIndex<M> {
                     alpha: f64::from(b.alpha),
                 }
             }
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+                if let Some(ref pq) = self.pq {
+                    let enc = hyperspace_core::pq::PQVector::from_bytes(bytes);
+                    let dec = pq.decode(&enc);
+                    let coords: Vec<f64> = dec.into_iter().map(f64::from).collect();
+                    HyperVector::new_unchecked(coords)
+                } else {
+                    HyperVector::new_unchecked(vec![0.0; self.dimension])
+                }
+            }
+        }
+    }
+
+    pub fn get_vector_original(&self, id: NodeId) -> HyperVector {
+        if self.mode == QuantizationMode::Turbo {
+            let bytes = self.storage.get(id);
+            let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
+                33
+            } else {
+                0
+            };
+            let tail_dim = self.dimension - head_dim;
+            let q = hyperspace_core::hybrid::TurboQuantVector::from_bytes(bytes, tail_dim);
+            if let Some(tq) = q {
+                HyperVector::new_unchecked(tq.reconstruct_unrotated(tail_dim))
+            } else {
+                HyperVector::new_unchecked(vec![0.0; self.dimension])
+            }
+        } else if self.mode == QuantizationMode::Binary {
+            let v = self.get_vector(id);
+            let mut c_f32: Vec<f32> = v.coords.iter().map(|&x| x as f32).collect();
+            hyperspace_core::turbo_rot::unrotate_vector_in_place(&mut c_f32);
+            let unrotated: Vec<f64> = c_f32.into_iter().map(|x| x as f64).collect();
+            HyperVector::new_unchecked(unrotated)
+        } else {
+            self.get_vector(id)
         }
     }
 
@@ -2095,6 +2456,13 @@ impl<M: Metric> HnswIndex<M> {
                 q_bytes = b.as_bytes();
                 0
             }
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+                let q_f32: Vec<f32> = q_vec_full.coords.iter().map(|&x| x as f32).collect();
+                let pq = self.pq.as_ref().expect("PQ quantizer must be initialized");
+                let enc = pq.encode(&q_f32);
+                q_bytes = enc.to_bytes();
+                0
+            }
         };
 
         // Guarantee that storage sequence and boxcar sequence strictly match
@@ -2105,13 +2473,14 @@ impl<M: Metric> HnswIndex<M> {
             let new_level = self.random_level();
             let mut layers = Vec::with_capacity(new_level + 1);
             for _ in 0..=new_level {
-                layers.push(RwLock::new(Vec::new()));
+                layers.push(ArcSwap::from_pointee(Vec::new()));
             }
             let pushed_id = self.nodes.push(Node { id, layers });
             debug_assert_eq!(id as usize, pushed_id);
             id
         };
 
+        self.spatial_index.insert_vector(new_id, vector);
         Ok(new_id)
     }
 
@@ -2208,7 +2577,14 @@ impl<M: Metric> HnswIndex<M> {
                     hyperspace_core::hybrid::TurboQuantVector::from_float(&q_vec_full, head_dim);
                 self.storage.update(id, &q.as_bytes())?;
             }
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+                let q_f32: Vec<f32> = q_vec_full.coords.iter().map(|&x| x as f32).collect();
+                let pq = self.pq.as_ref().expect("PQ quantizer must be initialized");
+                let enc = pq.encode(&q_f32);
+                self.storage.update(id, &enc.to_bytes())?;
+            }
         }
+        self.spatial_index.insert_vector(id, vector);
         Ok(id)
     }
 
@@ -2283,8 +2659,18 @@ impl<M: Metric> HnswIndex<M> {
             None
         };
 
+        let pq_lut_buf = if self.mode == QuantizationMode::ProductQuantization
+            || self.mode == QuantizationMode::OPQ
+        {
+            let q_f32: Vec<f32> = q_vec.coords.iter().map(|&x| x as f32).collect();
+            self.pq.as_ref().map(|pq| pq.compute_lut(&q_f32))
+        } else {
+            None
+        };
+        let pq_lut_ref = pq_lut_buf.as_ref();
+
         let mut curr_dist = if (entry_point as usize) < self.nodes.count() {
-            self.dist_upper(curr_obj, &q_vec, query_klein.as_ref(), None)
+            self.dist_upper(curr_obj, &q_vec, query_klein.as_ref(), pq_lut_ref, None)
         } else {
             f64::MAX
         };
@@ -2307,10 +2693,10 @@ impl<M: Metric> HnswIndex<M> {
                     break;
                 }
                 let best_n = {
-                    let neighbors = node.layers[level].read();
+                    let neighbors = node.layers[level].load();
                     let mut best = None;
                     for &n in neighbors.iter() {
-                        let d = self.dist_upper(n, &q_vec, query_klein.as_ref(), None);
+                        let d = self.dist_upper(n, &q_vec, query_klein.as_ref(), pq_lut_ref, None);
                         if d < curr_dist {
                             curr_dist = d;
                             best = Some(n);
@@ -2346,6 +2732,7 @@ impl<M: Metric> HnswIndex<M> {
                     curr_obj,
                     &q_vec,
                     q_klein_opt,
+                    pq_lut_ref,
                     level,
                     ef_construction,
                 );
@@ -2363,7 +2750,7 @@ impl<M: Metric> HnswIndex<M> {
                         .nodes
                         .get(neighbor_id as usize)
                         .and_then(|n| n.layers.get(level))
-                        .map_or(0, |l| l.read().len());
+                        .map_or(0, |l| l.load().len());
                     if neighbor_layer_len > m_max {
                         self.prune_connections(neighbor_id, level, m_max);
                     }
@@ -2403,27 +2790,29 @@ impl<M: Metric> HnswIndex<M> {
         if node.layers.len() <= level {
             return;
         }
-        let mut links = node.layers[level].write();
-        // FIX #4: Remove O(M) linear scan. prune_connections handles dedup when len > m_max.
-        links.push(dst);
+        node.layers[level].rcu(|links| {
+            let mut new_links = (**links).clone();
+            new_links.push(dst);
+            new_links
+        });
     }
 
     fn prune_connections(&self, node_id: NodeId, level: usize, max_links: usize) {
-        // 1. Snapshot current links (LOCK-FREE boxcar get + inner read lock)
-        let initial_links: Vec<u32> = {
+        // 1. Snapshot current links (LOCK-FREE boxcar get + arc_swap load_full)
+        let initial_links: Arc<Vec<u32>> = {
             let Some(node) = self.nodes.get(node_id as usize) else {
                 return;
             };
             if node.layers.len() <= level {
                 return;
             }
-            node.layers[level].read().clone()
+            node.layers[level].load_full()
         };
 
         // 2. Heavy work: calculate distances (NO LOCKS HELD)
         let node_vec = self.get_vector(node_id);
-        let mut candidates = Vec::new();
-        for &n in &initial_links {
+        let mut candidates = Vec::with_capacity(initial_links.len());
+        for &n in initial_links.iter() {
             let n_vec = self.get_vector(n);
             let d = M::distance(&node_vec.coords, &n_vec.coords);
             candidates.push(Candidate { id: n, distance: d });
@@ -2431,31 +2820,27 @@ impl<M: Metric> HnswIndex<M> {
 
         // Select best from snapshot
         let heap = BinaryHeap::from(candidates);
-        let mut keepers = self.select_neighbors(&node_vec, heap, max_links);
+        let keepers = self.select_neighbors(&node_vec, heap, max_links);
 
-        // 3. Atomic update merge (Write per-slot only, no global lock)
+        // 3. Atomic RCU update merge (No lock, lock-free RCU)
         let Some(node) = self.nodes.get(node_id as usize) else {
             return;
         };
-        let mut links_lock = node.layers[level].write();
+        if node.layers.len() <= level {
+            return;
+        }
 
-        // RACE CONDITION CHECK:
-        // If length changed (someone added a link while we calculated),
-        // we must preserve those new links!
-        if links_lock.len() > initial_links.len() {
-            // Find new elements strictly added after our snapshot
-            for &id in links_lock.iter() {
-                if !initial_links.contains(&id) {
-                    // Always keep new links to avoid graph tearing under concurrency,
-                    // even if we exceed max_links slightly.
-                    if !keepers.contains(&id) {
-                        keepers.push(id);
+        node.layers[level].rcu(|current_links| {
+            let mut final_keepers = keepers.clone();
+            if current_links.len() > initial_links.len() {
+                for &id in current_links.iter() {
+                    if !initial_links.contains(&id) && !final_keepers.contains(&id) {
+                        final_keepers.push(id);
                     }
                 }
             }
-        }
-
-        *links_lock = keepers;
+            final_keepers
+        });
     }
 
     pub fn count_nodes(&self) -> usize {
@@ -2482,7 +2867,7 @@ impl<M: Metric> HnswIndex<M> {
                 self.nodes
                     .get(i as usize)
                     .filter(|n| !n.layers.is_empty())
-                    .map(|n| n.layers[0].read().clone())
+                    .map(|n| (**n.layers[0].load()).clone())
                     .unwrap_or_default()
             };
 
@@ -2531,8 +2916,7 @@ impl<M: Metric> HnswIndex<M> {
 
             if let Some(node) = self.nodes.get(i as usize) {
                 if !node.layers.is_empty() {
-                    let mut l0 = node.layers[0].write();
-                    *l0 = new_neighbors;
+                    node.layers[0].store(Arc::new(new_neighbors));
                 }
             }
         }
@@ -2557,7 +2941,7 @@ impl<M: Metric> HnswIndex<M> {
         }
         let deleted = self.metadata.deleted.read();
         let out = node.layers[layer]
-            .read()
+            .load()
             .iter()
             .copied()
             .filter(|id| !deleted.contains(*id))
@@ -2608,7 +2992,7 @@ impl<M: Metric> HnswIndex<M> {
                 if node.layers.len() <= layer {
                     continue;
                 }
-                let neighbors = node.layers[layer].read();
+                let neighbors = node.layers[layer].load();
                 let limit = if breadth_limit == 0 {
                     usize::MAX
                 } else {
@@ -2668,7 +3052,7 @@ impl<M: Metric> HnswIndex<M> {
                 if curr_node.layers.len() <= layer {
                     continue;
                 }
-                for &next in curr_node.layers[layer].read().iter() {
+                for &next in curr_node.layers[layer].load().iter() {
                     if deleted.contains(next) {
                         continue;
                     }

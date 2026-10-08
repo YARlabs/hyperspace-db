@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-store"
-version = "3.1.1"
+version = "4.0.0"
 edition = "2021"
 
 [dependencies]
@@ -14,6 +14,9 @@ arc-swap = "1.7.1"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true }
 zstd = "0.13"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [features]
 default = ["mmap"]

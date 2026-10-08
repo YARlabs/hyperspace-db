@@ -745,6 +745,15 @@ pub const TURBOQUANT_CENTROIDS_4BIT: [f64; 16] = [
     1.099, 1.437, 1.844, 2.401,
 ];
 
+pub const TURBOQUANT_CENTROIDS_4BIT_F32: [f32; 16] = [
+    -2.401, -1.844, -1.437, -1.099, -0.800, -0.524, -0.262, -0.066, 0.066, 0.262, 0.524, 0.800,
+    1.099, 1.437, 1.844, 2.401,
+];
+
+/// Bias correction multiplier for 4-bit Lloyd-Max centroids on standard normal distribution:
+/// Cancels the MMSE variance shrinkage (E[<x_hat, q>] / E[<x, q>] ≈ 0.98006).
+pub const TURBOQUANT_BIAS_CORRECTION: f64 = 1.0203407;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TurboVector {
     pub norm: f32,
@@ -767,8 +776,11 @@ impl TurboVector {
         let tail = &coords[head_len..];
         let tail_dim = tail.len();
 
+        let mut tail_f32: Vec<f32> = tail.iter().map(|&x| x as f32).collect();
+        crate::turbo_rot::rotate_vector_in_place(&mut tail_f32);
+
         let mut norm_sq = 0.0;
-        for &x in tail {
+        for &x in &tail_f32 {
             norm_sq += x * x;
         }
         let norm = norm_sq.sqrt() as f32;
@@ -784,32 +796,75 @@ impl TurboVector {
 
         let scale = 1.0 / (tail_dim as f64).sqrt();
         let inv_norm = 1.0 / (f64::from(norm));
+        let mult = inv_norm / scale;
 
         let packed_tail_len = tail_dim.div_ceil(2);
         let mut packed_tail = vec![0u8; packed_tail_len];
 
-        for i in 0..tail_dim {
-            let val = (tail[i] * inv_norm) / scale;
-            let mut best_idx = 0;
-            let mut best_diff = (val - TURBOQUANT_CENTROIDS_4BIT[0]).abs();
-
-            for (c_idx, &c_val) in TURBOQUANT_CENTROIDS_4BIT.iter().enumerate().skip(1) {
-                let diff = (val - c_val).abs();
-                if diff < best_diff {
-                    best_diff = diff;
-                    best_idx = c_idx;
+        #[inline(always)]
+        fn quantize_4bit_centroid(val: f64) -> u8 {
+            if val >= 0.0 {
+                if val >= 0.9495 {
+                    if val >= 1.6405 {
+                        if val >= 2.1225 {
+                            15
+                        } else {
+                            14
+                        }
+                    } else if val >= 1.268 {
+                        13
+                    } else {
+                        12
+                    }
+                } else if val >= 0.393 {
+                    if val >= 0.662 {
+                        11
+                    } else {
+                        10
+                    }
+                } else if val >= 0.164 {
+                    9
+                } else {
+                    8
                 }
-            }
-
-            let pair_idx = i / 2;
-            let is_second = i % 2 == 1;
-            let bin = (best_idx & 0x0F) as u8;
-
-            if is_second {
-                packed_tail[pair_idx] |= bin;
+            } else if val < -0.9495 {
+                if val < -1.6405 {
+                    if val < -2.1225 {
+                        0
+                    } else {
+                        1
+                    }
+                } else if val < -1.268 {
+                    2
+                } else {
+                    3
+                }
+            } else if val < -0.393 {
+                if val < -0.662 {
+                    4
+                } else {
+                    5
+                }
+            } else if val < -0.164 {
+                6
             } else {
-                packed_tail[pair_idx] |= bin << 4;
+                7
             }
+        }
+
+        let num_pairs = tail_dim / 2;
+        for p in 0..num_pairs {
+            let v1 = f64::from(tail_f32[p * 2]) * mult;
+            let v2 = f64::from(tail_f32[p * 2 + 1]) * mult;
+            let b1 = quantize_4bit_centroid(v1);
+            let b2 = quantize_4bit_centroid(v2);
+            packed_tail[p] = (b1 << 4) | b2;
+        }
+
+        if tail_dim % 2 == 1 {
+            let v1 = f64::from(tail_f32[num_pairs * 2]) * mult;
+            let b1 = quantize_4bit_centroid(v1);
+            packed_tail[num_pairs] = b1 << 4;
         }
 
         Self {
@@ -878,7 +933,7 @@ impl TurboVector {
             return out;
         }
 
-        let scale = f64::from(self.norm) / (tail_dim as f64).sqrt();
+        let scale = (f64::from(self.norm) / (tail_dim as f64).sqrt()) * TURBOQUANT_BIAS_CORRECTION;
 
         for i in 0..tail_dim {
             let pair_idx = i / 2;
@@ -901,5 +956,197 @@ impl TurboVector {
         }
 
         out
+    }
+
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn reconstruct_unrotated(&self, tail_dim: usize) -> Vec<f64> {
+        let rotated = self.reconstruct(tail_dim);
+        let head_len = self.head.len().min(rotated.len());
+        let mut out = Vec::with_capacity(rotated.len());
+        for &h in &rotated[..head_len] {
+            out.push(h);
+        }
+        let tail_f32: Vec<f32> = rotated[head_len..].iter().map(|&x| x as f32).collect();
+        let unrot = crate::turbo_rot::unrotate_vector(&tail_f32, tail_f32.len());
+        for x in unrot {
+            out.push(f64::from(x));
+        }
+        out
+    }
+
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn distance_bytes_l2_sq(bytes: &[u8], query_coords: &[f64], tail_dim: usize) -> f64 {
+        if bytes.len() < 8 {
+            return f64::MAX;
+        }
+        let norm = f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4]));
+        let head_len = u32::from_le_bytes(bytes[4..8].try_into().unwrap_or([0; 4])) as usize;
+        let mut offset = 8;
+        let mut sum_sq = 0.0;
+
+        for i in 0..head_len {
+            if offset + 4 > bytes.len() || i >= query_coords.len() {
+                break;
+            }
+            let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+            offset += 4;
+            let diff = f64::from(h) - query_coords[i];
+            sum_sq += diff * diff;
+        }
+
+        if tail_dim == 0 || norm < 1e-9 {
+            for i in head_len..(head_len + tail_dim).min(query_coords.len()) {
+                let diff = query_coords[i];
+                sum_sq += diff * diff;
+            }
+            return sum_sq;
+        }
+
+        let scale = (f64::from(norm) / (tail_dim as f64).sqrt()) * TURBOQUANT_BIAS_CORRECTION;
+        let mut scaled_centroids = [0.0f64; 16];
+        for (c, sc) in TURBOQUANT_CENTROIDS_4BIT
+            .iter()
+            .zip(scaled_centroids.iter_mut())
+        {
+            *sc = *c * scale;
+        }
+
+        let packed_tail = &bytes[offset..];
+        let num_pairs = tail_dim / 2;
+        let tail_q = if head_len + tail_dim <= query_coords.len() {
+            &query_coords[head_len..head_len + tail_dim]
+        } else if head_len < query_coords.len() {
+            &query_coords[head_len..]
+        } else {
+            &[]
+        };
+
+        let pairs_to_process = num_pairs.min(packed_tail.len()).min(tail_q.len() / 2);
+        for pair_idx in 0..pairs_to_process {
+            let byte = packed_tail[pair_idx];
+            let b1 = (byte >> 4) as usize;
+            let b2 = (byte & 0x0F) as usize;
+            let q_offset = pair_idx * 2;
+            let d1 = scaled_centroids[b1] - tail_q[q_offset];
+            let d2 = scaled_centroids[b2] - tail_q[q_offset + 1];
+            sum_sq += d1 * d1 + d2 * d2;
+        }
+
+        if tail_dim % 2 == 1 && pairs_to_process < packed_tail.len() && num_pairs * 2 < tail_q.len()
+        {
+            let byte = packed_tail[num_pairs];
+            let b1 = (byte >> 4) as usize;
+            let d1 = scaled_centroids[b1] - tail_q[num_pairs * 2];
+            sum_sq += d1 * d1;
+        }
+        sum_sq
+    }
+
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn distance_bytes_cosine(bytes: &[u8], query_coords: &[f64], tail_dim: usize) -> f64 {
+        if bytes.len() < 8 {
+            return 2.0;
+        }
+        let norm = f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4]));
+        let head_len = u32::from_le_bytes(bytes[4..8].try_into().unwrap_or([0; 4])) as usize;
+        let mut offset = 8;
+        let mut dot = 0.0;
+
+        for i in 0..head_len {
+            if offset + 4 > bytes.len() || i >= query_coords.len() {
+                break;
+            }
+            let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+            offset += 4;
+            dot += f64::from(h) * query_coords[i];
+        }
+
+        if tail_dim == 0 || norm < 1e-9 {
+            return (2.0 * (1.0 - dot)).max(0.0);
+        }
+
+        let scale = (f64::from(norm) / (tail_dim as f64).sqrt()) * TURBOQUANT_BIAS_CORRECTION;
+        let packed_tail = &bytes[offset..];
+        let num_pairs = tail_dim / 2;
+        let tail_q = if head_len + tail_dim <= query_coords.len() {
+            &query_coords[head_len..head_len + tail_dim]
+        } else if head_len < query_coords.len() {
+            &query_coords[head_len..]
+        } else {
+            &[]
+        };
+
+        let pairs_to_process = num_pairs.min(packed_tail.len()).min(tail_q.len() / 2);
+        let chunks = pairs_to_process / 8;
+        let mut acc0 = 0.0;
+        let mut acc1 = 0.0;
+        let mut acc2 = 0.0;
+        let mut acc3 = 0.0;
+
+        let c = TURBOQUANT_CENTROIDS_4BIT;
+
+        unsafe {
+            let tail_ptr = packed_tail.as_ptr();
+            let q_ptr = tail_q.as_ptr();
+
+            for ch in 0..chunks {
+                let base_p = ch * 8;
+                let b0 = *tail_ptr.add(base_p) as usize;
+                let b1 = *tail_ptr.add(base_p + 1) as usize;
+                let b2 = *tail_ptr.add(base_p + 2) as usize;
+                let b3 = *tail_ptr.add(base_p + 3) as usize;
+                let b4 = *tail_ptr.add(base_p + 4) as usize;
+                let b5 = *tail_ptr.add(base_p + 5) as usize;
+                let b6 = *tail_ptr.add(base_p + 6) as usize;
+                let b7 = *tail_ptr.add(base_p + 7) as usize;
+
+                let q0 = base_p * 2;
+                acc0 += *c.get_unchecked(b0 >> 4) * *q_ptr.add(q0)
+                    + *c.get_unchecked(b0 & 0x0F) * *q_ptr.add(q0 + 1)
+                    + *c.get_unchecked(b1 >> 4) * *q_ptr.add(q0 + 2)
+                    + *c.get_unchecked(b1 & 0x0F) * *q_ptr.add(q0 + 3);
+
+                acc1 += *c.get_unchecked(b2 >> 4) * *q_ptr.add(q0 + 4)
+                    + *c.get_unchecked(b2 & 0x0F) * *q_ptr.add(q0 + 5)
+                    + *c.get_unchecked(b3 >> 4) * *q_ptr.add(q0 + 6)
+                    + *c.get_unchecked(b3 & 0x0F) * *q_ptr.add(q0 + 7);
+
+                acc2 += *c.get_unchecked(b4 >> 4) * *q_ptr.add(q0 + 8)
+                    + *c.get_unchecked(b4 & 0x0F) * *q_ptr.add(q0 + 9)
+                    + *c.get_unchecked(b5 >> 4) * *q_ptr.add(q0 + 10)
+                    + *c.get_unchecked(b5 & 0x0F) * *q_ptr.add(q0 + 11);
+
+                acc3 += *c.get_unchecked(b6 >> 4) * *q_ptr.add(q0 + 12)
+                    + *c.get_unchecked(b6 & 0x0F) * *q_ptr.add(q0 + 13)
+                    + *c.get_unchecked(b7 >> 4) * *q_ptr.add(q0 + 14)
+                    + *c.get_unchecked(b7 & 0x0F) * *q_ptr.add(q0 + 15);
+            }
+        }
+
+        let mut tail_dot = (acc0 + acc1) + (acc2 + acc3);
+        for pair_idx in (chunks * 8)..pairs_to_process {
+            let byte = packed_tail[pair_idx] as usize;
+            let b1 = byte >> 4;
+            let b2 = byte & 0x0F;
+            let q_offset = pair_idx * 2;
+            tail_dot += TURBOQUANT_CENTROIDS_4BIT[b1] * tail_q[q_offset]
+                + TURBOQUANT_CENTROIDS_4BIT[b2] * tail_q[q_offset + 1];
+        }
+
+        if tail_dim % 2 == 1 && pairs_to_process < packed_tail.len() && num_pairs * 2 < tail_q.len()
+        {
+            let byte = packed_tail[num_pairs] as usize;
+            let b1 = byte >> 4;
+            tail_dot += TURBOQUANT_CENTROIDS_4BIT[b1] * tail_q[num_pairs * 2];
+        }
+
+        dot += tail_dot * scale;
+        // In HyperspaceDB, Cosine metric represents normalized Euclidean distance squared:
+        // ||x - q||^2 = 2.0 * (1.0 - dot).
+        // This ensures cand.distance matches M::distance scale in HNSW heuristic edge selection.
+        (2.0 * (1.0 - dot)).max(0.0)
     }
 }

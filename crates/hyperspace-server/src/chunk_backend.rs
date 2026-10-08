@@ -87,8 +87,33 @@ mod inner {
     pub use hyperspace_tiering::config::TieringConfig;
     pub use hyperspace_tiering::{create_backend as tiering_create_backend, ChunkBackend};
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn create_backend(data_dir: PathBuf) -> Arc<dyn ChunkBackend> {
-        let config = TieringConfig::from_env(data_dir);
+        let mut config = TieringConfig::from_env(data_dir.clone());
+
+        // Namespace S3 keys by <collection>/<shard> (path relative to HS_DATA_DIR).
+        // Without this every shard/collection/tenant shares `prefix/chunk_N.hyp`
+        // and overwrites each other's objects in the bucket.
+        let root = std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data_v4".to_string());
+        let namespace = data_dir
+            .strip_prefix(&root)
+            .ok()
+            .map(|p| p.to_string_lossy().trim_matches('/').to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                let comps: Vec<String> = data_dir
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().to_string())
+                    .collect();
+                comps[comps.len().saturating_sub(2)..].join("/")
+            });
+        if config.backend == "s3" && !namespace.is_empty() {
+            config.prefix = if config.prefix.is_empty() {
+                namespace
+            } else {
+                format!("{}/{}", config.prefix.trim_end_matches('/'), namespace)
+            };
+        }
         tiering_create_backend(config)
     }
 }

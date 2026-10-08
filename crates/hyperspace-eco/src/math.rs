@@ -59,6 +59,9 @@ impl CollectionEcoSchema {
                 let tail_bytes = dim.div_ceil(2);
                 (tail_bytes + 8) as u64
             }
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+                hyperspace_core::pq::default_num_subvectors(dim) as u64
+            }
             QuantizationMode::None => {
                 let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32").is_ok_and(|v| {
                     matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on")

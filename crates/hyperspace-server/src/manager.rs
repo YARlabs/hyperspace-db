@@ -1,4 +1,5 @@
 use crate::collection::CollectionImpl;
+use crate::sharded_engine::ShardedCollection;
 use dashmap::DashMap;
 use hyperspace_core::VacuumFilterQuery;
 use hyperspace_core::{
@@ -12,12 +13,27 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sysinfo::System;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+/// Cached check: is the v4 Thread-per-Core sharded engine requested?
+///
+/// Reads `HS_V4_ENGINE` once at startup. Accepted values: `1`, `true`, `yes`, `on`.
+/// This avoids a syscall + global-mutex on every collection operation.
+static V4_ENGINE_ENABLED: OnceLock<bool> = OnceLock::new();
+
+#[inline]
+fn v4_engine_enabled() -> bool {
+    *V4_ENGINE_ENABLED.get_or_init(|| {
+        std::env::var("HS_V4_ENGINE")
+            .map(|v| !matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off"))
+            .unwrap_or(true)
+    })
+}
 
 fn current_time_secs() -> u64 {
     SystemTime::now()
@@ -222,8 +238,18 @@ impl CollectionManager {
         let wal_path = col_dir.join("wal.log");
         let quant_mode = meta.quantization_mode();
         let node_id = self.cluster_state.read().await.node_id.clone();
+        let dim = meta.dimension();
+        let schema = meta.get_schema();
 
-        macro_rules! inst {
+        // ── Engine selection ────────────────────────────────────────────────────
+        // Use the v4 Thread-per-Core ShardedCollection when:
+        //   a) `meta.sharded` is true  → this collection was created as sharded, OR
+        //   b) `shard_0/` dir exists   → auto-detect legacy sharded directories.
+        // Otherwise fall back to the classic single-shard CollectionImpl (v3 compat).
+        let use_sharded = meta.sharded || col_dir.join("shard_0").is_dir();
+
+        // Fast-path macro for classic CollectionImpl.
+        macro_rules! inst_classic {
             ($M:ty) => {
                 Arc::new(
                     CollectionImpl::<$M>::new(
@@ -233,27 +259,63 @@ impl CollectionManager {
                         wal_path.clone(),
                         quant_mode,
                         self.replication_tx.clone(),
-                        meta.dimension() as usize,
-                        meta.get_schema(),
+                        dim,
+                        schema.clone(),
                     )
                     .await?,
-                )
+                ) as Arc<dyn Collection>
             };
         }
 
-        let collection: Arc<dyn Collection> = match meta.metric_name().as_str() {
-            "poincare" => inst!(PoincareMetric),
-            "euclidean" | "l2" => inst!(EuclideanMetric),
-            "cosine" => inst!(CosineMetric),
-            "lorentz" => inst!(LorentzMetric),
-            "hybrid" => inst!(HybridMetric),
-            _ => {
-                return Err(format!(
-                    "Unsupported configuration: dim={}, metric={}",
-                    meta.dimension(),
-                    meta.metric_name()
-                )
-                .into());
+        // Fast-path macro for ShardedCollection (Thread-per-Core, v4).
+        macro_rules! inst_sharded {
+            ($M:ty) => {
+                Arc::new(
+                    ShardedCollection::<$M>::new(
+                        name.to_string(),
+                        node_id.clone(),
+                        col_dir.clone(),
+                        quant_mode,
+                        self.replication_tx.clone(),
+                        dim,
+                        schema.clone(),
+                        None, // auto-detect shard count from available CPU cores
+                    )
+                    .await
+                    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?,
+                ) as Arc<dyn Collection>
+            };
+        }
+
+        let collection: Arc<dyn Collection> = if use_sharded {
+            tracing::info!("[v4] Loading '{name}' as ShardedCollection (Thread-per-Core engine)");
+            match meta.metric_name().as_str() {
+                "poincare" => inst_sharded!(PoincareMetric),
+                "euclidean" | "l2" => inst_sharded!(EuclideanMetric),
+                "cosine" => inst_sharded!(CosineMetric),
+                "lorentz" => inst_sharded!(LorentzMetric),
+                "hybrid" => inst_sharded!(HybridMetric),
+                other => {
+                    return Err(format!(
+                        "[v4] Unsupported metric '{other}' for ShardedCollection (dim={dim})"
+                    )
+                    .into());
+                }
+            }
+        } else {
+            match meta.metric_name().as_str() {
+                "poincare" => inst_classic!(PoincareMetric),
+                "euclidean" | "l2" => inst_classic!(EuclideanMetric),
+                "cosine" => inst_classic!(CosineMetric),
+                "lorentz" => inst_classic!(LorentzMetric),
+                "hybrid" => inst_classic!(HybridMetric),
+                _ => {
+                    return Err(format!(
+                        "Unsupported configuration: dim={dim}, metric={}",
+                        meta.metric_name()
+                    )
+                    .into());
+                }
             }
         };
 
@@ -312,6 +374,18 @@ impl CollectionManager {
         let internal_name = Self::get_internal_name(user_id, name);
         // Trigger optimization (Hot Vacuum)
         if let Some(entry) = self.collections.get(&internal_name) {
+            let start = std::time::Instant::now();
+            loop {
+                let q = entry.collection.queue_size();
+                let w = entry.collection.write_buffer_size();
+                if q == 0 && w == 0 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                if start.elapsed().as_secs() > 30 {
+                    break;
+                }
+            }
             entry
                 .collection
                 .optimize_with_filter(filter)
@@ -369,15 +443,26 @@ impl CollectionManager {
             "none" => "none".to_string(),
             "extreme" | "binary" => "extreme".to_string(),
             "medium_plus" => "medium_plus".to_string(),
-            "turbo" => "turbo".to_string(),
+            "turbo" | "turboquant" => "turbo".to_string(),
+            "pq" | "product_quantization" => "pq".to_string(),
+            "opq" | "optimized_product_quantization" => "opq".to_string(),
             _ => "medium".to_string(), // scalar, medium, asymmetric_hybrid_801, anything else
         };
+
+        // Mark collection as sharded when the v4 engine is requested.
+        // This flag is persisted in meta.json so subsequent restarts reload the
+        // correct engine without needing HS_V4_ENGINE to be set again.
+        let sharded = v4_engine_enabled();
+        if sharded {
+            tracing::info!("[v4] Creating '{name}' with ShardedCollection (HS_V4_ENGINE=1)");
+        }
 
         let meta = CollectionMetadata {
             schema: Some(schema.clone()),
             dimension: None,
             metric: None,
             quantization,
+            sharded,
         };
 
         meta.save(&col_dir).map_err(|e| e.to_string())?;
@@ -726,15 +811,21 @@ pub struct CollectionMetadata {
     pub dimension: Option<u32>,
     pub metric: Option<String>,
     pub quantization: String,
+    /// If `true`, this collection was created with the v4 `ShardedCollection` engine.
+    /// The shard directories (`shard_0/`, `shard_1/`, …) live inside the collection dir.
+    /// Set to `false` (via `#[serde(default)]`) for all legacy v3 collections so that
+    /// existing `meta.json` files without this field continue to load correctly.
+    #[serde(default)]
+    pub sharded: bool,
 }
 
 impl CollectionMetadata {
-    fn save(&self, dir: &Path) -> std::io::Result<()> {
+    pub fn save(&self, dir: &Path) -> std::io::Result<()> {
         let s = serde_json::to_string_pretty(self)?;
         fs::write(dir.join("meta.json"), s)
     }
 
-    fn load(dir: &Path) -> std::io::Result<Self> {
+    pub fn load(dir: &Path) -> std::io::Result<Self> {
         let s = fs::read_to_string(dir.join("meta.json"))?;
         let meta: Self = serde_json::from_str(&s)?;
         Ok(meta)
@@ -782,6 +873,26 @@ impl CollectionMetadata {
             .map_or_else(|| "l2".to_string(), |c| c.metric.clone())
     }
 
+    pub fn is_mrl(&self) -> bool {
+        self.schema
+            .as_ref()
+            .map_or(false, |s| !s.cascade_pipeline.is_empty())
+    }
+
+    pub fn mrl_cutoff_dimension(&self) -> Option<u32> {
+        self.schema
+            .as_ref()
+            .and_then(|s| s.cascade_pipeline.first())
+            .map(|layer| layer.cutoff_dimension)
+    }
+
+    pub fn mrl_rerank_top_k(&self) -> Option<u32> {
+        self.schema
+            .as_ref()
+            .and_then(|s| s.cascade_pipeline.first())
+            .map(|layer| layer.rerank_top_k)
+    }
+
     pub fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
         let metric = self.metric_name();
         let dim = self.dimension();
@@ -795,6 +906,8 @@ impl CollectionMetadata {
                 }
             }
             "turbo" | "turboquant" => hyperspace_core::QuantizationMode::Turbo,
+            "pq" | "product_quantization" => hyperspace_core::QuantizationMode::ProductQuantization,
+            "opq" | "optimized_product_quantization" => hyperspace_core::QuantizationMode::OPQ,
             "medium_plus" => {
                 if metric == "hybrid" && dim == 801 {
                     hyperspace_core::QuantizationMode::AsymmetricHybridLowBit

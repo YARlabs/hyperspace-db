@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v3.1.4** | **The World's First Schema-Driven Spatial AI Engine.**
+**v4.0.0** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,12 +33,28 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v3.1.3)
+## 🚀 Core Pillars (v4.0.0)
 
 <table>
   <tr>
+    <td>⚡ <b>Thread-per-Core Engine</b></td>
+    <td>Shared-Nothing architecture inspired by Seastar. Each physical CPU core runs an isolated, lock-free shard partition (<code>ShardedCollection</code>) with deterministic routing (<code>hash(id) % N</code>). Eliminates cross-core cache line bouncing and lock contention, delivering <b>142.5 QPS</b> (C=1) to <b>311.6 QPS</b> (C=10) on 1024D dense search (4.52× faster vs v3) and <b>67,500 vec/s</b> server core ingestion throughput.</td>
+  </tr>
+  <tr>
+    <td>💾 <b>Direct I/O Hardware Storage</b></td>
+    <td>High-IOPS Direct I/O storage engine (<code>DirectVectorStore</code>) using 4096-byte page alignment and native <code>O_DIRECT</code> (Linux) / <code>F_NOCACHE</code> (macOS). Bypasses OS page cache double-buffering, slashing MRL cascade tail latency (P99) from 33.75 ms to <b>3.14 ms</b> (10.76× lower), boosting MRL throughput to <b>397.1 QPS</b> (6.16× higher) with <b>99.87% Recall@10</b>.</td>
+  </tr>
+  <tr>
+    <td>📐 <b>Spatial AABB Indexing & Hardware Prefetch</b></td>
+    <td>Hierarchical 32-vector Axis-Aligned Bounding Box (AABB) pruning discarding <b>95% to 99.9%</b> of candidate vectors before fetching vector memory for <code>InBox</code> and <code>InBall</code> geometric queries, delivering <b>1,774.0 QPS</b> (22.28× higher vs v3) at <b>0.51 ms P50 latency</b>. CPU hardware cache prefetch hints (<code>_mm_prefetch</code> on x86_64, <code>prfm pldl1keep</code> on Apple Silicon/Graviton) hide DRAM latency during HNSW beam traversal.</td>
+  </tr>
+  <tr>
+    <td>🔄 <b>Autonomous Startup Migration</b></td>
+    <td>Zero-downtime auto-migration engine. Keeps legacy v3.x collections in <code>data/</code> untouched; upon startup, HyperspaceDB automatically converts them to partitioned v4.x storage in <code>data_v4/{collection_name}/</code>, and audits integrity via cryptographic manifests.</td>
+  </tr>
+  <tr>
     <td>⚙️ <b>Reflex-Level Speed</b></td>
-    <td>Built on Nightly Rust. Our <b>ArcSwap Lock-Free architecture</b> and <code>f32</code> SIMD intrinsics deliver up to <b>12,000 Search QPS</b> and <b>60,000 Ingest QPS</b> on a single node.</td>
+    <td>Built on Nightly Rust. Our <b>ArcSwap Lock-Free architecture</b> and <code>f32</code> SIMD intrinsics deliver <b>142.5 QPS</b> (P50 6.98 ms, P99 7.84 ms) on 25k × 1024D dense search at 99.90% Recall@10, and up to <b>1,567 QPS</b> with OPQ/PQ quantization and <b>1,774 QPS</b> on Spatial AABB bounding queries. Full index construction completed in <b>78.54 s</b> (43.45 s faster than v3). See <code>BENCHMARK_V3_VS_V4_REPORT.md</code>.</td>
   </tr>
   <tr>
     <td>🔑 <b>RBAC & Cross-Tenant Sharing</b></td>
@@ -199,6 +215,42 @@ Store more, pay less. HyperspaceDB's 1-bit quantization and efficient storage en
 
 ---
 
+## ⚡ v4.0.0 Grand Benchmark: Thread-per-Core & Direct I/O
+
+HyperspaceDB **v4.0.0** introduces a high-performance **Thread-per-Core (Shared-Nothing)** architecture with **Hardware Direct I/O** (4096-byte DMA alignment with `O_DIRECT`/`F_NOCACHE`), hierarchical **Spatial AABB segment pruning**, and autonomous startup migration.
+
+### 🏆 Empirical VectorDBBench Verification (v3.x vs v4.0.0)
+
+| Scenario / Workload | v3.x Baseline | v4.0.0 Engine | Delta / Improvement | Key Architecture Enabler |
+| :--- | :---: | :---: | :---: | :--- |
+| **Dense 1024D (100k Vectors)** | 5.7 QPS | **60.7 QPS** | **10.6× faster** | Hardware L1 Prefetching + SIMD f32 unrolling |
+| • Tail Latency (P99) | 648.79 ms | **19.91 ms** | **32.6× lower** | 64-bit monotonic VisitedScratch tokens |
+| **MRL Cascade 1536D (50k Vectors)** | 3.7 QPS | **81.8 QPS** | **22.3× faster** | Direct I/O NVMe DMA without page cache locks |
+| • Tail Latency (P99) | 1,010.30 ms | **14.49 ms** | **69.8× lower** | 64D RAM Head + Page-aligned Direct disk streaming |
+| **Spatial Bounded Search (768D, 50k)** | 4.4 QPS | **96.6 QPS** | **22.1× faster** | Hierarchical Spatial AABB segment pruning |
+| • InBox Filter P99 Latency | 78.41 ms | **0.66 ms** | **118.8× lower** | >95% non-matching vectors pruned in RAM |
+| **Concurrency Saturation (C=100)** | 30,056 ms | **2,678 ms** | **11.2× stability gain**| Eliminated cross-core lock contention (0 ns) |
+
+> 📌 *Detailed comparative data available in [BENCHMARK_V3_VS_V4_REPORT.md](BENCHMARK_V3_VS_V4_REPORT.md) and [BENCHMARK_GRAND_REPORT.md](BENCHMARK_GRAND_REPORT.md).*
+
+---
+
+## 🗜️ Multi-Tier Vector Quantization Suite (v4.0.0)
+
+HyperspaceDB v4.0.0 supports 7 quantization precision levels verified empirically across 20,000 unit-normalized 1024D embeddings (see [BENCHMARK_QUANTIZATION_SWEEP.md](BENCHMARK_QUANTIZATION_SWEEP.md)):
+
+| Mode | Key | Bytes / Vec | Compression | Single-Pass Recall@10 | Two-Pass Raw Rerank | Search QPS | Mean Latency | Primary Use Case |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Full Precision** | `none` | 4,100 B | **1.0×** | **100.00%** | Baseline | 203 QPS | 4.91 ms | Legal, Medical, Financial Ground Truth |
+| **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **88.60%** | 88.60% | 220 QPS | 4.52 ms | Enterprise RAG standard (75% RAM savings) |
+| **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **87.15%** | 87.15% | **287 QPS** | **3.47 ms** | High-throughput microservices (Fastest) |
+| **TurboQuant** | `turbo` | 520 B | **7.9×** | **86.95%** | **99.95%** (k=40) | 218 QPS | 4.57 ms | Spherical Lloyd-Max + Orthogonal Rotation |
+| **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **17.00%** (73.4% rk4) | **99.85%** (k=40) | **1,567 QPS** | **0.63 ms** | Ultra-Scale ADC with FWHT rotation |
+| **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **17.20%** (73.1% rk4) | **99.80%** (k=40) | **1,453 QPS** | **0.67 ms** | Standard Product Quantization with ADC |
+| **Extreme 1-Bit ADC**| `extreme` | 132 B | **31.1×** | **35.75%** | **75.45%** (k=80) | 113 QPS | 8.85 ms | Edge, Robotics (ROS 2), IoT (< 132 MB / 1M vecs) |
+
+---
+
 ## 🔒 Security
 
 * **API Keys**: Secure endpoints with `HYPERSPACE_API_KEY` environment variable.
@@ -347,13 +399,21 @@ results = client.search(
 
 All quantization is configured per-collection at creation time via `HS_QUANTIZATION_LEVEL`:
 
-| Mode | env value | Bits/dim | Compression | Best for |
-|---|---|---|---|---|
-| **SQ8 Anisotropic** | `scalar` (default) | 8 | 8x | Cosine/L2 — best recall at 1 byte/dim |
-| **Binary (Hamming)** | `binary` | 1 | 64x | RAM-critical, 100M+ vectors |
-| **Lorentz SQ8** | automatic | 8 | 8x | Lorentz metric (auto-selected) |
-| **Zonal (MOND)** | `HS_ZONAL_QUANTIZATION=true` | mixed | ~30-40% | Hyperbolic with mixed density |
-| **Full f64** | `none` | 64 | 1x | Research / debugging |
+| Mode | Value (`quantization`) | Bytes/vec (1024D) | Compression | Supported Metrics | Best for |
+|---|---|---|---|---|---|
+| **SQ8 Anisotropic** | `medium` / `scalar` | 1,028 B | 4× (vs f32) / 8× (vs f64) | Cosine, L2, Poincaré, Lorentz | General RAG / Best default recall at 1 byte/dim |
+| **Block ScalarI4** | `medium_plus` | 772 B | 5.3× | Cosine, L2 | High-throughput services (287 QPS) |
+| **TurboQuant 4-bit** | `turbo` | 520 B | 7.9× | Cosine, L2 | Spherical embeddings with Lloyd-Max bias correction |
+| **Optimized PQ (OPQ-64)** | `opq` | 68 B | 60.3×–64× | Cosine, L2 (Euclidean tail in Hybrid) | Massive scale with FWHT-rotated ADC table lookups |
+| **Product Quant (PQ-64)** | `pq` | 68 B | 60.3×–64× | Cosine, L2 | Standard Subspace Product Quantization ADC |
+| **Binary ADC (1-bit)** | `extreme` / `binary` | 132 B | 31.1× (vs f32) / 62× (vs f64) | Cosine, L2 | RAM-critical edge/robotics deployment |
+| **Lorentz SQ8** | automatic | 1,028 B | 4× / 8× | Lorentz metric only | Hyperbolic embeddings with Minkowski time sign preservation |
+| **Full Precision** | `none` | 4,100 B | 1× | All metrics | Exact ground truth, medical, legal compliance |
+
+> ⚠️ **Metric Compatibility Notice**:
+> - **Cosine & L2**: Compatible with **ALL** quantization modes (`none`, `medium`, `medium_plus`, `turbo`, `opq`, `pq`, `extreme`).
+> - **Poincaré & Lorentz**: Only compatible with `none` and `medium` (Scalar SQ8). Product Quantization (`pq`/`opq`) and 1-bit (`extreme`) assume Euclidean metrics and orthonormal rotations that violate conformal Poincaré boundary conditions ($\|x\| < 1$) and Lorentzian pseudo-Riemannian signature $(-1, +1, \dots, +1)$.
+> - **Hybrid (801D = 33D Lorentz + 768D Euclidean)**: Uses `AsymmetricHybrid`, where the 33D Lorentz head is kept unquantized/FP64 while the 768D Euclidean tail can be compressed with `turbo`, `opq`, or `extreme`.
 
 The default `scalar` mode uses a **ScaNN-inspired anisotropic loss** $L = \|e_\parallel\|^2 + t_w \cdot \|e_\perp\|^2$ ($t_w=10$), which penalizes directional error more than magnitude error, improving Recall@10 by **+5.3% (Cosine)** and **+3.8% (L2)** versus isotropic SQ8.
 
@@ -652,10 +712,41 @@ Configure these via `.env` file or environment variables:
 
 | Variable | Description | Supported Values | Default |
 | :--- | :--- | :--- | :--- |
-| `HS_QUANTIZATION_LEVEL` | Compression | `scalar` (i8), `binary` (1-bit), `none` (f64) | `none` |
+| `HS_QUANTIZATION_LEVEL` | Compression | `scalar` (i8), `binary` (1-bit), `turbo` (4-bit), `none` (f64) | `none` |
+| `HS_SHARDS` | Number of Thread-per-core CPU shards | Integer (`1` to `num_cpus * 2`) | Logical CPU core count |
+| `HS_DIRECT_IO` | Enable Direct I/O (`O_DIRECT` / `F_NOCACHE`) | `1` (true), `0` (false) | `1` |
 
 > [!IMPORTANT]
 > Since v3.1.0, `HS_DIMENSION` and `HS_METRIC` are deprecated. Use **CollectionSchema** via SDK or CLI for granular control.
+
+### 🔄 Инструкция по автоматической миграции (v3.x → v4.0.0 Migration Guide)
+
+В версии v4.0.0 реализована раздельная архитектура хранения данных:
+* **`data/`**: Папка legacy-данных v3.x.
+* **`data_v4/`**: Папка нового формата v4.0.0 (Direct I/O, Thread-per-core, Spatial AABB).
+
+#### Как работает миграция (Zero-Config Upgrade):
+1. **Автоматический запуск**: При первом старте HyperspaceDB v4.0.0 сервер автоматически обнаруживает папку `data/`.
+2. **Бесшовная конвертация**: Все найденные v3-коллекции конвертируются в формат v4.0.0 и записываются в `data_v4/{collection_name}/`:
+   - Векторы выравниваются по границам страниц 4096 байт для прямого DMA-доступа (**Direct I/O**).
+   - Автоматически рассчитываются и сохраняются пространственные сегменты **Spatial AABB**.
+   - Таблица безопасности и прав доступа (`data/security.db`) автоматически переносится в `data_v4/security.db`.
+3. **Безопасное архивирование**: Исходные v3 файлы атомарно перемещаются в `data/legacy_v3_migrated/{collection_name}/` с созданием манифеста целостности `.migration_v4_complete.json` (с таймштампом и количеством векторов).
+4. **Повторные / ручные переносы**: Если в будущем пользователь скопирует старые v3 файлы или целую коллекцию в `data/` (или `data/legacy_v3/`), система при следующем перезапуске автоматически обнаружит их и смигрирует в `data_v4/`.
+
+#### Настройка путей через переменные окружения:
+* `HS_DATA_DIR`: Путь к активному v4 хранилищу (по умолчанию: `data_v4`).
+* `HS_LEGACY_V3_DIR`: Путь к legacy v3 хранилищу для поиска миграций (по умолчанию: `data`).
+
+#### Проверка успешности миграции:
+* В логах сервера отображаются записи:
+  ```text
+  🔄 [MigrationEngine] Found 1 legacy v3.x collection(s) to migrate to v4.0.0 (from data to data_v4)
+  🚀 [MigrationEngine] Migrating 'my_collection' from data/my_collection to v4 format in data_v4...
+  ✅ [MigrationEngine] Successfully migrated 'my_collection' (50000 vectors in 142 ms)
+  📦 [MigrationEngine] Archived legacy files to data/legacy_v3_migrated/my_collection
+  ```
+* В папке каждой коллекции `data_v4/{collection}/` создается файл `.migration_v4_complete.json`.
 
 ### 🎯 Supported Presets
 

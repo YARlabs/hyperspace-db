@@ -23,6 +23,14 @@
 #![allow(clippy::trivially_copy_pass_by_ref)]
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::result_large_err)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::cast_lossless)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::unnecessary_map_or)]
+#![allow(clippy::case_sensitive_file_extension_comparisons)]
+#![allow(clippy::if_not_else)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::similar_names)]
 
 use clap::Parser;
 // Access index via CollectionManager.
@@ -44,9 +52,13 @@ pub mod http_server;
 pub mod manager;
 #[path = "meta_router.rs"]
 pub mod meta_router;
+#[path = "migration.rs"]
+pub mod migration;
 #[path = "security.rs"]
 pub mod security;
 pub mod server_args;
+#[path = "sharded_engine.rs"]
+pub mod sharded_engine;
 #[path = "sync.rs"]
 pub mod sync;
 #[cfg(test)]
@@ -2992,11 +3004,40 @@ pub async fn start_server(
         .ok()
         .filter(|s| !s.is_empty() && s != "off" && s != "OFF");
 
-    // Setup Manager
-    let data_dir = std::path::PathBuf::from(
-        std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data".to_string()),
+    // Setup Manager & Migration
+    // v4 data directory defaults to "data_v4", override via HS_DATA_DIR
+    let v4_data_dir = std::path::PathBuf::from(
+        std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data_v4".to_string()),
     );
-    security::init(&data_dir);
+    // Legacy v3 data directory defaults to "data", override via HS_LEGACY_V3_DIR
+    let legacy_v3_dir = std::path::PathBuf::from(
+        std::env::var("HS_LEGACY_V3_DIR").unwrap_or_else(|_| "data".to_string()),
+    );
+
+    // If legacy security.db exists and v4 doesn't, migrate security.db automatically
+    let legacy_sec = legacy_v3_dir.join("security.db");
+    let v4_sec = v4_data_dir.join("security.db");
+    if legacy_sec.exists() && !v4_sec.exists() {
+        let _ = std::fs::create_dir_all(&v4_data_dir);
+        let _ = std::fs::copy(&legacy_sec, &v4_sec);
+        println!(
+            "🔑 [Security] Migrated legacy security.db to {}",
+            v4_sec.display()
+        );
+    }
+
+    security::init(&v4_data_dir);
+
+    // Automatic Migration: checks for legacy v3.x files in legacy_v3_dir ("data") and converts to v4 sharded Direct I/O in v4_data_dir ("data_v4")
+    if let Err(e) =
+        migration::MigrationEngine::run_startup_migration_with_legacy(&v4_data_dir, &legacy_v3_dir)
+            .await
+    {
+        eprintln!("⚠️  Migration warning: {e}");
+    }
+
+    let manager_dir = v4_data_dir;
+
     let event_buffer = std::env::var("HS_EVENT_STREAM_BUFFER")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -3006,7 +3047,7 @@ pub async fn start_server(
     let (replication_tx, _) = broadcast::channel(event_buffer);
     let (event_tx, _) = broadcast::channel(event_buffer);
     let manager = Arc::new(CollectionManager::new(
-        data_dir,
+        manager_dir,
         replication_tx.clone(),
         event_tx.clone(),
     ));
@@ -3641,7 +3682,11 @@ pub async fn start_server(
     let service_with_auth =
         tonic::service::interceptor::InterceptedService::new(db_service, interceptor);
 
-    let mut server = Server::builder();
+    let mut server = Server::builder()
+        .tcp_nodelay(true)
+        .initial_connection_window_size(Some(8 * 1024 * 1024))
+        .initial_stream_window_size(Some(4 * 1024 * 1024))
+        .tcp_keepalive(Some(std::time::Duration::from_secs(60)));
 
     if let (Some(cert_path), Some(key_path)) = (&tls_cert, &tls_key) {
         println!("🔒 TLS/mTLS gRPC Server Configured");

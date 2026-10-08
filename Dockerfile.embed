@@ -69,6 +69,9 @@ RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
 
 USER hyperspace
 
+ENV RUST_LOG=info
+ENV HS_DATA_DIR=/app/data
+
 EXPOSE 50051 50050
 
 CMD ["hyperspace-server"]

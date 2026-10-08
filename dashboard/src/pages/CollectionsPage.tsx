@@ -196,8 +196,11 @@ function CollectionRow({ collection, isString, onDelete }: any) {
     const status = isString ? "active" : (collection.status || "active")
     const count = isString ? "-" : (status === "idle" ? "0 (Idle)" : collection.count)
     const schema = collection.schema
-    const dim = schema ? schema.components.map((c: any) => c.full_dimension).reduce((a: number, b: number) => a + b, 0) : collection.dimension
-    const metric = schema ? schema.components.map((c: any) => c.metric).join('+') : collection.metric
+    const dim = schema ? schema.components?.map((c: any) => c.full_dimension).reduce((a: number, b: number) => a + b, 0) : collection.dimension
+    const metric = schema ? schema.components?.map((c: any) => c.metric).join('+') : collection.metric
+    const isMrl = Boolean(collection.is_mrl || collection.mrl_cutoff_dimension || schema?.cascade_pipeline?.mrl_layer)
+    const mrlCutoff = collection.mrl_cutoff_dimension ?? schema?.cascade_pipeline?.mrl_layer?.cutoff_dimension
+    const mrlTopK = collection.mrl_rerank_top_k ?? schema?.cascade_pipeline?.mrl_layer?.rerank_top_k
 
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -219,7 +222,15 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                     <Database className="h-4 w-4" />
                 </div>
                 <div className="flex flex-col">
-                    <span className="font-semibold text-zinc-100">{name}</span>
+                    <div className="flex items-center gap-2">
+                        <span className="font-semibold text-zinc-100">{name}</span>
+                        {isMrl && (
+                            <Badge className="bg-sky-950/70 text-sky-300 border border-sky-500/30 text-[9px] font-mono px-1.5 py-0 flex items-center gap-1 shadow-sm">
+                                <Layers className="h-2.5 w-2.5 text-sky-400" />
+                                MRL
+                            </Badge>
+                        )}
+                    </div>
                     <span className="text-[10px] text-zinc-500 font-mono">Role: {privilege}</span>
                 </div>
                 {collection.eco_tier && collection.eco_tier !== "None" && (
@@ -276,7 +287,24 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                     )}
                 </div>
             </TableCell>
-            <TableCell><Badge variant="outline" className="font-mono">{dim}</Badge></TableCell>
+            <TableCell>
+                {isMrl ? (
+                    <div className="flex flex-col gap-1 items-start">
+                        <div className="flex items-center gap-1.5">
+                            <Badge variant="outline" className="font-mono">{dim}d</Badge>
+                            <Badge variant="secondary" className="bg-sky-950/60 text-sky-300 border border-sky-500/30 text-[10px] font-mono px-1.5 py-0 flex items-center gap-1" title={`Fast MRL cutoff dimension: ${mrlCutoff}d`}>
+                                <Layers className="h-2.5 w-2.5 text-sky-400" />
+                                Cutoff: {mrlCutoff}d
+                            </Badge>
+                        </div>
+                        <span className="text-[9px] text-zinc-500 font-mono">
+                            Rerank Top {mrlTopK || 100}
+                        </span>
+                    </div>
+                ) : (
+                    <Badge variant="outline" className="font-mono">{dim}d</Badge>
+                )}
+            </TableCell>
             <TableCell className="capitalize">{metric}</TableCell>
             <TableCell className="font-mono">{count}</TableCell>
             <TableCell className="font-mono">{collection.indexing_queue || 0}</TableCell>
@@ -393,19 +421,41 @@ function CreateCollectionDialog() {
     }
 
     const getDimensions = () => {
-        const large_base = [8, 16, 32, 64, 128, 512, 768, 1024, 1536, 2048, 3072, 4096, 8192]
+        const large_base = [64, 128, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 8192]
         const small_base_hyper = [4, 8, 16, 32, 64, 128]
 
         if (metric === "lorentz") {
-            // Lorentz restricted to 129 (128 spatial + 1 time)
-            return small_base_hyper.flatMap(d => [d, d + 1])
+            // Lorentz spacetime coordinates (n spatial + 1 time: 5, 9, 17, 33, 65, 129, 257)
+            return [5, 9, 17, 33, 65, 129, 257]
         }
         if (metric === "poincare") {
-            // Poincare restricted to 128
             return small_base_hyper
         }
         // L2 and Cosine support full range up to 8192
         return large_base
+    }
+
+    const getCutoffPresets = () => {
+        const curDim = metric === "hybrid" ? 801 : (parseInt(dimension) || 1024)
+        if (metric === "lorentz") {
+            const presets = [5, 9, 17, 33, 65, 129, 257].filter(c => c < curDim)
+            return presets.map(c => ({
+                value: c.toString(),
+                label: `Spacetime ${c}d (${c - 1} spatial + 1 time)`
+            }))
+        }
+        if (metric === "poincare") {
+            const presets = [4, 8, 16, 32, 64, 128].filter(c => c < curDim)
+            return presets.map(c => ({
+                value: c.toString(),
+                label: `${c} Dimensions (Poincaré)`
+            }))
+        }
+        const presets = [8, 16, 32, 64, 128, 256, 512, 768, 1024].filter(c => c < curDim)
+        return presets.map(c => ({
+            value: c.toString(),
+            label: `${c} Dimensions`
+        }))
     }
 
     const handleMetricChange = (v: string) => {
@@ -414,13 +464,13 @@ function CreateCollectionDialog() {
         setIsCustomMrlCutoff(false)
         if (v === "hybrid") {
             setDimension("801")
-            setMrlCutoff("161")
+            setMrlCutoff("129")
         } else if (v === "lorentz") {
             setDimension("129")
-            setMrlCutoff("17")
+            setMrlCutoff("33")
         } else if (v === "poincare") {
             setDimension("128")
-            setMrlCutoff("16")
+            setMrlCutoff("32")
         } else {
             setDimension("1024")
             setMrlCutoff("128")
@@ -487,6 +537,8 @@ function CreateCollectionDialog() {
                                 <SelectItem value="default">Default (System HS_QUANTIZATION_LEVEL)</SelectItem>
                                 <SelectItem value="medium_plus">Medium Plus (4-Bit Universal Block Quantization)</SelectItem>
                                 <SelectItem value="turbo">Turbo (4-Bit Lloyd-Max Spherical)</SelectItem>
+                                <SelectItem value="opq">Optimized PQ (64-byte FWHT Rotated Subspace Quantization — 60×)</SelectItem>
+                                <SelectItem value="pq">Product Quantization (64-byte Subspace ADC — 60×)</SelectItem>
                                 <SelectItem value="medium">Medium (8-Bit Scalar / Hybrid 801)</SelectItem>
                                 <SelectItem value="none">None (Full f64 Precision)</SelectItem>
                                 <SelectItem value="extreme">Extreme (1-Bit Binary ADC)</SelectItem>
@@ -560,7 +612,10 @@ function CreateCollectionDialog() {
                                     setEnableMRL(e.target.checked)
                                     if (e.target.checked) {
                                         const dimVal = metric === "hybrid" ? 801 : (parseInt(dimension) || 1024)
-                                        setMrlCutoff(metric === "hybrid" ? "161" : Math.max(Math.floor(dimVal / 8), 64).toString())
+                                        if (metric === "hybrid") setMrlCutoff("129")
+                                        else if (metric === "lorentz") setMrlCutoff("33")
+                                        else if (metric === "poincare") setMrlCutoff("32")
+                                        else setMrlCutoff(Math.max(Math.floor(dimVal / 8), 64).toString())
                                     }
                                 }}
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-zinc-900"
@@ -585,7 +640,14 @@ function CreateCollectionDialog() {
                         {enableMRL && metric !== "hybrid" && (
                             <div className="grid grid-cols-2 gap-4 p-3 rounded-lg bg-blue-500/5 border border-blue-500/10 animate-in fade-in slide-in-from-top-1 duration-200">
                                 <div className="space-y-2 col-span-2">
-                                    <Label htmlFor="mrl-cutoff-select" className="text-xs">MRL Cutoff Dimension</Label>
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="mrl-cutoff-select" className="text-xs">
+                                            {metric === "lorentz" ? "Lorentz MRL Cutoff Dimension" : "MRL Cutoff Dimension"}
+                                        </Label>
+                                        <span className="text-[10px] text-zinc-400 font-mono">
+                                            Full: {dimension}d
+                                        </span>
+                                    </div>
                                     <div className="flex flex-col gap-1.5">
                                         <Select
                                             value={isCustomMrlCutoff ? "custom" : mrlCutoff}
@@ -602,8 +664,10 @@ function CreateCollectionDialog() {
                                                 <SelectValue placeholder="Select Cutoff" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {[8, 16, 32, 64, 128, 256, 512].filter(c => c < (parseInt(dimension) || 1024)).map(c => (
-                                                    <SelectItem key={c} value={c.toString()} className="text-xs">{c} Dimensions</SelectItem>
+                                                {getCutoffPresets().map(preset => (
+                                                    <SelectItem key={preset.value} value={preset.value} className="text-xs">
+                                                        {preset.label}
+                                                    </SelectItem>
                                                 ))}
                                                 <SelectItem value="custom" className="text-xs">Custom Cutoff...</SelectItem>
                                             </SelectContent>
@@ -617,12 +681,17 @@ function CreateCollectionDialog() {
                                                 max={parseInt(dimension) - 1 || 1023}
                                                 value={mrlCutoff}
                                                 onChange={(e) => setMrlCutoff(e.target.value)}
-                                                placeholder="e.g. 128"
+                                                placeholder={metric === "lorentz" ? "e.g. 17 or 33" : "e.g. 128"}
                                                 className="h-8 bg-zinc-900 border-white/10 text-xs"
                                             />
                                         )}
                                     </div>
-                                    <p className="text-[9px] text-zinc-400">Truncated dimension for fast initial search phase.</p>
+                                    <p className="text-[9px] text-zinc-400">
+                                        {metric === "lorentz" 
+                                            ? "Spacetime prefix boundary (spatial + timelike coordinates) for 2-stage hyperbolic search."
+                                            : "Truncated dimension for fast initial candidate search phase."
+                                        }
+                                    </p>
                                 </div>
                                 <div className="space-y-2 col-span-2">
                                     <Label htmlFor="mrlRerankTopK" className="text-xs">Rerank Top K</Label>
@@ -770,6 +839,15 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                         <TabsList className="w-full mb-4 bg-zinc-900">
                             <TabsTrigger value="hnsw" className="flex-1 text-xs"><Settings2 className="h-3 w-3 mr-1.5" />HNSW</TabsTrigger>
                             <TabsTrigger value="cache" className="flex-1 text-xs"><Layers className="h-3 w-3 mr-1.5" />Hot Cache</TabsTrigger>
+                            <TabsTrigger value="mrl" className="flex-1 text-xs">
+                                <Layers className="h-3 w-3 mr-1.5 text-sky-400" />
+                                MRL Cascade
+                                {stats.is_mrl && (
+                                    <span className="ml-1 px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 text-[9px] font-mono">
+                                        {stats.mrl_cutoff_dimension}d
+                                    </span>
+                                )}
+                            </TabsTrigger>
                             <TabsTrigger value="resources" className="flex-1 text-xs"><HardDrive className="h-3 w-3 mr-1.5" />Resources</TabsTrigger>
                         </TabsList>
 
@@ -818,6 +896,88 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                             <CacheControlPanel collectionName={collectionName} formatBytes={formatBytes} />
                         </TabsContent>
 
+                        {/* ── MRL Cascade Tab ──────────────────────────── */}
+                        <TabsContent value="mrl" className="space-y-4 py-1">
+                            {stats.is_mrl ? (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-sky-950/20 border border-sky-500/20">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-1.5 rounded bg-sky-500/20 text-sky-400">
+                                                <Layers className="h-4 w-4" />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-semibold text-sky-200">Matryoshka Representation Learning (MRL)</div>
+                                                <div className="text-[10px] text-sky-400/80">Nested Dimensionality Cascade Engine</div>
+                                            </div>
+                                        </div>
+                                        <Badge className="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-mono">
+                                            ACTIVE
+                                        </Badge>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
+                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Cutoff Prefix</div>
+                                            <div className="text-2xl font-mono font-bold text-sky-400">{stats.mrl_cutoff_dimension}d</div>
+                                            <div className="text-[10px] text-zinc-500">Fast Candidate Phase</div>
+                                        </div>
+                                        <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
+                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Full Dimension</div>
+                                            <div className="text-2xl font-mono font-bold text-zinc-200">{stats.dimension}d</div>
+                                            <div className="text-[10px] text-zinc-500">Full Vector Space</div>
+                                        </div>
+                                        <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
+                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Scan Reduction</div>
+                                            <div className="text-2xl font-mono font-bold text-emerald-400">
+                                                {stats.mrl_cutoff_dimension ? (stats.dimension / stats.mrl_cutoff_dimension).toFixed(1) : '1.0'}x
+                                            </div>
+                                            <div className="text-[10px] text-zinc-500">RAM / Bandwidth Ratio</div>
+                                        </div>
+                                        <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
+                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Rerank Pool</div>
+                                            <div className="text-2xl font-mono font-bold text-amber-400">Top {stats.mrl_rerank_top_k || 100}</div>
+                                            <div className="text-[10px] text-zinc-500">Stage 2 Rescoring</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-lg bg-zinc-900 border border-white/5 space-y-3">
+                                        <div className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                                            <Zap className="h-3.5 w-3.5 text-amber-400" />
+                                            2-Stage Query Cascade Architecture
+                                        </div>
+                                        <div className="space-y-2 text-xs">
+                                            <div className="flex items-start gap-2.5 p-2.5 rounded bg-zinc-950/60 border border-white/5">
+                                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-500/20 shrink-0">Stage 1</span>
+                                                <div className="space-y-0.5">
+                                                    <div className="font-medium text-zinc-200 text-xs">Fast SIMD Scan (Prefix [0..{stats.mrl_cutoff_dimension}])</div>
+                                                    <div className="text-[10px] text-zinc-400">
+                                                        Scans index graph using leading {stats.mrl_cutoff_dimension} coordinates for minimal latency and maximum cache locality.
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-start gap-2.5 p-2.5 rounded bg-zinc-950/60 border border-white/5">
+                                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/20 shrink-0">Stage 2</span>
+                                                <div className="space-y-0.5">
+                                                    <div className="font-medium text-zinc-200 text-xs">High-Fidelity Rerank (Full {stats.dimension}d Space)</div>
+                                                    <div className="text-[10px] text-zinc-400">
+                                                        Exact rescoring of top {stats.mrl_rerank_top_k || 100} candidate vectors across the complete {stats.dimension} dimensions to guarantee full recall.
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="py-8 text-center text-xs text-zinc-500 space-y-2">
+                                    <Layers className="h-8 w-8 mx-auto opacity-30 text-zinc-400" />
+                                    <p className="font-medium text-zinc-400">MRL Cascade is not enabled for this collection</p>
+                                    <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                                        This index executes queries directly across the full monolithic {stats.dimension}d vector representation without prefix truncation.
+                                    </p>
+                                </div>
+                            )}
+                        </TabsContent>
+
                         {/* ── Resources Tab ────────────────────────────── */}
                         <TabsContent value="resources" className="space-y-4 py-1">
                             <div className="grid grid-cols-2 gap-4">
@@ -852,22 +1012,43 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                     <div className="text-[10px] text-zinc-500">Unindexed vectors available for searching</div>
                                 </div>
                             </div>
-                            <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
-                                <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 mb-1">Quantization Mode</div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-mono font-bold text-amber-400">
-                                        {(() => {
-                                            const q = stats.quantization ?? ''
-                                            if (q === 'None') return 'None — Full f64 precision'
-                                            if (q === 'ScalarI8') return 'Medium — ScalarI8 (8-bit)'
-                                            if (q === 'AsymmetricHybrid801') return 'Medium — Hybrid 801 (Lorentz-aware)'
-                                            if (q === 'Binary') return 'Extreme — Binary (1-bit)'
-                                            return q || '—'
-                                        })()}
-                                    </span>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
+                                    <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 mb-1">Quantization Mode</div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-mono font-bold text-amber-400">
+                                            {(() => {
+                                                const q = stats.quantization ?? ''
+                                                if (q === 'None') return 'None — Full f64 precision'
+                                                if (q === 'ScalarI8') return 'Medium — ScalarI8 (8-bit)'
+                                                if (q === 'ScalarI4') return 'Medium Plus — 4-bit Universal'
+                                                if (q === 'Turbo') return 'Turbo — 4-bit Spherical'
+                                                if (q === 'OPQ' || q === 'opq') return 'Optimized PQ — 64 B/vec (60.3×)'
+                                                if (q === 'ProductQuantization' || q === 'pq' || q === 'PQ') return 'Product Quantization — 64 B/vec (60.3×)'
+                                                if (q === 'AsymmetricHybrid801') return 'Medium — Hybrid 801 (Lorentz-aware)'
+                                                if (q === 'Binary') return 'Extreme — Binary (1-bit)'
+                                                return q || '—'
+                                            })()}
+                                        </span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-500">
+                                        {stats.dimension}d · {stats.metric}
+                                    </div>
                                 </div>
-                                <div className="text-[10px] text-zinc-500">
-                                    {stats.dimension}d · {stats.metric}
+                                <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
+                                    <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 mb-1">MRL Cascade Status</div>
+                                    <div className="flex items-center gap-2">
+                                        {stats.is_mrl ? (
+                                            <span className="text-sm font-mono font-bold text-sky-400 flex items-center gap-1.5">
+                                                <Layers className="h-3.5 w-3.5" /> Cutoff: {stats.mrl_cutoff_dimension}d
+                                            </span>
+                                        ) : (
+                                            <span className="text-sm font-mono text-zinc-500">Disabled (Monolithic)</span>
+                                        )}
+                                    </div>
+                                    <div className="text-[10px] text-zinc-500">
+                                        {stats.is_mrl ? `Rerank Top ${stats.mrl_rerank_top_k || 100} in full ${stats.dimension}d` : `${stats.dimension}d single-phase search`}
+                                    </div>
                                 </div>
                             </div>
                         </TabsContent>

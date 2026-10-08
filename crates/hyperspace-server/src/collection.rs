@@ -86,6 +86,8 @@ pub struct CollectionImpl<M: Metric> {
     cache: Option<Arc<VectorCache>>,
     write_buffer: Arc<crate::write_buffer::WriteBuffer>,
     chunk_backend: Arc<dyn ChunkBackend>,
+    storage_f32: bool,
+    raw_vector_cache: Arc<parking_lot::RwLock<Vec<Option<Vec<f32>>>>>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -199,10 +201,14 @@ impl<M: Metric> CollectionImpl<M> {
             .unwrap_or_else(|_| "100".to_string())
             .parse()
             .unwrap_or(100);
+        // RECALL FIX #1: Default ef_search raised from 10 → 64.
+        // ef=10 is catastrophically low for HNSW on any real dataset.
+        // The HNSW beam barely explores the graph at ef=10; recall collapses.
+        // 64 is the VectorDBBench baseline (ef_search = max(64, top_k * 4)).
         let ef_search_env = std::env::var("HS_HNSW_EF_SEARCH")
-            .unwrap_or_else(|_| "10".to_string())
+            .unwrap_or_else(|_| "64".to_string())
             .parse()
-            .unwrap_or(10);
+            .unwrap_or(64);
         let m_env = std::env::var("HS_HNSW_M")
             .unwrap_or_else(|_| "16".to_string())
             .parse()
@@ -273,9 +279,11 @@ impl<M: Metric> CollectionImpl<M> {
             components,
         };
 
-        let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
-        let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
+        // f32 storage halves memory bandwidth for the hot distance-computation path.
+        // It is enabled by default for unquantized collections; opt out with HS_STORAGE_FLOAT32=0.
+        let storage_f32_disabled = std::env::var("HS_STORAGE_FLOAT32")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off"));
+        let storage_f32 = !storage_f32_disabled && mode == hyperspace_core::QuantizationMode::None;
 
         let mut element_size = match mode {
             hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
@@ -322,6 +330,10 @@ impl<M: Metric> CollectionImpl<M> {
                 };
                 let tail_dim = dimension.saturating_sub(head_dim);
                 head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
+            }
+            hyperspace_core::QuantizationMode::ProductQuantization
+            | hyperspace_core::QuantizationMode::OPQ => {
+                hyperspace_core::pq::default_num_subvectors(dimension)
             }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
@@ -539,7 +551,12 @@ impl<M: Metric> CollectionImpl<M> {
                         reverse_id_map_data.insert(internal_id, id);
 
                         if gossip_env {
-                            let hash = CollectionDigest::hash_entry(id, &vector);
+                            let canonical: Vec<f64> = if storage_f32 {
+                                vector.iter().map(|&x| (x as f32) as f64).collect()
+                            } else {
+                                vector.clone()
+                            };
+                            let hash = CollectionDigest::hash_entry(id, &canonical);
                             let b_idx = CollectionDigest::get_bucket_index(id);
                             buckets_data[b_idx] ^= hash;
                         }
@@ -607,66 +624,121 @@ impl<M: Metric> CollectionImpl<M> {
             .max(0.0);
 
         let write_buffer_for_indexer = write_buffer.clone();
-        let indexer_task = tokio::spawn(async move {
-            use std::sync::atomic::AtomicU64;
-            let received = Arc::new(AtomicU64::new(0));
-            let errors = Arc::new(AtomicU64::new(0));
+        let indexer_task = if concurrency <= 1 {
+            tokio::task::spawn_blocking(move || {
+                let mut received = 0u64;
+                let mut errors = 0u64;
+                let mut batch = Vec::with_capacity(64);
 
-            while let Some((id, meta)) = index_rx.recv().await {
-                let permit = semaphore.clone().acquire_owned().await.unwrap();
-                let idx_link = idx_link_worker.clone();
-                let cfg = cfg_worker.clone();
-                let errors_ref = errors.clone();
-                let write_buf = write_buffer_for_indexer.clone();
-                cfg.inc_active();
-
-                tokio::spawn(async move {
-                    let _permit = permit;
-                    let result = tokio::task::spawn_blocking(move || {
-                        let idx = idx_link.load().clone();
-                        let result = idx.index_node(id, meta);
-                        (result, id)
-                    })
-                    .await;
-
-                    match result {
-                        Ok((Ok(()), processed_id)) => {
-                            write_buf.remove(processed_id);
-                            cfg.dec_queue();
-                            cfg.dec_active();
-                        }
-                        Ok((Err(e), failed_id)) => {
-                            eprintln!("❌ Indexer error on ID {failed_id}: {e}");
-                            write_buf.remove(failed_id);
-                            cfg.dec_queue();
-                            cfg.dec_active();
-                            errors_ref.fetch_add(1, Ordering::Relaxed);
-                        }
-                        Err(join_err) => {
-                            eprintln!("❌ Indexer task panicked: {join_err}");
-                            write_buf.remove(id);
-                            cfg.dec_queue();
-                            cfg.dec_active();
-                            errors_ref.fetch_add(1, Ordering::Relaxed);
+                while let Some(first) = index_rx.blocking_recv() {
+                    batch.push(first);
+                    while batch.len() < 64 {
+                        match index_rx.try_recv() {
+                            Ok(it) => batch.push(it),
+                            Err(_) => break,
                         }
                     }
-                });
 
-                let r = received.fetch_add(1, Ordering::Relaxed) + 1;
-                if r.is_multiple_of(10_000) {
-                    let active = cfg_worker.active_indexing.load(Ordering::Relaxed);
-                    let queue = cfg_worker.queue_size.load(Ordering::Relaxed);
-                    let errs = errors.load(Ordering::Relaxed);
-                    println!(
-                        "📊 Indexer: {r} received, {active} active, {queue} in queue, {errs} errors"
-                    );
+                    let batch_count = batch.len() as u64;
+                    cfg_worker
+                        .active_indexing
+                        .fetch_add(batch_count, Ordering::Relaxed);
+                    let idx = idx_link_worker.load().clone();
+
+                    for (id, meta) in batch.drain(..) {
+                        match idx.index_node(id, meta) {
+                            Ok(()) => {
+                                write_buffer_for_indexer.remove(id);
+                            }
+                            Err(e) => {
+                                eprintln!("❌ Indexer error on ID {id}: {e}");
+                                write_buffer_for_indexer.remove(id);
+                                errors += 1;
+                            }
+                        }
+                        received += 1;
+                    }
+
+                    cfg_worker
+                        .queue_size
+                        .fetch_sub(batch_count, Ordering::Relaxed);
+                    cfg_worker
+                        .active_indexing
+                        .fetch_sub(batch_count, Ordering::Relaxed);
+                    std::thread::yield_now();
+
+                    if received.is_multiple_of(10_000) {
+                        let active = cfg_worker.active_indexing.load(Ordering::Relaxed);
+                        let queue = cfg_worker.queue_size.load(Ordering::Relaxed);
+                        println!(
+                            "📊 Indexer: {received} received, {active} active, {queue} in queue, {errors} errors"
+                        );
+                    }
                 }
-            }
+                println!("🏁 Indexer task finished. Total received: {received}, errors: {errors}");
+            })
+        } else {
+            tokio::spawn(async move {
+                use std::sync::atomic::AtomicU64;
+                let received = Arc::new(AtomicU64::new(0));
+                let errors = Arc::new(AtomicU64::new(0));
 
-            let final_r = received.load(Ordering::Relaxed);
-            let final_e = errors.load(Ordering::Relaxed);
-            println!("🏁 Indexer task finished. Total received: {final_r}, errors: {final_e}");
-        });
+                while let Some((id, meta)) = index_rx.recv().await {
+                    let permit = semaphore.clone().acquire_owned().await.unwrap();
+                    let idx_link = idx_link_worker.clone();
+                    let cfg = cfg_worker.clone();
+                    let errors_ref = errors.clone();
+                    let write_buf = write_buffer_for_indexer.clone();
+                    cfg.inc_active();
+
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        let result = tokio::task::spawn_blocking(move || {
+                            let idx = idx_link.load().clone();
+                            let result = idx.index_node(id, meta);
+                            (result, id)
+                        })
+                        .await;
+
+                        match result {
+                            Ok((Ok(()), processed_id)) => {
+                                write_buf.remove(processed_id);
+                                cfg.dec_queue();
+                                cfg.dec_active();
+                            }
+                            Ok((Err(e), failed_id)) => {
+                                eprintln!("❌ Indexer error on ID {failed_id}: {e}");
+                                write_buf.remove(failed_id);
+                                cfg.dec_queue();
+                                cfg.dec_active();
+                                errors_ref.fetch_add(1, Ordering::Relaxed);
+                            }
+                            Err(join_err) => {
+                                eprintln!("❌ Indexer task panicked: {join_err}");
+                                write_buf.remove(id);
+                                cfg.dec_queue();
+                                cfg.dec_active();
+                                errors_ref.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
+                    });
+
+                    let r = received.fetch_add(1, Ordering::Relaxed) + 1;
+                    if r.is_multiple_of(10_000) {
+                        let active = cfg_worker.active_indexing.load(Ordering::Relaxed);
+                        let queue = cfg_worker.queue_size.load(Ordering::Relaxed);
+                        let errs = errors.load(Ordering::Relaxed);
+                        println!(
+                            "📊 Indexer: {r} received, {active} active, {queue} in queue, {errs} errors"
+                        );
+                    }
+                }
+
+                let final_r = received.load(Ordering::Relaxed);
+                let final_e = errors.load(Ordering::Relaxed);
+                println!("🏁 Indexer task finished. Total received: {final_r}, errors: {final_e}");
+            })
+        };
 
         // Task 1.2: Initialize MetaRouter and Load Existing Chunks
         let meta_router = Arc::new(MetaRouter::new());
@@ -885,6 +957,8 @@ impl<M: Metric> CollectionImpl<M> {
             cache,
             write_buffer,
             chunk_backend,
+            storage_f32,
+            raw_vector_cache: Arc::new(parking_lot::RwLock::new(Vec::new())),
         };
 
         // FIX (Bottleneck 4): Cache warmup on startup.
@@ -921,7 +995,7 @@ impl<M: Metric> CollectionImpl<M> {
                         let internal_id = *r.key();
                         let external_id = *r.value();
                         if (internal_id as usize) < count {
-                            let hv = idx_full.get_vector(internal_id);
+                            let hv = idx_full.get_vector_original(internal_id);
                             // FIX (Limitation 2): Read metadata from the HNSW forward map
                             // so warmup entries have correct key-value fields, not empty HashMaps.
                             let meta = idx_full
@@ -960,9 +1034,9 @@ impl<M: Metric> CollectionImpl<M> {
         dimension: usize,
         chunk_backend: Arc<dyn ChunkBackend>,
     ) {
-        let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
-        let storage_f32 = storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
+        let storage_f32_disabled = std::env::var("HS_STORAGE_FLOAT32")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off"));
+        let storage_f32 = !storage_f32_disabled && mode == hyperspace_core::QuantizationMode::None;
         let element_size = match mode {
             hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
             hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
@@ -1008,6 +1082,10 @@ impl<M: Metric> CollectionImpl<M> {
                 };
                 let tail_dim = dimension.saturating_sub(head_dim);
                 head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
+            }
+            hyperspace_core::QuantizationMode::ProductQuantization
+            | hyperspace_core::QuantizationMode::OPQ => {
+                hyperspace_core::pq::default_num_subvectors(dimension)
             }
             hyperspace_core::QuantizationMode::None => {
                 if storage_f32 {
@@ -1219,6 +1297,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 let tail_dim = (dim as u64).saturating_sub(head_dim as u64);
                 head_dim as u64 * 4 + tail_dim.div_ceil(2) + 4
             }
+            hyperspace_core::QuantizationMode::ProductQuantization
+            | hyperspace_core::QuantizationMode::OPQ => {
+                hyperspace_core::pq::default_num_subvectors(dim) as u64
+            }
         };
 
         // Estimate RAM: Vectors + Graph Topology (approx M neighbors per node * 4 bytes)
@@ -1302,6 +1384,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         } else {
             return Err("Failed to serialize state.json".to_string());
         }
+
+        if let Ok(mut wal) = self.wal_link.load().try_lock() {
+            let _ = wal.sync();
+        }
         Ok(())
     }
 
@@ -1313,213 +1399,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         clock: u64,
         durability: hyperspace_core::Durability,
     ) -> Result<(), String> {
-        if vector.len() < self.dimension {
-            return Err(format!(
-                "Vector dimension mismatch. Expected {}, got {}",
-                self.dimension,
-                vector.len()
-            ));
-        }
-        let slice = if vector.len() > self.dimension {
-            &vector[..self.dimension]
-        } else {
-            vector
-        };
-
-        let processed_vector_cow = Self::normalize_if_cosine(slice);
-        // We need a slice for ops, and maybe an owned vec for storage if new
-        let processed_vector = &processed_vector_cow;
-
-        // Check if this user ID already exists (for upsert)
-        let existing_internal_id = self.id_map.get(&id).map(|v| *v);
-
-        let mut reindex_needed = true;
-        if let Some(old_internal_id) = existing_internal_id {
-            let index = self.index_link.load();
-            // Defensive: Only attempt fast-upsert and gossip-undo if vector is in the active HNSW segment.
-            if (old_internal_id as usize) < index.count() {
-                let old_vector = index.get_vector(old_internal_id);
-                if self.config.is_gossip_enabled() {
-                    let old_id_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
-                    let bucket_idx = CollectionDigest::get_bucket_index(id);
-                    self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
-                    self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
-                }
-
-                if self.fast_upsert_delta > 0.0 {
-                    let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
-                    let old_meta = index.metadata_by_id(old_internal_id);
-                    let metadata_changed = old_meta != metadata;
-                    reindex_needed = metadata_changed
-                        || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
-                }
-            }
-        }
-
-        if self.config.is_gossip_enabled() {
-            let entry_hash = CollectionDigest::hash_entry(id, processed_vector);
-            let bucket_idx = CollectionDigest::get_bucket_index(id);
-            self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
-            self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
-        }
-
-        let internal_id = if let Some(old_id) = existing_internal_id {
-            if old_id != id {
-                self.ids_are_identity.store(false, Ordering::Release);
-            }
-            self.index_link
-                .load()
-                .update_storage(old_id, processed_vector)
-                .map_err(|e| e.clone())?;
-            old_id
-        } else {
-            let new_id = self
-                .index_link
-                .load()
-                .insert_to_storage(processed_vector)
-                .map_err(|e| e.clone())?;
-            self.id_map.insert(id, new_id);
-            self.reverse_id_map.insert(new_id, id);
-            if new_id != id {
-                self.ids_are_identity.store(false, Ordering::Release);
-            }
-            new_id
-        };
-
-        let mut frozen_paths_opt = None;
-        {
-            let wal_guard = self.wal_link.load();
-            let mut wal = wal_guard.lock().await;
-
-            // Use User ID for WAL to support replication/restore
-            wal.append(id, processed_vector, &metadata, clock)
-                .map_err(|e| format!("WAL Error: {e}"))?;
-
-            self.last_clock.fetch_max(clock, Ordering::Relaxed);
-
-            if durability == hyperspace_core::Durability::Strict {
-                wal.sync().map_err(|e| format!("WAL Sync Error: {e}"))?;
-            }
-
-            if wal.is_full() {
-                if let Ok(frozen_path) = wal.rotate() {
-                    // Reset WAL pending count as they move to next phase
-                    self.wal_pending_count.store(0, Ordering::SeqCst);
-
-                    let mut pending = self.pending_wal_flushes.lock().await;
-                    pending.push(frozen_path);
-
-                    let should_flush = match self.storage_mode {
-                        StorageMode::Tiered => {
-                            // LSM-style: Flush when MemTable exceeds memory budget
-                            let memtable_nodes = self.index_link.load().count_nodes();
-                            let memtable_budget = self.max_ram_bytes / 10;
-                            let est_memory = memtable_nodes * (self.dimension * 8 + 64);
-
-                            let should = est_memory as u64 > memtable_budget;
-
-                            // DEBUG: Log every rotation
-                            if should {
-                                println!(
-                                    "🔍 Flush Check (Tiered): memtable={} vectors | est_memory={} MB | threshold={} MB | should_flush={}",
-                                    memtable_nodes,
-                                    est_memory / (1024 * 1024),
-                                    memtable_budget / (1024 * 1024),
-                                    should
-                                );
-                            }
-
-                            should
-                        }
-                        StorageMode::Performance => {
-                            // Performance Mode: NEVER flush to chunks
-                            // All data stays in RAM (MemTable) for maximum performance
-                            // Persistence is handled by snapshots only
-                            false
-                        }
-                    };
-
-                    if should_flush {
-                        // Take all pending segments to flush into one chunk
-                        frozen_paths_opt = Some(std::mem::take(&mut *pending));
-                    } else {
-                        println!(
-                            "📦 WAL Rotated ({} pending segments), keeping MemTable HOT (Performance Mode)", 
-                            pending.len()
-                        );
-                    }
-                }
-            } else {
-                self.wal_pending_count.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-
-        if let Some(frozen_paths) = frozen_paths_opt {
-            Self::spawn_flush_worker(
-                frozen_paths,
-                self.config.clone(),
-                self.mode,
-                self.data_dir.clone(),
-                self.flush_limiter.clone(),
-                self.meta_router.clone(),
-                self.index_link.clone(),
-                self.id_map.clone(),
-                self.reverse_id_map.clone(),
-                self.flushing_vector_count.clone(),
-                self.index_link.load().dimension,
-                self.chunk_backend.clone(),
-            );
-        }
-
-        if reindex_needed {
-            self.config.inc_queue();
-            let queue_size = self.config.get_queue_size();
-
-            // Debug: Log queue buildup
-            if queue_size > 10_000 && queue_size.is_multiple_of(5_000) {
-                let active = self.config.active_indexing.load(Ordering::Relaxed);
-                println!("⚠️  Index queue building up: {queue_size} pending, {active} active");
-            }
-
-            if self.write_buffer.size() < 100_000 {
-                self.write_buffer.insert(
-                    internal_id,
-                    id,
-                    processed_vector.to_vec(),
-                    metadata.clone(),
-                );
-            }
-
-            let _ = self.index_tx.send((internal_id, metadata.clone()));
-        }
-
-        let vector_owned = processed_vector_cow.into_owned();
-
-        if self.replication_tx.receiver_count() > 0 {
-            let log = ReplicationLog {
-                logical_clock: clock,
-                origin_node_id: self.node_id.clone(),
-                collection: self.name.clone(),
-                operation: Some(replication_log::Operation::Insert(InsertOp {
-                    id,
-                    vector: vector_owned.clone(),
-                    metadata: metadata.clone(),
-                    typed_metadata: HashMap::new(),
-                })),
-            };
-            let _ = self.replication_tx.send(log);
-        }
-
-        if let Some(ref cache) = self.cache {
-            let ttl = metadata
-                .get("__ttl")
-                .or_else(|| metadata.get("ttl"))
-                .and_then(|s| s.parse::<u64>().ok())
-                .map(std::time::Duration::from_secs);
-            cache.insert(id, vector_owned, metadata, ttl);
-        }
-
-        Ok(())
+        self.insert_internal(vector, id, metadata, clock, durability, true)
+            .await
     }
 
     async fn insert_batch(
@@ -1528,250 +1409,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         clock: u64,
         durability: hyperspace_core::Durability,
     ) -> Result<(), String> {
-        // 1. Validation
-        for (vec, _, _) in &vectors {
-            if vec.len() < self.dimension {
-                return Err(format!(
-                    "Vector dimension mismatch. Expected {}, got {}",
-                    self.dimension,
-                    vec.len()
-                ));
-            }
-        }
-
-        // Optimization: Use lifetime to hold reference to input vectors to avoid allocation.
-
-        let mut entries = Vec::with_capacity(vectors.len());
-
-        // 2. Process Logic (Zero-Copy Path)
-        // Note: Iterate by reference to preserve original data lifetimes.
-
-        // HOISTED LOCK: Load the index pointer to avoid taking the RwLock for every item.
-        // ArcSwap provides zero-contention access to the index.
-        let index_reader = self.index_link.load();
-
-        for (vector, id, metadata) in &vectors {
-            let slice = if vector.len() > self.dimension {
-                &vector[..self.dimension]
-            } else {
-                vector
-            };
-            // Returns Borrowed for Poincare (No Allocation)
-            let processed_vector = Self::normalize_if_cosine(slice);
-
-            // Check existing
-            let existing_internal_id = self.id_map.get(id).map(|v| *v);
-
-            // Bucket updates (Read-only access to vector)
-            let mut reindex_needed = true;
-            if let Some(old_internal_id) = existing_internal_id {
-                // Defensive: Only attempt fast-upsert and gossip-undo if vector is in the active HNSW segment.
-                if (old_internal_id as usize) < index_reader.count() {
-                    let old_vector = index_reader.get_vector(old_internal_id);
-                    if self.config.is_gossip_enabled() {
-                        let old_id_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
-                        let bucket_idx = CollectionDigest::get_bucket_index(*id);
-                        self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
-                        self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
-                    }
-
-                    if self.fast_upsert_delta > 0.0 {
-                        let shift_sq = Self::shift_l2_sq(&old_vector.coords, &processed_vector);
-                        let old_meta = index_reader.metadata_by_id(old_internal_id);
-                        let metadata_changed = old_meta != *metadata;
-                        reindex_needed = metadata_changed
-                            || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
-                    }
-                }
-            }
-
-            if self.config.is_gossip_enabled() {
-                let entry_hash = CollectionDigest::hash_entry(*id, &processed_vector);
-                let bucket_idx = CollectionDigest::get_bucket_index(*id);
-                self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
-                self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
-            }
-
-            // Storage
-            // insert_to_storage writes bytes to Mmap. It copies bytes, but doesn't heap allocate vector objects.
-            let internal_id = if let Some(old_id) = existing_internal_id {
-                if old_id != *id {
-                    self.ids_are_identity.store(false, Ordering::Release);
-                }
-                index_reader
-                    .update_storage(old_id, &processed_vector)
-                    .map_err(|e| e.clone())?;
-                old_id
-            } else {
-                let new_id = index_reader
-                    .insert_to_storage(&processed_vector)
-                    .map_err(|e| e.clone())?;
-
-                self.id_map.insert(*id, new_id);
-                self.reverse_id_map.insert(new_id, *id);
-                if new_id != *id {
-                    self.ids_are_identity.store(false, Ordering::Release);
-                }
-                new_id
-            };
-
-            entries.push(BatchEntry {
-                id: *id,
-                vector: processed_vector, // Moves the Cow (cheap pointer copy), not data
-                metadata,                 // Reference
-                internal_id,
-                reindex_needed,
-            });
-        }
-
-        // 3. WAL Batch
-        // Allocate here as WAL requires owned data.
-        // This is the first allocation of the vector in the Poincaré pipeline.
-        let wal_data: Vec<_> = entries
-            .iter()
-            .map(|e| (e.vector.to_vec(), e.id, e.metadata.clone()))
-            .collect();
-
-        let mut frozen_paths_opt = None;
-        {
-            let wal_guard = self.wal_link.load();
-            let mut wal = wal_guard.lock().await;
-            wal.append_batch(&wal_data, clock)
-                .map_err(|e| e.to_string())?;
-
-            self.last_clock.fetch_max(clock, Ordering::Relaxed);
-
-            if durability == hyperspace_core::Durability::Strict {
-                wal.sync().map_err(|e| e.to_string())?;
-            }
-
-            if wal.is_full() {
-                if let Ok(frozen_path) = wal.rotate() {
-                    // Reset WAL pending count as they move to next phase
-                    self.wal_pending_count.store(0, Ordering::SeqCst);
-
-                    let mut pending = self.pending_wal_flushes.lock().await;
-                    pending.push(frozen_path);
-
-                    let should_flush = match self.storage_mode {
-                        StorageMode::Tiered => {
-                            // LSM-style: Flush when MemTable exceeds memory budget
-                            let memtable_nodes = self.index_link.load().count_nodes();
-                            let memtable_budget = self.max_ram_bytes / 10;
-                            let est_memory = memtable_nodes * (self.dimension * 8 + 64);
-
-                            let should = est_memory as u64 > memtable_budget;
-
-                            // DEBUG: Log every rotation
-                            if should {
-                                println!(
-                                    "🔍 Flush Check (Tiered, batch): memtable={} vectors | est_memory={} MB | threshold={} MB | should_flush={}",
-                                    memtable_nodes,
-                                    est_memory / (1024 * 1024),
-                                    memtable_budget / (1024 * 1024),
-                                    should
-                                );
-                            }
-
-                            should
-                        }
-                        StorageMode::Performance => {
-                            // Performance Mode: NEVER flush to chunks
-                            // All data stays in RAM (MemTable) for maximum performance
-                            false
-                        }
-                    };
-
-                    if should_flush {
-                        frozen_paths_opt = Some(std::mem::take(&mut *pending));
-                    } else {
-                        println!(
-                            "📦 WAL Rotated (batch, {} pending segments), keeping MemTable HOT (Performance Mode)",
-                            pending.len()
-                        );
-                    }
-                }
-            } else {
-                self.wal_pending_count
-                    .fetch_add(vectors.len() as u64, Ordering::SeqCst);
-            }
-        }
-
-        if let Some(frozen_paths) = frozen_paths_opt {
-            Self::spawn_flush_worker(
-                frozen_paths,
-                self.config.clone(),
-                self.mode,
-                self.data_dir.clone(),
-                self.flush_limiter.clone(),
-                self.meta_router.clone(),
-                self.index_link.clone(),
-                self.id_map.clone(),
-                self.reverse_id_map.clone(),
-                self.flushing_vector_count.clone(),
-                self.index_link.load().dimension,
-                self.chunk_backend.clone(),
-            );
-        }
-
-        // 4. Index Queue
-        for _ in 0..entries.iter().filter(|e| e.reindex_needed).count() {
-            self.config.inc_queue();
-        }
-
-        // Queue for indexing (Send only lightweight metadata clone + internal_id)
-        for entry in &entries {
-            if entry.reindex_needed {
-                if self.write_buffer.size() < 100_000 {
-                    self.write_buffer.insert(
-                        entry.internal_id,
-                        entry.id,
-                        entry.vector.to_vec(),
-                        (*entry.metadata).clone(),
-                    );
-                }
-                let _ = self
-                    .index_tx
-                    .send((entry.internal_id, entry.metadata.clone()));
-            }
-        }
-
-        // 5. Replication
-        if self.replication_tx.receiver_count() > 0 {
-            for entry in entries {
-                let log = ReplicationLog {
-                    logical_clock: clock,
-                    origin_node_id: self.node_id.clone(),
-                    collection: self.name.clone(),
-                    operation: Some(replication_log::Operation::Insert(InsertOp {
-                        id: entry.id,
-                        // Convert Cow to Owned for channel transmission.
-                        vector: entry.vector.into_owned(),
-                        metadata: entry.metadata.clone(),
-                        typed_metadata: HashMap::new(),
-                    })),
-                };
-                let _ = self.replication_tx.send(log);
-            }
-        }
-        if let Some(ref cache) = self.cache {
-            for (vector, id, metadata) in &vectors {
-                let slice = if vector.len() > self.dimension {
-                    &vector[..self.dimension]
-                } else {
-                    vector
-                };
-                let processed_vector = Self::normalize_if_cosine(slice).into_owned();
-                let ttl = metadata
-                    .get("__ttl")
-                    .or_else(|| metadata.get("ttl"))
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .map(std::time::Duration::from_secs);
-                cache.insert(*id, processed_vector, metadata.clone(), ttl);
-            }
-        }
-
-        Ok(())
+        self.insert_batch_internal(vectors, clock, durability, true)
+            .await
     }
 
     fn delete(&self, id: u32) -> Result<(), String> {
@@ -1833,7 +1472,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
         // Move only the required fields to avoid cloning whole params struct.
         let top_k = params.top_k;
-        let ef_search = self.config.get_ef_search();
+        // RECALL FIX #3: Per HNSW spec, ef_search MUST be >= top_k.
+        // If the client requests top_k=100 but ef=64 (default), the beam
+        // terminates before collecting enough candidates, silently dropping recall.
+        let ef_search = self.config.get_ef_search().max(top_k);
         let include_payload = params.include_payload;
 
         if let Some(ref cache) = self.cache {
@@ -1883,17 +1525,28 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
         let env_rerank_enabled = std::env::var("HS_RERANK_ENABLED")
             .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
-
-        let rerank_enabled =
-            (env_rerank_enabled || schema_rerank_top_k.is_some()) && params.hybrid_query.is_none();
-
-        let rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
+        let env_rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(4)
             .max(1);
+
+        let mut clean_filters = filters.clone();
+        let request_rerank = clean_filters
+            .remove("rerank")
+            .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
+        let request_oversample = clean_filters
+            .remove("oversample")
+            .and_then(|v| v.parse::<usize>().ok());
+
+        let rerank_enabled = request_rerank
+            .unwrap_or(env_rerank_enabled || schema_rerank_top_k.is_some())
+            && params.hybrid_query.is_none();
+
+        let rerank_oversample = request_oversample.unwrap_or(env_rerank_oversample).max(1);
+
         let use_wasserstein = params.use_wasserstein;
-        let filters_owned = (!filters.is_empty()).then(|| filters.clone());
+        let filters_owned = (!clean_filters.is_empty()).then_some(clean_filters);
         let complex_filters_owned = (!complex_filters.is_empty()).then(|| complex_filters.to_vec());
         let meta_router_ref = self.meta_router.clone();
         let chunk_backend_ref = self.chunk_backend.clone();
@@ -1922,6 +1575,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             );
             let write_buffer_for_search = self.write_buffer.clone();
             let mut search_params_owned = params.clone();
+            let payload_store_owned = Arc::clone(&self.payload_store);
+            let raw_vector_cache_owned = Arc::clone(&self.raw_vector_cache);
             let pre_payload = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let processed_query = query_owned;
@@ -1941,6 +1596,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 search_params_owned.top_k = search_k;
+                search_params_owned.ef_search = search_params_owned
+                    .ef_search
+                    .max(search_k.saturating_mul(2))
+                    .max(128);
                 let mem_results = index.search(
                     &processed_query,
                     filters_ref,
@@ -2015,11 +1674,38 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
+                    let raw_cache_guard = raw_vector_cache_owned.read();
+                    let get_exact_coords = |id: u32| -> Vec<f64> {
+                        if let Some(Some(v_f32)) = raw_cache_guard.get(id as usize) {
+                            return v_f32.iter().map(|&x| x as f64).collect();
+                        }
+                        if let Ok(Some(bytes)) = payload_store_owned.fetch_blocking(id) {
+                            if bytes.len() == processed_query.len() * 4 {
+                                let mut exact_vec = vec![0.0; processed_query.len()];
+                                for i in 0..processed_query.len() {
+                                    let mut b = [0u8; 4];
+                                    b.copy_from_slice(&bytes[i*4..(i+1)*4]);
+                                    exact_vec[i] = f64::from(f32::from_le_bytes(b));
+                                }
+                                return exact_vec;
+                            } else if bytes.len() == processed_query.len() * 8 {
+                                let mut exact_vec = vec![0.0; processed_query.len()];
+                                for i in 0..processed_query.len() {
+                                    let mut b = [0u8; 8];
+                                    b.copy_from_slice(&bytes[i*8..(i+1)*8]);
+                                    exact_vec[i] = f64::from_le_bytes(b);
+                                }
+                                return exact_vec;
+                            }
+                        }
+                        index.get_vector_original(id).coords
+                    };
+
                     if layout_owned.components.len() > 1 {
                         let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
                         let candidate_vectors: Vec<Vec<f64>> = candidate_ids
                             .iter()
-                            .map(|id| index.get_vector(*id).coords.clone())
+                            .map(|id| get_exact_coords(*id))
                             .collect();
                         let candidate_refs: Vec<&[f64]> =
                             candidate_vectors.iter().map(Vec::as_slice).collect();
@@ -2035,8 +1721,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                         let mut exact_scores: Vec<(u32, f64)> = results
                             .iter()
                             .map(|(id, _)| {
-                                let vec_obj = index.get_vector(*id);
-                                let exact_d = M::distance(&vec_obj.coords, &processed_query);
+                                let coords = get_exact_coords(*id);
+                                let exact_d = M::distance(&coords, &processed_query);
                                 (*id, exact_d)
                             })
                             .collect();
@@ -2118,7 +1804,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                         };
                         if let Some(internal_id) = internal_id_opt {
                             if (internal_id as usize) < index_snap.count() {
-                                let hv = index_snap.get_vector(internal_id);
+                                let hv = index_snap.get_vector_original(internal_id);
                                 cache.insert(*user_id, hv.coords.clone(), meta.clone(), None);
                             }
                         }
@@ -2244,137 +1930,238 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let index_link = self.index_link.clone();
         let filter_for_vacuum = filter.clone();
 
+        let raw_vector_cache = Arc::clone(&self.raw_vector_cache);
+
         // Run heavy lifting in blocking thread
-        let (new_index_arc, temp_dir, new_snap_path, all_survived_data) =
-            tokio::task::spawn_blocking(move || {
-                use hyperspace_core::config::GlobalConfig;
-                use hyperspace_store::VectorStore;
-                use std::path::PathBuf;
+        let (
+            element_size,
+            storage_f32,
+            dimension,
+            vacuum_config,
+            temp_dir,
+            new_snap_path,
+            all_survived_data,
+        ) = tokio::task::spawn_blocking(move || {
+            use hyperspace_core::config::GlobalConfig;
+            use hyperspace_store::VectorStore;
+            use std::path::PathBuf;
 
-                // 1. Get current data
-                let current_index = index_link.load().clone();
-                let mut all_data = current_index.peek_all();
-                if let Some(filter) = &filter_for_vacuum {
-                    all_data.retain(|(_, _, meta)| !Self::matches_vacuum_filter(meta, filter));
-                }
-                let count = all_data.len();
-
-                if count == 0 {
-                    return Ok((None, PathBuf::new(), PathBuf::new(), Vec::new()));
-                    // Nothing to do
-                }
-
-                // 2. Setup "Turbo Mode"
-                let vacuum_m = 128;
-                let vacuum_ef = 800;
-
-                let vacuum_config = Arc::new(GlobalConfig::new());
-                vacuum_config.set_m(vacuum_m);
-                vacuum_config.set_ef_construction(vacuum_ef);
-                vacuum_config.set_ef_search(original_config.get_ef_search());
-
-                println!("   Building Shadow Index (M={vacuum_m}, EF={vacuum_ef})...");
-
-                // 3. Create temp storage
-                let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
-                if let Err(e) = std::fs::create_dir_all(&temp_dir) {
-                    return Err(e.to_string());
-                }
-
-                let dimension = current_index.dimension;
-                let storage_f32_requested = std::env::var("HS_STORAGE_FLOAT32").is_ok_and(|v| {
-                    matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on")
-                });
-                let storage_f32 =
-                    storage_f32_requested && mode == hyperspace_core::QuantizationMode::None;
-                let element_size = match mode {
-                    hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-                    hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
-                    hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                        if dimension > 33 {
-                            33 * 4 + (dimension - 33) + 4
-                        } else {
-                            dimension * 4 + 4
-                        }
-                    }
-                    hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
-                        if dimension > 33 {
-                            let euc_dim = dimension - 33;
-                            let num_blocks = euc_dim.div_ceil(16);
-                            33 * 4 + 4 + num_blocks * 12
-                        } else {
-                            dimension * 4 + 4
-                        }
-                    }
-                    hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
-                        if dimension > 33 {
-                            let euc_dim = dimension - 33;
-                            33 * 4 + 4 + euc_dim.div_ceil(8)
-                        } else {
-                            dimension * 4 + 4
-                        }
-                    }
-                    hyperspace_core::QuantizationMode::ScalarI4 => {
-                        let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                            33
-                        } else {
-                            0
-                        };
-                        let tail_dim = dimension.saturating_sub(head_dim);
-                        let num_blocks = tail_dim.div_ceil(16);
-                        head_dim * 4 + 4 + num_blocks * 12
-                    }
-                    hyperspace_core::QuantizationMode::Turbo => {
-                        let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                            33
-                        } else {
-                            0
-                        };
-                        let tail_dim = dimension.saturating_sub(head_dim);
-                        head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
-                    }
-                    hyperspace_core::QuantizationMode::None => {
-                        if storage_f32 {
-                            dimension * 4 + 4
-                        } else {
-                            dimension * 8 + 8
-                        }
-                    }
-                };
-
-                let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
-                let new_index = HnswIndex::<M>::new(temp_store, mode, vacuum_config, dimension);
-
-                // 4. Sequential Insertion
-                // No yielding needed in blocking thread, OS handles scheduling.
-                for (_old_id, vec, meta) in &all_data {
-                    // Ensure insert handles internal logic
-                    let _ = new_index.insert(vec, meta.clone());
-                }
-
-                // Save to disk
-                let new_snap_path = data_dir.join("index.snap.new");
-                if let Err(e) = new_index.save_snapshot(&new_snap_path) {
-                    return Err(e.clone());
-                }
-
-                Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path, all_data))
-            })
-            .await
-            .map_err(|e| e.to_string())??;
-
-        if let Some(new_index) = new_index_arc {
-            // 5. Hot Swap
-            {
-                println!("\u{1f504} Swapping indexes in memory...");
-                self.index_link.store(new_index);
+            // 1. Get current data
+            let current_index = index_link.load().clone();
+            let mut all_data = current_index.peek_all();
+            if let Some(filter) = &filter_for_vacuum {
+                all_data.retain(|(_, _, meta)| !Self::matches_vacuum_filter(meta, filter));
             }
 
-            // 6. Finalize on disk
+            // Restore exact raw float vectors from raw cache if available
+            {
+                let raw_cache = raw_vector_cache.read();
+                for (id, vec, _) in &mut all_data {
+                    if let Some(Some(raw_v)) = raw_cache.get(*id as usize) {
+                        *vec = raw_v.iter().map(|&x| x as f64).collect();
+                    }
+                }
+            }
+
+            let count = all_data.len();
+
+            // 2. Setup "Turbo Mode"
+            let vacuum_m = 128;
+            let vacuum_ef = 800;
+
+            let vacuum_config = Arc::new(GlobalConfig::new());
+            vacuum_config.set_m(vacuum_m);
+            vacuum_config.set_ef_construction(vacuum_ef);
+            vacuum_config.set_ef_search(original_config.get_ef_search());
+
+            if count == 0 {
+                return Ok((
+                    0,
+                    false,
+                    0,
+                    vacuum_config,
+                    PathBuf::new(),
+                    PathBuf::new(),
+                    Vec::new(),
+                ));
+                // Nothing to do
+            }
+
+            println!("   Building Shadow Index (M={vacuum_m}, EF={vacuum_ef})...");
+
+            // 3. Create temp storage
+            let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
+            if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+                return Err(e.to_string());
+            }
+
+            let dimension = current_index.dimension;
+            let storage_f32_disabled = std::env::var("HS_STORAGE_FLOAT32")
+                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off"));
+            let storage_f32 =
+                !storage_f32_disabled && mode == hyperspace_core::QuantizationMode::None;
+            let element_size = match mode {
+                hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
+                hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
+                hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
+                    if dimension > 33 {
+                        33 * 4 + (dimension - 33) + 4
+                    } else {
+                        dimension * 4 + 4
+                    }
+                }
+                hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
+                    if dimension > 33 {
+                        let euc_dim = dimension - 33;
+                        let num_blocks = euc_dim.div_ceil(16);
+                        33 * 4 + 4 + num_blocks * 12
+                    } else {
+                        dimension * 4 + 4
+                    }
+                }
+                hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
+                    if dimension > 33 {
+                        let euc_dim = dimension - 33;
+                        33 * 4 + 4 + euc_dim.div_ceil(8)
+                    } else {
+                        dimension * 4 + 4
+                    }
+                }
+                hyperspace_core::QuantizationMode::ScalarI4 => {
+                    let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                        33
+                    } else {
+                        0
+                    };
+                    let tail_dim = dimension.saturating_sub(head_dim);
+                    let num_blocks = tail_dim.div_ceil(16);
+                    head_dim * 4 + 4 + num_blocks * 12
+                }
+                hyperspace_core::QuantizationMode::Turbo => {
+                    let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                        33
+                    } else {
+                        0
+                    };
+                    let tail_dim = dimension.saturating_sub(head_dim);
+                    head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
+                }
+                hyperspace_core::QuantizationMode::ProductQuantization
+                | hyperspace_core::QuantizationMode::OPQ => {
+                    hyperspace_core::pq::default_num_subvectors(dimension)
+                }
+                hyperspace_core::QuantizationMode::None => {
+                    if storage_f32 {
+                        dimension * 4 + 4
+                    } else {
+                        dimension * 8 + 8
+                    }
+                }
+            };
+
+            let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
+            let mut new_index = HnswIndex::<M>::new_with_storage_precision(
+                temp_store,
+                mode,
+                vacuum_config.clone(),
+                storage_f32,
+                dimension,
+            );
+
+            // Calibrate Product Quantization codebooks on actual vectors if in PQ/OPQ mode
+            if matches!(
+                mode,
+                hyperspace_core::QuantizationMode::ProductQuantization
+                    | hyperspace_core::QuantizationMode::OPQ
+            ) && !all_data.is_empty()
+            {
+                println!(
+                    "   🎓 Calibrating PQ/OPQ codebooks on {} vectors...",
+                    all_data.len()
+                );
+                let sample_limit = 10_000.min(all_data.len());
+                let f32_samples: Vec<Vec<f32>> = all_data
+                    .iter()
+                    .take(sample_limit)
+                    .map(|(_, v, _)| v.iter().map(|&x| x as f32).collect())
+                    .collect();
+                let sample_refs: Vec<&[f32]> = f32_samples.iter().map(|v| v.as_slice()).collect();
+                new_index.train_pq(&sample_refs, 10);
+                println!("   ✨ Codebooks calibrated successfully.");
+            }
+
+            // 4. Sequential Insertion
+            // No yielding needed in blocking thread, OS handles scheduling.
+            for (_old_id, vec, meta) in &all_data {
+                // Ensure insert handles internal logic
+                let _ = new_index.insert(vec, meta.clone());
+            }
+
+            // Save to disk
+            let new_snap_path = data_dir.join("index.snap.new");
+            if let Err(e) = new_index.save_snapshot(&new_snap_path) {
+                return Err(e.clone());
+            }
+            drop(new_index);
+
+            Ok((
+                element_size,
+                storage_f32,
+                dimension,
+                vacuum_config,
+                temp_dir,
+                new_snap_path,
+                all_data,
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+        if !all_survived_data.is_empty() {
+            // 5. Replace vector store chunks on disk:
+            // Remove old chunk_*.hyp in data_dir
+            if let Ok(entries) = std::fs::read_dir(&self.data_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name.starts_with("chunk_") && name.ends_with(".hyp") {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                    }
+                }
+            }
+            // Move new chunk_*.hyp from temp_dir to data_dir
+            if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name.starts_with("chunk_") && name.ends_with(".hyp") {
+                            let dest = self.data_dir.join(name);
+                            let _ = std::fs::rename(&path, &dest);
+                        }
+                    }
+                }
+            }
+
+            // 6. Finalize snapshot on disk
             let snap_path = self.data_dir.join("index.snap");
-            // Rename overwrites
             std::fs::rename(&new_snap_path, &snap_path).map_err(|e| e.to_string())?;
-            std::fs::remove_dir_all(&temp_dir).ok();
+            let _ = std::fs::remove_dir_all(&temp_dir);
+
+            // 7. Hot Swap: Load final index anchored at self.data_dir
+            let final_store = Arc::new(VectorStore::new(&self.data_dir, element_size));
+            let final_index = HnswIndex::<M>::load_snapshot_with_storage_precision(
+                &snap_path,
+                final_store,
+                self.mode,
+                vacuum_config,
+                storage_f32,
+                dimension,
+            )
+            .map_err(|e| format!("Failed to load rebuilt index: {e}"))?;
+
+            println!("\u{1f504} Swapping indexes in memory...");
+            self.index_link.store(Arc::new(final_index));
 
             // === Step 4: Payload Compaction (v3.2) ================================
             // Build a new PayloadStore in a temp directory, copying only the payloads
@@ -2384,6 +2171,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             let new_payload_dir = self
                 .data_dir
                 .join(format!("payload_compact_{}", uuid::Uuid::new_v4()));
+            let _ = std::fs::create_dir_all(&new_payload_dir);
             let zstd_level = old_payload_store.zstd_level();
             match PayloadStore::open(&new_payload_dir, zstd_level) {
                 Ok(new_payload_store) => {
@@ -2591,6 +2379,18 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         .map_err(|e| format!("spawn_blocking panicked: {e}"))?
     }
 
+    /// Write batch of heavy payload blobs to the disk-only Payload Layer.
+    async fn insert_payload_batch(&self, entries: Vec<(u32, Vec<u8>)>) -> Result<(), String> {
+        let store = Arc::clone(&self.payload_store);
+        tokio::task::spawn_blocking(move || {
+            store
+                .insert_batch(&entries)
+                .map_err(|e| format!("PayloadStore insert_batch error: {e}"))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking panicked: {e}"))?
+    }
+
     /// Fetch decompressed payloads for final Top-K IDs via lazy disk I/O.
     /// Each ID is read concurrently on the blocking thread pool. Zero disk I/O
     /// for IDs with no stored payload (returns None at that index).
@@ -2646,5 +2446,444 @@ impl<M: Metric> Drop for CollectionImpl<M> {
         for task in &self.bg_tasks {
             task.abort();
         }
+    }
+}
+
+impl<M: Metric> CollectionImpl<M> {
+    #[inline]
+    pub fn last_clock(&self) -> u64 {
+        self.last_clock.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub async fn insert_internal(
+        &self,
+        vector: &[f64],
+        id: u32,
+        metadata: HashMap<String, String>,
+        clock: u64,
+        durability: hyperspace_core::Durability,
+        write_wal: bool,
+    ) -> Result<(), String> {
+        if vector.len() < self.dimension {
+            return Err(format!(
+                "Vector dimension mismatch. Expected {}, got {}",
+                self.dimension,
+                vector.len()
+            ));
+        }
+        let slice = if vector.len() > self.dimension {
+            &vector[..self.dimension]
+        } else {
+            vector
+        };
+
+        let processed_vector_cow = Self::normalize_if_cosine(slice);
+        let processed_vector = &processed_vector_cow;
+
+        // Check if this user ID already exists (for upsert)
+        let existing_internal_id = self.id_map.get(&id).map(|v| *v);
+
+        let mut reindex_needed = true;
+        if let Some(old_internal_id) = existing_internal_id {
+            let index = self.index_link.load();
+            if (old_internal_id as usize) < index.count() {
+                let old_vector = index.get_vector(old_internal_id);
+                if self.config.is_gossip_enabled() {
+                    let old_id_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
+                    let bucket_idx = CollectionDigest::get_bucket_index(id);
+                    self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
+                    self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
+                }
+
+                if self.fast_upsert_delta > 0.0 {
+                    let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
+                    let old_meta = index.metadata_by_id(old_internal_id);
+                    let metadata_changed = old_meta != metadata;
+                    reindex_needed = metadata_changed
+                        || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                }
+            }
+        }
+
+        if self.config.is_gossip_enabled() {
+            let entry_hash = if self.storage_f32 {
+                let canonical: Vec<f64> = processed_vector
+                    .iter()
+                    .map(|&x| (x as f32) as f64)
+                    .collect();
+                CollectionDigest::hash_entry(id, &canonical)
+            } else {
+                CollectionDigest::hash_entry(id, processed_vector)
+            };
+            let bucket_idx = CollectionDigest::get_bucket_index(id);
+            self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
+            self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
+        }
+
+        let internal_id = if let Some(old_id) = existing_internal_id {
+            if old_id != id {
+                self.ids_are_identity.store(false, Ordering::Release);
+            }
+            self.index_link
+                .load()
+                .update_storage(old_id, processed_vector)
+                .map_err(|e| e.clone())?;
+            old_id
+        } else {
+            let new_id = self
+                .index_link
+                .load()
+                .insert_to_storage(processed_vector)
+                .map_err(|e| e.clone())?;
+            self.id_map.insert(id, new_id);
+            self.reverse_id_map.insert(new_id, id);
+            if new_id != id {
+                self.ids_are_identity.store(false, Ordering::Release);
+            }
+            new_id
+        };
+
+        let mut frozen_paths_opt = None;
+        if write_wal {
+            let wal_guard = self.wal_link.load();
+            let mut wal = wal_guard.lock().await;
+
+            wal.append(id, processed_vector, &metadata, clock)
+                .map_err(|e| format!("WAL Error: {e}"))?;
+
+            self.last_clock.fetch_max(clock, Ordering::Relaxed);
+
+            if durability == hyperspace_core::Durability::Strict {
+                wal.sync().map_err(|e| format!("WAL Sync Error: {e}"))?;
+            }
+
+            if wal.is_full() {
+                if let Ok(frozen_path) = wal.rotate() {
+                    self.wal_pending_count.store(0, Ordering::SeqCst);
+                    let mut pending = self.pending_wal_flushes.lock().await;
+                    pending.push(frozen_path);
+
+                    let should_flush = match self.storage_mode {
+                        StorageMode::Tiered => {
+                            let memtable_nodes = self.index_link.load().count_nodes();
+                            let memtable_budget = self.max_ram_bytes / 10;
+                            let est_memory = memtable_nodes * (self.dimension * 8 + 64);
+                            est_memory as u64 > memtable_budget
+                        }
+                        StorageMode::Performance => false,
+                    };
+
+                    if should_flush {
+                        frozen_paths_opt = Some(std::mem::take(&mut *pending));
+                    }
+                }
+            } else {
+                self.wal_pending_count.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        if self.mode != hyperspace_core::QuantizationMode::None {
+            let v_f32: Vec<f32> = processed_vector.iter().map(|&x| x as f32).collect();
+            {
+                let mut cache = self.raw_vector_cache.write();
+                let idx = internal_id as usize;
+                if cache.len() <= idx {
+                    cache.resize(idx + 1, None);
+                }
+                cache[idx] = Some(v_f32);
+            }
+            let mut vector_bytes = Vec::with_capacity(processed_vector.len() * 4);
+            for &v in processed_vector.iter() {
+                vector_bytes.extend_from_slice(&(v as f32).to_le_bytes());
+            }
+            if let Err(e) = self.insert_payload(internal_id, vector_bytes).await {
+                eprintln!("Failed to store exact vector for rerank: {}", e);
+            }
+        }
+
+        if let Some(frozen_paths) = frozen_paths_opt {
+            Self::spawn_flush_worker(
+                frozen_paths,
+                self.config.clone(),
+                self.mode,
+                self.data_dir.clone(),
+                self.flush_limiter.clone(),
+                self.meta_router.clone(),
+                self.index_link.clone(),
+                self.id_map.clone(),
+                self.reverse_id_map.clone(),
+                self.flushing_vector_count.clone(),
+                self.index_link.load().dimension,
+                self.chunk_backend.clone(),
+            );
+        }
+
+        if reindex_needed {
+            self.config.inc_queue();
+            if self.write_buffer.size() < 100_000 {
+                self.write_buffer.insert(
+                    internal_id,
+                    id,
+                    processed_vector.to_vec(),
+                    metadata.clone(),
+                );
+            }
+            let _ = self.index_tx.send((internal_id, metadata.clone()));
+        }
+
+        let vector_owned = processed_vector_cow.into_owned();
+
+        if self.replication_tx.receiver_count() > 0 {
+            let log = ReplicationLog {
+                logical_clock: clock,
+                origin_node_id: self.node_id.clone(),
+                collection: self.name.clone(),
+                operation: Some(replication_log::Operation::Insert(InsertOp {
+                    id,
+                    vector: vector_owned.clone(),
+                    metadata: metadata.clone(),
+                    typed_metadata: HashMap::new(),
+                })),
+            };
+            let _ = self.replication_tx.send(log);
+        }
+
+        if let Some(ref cache) = self.cache {
+            let ttl = metadata
+                .get("__ttl")
+                .or_else(|| metadata.get("ttl"))
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(std::time::Duration::from_secs);
+            cache.insert(id, vector_owned, metadata, ttl);
+        }
+
+        Ok(())
+    }
+
+    pub async fn insert_batch_internal(
+        &self,
+        vectors: Vec<(Vec<f64>, u32, HashMap<String, String>)>,
+        clock: u64,
+        durability: hyperspace_core::Durability,
+        write_wal: bool,
+    ) -> Result<(), String> {
+        for (vec, _, _) in &vectors {
+            if vec.len() < self.dimension {
+                return Err(format!(
+                    "Vector dimension mismatch. Expected {}, got {}",
+                    self.dimension,
+                    vec.len()
+                ));
+            }
+        }
+
+        let mut entries = Vec::with_capacity(vectors.len());
+        let index_reader = self.index_link.load();
+
+        for (vector, id, metadata) in &vectors {
+            let slice = if vector.len() > self.dimension {
+                &vector[..self.dimension]
+            } else {
+                vector
+            };
+            let processed_vector = Self::normalize_if_cosine(slice);
+            let existing_internal_id = self.id_map.get(id).map(|v| *v);
+
+            let mut reindex_needed = true;
+            if let Some(old_internal_id) = existing_internal_id {
+                if (old_internal_id as usize) < index_reader.count() {
+                    let old_vector = index_reader.get_vector(old_internal_id);
+                    if self.config.is_gossip_enabled() {
+                        let old_id_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
+                        let bucket_idx = CollectionDigest::get_bucket_index(*id);
+                        self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
+                        self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
+                    }
+
+                    if self.fast_upsert_delta > 0.0 {
+                        let shift_sq = Self::shift_l2_sq(&old_vector.coords, &processed_vector);
+                        let old_meta = index_reader.metadata_by_id(old_internal_id);
+                        let metadata_changed = old_meta != *metadata;
+                        reindex_needed = metadata_changed
+                            || shift_sq > self.fast_upsert_delta * self.fast_upsert_delta;
+                    }
+                }
+            }
+
+            if self.config.is_gossip_enabled() {
+                let entry_hash = if self.storage_f32 {
+                    let canonical: Vec<f64> = processed_vector
+                        .iter()
+                        .map(|&x| (x as f32) as f64)
+                        .collect();
+                    CollectionDigest::hash_entry(*id, &canonical)
+                } else {
+                    CollectionDigest::hash_entry(*id, &processed_vector)
+                };
+                let bucket_idx = CollectionDigest::get_bucket_index(*id);
+                self.buckets[bucket_idx].fetch_xor(entry_hash, Ordering::Relaxed);
+                self.root_hash.fetch_xor(entry_hash, Ordering::Relaxed);
+            }
+
+            let internal_id = if let Some(old_id) = existing_internal_id {
+                if old_id != *id {
+                    self.ids_are_identity.store(false, Ordering::Release);
+                }
+                index_reader
+                    .update_storage(old_id, &processed_vector)
+                    .map_err(|e| e.clone())?;
+                old_id
+            } else {
+                let new_id = index_reader
+                    .insert_to_storage(&processed_vector)
+                    .map_err(|e| e.clone())?;
+
+                self.id_map.insert(*id, new_id);
+                self.reverse_id_map.insert(new_id, *id);
+                if new_id != *id {
+                    self.ids_are_identity.store(false, Ordering::Release);
+                }
+                new_id
+            };
+
+            entries.push(BatchEntry {
+                id: *id,
+                vector: processed_vector,
+                metadata,
+                internal_id,
+                reindex_needed,
+            });
+        }
+
+        let mut frozen_paths_opt = None;
+        if write_wal {
+            let wal_data: Vec<_> = entries
+                .iter()
+                .map(|e| (e.vector.to_vec(), e.id, e.metadata.clone()))
+                .collect();
+
+            let wal_guard = self.wal_link.load();
+            let mut wal = wal_guard.lock().await;
+            wal.append_batch(&wal_data, clock)
+                .map_err(|e| e.to_string())?;
+
+            self.last_clock.fetch_max(clock, Ordering::Relaxed);
+
+            if durability == hyperspace_core::Durability::Strict {
+                wal.sync().map_err(|e| e.to_string())?;
+            }
+
+            if wal.is_full() {
+                if let Ok(frozen_path) = wal.rotate() {
+                    self.wal_pending_count.store(0, Ordering::SeqCst);
+                    let mut pending = self.pending_wal_flushes.lock().await;
+                    pending.push(frozen_path);
+
+                    let should_flush = match self.storage_mode {
+                        StorageMode::Tiered => {
+                            let memtable_nodes = self.index_link.load().count_nodes();
+                            let memtable_budget = self.max_ram_bytes / 10;
+                            let est_memory = memtable_nodes * (self.dimension * 8 + 64);
+                            est_memory as u64 > memtable_budget
+                        }
+                        StorageMode::Performance => false,
+                    };
+
+                    if should_flush {
+                        frozen_paths_opt = Some(std::mem::take(&mut *pending));
+                    }
+                }
+            } else {
+                self.wal_pending_count
+                    .fetch_add(vectors.len() as u64, Ordering::SeqCst);
+            }
+        }
+
+        if let Some(frozen_paths) = frozen_paths_opt {
+            Self::spawn_flush_worker(
+                frozen_paths,
+                self.config.clone(),
+                self.mode,
+                self.data_dir.clone(),
+                self.flush_limiter.clone(),
+                self.meta_router.clone(),
+                self.index_link.clone(),
+                self.id_map.clone(),
+                self.reverse_id_map.clone(),
+                self.flushing_vector_count.clone(),
+                self.index_link.load().dimension,
+                self.chunk_backend.clone(),
+            );
+        }
+
+        for _ in 0..entries.iter().filter(|e| e.reindex_needed).count() {
+            self.config.inc_queue();
+        }
+
+        if self.mode != hyperspace_core::QuantizationMode::None {
+            {
+                let mut cache = self.raw_vector_cache.write();
+                for entry in &entries {
+                    let idx = entry.internal_id as usize;
+                    if cache.len() <= idx {
+                        cache.resize(idx + 1, None);
+                    }
+                    let v_f32: Vec<f32> = entry.vector.iter().map(|&x| x as f32).collect();
+                    cache[idx] = Some(v_f32);
+                }
+            }
+        }
+
+        let wb_has_capacity = self.write_buffer.size() < 100_000;
+        for entry in &entries {
+            if entry.reindex_needed {
+                if wb_has_capacity {
+                    self.write_buffer.insert(
+                        entry.internal_id,
+                        entry.id,
+                        entry.vector.to_vec(),
+                        (*entry.metadata).clone(),
+                    );
+                }
+                let _ = self
+                    .index_tx
+                    .send((entry.internal_id, entry.metadata.clone()));
+            }
+        }
+
+        if self.replication_tx.receiver_count() > 0 {
+            for entry in entries {
+                let log = ReplicationLog {
+                    logical_clock: clock,
+                    origin_node_id: self.node_id.clone(),
+                    collection: self.name.clone(),
+                    operation: Some(replication_log::Operation::Insert(InsertOp {
+                        id: entry.id,
+                        vector: entry.vector.into_owned(),
+                        metadata: entry.metadata.clone(),
+                        typed_metadata: HashMap::new(),
+                    })),
+                };
+                let _ = self.replication_tx.send(log);
+            }
+        }
+        if let Some(ref cache) = self.cache {
+            for (vector, id, metadata) in &vectors {
+                let slice = if vector.len() > self.dimension {
+                    &vector[..self.dimension]
+                } else {
+                    vector
+                };
+                let processed_vector = Self::normalize_if_cosine(slice).into_owned();
+                let ttl = metadata
+                    .get("__ttl")
+                    .or_else(|| metadata.get("ttl"))
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .map(std::time::Duration::from_secs);
+                cache.insert(*id, processed_vector, metadata.clone(), ttl);
+            }
+        }
+
+        Ok(())
     }
 }

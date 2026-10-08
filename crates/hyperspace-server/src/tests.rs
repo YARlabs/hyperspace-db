@@ -55,13 +55,14 @@ async fn test_rebuild_and_queue() {
         // Wait for indexing to finish
         let start = std::time::Instant::now();
         loop {
-            if col.queue_size() == 0 {
+            if col.queue_size() == 0 && col.write_buffer_size() == 0 {
                 break;
             }
             assert!(
                 start.elapsed() <= Duration::from_secs(10),
-                "Indexing timeout. Queue: {}",
-                col.queue_size()
+                "Indexing timeout. Queue: {}, Buffer: {}",
+                col.queue_size(),
+                col.write_buffer_size()
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -86,10 +87,12 @@ async fn test_rebuild_and_queue() {
         panic!("Collection not found after rebuild");
     }
 
-    // Verify optimized file exists
+    // Verify optimized file exists (either in collection root or shard directories)
     let folder_name = format!("default_admin_{col_name}");
-    let index_path = tmp_dir.join(folder_name).join("index.snap");
-    assert!(index_path.exists());
+    let col_path = tmp_dir.join(folder_name);
+    let index_exists = col_path.join("index.snap").exists()
+        || col_path.join("shard_0").join("index.snap").exists();
+    assert!(index_exists);
 
     println!("Rebuild successful. Cleaning up.");
 
@@ -316,4 +319,248 @@ async fn test_delta_sync() {
     // Cleanup
     let _ = fs::remove_dir_all(&dir_a);
     let _ = fs::remove_dir_all(&dir_b);
+}
+
+#[tokio::test]
+async fn test_opq_collection_lifecycle_and_search() {
+    let uuid = Uuid::new_v4();
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_opq_test_{uuid}"));
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+
+    let col_name = "test_opq_col";
+    let dim = 128;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+
+    manager
+        .create_collection_with_quantization(
+            "default_admin",
+            col_name,
+            schema,
+            Some("opq".to_string()),
+        )
+        .await
+        .expect("Create OPQ collection failed");
+
+    let col = manager
+        .get("default_admin", col_name)
+        .await
+        .expect("Collection must be retrieved");
+
+    assert_eq!(
+        col.quantization_mode(),
+        hyperspace_core::QuantizationMode::OPQ
+    );
+
+    // Insert 50 vectors
+    for i in 0..50u32 {
+        let mut v = vec![0.0f64; dim as usize];
+        v[0] = f64::from(i) * 0.1;
+        v[1] = 1.0;
+        let mut meta = HashMap::new();
+        meta.insert("idx".to_string(), i.to_string());
+        col.insert(&v, i, meta, (i + 1) as u64, Durability::Default)
+            .await
+            .expect("Insert failed");
+    }
+
+    // Wait for indexing to complete
+    let start = std::time::Instant::now();
+    loop {
+        if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+            break;
+        }
+        assert!(start.elapsed() <= Duration::from_secs(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    assert_eq!(col.count(), 50);
+
+    // Search
+    let mut query = vec![0.0f64; dim as usize];
+    query[0] = 1.0; // closest to i=10 (10 * 0.1 = 1.0)
+    query[1] = 1.0;
+    let params = hyperspace_core::SearchParams {
+        top_k: 5,
+        ef_search: 32,
+        ..Default::default()
+    };
+    let res = col
+        .search(&query, &HashMap::new(), &[], &params)
+        .await
+        .expect("Search must succeed");
+
+    assert!(!res.is_empty());
+    let found_ids: Vec<u32> = res.iter().map(|r| r.0).collect();
+    assert!(
+        found_ids.contains(&10),
+        "Search should locate vector 10 as nearest neighbor, got: {found_ids:?}"
+    );
+
+    // Drop original manager and re-open from disk
+    drop(col);
+    drop(manager);
+
+    let (tx2, _rx2) = broadcast::channel(100);
+    let (etx2, _) = broadcast::channel(100);
+    let manager2 = CollectionManager::new(tmp_dir.clone(), tx2, etx2);
+
+    let reloaded_col = manager2
+        .get("default_admin", col_name)
+        .await
+        .expect("Collection must reload from disk");
+
+    assert_eq!(
+        reloaded_col.quantization_mode(),
+        hyperspace_core::QuantizationMode::OPQ
+    );
+    assert_eq!(reloaded_col.count(), 50);
+
+    let res_reloaded = reloaded_col
+        .search(&query, &HashMap::new(), &[], &params)
+        .await
+        .expect("Search on reloaded collection must succeed");
+
+    assert!(!res_reloaded.is_empty());
+    let reloaded_ids: Vec<u32> = res_reloaded.iter().map(|r| r.0).collect();
+    assert!(
+        reloaded_ids.contains(&10),
+        "Reloaded search should locate vector 10, got: {reloaded_ids:?}"
+    );
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[tokio::test]
+async fn test_pq_collection_lifecycle_and_search() {
+    let uuid = Uuid::new_v4();
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_pq_test_{uuid}"));
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+
+    let col_name = "test_pq_col";
+    let dim = 128;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+
+    manager
+        .create_collection_with_quantization(
+            "default_admin",
+            col_name,
+            schema,
+            Some("pq".to_string()),
+        )
+        .await
+        .expect("Create PQ collection failed");
+
+    let col = manager
+        .get("default_admin", col_name)
+        .await
+        .expect("Collection must be retrieved");
+
+    assert_eq!(
+        col.quantization_mode(),
+        hyperspace_core::QuantizationMode::ProductQuantization
+    );
+
+    // Insert 50 vectors
+    for i in 0..50u32 {
+        let mut v = vec![0.0f64; dim as usize];
+        v[0] = f64::from(i) * 0.05;
+        v[1] = 0.5;
+        let mut meta = HashMap::new();
+        meta.insert("idx".to_string(), i.to_string());
+        col.insert(&v, i, meta, (i + 1) as u64, Durability::Default)
+            .await
+            .expect("Insert failed");
+    }
+
+    // Wait for indexing to complete
+    let start = std::time::Instant::now();
+    loop {
+        if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+            break;
+        }
+        assert!(start.elapsed() <= Duration::from_secs(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    assert_eq!(col.count(), 50);
+
+    // Search
+    let mut query = vec![0.0f64; dim as usize];
+    query[0] = 0.05 * 5.0; // closest to i=5
+    query[1] = 0.5;
+    let params = hyperspace_core::SearchParams {
+        top_k: 5,
+        ef_search: 32,
+        ..Default::default()
+    };
+    let res = col
+        .search(&query, &HashMap::new(), &[], &params)
+        .await
+        .expect("Search must succeed");
+
+    assert!(!res.is_empty());
+    let found_ids: Vec<u32> = res.iter().map(|r| r.0).collect();
+    assert!(
+        found_ids.contains(&5),
+        "Search should locate vector 5 as nearest neighbor, got: {found_ids:?}"
+    );
+
+    // Drop original manager and re-open from disk to test persistence
+    drop(col);
+    drop(manager);
+
+    let (tx2, _rx2) = broadcast::channel(100);
+    let (etx2, _) = broadcast::channel(100);
+    let manager2 = CollectionManager::new(tmp_dir.clone(), tx2, etx2);
+
+    let reloaded_col = manager2
+        .get("default_admin", col_name)
+        .await
+        .expect("PQ collection must reload from disk");
+
+    assert_eq!(
+        reloaded_col.quantization_mode(),
+        hyperspace_core::QuantizationMode::ProductQuantization
+    );
+    assert_eq!(reloaded_col.count(), 50);
+
+    let res_reloaded = reloaded_col
+        .search(&query, &HashMap::new(), &[], &params)
+        .await
+        .expect("Search on reloaded PQ collection must succeed");
+
+    assert!(!res_reloaded.is_empty());
+    let reloaded_ids: Vec<u32> = res_reloaded.iter().map(|r| r.0).collect();
+    assert!(
+        reloaded_ids.contains(&5),
+        "Reloaded PQ search should locate vector 5, got: {reloaded_ids:?}"
+    );
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&tmp_dir);
 }
