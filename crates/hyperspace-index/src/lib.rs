@@ -687,7 +687,7 @@ pub struct HnswIndex<M: Metric> {
 fn prefetch_l1<T>(ptr: *const T) {
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        core::arch::x86_64::_mm_prefetch(ptr as *const i8, core::arch::x86_64::_MM_HINT_T0);
+        core::arch::x86_64::_mm_prefetch(ptr.cast::<i8>(), core::arch::x86_64::_MM_HINT_T0);
     }
     #[cfg(target_arch = "aarch64")]
     unsafe {
@@ -1378,8 +1378,7 @@ impl<M: Metric> HnswIndex<M> {
                 .metadata
                 .forward
                 .get(&id)
-                .map(|m| m.clone())
-                .unwrap_or_default();
+                .map_or_else(std::collections::HashMap::new, |m| m.clone());
             result.push((id, vec, meta));
         }
         result
@@ -1403,8 +1402,7 @@ impl<M: Metric> HnswIndex<M> {
                 .metadata
                 .forward
                 .get(&id)
-                .map(|m| m.clone())
-                .unwrap_or_default();
+                .map_or_else(std::collections::HashMap::new, |m| m.clone());
             result.push((id, vec, meta));
         }
         result
@@ -2863,13 +2861,11 @@ impl<M: Metric> HnswIndex<M> {
         for i in 0..num_nodes {
             let node_vec = self.get_vector(i);
 
-            let candidates: Vec<u32> = {
-                self.nodes
-                    .get(i as usize)
-                    .filter(|n| !n.layers.is_empty())
-                    .map(|n| (**n.layers[0].load()).clone())
-                    .unwrap_or_default()
-            };
+            let candidates: Vec<u32> = self
+                .nodes
+                .get(i as usize)
+                .filter(|n| !n.layers.is_empty())
+                .map_or_else(Vec::new, |n| (**n.layers[0].load()).clone());
 
             if candidates.is_empty() {
                 continue;
