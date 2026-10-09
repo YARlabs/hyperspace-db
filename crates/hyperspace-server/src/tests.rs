@@ -656,7 +656,10 @@ async fn test_large_uint32_vector_ids_no_oom() {
         .await
         .expect("Create collection failed");
 
-    let col = manager.get("default_admin", col_name).await.expect("Collection not found");
+    let col = manager
+        .get("default_admin", col_name)
+        .await
+        .expect("Collection not found");
 
     // Insert large IDs near u32 boundaries and the specific reproducer ID 3_904_440_873
     let test_ids: Vec<u32> = vec![
@@ -689,7 +692,10 @@ async fn test_large_uint32_vector_ids_no_oom() {
 
     assert!(!results.is_empty());
     let returned_ids: Vec<u32> = results.iter().map(|(id, _, _, _)| *id).collect();
-    assert!(returned_ids.contains(&3_904_440_873), "Must find vector with ID 3_904_440_873");
+    assert!(
+        returned_ids.contains(&3_904_440_873),
+        "Must find vector with ID 3_904_440_873"
+    );
 
     // Verify deletion works cleanly
     for &id in &test_ids {
@@ -699,4 +705,3 @@ async fn test_large_uint32_vector_ids_no_oom() {
     // Cleanup
     let _ = fs::remove_dir_all(&tmp_dir);
 }
-
