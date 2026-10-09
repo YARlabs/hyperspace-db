@@ -87,16 +87,29 @@ If you configured a custom password in your local `.env` (`HYPERSPACE_API_KEY=my
 
 | Tool | Description |
 |:-----|:------------|
-| `memory_remember` | Store a memory/fact/event with session_id and optional tags |
-| `memory_recall` | Semantic search across stored memories, optionally scoped by session_id |
-| `memory_forget` | Delete a memory by ID |
-| `memory_update` | Replace an existing memory (delete + re-insert) |
-| `memory_list_sessions` | List unique session_ids that have stored memories |
-| `memory_explore_hierarchy` | Navigate Lorentz concept hierarchy (broader/narrower concepts) |
-| `memory_consolidate` | Compress a cluster of related memories into one abstract Fréchet mean concept |
-| `memory_verify_claim` | Verify logical consistency of a claim using hybrid Lorentz+Cosine geometry |
+| `memory_remember` | Store a memory, fact, or procedure with `session_id`, `memory_type` (`semantic`, `episodic`, `procedural`), `importance` (1-10), and optional `tags` |
+| `memory_recall` | Semantic search with importance boost, recency half-life decay, and candidate oversampling, filterable by `session_id`, `memory_type`, or `min_importance` |
+| `memory_forget` | Delete a specific memory by ID |
+| `memory_update` | Atomically replace an existing memory (delete + store new version with refreshed embeddings) |
+| `memory_list_sessions` | Enumerate unique active `session_id`s with multi-probe semantic discovery |
+| `memory_explore_hierarchy` | Navigate Lorentz hyperbolic concept tree (broader vs narrower concepts) |
+| `memory_consolidate` | Synthesize clusters of memories into a single abstract Fréchet Mean hyperbolic concept vector with optional persistence and source archiving |
+| `memory_verify_claim` | Mathematical anti-hallucination verification using 129D MRL hybrid (Lorentz + Cosine) space with adaptive trust threshold |
+| `memory_stats` | Diagnostic status report showing vector count, collection health, and active indexing schema |
 
 ---
+
+## 🧪 Testing & Verification
+
+Run the test suite against your cluster or local instance:
+
+```bash
+# 1. Comprehensive verification (all 9 tools + session isolation)
+npm test
+
+# 2. Brutal high-concurrency stress test (30 parallel memories, NIAH recall, Fréchet consolidation)
+npm run test:stress
+```
 
 ## Architecture
 

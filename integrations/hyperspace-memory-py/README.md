@@ -52,11 +52,36 @@ for item in results:
 # 4. Get All Memories for User
 all_memories = memory.get_all(user_id="user_123")
 
-# 5. Delete & Reset
+# 5. Cognitive Consolidation (Fréchet Mean on Hyperboloid)
+consolidation = memory.consolidate(
+    "programming languages",
+    summary_text="User strongly favors Rust and systems programming."
+)
+print("Consolidated concept:", consolidation["summary"])
+
+# 6. Anti-Hallucination Claim Verification (Lorentz Geodesic Trust)
+verification = memory.verify_claim(
+    "User prefers Rust and dark mode UI over Python and light mode.",
+    "User always requests Python notebooks with light themes."
+)
+print("Trust status:", verification["status"], "Score:", verification["trust_score"])
+
+# 7. Delete & Reset
 memory.delete(results[0]["id"])
 ```
 
 ---
 
+## 🧠 Cognitive Operations
+
+- `memory.consolidate(topic_query, ...)`: Synthesizes a cluster of related episodic memories into a single abstract semantic concept using the **Fréchet Mean** on the hyperboloid.
+- `memory.verify_claim(premise, conclusion, threshold=0.30)`: Computes **Geodesic Trust Score** (Lorentz $\mathbb{H}^{32}$ + Cosine 96D) to verify that an LLM conclusion does not hallucinate.
+- `memory.list_sessions(limit=100)`: Discovers and enumerates active conversational sessions.
+- `memory.explore_hierarchy(concept_id, direction="down")`: Navigates conceptual taxonomy trees in Lorentz space.
+- `memory.stats()`: Returns vector counts, cascade configuration, and collection status.
+
+---
+
 ## 📄 License
 MIT © YARlabs.
+

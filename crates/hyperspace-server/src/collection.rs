@@ -87,7 +87,7 @@ pub struct CollectionImpl<M: Metric> {
     write_buffer: Arc<crate::write_buffer::WriteBuffer>,
     chunk_backend: Arc<dyn ChunkBackend>,
     storage_f32: bool,
-    raw_vector_cache: Arc<parking_lot::RwLock<Vec<Option<Vec<f32>>>>>,
+    raw_vector_cache: Arc<DashMap<u32, Vec<f32>>>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -958,7 +958,7 @@ impl<M: Metric> CollectionImpl<M> {
             write_buffer,
             chunk_backend,
             storage_f32,
-            raw_vector_cache: Arc::new(parking_lot::RwLock::new(Vec::new())),
+            raw_vector_cache: Arc::new(DashMap::new()),
         };
 
         // FIX (Bottleneck 4): Cache warmup on startup.
@@ -1437,6 +1437,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
 
         idx.delete(internal_id);
+        self.raw_vector_cache.remove(&internal_id);
         if let Some(ref cache) = self.cache {
             cache.invalidate(id);
         }
@@ -1682,9 +1683,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
-                    let raw_cache_guard = raw_vector_cache_owned.read();
                     let get_exact_coords = |id: u32| -> Vec<f64> {
-                        if let Some(Some(v_f32)) = raw_cache_guard.get(id as usize) {
+                        if let Some(v_f32) = raw_vector_cache_owned.get(&id) {
                             return v_f32.iter().map(|&x| x as f64).collect();
                         }
                         if let Ok(Some(bytes)) = payload_store_owned.fetch_blocking(id) {
@@ -1963,9 +1963,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
             // Restore exact raw float vectors from raw cache if available
             {
-                let raw_cache = raw_vector_cache.read();
                 for (id, vec, _) in &mut all_data {
-                    if let Some(Some(raw_v)) = raw_cache.get(*id as usize) {
+                    if let Some(raw_v) = raw_vector_cache.get(id) {
                         *vec = raw_v.iter().map(|&x| x as f64).collect();
                     }
                 }
@@ -2592,13 +2591,8 @@ impl<M: Metric> CollectionImpl<M> {
 
         if self.mode != hyperspace_core::QuantizationMode::None {
             let v_f32: Vec<f32> = processed_vector.iter().map(|&x| x as f32).collect();
-            {
-                let mut cache = self.raw_vector_cache.write();
-                let idx = internal_id as usize;
-                if cache.len() <= idx {
-                    cache.resize(idx + 1, None);
-                }
-                cache[idx] = Some(v_f32);
+            if self.raw_vector_cache.len() < 200_000 {
+                self.raw_vector_cache.insert(internal_id, v_f32);
             }
             let mut vector_bytes = Vec::with_capacity(processed_vector.len() * 4);
             for &v in processed_vector.iter() {
@@ -2829,15 +2823,10 @@ impl<M: Metric> CollectionImpl<M> {
         }
 
         if self.mode != hyperspace_core::QuantizationMode::None {
-            {
-                let mut cache = self.raw_vector_cache.write();
-                for entry in &entries {
-                    let idx = entry.internal_id as usize;
-                    if cache.len() <= idx {
-                        cache.resize(idx + 1, None);
-                    }
+            for entry in &entries {
+                if self.raw_vector_cache.len() < 200_000 {
                     let v_f32: Vec<f32> = entry.vector.iter().map(|&x| x as f32).collect();
-                    cache[idx] = Some(v_f32);
+                    self.raw_vector_cache.insert(entry.internal_id, v_f32);
                 }
             }
         }

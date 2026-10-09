@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const API_KEY = process.env.HYPERSPACE_API_KEY || "I_LOVE_HYPERSPACEDB";
+const API_KEY = process.env.HYPERSPACE_API_KEY || "";
 const HOST = process.env.HYPERSPACE_HOST || "the.yar.ink";
 const MEMORY_COLLECTION = process.env.MEMORY_COLLECTION || "agent_cognitive_memories_129";
 
@@ -36,10 +36,11 @@ async function runMemoryServerTest() {
     command: "node",
     args: [serverPath],
     env: {
+      ...(process.env as Record<string, string>),
       HYPERSPACE_HOST: HOST,
       HYPERSPACE_API_KEY: API_KEY,
-      MEMORY_COLLECTION,
-      PATH: process.env.PATH || ""
+      HYPERSPACE_LOCAL_ADMIN_KEY: process.env.HYPERSPACE_LOCAL_ADMIN_KEY || "",
+      MEMORY_COLLECTION
     }
   });
 

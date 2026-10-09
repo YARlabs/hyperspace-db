@@ -12,7 +12,7 @@ description: >
 
 HyperspaceDB provides two official Model Context Protocol (MCP) servers:
 1. **`mcp-hyperspacedb`** (Database Plane, v4.0.0): 27 tools for collection DDL, vector CRUD, HNSW graph traversal, Lyapunov stability analysis, Gromov delta hyperbolicity, and Koopman momentum.
-2. **`mcp-hyperspace-memory`** (Cognitive Memory Plane, v1.0.0): 8 tools for autonomous agent memory, episodic facts, session isolation, Fréchet mean consolidation, and hallucination verification.
+2. **`mcp-hyperspace-memory`** (Cognitive Memory Plane, v4.0.0): 9 tools for autonomous agent memory, episodic facts, session isolation, Fréchet mean consolidation, and hallucination verification.
 
 ---
 

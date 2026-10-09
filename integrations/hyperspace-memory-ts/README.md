@@ -52,11 +52,35 @@ for (const item of results) {
   console.log(`Memory: ${item.memory} (Score: ${item.score})`);
 }
 
-// 4. Delete & Reset
+// 4. Cognitive Consolidation (Fréchet Mean on Hyperboloid)
+const consolidation = await memory.consolidate("UI frameworks", {
+  summaryText: "User consistently prefers modern React/TypeScript stack across all projects."
+});
+console.log("Consolidated concept:", consolidation.summary);
+
+// 5. Anti-Hallucination Claim Verification (Lorentz Geodesic Trust)
+const verification = await memory.verifyClaim(
+  "User prefers TypeScript and React over Angular.",
+  "User would be enthusiastic about migrating the codebase to Angular."
+);
+console.log("Trust status:", verification.status, "Score:", verification.trustScore);
+
+// 6. Delete & Reset
 await memory.delete(results[0].id);
 ```
 
 ---
 
+## 🧠 Cognitive Operations
+
+- `memory.consolidate(topicQuery, options)`: Synthesizes a cluster of related episodic memories into a single abstract semantic concept using the **Fréchet Mean** in Lorentz hyperbolic space.
+- `memory.verifyClaim(premise, conclusion, threshold?)`: Computes **Geodesic Trust Score** (Lorentz $\mathbb{H}^{32}$ + Cosine 96D) to verify that an LLM conclusion does not violate established facts or hallucinate.
+- `memory.listSessions(limit?)`: Discovers and enumerates active conversational sessions.
+- `memory.exploreHierarchy(conceptId, direction?)`: Navigates conceptual subsumption and taxomomy trees.
+- `memory.stats()`: Returns vector counts, cascade configuration, and collection status.
+
+---
+
 ## 📄 License
 MIT © YARlabs.
+

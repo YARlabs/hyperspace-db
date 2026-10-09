@@ -1,3 +1,7 @@
+## 4.0.0
+
+- Release version 4.0.0
+
 ## 3.1.8
 
 - Release version 3.1.8

@@ -1,7 +1,7 @@
 {
   "name": "mcp-hyperspace-memory",
-  "version": "3.1.8",
-  "description": "MCP server for HyperspaceDB cognitive agent memory (SaaS-only). Drop-in Zero-Code memory for Claude Desktop, Cursor IDE, Windsurf, OpenWebUI.",
+  "version": "4.0.0",
+  "description": "MCP server for HyperspaceDB cognitive agent memory (SaaS & Local). Drop-in Zero-Code memory for Claude Desktop, Cursor IDE, Windsurf, OpenWebUI.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -10,7 +10,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "dev": "ts-node src/index.ts",
+    "test": "node dist/test_memory_server.js",
+    "test:stress": "node dist/test_memory_stress.js"
   },
   "keywords": [
     "mcp",
@@ -26,7 +28,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",
-    "hyperspace-sdk-ts": "3.1.8",
+    "hyperspace-sdk-ts": "4.0.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

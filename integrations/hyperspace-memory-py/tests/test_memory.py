@@ -37,17 +37,18 @@ class TestHyperspaceMemoryComprehensive(unittest.TestCase):
         })
 
     def test_01_interface_structure(self):
-        """Step 1: Verify all 9 Mem0 API methods exist on Memory instance."""
+        """Step 1: Verify all Mem0 API and cognitive methods exist on Memory instance."""
         required_methods = [
             "add", "search", "get_all", "get", "update",
-            "delete", "delete_all", "reset", "history"
+            "delete", "delete_all", "reset", "history",
+            "consolidate", "verify_claim", "explore_hierarchy", "stats", "list_sessions"
         ]
         for method in required_methods:
             self.assertTrue(
                 hasattr(self.memory, method),
-                f"Missing required Mem0 compatibility method: {method}"
+                f"Missing required memory compatibility method: {method}"
             )
-        print(f"   ✓ Step 1: All {len(required_methods)} Mem0 compatibility methods present")
+        print(f"   ✓ Step 1: All {len(required_methods)} memory methods present")
 
     def test_02_multi_domain_storage_and_user_isolation(self):
         """Step 2 & 3: Store memories across domains and verify 0% cross-user leakage."""

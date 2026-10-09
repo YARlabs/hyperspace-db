@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-sdk"
-version = "3.1.8"
+version = "4.0.0"
 edition = "2021"
 authors = ["YARlabs <hi@yar.ink>"]
 description = "Official Rust SDK for HyperspaceDB gRPC API"
@@ -20,7 +20,7 @@ local-onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "dep:serde", "dep:asyn
 huggingface = ["local-onnx", "dep:hf-hub"]
 
 [dependencies]
-hyperspace-proto = { path = "../hyperspace-proto", version = "3.1.0" }
+hyperspace-proto = { path = "../hyperspace-proto", version = "4.0.0" }
 tonic = "0.10"
 tokio = { version = "1.35", features = ["full"] }
 aes-gcm = "0.10"

@@ -630,3 +630,73 @@ async fn test_tenant_isolation_list_and_access() {
     // Cleanup
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+#[tokio::test]
+async fn test_large_uint32_vector_ids_no_oom() {
+    let uuid = Uuid::new_v4();
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{uuid}"));
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+
+    let col_name = "test_large_ids";
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "cosine".to_string(),
+            full_dimension: 16,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+    manager
+        .create_collection("default_admin", col_name, schema)
+        .await
+        .expect("Create collection failed");
+
+    let col = manager.get("default_admin", col_name).await.expect("Collection not found");
+
+    // Insert large IDs near u32 boundaries and the specific reproducer ID 3_904_440_873
+    let test_ids: Vec<u32> = vec![
+        3_904_440_873,
+        u32::MAX - 1,
+        2_147_483_648, // 2^31, would be negative in signed i32
+        4_000_000_000,
+        42,
+    ];
+
+    let vec = vec![0.25; 16];
+    for &id in &test_ids {
+        col.insert(&vec, id, HashMap::new(), 0, Durability::Default)
+            .await
+            .expect("Insert with large uint32 id must succeed without OOM");
+    }
+
+    assert_eq!(col.count(), test_ids.len());
+
+    // Search query
+    let search_params = hyperspace_core::SearchParams {
+        top_k: 5,
+        ef_search: 32,
+        ..Default::default()
+    };
+    let results = col
+        .search(&vec, &HashMap::new(), &[], &search_params)
+        .await
+        .expect("Search must succeed");
+
+    assert!(!results.is_empty());
+    let returned_ids: Vec<u32> = results.iter().map(|(id, _, _, _)| *id).collect();
+    assert!(returned_ids.contains(&3_904_440_873), "Must find vector with ID 3_904_440_873");
+
+    // Verify deletion works cleanly
+    for &id in &test_ids {
+        col.delete(id).expect("Delete must succeed");
+    }
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+

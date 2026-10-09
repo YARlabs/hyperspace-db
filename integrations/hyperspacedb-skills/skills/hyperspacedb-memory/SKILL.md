@@ -40,15 +40,16 @@ Connect to Claude Desktop, Cursor, Windsurf, or Antigravity with a single JSON c
 }
 ```
 
-### The 8 Cognitive Tools:
+### The 9 Cognitive Tools:
 1. `memory_remember`: Store episodic facts with auto-vectorization (`text`, `session_id`, `tags`, `importance`).
 2. `memory_recall`: Semantic search with session isolation (`query`, `session_id`, `top_k`).
 3. `memory_update`: Modify an existing memory by ID (`memory_id`, `new_text`).
 4. `memory_forget`: Delete a memory item by ID (`memory_id`).
 5. `memory_list_sessions`: Enumerate all active conversation sessions.
 6. `memory_explore_hierarchy`: Traverse concept taxonomy in Lorentz space.
-7. `memory_consolidate`: Compute Fréchet mean of episodic memories into an abstract concept.
+7. `memory_consolidate`: Compute Fréchet mean of episodic memories into an abstract concept on the hyperboloid.
 8. `memory_verify_claim`: Calculate Geodesic Trust Score against stored premises to block hallucinations.
+9. `memory_stats`: Operational diagnostics, vector counts, and cascade settings.
 
 ---
 
@@ -74,12 +75,24 @@ res = memory.add(
     "Patient blood glucose is 14.2 mmol/L with rapid rising trend.",
     user_id="user_alice",
     agent_id="agent_medical",
-    metadata={"category": "glucose"}
+    session_id="session_shift_01",
+    importance=9.0,
+    tags=["glucose", "critical"]
 )
 mem_id = res["results"][0]["id"]
 
-# Semantic search with user isolation
-memories = memory.search("glucose trend", user_id="user_alice", limit=5)
+# Semantic search with user & session isolation
+memories = memory.search("glucose trend", user_id="user_alice", session_id="session_shift_01", limit=5)
+
+# Cognitive Consolidation (Fréchet Mean on Hyperboloid)
+concept = memory.consolidate("glucose trend", summary_text="Patient displays recurring glycemic instability.")
+
+# Anti-Hallucination Geodesic Verification
+check = memory.verify_claim(
+    "Patient blood glucose is 14.2 mmol/L with rapid rising trend.",
+    "Patient blood sugar is within optimal normal range."
+)
+print("Trust status:", check["status"], "Trust score:", check["trust_score"])
 
 # Update & Delete
 memory.update(mem_id, "Patient blood glucose normalized to 6.5 mmol/L.")
@@ -100,11 +113,24 @@ const memory = new Memory({
   quantization: "extreme"
 });
 
+// Add memory
 const res = await memory.add(
   "Deployment target: production-us-east-1 on Kubernetes v1.30.",
-  { userId: "devops_bob", agentId: "infra_agent" }
+  { userId: "devops_bob", agentId: "infra_agent", sessionId: "deploy_01", tags: ["k8s", "prod"] }
 );
 
+// Semantic search
 const results = await memory.search("Kubernetes version?", { userId: "devops_bob" });
 console.log(results[0].memory);
+
+// Fréchet Mean Consolidation
+const concept = await memory.consolidate("Kubernetes version");
+
+// Geodesic Claim Verification
+const verification = await memory.verifyClaim(
+  "Deployment target is production-us-east-1 on Kubernetes v1.30.",
+  "Deployment target is AWS ECS Fargate."
+);
+console.log("Verified:", verification.status, "Score:", verification.trustScore);
 ```
+

@@ -35,12 +35,15 @@ async function runMemoryComprehensiveTestSuite() {
   console.log("--------------------------------------------------------------------------");
   console.log("📋 STEP 1: Mem0 Interface Method Signatures Verification");
   console.log("--------------------------------------------------------------------------");
-  const methods = ["add", "search", "getAll", "get", "update", "delete", "deleteAll", "reset", "history"];
+  const methods = [
+    "add", "search", "getAll", "get", "update", "delete", "deleteAll", "reset", "history",
+    "consolidate", "verifyClaim", "exploreHierarchy", "stats", "listSessions"
+  ];
   for (const m of methods) {
     if (typeof (memory as any)[m] === "function") {
       pass(`Method present: ${m}`);
     } else {
-      fail(`Missing required Mem0 method: ${m}`);
+      fail(`Missing required memory method: ${m}`);
     }
   }
 
