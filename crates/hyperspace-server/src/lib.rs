@@ -3012,10 +3012,17 @@ pub async fn start_server(
     let v4_data_dir = std::path::PathBuf::from(
         std::env::var("HS_DATA_DIR").unwrap_or_else(|_| "data_v4".to_string()),
     );
-    // Legacy v3 data directory defaults to "data", override via HS_LEGACY_V3_DIR
-    let legacy_v3_dir = std::path::PathBuf::from(
-        std::env::var("HS_LEGACY_V3_DIR").unwrap_or_else(|_| "data".to_string()),
-    );
+    // Legacy v3 data directory defaults to "data", override via HS_LEGACY_V3_DIR.
+    // If custom HS_DATA_DIR is provided (e.g. /app/data in Kubernetes), default legacy dir to the same path
+    // so in-place migration automatically discovers unmigrated collections on the mounted volume.
+    let legacy_v3_dir =
+        std::path::PathBuf::from(std::env::var("HS_LEGACY_V3_DIR").unwrap_or_else(|_| {
+            if v4_data_dir.as_path() != std::path::Path::new("data_v4") {
+                v4_data_dir.to_string_lossy().to_string()
+            } else {
+                "data".to_string()
+            }
+        }));
 
     // If legacy security.db exists and v4 doesn't, migrate security.db automatically
     let legacy_sec = legacy_v3_dir.join("security.db");

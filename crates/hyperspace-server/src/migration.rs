@@ -158,7 +158,19 @@ impl MigrationEngine {
             );
 
             let target_col_dir = v4_data_dir.join(&col_name);
-            let in_place = source_path == target_col_dir;
+            let in_place = source_path == target_col_dir
+                || match (source_path.canonicalize(), target_col_dir.canonicalize()) {
+                    (Ok(p1), Ok(p2)) => p1 == p2,
+                    _ => match (
+                        source_path.parent().and_then(|p| p.canonicalize().ok()),
+                        target_col_dir.parent().and_then(|p| p.canonicalize().ok()),
+                    ) {
+                        (Some(p1), Some(p2)) => {
+                            p1 == p2 && source_path.file_name() == target_col_dir.file_name()
+                        }
+                        _ => false,
+                    },
+                };
             let actual_source = if in_place {
                 let staging_parent = v4_data_dir.join(".migrating_v3");
                 let _ = fs::create_dir_all(&staging_parent);
