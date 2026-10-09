@@ -2,57 +2,69 @@
 
 [![MCP](https://img.shields.io/badge/MCP-Protocol-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
-[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v3.0-cyan)](https://github.com/yarlabs/hyperspace-db)
+[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v4.0-cyan)](https://github.com/yarlabs/hyperspace-db)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-The **HyperspaceDB MCP Server** acts as a high-performance cognitive bridge, enabling Large Language Models (LLMs) to interact with **HyperspaceDB** — a multi-geometry vector database designed for advanced AI memory and spatial computing.
+The **HyperspaceDB MCP Server** (`mcp-hyperspacedb`) exposes the complete low-level data plane, cognitive geometry engine, graph navigation, and administration interface of **HyperspaceDB** to Large Language Models (LLMs) via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io).
 
-This server implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io), exposing a comprehensive suite of tools for **geometrical data analysis**, **graph traversal**, and **cognitive AI metrics** directly to models in Claude Desktop, Cursor, and other MCP hosts.
-
-## 🚀 Key Features
-
-### 1. Geometric Data Diagnostics
-Identify the optimal geometry for your data using **Gromov Delta-hyperbolicity** analysis.
-- **`hyperspace_analyze_geometry`**: Uses the 4-point condition to recommend `Lorentz`, `Poincare`, `Cosine`, or `L2` metrics for your datasets.
-
-### 2. Cognitive AI Tools (Agentic Logic)
-Track and manage the model's internal reasoning stability.
-- **`hyperspace_analyze_thought_stability`**: Calculates **Lyapunov Convergence** of a trajectory (Chain of Thought). Detects if a model is "hallucinating" or converging on a stable logical attractor.
-- **`hyperspace_find_clusters`**: Detects emergent semantic regions in the database knowledge graph to help the model synthesize higher-level concepts.
-
-### 3. High-Performance Knowledge Retrieval
-- **`hyperspace_search_text`**: Natural language semantic search using server-side embeddings.
-- **`hyperspace_search_wasserstein`**: Optimal Transport (OT) based search for comparing complex distributions and finding non-obvious conceptual overlaps.
-- **`hyperspace_insert_text`**: Asynchronous storage of factual claims or system logs with automatic vectorization.
-
-### 4. Graph Memory Navigation
-- **`hyperspace_graph_traverse`**: Perform deep BFS/DFS traversal through the HNSW knowledge graph. Allows the model to "follow paths" between disparate facts to build complex reasoning chains.
+> [!NOTE]
+> **Looking for drop-in conversational agent memory?**  
+> If you are setting up plug-and-play long-term memory for Claude Desktop, Cursor, Windsurf, or OpenWebUI, use [`mcp-hyperspace-memory`](../mcp-hyperspace-memory) instead (`npx -y mcp-hyperspace-memory@latest`).  
+> `mcp-hyperspacedb` is the **full-featured database and geometry server** designed for developers, data pipelines, and advanced cognitive agents requiring fine-grained control over vector spaces, collections, graph topologies, and cache systems.
 
 ---
 
-## 🛠️ Installation & Setup
+## 🚀 Key Architectural Capabilities
 
-### Prerequisites
-- Node.js 18+
-- Running instance of [HyperspaceDB](https://github.com/yarlabs/hyperspace-db) (default: `localhost:50051`)
+### 1. Geometric Diagnostics & Curvature Analysis
+Diagnose latent data topology using **Gromov $\delta$-hyperbolicity** over Riemannian and pseudo-Riemannian manifolds:
+- **`hyperspace_analyze_geometry`**: Employs the 4-point Gromov condition to recommend the ideal manifold metric (`lorentz`, `poincare`, `cosine`, or `l2`).
 
-### 1. Run directly with npx (Recommended)
-You don't need to install anything. Just run:
+### 2. Cognitive Agent Diagnostics (Chain-of-Thought Stability)
+Evaluate the geometric stability of multi-step reasoning traces:
+- **`hyperspace_analyze_thought_stability`**: Calculates **Lyapunov Convergence** of a reasoning trajectory. Distinguishes whether the model's reasoning converges toward a stable attractor or diverges into chaotic hallucinations.
+- **`hyperspace_predict_momentum`**: Forecasts future thought trajectories via Koopman momentum extrapolation.
+- **`hyperspace_get_trust_score`**: Computes geodesic trust scores along thought sequences.
+
+### 3. Hyperbolic Hierarchy & Graph Traversal
+- **`hyperspace_get_subsumption_tree`**: Traces taxonomic subsumption trees in hyperbolic space ($H^{33}$).
+- **`hyperspace_get_concept_parents`**: Identifies hypernym/parent concepts along the Lorentz cone.
+- **`hyperspace_graph_traverse`**: Multi-hop BFS/DFS path exploration in the HNSW knowledge graph.
+- **`hyperspace_explore_graph`**: Extracts interactive subgraphs (nodes and links) for 2D/3D visualization.
+- **`hyperspace_find_clusters`**: Detects emergent semantic clusters directly in the vector space.
+
+### 4. Advanced Search & Vector Data Plane
+- **`hyperspace_search_text`**: Hybrid semantic + BM25 lexical search with adjustable fusion weight (`hybrid_alpha`).
+- **`hyperspace_search_wasserstein`**: Optimal Transport (Earth Mover's Distance) semantic distribution search.
+- **`hyperspace_insert_text`** / **`hyperspace_get_points`** / **`hyperspace_delete_points`**: Point-level CRUD operations.
+
+### 5. Collection Lifecycle & Hardware Acceleration Maintenance
+- Full control over collection creation with quantization schemes (`none`, `medium`, `medium_plus`, `turbo`, `extreme`).
+- L0 Hot Tier cache administration (`cache_stats`, `cache_clear`, `cache_config`).
+- Server-side flow matching reconsolidation (`trigger_reconsolidation`), collection freezing, HNSW index rebuilding, and disk vacuuming.
+
+---
+
+## 🛠️ Installation & MCP Host Configuration
+
+### Quick Start with npx
 
 ```bash
-npx mcp-hyperspacedb
+npx -y mcp-hyperspacedb@latest
 ```
 
-### 2. Configuration for MCP Hosts
+### Host Configurations
 
-Add the following to your MCP configuration file (e.g., `claude_desktop_config.json` or Cursor settings):
+Add to your MCP host configuration (e.g. `claude_desktop_config.json`, `~/.codeium/windsurf/mcp_config.json`, or Cursor Settings):
 
-#### ☁️ YAR.INK Cloud SaaS Connection (Recommended)
+#### ☁️ 1. YAR.INK Managed SaaS
+
 ```json
 {
   "mcpServers": {
     "hyperspacedb": {
       "command": "npx",
-      "args": ["-y", "mcp-hyperspacedb"],
+      "args": ["-y", "mcp-hyperspacedb@latest"],
       "env": {
         "HYPERSPACE_HOST": "the.yar.ink",
         "HYPERSPACE_API_KEY": "sk_YOUR_API_KEY"
@@ -62,13 +74,14 @@ Add the following to your MCP configuration file (e.g., `claude_desktop_config.j
 }
 ```
 
-#### 🏠 Local / Self-Hosted Instance (Default Auth)
+#### 🏠 2. Local Self-Hosted Instance (Default Auth)
+
 ```json
 {
   "mcpServers": {
     "hyperspacedb": {
       "command": "npx",
-      "args": ["-y", "mcp-hyperspacedb"],
+      "args": ["-y", "mcp-hyperspacedb@latest"],
       "env": {
         "HYPERSPACE_HOST": "localhost:50051",
         "HYPERSPACE_API_KEY": "I_LOVE_HYPERSPACEDB"
@@ -78,14 +91,16 @@ Add the following to your MCP configuration file (e.g., `claude_desktop_config.j
 }
 ```
 
-#### 🔒 Local / Self-Hosted Instance + Cloud v5 Embedding API Key (Two Keys)
-When running a local engine secured with custom password, pass `HYPERSPACE_API_KEY` for the database and or `YAR_API_KEY` for continuous 801D cloud embeddings:
+#### 🔒 3. Local DB + Cloud v5 Embedding API Key (Two-Key Setup)
+
+When running a secured local engine while leveraging continuous cloud embeddings:
+
 ```json
 {
   "mcpServers": {
     "hyperspacedb": {
       "command": "npx",
-      "args": ["-y", "mcp-hyperspacedb"],
+      "args": ["-y", "mcp-hyperspacedb@latest"],
       "env": {
         "HYPERSPACE_HOST": "localhost:50051",
         "HYPERSPACE_API_KEY": "my_local_secret",
@@ -96,57 +111,71 @@ When running a local engine secured with custom password, pass `HYPERSPACE_API_K
 }
 ```
 
----
-
-## 🧠 Agent Memory & Hyperbolic Hierarchy
-HyperspaceDB operates on a hybrid $H^{33} \times \mathbb{R}^{768}$ vector geometry native space. When using **Agent Memory**, LLM agents can query and manipulate cognitive structures via:
-- **`hyperspace_get_concept_parents`**: Retrieve parent hypernym concepts in Lorentz space ($H^{33}$).
-- **`hyperspace_get_subsumption_tree`**: Trace full taxonomic subsumption trees starting from any concept ID.
-- **`hyperspace_analyze_thought_stability`**: Check Chain-of-Thought (CoT) convergence using Lyapunov exponents to detect hallucinations.
-- **`hyperspace_search_text`**: Natural language memory lookup with 96D MRL RAM HNSW scan + 801D Disk payload rerank.
-
-## 🧩 Available Tools
-
-### Data Tools
-- **`hyperspace_list_collections`**: Get all active collections.
-- **`hyperspace_create_collection`**: Setup new memory spaces with specific geometry.
-- **`hyperspace_delete_collection`**: Permanently delete a collection and all of its vectors.
-- **`hyperspace_insert_text`**: Store new facts into the DB.
-- **`hyperspace_delete_points`**: Delete a single vector point from a collection by its ID.
-- **`hyperspace_get_points`**: Retrieve vector coordinate and metadata for a list of point IDs.
-- **`hyperspace_search_text`**: Query the DB using semantic similarity.
-- **`hyperspace_search_wasserstein`**: Advanced cross-feature distribution search.
-
-### Graph & AI Tools
-- **`hyperspace_get_neighbors`**: Explore local connectivity in the vector graph.
-- **`hyperspace_get_concept_parents`**: Retrieve parent concepts in a hierarchical collection.
-- **`hyperspace_get_subsumption_tree`**: Retrieve the Lorentz hierarchy subsumption tree starting from a given root ID.
-- **`hyperspace_explore_graph`**: Traverse the graph and return nodes and links in a format ready for visualization.
-- **`hyperspace_graph_traverse`**: Perform multi-hop logical exploration.
-- **`hyperspace_find_clusters`**: Identify thematic regions in vector space.
-- **`hyperspace_predict_momentum`**: Forecast future agent thought paths using Koopman momentum extrapolation.
-- **`hyperspace_get_trust_score`**: Evaluate stability and trust score for a given thought trajectory path.
-- **`hyperspace_analyze_thought_stability`**: Validate Chain of Thought (CoT) stability.
-- **`hyperspace_analyze_geometry`**: Run Gromov Delta analysis on raw vectors.
-
-### System & Cache Tools
-- **`hyperspace_get_stats`**: Telemetry on cluster health, clocks, and vector volume.
-- **`hyperspace_rebuild_index`**: Rebuild and optimize the HNSW index on the server for a specific collection.
-- **`hyperspace_vacuum`**: Perform vacuuming on the database to permanently purge deleted vectors and reclaim disk space.
-- **`hyperspace_trigger_reconsolidation`**: Manually trigger "AI Sleep Mode" (Flow Matching optimization) for a collection.
-- **`hyperspace_freeze_collection`**: Freeze a collection to make it read-only, preventing new inserts.
-- **`hyperspace_unfreeze_collection`**: Unfreeze a previously frozen collection to allow inserts again.
-- **`hyperspace_cache_stats`**: Get cache statistics (hits, misses, policy, etc.) for a specific collection's L0 Hot Tier Cache.
-- **`hyperspace_cache_clear`**: Clear/purge all items in the L0 Cache for a specific collection.
-- **`hyperspace_cache_config`**: Update L0 Cache configuration (eviction policy, ANN threshold) for a specific collection.
+* `HYPERSPACE_API_KEY`: Authenticates with local gRPC engine (`localhost:50051`).
+* `YAR_API_KEY` (or legacy `CDE_API_KEY`): Authenticates with cloud embeddings endpoint.
 
 ---
 
-## 👨‍💻 Development
-To run in development mode with live logs:
+## 🧩 Complete Tool Inventory (27 Tools)
+
+### 📊 Data Plane Tools
+
+| Tool | Required Parameters | Optional Parameters | Description & Return Value |
+|---|---|---|---|
+| `hyperspace_search_text` | `collection`, `text` | `top_k`, `hybrid_alpha`, `bm25_options` | Semantic + lexical hybrid search. Returns array of matching records with `id`, `score`, and `payload`. |
+| `hyperspace_search_wasserstein` | `collection`, `text` | `top_k` | Optimal Transport (Wasserstein) search. Returns array of top matches ranked by Wasserstein distance. |
+| `hyperspace_insert_text` | `collection`, `id`, `text` | `metadata` | Inserts text under numeric `id` with auto-vectorization. Returns status string or error. |
+| `hyperspace_get_points` | `collection`, `ids` | — | Retrieves vector coordinates and metadata for a list of point IDs. Returns JSON array of points. |
+| `hyperspace_delete_points` | `collection`, `id` | — | Deletes a point by its numeric ID. Returns `{ success }` object. |
+| `hyperspace_create_collection` | `collection` | `dimension`, `metric`, `quantization` | Creates a new vector space with chosen geometry and quantization. Returns `{ success }` object. |
+| `hyperspace_delete_collection` | `collection` | — | Permanently deletes a collection and its vectors. Returns `{ success }` object. |
+| `hyperspace_list_collections` | — | — | Lists all active collections. Returns array of `{ name, dimension, metric, count }`. |
+
+### 🕸️ Graph & Hierarchical Navigation Tools
+
+| Tool | Required Parameters | Optional Parameters | Description & Return Value |
+|---|---|---|---|
+| `hyperspace_graph_traverse` | `collection`, `start_id` | `max_depth`, `max_nodes` | Multi-hop BFS graph traversal starting from `start_id`. Returns graph paths and visited nodes. |
+| `hyperspace_explore_graph` | `collection`, `start_id` | `max_depth`, `max_nodes` | Traverses graph and outputs nodes and links formatted for visual renderers. |
+| `hyperspace_get_neighbors` | `collection`, `id` | `layer`, `limit` | Returns local connectivity and neighboring nodes at a given HNSW graph layer. |
+| `hyperspace_get_subsumption_tree` | `collection`, `root_id` | `max_depth` | Returns hierarchical Lorentz cone subsumption tree starting from `root_id`. |
+| `hyperspace_get_concept_parents` | `collection`, `id` | `layer`, `limit` | Traverses upward along the Lorentz cone to retrieve parent concepts. |
+| `hyperspace_find_clusters` | `collection` | `min_cluster_size` | Detects emergent semantic clusters in vector space. Returns cluster centroids and member IDs. |
+
+### 🧠 Geometry & Cognitive AI Tools
+
+| Tool | Required Parameters | Optional Parameters | Description & Return Value |
+|---|---|---|---|
+| `hyperspace_analyze_geometry` | `vectors` | `samples` | Computes Gromov $\delta$-hyperbolicity. Returns `{ delta, recommendation }` (`lorentz`, `poincare`, `cosine`, `l2`). |
+| `hyperspace_analyze_thought_stability` | `trajectory` | `curvature` | Computes Lyapunov exponent along a Chain-of-Thought path. Classifies as `STABLE` or `CHAOTIC`. |
+| `hyperspace_predict_momentum` | `collection`, `trajectory_ids` | `steps`, `curvature` | Forecasts next cognitive steps using Koopman momentum extrapolation. |
+| `hyperspace_get_trust_score` | `collection`, `trajectory_ids` | `curvature` | Evaluates geodesic path consistency and returns trust score (0.0–1.0). |
+| `hyperspace_trigger_reconsolidation` | `collection` | `learning_rate` | AI Sleep Mode: Triggers Flow Matching server optimization for concepts in collection. |
+
+### ⚙️ System, Cache & Maintenance Tools
+
+| Tool | Required Parameters | Optional Parameters | Description & Return Value |
+|---|---|---|---|
+| `hyperspace_get_stats` | `collection` | — | Merges gRPC telemetry, collection stats, logical clock, and HTTP cache stats into a JSON object. |
+| `hyperspace_cache_stats` | `collection` | — | Retrieves hit rate, miss rate, and memory usage for the L0 Hot Tier Cache. |
+| `hyperspace_cache_clear` | `collection` | — | Flushes all entries from the L0 Cache for the target collection. Returns `{ success }`. |
+| `hyperspace_cache_config` | `collection`, `policy` | `ann_threshold` | Updates L0 Cache eviction policy (`lru`, `lfu`, `ttl`) and similarity threshold. |
+| `hyperspace_freeze_collection` | `collection` | — | Locks collection into read-only mode to prevent new inserts. |
+| `hyperspace_unfreeze_collection` | `collection` | — | Unlocks a frozen collection to permit modifications. |
+| `hyperspace_rebuild_index` | `collection` | — | Triggers server-side HNSW index rebuild and optimization. |
+| `hyperspace_vacuum` | — | — | Purges deleted tombstones and reclaims fragmented disk space. |
+
+---
+
+## 💻 Local Development
+
 ```bash
+cd integrations/mcp-hyperspacedb
+npm install
+npm run build
 npm run dev
 ```
 
 ## 📜 License
-MIT
+
+MIT © [YARlabs](https://yar.ink)
