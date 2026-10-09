@@ -461,11 +461,14 @@ impl PayloadStore {
             let uncompressed_len = cursor.read_u32::<LittleEndian>()?;
 
             if valid == 1 {
-                index.insert(id, PayloadSlot {
-                    offset,
-                    compressed_len,
-                    uncompressed_len,
-                });
+                index.insert(
+                    id,
+                    PayloadSlot {
+                        offset,
+                        compressed_len,
+                        uncompressed_len,
+                    },
+                );
             } else {
                 index.remove(&id);
             }
