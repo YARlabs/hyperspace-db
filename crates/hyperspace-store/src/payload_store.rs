@@ -17,6 +17,7 @@
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use parking_lot::{Mutex, RwLock};
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Cursor, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
@@ -51,9 +52,10 @@ pub struct PayloadSlot {
     pub uncompressed_len: u32,
 }
 
-/// The in-RAM index — a flat `Vec` indexed by vector ID.
-/// `None` means the vector has no sidecar payload.
-type PayloadIndex = Vec<Option<PayloadSlot>>;
+/// The in-RAM index — a sparse map from vector ID to payload slot.
+/// Only IDs with actual payloads consume memory (~24-32 bytes per payload),
+/// completely eliminating OOM crashes when user-supplied IDs are large/sparse.
+type PayloadIndex = HashMap<u32, PayloadSlot>;
 
 /// Append-only, zstd-compressed sidecar payload store.
 ///
@@ -134,7 +136,7 @@ impl PayloadStore {
         let index = if index_path.exists() {
             Self::load_index(&index_path)?
         } else {
-            Vec::new()
+            HashMap::new()
         };
 
         let index_writer_file = OpenOptions::new()
@@ -208,7 +210,7 @@ impl PayloadStore {
             entry_offset
         };
 
-        // 3. Update the in-RAM index (atomic swap under write lock)
+        // 3. Update the in-RAM index (atomic insert under write lock)
         let slot = PayloadSlot {
             offset: entry_offset,
             compressed_len,
@@ -216,11 +218,7 @@ impl PayloadStore {
         };
         {
             let mut idx = self.index.write();
-            let id_usize = id as usize;
-            if idx.len() <= id_usize {
-                idx.resize(id_usize + 1, None);
-            }
-            idx[id_usize] = Some(slot);
+            idx.insert(id, slot);
         }
 
         // 4. Persist the index using incremental append (O(1))
@@ -277,11 +275,7 @@ impl PayloadStore {
         {
             let mut idx = self.index.write();
             for &(id, slot) in &slots_to_update {
-                let id_usize = id as usize;
-                if idx.len() <= id_usize {
-                    idx.resize(id_usize + 1, None);
-                }
-                idx[id_usize] = Some(slot);
+                idx.insert(id, slot);
             }
         }
 
@@ -308,9 +302,9 @@ impl PayloadStore {
         // 1. Look up the slot under a cheap read lock
         let slot = {
             let idx = self.index.read();
-            match idx.get(id as usize) {
-                Some(Some(s)) => *s,
-                _ => return Ok(None),
+            match idx.get(&id) {
+                Some(s) => *s,
+                None => return Ok(None),
             }
         };
 
@@ -366,10 +360,7 @@ impl PayloadStore {
 
     /// Returns `true` if the given ID has a stored payload.
     pub fn has_payload(&self, id: u32) -> bool {
-        self.index
-            .read()
-            .get(id as usize)
-            .is_some_and(Option::is_some)
+        self.index.read().contains_key(&id)
     }
 
     /// Remove the payload slot for `id` (used when a vector is deleted / tombstoned).
@@ -377,9 +368,7 @@ impl PayloadStore {
     pub fn remove(&self, id: u32) -> io::Result<()> {
         {
             let mut idx = self.index.write();
-            if let Some(slot) = idx.get_mut(id as usize) {
-                *slot = None;
-            }
+            idx.remove(&id);
         }
         self.append_index_record(id, false, 0, 0, 0)?;
         Ok(())
@@ -394,9 +383,9 @@ impl PayloadStore {
         // Fast path: no payload, nothing to copy
         let slot = {
             let idx = old_store.index.read();
-            match idx.get(id as usize) {
-                Some(Some(s)) => *s,
-                _ => return Ok(()),
+            match idx.get(&id) {
+                Some(s) => *s,
+                None => return Ok(()),
             }
         };
 
@@ -431,11 +420,7 @@ impl PayloadStore {
         };
         {
             let mut idx = self.index.write();
-            let id_usize = id as usize;
-            if idx.len() <= id_usize {
-                idx.resize(id_usize + 1, None);
-            }
-            idx[id_usize] = Some(new_slot);
+            idx.insert(id, new_slot);
         }
 
         self.append_index_record(
@@ -465,7 +450,7 @@ impl PayloadStore {
     fn load_index(path: &Path) -> io::Result<PayloadIndex> {
         let data = std::fs::read(path)?;
         let mut cursor = Cursor::new(data);
-        let mut index = Vec::new();
+        let mut index = HashMap::new();
 
         let len = cursor.get_ref().len();
         while cursor.position() < len as u64 {
@@ -475,19 +460,14 @@ impl PayloadStore {
             let compressed_len = cursor.read_u32::<LittleEndian>()?;
             let uncompressed_len = cursor.read_u32::<LittleEndian>()?;
 
-            let id_usize = id as usize;
-            if index.len() <= id_usize {
-                index.resize(id_usize + 1, None);
-            }
-
             if valid == 1 {
-                index[id_usize] = Some(PayloadSlot {
+                index.insert(id, PayloadSlot {
                     offset,
                     compressed_len,
                     uncompressed_len,
                 });
             } else {
-                index[id_usize] = None;
+                index.remove(&id);
             }
         }
 
@@ -582,16 +562,9 @@ mod tests {
             store.insert(i, &payload).unwrap();
         }
 
-        // The index should only have 1_000 slots — each 24 bytes (aligned)
+        // The index should have 1_000 entries
         let slot_count = store.slot_count();
         assert_eq!(slot_count, 1_000);
-
-        // The in-RAM index uses < 100 KB (1000 × 24 bytes = 24 KB)
-        let ram_bytes = slot_count * std::mem::size_of::<Option<PayloadSlot>>();
-        assert!(
-            ram_bytes < 100_000,
-            "RAM index must be < 100 KB for 1K entries, got {ram_bytes} bytes"
-        );
 
         // But disk usage should be ~10 MB (10 KB × 1000, compressed to ~11% = ~1.1 MB)
         let disk_bytes = store.disk_size_bytes();
@@ -599,6 +572,28 @@ mod tests {
             disk_bytes > 1_000,
             "Disk must have payload data, got {disk_bytes} bytes"
         );
+    }
+
+    #[test]
+    fn test_large_sparse_id_does_not_oom() {
+        let dir = TempDir::new().unwrap();
+        let store = PayloadStore::open(dir.path(), DEFAULT_ZSTD_LEVEL).unwrap();
+        let payload = b"large id test payload".to_vec();
+
+        // 1. Large 32-bit ID from issue #14 (previously caused 72 GB allocation & exit 137)
+        let large_id = 3_032_956_553_u32;
+        store.insert(large_id, &payload).unwrap();
+
+        assert_eq!(store.slot_count(), 1);
+        let fetched = store.fetch_blocking(large_id).unwrap().unwrap();
+        assert_eq!(fetched, payload);
+
+        // 2. Max uint32 ID (4_294_967_295)
+        let max_id = u32::MAX;
+        store.insert(max_id, &payload).unwrap();
+        assert_eq!(store.slot_count(), 2);
+        let fetched_max = store.fetch_blocking(max_id).unwrap().unwrap();
+        assert_eq!(fetched_max, payload);
     }
 
     // ── Test 4: Compaction skips deleted vectors ──────────────────────────────
