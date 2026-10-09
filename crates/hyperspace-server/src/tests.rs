@@ -564,3 +564,69 @@ async fn test_pq_collection_lifecycle_and_search() {
     // Cleanup
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+#[tokio::test]
+async fn test_tenant_isolation_list_and_access() {
+    let uuid = Uuid::new_v4();
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_tenant_{uuid}"));
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+
+    let make_schema = || hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "cosine".to_string(),
+            full_dimension: 32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+
+    // 1. default_admin creates playbooks
+    manager
+        .create_collection("default_admin", "soc_playbooks", make_schema())
+        .await
+        .expect("Admin collection failed");
+    manager
+        .create_collection("default_admin", "fintech_playbook", make_schema())
+        .await
+        .expect("Admin collection failed");
+
+    // 2. Tenant A creates private collections
+    let tenant_a = "0x4E41e9f528aCfcDAD396B89438E2083Cefc0E3a4";
+    manager
+        .create_collection(tenant_a, "my_portfolio", make_schema())
+        .await
+        .expect("Tenant A collection failed");
+
+    // 3. Tenant B creates private collections
+    let tenant_b = "0x9876543210fedcba";
+    manager
+        .create_collection(tenant_b, "confidential_data", make_schema())
+        .await
+        .expect("Tenant B collection failed");
+
+    // 4. Verify list isolation
+    let list_a = manager.list(tenant_a);
+    assert_eq!(list_a, vec!["my_portfolio".to_string()]);
+
+    let list_b = manager.list(tenant_b);
+    assert_eq!(list_b, vec!["confidential_data".to_string()]);
+
+    let list_admin = manager.list("default_admin");
+    assert_eq!(
+        list_admin,
+        vec!["fintech_playbook".to_string(), "soc_playbooks".to_string()]
+    );
+
+    // 5. Verify direct cross-tenant get returns None
+    assert!(manager.get(tenant_a, "soc_playbooks").await.is_none());
+    assert!(manager.get(tenant_a, "confidential_data").await.is_none());
+    assert!(manager.get(tenant_b, "my_portfolio").await.is_none());
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

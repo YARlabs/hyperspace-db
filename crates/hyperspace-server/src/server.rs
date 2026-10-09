@@ -113,23 +113,35 @@ impl Interceptor for AuthInterceptor {
         let is_admin;
         let role;
 
+        let user_id_header = request
+            .metadata()
+            .get("x-hyperspace-user-id")
+            .and_then(|v| v.to_str().ok())
+            .map(std::string::ToString::to_string);
+
         if let Some(key_str) = provided_key {
             let mut hasher = Sha256::new();
             hasher.update(key_str.as_bytes());
             let request_hash = hex::encode(hasher.finalize());
 
             if let Some((uid, r)) = security::validate_key(&request_hash) {
-                user_id = uid;
                 role = r;
                 is_admin = r == security::UserRole::Admin;
+                if is_admin {
+                    if let Some(h_uid) = user_id_header {
+                        user_id = h_uid;
+                    } else {
+                        user_id = uid;
+                    }
+                } else {
+                    user_id = uid;
+                }
             } else {
                 return Err(Status::unauthenticated("Invalid API Key"));
             }
         } else {
-            if let Some(uid_meta) = request.metadata().get("x-hyperspace-user-id") {
-                if let Ok(uid_str) = uid_meta.to_str() {
-                    user_id = uid_str.to_string();
-                }
+            if let Some(uid_str) = user_id_header {
+                user_id = uid_str;
             }
 
             if self.expected_hash.is_none() {
@@ -648,13 +660,17 @@ impl Interceptor for ClientAuthInterceptor {
 }
 
 fn get_user_id<T>(req: &Request<T>) -> String {
-    req.metadata()
-        .get("x-hyperspace-user-id")
-        .and_then(|v| v.to_str().ok())
-        .map_or_else(
-            || "default_admin".to_string(),
-            std::string::ToString::to_string,
-        )
+    if let Some(ctx) = req.extensions().get::<GrpcRequestContext>() {
+        ctx.user_id.clone()
+    } else {
+        req.metadata()
+            .get("x-hyperspace-user-id")
+            .and_then(|v| v.to_str().ok())
+            .map_or_else(
+                || "default_admin".to_string(),
+                std::string::ToString::to_string,
+            )
+    }
 }
 
 fn get_grpc_ctx<T>(req: &Request<T>) -> GrpcRequestContext {

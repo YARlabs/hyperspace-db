@@ -63,8 +63,8 @@ async fn validate_api_key(
         .and_then(|v| v.to_str().ok())
         .map(std::string::ToString::to_string);
 
-    if let Some(uid) = user_id_header {
-        ctx.user_id = uid;
+    if let Some(ref uid) = user_id_header {
+        ctx.user_id.clone_from(uid);
     }
 
     let mut provided_key = None;
@@ -87,10 +87,22 @@ async fn validate_api_key(
         let hash = hex::encode(hasher.finalize());
 
         if let Some((uid, role)) = crate::security::validate_key(&hash) {
-            ctx.user_id = uid;
             ctx.is_admin = role == crate::security::UserRole::Admin;
             ctx.role = role;
             key_role = Some(role);
+
+            // If authenticated with Admin API key (e.g. SaaS gateway / proxy),
+            // allow scoping/impersonating the tenant specified in x-hyperspace-user-id header.
+            // If non-admin API key, strictly enforce key's owner to prevent tenant spoofing.
+            if ctx.is_admin {
+                if let Some(h_uid) = user_id_header {
+                    ctx.user_id = h_uid;
+                } else {
+                    ctx.user_id = uid;
+                }
+            } else {
+                ctx.user_id = uid;
+            }
         } else {
             return Err(StatusCode::UNAUTHORIZED);
         }
@@ -110,7 +122,6 @@ async fn validate_api_key(
                 && path != "/health"
                 && (path.starts_with("/api/") || path == "/metrics")
                 && !ctx.is_admin
-                && ctx.user_id == "anonymous"
             {
                 return Err(StatusCode::UNAUTHORIZED);
             }
