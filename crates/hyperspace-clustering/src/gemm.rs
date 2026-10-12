@@ -11,7 +11,10 @@
 mod blas_backend {
     // CBLAS constants: RowMajor=101, NoTrans=111, Trans=112. Both Accelerate
     // and OpenBLAS expose this identical symbol/ABI.
-    #[cfg_attr(feature = "accelerate", link(name = "Accelerate", kind = "framework"))]
+    #[cfg_attr(
+        all(feature = "accelerate", target_vendor = "apple"),
+        link(name = "Accelerate", kind = "framework")
+    )]
     unsafe extern "C" {
         pub fn cblas_sgemm(
             order: i32,
