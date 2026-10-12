@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 use hyperspace_store::wal::{Wal, WalEntry, WalSyncMode};
 use proptest::prelude::*;
 use std::collections::HashMap;
@@ -58,12 +60,11 @@ proptest! {
         // 2. Replay & verify
         let mut replayed = Vec::new();
         Wal::replay(&wal_path, |entry| {
-            let WalEntry::Insert {
-                id,
-                vector,
-                metadata,
-                ..
-            } = entry;
+            let (id, vector, metadata) = match entry {
+                WalEntry::Insert { id, vector, metadata, .. } => (id, vector, metadata),
+                WalEntry::Insert64 { id, vector, metadata, .. } => (id as u32, vector, metadata),
+                WalEntry::Delete { .. } => unreachable!(),
+            };
             replayed.push(TestEntry { id, vector, metadata });
         }).unwrap();
 
@@ -103,13 +104,12 @@ proptest! {
         // 3. Try to Replay
         let mut replayed = Vec::new();
         let res = Wal::replay(&wal_path, |entry| {
-             let WalEntry::Insert {
-                 id,
-                 vector,
-                 metadata,
-                 ..
-             } = entry;
-             replayed.push(TestEntry { id, vector, metadata });
+            let (id, vector, metadata) = match entry {
+                WalEntry::Insert { id, vector, metadata, .. } => (id, vector, metadata),
+                WalEntry::Insert64 { id, vector, metadata, .. } => (id as u32, vector, metadata),
+                WalEntry::Delete { .. } => unreachable!(),
+            };
+            replayed.push(TestEntry { id, vector, metadata });
         });
 
         assert!(res.is_ok(), "Replay failed on corrupted WAL: {:?}", res.err());

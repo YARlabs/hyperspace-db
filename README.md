@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.0.0** | **The World's First Schema-Driven Spatial AI Engine.**
+**v4.0.1** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,12 +33,20 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v4.0.0)
+## 🚀 Core Pillars (v4.0.1)
 
 <table>
   <tr>
     <td>⚡ <b>Thread-per-Core Engine</b></td>
     <td>Shared-Nothing architecture inspired by Seastar. Each physical CPU core runs an isolated, lock-free shard partition (<code>ShardedCollection</code>) with deterministic routing (<code>hash(id) % N</code>). Eliminates cross-core cache line bouncing and lock contention, delivering <b>142.5 QPS</b> (C=1) to <b>311.6 QPS</b> (C=10) on 1024D dense search (4.52× faster vs v3) and <b>67,500 vec/s</b> server core ingestion throughput.</td>
+  </tr>
+  <tr>
+    <td>🧬 <b>SuperKMeans & ADSampling Clustering</b></td>
+    <td>Native, zero-FFI pure Rust implementation of the CWI SuperKMeans algorithm (<code>hyperspace-clustering</code>). Employs Adaptive Distance Sampling (ADSampling) to prune 90%+ unneeded vector distance checks, SGEMM matrix multiplication for batch centroids, and dynamic Voronoi semantic compaction (<code>SemanticCompactor</code>) without full graph re-indexing.</td>
+  </tr>
+  <tr>
+    <td>🌐 <b>Hierarchical Macro-Routing & 21.2B+ Addressing</b></td>
+    <td>2-level hierarchical macro-routing in <code>MetaRouter</code> clusters chunk centroids into super-regions, pruning probe evaluations from $O(C)$ to $O(\sqrt{C} + K)$. Universal 64-bit ID addressing (<code>u64</code>) handles 21.2+ Billion vectors globally while preserving 32-bit RAM density inside HNSW graph nodes (<code>local_id: u32</code>).</td>
   </tr>
   <tr>
     <td>💾 <b>Direct I/O Hardware Storage</b></td>
@@ -49,8 +57,8 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
     <td>Hierarchical 32-vector Axis-Aligned Bounding Box (AABB) pruning discarding <b>95% to 99.9%</b> of candidate vectors before fetching vector memory for <code>InBox</code> and <code>InBall</code> geometric queries, delivering <b>1,774.0 QPS</b> (22.28× higher vs v3) at <b>0.51 ms P50 latency</b>. CPU hardware cache prefetch hints (<code>_mm_prefetch</code> on x86_64, <code>prfm pldl1keep</code> on Apple Silicon/Graviton) hide DRAM latency during HNSW beam traversal.</td>
   </tr>
   <tr>
-    <td>🔄 <b>Autonomous Startup Migration</b></td>
-    <td>Zero-downtime auto-migration engine. Keeps legacy v3.x collections in <code>data/</code> untouched; upon startup, HyperspaceDB automatically converts them to partitioned v4.x storage in <code>data_v4/{collection_name}/</code>, and audits integrity via cryptographic manifests.</td>
+    <td>🔄 <b>Autonomous Startup Migration & Durability</b></td>
+    <td>Zero-downtime auto-migration engine converting legacy v3 collections to partitioned v4 storage. Enforces strict filtering against live <code>id_map</code> and logs <code>WalEntry::Delete</code> tombstones (OpCode 5), guaranteeing zero resurrected points across restarts and crashes.</td>
   </tr>
   <tr>
     <td>⚙️ <b>Reflex-Level Speed</b></td>

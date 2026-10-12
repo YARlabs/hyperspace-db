@@ -244,6 +244,14 @@ pub type SearchResult = (
     Option<Vec<u8>>,
 );
 
+/// A single search result with 64-bit ID for billion-scale collections.
+pub type SearchResultU64 = (
+    u64,
+    f64,
+    std::collections::HashMap<String, String>,
+    Option<Vec<u8>>,
+);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Durability {
     Default,
@@ -316,7 +324,52 @@ pub trait Collection: Send + Sync + 'static {
         }
         Ok(())
     }
+
+    /// Insert vector with 64-bit ID for billion-scale collections (> 4.29B records).
+    async fn insert_u64(
+        &self,
+        vector: &[f64],
+        id: u64,
+        metadata: std::collections::HashMap<String, String>,
+        clock: u64,
+        durability: Durability,
+    ) -> Result<(), String> {
+        if id > u32::MAX as u64 {
+            return Err(format!(
+                "Collection does not support 64-bit ID {} (> u32::MAX)",
+                id
+            ));
+        }
+        self.insert(vector, id as u32, metadata, clock, durability)
+            .await
+    }
+
+    /// Batch insert vectors with 64-bit IDs.
+    async fn insert_batch_u64(
+        &self,
+        vectors: Vec<(Vec<f64>, u64, std::collections::HashMap<String, String>)>,
+        clock: u64,
+        durability: Durability,
+    ) -> Result<(), String> {
+        for (vec, id, meta) in vectors {
+            self.insert_u64(&vec, id, meta, clock, durability).await?;
+        }
+        Ok(())
+    }
+
     fn delete(&self, id: u32) -> Result<(), String>;
+
+    /// Delete vector by 64-bit ID.
+    fn delete_u64(&self, id: u64) -> Result<(), String> {
+        if id > u32::MAX as u64 {
+            return Err(format!(
+                "Collection does not support 64-bit ID {} (> u32::MAX)",
+                id
+            ));
+        }
+        self.delete(id as u32)
+    }
+
     async fn search(
         &self,
         vector: &[f64],
@@ -324,6 +377,21 @@ pub trait Collection: Send + Sync + 'static {
         complex_filters: &[FilterExpr],
         params: &SearchParams,
     ) -> Result<Vec<SearchResult>, String>;
+
+    /// Search vector returning 64-bit IDs.
+    async fn search_u64(
+        &self,
+        vector: &[f64],
+        filter: &std::collections::HashMap<String, String>,
+        complex_filters: &[FilterExpr],
+        params: &SearchParams,
+    ) -> Result<Vec<SearchResultU64>, String> {
+        let res = self.search(vector, filter, complex_filters, params).await?;
+        Ok(res
+            .into_iter()
+            .map(|(id, dist, meta, payload)| (id as u64, dist, meta, payload))
+            .collect())
+    }
     fn count(&self) -> usize;
     fn dimension(&self) -> usize;
     fn metric_name(&self) -> &'static str;
@@ -391,6 +459,12 @@ pub trait Collection: Send + Sync + 'static {
         max_nodes: usize,
     ) -> Result<Vec<Vec<u32>>, String>;
 
+    /// Repartitions immutable chunks using SuperKMeans into Voronoi partitions.
+    fn compact_semantic_chunks(&self, target_partitions: usize) -> Result<String, String> {
+        let _ = target_partitions;
+        Ok("Semantic compaction not supported for this collection type".into())
+    }
+
     /// Geometric Trust Scoring (Tribunal)
     /// Evaluates a trajectory of Node IDs and returns a trust score [0.0, 1.0]
     /// based on the Lyapunov stability / geometric distance in the local manifold.
@@ -410,6 +484,21 @@ pub trait Collection: Send + Sync + 'static {
         self.peek(self.count().max(1), 0)
             .into_iter()
             .filter(|(id, _, _)| id_set.contains(id))
+            .collect()
+    }
+
+    /// Fetch raw point data for 64-bit IDs. Returns (id, vector, metadata) tuples.
+    fn get_points_u64(
+        &self,
+        ids: &[u64],
+    ) -> Vec<(u64, Vec<f64>, std::collections::HashMap<String, String>)> {
+        let u32_ids: Vec<u32> = ids
+            .iter()
+            .filter_map(|&id| u32::try_from(id).ok())
+            .collect();
+        self.get_points(&u32_ids)
+            .into_iter()
+            .map(|(id, vec, meta)| (id as u64, vec, meta))
             .collect()
     }
 

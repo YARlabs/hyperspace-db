@@ -55,6 +55,14 @@ impl MigrationEngine {
         v4_data_dir: &Path,
         legacy_v3_dir: &Path,
     ) -> Result<Vec<MigrationReport>, String> {
+        if std::env::var("HS_DISABLE_V3_MIGRATION")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            println!("⏭️ [MigrationEngine] V3 migration disabled via HS_DISABLE_V3_MIGRATION.");
+            return Ok(Vec::new());
+        }
+
         let legacy_sub_dir = legacy_v3_dir.join("legacy_v3");
         let legacy_alt_dir = legacy_v3_dir.join("legacy");
         let v4_legacy_sub = v4_data_dir.join("legacy_v3");
@@ -362,6 +370,36 @@ impl MigrationEngine {
         let quant_mode = meta.quantization_mode();
         let schema = meta.get_schema();
 
+        // Load legacy state.json (contains authoritative id_map of live points and last_persisted_clock)
+        let state_path = source_dir.join("state.json");
+        let mut valid_id_set: Option<std::collections::HashSet<u64>> = None;
+        let mut reverse_id_map: HashMap<u32, u32> = HashMap::new();
+        let mut loaded_clock: u64 = 0;
+
+        if let Ok(s) = fs::read_to_string(&state_path) {
+            if let Ok(st) = serde_json::from_str::<serde_json::Value>(&s) {
+                if let Some(id_map_obj) = st.get("id_map").and_then(|m| m.as_object()) {
+                    let mut set = std::collections::HashSet::with_capacity(id_map_obj.len());
+                    for (k, _) in id_map_obj {
+                        if let Ok(id) = k.parse::<u64>() {
+                            set.insert(id);
+                        }
+                    }
+                    valid_id_set = Some(set);
+                }
+                if let Some(rev) = st.get("reverse_id_map").and_then(|m| m.as_object()) {
+                    for (k, v) in rev {
+                        if let (Ok(int_id), Some(ext_id)) = (k.parse::<u32>(), v.as_u64()) {
+                            reverse_id_map.insert(int_id, ext_id as u32);
+                        }
+                    }
+                }
+                if let Some(c) = st.get("last_persisted_clock").and_then(|c| c.as_u64()) {
+                    loaded_clock = c;
+                }
+            }
+        }
+
         // 2. Initialize v4 ShardedCollection
         let (rep_tx, _) = tokio::sync::broadcast::channel(128);
         let node_id = "v4_migrator".to_string();
@@ -400,7 +438,18 @@ impl MigrationEngine {
                                 metadata,
                                 logical_clock,
                             } => {
-                                // Sanity check vector length and finite values
+                                let id_u64 = id as u64;
+                                // Issue #19 FIX: Filter out deleted points!
+                                // Points present in WAL but absent from state.json id_map
+                                // with logical_clock <= loaded_clock were deleted in v3.
+                                if let Some(ref live_ids) = valid_id_set {
+                                    if (loaded_clock == 0 || logical_clock <= loaded_clock)
+                                        && !live_ids.contains(&id_u64)
+                                    {
+                                        continue;
+                                    }
+                                }
+
                                 if vector.len() < dim {
                                     vector.resize(dim, 0.0);
                                 } else if vector.len() > dim {
@@ -423,6 +472,48 @@ impl MigrationEngine {
                                     .await?;
                                 migrated += 1;
                             }
+                            hyperspace_store::wal::WalEntry::Insert64 {
+                                id,
+                                mut vector,
+                                metadata,
+                                logical_clock,
+                            } => {
+                                if let Some(ref live_ids) = valid_id_set {
+                                    if (loaded_clock == 0 || logical_clock <= loaded_clock)
+                                        && !live_ids.contains(&id)
+                                    {
+                                        continue;
+                                    }
+                                }
+
+                                if vector.len() < dim {
+                                    vector.resize(dim, 0.0);
+                                } else if vector.len() > dim {
+                                    vector.truncate(dim);
+                                }
+                                for val in &mut vector {
+                                    if !val.is_finite() {
+                                        *val = 0.0;
+                                    }
+                                }
+
+                                v4_col
+                                    .insert_u64(
+                                        &vector,
+                                        id,
+                                        metadata,
+                                        logical_clock,
+                                        hyperspace_core::Durability::Default,
+                                    )
+                                    .await?;
+                                migrated += 1;
+                            }
+                            hyperspace_store::wal::WalEntry::Delete { id, .. } => {
+                                let _ = v4_col.delete_u64(id);
+                                if migrated > 0 {
+                                    migrated -= 1;
+                                }
+                            }
                         }
                     }
                 } else {
@@ -431,28 +522,20 @@ impl MigrationEngine {
                     let legacy_store = VectorStore::new(source_dir, element_size);
                     let mut total_vectors = legacy_store.count();
 
-                    let mut reverse_id_map: HashMap<u32, u32> = HashMap::new();
-                    if let Ok(s) = fs::read_to_string(source_dir.join("state.json")) {
-                        if let Ok(st) = serde_json::from_str::<serde_json::Value>(&s) {
-                            if let Some(rev) = st.get("reverse_id_map").and_then(|m| m.as_object()) {
-                                for (k, v) in rev {
-                                    if let (Ok(int_id), Some(ext_id)) = (k.parse::<u32>(), v.as_u64()) {
-                                        reverse_id_map.insert(int_id, ext_id as u32);
-                                    }
-                                }
-                            }
-                            if let Some(cnt) = st.get("id_map").and_then(|m| m.as_object()).map(|m| m.len()) {
-                                total_vectors = total_vectors.max(cnt);
-                            }
-                        }
+                    if let Some(max_int) = reverse_id_map.keys().copied().max() {
+                        total_vectors = total_vectors.max((max_int as usize) + 1);
                     }
 
-                    if total_vectors == 0 && element_size > 0 {
+                    if let Some(ref live_ids) = valid_id_set {
+                        total_vectors = total_vectors.max(live_ids.len());
+                    }
+
+                    if element_size > 0 {
                         let chunk_0 = source_dir.join("chunk_0.hyp");
                         if chunk_0.exists() {
                             if let Ok(file_bytes) = fs::read(&chunk_0) {
                                 if let Some(last_pos) = file_bytes.iter().rposition(|&b| b != 0) {
-                                    total_vectors = (last_pos / element_size) + 1;
+                                    total_vectors = total_vectors.max((last_pos / element_size) + 1);
                                 }
                             }
                         }
@@ -467,8 +550,32 @@ impl MigrationEngine {
 
                     for i in 0..total_vectors {
                         let internal_id = i as u32;
-                        let external_id = reverse_id_map.get(&internal_id).copied().unwrap_or(internal_id);
+                        // Issue #19 FIX: Do NOT fallback with unwrap_or(internal_id) if reverse_id_map exists!
+                        // A missing entry indicates the point was deleted in v3.
+                        let external_id = if !reverse_id_map.is_empty() {
+                            match reverse_id_map.get(&internal_id) {
+                                Some(&ext_id) => ext_id,
+                                None => continue, // Deleted in v3!
+                            }
+                        } else if let Some(ref live_ids) = valid_id_set {
+                            if !live_ids.contains(&(internal_id as u64)) {
+                                continue;
+                            }
+                            internal_id
+                        } else {
+                            internal_id
+                        };
+
+                        if let Some(ref live_ids) = valid_id_set {
+                            if !live_ids.contains(&(external_id as u64)) {
+                                continue;
+                            }
+                        }
+
                         let raw_bytes = legacy_store.get(internal_id);
+                        if raw_bytes.len() < element_size {
+                            continue;
+                        }
 
                         let coords = Self::decode_legacy_vector(raw_bytes, quant_mode, dim, &metric_str);
 
@@ -971,5 +1078,200 @@ mod tests {
                 .await
                 .unwrap();
         assert!(reports2.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_issue_19_v3_to_v4_migration_does_not_resurrect_deleted_points_wal() {
+        let base_dir = tempdir().unwrap();
+        let legacy_data_dir = base_dir.path().join("data_v3");
+        let v4_data_dir = base_dir.path().join("data_v4");
+
+        let col_dir = legacy_data_dir.join("repro");
+        fs::create_dir_all(&col_dir).unwrap();
+
+        // 1. Setup metadata for 8-dim euclidean
+        let meta = CollectionMetadata {
+            dimension: Some(8),
+            metric: Some("euclidean".to_string()),
+            quantization: "none".to_string(),
+            sharded: false,
+            schema: None,
+        };
+        meta.save(&col_dir).unwrap();
+
+        // 2. Setup WAL log with inserts for IDs 1, 2, 3 (simulating v3 insertion before delete)
+        let wal_path = col_dir.join("wal.log");
+        let mut wal =
+            hyperspace_store::wal::Wal::new(&wal_path, hyperspace_store::wal::WalSyncMode::Strict)
+                .unwrap();
+        for i in 1..=3 {
+            let vec = vec![i as f64; 8];
+            let mut metadata = HashMap::new();
+            metadata.insert("text".to_string(), format!("point {i}"));
+            wal.append(i, &vec, &metadata, i as u64).unwrap();
+        }
+        wal.sync().unwrap();
+
+        // 3. Setup state.json where point 2 was deleted and snapshot was saved
+        // id_map only contains 1 and 3; reverse_id_map only contains 0->1, 2->3
+        let state = serde_json::json!({
+            "id_map": {
+                "1": 0,
+                "3": 2
+            },
+            "reverse_id_map": {
+                "0": 1,
+                "2": 3
+            },
+            "buckets": vec![0u64; 1024],
+            "last_persisted_clock": 3
+        });
+        fs::write(
+            col_dir.join("state.json"),
+            serde_json::to_string(&state).unwrap(),
+        )
+        .unwrap();
+
+        // 4. Run migration to v4
+        let reports =
+            MigrationEngine::run_startup_migration_with_legacy(&v4_data_dir, &legacy_data_dir)
+                .await
+                .unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].collection_name, "repro");
+        // MUST ONLY MIGRATE LIVE POINTS (1 and 3) -> vector_count must be 2, NOT 3!
+        assert_eq!(
+            reports[0].vector_count, 2,
+            "Resurrection detected! Expected 2 live vectors, but got {}",
+            reports[0].vector_count
+        );
+
+        // 5. Open migrated v4 collection and verify scroll and count
+        let target_col_dir = v4_data_dir.join("repro");
+        let (rep_tx, _) = tokio::sync::broadcast::channel(128);
+        let col =
+            crate::sharded_engine::ShardedCollection::<hyperspace_core::EuclideanMetric>::new(
+                "repro".to_string(),
+                "test_node".to_string(),
+                target_col_dir,
+                hyperspace_core::QuantizationMode::None,
+                rep_tx,
+                8,
+                meta.get_schema(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            col.count(),
+            2,
+            "Collection count must reflect 2 live points"
+        );
+        let points = col.scroll(100, 0, &[]);
+        let returned_ids: Vec<u32> = points.into_iter().map(|(id, _, _)| id).collect();
+        assert_eq!(returned_ids.len(), 2);
+        assert!(returned_ids.contains(&1));
+        assert!(returned_ids.contains(&3));
+        assert!(
+            !returned_ids.contains(&2),
+            "Point 2 MUST NOT be present in scroll!"
+        );
+
+        let fetched = col.get_points(&[1, 2, 3]);
+        let fetched_ids: Vec<u32> = fetched.into_iter().map(|(id, _, _)| id).collect();
+        assert_eq!(fetched_ids.len(), 2);
+        assert!(
+            !fetched_ids.contains(&2),
+            "Point 2 MUST NOT be returned by get_points!"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_issue_19_v3_to_v4_migration_does_not_resurrect_deleted_points_chunks() {
+        let base_dir = tempdir().unwrap();
+        let legacy_data_dir = base_dir.path().join("data_v3");
+        let v4_data_dir = base_dir.path().join("data_v4");
+
+        let col_dir = legacy_data_dir.join("repro_chunk");
+        fs::create_dir_all(&col_dir).unwrap();
+
+        let meta = CollectionMetadata {
+            dimension: Some(8),
+            metric: Some("euclidean".to_string()),
+            quantization: "none".to_string(),
+            sharded: false,
+            schema: None,
+        };
+        meta.save(&col_dir).unwrap();
+
+        // Write 3 raw 8-dim f64 vectors into chunk_0.hyp (each is 8 * 8 = 64 bytes)
+        let chunk_file = col_dir.join("chunk_0.hyp");
+        let mut chunk_bytes = Vec::new();
+        for i in 1..=3 {
+            for _ in 0..8 {
+                chunk_bytes.extend_from_slice(&(i as f64).to_le_bytes());
+            }
+        }
+        fs::write(&chunk_file, &chunk_bytes).unwrap();
+
+        // state.json indicates point 2 (internal_id 1) was deleted
+        let state = serde_json::json!({
+            "id_map": {
+                "1": 0,
+                "3": 2
+            },
+            "reverse_id_map": {
+                "0": 1,
+                "2": 3
+            },
+            "buckets": vec![0u64; 1024],
+            "last_persisted_clock": 3
+        });
+        fs::write(
+            col_dir.join("state.json"),
+            serde_json::to_string(&state).unwrap(),
+        )
+        .unwrap();
+
+        // Run migration (no wal.log, Priority 2 Chunk path)
+        let reports =
+            MigrationEngine::run_startup_migration_with_legacy(&v4_data_dir, &legacy_data_dir)
+                .await
+                .unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].collection_name, "repro_chunk");
+        assert_eq!(
+            reports[0].vector_count, 2,
+            "Chunk migration resurrected deleted slot! Expected 2, got {}",
+            reports[0].vector_count
+        );
+
+        let target_col_dir = v4_data_dir.join("repro_chunk");
+        let (rep_tx, _) = tokio::sync::broadcast::channel(128);
+        let col =
+            crate::sharded_engine::ShardedCollection::<hyperspace_core::EuclideanMetric>::new(
+                "repro_chunk".to_string(),
+                "test_node".to_string(),
+                target_col_dir,
+                hyperspace_core::QuantizationMode::None,
+                rep_tx,
+                8,
+                meta.get_schema(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(col.count(), 2);
+        let points = col.scroll(100, 0, &[]);
+        let returned_ids: Vec<u32> = points.into_iter().map(|(id, _, _)| id).collect();
+        assert_eq!(returned_ids.len(), 2);
+        assert!(returned_ids.contains(&1));
+        assert!(returned_ids.contains(&3));
+        assert!(
+            !returned_ids.contains(&2),
+            "Point 2 MUST NOT be present in scroll!"
+        );
     }
 }

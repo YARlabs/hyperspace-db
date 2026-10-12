@@ -1,0 +1,29 @@
+[package]
+name = "hyperspace-clustering"
+version = "4.0.1"
+edition = "2021"
+authors = ["ParadeDB <support@paradedb.com>", "HyperspaceDB Authors"]
+description = "High-performance vector clustering (SuperKMeans & HierarchicalSuperKMeans) for HyperspaceDB"
+license = "MIT"
+
+[lib]
+name = "hyperspace_clustering"
+path = "src/lib.rs"
+
+[features]
+blas = []
+accelerate = ["blas"]
+openblas = ["blas"]
+
+[dependencies]
+matrixmultiply = { version = "0.3", features = ["threading"] }
+rayon = "1.10"
+rand = "0.8"
+rand_chacha = "0.3"
+rand_distr = "0.4"
+
+[build-dependencies]
+pkg-config = "0.3"
+
+[dev-dependencies]
+criterion = "0.5"

@@ -47,6 +47,38 @@ impl Ord for ScoredCandidate {
     }
 }
 
+#[derive(Debug)]
+struct ScoredCandidate64 {
+    distance: f64,
+    id: u64,
+    metadata: HashMap<String, String>,
+    payload: Option<Vec<u8>>,
+}
+
+impl PartialEq for ScoredCandidate64 {
+    fn eq(&self, other: &Self) -> bool {
+        self.distance == other.distance
+    }
+}
+
+impl Eq for ScoredCandidate64 {}
+
+impl PartialOrd for ScoredCandidate64 {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ScoredCandidate64 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other
+            .distance
+            .partial_cmp(&self.distance)
+            .map(|o| o.reverse())
+            .unwrap_or(std::cmp::Ordering::Less)
+    }
+}
+
 /// Thread-Per-Core (Shared-Nothing) Sharded Collection for HyperspaceDB v4.0.0.
 ///
 /// Divides vector storage, WriteBuffers, HNSW graphs, and Direct I/O blocks into N isolated shards.
@@ -197,25 +229,58 @@ impl<M: Metric> ShardedCollection<M> {
                         num_shards
                     );
                     for entry in replay_entries {
-                        let hyperspace_store::wal::WalEntry::Insert {
-                            id,
-                            vector,
-                            metadata,
-                            logical_clock,
-                        } = entry;
-                        let shard_idx = (id as usize) % num_shards;
-                        let shard = &shards[shard_idx];
-                        if logical_clock > shard.last_clock() {
-                            let _ = shard
-                                .insert_internal(
-                                    &vector,
-                                    id,
-                                    metadata,
-                                    logical_clock,
-                                    Durability::Async,
-                                    false,
-                                )
-                                .await;
+                        match entry {
+                            hyperspace_store::wal::WalEntry::Insert {
+                                id,
+                                vector,
+                                metadata,
+                                logical_clock,
+                            } => {
+                                let shard_idx = (id as usize) % num_shards;
+                                let shard = &shards[shard_idx];
+                                if logical_clock > shard.last_clock() {
+                                    let _ = shard
+                                        .insert_internal(
+                                            &vector,
+                                            id,
+                                            metadata,
+                                            logical_clock,
+                                            Durability::Async,
+                                            false,
+                                        )
+                                        .await;
+                                }
+                            }
+                            hyperspace_store::wal::WalEntry::Insert64 {
+                                id,
+                                vector,
+                                metadata,
+                                logical_clock,
+                            } => {
+                                let shard_idx = (id % (num_shards as u64)) as usize;
+                                let local_id = (id / (num_shards as u64)) as u32;
+                                let shard = &shards[shard_idx];
+                                if logical_clock > shard.last_clock() {
+                                    let _ = shard
+                                        .insert_internal(
+                                            &vector,
+                                            local_id,
+                                            metadata,
+                                            logical_clock,
+                                            Durability::Async,
+                                            false,
+                                        )
+                                        .await;
+                                }
+                            }
+                            hyperspace_store::wal::WalEntry::Delete { id, logical_clock } => {
+                                let shard_idx = (id % (num_shards as u64)) as usize;
+                                let local_id = (id / (num_shards as u64)) as u32;
+                                let shard = &shards[shard_idx];
+                                if logical_clock > shard.last_clock() {
+                                    let _ = shard.delete(local_id);
+                                }
+                            }
                         }
                     }
                 }
@@ -237,6 +302,29 @@ impl<M: Metric> ShardedCollection<M> {
     #[inline]
     fn get_shard_index(&self, id: u32) -> usize {
         (id as usize) % self.num_shards
+    }
+
+    /// Decomposes a global 64-bit ID into a target shard index and local 32-bit ID.
+    /// This enables collections with > 5B to 21.2B+ vectors (e.g. 34.3B vectors across 8 shards)
+    /// without converting internal HNSW graph pointers to 64-bit (saving gigabytes/terabytes of RAM).
+    #[inline]
+    pub fn decompose_id64(&self, id: u64) -> Result<(usize, u32), String> {
+        let n = self.num_shards as u64;
+        let shard_idx = (id % n) as usize;
+        let local_id = id / n;
+        if local_id > u32::MAX as u64 {
+            return Err(format!(
+                "ID {} exceeds shard capacity with {} shards (local_id {} > u32::MAX)",
+                id, self.num_shards, local_id
+            ));
+        }
+        Ok((shard_idx, local_id as u32))
+    }
+
+    /// Composes a global 64-bit ID from shard index and local 32-bit ID.
+    #[inline]
+    pub fn compose_id64(&self, shard_idx: usize, local_id: u32) -> u64 {
+        (local_id as u64) * (self.num_shards as u64) + (shard_idx as u64)
     }
 
     /// Flushes all pending writes, waits for asynchronous indexing to finish,
@@ -367,9 +455,93 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         Ok(())
     }
 
+    async fn insert_u64(
+        &self,
+        vector: &[f64],
+        id: u64,
+        metadata: HashMap<String, String>,
+        clock: u64,
+        durability: Durability,
+    ) -> Result<(), String> {
+        let (shard_idx, local_id) = self.decompose_id64(id)?;
+
+        if let Some(ref wal) = self.wal {
+            let mut wal_guard = wal.lock().await;
+            wal_guard
+                .append_u64(id, vector, &metadata, clock)
+                .map_err(|e| format!("Unified WAL append_u64 failed: {e}"))?;
+            if durability == Durability::Strict {
+                wal_guard
+                    .sync()
+                    .map_err(|e| format!("Unified WAL sync failed: {e}"))?;
+            }
+        }
+
+        self.shards[shard_idx]
+            .insert_internal(vector, local_id, metadata, clock, durability, false)
+            .await?;
+        self.root_hash.fetch_xor(id ^ clock, Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn insert_batch_u64(
+        &self,
+        vectors: Vec<(Vec<f64>, u64, HashMap<String, String>)>,
+        clock: u64,
+        durability: Durability,
+    ) -> Result<(), String> {
+        if vectors.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(ref wal) = self.wal {
+            let mut wal_guard = wal.lock().await;
+            wal_guard
+                .append_batch_u64(&vectors, clock)
+                .map_err(|e| format!("Unified WAL append_batch_u64 failed: {e}"))?;
+            if durability == Durability::Strict {
+                wal_guard
+                    .sync()
+                    .map_err(|e| format!("Unified WAL sync failed: {e}"))?;
+            }
+        }
+
+        let mut buckets: Vec<Vec<(Vec<f64>, u32, HashMap<String, String>)>> =
+            vec![Vec::new(); self.num_shards];
+
+        for (vec, id, meta) in vectors {
+            let (shard_idx, local_id) = self.decompose_id64(id)?;
+            buckets[shard_idx].push((vec, local_id, meta));
+        }
+
+        let futures: Vec<_> = buckets
+            .into_iter()
+            .enumerate()
+            .filter(|(_, batch)| !batch.is_empty())
+            .map(|(shard_idx, batch)| {
+                let shard = Arc::clone(&self.shards[shard_idx]);
+                async move {
+                    shard
+                        .insert_batch_internal(batch, clock, durability, false)
+                        .await
+                }
+            })
+            .collect();
+
+        for res in futures::future::join_all(futures).await {
+            res?;
+        }
+        Ok(())
+    }
+
     fn delete(&self, id: u32) -> Result<(), String> {
         let shard_idx = self.get_shard_index(id);
         self.shards[shard_idx].delete(id)
+    }
+
+    fn delete_u64(&self, id: u64) -> Result<(), String> {
+        let (shard_idx, local_id) = self.decompose_id64(id)?;
+        self.shards[shard_idx].delete(local_id)
     }
 
     fn update_payload(&self, id: u32, metadata: HashMap<String, String>) -> Result<(), String> {
@@ -470,6 +642,88 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             .collect();
         // `into_sorted_vec` already returns ascending order for a max-heap;
         // verify and ensure correctness regardless of future stdlib changes.
+        output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(output)
+    }
+
+    async fn search_u64(
+        &self,
+        vector: &[f64],
+        filter: &HashMap<String, String>,
+        complex_filters: &[FilterExpr],
+        params: &SearchParams,
+    ) -> Result<Vec<hyperspace_core::SearchResultU64>, String> {
+        let top_k = params.top_k.max(1);
+        let shard_top_k = (top_k + 6).max(top_k * 2);
+        let shard_ef = params.ef_search.max(shard_top_k);
+
+        let shard_params = SearchParams {
+            top_k: shard_top_k,
+            ef_search: shard_ef,
+            hybrid_query: params.hybrid_query.clone(),
+            hybrid_alpha: params.hybrid_alpha,
+            component_weights: params.component_weights.clone(),
+            use_wasserstein: params.use_wasserstein,
+            bm25_options: params.bm25_options.clone(),
+            fusion_method: params.fusion_method.clone(),
+            mrl_dimension: params.mrl_dimension,
+            include_payload: params.include_payload,
+            use_wave: params.use_wave,
+        };
+
+        let futures: Vec<_> = self
+            .shards
+            .iter()
+            .enumerate()
+            .map(|(shard_idx, shard)| {
+                let shard_ref = Arc::clone(shard);
+                let sp = shard_params.clone();
+                async move {
+                    let res = shard_ref.search(vector, filter, complex_filters, &sp).await;
+                    (shard_idx, res)
+                }
+            })
+            .collect();
+
+        let shard_results = futures::future::join_all(futures).await;
+
+        let mut heap: BinaryHeap<ScoredCandidate64> = BinaryHeap::with_capacity(top_k + 1);
+
+        for (shard_idx, res) in shard_results {
+            match res {
+                Ok(items) => {
+                    for (local_id, dist, meta, payload) in items {
+                        let global_id = self.compose_id64(shard_idx, local_id);
+                        if heap.len() < top_k {
+                            heap.push(ScoredCandidate64 {
+                                distance: dist,
+                                id: global_id,
+                                metadata: meta,
+                                payload,
+                            });
+                        } else {
+                            let worst = heap.peek().unwrap().distance;
+                            if dist < worst {
+                                heap.pop();
+                                heap.push(ScoredCandidate64 {
+                                    distance: dist,
+                                    id: global_id,
+                                    metadata: meta,
+                                    payload,
+                                });
+                            }
+                        }
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        let mut output: Vec<hyperspace_core::SearchResultU64> = heap
+            .into_sorted_vec()
+            .into_iter()
+            .map(|c| (c.id, c.distance, c.metadata, c.payload))
+            .collect();
         output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         Ok(output)
     }
@@ -608,6 +862,64 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         out
     }
 
+    fn get_points(&self, ids: &[u32]) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
+        let mut shard_buckets: Vec<Vec<(usize, u32)>> = vec![Vec::new(); self.num_shards];
+        for (pos, &id) in ids.iter().enumerate() {
+            let shard_idx = self.get_shard_index(id);
+            shard_buckets[shard_idx].push((pos, id));
+        }
+
+        let mut results = vec![None; ids.len()];
+        for (shard_idx, reqs) in shard_buckets.into_iter().enumerate() {
+            if reqs.is_empty() {
+                continue;
+            }
+            let local_ids: Vec<u32> = reqs.iter().map(|(_, lid)| *lid).collect();
+            let points = self.shards[shard_idx].get_points(&local_ids);
+            let map: HashMap<u32, (Vec<f64>, HashMap<String, String>)> = points
+                .into_iter()
+                .map(|(lid, vec, meta)| (lid, (vec, meta)))
+                .collect();
+            for (pos, lid) in reqs {
+                if let Some((vec, meta)) = map.get(&lid) {
+                    results[pos] = Some((lid, vec.clone(), meta.clone()));
+                }
+            }
+        }
+
+        results.into_iter().flatten().collect()
+    }
+
+    fn get_points_u64(&self, ids: &[u64]) -> Vec<(u64, Vec<f64>, HashMap<String, String>)> {
+        let mut shard_buckets: Vec<Vec<(usize, u32)>> = vec![Vec::new(); self.num_shards];
+        for (pos, &id) in ids.iter().enumerate() {
+            if let Ok((shard_idx, local_id)) = self.decompose_id64(id) {
+                shard_buckets[shard_idx].push((pos, local_id));
+            }
+        }
+
+        let mut results = vec![None; ids.len()];
+        for (shard_idx, reqs) in shard_buckets.into_iter().enumerate() {
+            if reqs.is_empty() {
+                continue;
+            }
+            let local_ids: Vec<u32> = reqs.iter().map(|(_, lid)| *lid).collect();
+            let points = self.shards[shard_idx].get_points(&local_ids);
+            let map: HashMap<u32, (Vec<f64>, HashMap<String, String>)> = points
+                .into_iter()
+                .map(|(lid, vec, meta)| (lid, (vec, meta)))
+                .collect();
+            for (pos, lid) in reqs {
+                if let Some((vec, meta)) = map.get(&lid) {
+                    let global_id = ids[pos];
+                    results[pos] = Some((global_id, vec.clone(), meta.clone()));
+                }
+            }
+        }
+
+        results.into_iter().flatten().collect()
+    }
+
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {
         let shard_idx = self.get_shard_index(id);
         self.shards[shard_idx].graph_neighbors(id, layer, limit)
@@ -650,6 +962,16 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         }
         all_clusters.truncate(max_clusters);
         Ok(all_clusters)
+    }
+
+    fn compact_semantic_chunks(&self, target_partitions: usize) -> Result<String, String> {
+        let mut results = Vec::new();
+        for (idx, s) in self.shards.iter().enumerate() {
+            if let Ok(msg) = s.compact_semantic_chunks(target_partitions) {
+                results.push(format!("Shard {idx}: {msg}"));
+            }
+        }
+        Ok(results.join("; "))
     }
 
     async fn insert_payload(&self, id: u32, payload: Vec<u8>) -> Result<(), String> {

@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-server"
-version = "4.0.0"
+version = "4.0.1"
 default-run = "hyperspace-server"
 edition = "2021"
 
@@ -13,6 +13,7 @@ hyperspace-core = { workspace = true, features = ["gpu-runtime"] }
 hyperspace-index = { workspace = true }
 hyperspace-store = { workspace = true }
 hyperspace-cache = { workspace = true }
+hyperspace-clustering = { workspace = true }
 tokio-stream = "0.1"
 rand = "0.8"
 sha2 = "0.10.9"

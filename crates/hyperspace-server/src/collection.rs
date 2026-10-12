@@ -531,39 +531,86 @@ impl<M: Metric> CollectionImpl<M> {
 
         for path in final_replay {
             Wal::replay(&path, |entry| {
-                let hyperspace_store::wal::WalEntry::Insert {
-                    id,
-                    vector,
-                    metadata,
-                    logical_clock,
-                } = entry;
+                match entry {
+                    hyperspace_store::wal::WalEntry::Insert {
+                        id,
+                        vector,
+                        metadata,
+                        logical_clock,
+                    } => {
+                        // Only replay operations strictly newer than what's persisted in state.json
+                        if logical_clock > loaded_clock {
+                            // If ID exists, delete old version from index to prevent leaks (Upsert)
+                            if let Some(&old_internal_id) = id_map_data.get(&id) {
+                                index_ref.delete(old_internal_id);
+                                reverse_id_map_data.remove(&old_internal_id);
+                            }
 
-                // Only replay operations strictly newer than what's persisted in state.json
-                if logical_clock > loaded_clock {
-                    // If ID exists, delete old version from index to prevent leaks (Upsert)
-                    if let Some(&old_internal_id) = id_map_data.get(&id) {
-                        index_ref.delete(old_internal_id);
-                        reverse_id_map_data.remove(&old_internal_id);
-                    }
+                            if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
+                                id_map_data.insert(id, internal_id);
+                                reverse_id_map_data.insert(internal_id, id);
 
-                    if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
-                        id_map_data.insert(id, internal_id);
-                        reverse_id_map_data.insert(internal_id, id);
+                                if gossip_env {
+                                    let canonical: Vec<f64> = if storage_f32 {
+                                        vector.iter().map(|&x| (x as f32) as f64).collect()
+                                    } else {
+                                        vector.clone()
+                                    };
+                                    let hash = CollectionDigest::hash_entry(id, &canonical);
+                                    let b_idx = CollectionDigest::get_bucket_index(id);
+                                    buckets_data[b_idx] ^= hash;
+                                }
 
-                        if gossip_env {
-                            let canonical: Vec<f64> = if storage_f32 {
-                                vector.iter().map(|&x| (x as f32) as f64).collect()
-                            } else {
-                                vector.clone()
-                            };
-                            let hash = CollectionDigest::hash_entry(id, &canonical);
-                            let b_idx = CollectionDigest::get_bucket_index(id);
-                            buckets_data[b_idx] ^= hash;
+                                // Track max clock derived from WAL
+                                last_clock.fetch_max(logical_clock, Ordering::Relaxed);
+                                wal_pending_count.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
+                    }
+                    hyperspace_store::wal::WalEntry::Insert64 {
+                        id,
+                        vector,
+                        metadata,
+                        logical_clock,
+                    } => {
+                        let id = id as u32;
+                        if logical_clock > loaded_clock {
+                            if let Some(&old_internal_id) = id_map_data.get(&id) {
+                                index_ref.delete(old_internal_id);
+                                reverse_id_map_data.remove(&old_internal_id);
+                            }
 
-                        // Track max clock derived from WAL
-                        last_clock.fetch_max(logical_clock, Ordering::Relaxed);
-                        wal_pending_count.fetch_add(1, Ordering::Relaxed);
+                            if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
+                                id_map_data.insert(id, internal_id);
+                                reverse_id_map_data.insert(internal_id, id);
+
+                                if gossip_env {
+                                    let canonical: Vec<f64> = if storage_f32 {
+                                        vector.iter().map(|&x| (x as f32) as f64).collect()
+                                    } else {
+                                        vector.clone()
+                                    };
+                                    let hash = CollectionDigest::hash_entry(id, &canonical);
+                                    let b_idx = CollectionDigest::get_bucket_index(id);
+                                    buckets_data[b_idx] ^= hash;
+                                }
+
+                                last_clock.fetch_max(logical_clock, Ordering::Relaxed);
+                                wal_pending_count.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                    hyperspace_store::wal::WalEntry::Delete { id, logical_clock } => {
+                        let id = id as u32;
+                        if logical_clock > loaded_clock {
+                            if let Some(&old_internal_id) = id_map_data.get(&id) {
+                                index_ref.delete(old_internal_id);
+                                reverse_id_map_data.remove(&old_internal_id);
+                            }
+                            id_map_data.remove(&id);
+                            last_clock.fetch_max(logical_clock, Ordering::Relaxed);
+                            wal_pending_count.fetch_add(1, Ordering::Relaxed);
+                        }
                     }
                 }
             })?;
@@ -1137,7 +1184,13 @@ impl<M: Metric> CollectionImpl<M> {
                 for (i, path) in frozen_wal_paths.iter().enumerate() {
                     let replay_start = std::time::Instant::now();
                     let replay_res = Wal::replay(path, |entry| {
-                        let hyperspace_store::wal::WalEntry::Insert { vector, metadata, .. } = entry;
+                        let (vector, metadata) = match entry {
+                            hyperspace_store::wal::WalEntry::Insert { vector, metadata, .. }
+                            | hyperspace_store::wal::WalEntry::Insert64 { vector, metadata, .. } => {
+                                (vector, metadata)
+                            }
+                            hyperspace_store::wal::WalEntry::Delete { .. } => return,
+                        };
                         if vector.len() == dimension {
                             centroid_acc.add(&vector);
                             if let Ok(new_id) = local_index.insert_to_storage(&vector) {
@@ -1441,6 +1494,18 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         if let Some(ref cache) = self.cache {
             cache.invalidate(id);
         }
+
+        let clock = self.last_clock.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Ok(mut wal) = self.wal_link.load().try_lock() {
+            let _ = wal.append_delete(id as u64, clock);
+        } else {
+            let wal_link = self.wal_link.load().clone();
+            tokio::spawn(async move {
+                let mut wal = wal_link.lock().await;
+                let _ = wal.append_delete(id as u64, clock);
+            });
+        }
+
         Ok(())
     }
 
@@ -2228,7 +2293,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     }
 
     fn count(&self) -> usize {
-        let mem_count = self.index_link.load().count_nodes();
+        let index = self.index_link.load();
+        let deleted = index.metadata.deleted.read().len() as usize;
+        let mem_count = index.count_nodes().saturating_sub(deleted);
         let chunk_count = self.meta_router.total_vector_count();
         let purgatory_count = self.flushing_vector_count.load(Ordering::Relaxed);
         mem_count + chunk_count + purgatory_count
@@ -2251,6 +2318,26 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 (user_id, vec, meta)
             })
             .collect()
+    }
+
+    fn get_points(&self, ids: &[u32]) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
+        let mut results = Vec::with_capacity(ids.len());
+        let idx = self.index_link.load();
+        for &id in ids {
+            if let Some((vec, meta)) = self.write_buffer.get_by_user_id(id) {
+                results.push((id, vec, meta));
+                continue;
+            }
+            if self.id_map.contains_key(&id) {
+                let internal_id = self.to_internal_id(id);
+                let vec = idx.get_vector(internal_id);
+                if !vec.coords.is_empty() {
+                    let meta = self.metadata_by_id(id);
+                    results.push((id, vec.coords, meta));
+                }
+            }
+        }
+        results
     }
 
     fn queue_size(&self) -> u64 {
@@ -2314,6 +2401,35 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         max_clusters: usize,
         max_nodes: usize,
     ) -> Result<Vec<Vec<u32>>, String> {
+        let points = self.peek(max_nodes.max(1), 0);
+        if points.len() >= min_cluster_size.max(2) {
+            let vectors: Vec<Vec<f64>> = points.iter().map(|(_, v, _)| v.clone()).collect();
+            let user_ids: Vec<u32> = points.iter().map(|(id, _, _)| *id).collect();
+
+            let max_leaf_size = (points.len() / max_clusters.max(1))
+                .max(min_cluster_size)
+                .max(2);
+            if let Some(clustered) =
+                hyperspace_clustering::hierarchical_cluster_f64(&vectors, max_leaf_size)
+            {
+                let mut res: Vec<Vec<u32>> = Vec::new();
+                for (_centroid, member_indices) in clustered {
+                    if member_indices.len() >= min_cluster_size {
+                        let members: Vec<u32> = member_indices
+                            .into_iter()
+                            .map(|idx| user_ids[idx])
+                            .collect();
+                        res.push(members);
+                    }
+                }
+                if !res.is_empty() {
+                    res.sort_by_key(|a| std::cmp::Reverse(a.len()));
+                    res.truncate(max_clusters);
+                    return Ok(res);
+                }
+            }
+        }
+
         let clusters = self.index_link.load().graph_connected_components(
             layer,
             min_cluster_size,
@@ -2324,6 +2440,42 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             .into_iter()
             .map(|c| c.into_iter().map(|n| self.to_user_id(n)).collect())
             .collect())
+    }
+
+    fn compact_semantic_chunks(&self, target_partitions: usize) -> Result<String, String> {
+        let count = self.count().max(1);
+        let points = self.peek(count, 0);
+        if points.len() < 16 {
+            return Ok(format!(
+                "Not enough vectors ({}) for semantic compaction (minimum 16 required)",
+                points.len()
+            ));
+        }
+        let vectors: Vec<Vec<f64>> = points.into_iter().map(|(_, v, _)| v).collect();
+        let k = target_partitions.clamp(2, 64);
+        let (report, new_chunks) =
+            crate::semantic_compactor::SemanticCompactor::compact_vectors::<M>(
+                &vectors,
+                k,
+                &self.data_dir,
+                self.mode,
+                &self.config,
+                self.storage_f32,
+            )?;
+
+        let old_chunks = self.meta_router.all_chunks();
+        self.meta_router.replace_all(new_chunks);
+
+        for old_chunk in old_chunks {
+            if old_chunk.path.exists() && old_chunk.path.starts_with(&self.data_dir) {
+                let _ = std::fs::remove_dir_all(&old_chunk.path);
+            }
+        }
+
+        Ok(format!(
+            "Semantic compaction completed: {} vectors repartitioned into {} Voronoi chunks in {} ms (clustering: {} ms)",
+            report.total_vectors, report.compacted_chunks, report.total_time_ms, report.clustering_time_ms
+        ))
     }
 
     fn evaluate_trust_score(&self, trajectory_ids: &[u32]) -> Result<f64, String> {

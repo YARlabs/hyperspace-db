@@ -2532,11 +2532,24 @@ impl Database for HyperspaceService {
         &self,
         _request: Request<hyperspace_proto::hyperspace::Empty>,
     ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
-        // Trigger manual GC/Vacuum
-        println!("🧹 Manual Vacuum Triggered: Memory cleanup initiated.");
+        println!("🧹 Manual Vacuum & Semantic Compaction Triggered.");
+        let collections = self.manager.list_all();
+        let mut details = Vec::new();
+        for col_name in collections {
+            if let Some(col) = self.manager.get_internal(&col_name).await {
+                if let Ok(res) = col.compact_semantic_chunks(16) {
+                    details.push(format!("{col_name}: {res}"));
+                }
+            }
+        }
+        let msg = if details.is_empty() {
+            "Vacuum completed (no chunks needed semantic compaction)".to_string()
+        } else {
+            details.join(" | ")
+        };
         Ok(Response::new(
             hyperspace_proto::hyperspace::StatusResponse {
-                status: "Memory cleanup triggered".to_string(),
+                status: msg,
             },
         ))
     }

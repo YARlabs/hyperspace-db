@@ -2432,7 +2432,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "3.1.0"
+version = "4.0.1"
 dependencies = [
  "chrono",
  "crossterm",
@@ -2445,8 +2445,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperspace-clustering"
+version = "4.0.1"
+dependencies = [
+ "criterion",
+ "matrixmultiply",
+ "pkg-config",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_distr",
+ "rayon",
+]
+
+[[package]]
 name = "hyperspace-core"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2577,7 +2590,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "arc-swap",
  "async-stream",
@@ -2594,6 +2607,7 @@ dependencies = [
  "hyper-util",
  "hyperspace-billing",
  "hyperspace-cache",
+ "hyperspace-clustering",
  "hyperspace-core",
  "hyperspace-eco",
  "hyperspace-embed",
@@ -2632,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "arc-swap",
  "byteorder",
@@ -3741,7 +3755,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a06de3016e9fae57a36fd14dba131fccf49f74b40b7fbdb472f96e361ec71a08"
 dependencies = [
  "autocfg",
+ "num_cpus",
+ "once_cell",
  "rawpointer",
+ "thread-tree",
 ]
 
 [[package]]
@@ -5056,6 +5073,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
 
 [[package]]
+name = "rand_distr"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
+dependencies = [
+ "num-traits",
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "rand_xorshift"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6315,6 +6342,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "thread-tree"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffbd370cb847953a25954d9f63e14824a36113f8c72eecf6eccef5dc4b45d630"
+dependencies = [
+ "crossbeam-channel",
 ]
 
 [[package]]

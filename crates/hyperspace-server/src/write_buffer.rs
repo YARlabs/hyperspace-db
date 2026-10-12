@@ -71,6 +71,16 @@ impl WriteBuffer {
         self.count.load(Ordering::Relaxed) == 0
     }
 
+    /// Point lookup by user_id across in-memory write buffer entries.
+    pub fn get_by_user_id(&self, user_id: u32) -> Option<(Vec<f64>, HashMap<String, String>)> {
+        for kv in &self.entries {
+            if kv.value().user_id == user_id {
+                return Some((kv.value().vector.clone(), kv.value().metadata.clone()));
+            }
+        }
+        None
+    }
+
     /// Zero-copy scan across in-memory write buffer entries.
     /// Filters and distances are evaluated by reference; only top-K winners clone metadata.
     pub fn search<M: Metric>(

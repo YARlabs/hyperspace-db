@@ -705,3 +705,290 @@ async fn test_large_uint32_vector_ids_no_oom() {
     // Cleanup
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+#[tokio::test]
+async fn test_superkmeans_hierarchical_memory_clustering_efficiency() {
+    let uuid = Uuid::new_v4();
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_cluster_test_{uuid}"));
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+
+    let col_name = "agent_memory_clustering";
+    let dim = 128;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+    manager
+        .create_collection("default_admin", col_name, schema)
+        .await
+        .expect("Create failed");
+
+    let col = manager
+        .get("default_admin", col_name)
+        .await
+        .expect("Collection exists");
+
+    // Generate 200 vectors in 4 distinct clusters: 50 each
+    let centers = [-2.0f64, -1.0f64, 1.0f64, 2.0f64];
+    let mut id_counter = 1u32;
+    for &center in &centers {
+        for _ in 0..50 {
+            let mut v = vec![center; dim];
+            v[0] += (id_counter as f64 % 5.0) * 0.01;
+            col.insert(&v, id_counter, HashMap::new(), 0, Durability::Default)
+                .await
+                .expect("Insert failed");
+            id_counter += 1;
+        }
+    }
+
+    // Wait for indexing queue to clear
+    let start_wait = std::time::Instant::now();
+    while col.queue_size() > 0 || col.write_buffer_size() > 0 {
+        if start_wait.elapsed() > Duration::from_secs(5) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Measure SuperKMeans hierarchical clustering efficiency
+    let cluster_start = std::time::Instant::now();
+    let clusters = col
+        .graph_clusters(0, 5, 8, 500)
+        .expect("Clustering must succeed");
+    let cluster_elapsed = cluster_start.elapsed();
+    println!(
+        "⏱️ SuperKMeans Hierarchical Clustering Time: {:?} (found {} clusters)",
+        cluster_elapsed,
+        clusters.len()
+    );
+
+    assert!(!clusters.is_empty(), "Must discover semantic clusters");
+    for cluster in &clusters {
+        assert!(
+            cluster.len() >= 5,
+            "Every cluster must meet min_cluster_size"
+        );
+    }
+    assert!(
+        cluster_elapsed.as_millis() < 3000,
+        "Hierarchical clustering must be faster than 3000ms"
+    );
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[tokio::test]
+async fn test_superkmeans_semantic_compactor_and_meta_router() {
+    let uuid = Uuid::new_v4();
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_compact_test_{uuid}"));
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+
+    let col_name = "compaction_collection";
+    let dim = 128;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+    manager
+        .create_collection("default_admin", col_name, schema)
+        .await
+        .expect("Create failed");
+
+    let col = manager
+        .get("default_admin", col_name)
+        .await
+        .expect("Collection exists");
+
+    // Insert 200 vectors so that each of the 8 shards receives >= 16 vectors
+    for i in 1..=200 {
+        let center = if i <= 70 {
+            1.0
+        } else if i <= 140 {
+            5.0
+        } else {
+            10.0
+        };
+        let mut v = vec![center; dim];
+        v[1] += (i as f64) * 0.001;
+        col.insert(&v, i as u32, HashMap::new(), 0, Durability::Default)
+            .await
+            .expect("Insert failed");
+    }
+
+    // Wait for indexing
+    let start_wait = std::time::Instant::now();
+    while col.queue_size() > 0 || col.write_buffer_size() > 0 {
+        if start_wait.elapsed() > Duration::from_secs(5) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Trigger semantic compaction into 3 Voronoi chunks
+    let comp_start = std::time::Instant::now();
+    let comp_res = col
+        .compact_semantic_chunks(3)
+        .expect("Semantic compaction must succeed");
+    let comp_elapsed = comp_start.elapsed();
+    println!(
+        "⏱️ Semantic Compaction Result: {} in {:?}",
+        comp_res, comp_elapsed
+    );
+
+    assert!(
+        comp_res.contains("Semantic compaction completed"),
+        "Report must confirm completion"
+    );
+    assert!(
+        comp_res.contains("Voronoi chunks"),
+        "Report must confirm Voronoi partitions"
+    );
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[tokio::test]
+async fn test_billion_scale_64bit_id_addressing_and_routing() {
+    let uuid = Uuid::new_v4();
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_64bit_test_{uuid}"));
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+
+    let col_name = "billion_scale_collection";
+    let dim = 32;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+    };
+    manager
+        .create_collection("default_admin", col_name, schema)
+        .await
+        .expect("Create failed");
+
+    let col = manager
+        .get("default_admin", col_name)
+        .await
+        .expect("Collection exists");
+
+    // IDs exceeding 32-bit limit (4,294,967,295):
+    let id_5b = 5_000_000_000u64;
+    let id_12b = 12_345_678_901u64;
+    let id_21b = 21_200_000_000u64;
+
+    let mut meta_5b = HashMap::new();
+    meta_5b.insert("scale".to_string(), "5B".to_string());
+    let mut meta_12b = HashMap::new();
+    meta_12b.insert("scale".to_string(), "12.3B".to_string());
+    let mut meta_21b = HashMap::new();
+    meta_21b.insert("scale".to_string(), "21.2B".to_string());
+
+    let vec_5b = vec![1.0; dim];
+    let vec_12b = vec![5.0; dim];
+    let vec_21b = vec![10.0; dim];
+
+    // 1. Insert 64-bit points
+    col.insert_u64(&vec_5b, id_5b, meta_5b.clone(), 0, Durability::Default)
+        .await
+        .expect("Insert 5B must succeed");
+    col.insert_u64(&vec_12b, id_12b, meta_12b.clone(), 0, Durability::Default)
+        .await
+        .expect("Insert 12.3B must succeed");
+    col.insert_u64(&vec_21b, id_21b, meta_21b.clone(), 0, Durability::Default)
+        .await
+        .expect("Insert 21.2B must succeed");
+
+    // 2. Test get_points_u64 retrieval
+    let points = col.get_points_u64(&[id_5b, id_12b, id_21b]);
+    assert_eq!(
+        points.len(),
+        3,
+        "All 3 billion-scale points must be retrievable"
+    );
+
+    let p_5b = points.iter().find(|p| p.0 == id_5b).expect("5B found");
+    assert_eq!(p_5b.2.get("scale").map(|s| s.as_str()), Some("5B"));
+    assert_eq!(p_5b.1, vec_5b);
+
+    let p_21b = points.iter().find(|p| p.0 == id_21b).expect("21.2B found");
+    assert_eq!(p_21b.2.get("scale").map(|s| s.as_str()), Some("21.2B"));
+    assert_eq!(p_21b.1, vec_21b);
+
+    // 3. Test search_u64 with 64-bit top-K results
+    let search_params = hyperspace_core::SearchParams {
+        top_k: 2,
+        ef_search: 32,
+        ..Default::default()
+    };
+    let query_near_21b = vec![9.99; dim];
+    let search_results = col
+        .search_u64(&query_near_21b, &HashMap::new(), &[], &search_params)
+        .await
+        .expect("Search must succeed");
+
+    assert!(
+        !search_results.is_empty(),
+        "Search results must not be empty"
+    );
+    assert_eq!(
+        search_results[0].0, id_21b,
+        "Top search candidate must correctly return 64-bit ID 21,200,000,000"
+    );
+
+    // 4. Test delete_u64
+    col.delete_u64(id_12b)
+        .expect("Delete 12.3B point must succeed");
+    let after_delete = col.get_points_u64(&[id_12b]);
+    assert!(
+        after_delete.is_empty(),
+        "Deleted 64-bit point must not be returned"
+    );
+
+    // Other points remain intact
+    let remaining = col.get_points_u64(&[id_5b, id_21b]);
+    assert_eq!(remaining.len(), 2, "Remaining 64-bit points must persist");
+
+    // 5. Test batch insert with 64-bit IDs
+    let batch = vec![
+        (vec![2.0; dim], 21_200_000_001u64, HashMap::new()),
+        (vec![2.1; dim], 21_200_000_002u64, HashMap::new()),
+    ];
+    col.insert_batch_u64(batch, 0, Durability::Default)
+        .await
+        .expect("Batch insert 64-bit must succeed");
+
+    let batch_retrieved = col.get_points_u64(&[21_200_000_001u64, 21_200_000_002u64]);
+    assert_eq!(
+        batch_retrieved.len(),
+        2,
+        "Batch 64-bit points must be retrieved"
+    );
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

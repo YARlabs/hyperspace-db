@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] - 2026-10-12
+
+### Added
+* **Native Pure-Rust SuperKMeans & Adaptive Distance Sampling (`hyperspace-clustering`, `semantic_compactor`)**:
+  * Integrated CWI SuperKMeans clustering algorithm implemented in 100% pure, safe Rust (Zero C++ FFI).
+  * Implemented Adaptive Distance Sampling (ADSampling) distance pruning, bypassing 90%+ unneeded vector distance evaluations with provable error bounds.
+  * Accelerated batch centroid computation via matrix multiplication (SGEMM/BLAS via `matrixmultiply`) with horizontal 16-element SIMD vector packing and vertical residual layout for high-dimensional embeddings.
+  * Added `SemanticCompactor::compact_vectors` to dynamically partition vector collections into Voronoi chunks in sub-second time without full HNSW graph rebuilds.
+  * Added graph-based connected components / cluster extraction `graph_clusters` across collection layers.
+* **Two-Level Hierarchical Macro-Clustering in `MetaRouter`**:
+  * Enhanced chunk router (`MetaRouter`) with a 2-level hierarchical macro-routing tier.
+  * Clusters chunk centroids into $K = \sqrt{C}$ macro-regions, reducing disk probe search evaluations from $O(C)$ to $O(\sqrt{C} + K)$, eliminating metadata lookup bottlenecks on large-scale collections.
+* **Billion-Scale 64-Bit Vector ID Addressing (21.2B+ Capacity)**:
+  * Upgraded global addressing to full 64-bit unsigned integers (`u64`), scaling addressable point volume beyond 21,200,000,000 points without 32-bit integer overflow.
+  * Preserved ultra-dense node RAM footprint: individual HNSW shard nodes retain 32-bit `local_id: u32` via deterministic partition composite addressing: `shard_idx = (id % num_shards) as usize`, `local_id = (id / num_shards) as u32`.
+  * Extended core trait and server engine with `insert_u64`, `insert_batch_u64`, `delete_u64`, and `get_points_u64`.
+
+### Fixed
+* **Issue #19 Fix: Resilient Startup Migration & Crash-Durable WAL Deletions**:
+  * Fixed critical bug where points deleted in v3 were resurrected when migrating to v4 ([Issue #19](https://github.com/YARlabs/hyperspace-db/issues/19)).
+  * Priority 1 (WAL path): Ingestion now cross-references `state.json` (`id_map`) and filters out any WAL replay entry with `logical_clock <= last_persisted_clock` if absent from `id_map`.
+  * Priority 2 (Chunk path): Fixed fallback where missing entries in `reverse_id_map` fell back to `unwrap_or(internal_id)`; deleted chunk slots are now strictly skipped.
+  * Added `WalEntry::Delete { id: u64, logical_clock: u64 }` (OpCode 5) in `hyperspace-store::wal`, making runtime deletions crash-durable in WAL.
+  * Fixed `CollectionImpl::count()` to accurately subtract deleted nodes (`metadata.deleted`), restoring exact alignment between `count()` and `scroll()`.
+  * Added `HS_DISABLE_V3_MIGRATION=1` environment switch to allow opt-out or manual control of startup migration.
+
 ## [4.0.0] - 2026-10-07
 
 ### Performance & Hardening (2026-10-07)

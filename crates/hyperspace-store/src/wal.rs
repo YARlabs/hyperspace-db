@@ -44,6 +44,16 @@ pub enum WalEntry {
         metadata: HashMap<String, String>,
         logical_clock: u64,
     },
+    Insert64 {
+        id: u64,
+        vector: Vec<f64>,
+        metadata: HashMap<String, String>,
+        logical_clock: u64,
+    },
+    Delete {
+        id: u64,
+        logical_clock: u64,
+    },
 }
 
 impl Wal {
@@ -200,6 +210,70 @@ impl Wal {
         Ok(())
     }
 
+    fn serialize_entry_u64(
+        id: u64,
+        vector: &[f64],
+        metadata: &HashMap<String, String>,
+        logical_clock: u64,
+    ) -> io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        // Internal Format: OpCode 4 (Insert V4 with u64 ID and clock)
+        buf.write_u8(4)?;
+        buf.write_u64::<LittleEndian>(id)?;
+        buf.write_u64::<LittleEndian>(logical_clock)?;
+
+        // Vector
+        buf.write_u32::<LittleEndian>(vector.len() as u32)?;
+        for &val in vector {
+            buf.write_f64::<LittleEndian>(val)?;
+        }
+
+        // Metadata
+        buf.write_u32::<LittleEndian>(metadata.len() as u32)?;
+        for (k, v) in metadata {
+            let k_bytes = k.as_bytes();
+            buf.write_u32::<LittleEndian>(k_bytes.len() as u32)?;
+            buf.write_all(k_bytes)?;
+
+            let v_bytes = v.as_bytes();
+            buf.write_u32::<LittleEndian>(v_bytes.len() as u32)?;
+            buf.write_all(v_bytes)?;
+        }
+        Ok(buf)
+    }
+
+    fn serialize_delete_entry(id: u64, logical_clock: u64) -> io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        // Internal Format: OpCode 5 (Delete V4 with u64 ID and clock)
+        buf.write_u8(5)?;
+        buf.write_u64::<LittleEndian>(id)?;
+        buf.write_u64::<LittleEndian>(logical_clock)?;
+        Ok(buf)
+    }
+
+    pub fn append_delete(&mut self, id: u64, logical_clock: u64) -> io::Result<()> {
+        let payload = Self::serialize_delete_entry(id, logical_clock)?;
+        self.write_packet_internal(&payload)?;
+        self.file.flush()?;
+
+        match self.mode {
+            WalSyncMode::Strict => {
+                self.file.get_ref().sync_all()?;
+                self.last_fsync_time = std::time::Instant::now();
+            }
+            WalSyncMode::Batch => {
+                if self.last_fsync_time.elapsed().as_millis()
+                    >= u128::from(self.batch_fsync_interval_ms)
+                {
+                    self.file.get_ref().sync_all()?;
+                    self.last_fsync_time = std::time::Instant::now();
+                }
+            }
+            WalSyncMode::Async => {}
+        }
+        Ok(())
+    }
+
     pub fn append_batch(
         &mut self,
         entries: &[(Vec<f64>, u32, HashMap<String, String>)],
@@ -228,6 +302,64 @@ impl Wal {
             WalSyncMode::Async => {
                 // No explicit fsync
             }
+        }
+        Ok(())
+    }
+
+    pub fn append_u64(
+        &mut self,
+        id: u64,
+        vector: &[f64],
+        metadata: &HashMap<String, String>,
+        logical_clock: u64,
+    ) -> io::Result<()> {
+        let payload = Self::serialize_entry_u64(id, vector, metadata, logical_clock)?;
+        self.write_packet_internal(&payload)?;
+        self.file.flush()?;
+
+        match self.mode {
+            WalSyncMode::Strict => {
+                self.file.get_ref().sync_all()?;
+                self.last_fsync_time = std::time::Instant::now();
+            }
+            WalSyncMode::Batch => {
+                if self.last_fsync_time.elapsed().as_millis()
+                    >= u128::from(self.batch_fsync_interval_ms)
+                {
+                    self.file.get_ref().sync_all()?;
+                    self.last_fsync_time = std::time::Instant::now();
+                }
+            }
+            WalSyncMode::Async => {}
+        }
+        Ok(())
+    }
+
+    pub fn append_batch_u64(
+        &mut self,
+        entries: &[(Vec<f64>, u64, HashMap<String, String>)],
+        logical_clock: u64,
+    ) -> io::Result<()> {
+        for (vector, id, metadata) in entries {
+            let payload = Self::serialize_entry_u64(*id, vector, metadata, logical_clock)?;
+            self.write_packet_internal(&payload)?;
+        }
+        self.file.flush()?;
+
+        match self.mode {
+            WalSyncMode::Strict => {
+                self.file.get_ref().sync_all()?;
+                self.last_fsync_time = std::time::Instant::now();
+            }
+            WalSyncMode::Batch => {
+                if self.last_fsync_time.elapsed().as_millis()
+                    >= u128::from(self.batch_fsync_interval_ms)
+                {
+                    self.file.get_ref().sync_all()?;
+                    self.last_fsync_time = std::time::Instant::now();
+                }
+            }
+            WalSyncMode::Async => {}
         }
         Ok(())
     }
@@ -319,9 +451,41 @@ impl Wal {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn parse_entry(cursor: &mut Cursor<Vec<u8>>) -> io::Result<WalEntry> {
         let opcode = cursor.read_u8()?;
         match opcode {
+            4 => {
+                let id = cursor.read_u64::<LittleEndian>()?;
+                let logical_clock = cursor.read_u64::<LittleEndian>()?;
+                let vec_len = cursor.read_u32::<LittleEndian>()?;
+                let mut vector = Vec::with_capacity(vec_len as usize);
+                for _ in 0..vec_len {
+                    vector.push(cursor.read_f64::<LittleEndian>()?);
+                }
+                let meta_len = cursor.read_u32::<LittleEndian>()?;
+                let mut metadata = HashMap::with_capacity(meta_len as usize);
+                for _ in 0..meta_len {
+                    let k_len = cursor.read_u32::<LittleEndian>()?;
+                    let mut k_buf = vec![0u8; k_len as usize];
+                    cursor.read_exact(&mut k_buf)?;
+                    let key = String::from_utf8(k_buf)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+                    let v_len = cursor.read_u32::<LittleEndian>()?;
+                    let mut v_buf = vec![0u8; v_len as usize];
+                    cursor.read_exact(&mut v_buf)?;
+                    let val = String::from_utf8(v_buf)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    metadata.insert(key, val);
+                }
+                Ok(WalEntry::Insert64 {
+                    id,
+                    vector,
+                    metadata,
+                    logical_clock,
+                })
+            }
             3 => {
                 let id = cursor.read_u32::<LittleEndian>()?;
                 let logical_clock = cursor.read_u64::<LittleEndian>()?;
@@ -383,6 +547,11 @@ impl Wal {
                     metadata,
                     logical_clock: 0,
                 })
+            }
+            5 => {
+                let id = cursor.read_u64::<LittleEndian>()?;
+                let logical_clock = cursor.read_u64::<LittleEndian>()?;
+                Ok(WalEntry::Delete { id, logical_clock })
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -458,6 +627,13 @@ impl Wal {
                     },
                     bytes_read,
                 ))
+            }
+            5 => {
+                let id = reader.read_u64::<LittleEndian>()?;
+                bytes_read += 8;
+                let logical_clock = reader.read_u64::<LittleEndian>()?;
+                bytes_read += 8;
+                Ok((WalEntry::Delete { id, logical_clock }, bytes_read))
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
