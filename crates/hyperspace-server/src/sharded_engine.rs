@@ -107,7 +107,7 @@ impl<M: Metric> ShardedCollection<M> {
         schema: CollectionSchema,
         num_shards_opt: Option<usize>,
     ) -> Result<Self, String> {
-        let cpu_cores = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+        let cpu_cores = std::thread::available_parallelism().map_or(8, std::num::NonZero::get);
         let requested_shards = num_shards_opt
             .or_else(|| {
                 std::env::var("HS_SHARDS").ok().and_then(|s| {
@@ -120,7 +120,7 @@ impl<M: Metric> ShardedCollection<M> {
                     }
                 })
             })
-            .unwrap_or_else(|| cpu_cores.clamp(1, 8))
+            .unwrap_or_else(|| cpu_cores.clamp(8, 32))
             .max(1);
 
         // Shard routing is `id % num_shards`, so the shard count is part of the on-disk

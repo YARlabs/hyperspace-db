@@ -868,6 +868,7 @@ async fn test_superkmeans_semantic_compactor_and_meta_router() {
 
 #[tokio::test]
 async fn test_billion_scale_64bit_id_addressing_and_routing() {
+    std::env::set_var("HS_SHARDS", "8");
     let uuid = Uuid::new_v4();
     let tmp_dir = env::temp_dir().join(format!("hyperspace_64bit_test_{uuid}"));
     fs::create_dir_all(&tmp_dir).unwrap();
