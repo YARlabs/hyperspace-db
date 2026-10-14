@@ -95,3 +95,15 @@ export class HyperspaceVectorStore implements VectorStore {
     return this._client.updateCacheConfig(this.collectionName, policy, annThreshold);
   }
 }
+
+export {
+  HyperspaceQueryPlanner,
+  evaluateQueryLocally,
+  clarifyAndSplitIntent,
+  QUERY_PLANNER_TOOL_SCHEMA,
+  QueryPlannerInput,
+  QueryPlannerResult,
+  ClarificationPayload,
+  ExecutionStrategy
+} from "./query_planner";
+

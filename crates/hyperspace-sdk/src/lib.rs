@@ -13,7 +13,8 @@ pub use hyperspace_proto::hyperspace::{
     GraphNode, InBall, InBox, InCone, InsertRequest, InsertTextRequest, Match, MrlLayer, Prefix,
     Range, ScrollRequest, SearchRequest, SearchResponse, SearchResult, SearchResult as ResultItem,
     SearchTextRequest, TraverseRequest, TraverseResponse, UpdatePayloadRequest, VectorComponent,
-    VectorData, VectorizeRequest, VectorizeResponse,
+    VectorData, VectorizeRequest, VectorizeResponse, VerifyGenerationRequest,
+    VerifyGenerationResponse,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -43,6 +44,35 @@ pub struct EgoGraph {
     pub center_id: u32,
     pub nodes: Vec<EgoGraphNode>,
 }
+
+/// Result of mathematically verifying an LLM-generated answer against source context vectors.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "embedders", derive(serde::Serialize, serde::Deserialize))]
+pub struct VerificationResult {
+    /// Normalized geometric confidence score between 0.0 and 1.0 indicating how well
+    /// the answer adheres to the topological boundaries of the source context.
+    pub trust_score: f64,
+    /// Boolean flag indicating whether the generation semantically breaks the topological/geometric
+    /// boundaries of the source context (trust_score below threshold or invalid boundary).
+    pub is_hallucination: bool,
+    /// Whether the generation is topologically valid within the geometric boundaries.
+    pub is_valid: bool,
+    /// Minimum geometric distance to context chunks.
+    pub min_distance: f64,
+    /// Average geometric distance to context chunks.
+    pub avg_distance: f64,
+    /// Geodesic distance in the context neighborhood graph.
+    pub geodesic_distance: f64,
+    /// Number of geodesic hops traversed in the neighborhood graph.
+    pub geodesic_hops: u32,
+    /// Whether Lorentz causal cone or directional boundaries are satisfied.
+    pub cone_satisfied: bool,
+    /// Diagnostic details or explanation from the tribunal verification engine.
+    pub details: String,
+    /// Resolved context chunk IDs.
+    pub resolved_context_ids: Vec<u32>,
+}
+
 
 /// Options for configuring vector search requests across single and batch searches.
 #[derive(Debug, Clone, Default)]
@@ -1754,6 +1784,76 @@ impl Client {
         Ok(resp.into_inner())
     }
 
+    /// Mathematically verifies if the LLM's answer semantically breaks the topological/geometric
+    /// boundaries of the source context.
+    ///
+    /// The server vectorizes the drafted LLM answer on the fly and evaluates geodesic paths
+    /// and manifold boundaries relative to the provided source context chunks in the index.
+    /// Geometric distance calculations and boundary verifications are performed opaquely
+    /// by the server engine.
+    ///
+    /// # Arguments
+    /// * `llm_answer` - The response text drafted by the LLM.
+    /// * `context_ids` - Slice of source context chunk identifiers (string IDs or UUIDs) used to generate the answer.
+    /// * `collection` - Name of the target collection.
+    ///
+    /// # Errors
+    /// Returns `tonic::Status` if the gRPC RPC fails.
+    pub async fn verify_generation(
+        &mut self,
+        llm_answer: &str,
+        context_ids: &[String],
+        collection: &str,
+    ) -> Result<VerificationResult, tonic::Status> {
+        self.verify_generation_with_options(llm_answer, context_ids, collection, None, None).await
+    }
+
+    /// Mathematically verifies if the LLM's answer semantically breaks the topological/geometric
+    /// boundaries of the source context, with customizable distance threshold and geodesic verification options.
+    ///
+    /// Geometric distance calculations and boundary verifications are performed opaquely
+    /// by the server engine.
+    ///
+    /// # Arguments
+    /// * `llm_answer` - The response text drafted by the LLM.
+    /// * `context_ids` - Slice of source context chunk identifiers (string IDs or UUIDs) used to generate the answer.
+    /// * `collection` - Name of the target collection.
+    /// * `max_distance_threshold` - Optional maximum geometric distance threshold.
+    /// * `check_geodesic` - Optional flag whether to verify graph geodesic paths (defaults to true on server).
+    ///
+    /// # Errors
+    /// Returns `tonic::Status` if the gRPC RPC fails.
+    pub async fn verify_generation_with_options(
+        &mut self,
+        llm_answer: &str,
+        context_ids: &[String],
+        collection: &str,
+        max_distance_threshold: Option<f64>,
+        check_geodesic: Option<bool>,
+    ) -> Result<VerificationResult, tonic::Status> {
+        let req = VerifyGenerationRequest {
+            collection: collection.to_string(),
+            llm_answer: llm_answer.to_string(),
+            context_ids: context_ids.to_vec(),
+            max_distance_threshold,
+            check_geodesic,
+        };
+        let resp = self.inner.verify_generation(req).await?.into_inner();
+        Ok(VerificationResult {
+            trust_score: resp.trust_score,
+            is_hallucination: !resp.is_valid,
+            is_valid: resp.is_valid,
+            min_distance: resp.min_distance,
+            avg_distance: resp.avg_distance,
+            geodesic_distance: resp.geodesic_distance,
+            geodesic_hops: resp.geodesic_hops,
+            cone_satisfied: resp.cone_satisfied,
+            details: resp.details,
+            resolved_context_ids: resp.resolved_context_ids,
+        })
+    }
+
+
     /// Evaluates a fuzzy logic search query locally by issuing batch search RPCs
     /// and scoring candidates with TNorms/TConorms.
     ///
@@ -2282,4 +2382,26 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_verification_result_structure() {
+        let res = VerificationResult {
+            trust_score: 0.95,
+            is_hallucination: false,
+            is_valid: true,
+            min_distance: 0.12,
+            avg_distance: 0.25,
+            geodesic_distance: 0.35,
+            geodesic_hops: 1,
+            cone_satisfied: true,
+            details: "Inside causal cone and topological boundary".to_string(),
+            resolved_context_ids: vec![42, 101],
+        };
+
+        assert!(res.trust_score >= 0.0 && res.trust_score <= 1.0);
+        assert!(!res.is_hallucination);
+        assert!(res.is_valid);
+        assert_eq!(res.resolved_context_ids, vec![42, 101]);
+    }
 }
+

@@ -46,6 +46,7 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     syncPull: IDatabaseService_ISyncPull;
     syncPush: IDatabaseService_ISyncPush;
     healthCheck: IDatabaseService_IHealthCheck;
+    verifyGeneration: IDatabaseService_IVerifyGeneration;
 }
 
 interface IDatabaseService_ICreateCollection extends grpc.MethodDefinition<hyperspace_pb.CreateCollectionRequest, hyperspace_pb.StatusResponse> {
@@ -390,6 +391,15 @@ interface IDatabaseService_IHealthCheck extends grpc.MethodDefinition<hyperspace
     responseSerialize: grpc.serialize<hyperspace_pb.HealthCheckResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.HealthCheckResponse>;
 }
+interface IDatabaseService_IVerifyGeneration extends grpc.MethodDefinition<hyperspace_pb.VerifyGenerationRequest, hyperspace_pb.VerifyGenerationResponse> {
+    path: "/hyperspace.Database/VerifyGeneration";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.VerifyGenerationRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.VerifyGenerationRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.VerifyGenerationResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.VerifyGenerationResponse>;
+}
 
 export const DatabaseService: IDatabaseService;
 
@@ -432,6 +442,7 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     syncPull: grpc.handleServerStreamingCall<hyperspace_pb.SyncPullRequest, hyperspace_pb.SyncVectorData>;
     syncPush: grpc.handleClientStreamingCall<hyperspace_pb.SyncVectorData, hyperspace_pb.SyncPushResponse>;
     healthCheck: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.HealthCheckResponse>;
+    verifyGeneration: grpc.handleUnaryCall<hyperspace_pb.VerifyGenerationRequest, hyperspace_pb.VerifyGenerationResponse>;
 }
 
 export interface IDatabaseClient {
@@ -546,6 +557,9 @@ export interface IDatabaseClient {
     healthCheck(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.HealthCheckResponse) => void): grpc.ClientUnaryCall;
     healthCheck(request: hyperspace_pb.Empty, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.HealthCheckResponse) => void): grpc.ClientUnaryCall;
     healthCheck(request: hyperspace_pb.Empty, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.HealthCheckResponse) => void): grpc.ClientUnaryCall;
+    verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
+    verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
+    verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
 }
 
 export class DatabaseClient extends grpc.Client implements IDatabaseClient {
@@ -661,4 +675,7 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public healthCheck(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.HealthCheckResponse) => void): grpc.ClientUnaryCall;
     public healthCheck(request: hyperspace_pb.Empty, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.HealthCheckResponse) => void): grpc.ClientUnaryCall;
     public healthCheck(request: hyperspace_pb.Empty, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.HealthCheckResponse) => void): grpc.ClientUnaryCall;
+    public verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
+    public verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
+    public verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
 }

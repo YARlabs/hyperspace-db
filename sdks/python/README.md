@@ -9,8 +9,10 @@ The SDK is designed for production services and benchmark tooling:
 - recursive logical filters (`AND`, `OR`, `NOT`)
 - bulk data management (`get_points`, `update_payload`, `scroll`, `count`)
 - system health monitoring (`health_check`)
+- tribunal verification (`verify_generation`) for mathematical anti-hallucination boundary checks
 - graph traversal API methods
 - optional embedder integrations
+
 - multi-tenant metadata headers
 
 ## Requirements

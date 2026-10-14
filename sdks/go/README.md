@@ -19,9 +19,11 @@ go get github.com/yarlabs/hyperspace-sdk-go
 - **Recursive Filtering**: Complex logical expressions (`AND`, `OR`, `NOT`) in filters.
 - **Memory Reconsolidation (Sleep Mode)**: Optimize datasets using `TriggerReconsolidation` directly inside your database from microservices.
 - **System Health**: Active server monitoring via `HealthCheck`.
+- **Tribunal Anti-Hallucination Verification**: Post-generation mathematical verification (`VerifyGeneration`) ensuring LLM answers respect source context geometric boundaries.
 - **CDC Streaming**: React to structural topology changes in real time through `SubscribeToEvents`/Event Streams.
 - **Graph Traversal APIs**: Access direct paths via `GetNeighbors` and perform node clustering.
 - **Implicit Graph Engine**: Extract light-cone hierarchies with `GetSubsumptionTree` and navigate using advanced `Traverse` modes (Greedy, Diffusive, Momentum).
+
 
 ## Usage Example
 

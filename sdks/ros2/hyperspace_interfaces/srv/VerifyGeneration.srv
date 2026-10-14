@@ -1,0 +1,16 @@
+string llm_answer
+string[] context_ids
+string collection
+float64 max_distance_threshold
+bool check_geodesic
+---
+float64 trust_score
+bool is_hallucination
+bool is_valid
+float64 min_distance
+float64 avg_distance
+float64 geodesic_distance
+uint32 geodesic_hops
+bool cone_satisfied
+string details
+uint32[] resolved_context_ids

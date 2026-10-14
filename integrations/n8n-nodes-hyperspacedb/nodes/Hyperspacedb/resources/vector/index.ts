@@ -38,6 +38,12 @@ export const vectorDescription: INodeProperties[] = [
 				action: 'Search by natural language',
 				description: 'Search using a text query that will be vectorized by the server',
 			},
+			{
+				name: 'Verify Generation (Anti-Hallucination)',
+				value: 'verifyGeneration',
+				action: 'Mathematically verify LLM answer against context boundaries',
+				description: 'Verifies whether generated answer semantically breaks geometric boundaries of source context',
+			},
 		],
 		default: 'insert',
 	},
@@ -123,4 +129,59 @@ export const vectorDescription: INodeProperties[] = [
 		default: 10,
 		description: 'The number of results to return',
 	},
+	{
+		displayName: 'LLM Answer',
+		name: 'llmAnswer',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['vector'],
+				operation: ['verifyGeneration'],
+			},
+		},
+		default: '',
+		description: 'The text drafted by the LLM to verify against the source context boundaries',
+	},
+	{
+		displayName: 'Context IDs',
+		name: 'contextIds',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['vector'],
+				operation: ['verifyGeneration'],
+			},
+		},
+		default: '',
+		description: 'Comma-separated string or JSON array of source context chunk identifiers',
+	},
+	{
+		displayName: 'Max Distance Threshold',
+		name: 'maxDistanceThreshold',
+		type: 'number',
+		displayOptions: {
+			show: {
+				resource: ['vector'],
+				operation: ['verifyGeneration'],
+			},
+		},
+		default: 0.85,
+		description: 'Optional maximum geometric distance threshold',
+	},
+	{
+		displayName: 'Check Geodesic',
+		name: 'checkGeodesic',
+		type: 'boolean',
+		displayOptions: {
+			show: {
+				resource: ['vector'],
+				operation: ['verifyGeneration'],
+			},
+		},
+		default: true,
+		description: 'Whether to verify geodesic graph connectivity between chunks',
+	},
 ];
+

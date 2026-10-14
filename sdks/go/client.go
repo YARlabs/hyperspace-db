@@ -955,3 +955,56 @@ func (c *HyperspaceClient) encryptFilters(filters []*pb.Filter, context *Encrypt
 	}
 	return res
 }
+
+// VerificationResult represents the result of mathematically verifying an LLM-generated answer.
+type VerificationResult struct {
+	TrustScore         float64  `json:"trust_score"`
+	IsHallucination    bool     `json:"is_hallucination"`
+	IsValid            bool     `json:"is_valid"`
+	MinDistance        float64  `json:"min_distance"`
+	AvgDistance        float64  `json:"avg_distance"`
+	GeodesicDistance   float64  `json:"geodesic_distance"`
+	GeodesicHops       uint32   `json:"geodesic_hops"`
+	ConeSatisfied      bool     `json:"cone_satisfied"`
+	Details            string   `json:"details"`
+	ResolvedContextIDs []uint32 `json:"resolved_context_ids"`
+}
+
+// VerifyGeneration mathematically verifies if the LLM's answer semantically breaks the topological/geometric boundaries of the source context.
+// Geometric distance calculations and boundary verifications are performed opaquely by the server engine.
+func (c *HyperspaceClient) VerifyGeneration(ctx context.Context, llmAnswer string, contextIDs []string, collection string, maxDistanceThreshold *float64, checkGeodesic bool) (*VerificationResult, error) {
+	md := metadata.New(map[string]string{})
+	if c.apiKey != "" {
+		md.Set("x-api-key", c.apiKey)
+	}
+	callCtx := metadata.NewOutgoingContext(ctx, md)
+
+	req := &pb.VerifyGenerationRequest{
+		Collection:    collection,
+		LlmAnswer:     llmAnswer,
+		ContextIds:    contextIDs,
+		CheckGeodesic: &checkGeodesic,
+	}
+	if maxDistanceThreshold != nil {
+		req.MaxDistanceThreshold = maxDistanceThreshold
+	}
+
+	resp, err := c.client.VerifyGeneration(callCtx, req)
+	if err != nil {
+		return nil, fmt.Errorf("VerifyGeneration RPC failed: %w", err)
+	}
+
+	return &VerificationResult{
+		TrustScore:         resp.GetTrustScore(),
+		IsHallucination:    !resp.GetIsValid(),
+		IsValid:            resp.GetIsValid(),
+		MinDistance:        resp.GetMinDistance(),
+		AvgDistance:        resp.GetAvgDistance(),
+		GeodesicDistance:   resp.GetGeodesicDistance(),
+		GeodesicHops:       resp.GetGeodesicHops(),
+		ConeSatisfied:      resp.GetConeSatisfied(),
+		Details:            resp.GetDetails(),
+		ResolvedContextIDs: resp.GetResolvedContextIds(),
+	}, nil
+}
+

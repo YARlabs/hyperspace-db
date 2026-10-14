@@ -1,12 +1,14 @@
 [package]
 name = "hyperspace-core"
-version = "4.0.1"
+version = "4.0.2"
 edition = "2021"
 
 [dependencies]
 rand = "~0.8"
 serde = { workspace = true }
 async-trait = "0.1.89"
+roaring = "0.11.3"
+parking_lot = { workspace = true }
 wgpu = { version = "*", optional = true }
 pollster = { version = "*", optional = true }
 bytemuck = { version = "*", optional = true, features = ["derive"] }
@@ -21,6 +23,10 @@ harness = false
 
 [[bench]]
 name = "gpu_dispatch_bench"
+harness = false
+
+[[bench]]
+name = "graph_vs_dual"
 harness = false
 
 [features]

@@ -16,6 +16,7 @@
 #include <hyperspace_interfaces/srv/rebuild_index.hpp>
 #include <hyperspace_interfaces/srv/create_collection.hpp>
 #include <hyperspace_interfaces/srv/trigger_reconsolidation.hpp>
+#include <hyperspace_interfaces/srv/verify_generation.hpp>
 #include <google/protobuf/util/json_util.h>
 #include <hyperspace_interfaces/msg/search_result.hpp>
 #include <hyperspace_interfaces/msg/system_stats.hpp>
@@ -125,6 +126,11 @@ public:
         create_collection_service_ = this->create_service<hyperspace_interfaces::srv::CreateCollection>(
             "hyperspace/create_collection",
             std::bind(&TribunalRouterNode::handle_create_collection, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        verify_generation_service_ = this->create_service<hyperspace_interfaces::srv::VerifyGeneration>(
+            "hyperspace/verify_generation",
+            std::bind(&TribunalRouterNode::handle_verify_generation, this, std::placeholders::_1, std::placeholders::_2)
         );
 
         metrics_pub_ = this->create_publisher<hyperspace_interfaces::msg::SystemStats>("hyperspace/metrics", 10);
@@ -379,6 +385,35 @@ private:
         response->message = ok ? "Successfully created." : "Failed to create collection.";
     }
 
+    void handle_verify_generation(
+        const std::shared_ptr<hyperspace_interfaces::srv::VerifyGeneration::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::VerifyGeneration::Response> response
+    ) {
+        std::optional<double> max_dist = std::nullopt;
+        if (request->max_distance_threshold > 0.0) {
+            max_dist = request->max_distance_threshold;
+        }
+
+        auto rec = client_->VerifyGeneration(
+            request->llm_answer,
+            request->context_ids,
+            request->collection,
+            max_dist,
+            request->check_geodesic
+        );
+
+        response->trust_score = rec.trust_score;
+        response->is_hallucination = rec.is_hallucination;
+        response->is_valid = rec.is_valid;
+        response->min_distance = rec.min_distance;
+        response->avg_distance = rec.avg_distance;
+        response->geodesic_distance = rec.geodesic_distance;
+        response->geodesic_hops = rec.geodesic_hops;
+        response->cone_satisfied = rec.cone_satisfied;
+        response->details = rec.details;
+        response->resolved_context_ids = rec.resolved_context_ids;
+    }
+
     void publish_metrics() {
         // Monitor stream is tricky to bridge to topic directly in one call, 
         // normally we would keep the stream open. For simplicity, we just use the stats we have.
@@ -409,6 +444,7 @@ private:
     rclcpp::Service<hyperspace_interfaces::srv::RebuildIndex>::SharedPtr rebuild_index_service_;
     rclcpp::Service<hyperspace_interfaces::srv::CreateCollection>::SharedPtr create_collection_service_;
     rclcpp::Service<hyperspace_interfaces::srv::TriggerReconsolidation>::SharedPtr reconsolidation_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::VerifyGeneration>::SharedPtr verify_generation_service_;
 
     rclcpp::Publisher<hyperspace_interfaces::msg::SystemStats>::SharedPtr metrics_pub_;
     rclcpp::TimerBase::SharedPtr metrics_timer_;

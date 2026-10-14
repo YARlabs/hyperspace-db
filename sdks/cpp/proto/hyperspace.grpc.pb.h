@@ -330,6 +330,14 @@ class Database final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::HealthCheckResponse>> PrepareAsyncHealthCheck(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::HealthCheckResponse>>(PrepareAsyncHealthCheckRaw(context, request, cq));
     }
+    // Tribunal Router (Geometric Hallucination Prevention)
+    virtual ::grpc::Status VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::hyperspace::VerifyGenerationResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>> AsyncVerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>>(AsyncVerifyGenerationRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>> PrepareAsyncVerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>>(PrepareAsyncVerifyGenerationRaw(context, request, cq));
+    }
     class async_interface {
      public:
       virtual ~async_interface() {}
@@ -422,6 +430,9 @@ class Database final {
       // Health Status
       virtual void HealthCheck(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response, std::function<void(::grpc::Status)>) = 0;
       virtual void HealthCheck(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      // Tribunal Router (Geometric Hallucination Prevention)
+      virtual void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
     };
     typedef class async_interface experimental_async_interface;
     virtual class async_interface* async() { return nullptr; }
@@ -508,6 +519,8 @@ class Database final {
     virtual ::grpc::ClientAsyncWriterInterface< ::hyperspace::SyncVectorData>* PrepareAsyncSyncPushRaw(::grpc::ClientContext* context, ::hyperspace::SyncPushResponse* response, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::HealthCheckResponse>* AsyncHealthCheckRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::HealthCheckResponse>* PrepareAsyncHealthCheckRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>* AsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>* PrepareAsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) = 0;
   };
   class Stub final : public StubInterface {
    public:
@@ -788,6 +801,13 @@ class Database final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::HealthCheckResponse>> PrepareAsyncHealthCheck(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::HealthCheckResponse>>(PrepareAsyncHealthCheckRaw(context, request, cq));
     }
+    ::grpc::Status VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::hyperspace::VerifyGenerationResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>> AsyncVerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>>(AsyncVerifyGenerationRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>> PrepareAsyncVerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>>(PrepareAsyncVerifyGenerationRaw(context, request, cq));
+    }
     class async final :
       public StubInterface::async_interface {
      public:
@@ -862,6 +882,8 @@ class Database final {
       void SyncPush(::grpc::ClientContext* context, ::hyperspace::SyncPushResponse* response, ::grpc::ClientWriteReactor< ::hyperspace::SyncVectorData>* reactor) override;
       void HealthCheck(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response, std::function<void(::grpc::Status)>) override;
       void HealthCheck(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, std::function<void(::grpc::Status)>) override;
+      void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
      private:
       friend class Stub;
       explicit async(Stub* stub): stub_(stub) { }
@@ -954,6 +976,8 @@ class Database final {
     ::grpc::ClientAsyncWriter< ::hyperspace::SyncVectorData>* PrepareAsyncSyncPushRaw(::grpc::ClientContext* context, ::hyperspace::SyncPushResponse* response, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::HealthCheckResponse>* AsyncHealthCheckRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::HealthCheckResponse>* PrepareAsyncHealthCheckRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>* AsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>* PrepareAsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) override;
     const ::grpc::internal::RpcMethod rpcmethod_CreateCollection_;
     const ::grpc::internal::RpcMethod rpcmethod_DeleteCollection_;
     const ::grpc::internal::RpcMethod rpcmethod_ListCollections_;
@@ -992,6 +1016,7 @@ class Database final {
     const ::grpc::internal::RpcMethod rpcmethod_SyncPull_;
     const ::grpc::internal::RpcMethod rpcmethod_SyncPush_;
     const ::grpc::internal::RpcMethod rpcmethod_HealthCheck_;
+    const ::grpc::internal::RpcMethod rpcmethod_VerifyGeneration_;
   };
   static std::unique_ptr<Stub> NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
 
@@ -1055,6 +1080,8 @@ class Database final {
     virtual ::grpc::Status SyncPush(::grpc::ServerContext* context, ::grpc::ServerReader< ::hyperspace::SyncVectorData>* reader, ::hyperspace::SyncPushResponse* response);
     // Health Status
     virtual ::grpc::Status HealthCheck(::grpc::ServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response);
+    // Tribunal Router (Geometric Hallucination Prevention)
+    virtual ::grpc::Status VerifyGeneration(::grpc::ServerContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response);
   };
   template <class BaseClass>
   class WithAsyncMethod_CreateCollection : public BaseClass {
@@ -1816,7 +1843,27 @@ class Database final {
       ::grpc::Service::RequestAsyncUnary(37, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
-  typedef WithAsyncMethod_CreateCollection<WithAsyncMethod_DeleteCollection<WithAsyncMethod_ListCollections<WithAsyncMethod_GetCollectionStats<WithAsyncMethod_FreezeCollection<WithAsyncMethod_UnfreezeCollection<WithAsyncMethod_Insert<WithAsyncMethod_BatchInsert<WithAsyncMethod_InsertText<WithAsyncMethod_Vectorize<WithAsyncMethod_SearchText<WithAsyncMethod_Delete<WithAsyncMethod_GetPoints<WithAsyncMethod_UpdatePayload<WithAsyncMethod_Scroll<WithAsyncMethod_Count<WithAsyncMethod_Search<WithAsyncMethod_SearchBatch<WithAsyncMethod_SearchMultiCollection<WithAsyncMethod_GetNode<WithAsyncMethod_GetNeighbors<WithAsyncMethod_GetConceptParents<WithAsyncMethod_Traverse<WithAsyncMethod_FindSemanticClusters<WithAsyncMethod_GetSubsumptionTree<WithAsyncMethod_Monitor<WithAsyncMethod_TriggerSnapshot<WithAsyncMethod_TriggerVacuum<WithAsyncMethod_TriggerReconsolidation<WithAsyncMethod_Configure<WithAsyncMethod_Replicate<WithAsyncMethod_SubscribeToEvents<WithAsyncMethod_GetDigest<WithAsyncMethod_RebuildIndex<WithAsyncMethod_SyncHandshake<WithAsyncMethod_SyncPull<WithAsyncMethod_SyncPush<WithAsyncMethod_HealthCheck<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > AsyncService;
+  template <class BaseClass>
+  class WithAsyncMethod_VerifyGeneration : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_VerifyGeneration() {
+      ::grpc::Service::MarkMethodAsync(38);
+    }
+    ~WithAsyncMethod_VerifyGeneration() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status VerifyGeneration(::grpc::ServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestVerifyGeneration(::grpc::ServerContext* context, ::hyperspace::VerifyGenerationRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::VerifyGenerationResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(38, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  typedef WithAsyncMethod_CreateCollection<WithAsyncMethod_DeleteCollection<WithAsyncMethod_ListCollections<WithAsyncMethod_GetCollectionStats<WithAsyncMethod_FreezeCollection<WithAsyncMethod_UnfreezeCollection<WithAsyncMethod_Insert<WithAsyncMethod_BatchInsert<WithAsyncMethod_InsertText<WithAsyncMethod_Vectorize<WithAsyncMethod_SearchText<WithAsyncMethod_Delete<WithAsyncMethod_GetPoints<WithAsyncMethod_UpdatePayload<WithAsyncMethod_Scroll<WithAsyncMethod_Count<WithAsyncMethod_Search<WithAsyncMethod_SearchBatch<WithAsyncMethod_SearchMultiCollection<WithAsyncMethod_GetNode<WithAsyncMethod_GetNeighbors<WithAsyncMethod_GetConceptParents<WithAsyncMethod_Traverse<WithAsyncMethod_FindSemanticClusters<WithAsyncMethod_GetSubsumptionTree<WithAsyncMethod_Monitor<WithAsyncMethod_TriggerSnapshot<WithAsyncMethod_TriggerVacuum<WithAsyncMethod_TriggerReconsolidation<WithAsyncMethod_Configure<WithAsyncMethod_Replicate<WithAsyncMethod_SubscribeToEvents<WithAsyncMethod_GetDigest<WithAsyncMethod_RebuildIndex<WithAsyncMethod_SyncHandshake<WithAsyncMethod_SyncPull<WithAsyncMethod_SyncPush<WithAsyncMethod_HealthCheck<WithAsyncMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > AsyncService;
   template <class BaseClass>
   class WithCallbackMethod_CreateCollection : public BaseClass {
    private:
@@ -2818,7 +2865,34 @@ class Database final {
     virtual ::grpc::ServerUnaryReactor* HealthCheck(
       ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::HealthCheckResponse* /*response*/)  { return nullptr; }
   };
-  typedef WithCallbackMethod_CreateCollection<WithCallbackMethod_DeleteCollection<WithCallbackMethod_ListCollections<WithCallbackMethod_GetCollectionStats<WithCallbackMethod_FreezeCollection<WithCallbackMethod_UnfreezeCollection<WithCallbackMethod_Insert<WithCallbackMethod_BatchInsert<WithCallbackMethod_InsertText<WithCallbackMethod_Vectorize<WithCallbackMethod_SearchText<WithCallbackMethod_Delete<WithCallbackMethod_GetPoints<WithCallbackMethod_UpdatePayload<WithCallbackMethod_Scroll<WithCallbackMethod_Count<WithCallbackMethod_Search<WithCallbackMethod_SearchBatch<WithCallbackMethod_SearchMultiCollection<WithCallbackMethod_GetNode<WithCallbackMethod_GetNeighbors<WithCallbackMethod_GetConceptParents<WithCallbackMethod_Traverse<WithCallbackMethod_FindSemanticClusters<WithCallbackMethod_GetSubsumptionTree<WithCallbackMethod_Monitor<WithCallbackMethod_TriggerSnapshot<WithCallbackMethod_TriggerVacuum<WithCallbackMethod_TriggerReconsolidation<WithCallbackMethod_Configure<WithCallbackMethod_Replicate<WithCallbackMethod_SubscribeToEvents<WithCallbackMethod_GetDigest<WithCallbackMethod_RebuildIndex<WithCallbackMethod_SyncHandshake<WithCallbackMethod_SyncPull<WithCallbackMethod_SyncPush<WithCallbackMethod_HealthCheck<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > CallbackService;
+  template <class BaseClass>
+  class WithCallbackMethod_VerifyGeneration : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_VerifyGeneration() {
+      ::grpc::Service::MarkMethodCallback(38,
+          new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response) { return this->VerifyGeneration(context, request, response); }));}
+    void SetMessageAllocatorFor_VerifyGeneration(
+        ::grpc::MessageAllocator< ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(38);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_VerifyGeneration() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status VerifyGeneration(::grpc::ServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* VerifyGeneration(
+      ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/)  { return nullptr; }
+  };
+  typedef WithCallbackMethod_CreateCollection<WithCallbackMethod_DeleteCollection<WithCallbackMethod_ListCollections<WithCallbackMethod_GetCollectionStats<WithCallbackMethod_FreezeCollection<WithCallbackMethod_UnfreezeCollection<WithCallbackMethod_Insert<WithCallbackMethod_BatchInsert<WithCallbackMethod_InsertText<WithCallbackMethod_Vectorize<WithCallbackMethod_SearchText<WithCallbackMethod_Delete<WithCallbackMethod_GetPoints<WithCallbackMethod_UpdatePayload<WithCallbackMethod_Scroll<WithCallbackMethod_Count<WithCallbackMethod_Search<WithCallbackMethod_SearchBatch<WithCallbackMethod_SearchMultiCollection<WithCallbackMethod_GetNode<WithCallbackMethod_GetNeighbors<WithCallbackMethod_GetConceptParents<WithCallbackMethod_Traverse<WithCallbackMethod_FindSemanticClusters<WithCallbackMethod_GetSubsumptionTree<WithCallbackMethod_Monitor<WithCallbackMethod_TriggerSnapshot<WithCallbackMethod_TriggerVacuum<WithCallbackMethod_TriggerReconsolidation<WithCallbackMethod_Configure<WithCallbackMethod_Replicate<WithCallbackMethod_SubscribeToEvents<WithCallbackMethod_GetDigest<WithCallbackMethod_RebuildIndex<WithCallbackMethod_SyncHandshake<WithCallbackMethod_SyncPull<WithCallbackMethod_SyncPush<WithCallbackMethod_HealthCheck<WithCallbackMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > CallbackService;
   typedef CallbackService ExperimentalCallbackService;
   template <class BaseClass>
   class WithGenericMethod_CreateCollection : public BaseClass {
@@ -3462,6 +3536,23 @@ class Database final {
     }
     // disable synchronous version of this method
     ::grpc::Status HealthCheck(::grpc::ServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::HealthCheckResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_VerifyGeneration : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_VerifyGeneration() {
+      ::grpc::Service::MarkMethodGeneric(38);
+    }
+    ~WithGenericMethod_VerifyGeneration() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status VerifyGeneration(::grpc::ServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -4224,6 +4315,26 @@ class Database final {
     }
     void RequestHealthCheck(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
       ::grpc::Service::RequestAsyncUnary(37, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_VerifyGeneration : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_VerifyGeneration() {
+      ::grpc::Service::MarkMethodRaw(38);
+    }
+    ~WithRawMethod_VerifyGeneration() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status VerifyGeneration(::grpc::ServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestVerifyGeneration(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(38, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -5060,6 +5171,28 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     virtual ::grpc::ServerUnaryReactor* HealthCheck(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithRawCallbackMethod_VerifyGeneration : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_VerifyGeneration() {
+      ::grpc::Service::MarkMethodRawCallback(38,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->VerifyGeneration(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_VerifyGeneration() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status VerifyGeneration(::grpc::ServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* VerifyGeneration(
       ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
   };
   template <class BaseClass>
@@ -5953,7 +6086,34 @@ class Database final {
     // replace default version of method with streamed unary
     virtual ::grpc::Status StreamedHealthCheck(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::Empty,::hyperspace::HealthCheckResponse>* server_unary_streamer) = 0;
   };
-  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithStreamedUnaryMethod_HealthCheck<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedUnaryService;
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_VerifyGeneration : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_VerifyGeneration() {
+      ::grpc::Service::MarkMethodStreamed(38,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse>* streamer) {
+                       return this->StreamedVerifyGeneration(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_VerifyGeneration() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status VerifyGeneration(::grpc::ServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedVerifyGeneration(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::VerifyGenerationRequest,::hyperspace::VerifyGenerationResponse>* server_unary_streamer) = 0;
+  };
+  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithStreamedUnaryMethod_HealthCheck<WithStreamedUnaryMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedUnaryService;
   template <class BaseClass>
   class WithSplitStreamingMethod_Monitor : public BaseClass {
    private:
@@ -6063,7 +6223,7 @@ class Database final {
     virtual ::grpc::Status StreamedSyncPull(::grpc::ServerContext* context, ::grpc::ServerSplitStreamer< ::hyperspace::SyncPullRequest,::hyperspace::SyncVectorData>* server_split_streamer) = 0;
   };
   typedef WithSplitStreamingMethod_Monitor<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithSplitStreamingMethod_SyncPull<Service > > > > SplitStreamedService;
-  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithSplitStreamingMethod_Monitor<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithSplitStreamingMethod_SyncPull<WithStreamedUnaryMethod_HealthCheck<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedService;
+  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithSplitStreamingMethod_Monitor<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithSplitStreamingMethod_SyncPull<WithStreamedUnaryMethod_HealthCheck<WithStreamedUnaryMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedService;
 };
 
 }  // namespace hyperspace

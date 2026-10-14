@@ -58,6 +58,32 @@ const results = await vectorStore.similaritySearch("Find drone flight patterns",
 });
 ```
 
+### 🎯 Enterprise Query Planner & Intent Disambiguator
+
+Pre-evaluate user queries before issuing vector retrieval. Automatically splits compound queries into parallel searches and produces clarifying questions when queries are underspecified:
+
+```typescript
+import { HyperspaceQueryPlanner } from "langchain-hyperspace";
+
+const planner = new HyperspaceQueryPlanner();
+const plan = await planner.call({
+    raw_user_query: "Compare HIPAA vs GDPR retention limits and how do we encrypt client records?",
+    collections: ["compliance_policies", "security_docs"]
+});
+
+if (plan.status === "clarification_needed") {
+    console.log("Ask user:", plan.clarification?.question);
+    console.log("Options:", plan.clarification?.options);
+} else {
+    console.log("Execute parallel searches:", plan.search_queries);
+    // [
+    //   "Compare HIPAA vs GDPR retention limits",
+    //   "how do we encrypt client records"
+    // ]
+}
+```
+
+
 ## 📡 Edge-Cloud Handshake
 
 Synchronize episodic memory between local robot/agent and the fleet:

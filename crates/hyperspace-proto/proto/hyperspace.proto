@@ -68,6 +68,9 @@ service Database {
   
   // Health Status
   rpc HealthCheck (Empty) returns (HealthCheckResponse);
+
+  // Tribunal Router (Geometric Hallucination Prevention)
+  rpc VerifyGeneration (VerifyGenerationRequest) returns (VerifyGenerationResponse);
 }
 
 message ReplicationRequest {
@@ -679,4 +682,25 @@ message FreezeCollectionRequest {
 
 message UnfreezeCollectionRequest {
   string name = 1;
+}
+
+// Tribunal Router (Geometric Hallucination Prevention)
+message VerifyGenerationRequest {
+  string collection = 1;
+  string llm_answer = 2;
+  repeated string context_ids = 3;
+  optional double max_distance_threshold = 4;
+  optional bool check_geodesic = 5;
+}
+
+message VerifyGenerationResponse {
+  double trust_score = 1;
+  bool is_valid = 2;
+  double min_distance = 3;
+  double avg_distance = 4;
+  double geodesic_distance = 5;
+  uint32 geodesic_hops = 6;
+  bool cone_satisfied = 7;
+  string details = 8;
+  repeated uint32 resolved_context_ids = 9;
 }

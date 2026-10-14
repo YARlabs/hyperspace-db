@@ -26,6 +26,7 @@
 pub mod config;
 pub mod fuzzy;
 pub mod gpu;
+pub mod graph;
 pub mod gromov;
 pub mod hybrid;
 pub mod optim;
@@ -40,6 +41,7 @@ pub mod wasserstein;
 pub use config::GlobalConfig;
 pub mod bm25;
 pub use bm25::*;
+pub use graph::*;
 use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 
 #[cfg(feature = "nightly-simd")]

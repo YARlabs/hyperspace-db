@@ -33,7 +33,9 @@ import {
     CountRequest,
     HealthCheckResponse,
     Bm25Options as ProtoBm25Options,
-    ReconsolidationRequest
+    ReconsolidationRequest,
+    VerifyGenerationRequest,
+    VerifyGenerationResponse
 } from './proto/hyperspace_pb';
 
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
@@ -63,6 +65,41 @@ export interface SearchResult {
     typedMetadata: { [key: string]: TypedMetadataValue };
     payload?: Uint8Array; // Sidecar Payload Storage (v3.2)
 }
+
+/**
+ * Result of mathematically verifying an LLM-generated answer against source context vectors.
+ */
+export interface VerificationResult {
+    /**
+     * Normalized geometric confidence score between 0.0 and 1.0 indicating how well
+     * the answer adheres to the topological boundaries of the source context.
+     */
+    trust_score: number;
+    /**
+     * Boolean flag indicating whether the generation semantically breaks the topological/geometric
+     * boundaries of the source context (trust_score below threshold or invalid boundary).
+     */
+    is_hallucination: boolean;
+    /**
+     * Boolean flag indicating whether the generation is topologically valid within source boundaries.
+     */
+    is_valid: boolean;
+    /** Minimum geometric distance between the generation and source context chunks. */
+    min_distance: number;
+    /** Average geometric distance to the source context chunks. */
+    avg_distance: number;
+    /** Geodesic distance in the context neighborhood graph. */
+    geodesic_distance: number;
+    /** Number of geodesic hops traversed in the neighborhood graph. */
+    geodesic_hops: number;
+    /** Whether causal cone subsumption or directional boundaries hold. */
+    cone_satisfied: boolean;
+    /** Diagnostic details from the tribunal verification engine. */
+    details: string;
+    /** Resolved IDs of the source context chunks. */
+    resolved_context_ids: number[];
+}
+
 
 export interface VectorComponent {
     name: string;
@@ -1875,7 +1912,75 @@ export class HyperspaceClient {
         return res.status === 200;
     }
 
+    /**
+     * Mathematically verifies if the LLM's answer semantically breaks the topological/geometric
+     * boundaries of the source context.
+     *
+     * The server vectorizes the drafted LLM answer on the fly and evaluates geodesic paths
+     * and manifold boundaries relative to the provided source context chunks in the index.
+     * Geometric distance calculations and boundary verifications are performed opaquely
+     * by the server engine.
+     *
+     * @param llmAnswer - The response text drafted by the LLM.
+     * @param contextIds - Array of source context chunk identifiers (string IDs or UUIDs) used to generate the answer.
+     * @param collection - Target collection name (optional, defaults to empty or active collection).
+     * @param maxDistanceThreshold - Optional maximum acceptable geometric distance threshold.
+     * @param checkGeodesic - Whether to verify graph geodesic connectivity (defaults to true).
+     * @returns A promise resolving to a typed VerificationResult with trust_score (0.0-1.0) and is_hallucination flag.
+     */
+    public verifyGeneration(
+        llmAnswer: string,
+        contextIds: string[],
+        collection: string = '',
+        maxDistanceThreshold?: number,
+        checkGeodesic: boolean = true
+    ): Promise<VerificationResult> {
+        return new Promise((resolve, reject) => {
+            const req = new VerifyGenerationRequest();
+            req.setLlmAnswer(llmAnswer);
+            req.setContextIdsList(contextIds);
+            req.setCollection(collection);
+            req.setCheckGeodesic(checkGeodesic);
+            if (maxDistanceThreshold !== undefined) {
+                req.setMaxDistanceThreshold(maxDistanceThreshold);
+            }
+
+            this.client.verifyGeneration(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                if (!resp) return reject(new Error('Empty verification response from server'));
+
+                const result: VerificationResult = {
+                    trust_score: resp.getTrustScore(),
+                    is_hallucination: !resp.getIsValid(),
+                    is_valid: resp.getIsValid(),
+                    min_distance: resp.getMinDistance(),
+                    avg_distance: resp.getAvgDistance(),
+                    geodesic_distance: resp.getGeodesicDistance(),
+                    geodesic_hops: resp.getGeodesicHops(),
+                    cone_satisfied: resp.getConeSatisfied(),
+                    details: resp.getDetails(),
+                    resolved_context_ids: resp.getResolvedContextIdsList()
+                };
+                resolve(result);
+            });
+        });
+    }
+
+    /**
+     * Alias for verifyGeneration in snake_case format.
+     */
+    public verify_generation(
+        llm_answer: string,
+        context_ids: string[],
+        collection: string = '',
+        max_distance_threshold?: number,
+        check_geodesic: boolean = true
+    ): Promise<VerificationResult> {
+        return this.verifyGeneration(llm_answer, context_ids, collection, max_distance_threshold, check_geodesic);
+    }
+
     public close() {
         this.client.close();
     }
 }
+

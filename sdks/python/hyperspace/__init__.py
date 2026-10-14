@@ -1,4 +1,4 @@
-from .client import HyperspaceClient, Durability
+from .client import HyperspaceClient, Durability, VerificationResult
 from .depin import DePINClient
 from .embedders import (
     BaseEmbedder,
@@ -27,6 +27,7 @@ __all__ = [
     "HyperspaceClient",
     "DePINClient",
     "Durability",
+    "VerificationResult",
     "BaseEmbedder",
     "OpenAIEmbedder",
     "OpenRouterEmbedder",

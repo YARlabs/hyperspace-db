@@ -95,7 +95,9 @@ If you configured a custom password in your local `.env` (`HYPERSPACE_API_KEY=my
 | `memory_explore_hierarchy` | Navigate Lorentz hyperbolic concept tree (broader vs narrower concepts) |
 | `memory_consolidate` | Synthesize clusters of memories into a single abstract Fréchet Mean hyperbolic concept vector with optional persistence and source archiving |
 | `memory_verify_claim` | Mathematical anti-hallucination verification using 129D MRL hybrid (Lorentz + Cosine) space with adaptive trust threshold |
+| `hyperspace_query_planner` | Enterprise Query Planner & Intent Disambiguator: detects ambiguous user queries, generates multiple-choice clarifying questions, or splits compound questions into parallel sub-queries |
 | `memory_stats` | Diagnostic status report showing vector count, collection health, and active indexing schema |
+
 
 ---
 

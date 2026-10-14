@@ -61,6 +61,7 @@ static const char* Database_method_names[] = {
   "/hyperspace.Database/SyncPull",
   "/hyperspace.Database/SyncPush",
   "/hyperspace.Database/HealthCheck",
+  "/hyperspace.Database/VerifyGeneration",
 };
 
 std::unique_ptr< Database::Stub> Database::NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options) {
@@ -108,6 +109,7 @@ Database::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, 
   , rpcmethod_SyncPull_(Database_method_names[35], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
   , rpcmethod_SyncPush_(Database_method_names[36], options.suffix_for_stats(),::grpc::internal::RpcMethod::CLIENT_STREAMING, channel)
   , rpcmethod_HealthCheck_(Database_method_names[37], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_VerifyGeneration_(Database_method_names[38], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
 
 ::grpc::Status Database::Stub::CreateCollection(::grpc::ClientContext* context, const ::hyperspace::CreateCollectionRequest& request, ::hyperspace::StatusResponse* response) {
@@ -949,6 +951,29 @@ void Database::Stub::async::HealthCheck(::grpc::ClientContext* context, const ::
   return result;
 }
 
+::grpc::Status Database::Stub::VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::hyperspace::VerifyGenerationResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_VerifyGeneration_, context, request, response);
+}
+
+void Database::Stub::async::VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_VerifyGeneration_, context, request, response, std::move(f));
+}
+
+void Database::Stub::async::VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_VerifyGeneration_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>* Database::Stub::PrepareAsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::hyperspace::VerifyGenerationResponse, ::hyperspace::VerifyGenerationRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_VerifyGeneration_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>* Database::Stub::AsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncVerifyGenerationRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
 Database::Service::Service() {
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Database_method_names[0],
@@ -1330,6 +1355,16 @@ Database::Service::Service() {
              ::hyperspace::HealthCheckResponse* resp) {
                return service->HealthCheck(ctx, req, resp);
              }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Database_method_names[38],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Database::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::hyperspace::VerifyGenerationRequest* req,
+             ::hyperspace::VerifyGenerationResponse* resp) {
+               return service->VerifyGeneration(ctx, req, resp);
+             }, this)));
 }
 
 Database::Service::~Service() {
@@ -1595,6 +1630,13 @@ Database::Service::~Service() {
 }
 
 ::grpc::Status Database::Service::HealthCheck(::grpc::ServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Database::Service::VerifyGeneration(::grpc::ServerContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response) {
   (void) context;
   (void) request;
   (void) response;

@@ -9,9 +9,10 @@ Welcome to the HyperspaceDB C++ SDK. This SDK provides gRPC generated clients an
 - **Recursive Filtering**: Full support for complex logical expressions (`AND`, `OR`, `NOT`) in filters.
 - **Graph Traversal APIs**: Uncover semantic structures using `GetNode`, `GetNeighbors`, `GetSubsumptionTree`, and `Traverse`.
 - **Memory Reconsolidation**: Trigger `TriggerReconsolidation` to start the AI Sleep Mode flow matching optimization directly within the database.
-- **System Health**: Active server monitoring via `HealthCheck`.
+- **Tribunal Anti-Hallucination Verification**: Mathematically verify (`VerifyGeneration`) if an LLM drafted answer semantically breaks the topological/geometric boundaries of context vectors.
 - **Cross-Feature Metric**: Search geometries using standard metrics as well as the newly integrated $1D$ O(N) Wasserstein CDF distance (`use_wasserstein = true`).
 - **Differential Sync**: Delta-sync methods for synchronizing decentralized edge databases.
+
 
 ## Generated Protobufs
 

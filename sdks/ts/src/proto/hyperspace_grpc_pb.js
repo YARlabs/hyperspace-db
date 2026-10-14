@@ -664,6 +664,28 @@ function deserialize_hyperspace_VectorizeResponse(buffer_arg) {
   return hyperspace_pb.VectorizeResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_VerifyGenerationRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.VerifyGenerationRequest)) {
+    throw new Error('Expected argument of type hyperspace.VerifyGenerationRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_VerifyGenerationRequest(buffer_arg) {
+  return hyperspace_pb.VerifyGenerationRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_VerifyGenerationResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.VerifyGenerationResponse)) {
+    throw new Error('Expected argument of type hyperspace.VerifyGenerationResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_VerifyGenerationResponse(buffer_arg) {
+  return hyperspace_pb.VerifyGenerationResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 
 var DatabaseService = exports.DatabaseService = {
   // Collection Management
@@ -1101,6 +1123,18 @@ healthCheck: {
     requestDeserialize: deserialize_hyperspace_Empty,
     responseSerialize: serialize_hyperspace_HealthCheckResponse,
     responseDeserialize: deserialize_hyperspace_HealthCheckResponse,
+  },
+  // Tribunal Router (Geometric Hallucination Prevention)
+verifyGeneration: {
+    path: '/hyperspace.Database/VerifyGeneration',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.VerifyGenerationRequest,
+    responseType: hyperspace_pb.VerifyGenerationResponse,
+    requestSerialize: serialize_hyperspace_VerifyGenerationRequest,
+    requestDeserialize: deserialize_hyperspace_VerifyGenerationRequest,
+    responseSerialize: serialize_hyperspace_VerifyGenerationResponse,
+    responseDeserialize: deserialize_hyperspace_VerifyGenerationResponse,
   },
 };
 

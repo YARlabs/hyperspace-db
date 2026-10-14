@@ -14,10 +14,12 @@ Use this SDK for:
 - paginated scanning (`scroll`)
 - filtered point counting (`count`)
 - health monitoring (`healthCheck`)
+- tribunal verification (`verifyGeneration` / `verify_generation`) for geometric anti-hallucination checks
 - typed metadata (`string | number | boolean`)
 - graph traversal APIs (`getNode`, `getNeighbors`, `getSubsumptionTree`, `getConceptParents`, `traverse`, `exploreGraph`, `findSemanticClusters`)
 - rebuild with metadata pruning (`rebuildIndexWithFilter`)
 - multi-tenant authentication headers (`x-api-key`, `x-hyperspace-user-id`)
+
 
 ## Requirements
 

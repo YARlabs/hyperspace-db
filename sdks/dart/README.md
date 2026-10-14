@@ -10,9 +10,11 @@ Official Dart/Flutter SDK for [HyperspaceDB](https://github.com/yarlabs/hyperspa
 - **Recursive Filtering**: Complex logical filters (`AND`, `OR`, `NOT`) and spatial constraints (`InCone`, `InBall`, `InBox`).
 - **High Throughput**: Optimized `batchInsert` and `searchBatch` for production workloads.
 - **Cognitive Math**: Built-in tools for Agentic AI (Hallucination detection, Proof of convergence).
+- **Tribunal Anti-Hallucination Verification**: Mathematical `verifyGeneration` ensuring LLM answers stay within topological context boundaries.
 - **Delta Sync**: Merkle-tree based state synchronization for distributed systems.
 - **Real-time CDC**: Subscribe to live data change events from the server.
 - **Typed Metadata**: Native mapping for `String`, `int`, `double`, and `bool` values.
+
 
 ## 📦 Installation
 

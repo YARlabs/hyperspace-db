@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { HyperspaceClient, CognitiveMathExport as CognitiveMath, HyperbolicMath } from "hyperspace-sdk-ts";
 import { z } from "zod";
+import { planQuery, QUERY_PLANNER_TOOL_SCHEMA } from "./query_planner.js";
 
 const rawHost = process.env.HYPERSPACE_HOST || "localhost:50051";
 const HYPERSPACE_HOST = rawHost.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -407,6 +408,17 @@ class HyperspaceMcpServer {
             required: ["collection", "trajectory_ids"]
           }
         },
+        // --- QUERY PLANNING & REASONING TOOLS ---
+        {
+          name: "hyperspace_query_planner",
+          description: "Enterprise RAG Query Planner. Evaluates user intent before vector search: detects ambiguous/underspecified questions (requesting multiple-choice user clarification) and decomposes multi-part queries into parallel sub-queries.",
+          inputSchema: QUERY_PLANNER_TOOL_SCHEMA
+        },
+        {
+          name: "clarify_and_split_intent",
+          description: "Alias for hyperspace_query_planner. Evaluates intent clarity, asks clarifying questions if ambiguous, and splits multi-part questions into isolated search queries.",
+          inputSchema: QUERY_PLANNER_TOOL_SCHEMA
+        },
 
       ]
     }));
@@ -415,6 +427,22 @@ class HyperspaceMcpServer {
       const { name, arguments: args } = request.params;
       try {
         switch (name) {
+          case "hyperspace_query_planner":
+          case "clarify_and_split_intent": {
+            const { raw_user_query, context, collections, max_sub_queries } = z.object({
+              raw_user_query: z.string(),
+              context: z.string().optional(),
+              collections: z.array(z.string()).optional(),
+              max_sub_queries: z.number().optional()
+            }).parse(args);
+            const res = await planQuery({
+              raw_user_query,
+              context,
+              collections,
+              max_sub_queries
+            });
+            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
           case "hyperspace_list_collections": {
             const res = await this.client.listCollections();
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };

@@ -10,6 +10,7 @@ import { collectionDescription } from './resources/collection';
 import { vectorDescription } from './resources/vector';
 import { systemDescription } from './resources/system';
 import { graphDescription } from './resources/graph';
+import { queryPlannerDescription } from './resources/queryPlanner';
 
 export class Hyperspacedb implements INodeType {
 	description: INodeTypeDescription = {
@@ -34,6 +35,7 @@ export class Hyperspacedb implements INodeType {
 				options: [
 					{ name: 'Collection', value: 'collection' },
 					{ name: 'Vector', value: 'vector' },
+					{ name: 'Query Planner', value: 'queryPlanner' },
 					{ name: 'System', value: 'system' },
 					{ name: 'Graph', value: 'graph' },
 				],
@@ -41,6 +43,7 @@ export class Hyperspacedb implements INodeType {
 			},
 			...collectionDescription,
 			...vectorDescription,
+			...queryPlannerDescription,
 			...systemDescription,
 			...graphDescription,
 		],
@@ -92,6 +95,148 @@ export class Hyperspacedb implements INodeType {
 
 						const results = await client.searchText(text, topK, collectionName);
 						returnData.push({ json: { results } });
+					} else if (operation === 'verifyGeneration') {
+						const llmAnswer = this.getNodeParameter('llmAnswer', i) as string;
+						const contextIdsParam = this.getNodeParameter('contextIds', i) as string;
+						const maxDistanceThreshold = this.getNodeParameter('maxDistanceThreshold', i, undefined) as number | undefined;
+						const checkGeodesic = this.getNodeParameter('checkGeodesic', i, true) as boolean;
+
+						let contextIds: string[] = [];
+						if (typeof contextIdsParam === 'string') {
+							try {
+								const parsed = JSON.parse(contextIdsParam);
+								contextIds = Array.isArray(parsed) ? parsed.map(String) : [contextIdsParam];
+							} catch {
+								contextIds = contextIdsParam.split(',').map(s => s.trim()).filter(Boolean);
+							}
+						}
+
+						const verification = await client.verifyGeneration(
+							llmAnswer,
+							contextIds,
+							collectionName,
+							maxDistanceThreshold,
+							checkGeodesic
+						);
+						returnData.push({ json: verification as any });
+					}
+				} else if (resource === 'queryPlanner') {
+					if (operation === 'planAndSplit') {
+						const rawUserQuery = this.getNodeParameter('rawUserQuery', i) as string;
+						const context = this.getNodeParameter('context', i, '') as string;
+						const collectionsParam = this.getNodeParameter('collections', i, '') as string;
+						const maxSubQueries = this.getNodeParameter('maxSubQueries', i, 5) as number;
+
+						const collections = collectionsParam
+							? collectionsParam.split(',').map(s => s.trim()).filter(Boolean)
+							: ['default'];
+
+						const VAGUE_PATTERNS = [
+							/^(how|what|tell me)\s+(is|about)\s+(it|this|that|them)\??$/i,
+							/^(compare|diff|difference)\s+(them|both|these|it)\??$/i,
+							/^(is it good|how is performance|is it fast|does it work)\??$/i,
+							/^(help|info|information|details)\??$/i,
+							/^(what should i do|what next|where to start)\??$/i,
+						];
+						const SPLIT_CONNECTORS = [
+							/\s+and\s+(?:also\s+)?(?:what\s+about|how\s+about|tell\s+me\s+about)?\s+/i,
+							/\s*;\s*/,
+							/\?\s+(?:also,?\s*)?/i,
+							/\s+as\s+well\s+as\s+/i,
+							/\s+in\s+addition\s+to\s+(?:that,?\s*)?/i,
+							/\s+plus\s+/i,
+							/\s*,\s*and\s+/i,
+						];
+
+						const raw = (rawUserQuery || '').trim();
+						if (!raw || raw.length < 4) {
+							returnData.push({
+								json: {
+									status: 'clarification_needed',
+									action: 'ask_user_clarification',
+									is_intent_clear: false,
+									has_multiple_questions: false,
+									search_queries: [],
+									clarification: {
+										question: 'Your query is brief. What specific topic would you like to search?',
+										options: [
+											'System architecture & performance',
+											'API setup & integration',
+											'Vector indexing & geometric metrics',
+											'Compliance & policies'
+										],
+										reason: 'Input query is empty or too short.'
+									},
+									reason: 'Query too brief for accurate vector retrieval.',
+									execution_strategy: { parallel: false, target_collections: collections, top_k_per_query: 5 }
+								}
+							});
+						} else {
+							const isVague = VAGUE_PATTERNS.some(pat => pat.test(raw));
+							if (isVague && (!context || context.trim().length === 0)) {
+								returnData.push({
+									json: {
+										status: 'clarification_needed',
+										action: 'ask_user_clarification',
+										is_intent_clear: false,
+										has_multiple_questions: false,
+										search_queries: [],
+										clarification: {
+											question: `Could you clarify what aspect of '${raw}' you are interested in?`,
+											options: [
+												'Benchmark latency & performance',
+												'Configuration examples',
+												'Geometric hierarchy & light cones',
+												'Quantization & memory footprint'
+											],
+											reason: 'Query contains ambiguous pronouns or generic concepts without antecedent context.'
+										},
+										reason: 'Pronoun/concept ambiguity without conversation context.',
+										execution_strategy: { parallel: false, target_collections: collections, top_k_per_query: 5 }
+									}
+								});
+							} else {
+								let subQueries = [raw];
+								for (const regex of SPLIT_CONNECTORS) {
+									const nextList: string[] = [];
+									for (const q of subQueries) {
+										if (regex.test(q)) {
+											const parts = q.split(regex).map(p => p.trim()).filter(p => p.length > 3);
+											if (parts.length > 1) {
+												nextList.push(...parts);
+												continue;
+											}
+										}
+										nextList.push(q);
+									}
+									subQueries = nextList;
+								}
+
+								const cleanSubQueries = Array.from(new Set(subQueries.map(sq => sq.replace(/\?+$/, '').trim())))
+									.filter(sq => sq.length > 3)
+									.slice(0, maxSubQueries);
+
+								const hasMultiple = cleanSubQueries.length > 1;
+								returnData.push({
+									json: {
+										status: 'ready_for_search',
+										action: hasMultiple ? 'parallel_search' : 'direct_search',
+										is_intent_clear: true,
+										has_multiple_questions: hasMultiple,
+										search_queries: cleanSubQueries.length > 0 ? cleanSubQueries : [raw],
+										clarification: null,
+										reason: hasMultiple
+											? `Detected ${cleanSubQueries.length} distinct questions. Split for parallel vector retrieval.`
+											: 'Intent is clear and isolated.',
+										execution_strategy: {
+											parallel: hasMultiple,
+											target_collections: collections,
+											top_k_per_query: hasMultiple ? 3 : 5
+										}
+									}
+								});
+							}
+						}
 					}
 				} else if (resource === 'collection') {
 					if (operation === 'create') {

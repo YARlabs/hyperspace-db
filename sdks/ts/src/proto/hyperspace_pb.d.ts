@@ -2684,6 +2684,92 @@ export namespace UnfreezeCollectionRequest {
     }
 }
 
+export class VerifyGenerationRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): VerifyGenerationRequest;
+    getLlmAnswer(): string;
+    setLlmAnswer(value: string): VerifyGenerationRequest;
+    clearContextIdsList(): void;
+    getContextIdsList(): Array<string>;
+    setContextIdsList(value: Array<string>): VerifyGenerationRequest;
+    addContextIds(value: string, index?: number): string;
+
+    hasMaxDistanceThreshold(): boolean;
+    clearMaxDistanceThreshold(): void;
+    getMaxDistanceThreshold(): number | undefined;
+    setMaxDistanceThreshold(value: number): VerifyGenerationRequest;
+
+    hasCheckGeodesic(): boolean;
+    clearCheckGeodesic(): void;
+    getCheckGeodesic(): boolean | undefined;
+    setCheckGeodesic(value: boolean): VerifyGenerationRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VerifyGenerationRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: VerifyGenerationRequest): VerifyGenerationRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VerifyGenerationRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VerifyGenerationRequest;
+    static deserializeBinaryFromReader(message: VerifyGenerationRequest, reader: jspb.BinaryReader): VerifyGenerationRequest;
+}
+
+export namespace VerifyGenerationRequest {
+    export type AsObject = {
+        collection: string,
+        llmAnswer: string,
+        contextIdsList: Array<string>,
+        maxDistanceThreshold?: number,
+        checkGeodesic?: boolean,
+    }
+}
+
+export class VerifyGenerationResponse extends jspb.Message { 
+    getTrustScore(): number;
+    setTrustScore(value: number): VerifyGenerationResponse;
+    getIsValid(): boolean;
+    setIsValid(value: boolean): VerifyGenerationResponse;
+    getMinDistance(): number;
+    setMinDistance(value: number): VerifyGenerationResponse;
+    getAvgDistance(): number;
+    setAvgDistance(value: number): VerifyGenerationResponse;
+    getGeodesicDistance(): number;
+    setGeodesicDistance(value: number): VerifyGenerationResponse;
+    getGeodesicHops(): number;
+    setGeodesicHops(value: number): VerifyGenerationResponse;
+    getConeSatisfied(): boolean;
+    setConeSatisfied(value: boolean): VerifyGenerationResponse;
+    getDetails(): string;
+    setDetails(value: string): VerifyGenerationResponse;
+    clearResolvedContextIdsList(): void;
+    getResolvedContextIdsList(): Array<number>;
+    setResolvedContextIdsList(value: Array<number>): VerifyGenerationResponse;
+    addResolvedContextIds(value: number, index?: number): number;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VerifyGenerationResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: VerifyGenerationResponse): VerifyGenerationResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: VerifyGenerationResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): VerifyGenerationResponse;
+    static deserializeBinaryFromReader(message: VerifyGenerationResponse, reader: jspb.BinaryReader): VerifyGenerationResponse;
+}
+
+export namespace VerifyGenerationResponse {
+    export type AsObject = {
+        trustScore: number,
+        isValid: boolean,
+        minDistance: number,
+        avgDistance: number,
+        geodesicDistance: number,
+        geodesicHops: number,
+        coneSatisfied: boolean,
+        details: string,
+        resolvedContextIdsList: Array<number>,
+    }
+}
+
 export enum QuantizationMode {
     NONE = 0,
     SCALAR_I8 = 1,

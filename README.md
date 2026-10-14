@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.0.1** | **The World's First Schema-Driven Spatial AI Engine.**
+**v4.0.2** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,9 +33,17 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v4.0.1)
+## 🚀 Core Pillars (v4.0.2)
 
 <table>
+  <tr>
+    <td>⚖️ <b>Tribunal Router (Geometric Hallucination Prevention)</b></td>
+    <td>Post-generation geometric verification endpoint (<code>VerifyGeneration</code>) in <code>tribunal.rs</code>. Computes on-the-fly geodesic paths and Lorentz light-cone boundaries between LLM generated answers and source context chunks, producing mathematical <code>trust_score</code> (0.0–1.0) and <code>is_hallucination</code> flag without making any assumptions about underlying vector quantization.</td>
+  </tr>
+  <tr>
+    <td>🗺️ <b>Enterprise Query Planner</b></td>
+    <td>Intelligent natural language query optimization and AST execution engine (<code>hyperspace_query_planner</code>). Automatically decomposes user questions into optimized sub-queries, executes parallel vector/geometric retrieval, applies filters and light-cone traversals, and synthesizes enriched context. Available across MCP, LangChain, LlamaIndex, n8n, and Agent Skills.</td>
+  </tr>
   <tr>
     <td>⚡ <b>Thread-per-Core Engine</b></td>
     <td>Shared-Nothing architecture inspired by Seastar. Each physical CPU core runs an isolated, lock-free shard partition (<code>ShardedCollection</code>) with deterministic routing (<code>hash(id) % N</code>). Eliminates cross-core cache line bouncing and lock contention, delivering <b>142.5 QPS</b> (C=1) to <b>311.6 QPS</b> (C=10) on 1024D dense search (4.52× faster vs v3) and <b>67,500 vec/s</b> server core ingestion throughput.</td>
@@ -1030,27 +1038,29 @@ npx mcp-hyperspacedb@latest
 * `hyperspace_graph_traverse` / `hyperspace_explore_graph` / `hyperspace_get_neighbors`: Graph navigation.
 * `hyperspace_get_subsumption_tree` / `hyperspace_get_concept_parents`: Hierarchy traversal.
 * `hyperspace_analyze_thought_stability` / `hyperspace_predict_momentum` / `hyperspace_get_trust_score`: Cognitive AI.
+* `hyperspace_verify_generation`: Tribunal geometric hallucination verification.
+* `hyperspace_query_planner`: Natural-language sub-query decomposition and planned retrieval.
 * `hyperspace_analyze_geometry`: Gromov Delta → metric recommendation (`cosine`/`l2`/`lorentz`/`poincare`/`hybrid`).
 * `hyperspace_rebuild_index` / `hyperspace_vacuum` / `hyperspace_cache_*`: System maintenance.
 
 ---
 
-## 📦 SDKs (v3.x Milestone)
+## 📦 SDKs (v4.x Milestone)
 
-Official 1st-party drivers with full **Functional Parity**, Delta Sync, and Cognitive Math:
+Official 1st-party drivers with full **Functional Parity**, Tribunal Verification (`verify_generation`), Delta Sync, and Cognitive Math:
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v3.* |
-| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v3.* |
-| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v3.* |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v3.* |
-| 🎯 **Dart/Flutter** | [hyperspacedb: ^3.1.2](https://pub.dev/packages/hyperspacedb) | ✅ v3.* |
-| 🐹 **Go** | `sdks/go` | ✅ v3.* |
-| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v3.* |
-| 🧠 **AI Agent Skills** | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) | ✅ v3.* |
+| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v4.0.2 |
+| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v4.0.2 |
+| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v4.0.2 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v4.0.2 |
+| 🎯 **Dart/Flutter** | [hyperspacedb: ^4.0.2](https://pub.dev/packages/hyperspacedb) | ✅ v4.0.2 |
+| 🐹 **Go** | `sdks/go` | ✅ v4.0.2 |
+| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v4.0.2 |
+| 🧠 **AI Agent Skills** | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) | ✅ v4.0.2 |
 
-> 🧠 **AI Agent Skills** (`hyperspacedb-skills`) are structured `SKILL.md` files that teach Cursor, Claude Code, Windsurf, Antigravity, and custom agents how to correctly use HyperspaceDB — covering core CRUD, graph traversal, cognitive AI (Lyapunov/Koopman), DePIN node economics, and the full 30+ MCP tool reference. Install once, all your agents understand HyperspaceDB automatically.
+> 🧠 **AI Agent Skills** (`hyperspacedb-skills`) are structured `SKILL.md` files that teach Cursor, Claude Code, Windsurf, Antigravity, and custom agents how to correctly use HyperspaceDB — covering core CRUD, graph traversal, cognitive AI (Lyapunov/Koopman), Tribunal verification, query planning, DePIN node economics, and the full 30+ MCP tool reference. Install once, all your agents understand HyperspaceDB automatically.
 
 ---
 

@@ -1,4 +1,5 @@
 import grpc
+from dataclasses import dataclass
 from typing import List, Dict, Optional, Union, Iterator
 import sys
 import os
@@ -17,6 +18,37 @@ class Durability:
     ASYNC = 1
     BATCH = 2
     STRICT = 3
+
+@dataclass
+class VerificationResult:
+    """
+    Result of mathematically verifying an LLM-generated answer against source context vectors.
+
+    Attributes:
+        trust_score (float): Normalized geometric confidence score between 0.0 and 1.0
+            indicating how well the answer adheres to the topological boundaries of the source context.
+        is_hallucination (bool): Boolean flag indicating whether the generation semantically
+            breaks the topological/geometric boundaries of the source context.
+        is_valid (bool): Boolean flag indicating topological validity.
+        min_distance (float): Minimum geometric distance between the generation and source context chunks.
+        avg_distance (float): Average geometric distance to the source context chunks.
+        geodesic_distance (float): Geodesic distance in the context neighborhood graph.
+        geodesic_hops (int): Number of geodesic hops traversed in the neighborhood graph.
+        cone_satisfied (bool): Whether causal cone subsumption or directional boundaries hold.
+        details (str): Diagnostic details from the tribunal verification engine.
+        resolved_context_ids (Optional[List[int]]): Resolved IDs of the source context chunks.
+    """
+    trust_score: float
+    is_hallucination: bool
+    is_valid: bool = True
+    min_distance: float = 0.0
+    avg_distance: float = 0.0
+    geodesic_distance: float = 0.0
+    geodesic_hops: int = 0
+    cone_satisfied: bool = True
+    details: str = ""
+    resolved_context_ids: Optional[List[int]] = None
+
 
 class HyperspaceClient:
     def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None, pool_size: int = 8, collection_keys: Optional[Dict[str, str]] = None):
@@ -1653,6 +1685,59 @@ class HyperspaceClient:
         except Exception as e:
             print(f"Error in end_run: {e}")
             return False
+
+    def verify_generation(
+        self,
+        llm_answer: str,
+        context_ids: List[str],
+        collection: str = "",
+        max_distance_threshold: Optional[float] = None,
+        check_geodesic: bool = True,
+    ) -> VerificationResult:
+        """
+        Mathematically verifies if the LLM's answer semantically breaks the topological/geometric
+        boundaries of the source context.
+
+        The server vectorizes the drafted LLM answer on the fly and evaluates geodesic paths
+        and manifold boundaries relative to the provided source context chunks in the index.
+        Geometric distance calculations and boundary verifications are performed opaquely
+        by the server engine.
+
+        Args:
+            llm_answer (str): The response text drafted by the LLM.
+            context_ids (List[str]): List of source context chunk identifiers (string IDs or UUIDs)
+                used by the LLM to generate the answer.
+            collection (str, optional): Target collection name. If empty, the server's default collection is used.
+            max_distance_threshold (float, optional): Maximum acceptable geometric distance threshold.
+            check_geodesic (bool, optional): Whether to verify geodesic paths in the context graph. Defaults to True.
+
+        Returns:
+            VerificationResult: A typed object containing `trust_score` (float 0.0-1.0) and
+                `is_hallucination` (boolean) flag.
+        """
+        req = hyperspace_pb2.VerifyGenerationRequest(
+            collection=collection,
+            llm_answer=llm_answer,
+            context_ids=context_ids,
+            check_geodesic=check_geodesic,
+        )
+        if max_distance_threshold is not None:
+            req.max_distance_threshold = max_distance_threshold
+
+        resp = self.stub.VerifyGeneration(req, metadata=self.metadata)
+        return VerificationResult(
+            trust_score=float(resp.trust_score),
+            is_hallucination=not resp.is_valid,
+            is_valid=resp.is_valid,
+            min_distance=float(resp.min_distance),
+            avg_distance=float(resp.avg_distance),
+            geodesic_distance=float(resp.geodesic_distance),
+            geodesic_hops=int(resp.geodesic_hops),
+            cone_satisfied=resp.cone_satisfied,
+            details=resp.details,
+            resolved_context_ids=list(resp.resolved_context_ids),
+        )
+
 
 def analyze_delta_hyperbolicity(vectors: List[List[float]], num_samples: int = 1000) -> (float, str):
     """

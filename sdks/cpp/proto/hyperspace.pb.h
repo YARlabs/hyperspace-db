@@ -522,6 +522,14 @@ class VectorizeResponse;
 struct VectorizeResponseDefaultTypeInternal;
 extern VectorizeResponseDefaultTypeInternal _VectorizeResponse_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull VectorizeResponse_class_data_;
+class VerifyGenerationRequest;
+struct VerifyGenerationRequestDefaultTypeInternal;
+extern VerifyGenerationRequestDefaultTypeInternal _VerifyGenerationRequest_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull VerifyGenerationRequest_class_data_;
+class VerifyGenerationResponse;
+struct VerifyGenerationResponseDefaultTypeInternal;
+extern VerifyGenerationResponseDefaultTypeInternal _VerifyGenerationResponse_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull VerifyGenerationResponse_class_data_;
 }  // namespace hyperspace
 namespace google {
 namespace protobuf {
@@ -754,6 +762,586 @@ template <>
 // ===================================================================
 
 
+// -------------------------------------------------------------------
+
+class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED VerifyGenerationResponse final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:hyperspace.VerifyGenerationResponse) */ {
+ public:
+  inline VerifyGenerationResponse() : VerifyGenerationResponse(nullptr) {}
+  ~VerifyGenerationResponse() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(VerifyGenerationResponse* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(VerifyGenerationResponse));
+  }
+#endif
+
+  template <typename = void>
+  explicit constexpr VerifyGenerationResponse(::google::protobuf::internal::ConstantInitialized);
+
+  inline VerifyGenerationResponse(const VerifyGenerationResponse& from) : VerifyGenerationResponse(nullptr, from) {}
+  inline VerifyGenerationResponse(VerifyGenerationResponse&& from) noexcept
+      : VerifyGenerationResponse(nullptr, ::std::move(from)) {}
+  inline VerifyGenerationResponse& operator=(const VerifyGenerationResponse& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline VerifyGenerationResponse& operator=(VerifyGenerationResponse&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  [[nodiscard]] inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  [[nodiscard]] inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL
+  mutable_unknown_fields() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  [[nodiscard]] static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  [[nodiscard]] static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL
+  GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  [[nodiscard]] static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  [[nodiscard]] static const VerifyGenerationResponse& default_instance() {
+    return *reinterpret_cast<const VerifyGenerationResponse*>(
+        &_VerifyGenerationResponse_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 114;
+  friend void swap(VerifyGenerationResponse& a, VerifyGenerationResponse& b) { a.Swap(&b); }
+  inline void Swap(VerifyGenerationResponse* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(VerifyGenerationResponse* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  [[nodiscard]] VerifyGenerationResponse* PROTOBUF_NONNULL
+  New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<VerifyGenerationResponse>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const VerifyGenerationResponse& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const VerifyGenerationResponse& from) { VerifyGenerationResponse::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  [[nodiscard]] bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  [[nodiscard]] static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  [[nodiscard]] static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  [[nodiscard]] ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  [[nodiscard]] ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  [[nodiscard]] ::size_t ByteSizeLong() const final;
+  [[nodiscard]] ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  [[nodiscard]] int GetCachedSize() const {
+    return _impl_._cached_size_.Get();
+  }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(VerifyGenerationResponse* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "hyperspace.VerifyGenerationResponse"; }
+
+  explicit VerifyGenerationResponse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  VerifyGenerationResponse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const VerifyGenerationResponse& from);
+  VerifyGenerationResponse(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, VerifyGenerationResponse&& from) noexcept
+      : VerifyGenerationResponse(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  [[nodiscard]] ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kResolvedContextIdsFieldNumber = 9,
+    kDetailsFieldNumber = 8,
+    kTrustScoreFieldNumber = 1,
+    kMinDistanceFieldNumber = 3,
+    kAvgDistanceFieldNumber = 4,
+    kGeodesicDistanceFieldNumber = 5,
+    kIsValidFieldNumber = 2,
+    kConeSatisfiedFieldNumber = 7,
+    kGeodesicHopsFieldNumber = 6,
+  };
+  // repeated uint32 resolved_context_ids = 9;
+  [[nodiscard]] int resolved_context_ids_size()
+      const;
+  private:
+  int _internal_resolved_context_ids_size() const;
+
+  public:
+  void clear_resolved_context_ids() ;
+  [[nodiscard]] ::uint32_t resolved_context_ids(int index) const;
+  void set_resolved_context_ids(int index, ::uint32_t value);
+  void add_resolved_context_ids(::uint32_t value);
+  [[nodiscard]] const ::google::protobuf::RepeatedField<::uint32_t>& resolved_context_ids() const;
+  ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL mutable_resolved_context_ids();
+
+  private:
+  const ::google::protobuf::RepeatedField<::uint32_t>& _internal_resolved_context_ids() const;
+  ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL _internal_mutable_resolved_context_ids();
+
+  public:
+  // string details = 8;
+  void clear_details() ;
+  [[nodiscard]] const ::std::string& details() const;
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void set_details(Arg_&& arg, Args_... args);
+  ::std::string* PROTOBUF_NONNULL mutable_details();
+  [[nodiscard]] ::std::string* PROTOBUF_NULLABLE release_details();
+  void set_allocated_details(::std::string* PROTOBUF_NULLABLE value);
+
+  private:
+  const ::std::string& _internal_details() const;
+  PROTOBUF_ALWAYS_INLINE void _internal_set_details(const ::std::string& value);
+  ::std::string* PROTOBUF_NONNULL _internal_mutable_details();
+
+  public:
+  // double trust_score = 1;
+  void clear_trust_score() ;
+  [[nodiscard]] double trust_score() const;
+  void set_trust_score(double value);
+
+  private:
+  double _internal_trust_score() const;
+  void _internal_set_trust_score(double value);
+
+  public:
+  // double min_distance = 3;
+  void clear_min_distance() ;
+  [[nodiscard]] double min_distance() const;
+  void set_min_distance(double value);
+
+  private:
+  double _internal_min_distance() const;
+  void _internal_set_min_distance(double value);
+
+  public:
+  // double avg_distance = 4;
+  void clear_avg_distance() ;
+  [[nodiscard]] double avg_distance() const;
+  void set_avg_distance(double value);
+
+  private:
+  double _internal_avg_distance() const;
+  void _internal_set_avg_distance(double value);
+
+  public:
+  // double geodesic_distance = 5;
+  void clear_geodesic_distance() ;
+  [[nodiscard]] double geodesic_distance() const;
+  void set_geodesic_distance(double value);
+
+  private:
+  double _internal_geodesic_distance() const;
+  void _internal_set_geodesic_distance(double value);
+
+  public:
+  // bool is_valid = 2;
+  void clear_is_valid() ;
+  [[nodiscard]] bool is_valid() const;
+  void set_is_valid(bool value);
+
+  private:
+  bool _internal_is_valid() const;
+  void _internal_set_is_valid(bool value);
+
+  public:
+  // bool cone_satisfied = 7;
+  void clear_cone_satisfied() ;
+  [[nodiscard]] bool cone_satisfied() const;
+  void set_cone_satisfied(bool value);
+
+  private:
+  bool _internal_cone_satisfied() const;
+  void _internal_set_cone_satisfied(bool value);
+
+  public:
+  // uint32 geodesic_hops = 6;
+  void clear_geodesic_hops() ;
+  [[nodiscard]] ::uint32_t geodesic_hops() const;
+  void set_geodesic_hops(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_geodesic_hops() const;
+  void _internal_set_geodesic_hops(::uint32_t value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:hyperspace.VerifyGenerationResponse)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<4, 9,
+                                   0, 59,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  friend ::google::protobuf::internal::PrivateAccess;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                                    ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const VerifyGenerationResponse& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::RepeatedField<::uint32_t> resolved_context_ids_;
+    ::google::protobuf::internal::CachedSize _resolved_context_ids_cached_byte_size_;
+    ::google::protobuf::internal::ArenaStringPtr details_;
+    double trust_score_;
+    double min_distance_;
+    double avg_distance_;
+    double geodesic_distance_;
+    bool is_valid_;
+    bool cone_satisfied_;
+    ::uint32_t geodesic_hops_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_hyperspace_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull VerifyGenerationResponse_class_data_;
+// -------------------------------------------------------------------
+
+class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED VerifyGenerationRequest final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:hyperspace.VerifyGenerationRequest) */ {
+ public:
+  inline VerifyGenerationRequest() : VerifyGenerationRequest(nullptr) {}
+  ~VerifyGenerationRequest() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(VerifyGenerationRequest* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(VerifyGenerationRequest));
+  }
+#endif
+
+  template <typename = void>
+  explicit constexpr VerifyGenerationRequest(::google::protobuf::internal::ConstantInitialized);
+
+  inline VerifyGenerationRequest(const VerifyGenerationRequest& from) : VerifyGenerationRequest(nullptr, from) {}
+  inline VerifyGenerationRequest(VerifyGenerationRequest&& from) noexcept
+      : VerifyGenerationRequest(nullptr, ::std::move(from)) {}
+  inline VerifyGenerationRequest& operator=(const VerifyGenerationRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline VerifyGenerationRequest& operator=(VerifyGenerationRequest&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  [[nodiscard]] inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  [[nodiscard]] inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL
+  mutable_unknown_fields() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  [[nodiscard]] static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  [[nodiscard]] static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL
+  GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  [[nodiscard]] static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  [[nodiscard]] static const VerifyGenerationRequest& default_instance() {
+    return *reinterpret_cast<const VerifyGenerationRequest*>(
+        &_VerifyGenerationRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 113;
+  friend void swap(VerifyGenerationRequest& a, VerifyGenerationRequest& b) { a.Swap(&b); }
+  inline void Swap(VerifyGenerationRequest* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(VerifyGenerationRequest* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  [[nodiscard]] VerifyGenerationRequest* PROTOBUF_NONNULL
+  New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<VerifyGenerationRequest>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const VerifyGenerationRequest& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const VerifyGenerationRequest& from) { VerifyGenerationRequest::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  [[nodiscard]] bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  [[nodiscard]] static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  [[nodiscard]] static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  [[nodiscard]] ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  [[nodiscard]] ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  [[nodiscard]] ::size_t ByteSizeLong() const final;
+  [[nodiscard]] ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  [[nodiscard]] int GetCachedSize() const {
+    return _impl_._cached_size_.Get();
+  }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(VerifyGenerationRequest* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "hyperspace.VerifyGenerationRequest"; }
+
+  explicit VerifyGenerationRequest(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  VerifyGenerationRequest(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const VerifyGenerationRequest& from);
+  VerifyGenerationRequest(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, VerifyGenerationRequest&& from) noexcept
+      : VerifyGenerationRequest(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  [[nodiscard]] ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kContextIdsFieldNumber = 3,
+    kCollectionFieldNumber = 1,
+    kLlmAnswerFieldNumber = 2,
+    kMaxDistanceThresholdFieldNumber = 4,
+    kCheckGeodesicFieldNumber = 5,
+  };
+  // repeated string context_ids = 3;
+  [[nodiscard]] int context_ids_size()
+      const;
+  private:
+  int _internal_context_ids_size() const;
+
+  public:
+  void clear_context_ids() ;
+  [[nodiscard]] const ::std::string& context_ids(int index) const;
+  ::std::string* PROTOBUF_NONNULL mutable_context_ids(int index);
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void set_context_ids(int index, Arg_&& value, Args_... args);
+  ::std::string* PROTOBUF_NONNULL add_context_ids();
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void add_context_ids(Arg_&& value, Args_... args);
+  [[nodiscard]] const ::google::protobuf::RepeatedPtrField<::std::string>&
+  context_ids() const;
+  [[nodiscard]] ::google::protobuf::RepeatedPtrField<::std::string>* PROTOBUF_NONNULL
+  mutable_context_ids();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::std::string>& _internal_context_ids() const;
+  ::google::protobuf::RepeatedPtrField<::std::string>* PROTOBUF_NONNULL _internal_mutable_context_ids();
+
+  public:
+  // string collection = 1;
+  void clear_collection() ;
+  [[nodiscard]] const ::std::string& collection() const;
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void set_collection(Arg_&& arg, Args_... args);
+  ::std::string* PROTOBUF_NONNULL mutable_collection();
+  [[nodiscard]] ::std::string* PROTOBUF_NULLABLE release_collection();
+  void set_allocated_collection(::std::string* PROTOBUF_NULLABLE value);
+
+  private:
+  const ::std::string& _internal_collection() const;
+  PROTOBUF_ALWAYS_INLINE void _internal_set_collection(const ::std::string& value);
+  ::std::string* PROTOBUF_NONNULL _internal_mutable_collection();
+
+  public:
+  // string llm_answer = 2;
+  void clear_llm_answer() ;
+  [[nodiscard]] const ::std::string& llm_answer() const;
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void set_llm_answer(Arg_&& arg, Args_... args);
+  ::std::string* PROTOBUF_NONNULL mutable_llm_answer();
+  [[nodiscard]] ::std::string* PROTOBUF_NULLABLE release_llm_answer();
+  void set_allocated_llm_answer(::std::string* PROTOBUF_NULLABLE value);
+
+  private:
+  const ::std::string& _internal_llm_answer() const;
+  PROTOBUF_ALWAYS_INLINE void _internal_set_llm_answer(const ::std::string& value);
+  ::std::string* PROTOBUF_NONNULL _internal_mutable_llm_answer();
+
+  public:
+  // optional double max_distance_threshold = 4;
+  [[nodiscard]] bool has_max_distance_threshold()
+      const;
+  void clear_max_distance_threshold() ;
+  [[nodiscard]] double max_distance_threshold() const;
+  void set_max_distance_threshold(double value);
+
+  private:
+  double _internal_max_distance_threshold() const;
+  void _internal_set_max_distance_threshold(double value);
+
+  public:
+  // optional bool check_geodesic = 5;
+  [[nodiscard]] bool has_check_geodesic()
+      const;
+  void clear_check_geodesic() ;
+  [[nodiscard]] bool check_geodesic() const;
+  void set_check_geodesic(bool value);
+
+  private:
+  bool _internal_check_geodesic() const;
+  void _internal_set_check_geodesic(bool value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:hyperspace.VerifyGenerationRequest)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<3, 5,
+                                   0, 74,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  friend ::google::protobuf::internal::PrivateAccess;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                                    ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const VerifyGenerationRequest& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::RepeatedPtrField<::std::string> context_ids_;
+    ::google::protobuf::internal::ArenaStringPtr collection_;
+    ::google::protobuf::internal::ArenaStringPtr llm_answer_;
+    double max_distance_threshold_;
+    bool check_geodesic_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_hyperspace_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull VerifyGenerationRequest_class_data_;
 // -------------------------------------------------------------------
 
 class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED VectorizeResponse final : public ::google::protobuf::Message
@@ -35412,6 +36000,565 @@ inline void UnfreezeCollectionRequest::set_allocated_name(::std::string* PROTOBU
     _impl_.name_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:hyperspace.UnfreezeCollectionRequest.name)
+}
+
+// -------------------------------------------------------------------
+
+// VerifyGenerationRequest
+
+// string collection = 1;
+inline void VerifyGenerationRequest::clear_collection() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.collection_.ClearToEmpty();
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000002U);
+}
+inline const ::std::string& VerifyGenerationRequest::collection() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationRequest.collection)
+  return _internal_collection();
+}
+template <typename Arg_, typename... Args_>
+PROTOBUF_ALWAYS_INLINE void VerifyGenerationRequest::set_collection(Arg_&& arg, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  _impl_.collection_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationRequest.collection)
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationRequest::mutable_collection()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  ::std::string* _s = _internal_mutable_collection();
+  // @@protoc_insertion_point(field_mutable:hyperspace.VerifyGenerationRequest.collection)
+  return _s;
+}
+inline const ::std::string& VerifyGenerationRequest::_internal_collection() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.collection_.Get();
+}
+inline void VerifyGenerationRequest::_internal_set_collection(const ::std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.collection_.Set(value, GetArena());
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationRequest::_internal_mutable_collection() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.collection_.Mutable( GetArena());
+}
+inline ::std::string* PROTOBUF_NULLABLE VerifyGenerationRequest::release_collection() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:hyperspace.VerifyGenerationRequest.collection)
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000002U)) {
+    return nullptr;
+  }
+  ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+  auto* released = _impl_.collection_.Release();
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
+    _impl_.collection_.Set("", GetArena());
+  }
+  return released;
+}
+inline void VerifyGenerationRequest::set_allocated_collection(::std::string* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+  }
+  _impl_.collection_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.collection_.IsDefault()) {
+    _impl_.collection_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:hyperspace.VerifyGenerationRequest.collection)
+}
+
+// string llm_answer = 2;
+inline void VerifyGenerationRequest::clear_llm_answer() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.llm_answer_.ClearToEmpty();
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000004U);
+}
+inline const ::std::string& VerifyGenerationRequest::llm_answer() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationRequest.llm_answer)
+  return _internal_llm_answer();
+}
+template <typename Arg_, typename... Args_>
+PROTOBUF_ALWAYS_INLINE void VerifyGenerationRequest::set_llm_answer(Arg_&& arg, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  _impl_.llm_answer_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationRequest.llm_answer)
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationRequest::mutable_llm_answer()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  ::std::string* _s = _internal_mutable_llm_answer();
+  // @@protoc_insertion_point(field_mutable:hyperspace.VerifyGenerationRequest.llm_answer)
+  return _s;
+}
+inline const ::std::string& VerifyGenerationRequest::_internal_llm_answer() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.llm_answer_.Get();
+}
+inline void VerifyGenerationRequest::_internal_set_llm_answer(const ::std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.llm_answer_.Set(value, GetArena());
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationRequest::_internal_mutable_llm_answer() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.llm_answer_.Mutable( GetArena());
+}
+inline ::std::string* PROTOBUF_NULLABLE VerifyGenerationRequest::release_llm_answer() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:hyperspace.VerifyGenerationRequest.llm_answer)
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000004U)) {
+    return nullptr;
+  }
+  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+  auto* released = _impl_.llm_answer_.Release();
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
+    _impl_.llm_answer_.Set("", GetArena());
+  }
+  return released;
+}
+inline void VerifyGenerationRequest::set_allocated_llm_answer(::std::string* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+  }
+  _impl_.llm_answer_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.llm_answer_.IsDefault()) {
+    _impl_.llm_answer_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:hyperspace.VerifyGenerationRequest.llm_answer)
+}
+
+// repeated string context_ids = 3;
+inline int VerifyGenerationRequest::_internal_context_ids_size() const {
+  return _internal_context_ids().size();
+}
+inline int VerifyGenerationRequest::context_ids_size() const {
+  return _internal_context_ids_size();
+}
+inline void VerifyGenerationRequest::clear_context_ids() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.context_ids_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationRequest::add_context_ids()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::std::string* _s =
+      _internal_mutable_context_ids()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add_mutable:hyperspace.VerifyGenerationRequest.context_ids)
+  return _s;
+}
+inline const ::std::string& VerifyGenerationRequest::context_ids(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationRequest.context_ids)
+  return _internal_context_ids().Get(index);
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationRequest::mutable_context_ids(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:hyperspace.VerifyGenerationRequest.context_ids)
+  return _internal_mutable_context_ids()->Mutable(index);
+}
+template <typename Arg_, typename... Args_>
+inline void VerifyGenerationRequest::set_context_ids(int index, Arg_&& value, Args_... args) {
+  ::google::protobuf::internal::AssignToString(*_internal_mutable_context_ids()->Mutable(index), ::std::forward<Arg_>(value),
+                        args... );
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationRequest.context_ids)
+}
+template <typename Arg_, typename... Args_>
+inline void VerifyGenerationRequest::add_context_ids(Arg_&& value, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::google::protobuf::internal::AddToRepeatedPtrField(
+      ::google::protobuf::MessageLite::internal_visibility(), GetArena(),
+      *_internal_mutable_context_ids(), ::std::forward<Arg_>(value),
+      args... );
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:hyperspace.VerifyGenerationRequest.context_ids)
+}
+inline const ::google::protobuf::RepeatedPtrField<::std::string>& VerifyGenerationRequest::context_ids()
+    const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:hyperspace.VerifyGenerationRequest.context_ids)
+  return _internal_context_ids();
+}
+inline ::google::protobuf::RepeatedPtrField<::std::string>* PROTOBUF_NONNULL
+VerifyGenerationRequest::mutable_context_ids() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_mutable_list:hyperspace.VerifyGenerationRequest.context_ids)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_context_ids();
+}
+inline const ::google::protobuf::RepeatedPtrField<::std::string>&
+VerifyGenerationRequest::_internal_context_ids() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.context_ids_;
+}
+inline ::google::protobuf::RepeatedPtrField<::std::string>* PROTOBUF_NONNULL
+VerifyGenerationRequest::_internal_mutable_context_ids() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.context_ids_;
+}
+
+// optional double max_distance_threshold = 4;
+inline bool VerifyGenerationRequest::has_max_distance_threshold() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000008U);
+  return value;
+}
+inline void VerifyGenerationRequest::clear_max_distance_threshold() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.max_distance_threshold_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000008U);
+}
+inline double VerifyGenerationRequest::max_distance_threshold() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationRequest.max_distance_threshold)
+  return _internal_max_distance_threshold();
+}
+inline void VerifyGenerationRequest::set_max_distance_threshold(double value) {
+  _internal_set_max_distance_threshold(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationRequest.max_distance_threshold)
+}
+inline double VerifyGenerationRequest::_internal_max_distance_threshold() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.max_distance_threshold_;
+}
+inline void VerifyGenerationRequest::_internal_set_max_distance_threshold(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.max_distance_threshold_ = value;
+}
+
+// optional bool check_geodesic = 5;
+inline bool VerifyGenerationRequest::has_check_geodesic() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
+  return value;
+}
+inline void VerifyGenerationRequest::clear_check_geodesic() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.check_geodesic_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000010U);
+}
+inline bool VerifyGenerationRequest::check_geodesic() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationRequest.check_geodesic)
+  return _internal_check_geodesic();
+}
+inline void VerifyGenerationRequest::set_check_geodesic(bool value) {
+  _internal_set_check_geodesic(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationRequest.check_geodesic)
+}
+inline bool VerifyGenerationRequest::_internal_check_geodesic() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.check_geodesic_;
+}
+inline void VerifyGenerationRequest::_internal_set_check_geodesic(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.check_geodesic_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// VerifyGenerationResponse
+
+// double trust_score = 1;
+inline void VerifyGenerationResponse::clear_trust_score() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.trust_score_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000004U);
+}
+inline double VerifyGenerationResponse::trust_score() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.trust_score)
+  return _internal_trust_score();
+}
+inline void VerifyGenerationResponse::set_trust_score(double value) {
+  _internal_set_trust_score(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.trust_score)
+}
+inline double VerifyGenerationResponse::_internal_trust_score() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.trust_score_;
+}
+inline void VerifyGenerationResponse::_internal_set_trust_score(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.trust_score_ = value;
+}
+
+// bool is_valid = 2;
+inline void VerifyGenerationResponse::clear_is_valid() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_valid_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000040U);
+}
+inline bool VerifyGenerationResponse::is_valid() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.is_valid)
+  return _internal_is_valid();
+}
+inline void VerifyGenerationResponse::set_is_valid(bool value) {
+  _internal_set_is_valid(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.is_valid)
+}
+inline bool VerifyGenerationResponse::_internal_is_valid() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_valid_;
+}
+inline void VerifyGenerationResponse::_internal_set_is_valid(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_valid_ = value;
+}
+
+// double min_distance = 3;
+inline void VerifyGenerationResponse::clear_min_distance() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.min_distance_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000008U);
+}
+inline double VerifyGenerationResponse::min_distance() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.min_distance)
+  return _internal_min_distance();
+}
+inline void VerifyGenerationResponse::set_min_distance(double value) {
+  _internal_set_min_distance(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.min_distance)
+}
+inline double VerifyGenerationResponse::_internal_min_distance() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.min_distance_;
+}
+inline void VerifyGenerationResponse::_internal_set_min_distance(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.min_distance_ = value;
+}
+
+// double avg_distance = 4;
+inline void VerifyGenerationResponse::clear_avg_distance() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.avg_distance_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000010U);
+}
+inline double VerifyGenerationResponse::avg_distance() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.avg_distance)
+  return _internal_avg_distance();
+}
+inline void VerifyGenerationResponse::set_avg_distance(double value) {
+  _internal_set_avg_distance(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.avg_distance)
+}
+inline double VerifyGenerationResponse::_internal_avg_distance() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.avg_distance_;
+}
+inline void VerifyGenerationResponse::_internal_set_avg_distance(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.avg_distance_ = value;
+}
+
+// double geodesic_distance = 5;
+inline void VerifyGenerationResponse::clear_geodesic_distance() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.geodesic_distance_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000020U);
+}
+inline double VerifyGenerationResponse::geodesic_distance() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.geodesic_distance)
+  return _internal_geodesic_distance();
+}
+inline void VerifyGenerationResponse::set_geodesic_distance(double value) {
+  _internal_set_geodesic_distance(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.geodesic_distance)
+}
+inline double VerifyGenerationResponse::_internal_geodesic_distance() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.geodesic_distance_;
+}
+inline void VerifyGenerationResponse::_internal_set_geodesic_distance(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.geodesic_distance_ = value;
+}
+
+// uint32 geodesic_hops = 6;
+inline void VerifyGenerationResponse::clear_geodesic_hops() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.geodesic_hops_ = 0u;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000100U);
+}
+inline ::uint32_t VerifyGenerationResponse::geodesic_hops() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.geodesic_hops)
+  return _internal_geodesic_hops();
+}
+inline void VerifyGenerationResponse::set_geodesic_hops(::uint32_t value) {
+  _internal_set_geodesic_hops(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.geodesic_hops)
+}
+inline ::uint32_t VerifyGenerationResponse::_internal_geodesic_hops() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.geodesic_hops_;
+}
+inline void VerifyGenerationResponse::_internal_set_geodesic_hops(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.geodesic_hops_ = value;
+}
+
+// bool cone_satisfied = 7;
+inline void VerifyGenerationResponse::clear_cone_satisfied() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.cone_satisfied_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000080U);
+}
+inline bool VerifyGenerationResponse::cone_satisfied() const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.cone_satisfied)
+  return _internal_cone_satisfied();
+}
+inline void VerifyGenerationResponse::set_cone_satisfied(bool value) {
+  _internal_set_cone_satisfied(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.cone_satisfied)
+}
+inline bool VerifyGenerationResponse::_internal_cone_satisfied() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.cone_satisfied_;
+}
+inline void VerifyGenerationResponse::_internal_set_cone_satisfied(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.cone_satisfied_ = value;
+}
+
+// string details = 8;
+inline void VerifyGenerationResponse::clear_details() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.details_.ClearToEmpty();
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000002U);
+}
+inline const ::std::string& VerifyGenerationResponse::details() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.details)
+  return _internal_details();
+}
+template <typename Arg_, typename... Args_>
+PROTOBUF_ALWAYS_INLINE void VerifyGenerationResponse::set_details(Arg_&& arg, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  _impl_.details_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.details)
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationResponse::mutable_details()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  ::std::string* _s = _internal_mutable_details();
+  // @@protoc_insertion_point(field_mutable:hyperspace.VerifyGenerationResponse.details)
+  return _s;
+}
+inline const ::std::string& VerifyGenerationResponse::_internal_details() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.details_.Get();
+}
+inline void VerifyGenerationResponse::_internal_set_details(const ::std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.details_.Set(value, GetArena());
+}
+inline ::std::string* PROTOBUF_NONNULL VerifyGenerationResponse::_internal_mutable_details() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.details_.Mutable( GetArena());
+}
+inline ::std::string* PROTOBUF_NULLABLE VerifyGenerationResponse::release_details() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:hyperspace.VerifyGenerationResponse.details)
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000002U)) {
+    return nullptr;
+  }
+  ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+  auto* released = _impl_.details_.Release();
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
+    _impl_.details_.Set("", GetArena());
+  }
+  return released;
+}
+inline void VerifyGenerationResponse::set_allocated_details(::std::string* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+  }
+  _impl_.details_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.details_.IsDefault()) {
+    _impl_.details_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:hyperspace.VerifyGenerationResponse.details)
+}
+
+// repeated uint32 resolved_context_ids = 9;
+inline int VerifyGenerationResponse::_internal_resolved_context_ids_size() const {
+  return _internal_resolved_context_ids().size();
+}
+inline int VerifyGenerationResponse::resolved_context_ids_size() const {
+  return _internal_resolved_context_ids_size();
+}
+inline void VerifyGenerationResponse::clear_resolved_context_ids() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.resolved_context_ids_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+inline ::uint32_t VerifyGenerationResponse::resolved_context_ids(int index) const {
+  // @@protoc_insertion_point(field_get:hyperspace.VerifyGenerationResponse.resolved_context_ids)
+  return _internal_resolved_context_ids().Get(index);
+}
+inline void VerifyGenerationResponse::set_resolved_context_ids(int index, ::uint32_t value) {
+  _internal_mutable_resolved_context_ids()->Set(index, value);
+  // @@protoc_insertion_point(field_set:hyperspace.VerifyGenerationResponse.resolved_context_ids)
+}
+inline void VerifyGenerationResponse::add_resolved_context_ids(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_resolved_context_ids()->InternalAddWithArena(
+      internal_visibility(), GetArena(), value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:hyperspace.VerifyGenerationResponse.resolved_context_ids)
+}
+inline const ::google::protobuf::RepeatedField<::uint32_t>& VerifyGenerationResponse::resolved_context_ids() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:hyperspace.VerifyGenerationResponse.resolved_context_ids)
+  return _internal_resolved_context_ids();
+}
+inline ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL VerifyGenerationResponse::mutable_resolved_context_ids()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_mutable_list:hyperspace.VerifyGenerationResponse.resolved_context_ids)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_resolved_context_ids();
+}
+inline const ::google::protobuf::RepeatedField<::uint32_t>&
+VerifyGenerationResponse::_internal_resolved_context_ids() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.resolved_context_ids_;
+}
+inline ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL
+VerifyGenerationResponse::_internal_mutable_resolved_context_ids() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.resolved_context_ids_;
 }
 
 #ifdef __GNUC__

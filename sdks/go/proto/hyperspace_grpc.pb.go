@@ -57,6 +57,7 @@ const (
 	Database_SyncPull_FullMethodName               = "/hyperspace.Database/SyncPull"
 	Database_SyncPush_FullMethodName               = "/hyperspace.Database/SyncPush"
 	Database_HealthCheck_FullMethodName            = "/hyperspace.Database/HealthCheck"
+	Database_VerifyGeneration_FullMethodName       = "/hyperspace.Database/VerifyGeneration"
 )
 
 // DatabaseClient is the client API for Database service.
@@ -119,6 +120,8 @@ type DatabaseClient interface {
 	SyncPush(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[SyncVectorData, SyncPushResponse], error)
 	// Health Status
 	HealthCheck(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+	// Tribunal Router (Geometric Hallucination Prevention)
+	VerifyGeneration(ctx context.Context, in *VerifyGenerationRequest, opts ...grpc.CallOption) (*VerifyGenerationResponse, error)
 }
 
 type databaseClient struct {
@@ -548,6 +551,16 @@ func (c *databaseClient) HealthCheck(ctx context.Context, in *Empty, opts ...grp
 	return out, nil
 }
 
+func (c *databaseClient) VerifyGeneration(ctx context.Context, in *VerifyGenerationRequest, opts ...grpc.CallOption) (*VerifyGenerationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VerifyGenerationResponse)
+	err := c.cc.Invoke(ctx, Database_VerifyGeneration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabaseServer is the server API for Database service.
 // All implementations must embed UnimplementedDatabaseServer
 // for forward compatibility.
@@ -608,6 +621,8 @@ type DatabaseServer interface {
 	SyncPush(grpc.ClientStreamingServer[SyncVectorData, SyncPushResponse]) error
 	// Health Status
 	HealthCheck(context.Context, *Empty) (*HealthCheckResponse, error)
+	// Tribunal Router (Geometric Hallucination Prevention)
+	VerifyGeneration(context.Context, *VerifyGenerationRequest) (*VerifyGenerationResponse, error)
 	mustEmbedUnimplementedDatabaseServer()
 }
 
@@ -731,6 +746,9 @@ func (UnimplementedDatabaseServer) SyncPush(grpc.ClientStreamingServer[SyncVecto
 }
 func (UnimplementedDatabaseServer) HealthCheck(context.Context, *Empty) (*HealthCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedDatabaseServer) VerifyGeneration(context.Context, *VerifyGenerationRequest) (*VerifyGenerationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method VerifyGeneration not implemented")
 }
 func (UnimplementedDatabaseServer) mustEmbedUnimplementedDatabaseServer() {}
 func (UnimplementedDatabaseServer) testEmbeddedByValue()                  {}
@@ -1398,6 +1416,24 @@ func _Database_HealthCheck_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Database_VerifyGeneration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VerifyGenerationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).VerifyGeneration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_VerifyGeneration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).VerifyGeneration(ctx, req.(*VerifyGenerationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Database_ServiceDesc is the grpc.ServiceDesc for Database service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1536,6 +1572,10 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthCheck",
 			Handler:    _Database_HealthCheck_Handler,
+		},
+		{
+			MethodName: "VerifyGeneration",
+			Handler:    _Database_VerifyGeneration_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

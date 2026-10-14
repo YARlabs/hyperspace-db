@@ -8,6 +8,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { HyperspaceClient, CognitiveMathExport as CognitiveMath, SearchResult } from "hyperspace-sdk-ts";
 import { z } from "zod";
+import { evaluateQueryLocally, QUERY_PLANNER_TOOL_SCHEMA } from "./query_planner.js";
+
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 // SaaS endpoint is the default — no HYPERSPACE_HOST needed for most users.
@@ -333,6 +335,16 @@ class HyperspaceMemoryServer {
             type: "object",
             properties: {}
           }
+        },
+        {
+          name: "hyperspace_query_planner",
+          description: "Enterprise Query Planner & Intent Disambiguator. Evaluates raw user queries before issuing memory retrieval. Detects ambiguous intent, returns multiple-choice questions for the user, or splits compound questions into parallel sub-queries.",
+          inputSchema: QUERY_PLANNER_TOOL_SCHEMA
+        },
+        {
+          name: "memory_query_planner",
+          description: "Alias for hyperspace_query_planner.",
+          inputSchema: QUERY_PLANNER_TOOL_SCHEMA
         }
       ]
     }));
@@ -763,6 +775,32 @@ class HyperspaceMemoryServer {
               }]
             };
           }
+
+          // ── hyperspace_query_planner ─────────────────────────────────────
+          case "hyperspace_query_planner":
+          case "memory_query_planner": {
+            const { raw_user_query, context, collections, max_sub_queries } = z.object({
+              raw_user_query: z.string(),
+              context: z.string().optional(),
+              collections: z.array(z.string()).optional(),
+              max_sub_queries: z.number().optional().default(5)
+            }).parse(args);
+
+            const result = evaluateQueryLocally({
+              raw_user_query,
+              context,
+              collections: collections || [MEMORY_COLLECTION],
+              max_sub_queries
+            });
+
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify(result, null, 2)
+              }]
+            };
+          }
+
 
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Tool not found: ${name}`);

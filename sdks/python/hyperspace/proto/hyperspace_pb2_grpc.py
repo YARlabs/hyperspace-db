@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import hyperspace_pb2 as hyperspace__pb2
+from . import hyperspace_pb2 as hyperspace__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
@@ -223,6 +223,11 @@ class DatabaseStub(object):
                 '/hyperspace.Database/HealthCheck',
                 request_serializer=hyperspace__pb2.Empty.SerializeToString,
                 response_deserializer=hyperspace__pb2.HealthCheckResponse.FromString,
+                _registered_method=True)
+        self.VerifyGeneration = channel.unary_unary(
+                '/hyperspace.Database/VerifyGeneration',
+                request_serializer=hyperspace__pb2.VerifyGenerationRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.VerifyGenerationResponse.FromString,
                 _registered_method=True)
 
 
@@ -475,6 +480,13 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def VerifyGeneration(self, request, context):
+        """Tribunal Router (Geometric Hallucination Prevention)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -667,6 +679,11 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.HealthCheck,
                     request_deserializer=hyperspace__pb2.Empty.FromString,
                     response_serializer=hyperspace__pb2.HealthCheckResponse.SerializeToString,
+            ),
+            'VerifyGeneration': grpc.unary_unary_rpc_method_handler(
+                    servicer.VerifyGeneration,
+                    request_deserializer=hyperspace__pb2.VerifyGenerationRequest.FromString,
+                    response_serializer=hyperspace__pb2.VerifyGenerationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1695,6 +1712,33 @@ class Database(object):
             '/hyperspace.Database/HealthCheck',
             hyperspace__pb2.Empty.SerializeToString,
             hyperspace__pb2.HealthCheckResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def VerifyGeneration(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/VerifyGeneration',
+            hyperspace__pb2.VerifyGenerationRequest.SerializeToString,
+            hyperspace__pb2.VerifyGenerationResponse.FromString,
             options,
             channel_credentials,
             insecure,

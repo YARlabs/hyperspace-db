@@ -2459,14 +2459,16 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "4.0.1"
+version = "4.0.2"
 dependencies = [
  "async-trait",
  "bytemuck",
  "criterion",
+ "parking_lot",
  "pollster",
  "proptest",
  "rand 0.8.5",
+ "roaring",
  "serde",
  "wgpu",
 ]
@@ -2555,7 +2557,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "prost 0.12.6",
  "serde",
@@ -2590,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "4.0.1"
+version = "4.0.2"
 dependencies = [
  "arc-swap",
  "async-stream",

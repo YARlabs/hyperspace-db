@@ -8,6 +8,8 @@ This package provides a bridge between HyperspaceDB and the ROS2 environment, al
 - `hyperspace/insert_text`: Vectorize and store text in the database.
 - `hyperspace/search_text`: Unified search with support for hybrid ranking.
 - `hyperspace/get_subsumption_tree`: Extract directed light-cone hierarchies for robotic navigation.
+- `hyperspace/verify_generation`: Anti-hallucination mathematical verification (`trust_score`, `is_hallucination`) of drafted responses against source context geometric boundaries.
+
 
 ## Creating a Collection with Schema
 

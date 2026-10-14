@@ -27,6 +27,20 @@ struct CollectionSummaryRec {
     ::hyperspace::CollectionSchema schema;
 };
 
+struct VerificationResultRec {
+    double trust_score;
+    bool is_hallucination;
+    bool is_valid;
+    double min_distance;
+    double avg_distance;
+    double geodesic_distance;
+    uint32_t geodesic_hops;
+    bool cone_satisfied;
+    std::string details;
+    std::vector<uint32_t> resolved_context_ids;
+};
+
+
 struct CollectionStats {
     uint64_t count;
     uint64_t indexing_queue;
@@ -65,6 +79,15 @@ public:
     std::vector<SearchResultRec> SearchText(const std::string& text, int top_k = 10, const std::string& collection = "", float hybrid_alpha = 0.0, const Bm25Params* bm25 = nullptr);
     std::unordered_map<std::string, std::vector<SearchResultRec>> SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k = 10);
     
+    // Tribunal Anti-Hallucination Verification API
+    VerificationResultRec VerifyGeneration(
+        const std::string& llm_answer,
+        const std::vector<std::string>& context_ids,
+        const std::string& collection = "",
+        std::optional<double> max_distance_threshold = std::nullopt,
+        bool check_geodesic = true
+    );
+
     // Admin & Ops API
     bool GetCollectionStats(const std::string& name, CollectionStats& stats_out);
     bool Exists(const std::string& name);

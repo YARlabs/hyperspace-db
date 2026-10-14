@@ -11,6 +11,8 @@ This crate provides:
 - high-throughput `search_batch`
 - `f32` helper methods for Euclidean workloads (`insert_f32`, `search_f32`, `search_batch_f32`)
 - system health monitoring (`health_check`)
+- tribunal verification (`verify_generation`, `verify_generation_with_options`) for geometric anti-hallucination boundary checks
+
 
 ## Installation
 

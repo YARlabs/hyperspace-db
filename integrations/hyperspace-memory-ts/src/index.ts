@@ -516,3 +516,5 @@ export class Memory {
     };
   }
 }
+
+export * from "./query_planner.js";

@@ -40,6 +40,8 @@ automatically loads the relevant skill when it detects you're working with Hyper
 | [`hyperspacedb-cognitive`](./skills/hyperspacedb-cognitive/SKILL.md) | CoT stability, Koopman momentum, trust score |
 | [`hyperspacedb-depin`](./skills/hyperspacedb-depin/SKILL.md) | DePIN nodes, billing, storage economics |
 | [`hyperspacedb-mcp`](./skills/hyperspacedb-mcp/SKILL.md) | MCP servers (mcp-hyperspacedb & mcp-hyperspace-memory) |
+| [`hyperspacedb-query-planner`](./skills/hyperspacedb-query-planner/SKILL.md) | Query planning, multi-intent question splitting & Tribunal verification |
+
 
 ## Agent Config Files
 

@@ -59,6 +59,26 @@ const results = await vectorStore.query({
 });
 ```
 
+### 🎯 Enterprise Query Planner
+
+```typescript
+import { HyperspaceQueryPlanner } from "llamaindex-hyperspace";
+
+const planner = new HyperspaceQueryPlanner();
+const plan = planner.plan({
+    raw_user_query: "What is the return policy for hardware and how do I initiate a replacement?",
+    collections: ["kb_hardware", "kb_orders"]
+});
+
+if (plan.status === "clarification_needed") {
+    console.log("Clarification:", plan.clarification?.question);
+} else {
+    console.log("Sub-queries:", plan.search_queries);
+    // Runs parallel queries across LlamaIndex retrieval pipelines
+}
+```
+
+
 ## 📡 Edge-Cloud Delta Sync Handshake
 
 Identify memory drift and sync with the Cloud using Merkle-XOR buckets:

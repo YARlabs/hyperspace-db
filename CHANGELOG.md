@@ -5,7 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.2] - 2026-10-13
+
+### Added
+* **Tribunal Router: Geometric Anti-Hallucination Prevention (`tribunal.rs`)**:
+  * Implemented server-side mathematical verification endpoint `VerifyGeneration(llm_answer, context_ids) -> VerificationResult`.
+  * Evaluates whether an LLM's drafted answer semantically breaks the topological/geometric boundaries of the source context chunks.
+  * Calculates manifold distances, evaluates Lorentz causal light-cone containment, and verifies HNSW geodesic path connectivity across source context nodes.
+  * Yields a normalized `trust_score` (0.0–1.0) and boolean `is_hallucination` flag.
+  * Completely opaque server-side evaluation: decoupled from and independent of underlying quantization schemes.
+  * Exposed via gRPC (`/hyperspace.Database/VerifyGeneration`) and REST endpoints (`/api/collections/{name}/verify-generation` and `/api/tribunal/verify`).
+* **Enterprise Query Planner Ecosystem Expansion (`hyperspace_query_planner`)**:
+  * Added `hyperspace_query_planner` across all agent frameworks and integrations:
+    * `mcp-hyperspacedb` & `mcp-hyperspace-memory` (MCP tools).
+    * `langchain-python` & `langchain-js` (`HyperspaceQueryPlanner`).
+    * `llamaindex-python` & `llamaindex-js` (`HyperspaceQueryPlanner`).
+    * `hyperspace-memory-py` & `hyperspace-memory-ts` (`evaluate_query_locally`, `clarify_and_split_intent`).
+    * `n8n-nodes-hyperspacedb` (Query Planner resource & Verify Generation operation).
+    * `hyperspacedb-skills` (`hyperspacedb-query-planner` skill and agent guides).
+  * Evaluates intent clarity, formulates multiple-choice clarifying questions for underspecified prompts, and decomposes multi-part queries for parallel retrieval.
+* **Full Multi-Language SDK Synchronization**:
+  * Regenerated protobuf stubs and implemented typed `verify_generation` across Rust, Python, TypeScript, Go, C++, Dart, and ROS2.
+
 ## [4.0.1] - 2026-10-12
+
 
 ### Added
 * **Native Pure-Rust SuperKMeans & Adaptive Distance Sampling (`hyperspace-clustering`, `semantic_compactor`)**:

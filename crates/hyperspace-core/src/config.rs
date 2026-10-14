@@ -30,6 +30,9 @@ pub struct GlobalConfig {
 
     /// Fusion method ("rrf" or "weighted")
     pub fusion_method: std::sync::RwLock<String>,
+
+    /// Native Vector-Graph (KAG) subsystem configuration
+    pub graph_config: std::sync::RwLock<crate::graph::GraphConfig>,
 }
 
 impl GlobalConfig {
@@ -44,6 +47,7 @@ impl GlobalConfig {
             anisotropic_refinement: AtomicBool::new(true), // Default to true for quality, but can be disabled for speed
             bm25_params: std::sync::RwLock::new(crate::bm25::Bm25Params::default()),
             fusion_method: std::sync::RwLock::new("rrf".to_string()),
+            graph_config: std::sync::RwLock::new(crate::graph::GraphConfig::from_env()),
         }
     }
 
@@ -127,6 +131,16 @@ impl GlobalConfig {
     #[allow(clippy::missing_panics_doc)]
     pub fn set_fusion_method(&self, method: String) {
         *self.fusion_method.write().unwrap() = method;
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn get_graph_config(&self) -> crate::graph::GraphConfig {
+        self.graph_config.read().unwrap().clone()
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn set_graph_config(&self, config: crate::graph::GraphConfig) {
+        *self.graph_config.write().unwrap() = config;
     }
 }
 

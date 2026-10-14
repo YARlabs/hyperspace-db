@@ -644,6 +644,51 @@ std::string HyperspaceClient::HealthCheck() {
     return "unreachable";
 }
 
+VerificationResultRec HyperspaceClient::VerifyGeneration(
+    const std::string& llm_answer,
+    const std::vector<std::string>& context_ids,
+    const std::string& collection,
+    std::optional<double> max_distance_threshold,
+    bool check_geodesic
+) {
+    ::hyperspace::VerifyGenerationRequest req;
+    req.set_llm_answer(llm_answer);
+    req.set_collection(collection);
+    req.set_check_geodesic(check_geodesic);
+    for (const auto& id : context_ids) req.add_context_ids(id);
+    if (max_distance_threshold.has_value()) {
+        req.set_max_distance_threshold(max_distance_threshold.value());
+    }
+
+    ::hyperspace::VerifyGenerationResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+
+    Status s = stub_->VerifyGeneration(&ctx, req, &resp);
+    VerificationResultRec rec{};
+    if (s.ok()) {
+        rec.trust_score = resp.trust_score();
+        rec.is_valid = resp.is_valid();
+        rec.is_hallucination = !resp.is_valid();
+        rec.min_distance = resp.min_distance();
+        rec.avg_distance = resp.avg_distance();
+        rec.geodesic_distance = resp.geodesic_distance();
+        rec.geodesic_hops = resp.geodesic_hops();
+        rec.cone_satisfied = resp.cone_satisfied();
+        rec.details = resp.details();
+        for (uint32_t id : resp.resolved_context_ids()) {
+            rec.resolved_context_ids.push_back(id);
+        }
+    } else {
+        rec.trust_score = 0.0;
+        rec.is_valid = false;
+        rec.is_hallucination = true;
+        rec.details = "RPC failed: " + s.error_message();
+    }
+    return rec;
+}
+
+
 std::vector<uint8_t> HyperspaceClient::derive_pbkdf2(const std::vector<uint8_t>& password, const std::vector<uint8_t>& salt, int iterations, int key_len) {
     std::vector<uint8_t> out_key(key_len);
     PKCS5_PBKDF2_HMAC(

@@ -27,6 +27,93 @@ namespace _pbi = ::google::protobuf::internal;
 namespace _fl = ::google::protobuf::internal::field_layout;
 namespace hyperspace {
 
+inline constexpr VerifyGenerationResponse::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_FIELD
+        resolved_context_ids_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::VerifyGenerationResponse,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.resolved_context_ids_)>()
+        }
+        #else
+        resolved_context_ids_ {}
+        #endif
+        ,
+        _resolved_context_ids_cached_byte_size_{0},
+        details_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        trust_score_{0},
+        min_distance_{0},
+        avg_distance_{0},
+        geodesic_distance_{0},
+        is_valid_{false},
+        cone_satisfied_{false},
+        geodesic_hops_{0u} {}
+
+template <typename>
+constexpr VerifyGenerationResponse::VerifyGenerationResponse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(VerifyGenerationResponse_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct VerifyGenerationResponseDefaultTypeInternal {
+  constexpr VerifyGenerationResponseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~VerifyGenerationResponseDefaultTypeInternal() {}
+  union {
+    VerifyGenerationResponse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 VerifyGenerationResponseDefaultTypeInternal _VerifyGenerationResponse_default_instance_;
+
+inline constexpr VerifyGenerationRequest::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        context_ids_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::VerifyGenerationRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.context_ids_)>()
+        }
+        #else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        context_ids_ {}
+        #endif
+        ,
+        collection_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        llm_answer_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
+        max_distance_threshold_{0},
+        check_geodesic_{false} {}
+
+template <typename>
+constexpr VerifyGenerationRequest::VerifyGenerationRequest(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(VerifyGenerationRequest_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(internal_visibility(), ::_pbi::ConstantInitialized()) {
+}
+struct VerifyGenerationRequestDefaultTypeInternal {
+  constexpr VerifyGenerationRequestDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~VerifyGenerationRequestDefaultTypeInternal() {}
+  union {
+    VerifyGenerationRequest _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 VerifyGenerationRequestDefaultTypeInternal _VerifyGenerationRequest_default_instance_;
+
 inline constexpr VectorizeResponse::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     ::_pbi::ConstantInitialized) noexcept
@@ -4569,6 +4656,40 @@ const ::uint32_t
         4, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::hyperspace::UnfreezeCollectionRequest, _impl_.name_),
         0,
+        0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_._has_bits_),
+        8, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.collection_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.llm_answer_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.context_ids_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.max_distance_threshold_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.check_geodesic_),
+        1,
+        2,
+        0,
+        3,
+        4,
+        0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_._has_bits_),
+        12, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.trust_score_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.is_valid_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.min_distance_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.avg_distance_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.geodesic_distance_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.geodesic_hops_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.cone_satisfied_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.details_),
+        PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.resolved_context_ids_),
+        2,
+        6,
+        3,
+        4,
+        5,
+        8,
+        7,
+        1,
+        0,
 };
 
 static const ::_pbi::MigrationSchema
@@ -4686,6 +4807,8 @@ static const ::_pbi::MigrationSchema
         {937, sizeof(::hyperspace::SyncPushResponse)},
         {946, sizeof(::hyperspace::FreezeCollectionRequest)},
         {951, sizeof(::hyperspace::UnfreezeCollectionRequest)},
+        {956, sizeof(::hyperspace::VerifyGenerationRequest)},
+        {969, sizeof(::hyperspace::VerifyGenerationResponse)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_ReplicationRequest_default_instance_._instance,
@@ -4801,6 +4924,8 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::hyperspace::_SyncPushResponse_default_instance_._instance,
     &::hyperspace::_FreezeCollectionRequest_default_instance_._instance,
     &::hyperspace::_UnfreezeCollectionRequest_default_instance_._instance,
+    &::hyperspace::_VerifyGenerationRequest_default_instance_._instance,
+    &::hyperspace::_VerifyGenerationResponse_default_instance_._instance,
 };
 const char descriptor_table_protodef_hyperspace_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
@@ -5084,103 +5209,116 @@ const char descriptor_table_protodef_hyperspace_2eproto[] ABSL_ATTRIBUTE_SECTION
     "\n\010accepted\030\001 \001(\r\022\020\n\010rejected\030\002 \001(\r\022\022\n\ndu"
     "plicates\030\003 \001(\r\"\'\n\027FreezeCollectionReques"
     "t\022\014\n\004name\030\001 \001(\t\")\n\031UnfreezeCollectionReq"
-    "uest\022\014\n\004name\030\001 \001(\t*+\n\020QuantizationMode\022\010"
-    "\n\004NONE\020\000\022\r\n\tSCALAR_I8\020\001*F\n\017DurabilityLev"
-    "el\022\021\n\rDEFAULT_LEVEL\020\000\022\t\n\005ASYNC\020\001\022\t\n\005BATC"
-    "H\020\002\022\n\n\006STRICT\020\003*6\n\010EdgeType\022\013\n\007UNKNOWN\020\000"
-    "\022\016\n\nSIMILARITY\020\001\022\r\n\tHIERARCHY\020\002*8\n\rTrave"
-    "rsalMode\022\n\n\006GREEDY\020\000\022\r\n\tDIFFUSIVE\020\001\022\014\n\010M"
-    "OMENTUM\020\002*\\\n\tEventType\022\021\n\rEVENT_UNKNOWN\020"
-    "\000\022\023\n\017VECTOR_INSERTED\020\001\022\022\n\016VECTOR_DELETED"
-    "\020\002\022\023\n\017TRAJECTORY_STEP\020\0032\222\027\n\010Database\022S\n\020"
-    "CreateCollection\022#.hyperspace.CreateColl"
-    "ectionRequest\032\032.hyperspace.StatusRespons"
-    "e\022S\n\020DeleteCollection\022#.hyperspace.Delet"
-    "eCollectionRequest\032\032.hyperspace.StatusRe"
-    "sponse\022I\n\017ListCollections\022\021.hyperspace.E"
-    "mpty\032#.hyperspace.ListCollectionsRespons"
-    "e\022]\n\022GetCollectionStats\022\".hyperspace.Col"
-    "lectionStatsRequest\032#.hyperspace.Collect"
-    "ionStatsResponse\022S\n\020FreezeCollection\022#.h"
-    "yperspace.FreezeCollectionRequest\032\032.hype"
-    "rspace.StatusResponse\022W\n\022UnfreezeCollect"
-    "ion\022%.hyperspace.UnfreezeCollectionReque"
-    "st\032\032.hyperspace.StatusResponse\022\?\n\006Insert"
-    "\022\031.hyperspace.InsertRequest\032\032.hyperspace"
-    ".InsertResponse\022I\n\013BatchInsert\022\036.hypersp"
-    "ace.BatchInsertRequest\032\032.hyperspace.Inse"
-    "rtResponse\022G\n\nInsertText\022\035.hyperspace.In"
-    "sertTextRequest\032\032.hyperspace.InsertRespo"
-    "nse\022H\n\tVectorize\022\034.hyperspace.VectorizeR"
-    "equest\032\035.hyperspace.VectorizeResponse\022G\n"
-    "\nSearchText\022\035.hyperspace.SearchTextReque"
-    "st\032\032.hyperspace.SearchResponse\022\?\n\006Delete"
-    "\022\031.hyperspace.DeleteRequest\032\032.hyperspace"
-    ".DeleteResponse\022H\n\tGetPoints\022\034.hyperspac"
-    "e.GetPointsRequest\032\035.hyperspace.GetPoint"
-    "sResponse\022M\n\rUpdatePayload\022 .hyperspace."
-    "UpdatePayloadRequest\032\032.hyperspace.Status"
-    "Response\022\?\n\006Scroll\022\031.hyperspace.ScrollRe"
-    "quest\032\032.hyperspace.ScrollResponse\022<\n\005Cou"
-    "nt\022\030.hyperspace.CountRequest\032\031.hyperspac"
-    "e.CountResponse\022\?\n\006Search\022\031.hyperspace.S"
-    "earchRequest\032\032.hyperspace.SearchResponse"
-    "\022N\n\013SearchBatch\022\036.hyperspace.BatchSearch"
-    "Request\032\037.hyperspace.BatchSearchResponse"
-    "\022l\n\025SearchMultiCollection\022(.hyperspace.S"
-    "earchMultiCollectionRequest\032).hyperspace"
-    ".SearchMultiCollectionResponse\022<\n\007GetNod"
-    "e\022\032.hyperspace.GetNodeRequest\032\025.hyperspa"
-    "ce.GraphNode\022Q\n\014GetNeighbors\022\037.hyperspac"
-    "e.GetNeighborsRequest\032 .hyperspace.GetNe"
-    "ighborsResponse\022`\n\021GetConceptParents\022$.h"
-    "yperspace.GetConceptParentsRequest\032%.hyp"
-    "erspace.GetConceptParentsResponse\022E\n\010Tra"
-    "verse\022\033.hyperspace.TraverseRequest\032\034.hyp"
-    "erspace.TraverseResponse\022i\n\024FindSemantic"
-    "Clusters\022\'.hyperspace.FindSemanticCluste"
-    "rsRequest\032(.hyperspace.FindSemanticClust"
-    "ersResponse\022c\n\022GetSubsumptionTree\022%.hype"
-    "rspace.GetSubsumptionTreeRequest\032&.hyper"
-    "space.GetSubsumptionTreeResponse\022@\n\007Moni"
-    "tor\022\032.hyperspace.MonitorRequest\032\027.hypers"
-    "pace.SystemStats0\001\022@\n\017TriggerSnapshot\022\021."
-    "hyperspace.Empty\032\032.hyperspace.StatusResp"
-    "onse\022>\n\rTriggerVacuum\022\021.hyperspace.Empty"
-    "\032\032.hyperspace.StatusResponse\022X\n\026TriggerR"
-    "econsolidation\022\".hyperspace.Reconsolidat"
-    "ionRequest\032\032.hyperspace.StatusResponse\022A"
-    "\n\tConfigure\022\030.hyperspace.ConfigUpdate\032\032."
-    "hyperspace.StatusResponse\022I\n\tReplicate\022\036"
-    ".hyperspace.ReplicationRequest\032\032.hypersp"
-    "ace.ReplicationLog0\001\022U\n\021SubscribeToEvent"
-    "s\022$.hyperspace.EventSubscriptionRequest\032"
-    "\030.hyperspace.EventMessage0\001\022B\n\tGetDigest"
-    "\022\031.hyperspace.DigestRequest\032\032.hyperspace"
-    ".DigestResponse\022K\n\014RebuildIndex\022\037.hypers"
-    "pace.RebuildIndexRequest\032\032.hyperspace.St"
-    "atusResponse\022T\n\rSyncHandshake\022 .hyperspa"
-    "ce.SyncHandshakeRequest\032!.hyperspace.Syn"
-    "cHandshakeResponse\022E\n\010SyncPull\022\033.hypersp"
-    "ace.SyncPullRequest\032\032.hyperspace.SyncVec"
-    "torData0\001\022F\n\010SyncPush\022\032.hyperspace.SyncV"
-    "ectorData\032\034.hyperspace.SyncPushResponse("
-    "\001\022A\n\013HealthCheck\022\021.hyperspace.Empty\032\037.hy"
-    "perspace.HealthCheckResponseB,Z*github.c"
-    "om/yarlabs/hyperspace-sdk-go/protob\006prot"
-    "o3"
+    "uest\022\014\n\004name\030\001 \001(\t\"\306\001\n\027VerifyGenerationR"
+    "equest\022\022\n\ncollection\030\001 \001(\t\022\022\n\nllm_answer"
+    "\030\002 \001(\t\022\023\n\013context_ids\030\003 \003(\t\022#\n\026max_dista"
+    "nce_threshold\030\004 \001(\001H\000\210\001\001\022\033\n\016check_geodes"
+    "ic\030\005 \001(\010H\001\210\001\001B\031\n\027_max_distance_threshold"
+    "B\021\n\017_check_geodesic\"\346\001\n\030VerifyGeneration"
+    "Response\022\023\n\013trust_score\030\001 \001(\001\022\020\n\010is_vali"
+    "d\030\002 \001(\010\022\024\n\014min_distance\030\003 \001(\001\022\024\n\014avg_dis"
+    "tance\030\004 \001(\001\022\031\n\021geodesic_distance\030\005 \001(\001\022\025"
+    "\n\rgeodesic_hops\030\006 \001(\r\022\026\n\016cone_satisfied\030"
+    "\007 \001(\010\022\017\n\007details\030\010 \001(\t\022\034\n\024resolved_conte"
+    "xt_ids\030\t \003(\r*+\n\020QuantizationMode\022\010\n\004NONE"
+    "\020\000\022\r\n\tSCALAR_I8\020\001*F\n\017DurabilityLevel\022\021\n\r"
+    "DEFAULT_LEVEL\020\000\022\t\n\005ASYNC\020\001\022\t\n\005BATCH\020\002\022\n\n"
+    "\006STRICT\020\003*6\n\010EdgeType\022\013\n\007UNKNOWN\020\000\022\016\n\nSI"
+    "MILARITY\020\001\022\r\n\tHIERARCHY\020\002*8\n\rTraversalMo"
+    "de\022\n\n\006GREEDY\020\000\022\r\n\tDIFFUSIVE\020\001\022\014\n\010MOMENTU"
+    "M\020\002*\\\n\tEventType\022\021\n\rEVENT_UNKNOWN\020\000\022\023\n\017V"
+    "ECTOR_INSERTED\020\001\022\022\n\016VECTOR_DELETED\020\002\022\023\n\017"
+    "TRAJECTORY_STEP\020\0032\361\027\n\010Database\022S\n\020Create"
+    "Collection\022#.hyperspace.CreateCollection"
+    "Request\032\032.hyperspace.StatusResponse\022S\n\020D"
+    "eleteCollection\022#.hyperspace.DeleteColle"
+    "ctionRequest\032\032.hyperspace.StatusResponse"
+    "\022I\n\017ListCollections\022\021.hyperspace.Empty\032#"
+    ".hyperspace.ListCollectionsResponse\022]\n\022G"
+    "etCollectionStats\022\".hyperspace.Collectio"
+    "nStatsRequest\032#.hyperspace.CollectionSta"
+    "tsResponse\022S\n\020FreezeCollection\022#.hypersp"
+    "ace.FreezeCollectionRequest\032\032.hyperspace"
+    ".StatusResponse\022W\n\022UnfreezeCollection\022%."
+    "hyperspace.UnfreezeCollectionRequest\032\032.h"
+    "yperspace.StatusResponse\022\?\n\006Insert\022\031.hyp"
+    "erspace.InsertRequest\032\032.hyperspace.Inser"
+    "tResponse\022I\n\013BatchInsert\022\036.hyperspace.Ba"
+    "tchInsertRequest\032\032.hyperspace.InsertResp"
+    "onse\022G\n\nInsertText\022\035.hyperspace.InsertTe"
+    "xtRequest\032\032.hyperspace.InsertResponse\022H\n"
+    "\tVectorize\022\034.hyperspace.VectorizeRequest"
+    "\032\035.hyperspace.VectorizeResponse\022G\n\nSearc"
+    "hText\022\035.hyperspace.SearchTextRequest\032\032.h"
+    "yperspace.SearchResponse\022\?\n\006Delete\022\031.hyp"
+    "erspace.DeleteRequest\032\032.hyperspace.Delet"
+    "eResponse\022H\n\tGetPoints\022\034.hyperspace.GetP"
+    "ointsRequest\032\035.hyperspace.GetPointsRespo"
+    "nse\022M\n\rUpdatePayload\022 .hyperspace.Update"
+    "PayloadRequest\032\032.hyperspace.StatusRespon"
+    "se\022\?\n\006Scroll\022\031.hyperspace.ScrollRequest\032"
+    "\032.hyperspace.ScrollResponse\022<\n\005Count\022\030.h"
+    "yperspace.CountRequest\032\031.hyperspace.Coun"
+    "tResponse\022\?\n\006Search\022\031.hyperspace.SearchR"
+    "equest\032\032.hyperspace.SearchResponse\022N\n\013Se"
+    "archBatch\022\036.hyperspace.BatchSearchReques"
+    "t\032\037.hyperspace.BatchSearchResponse\022l\n\025Se"
+    "archMultiCollection\022(.hyperspace.SearchM"
+    "ultiCollectionRequest\032).hyperspace.Searc"
+    "hMultiCollectionResponse\022<\n\007GetNode\022\032.hy"
+    "perspace.GetNodeRequest\032\025.hyperspace.Gra"
+    "phNode\022Q\n\014GetNeighbors\022\037.hyperspace.GetN"
+    "eighborsRequest\032 .hyperspace.GetNeighbor"
+    "sResponse\022`\n\021GetConceptParents\022$.hypersp"
+    "ace.GetConceptParentsRequest\032%.hyperspac"
+    "e.GetConceptParentsResponse\022E\n\010Traverse\022"
+    "\033.hyperspace.TraverseRequest\032\034.hyperspac"
+    "e.TraverseResponse\022i\n\024FindSemanticCluste"
+    "rs\022\'.hyperspace.FindSemanticClustersRequ"
+    "est\032(.hyperspace.FindSemanticClustersRes"
+    "ponse\022c\n\022GetSubsumptionTree\022%.hyperspace"
+    ".GetSubsumptionTreeRequest\032&.hyperspace."
+    "GetSubsumptionTreeResponse\022@\n\007Monitor\022\032."
+    "hyperspace.MonitorRequest\032\027.hyperspace.S"
+    "ystemStats0\001\022@\n\017TriggerSnapshot\022\021.hypers"
+    "pace.Empty\032\032.hyperspace.StatusResponse\022>"
+    "\n\rTriggerVacuum\022\021.hyperspace.Empty\032\032.hyp"
+    "erspace.StatusResponse\022X\n\026TriggerReconso"
+    "lidation\022\".hyperspace.ReconsolidationReq"
+    "uest\032\032.hyperspace.StatusResponse\022A\n\tConf"
+    "igure\022\030.hyperspace.ConfigUpdate\032\032.hypers"
+    "pace.StatusResponse\022I\n\tReplicate\022\036.hyper"
+    "space.ReplicationRequest\032\032.hyperspace.Re"
+    "plicationLog0\001\022U\n\021SubscribeToEvents\022$.hy"
+    "perspace.EventSubscriptionRequest\032\030.hype"
+    "rspace.EventMessage0\001\022B\n\tGetDigest\022\031.hyp"
+    "erspace.DigestRequest\032\032.hyperspace.Diges"
+    "tResponse\022K\n\014RebuildIndex\022\037.hyperspace.R"
+    "ebuildIndexRequest\032\032.hyperspace.StatusRe"
+    "sponse\022T\n\rSyncHandshake\022 .hyperspace.Syn"
+    "cHandshakeRequest\032!.hyperspace.SyncHands"
+    "hakeResponse\022E\n\010SyncPull\022\033.hyperspace.Sy"
+    "ncPullRequest\032\032.hyperspace.SyncVectorDat"
+    "a0\001\022F\n\010SyncPush\022\032.hyperspace.SyncVectorD"
+    "ata\032\034.hyperspace.SyncPushResponse(\001\022A\n\013H"
+    "ealthCheck\022\021.hyperspace.Empty\032\037.hyperspa"
+    "ce.HealthCheckResponse\022]\n\020VerifyGenerati"
+    "on\022#.hyperspace.VerifyGenerationRequest\032"
+    "$.hyperspace.VerifyGenerationResponseB,Z"
+    "*github.com/yarlabs/hyperspace-sdk-go/pr"
+    "otob\006proto3"
 };
 static ::absl::once_flag descriptor_table_hyperspace_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_hyperspace_2eproto = {
     false,
     false,
-    14562,
+    15091,
     descriptor_table_protodef_hyperspace_2eproto,
     "hyperspace.proto",
     &descriptor_table_hyperspace_2eproto_once,
     nullptr,
     0,
-    113,
+    115,
     schemas,
     file_default_instances,
     TableStruct_hyperspace_2eproto::offsets,
@@ -40628,6 +40766,1025 @@ void UnfreezeCollectionRequest::InternalSwap(UnfreezeCollectionRequest* PROTOBUF
 }
 
 ::google::protobuf::Metadata UnfreezeCollectionRequest::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
+class VerifyGenerationRequest::_Internal {
+ public:
+  using HasBits =
+      decltype(::std::declval<VerifyGenerationRequest>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_._has_bits_);
+};
+
+VerifyGenerationRequest::VerifyGenerationRequest(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, VerifyGenerationRequest_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:hyperspace.VerifyGenerationRequest)
+}
+PROTOBUF_NDEBUG_INLINE VerifyGenerationRequest::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    [[maybe_unused]] const ::hyperspace::VerifyGenerationRequest& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        context_ids_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::VerifyGenerationRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.context_ids_)>()
+        , from.context_ids_}
+        #else
+        context_ids_ { visibility, arena, from.context_ids_ }
+        #endif
+        ,
+        collection_(arena, from.collection_),
+        llm_answer_(arena, from.llm_answer_) {}
+
+VerifyGenerationRequest::VerifyGenerationRequest(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const VerifyGenerationRequest& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, VerifyGenerationRequest_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  VerifyGenerationRequest* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  ::memcpy(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, max_distance_threshold_),
+           reinterpret_cast<const char*>(&from._impl_) +
+               offsetof(Impl_, max_distance_threshold_),
+           offsetof(Impl_, check_geodesic_) -
+               offsetof(Impl_, max_distance_threshold_) +
+               sizeof(Impl_::check_geodesic_));
+
+  // @@protoc_insertion_point(copy_constructor:hyperspace.VerifyGenerationRequest)
+}
+PROTOBUF_NDEBUG_INLINE VerifyGenerationRequest::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+        context_ids_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::VerifyGenerationRequest,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationRequest, _impl_.context_ids_)>()
+        }
+        #else
+        context_ids_ { visibility, arena }
+        #endif
+        ,
+        collection_(arena),
+        llm_answer_(arena) {}
+
+inline void VerifyGenerationRequest::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+  ::memset(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, max_distance_threshold_),
+           0,
+           offsetof(Impl_, check_geodesic_) -
+               offsetof(Impl_, max_distance_threshold_) +
+               sizeof(Impl_::check_geodesic_));
+}
+VerifyGenerationRequest::~VerifyGenerationRequest() {
+  // @@protoc_insertion_point(destructor:hyperspace.VerifyGenerationRequest)
+  SharedDtor(*this);
+}
+inline void VerifyGenerationRequest::SharedDtor(MessageLite& self) {
+  VerifyGenerationRequest& this_ = static_cast<VerifyGenerationRequest&>(self);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.collection_.Destroy();
+  this_._impl_.llm_answer_.Destroy();
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL VerifyGenerationRequest::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) VerifyGenerationRequest(arena);
+}
+#ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+constexpr auto VerifyGenerationRequest::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(VerifyGenerationRequest),
+                                            alignof(VerifyGenerationRequest));
+}
+#else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+constexpr auto VerifyGenerationRequest::InternalNewImpl_() {
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.context_ids_) +
+          decltype(VerifyGenerationRequest::_impl_.context_ids_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::CopyInit(
+        sizeof(VerifyGenerationRequest), alignof(VerifyGenerationRequest), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&VerifyGenerationRequest::PlacementNew_,
+                                 sizeof(VerifyGenerationRequest),
+                                 alignof(VerifyGenerationRequest));
+  }
+}
+#endif
+constexpr auto VerifyGenerationRequest::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_VerifyGenerationRequest_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // IsInitialized
+          &VerifyGenerationRequest::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<VerifyGenerationRequest>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &VerifyGenerationRequest::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<VerifyGenerationRequest>(), &VerifyGenerationRequest::ByteSizeLong,
+              &VerifyGenerationRequest::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_._cached_size_),
+          false,
+      },
+      &VerifyGenerationRequest::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull VerifyGenerationRequest_class_data_ =
+        VerifyGenerationRequest::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+VerifyGenerationRequest::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&VerifyGenerationRequest_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(VerifyGenerationRequest_class_data_.tc_table);
+  return VerifyGenerationRequest_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<3, 5, 0, 74, 2>
+VerifyGenerationRequest::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_._has_bits_),
+    0, // no _extensions_
+    5, 56,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967264,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    5,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    VerifyGenerationRequest_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::VerifyGenerationRequest>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    {::_pbi::TcParser::MiniParse, {}},
+    // string collection = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 1, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.collection_)}},
+    // string llm_answer = 2;
+    {::_pbi::TcParser::FastUS1,
+     {18, 2, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.llm_answer_)}},
+    // repeated string context_ids = 3;
+    {::_pbi::TcParser::FastUR1,
+     {26, 0, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.context_ids_)}},
+    // optional double max_distance_threshold = 4;
+    {::_pbi::TcParser::FastF64S1,
+     {33, 3, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.max_distance_threshold_)}},
+    // optional bool check_geodesic = 5;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(VerifyGenerationRequest, _impl_.check_geodesic_), 4>(),
+     {40, 4, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.check_geodesic_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string collection = 1;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.collection_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // string llm_answer = 2;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.llm_answer_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // repeated string context_ids = 3;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.context_ids_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kUtf8String | ::_fl::kRepSString)},
+    // optional double max_distance_threshold = 4;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.max_distance_threshold_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    // optional bool check_geodesic = 5;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.check_geodesic_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+  }},
+  // no aux_entries
+  {{
+    "\42\12\12\13\0\0\0\0"
+    "hyperspace.VerifyGenerationRequest"
+    "collection"
+    "llm_answer"
+    "context_ids"
+  }},
+};
+PROTOBUF_NOINLINE void VerifyGenerationRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:hyperspace.VerifyGenerationRequest)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _impl_.context_ids_.Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      _impl_.collection_.ClearNonDefaultToEmpty();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      _impl_.llm_answer_.ClearNonDefaultToEmpty();
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00000018U)) {
+    ::memset(&_impl_.max_distance_threshold_, 0, static_cast<::size_t>(
+        reinterpret_cast<char*>(&_impl_.check_geodesic_) -
+        reinterpret_cast<char*>(&_impl_.max_distance_threshold_)) + sizeof(_impl_.check_geodesic_));
+  }
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL VerifyGenerationRequest::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const VerifyGenerationRequest& this_ = static_cast<const VerifyGenerationRequest&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL VerifyGenerationRequest::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const VerifyGenerationRequest& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(serialize_to_array_start:hyperspace.VerifyGenerationRequest)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // string collection = 1;
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (!this_._internal_collection().empty()) {
+      const ::std::string& _s = this_._internal_collection();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.VerifyGenerationRequest.collection");
+      target = stream->WriteStringMaybeAliased(1, _s, target);
+    }
+  }
+
+  // string llm_answer = 2;
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (!this_._internal_llm_answer().empty()) {
+      const ::std::string& _s = this_._internal_llm_answer();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.VerifyGenerationRequest.llm_answer");
+      target = stream->WriteStringMaybeAliased(2, _s, target);
+    }
+  }
+
+  // repeated string context_ids = 3;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+    for (int i = 0, n = this_._internal_context_ids_size(); i < n; ++i) {
+      const auto& s = this_._internal_context_ids().Get(i);
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          s.data(), static_cast<int>(s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.VerifyGenerationRequest.context_ids");
+      target = stream->WriteString(3, s, target);
+    }
+  }
+
+  // optional double max_distance_threshold = 4;
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteDoubleToArray(
+        4, this_._internal_max_distance_threshold(), target);
+  }
+
+  // optional bool check_geodesic = 5;
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        5, this_._internal_check_geodesic(), target);
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:hyperspace.VerifyGenerationRequest)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t VerifyGenerationRequest::ByteSizeLong(const MessageLite& base) {
+  const VerifyGenerationRequest& this_ = static_cast<const VerifyGenerationRequest&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t VerifyGenerationRequest::ByteSizeLong() const {
+  const VerifyGenerationRequest& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:hyperspace.VerifyGenerationRequest)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  total_size += static_cast<bool>(0x00000008U & cached_has_bits) * 9;
+  total_size += static_cast<bool>(0x00000010U & cached_has_bits) * 2;
+  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
+    // repeated string context_ids = 3;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      total_size +=
+          1 * ::google::protobuf::internal::FromIntSize(this_._internal_context_ids().size());
+      for (int i = 0, n = this_._internal_context_ids().size(); i < n; ++i) {
+        total_size += ::google::protobuf::internal::WireFormatLite::StringSize(
+            this_._internal_context_ids().Get(i));
+      }
+    }
+    // string collection = 1;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!this_._internal_collection().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_collection());
+      }
+    }
+    // string llm_answer = 2;
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (!this_._internal_llm_answer().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_llm_answer());
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void VerifyGenerationRequest::MergeImpl(::google::protobuf::MessageLite& to_msg,
+                            const ::google::protobuf::MessageLite& from_msg) {
+   auto* const _this =
+      static_cast<VerifyGenerationRequest*>(&to_msg);
+  auto& from = static_cast<const VerifyGenerationRequest&>(from_msg);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    from.CheckHasBitConsistency();
+  }
+  ::google::protobuf::Arena* arena = _this->GetArena();
+  // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.VerifyGenerationRequest)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _this->_internal_mutable_context_ids()->InternalMergeFromWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), arena,
+          from._internal_context_ids());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!from._internal_collection().empty()) {
+        _this->_internal_set_collection(from._internal_collection());
+      } else {
+        if (_this->_impl_.collection_.IsDefault()) {
+          _this->_internal_set_collection("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (!from._internal_llm_answer().empty()) {
+        _this->_internal_set_llm_answer(from._internal_llm_answer());
+      } else {
+        if (_this->_impl_.llm_answer_.IsDefault()) {
+          _this->_internal_set_llm_answer("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      _this->_impl_.max_distance_threshold_ = from._impl_.max_distance_threshold_;
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+      _this->_impl_.check_geodesic_ = from._impl_.check_geodesic_;
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+}
+
+void VerifyGenerationRequest::CopyFrom(const VerifyGenerationRequest& from) {
+  // @@protoc_insertion_point(class_specific_copy_from_start:hyperspace.VerifyGenerationRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void VerifyGenerationRequest::InternalSwap(VerifyGenerationRequest* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using ::std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  _impl_.context_ids_.InternalSwap(&other->_impl_.context_ids_);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.collection_, &other->_impl_.collection_, arena);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.llm_answer_, &other->_impl_.llm_answer_, arena);
+  ::google::protobuf::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.check_geodesic_)
+      + sizeof(VerifyGenerationRequest::_impl_.check_geodesic_)
+      - PROTOBUF_FIELD_OFFSET(VerifyGenerationRequest, _impl_.max_distance_threshold_)>(
+          reinterpret_cast<char*>(&_impl_.max_distance_threshold_),
+          reinterpret_cast<char*>(&other->_impl_.max_distance_threshold_));
+}
+
+::google::protobuf::Metadata VerifyGenerationRequest::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
+class VerifyGenerationResponse::_Internal {
+ public:
+  using HasBits =
+      decltype(::std::declval<VerifyGenerationResponse>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_._has_bits_);
+};
+
+VerifyGenerationResponse::VerifyGenerationResponse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, VerifyGenerationResponse_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:hyperspace.VerifyGenerationResponse)
+}
+PROTOBUF_NDEBUG_INLINE VerifyGenerationResponse::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    [[maybe_unused]] const ::hyperspace::VerifyGenerationResponse& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_FIELD
+        resolved_context_ids_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::VerifyGenerationResponse,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.resolved_context_ids_)>()
+        , from.resolved_context_ids_}
+        #else
+        resolved_context_ids_ { visibility, arena, from.resolved_context_ids_ }
+        #endif
+        ,
+        _resolved_context_ids_cached_byte_size_{0},
+        details_(arena, from.details_) {}
+
+VerifyGenerationResponse::VerifyGenerationResponse(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const VerifyGenerationResponse& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, VerifyGenerationResponse_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  VerifyGenerationResponse* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  ::memcpy(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, trust_score_),
+           reinterpret_cast<const char*>(&from._impl_) +
+               offsetof(Impl_, trust_score_),
+           offsetof(Impl_, geodesic_hops_) -
+               offsetof(Impl_, trust_score_) +
+               sizeof(Impl_::geodesic_hops_));
+
+  // @@protoc_insertion_point(copy_constructor:hyperspace.VerifyGenerationResponse)
+}
+PROTOBUF_NDEBUG_INLINE VerifyGenerationResponse::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        #ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_FIELD
+        resolved_context_ids_{visibility, ::_pbi::InternalMetadataOffset::Build<
+            ::hyperspace::VerifyGenerationResponse,
+            PROTOBUF_FIELD_OFFSET(::hyperspace::VerifyGenerationResponse, _impl_.resolved_context_ids_)>()
+        }
+        #else
+        resolved_context_ids_ { visibility, arena }
+        #endif
+        ,
+        _resolved_context_ids_cached_byte_size_{0},
+        details_(arena) {}
+
+inline void VerifyGenerationResponse::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+  ::memset(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, trust_score_),
+           0,
+           offsetof(Impl_, geodesic_hops_) -
+               offsetof(Impl_, trust_score_) +
+               sizeof(Impl_::geodesic_hops_));
+}
+VerifyGenerationResponse::~VerifyGenerationResponse() {
+  // @@protoc_insertion_point(destructor:hyperspace.VerifyGenerationResponse)
+  SharedDtor(*this);
+}
+inline void VerifyGenerationResponse::SharedDtor(MessageLite& self) {
+  VerifyGenerationResponse& this_ = static_cast<VerifyGenerationResponse&>(self);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.details_.Destroy();
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL VerifyGenerationResponse::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) VerifyGenerationResponse(arena);
+}
+#ifdef PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+constexpr auto VerifyGenerationResponse::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(VerifyGenerationResponse),
+                                            alignof(VerifyGenerationResponse));
+}
+#else  // !PROTOBUF_INTERNAL_REMOVE_ARENA_PTRS_REPEATED_PTR_FIELD
+constexpr auto VerifyGenerationResponse::InternalNewImpl_() {
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.resolved_context_ids_) +
+          decltype(VerifyGenerationResponse::_impl_.resolved_context_ids_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::CopyInit(
+        sizeof(VerifyGenerationResponse), alignof(VerifyGenerationResponse), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&VerifyGenerationResponse::PlacementNew_,
+                                 sizeof(VerifyGenerationResponse),
+                                 alignof(VerifyGenerationResponse));
+  }
+}
+#endif
+constexpr auto VerifyGenerationResponse::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_VerifyGenerationResponse_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // IsInitialized
+          &VerifyGenerationResponse::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<VerifyGenerationResponse>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &VerifyGenerationResponse::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<VerifyGenerationResponse>(), &VerifyGenerationResponse::ByteSizeLong,
+              &VerifyGenerationResponse::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_._cached_size_),
+          false,
+      },
+      &VerifyGenerationResponse::kDescriptorMethods,
+      &descriptor_table_hyperspace_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull VerifyGenerationResponse_class_data_ =
+        VerifyGenerationResponse::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+VerifyGenerationResponse::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&VerifyGenerationResponse_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(VerifyGenerationResponse_class_data_.tc_table);
+  return VerifyGenerationResponse_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<4, 9, 0, 59, 2>
+VerifyGenerationResponse::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_._has_bits_),
+    0, // no _extensions_
+    9, 120,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294966784,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    9,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    VerifyGenerationResponse_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::hyperspace::VerifyGenerationResponse>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    {::_pbi::TcParser::MiniParse, {}},
+    // double trust_score = 1;
+    {::_pbi::TcParser::FastF64S1,
+     {9, 2, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.trust_score_)}},
+    // bool is_valid = 2;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(VerifyGenerationResponse, _impl_.is_valid_), 6>(),
+     {16, 6, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.is_valid_)}},
+    // double min_distance = 3;
+    {::_pbi::TcParser::FastF64S1,
+     {25, 3, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.min_distance_)}},
+    // double avg_distance = 4;
+    {::_pbi::TcParser::FastF64S1,
+     {33, 4, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.avg_distance_)}},
+    // double geodesic_distance = 5;
+    {::_pbi::TcParser::FastF64S1,
+     {41, 5, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.geodesic_distance_)}},
+    // uint32 geodesic_hops = 6;
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(VerifyGenerationResponse, _impl_.geodesic_hops_), 8>(),
+     {48, 8, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.geodesic_hops_)}},
+    // bool cone_satisfied = 7;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(VerifyGenerationResponse, _impl_.cone_satisfied_), 7>(),
+     {56, 7, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.cone_satisfied_)}},
+    // string details = 8;
+    {::_pbi::TcParser::FastUS1,
+     {66, 1, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.details_)}},
+    // repeated uint32 resolved_context_ids = 9;
+    {::_pbi::TcParser::FastV32P1,
+     {74, 0, 0,
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.resolved_context_ids_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // double trust_score = 1;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.trust_score_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    // bool is_valid = 2;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.is_valid_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+    // double min_distance = 3;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.min_distance_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    // double avg_distance = 4;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.avg_distance_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    // double geodesic_distance = 5;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.geodesic_distance_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    // uint32 geodesic_hops = 6;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.geodesic_hops_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    // bool cone_satisfied = 7;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.cone_satisfied_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+    // string details = 8;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.details_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // repeated uint32 resolved_context_ids = 9;
+    {PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.resolved_context_ids_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedUInt32)},
+  }},
+  // no aux_entries
+  {{
+    "\43\0\0\0\0\0\0\0\7\0\0\0\0\0\0\0"
+    "hyperspace.VerifyGenerationResponse"
+    "details"
+  }},
+};
+PROTOBUF_NOINLINE void VerifyGenerationResponse::Clear() {
+// @@protoc_insertion_point(message_clear_start:hyperspace.VerifyGenerationResponse)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _impl_.resolved_context_ids_.Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      _impl_.details_.ClearNonDefaultToEmpty();
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x000000fcU)) {
+    ::memset(&_impl_.trust_score_, 0, static_cast<::size_t>(
+        reinterpret_cast<char*>(&_impl_.cone_satisfied_) -
+        reinterpret_cast<char*>(&_impl_.trust_score_)) + sizeof(_impl_.cone_satisfied_));
+  }
+  _impl_.geodesic_hops_ = 0u;
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL VerifyGenerationResponse::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const VerifyGenerationResponse& this_ = static_cast<const VerifyGenerationResponse&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL VerifyGenerationResponse::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const VerifyGenerationResponse& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(serialize_to_array_start:hyperspace.VerifyGenerationResponse)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // double trust_score = 1;
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (::absl::bit_cast<::uint64_t>(this_._internal_trust_score()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteDoubleToArray(
+          1, this_._internal_trust_score(), target);
+    }
+  }
+
+  // bool is_valid = 2;
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (this_._internal_is_valid() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteBoolToArray(
+          2, this_._internal_is_valid(), target);
+    }
+  }
+
+  // double min_distance = 3;
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (::absl::bit_cast<::uint64_t>(this_._internal_min_distance()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteDoubleToArray(
+          3, this_._internal_min_distance(), target);
+    }
+  }
+
+  // double avg_distance = 4;
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (::absl::bit_cast<::uint64_t>(this_._internal_avg_distance()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteDoubleToArray(
+          4, this_._internal_avg_distance(), target);
+    }
+  }
+
+  // double geodesic_distance = 5;
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (::absl::bit_cast<::uint64_t>(this_._internal_geodesic_distance()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteDoubleToArray(
+          5, this_._internal_geodesic_distance(), target);
+    }
+  }
+
+  // uint32 geodesic_hops = 6;
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    if (this_._internal_geodesic_hops() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
+          6, this_._internal_geodesic_hops(), target);
+    }
+  }
+
+  // bool cone_satisfied = 7;
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (this_._internal_cone_satisfied() != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteBoolToArray(
+          7, this_._internal_cone_satisfied(), target);
+    }
+  }
+
+  // string details = 8;
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (!this_._internal_details().empty()) {
+      const ::std::string& _s = this_._internal_details();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "hyperspace.VerifyGenerationResponse.details");
+      target = stream->WriteStringMaybeAliased(8, _s, target);
+    }
+  }
+
+  // repeated uint32 resolved_context_ids = 9;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+    {
+      int byte_size = this_._impl_._resolved_context_ids_cached_byte_size_.Get();
+      if (byte_size > 0) {
+        target = stream->WriteUInt32Packed(
+            9, this_._internal_resolved_context_ids(), byte_size, target);
+      }
+    }
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:hyperspace.VerifyGenerationResponse)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t VerifyGenerationResponse::ByteSizeLong(const MessageLite& base) {
+  const VerifyGenerationResponse& this_ = static_cast<const VerifyGenerationResponse&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t VerifyGenerationResponse::ByteSizeLong() const {
+  const VerifyGenerationResponse& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:hyperspace.VerifyGenerationResponse)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+    // repeated uint32 resolved_context_ids = 9;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      total_size +=
+          ::_pbi::WireFormatLite::UInt32SizeWithPackedTagSize(
+              this_._internal_resolved_context_ids(), 1,
+              this_._impl_._resolved_context_ids_cached_byte_size_);
+    }
+    // string details = 8;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!this_._internal_details().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_details());
+      }
+    }
+    // double trust_score = 1;
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (::absl::bit_cast<::uint64_t>(this_._internal_trust_score()) != 0) {
+        total_size += 9;
+      }
+    }
+    // double min_distance = 3;
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (::absl::bit_cast<::uint64_t>(this_._internal_min_distance()) != 0) {
+        total_size += 9;
+      }
+    }
+    // double avg_distance = 4;
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+      if (::absl::bit_cast<::uint64_t>(this_._internal_avg_distance()) != 0) {
+        total_size += 9;
+      }
+    }
+    // double geodesic_distance = 5;
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+      if (::absl::bit_cast<::uint64_t>(this_._internal_geodesic_distance()) != 0) {
+        total_size += 9;
+      }
+    }
+    // bool is_valid = 2;
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      if (this_._internal_is_valid() != 0) {
+        total_size += 2;
+      }
+    }
+    // bool cone_satisfied = 7;
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      if (this_._internal_cone_satisfied() != 0) {
+        total_size += 2;
+      }
+    }
+  }
+   {
+    // uint32 geodesic_hops = 6;
+    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+      if (this_._internal_geodesic_hops() != 0) {
+        total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
+            this_._internal_geodesic_hops());
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void VerifyGenerationResponse::MergeImpl(::google::protobuf::MessageLite& to_msg,
+                            const ::google::protobuf::MessageLite& from_msg) {
+   auto* const _this =
+      static_cast<VerifyGenerationResponse*>(&to_msg);
+  auto& from = static_cast<const VerifyGenerationResponse&>(from_msg);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    from.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(class_specific_merge_from_start:hyperspace.VerifyGenerationResponse)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _this->_internal_mutable_resolved_context_ids()->MergeFrom(from._internal_resolved_context_ids());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!from._internal_details().empty()) {
+        _this->_internal_set_details(from._internal_details());
+      } else {
+        if (_this->_impl_.details_.IsDefault()) {
+          _this->_internal_set_details("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+      if (::absl::bit_cast<::uint64_t>(from._internal_trust_score()) != 0) {
+        _this->_impl_.trust_score_ = from._impl_.trust_score_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (::absl::bit_cast<::uint64_t>(from._internal_min_distance()) != 0) {
+        _this->_impl_.min_distance_ = from._impl_.min_distance_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+      if (::absl::bit_cast<::uint64_t>(from._internal_avg_distance()) != 0) {
+        _this->_impl_.avg_distance_ = from._impl_.avg_distance_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+      if (::absl::bit_cast<::uint64_t>(from._internal_geodesic_distance()) != 0) {
+        _this->_impl_.geodesic_distance_ = from._impl_.geodesic_distance_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      if (from._internal_is_valid() != 0) {
+        _this->_impl_.is_valid_ = from._impl_.is_valid_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      if (from._internal_cone_satisfied() != 0) {
+        _this->_impl_.cone_satisfied_ = from._impl_.cone_satisfied_;
+      }
+    }
+  }
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    if (from._internal_geodesic_hops() != 0) {
+      _this->_impl_.geodesic_hops_ = from._impl_.geodesic_hops_;
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+}
+
+void VerifyGenerationResponse::CopyFrom(const VerifyGenerationResponse& from) {
+  // @@protoc_insertion_point(class_specific_copy_from_start:hyperspace.VerifyGenerationResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void VerifyGenerationResponse::InternalSwap(VerifyGenerationResponse* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using ::std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  _impl_.resolved_context_ids_.InternalSwap(&other->_impl_.resolved_context_ids_);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.details_, &other->_impl_.details_, arena);
+  ::google::protobuf::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.geodesic_hops_)
+      + sizeof(VerifyGenerationResponse::_impl_.geodesic_hops_)
+      - PROTOBUF_FIELD_OFFSET(VerifyGenerationResponse, _impl_.trust_score_)>(
+          reinterpret_cast<char*>(&_impl_.trust_score_),
+          reinterpret_cast<char*>(&other->_impl_.trust_score_));
+}
+
+::google::protobuf::Metadata VerifyGenerationResponse::GetMetadata() const {
   return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
 }
 // @@protoc_insertion_point(namespace_scope)

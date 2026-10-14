@@ -28,6 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RebuildIndex.srv"
   "srv/CreateCollection.srv"
   "srv/TriggerReconsolidation.srv"
+  "srv/VerifyGeneration.srv"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

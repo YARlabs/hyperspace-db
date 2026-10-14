@@ -305,6 +305,15 @@ pub async fn start_http_server(
             "/api/collections/{name}/graph/explore",
             get(graph_explore_http),
         )
+        // Tribunal Router (Geometric Hallucination Prevention)
+        .route(
+            "/api/collections/{name}/verify-generation",
+            post(verify_generation_http),
+        )
+        .route(
+            "/api/tribunal/verify",
+            post(verify_generation_global_http),
+        )
         .route("/api/status", get(get_status))
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
@@ -2398,6 +2407,117 @@ async fn graph_get_subsumption_tree(
         }
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+// --- Tribunal Router (Geometric Hallucination Prevention) Handlers ---
+
+#[derive(serde::Deserialize)]
+pub struct HttpVerifyGenerationRequest {
+    pub llm_answer: String,
+    #[serde(default)]
+    pub context_ids: Vec<String>,
+    pub collection: Option<String>,
+    pub max_distance_threshold: Option<f64>,
+    pub check_geodesic: Option<bool>,
+}
+
+#[derive(serde::Serialize)]
+pub struct HttpVerifyGenerationResponse {
+    pub trust_score: f64,
+    pub is_valid: bool,
+    pub min_distance: f64,
+    pub avg_distance: f64,
+    pub geodesic_distance: f64,
+    pub geodesic_hops: u32,
+    pub cone_satisfied: bool,
+    pub details: String,
+    pub resolved_context_ids: Vec<u32>,
+}
+
+async fn verify_generation_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<HttpVerifyGenerationRequest>,
+) -> impl IntoResponse {
+    let col_name = name;
+    if let Some(col) = manager.get(&ctx.user_id, &col_name).await {
+        let proto_req = hyperspace_proto::hyperspace::VerifyGenerationRequest {
+            collection: col_name,
+            llm_answer: payload.llm_answer,
+            context_ids: payload.context_ids,
+            max_distance_threshold: payload.max_distance_threshold,
+            check_geodesic: payload.check_geodesic,
+        };
+
+        match crate::tribunal::verify_generation_against_context(&*col, proto_req).await {
+            Ok(res) => Json(HttpVerifyGenerationResponse {
+                trust_score: res.trust_score,
+                is_valid: res.is_valid,
+                min_distance: res.min_distance,
+                avg_distance: res.avg_distance,
+                geodesic_distance: res.geodesic_distance,
+                geodesic_hops: res.geodesic_hops,
+                cone_satisfied: res.cone_satisfied,
+                details: res.details,
+                resolved_context_ids: res.resolved_context_ids,
+            })
+            .into_response(),
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn verify_generation_global_http(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<HttpVerifyGenerationRequest>,
+) -> impl IntoResponse {
+    let col_name = payload
+        .collection
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    if let Some(col) = manager.get(&ctx.user_id, &col_name).await {
+        let proto_req = hyperspace_proto::hyperspace::VerifyGenerationRequest {
+            collection: col_name,
+            llm_answer: payload.llm_answer,
+            context_ids: payload.context_ids,
+            max_distance_threshold: payload.max_distance_threshold,
+            check_geodesic: payload.check_geodesic,
+        };
+
+        match crate::tribunal::verify_generation_against_context(&*col, proto_req).await {
+            Ok(res) => Json(HttpVerifyGenerationResponse {
+                trust_score: res.trust_score,
+                is_valid: res.is_valid,
+                min_distance: res.min_distance,
+                avg_distance: res.avg_distance,
+                geodesic_distance: res.geodesic_distance,
+                geodesic_hops: res.geodesic_hops,
+                cone_satisfied: res.cone_satisfied,
+                details: res.details,
+                resolved_context_ids: res.resolved_context_ids,
+            })
+            .into_response(),
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Collection '{col_name}' not found"),
+        )
+            .into_response()
     }
 }
 

@@ -63,7 +63,7 @@ use hyperspace_proto::hyperspace::{
     SearchResult, SearchTextRequest, SyncHandshakeRequest, SyncHandshakeResponse, SyncPullRequest,
     SyncPushResponse, SyncVectorData, SystemStats, TraverseRequest, TraverseResponse,
     UpdatePayloadRequest, VectorData, VectorDeletedEvent, VectorInsertedEvent, VectorizeRequest,
-    VectorizeResponse,
+    VectorizeResponse, VerifyGenerationRequest, VerifyGenerationResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
@@ -3010,6 +3010,32 @@ impl Database for HyperspaceService {
         Ok(Response::new(HealthCheckResponse {
             status: "SERVING".to_string(),
         }))
+    }
+
+    async fn verify_generation(
+        &self,
+        request: Request<VerifyGenerationRequest>,
+    ) -> Result<Response<VerifyGenerationResponse>, Status> {
+        let ctx = get_grpc_ctx(&request);
+        let req = request.into_inner();
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadOnly)?;
+        let Some(col) = self.manager.get(&owner, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+
+        let result = hyperspace_server::tribunal::verify_generation_against_context_with_vectorizer(
+            &*col,
+            req,
+            #[cfg(feature = "embed")]
+            self.vectorizer.as_ref(),
+        )
+        .await
+        .map_err(|e| Status::internal(format!("Tribunal verification error: {e}")))?;
+
+        Ok(Response::new(result))
     }
 }
 

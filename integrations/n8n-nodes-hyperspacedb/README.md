@@ -25,11 +25,14 @@ Server-side vectorization node.
 - **Geometry Matching**: Automatically matches the space of your target collection.
 
 ### 3. HyperspaceDB (Standalone)
-Direct API access for management tasks:
+Direct API access for management and cognitive routing tasks:
+- **Query Planner**: Pre-evaluates intent clarity, generates clarifying questions, and splits compound questions for parallel retrieval.
+- **Verify Generation**: Anti-hallucination mathematical verification of LLM drafts against source context boundaries (`trust_score`, `is_hallucination`).
 - Create/Delete Collections
-- Get Stats
+- Get Stats & Cache Management
 - Direct Vector/Text Insertion
-- Graph Traversals
+- Graph Traversals (Lorentz Subsumption)
+
 
 ## Installation
 

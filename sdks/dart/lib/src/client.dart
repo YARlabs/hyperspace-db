@@ -853,4 +853,100 @@ class HyperspaceClient {
       return nf;
     }).toList();
   }
+
+  /// Mathematically verifies if the LLM's answer semantically breaks the topological/geometric
+  /// boundaries of the source context.
+  /// Geometric distance calculations and boundary verifications are performed opaquely by the server engine.
+  Future<VerificationResult> verifyGeneration(
+    String llmAnswer,
+    List<String> contextIds, {
+    String collection = '',
+    double? maxDistanceThreshold,
+    bool checkGeodesic = true,
+  }) async {
+    final method = ClientMethod<List<int>, List<int>>(
+      '/hyperspace.Database/VerifyGeneration',
+      (v) => v,
+      (v) => v,
+    );
+
+    // Build binary protobuf request
+    final bb = BytesBuilder();
+    // Use raw gRPC channel call
+    try {
+      // Create request payload
+      final reqMap = <String, dynamic>{
+        'collection': collection,
+        'llm_answer': llmAnswer,
+        'context_ids': contextIds,
+        'check_geodesic': checkGeodesic,
+        if (maxDistanceThreshold != null) 'max_distance_threshold': maxDistanceThreshold,
+      };
+      final jsonPayload = utf8.encode(jsonEncode(reqMap));
+
+      // Call gRPC endpoint
+      final call = _channel.createCall(
+        method,
+        Stream.fromIterable([jsonPayload]),
+        options: _callOptions(),
+      );
+      final rawResp = await call.first;
+      final parsed = jsonDecode(utf8.decode(rawResp)) as Map<String, dynamic>;
+      final isValid = parsed['is_valid'] as bool? ?? true;
+      return VerificationResult(
+        trustScore: (parsed['trust_score'] as num?)?.toDouble() ?? 0.0,
+        isHallucination: !isValid,
+        isValid: isValid,
+        minDistance: (parsed['min_distance'] as num?)?.toDouble() ?? 0.0,
+        avgDistance: (parsed['avg_distance'] as num?)?.toDouble() ?? 0.0,
+        geodesicDistance: (parsed['geodesic_distance'] as num?)?.toDouble() ?? 0.0,
+        geodesicHops: (parsed['geodesic_hops'] as num?)?.toInt() ?? 0,
+        coneSatisfied: parsed['cone_satisfied'] as bool? ?? true,
+        details: parsed['details'] as String? ?? '',
+        resolvedContextIds: (parsed['resolved_context_ids'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
+      );
+    } catch (e) {
+      // Return safe fallback result on error
+      return VerificationResult(
+        trustScore: 0.0,
+        isHallucination: true,
+        isValid: false,
+        minDistance: 0.0,
+        avgDistance: 0.0,
+        geodesicDistance: 0.0,
+        geodesicHops: 0,
+        coneSatisfied: false,
+        details: 'Verification call error: $e',
+        resolvedContextIds: [],
+      );
+    }
+  }
 }
+
+/// Result of mathematically verifying an LLM-generated answer against source context vectors.
+class VerificationResult {
+  final double trustScore;
+  final bool isHallucination;
+  final bool isValid;
+  final double minDistance;
+  final double avgDistance;
+  final double geodesicDistance;
+  final int geodesicHops;
+  final bool coneSatisfied;
+  final String details;
+  final List<int> resolvedContextIds;
+
+  VerificationResult({
+    required this.trustScore,
+    required this.isHallucination,
+    required this.isValid,
+    required this.minDistance,
+    required this.avgDistance,
+    required this.geodesicDistance,
+    required this.geodesicHops,
+    required this.coneSatisfied,
+    required this.details,
+    required this.resolvedContextIds,
+  });
+}
+
