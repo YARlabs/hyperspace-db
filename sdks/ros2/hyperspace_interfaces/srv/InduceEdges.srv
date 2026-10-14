@@ -1,0 +1,6 @@
+string collection
+hyperspace_interfaces/MetadataInductionRule[] rules
+---
+bool success
+uint64 edges_created
+string message

@@ -84,6 +84,32 @@ if (plan.status === "clarification_needed") {
 ```
 
 
+## 🕸 Native Vector-Graph (KAG) & Topology Linking
+
+Connect LangChain document nodes and entities directly in the in-engine graph:
+
+```typescript
+// Explicit directed linking
+await vectorStore.link(1, 2, "OWNS", 1.0);
+
+// Batch linking
+await vectorStore.linkBatch([
+    { sourceId: 1, targetId: 2, relation: "OWNS", weight: 1.0 },
+    { sourceId: 2, targetId: 3, relation: "DEPENDS_ON", weight: 0.95 }
+]);
+
+// Declarative edge induction from metadata
+await vectorStore.induceEdgesFromMetadata([
+    { field: "file_path", ruleType: "path_hierarchy", relation: "CONTAINS" }
+]);
+
+// Tribunal anti-hallucination verification
+const verification = await vectorStore.verifyGeneration(
+    llmAnswer,
+    ["1", "2"]
+);
+```
+
 ## 📡 Edge-Cloud Handshake
 
 Synchronize episodic memory between local robot/agent and the fleet:

@@ -4627,6 +4627,478 @@ func (x *FindSemanticClustersResponse) GetClusters() []*GraphCluster {
 	return nil
 }
 
+type EdgeItem struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      uint32                 `protobuf:"varint,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	TargetId      uint32                 `protobuf:"varint,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	Relation      string                 `protobuf:"bytes,3,opt,name=relation,proto3" json:"relation,omitempty"`
+	Weight        float32                `protobuf:"fixed32,4,opt,name=weight,proto3" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EdgeItem) Reset() {
+	*x = EdgeItem{}
+	mi := &file_hyperspace_proto_msgTypes[70]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EdgeItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EdgeItem) ProtoMessage() {}
+
+func (x *EdgeItem) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[70]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EdgeItem.ProtoReflect.Descriptor instead.
+func (*EdgeItem) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *EdgeItem) GetSourceId() uint32 {
+	if x != nil {
+		return x.SourceId
+	}
+	return 0
+}
+
+func (x *EdgeItem) GetTargetId() uint32 {
+	if x != nil {
+		return x.TargetId
+	}
+	return 0
+}
+
+func (x *EdgeItem) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+func (x *EdgeItem) GetWeight() float32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+type LinkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	Edge          *EdgeItem              `protobuf:"bytes,2,opt,name=edge,proto3" json:"edge,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LinkRequest) Reset() {
+	*x = LinkRequest{}
+	mi := &file_hyperspace_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkRequest) ProtoMessage() {}
+
+func (x *LinkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkRequest.ProtoReflect.Descriptor instead.
+func (*LinkRequest) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *LinkRequest) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+func (x *LinkRequest) GetEdge() *EdgeItem {
+	if x != nil {
+		return x.Edge
+	}
+	return nil
+}
+
+type LinkBatchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	Edges         []*EdgeItem            `protobuf:"bytes,2,rep,name=edges,proto3" json:"edges,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LinkBatchRequest) Reset() {
+	*x = LinkBatchRequest{}
+	mi := &file_hyperspace_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkBatchRequest) ProtoMessage() {}
+
+func (x *LinkBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkBatchRequest.ProtoReflect.Descriptor instead.
+func (*LinkBatchRequest) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *LinkBatchRequest) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+func (x *LinkBatchRequest) GetEdges() []*EdgeItem {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
+}
+
+type LinkBatchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	EdgesLinked   uint64                 `protobuf:"varint,2,opt,name=edges_linked,json=edgesLinked,proto3" json:"edges_linked,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LinkBatchResponse) Reset() {
+	*x = LinkBatchResponse{}
+	mi := &file_hyperspace_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkBatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkBatchResponse) ProtoMessage() {}
+
+func (x *LinkBatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkBatchResponse.ProtoReflect.Descriptor instead.
+func (*LinkBatchResponse) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *LinkBatchResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *LinkBatchResponse) GetEdgesLinked() uint64 {
+	if x != nil {
+		return x.EdgesLinked
+	}
+	return 0
+}
+
+type UnlinkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	SourceId      uint32                 `protobuf:"varint,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	TargetId      uint32                 `protobuf:"varint,3,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	Relation      string                 `protobuf:"bytes,4,opt,name=relation,proto3" json:"relation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnlinkRequest) Reset() {
+	*x = UnlinkRequest{}
+	mi := &file_hyperspace_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnlinkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnlinkRequest) ProtoMessage() {}
+
+func (x *UnlinkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnlinkRequest.ProtoReflect.Descriptor instead.
+func (*UnlinkRequest) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *UnlinkRequest) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+func (x *UnlinkRequest) GetSourceId() uint32 {
+	if x != nil {
+		return x.SourceId
+	}
+	return 0
+}
+
+func (x *UnlinkRequest) GetTargetId() uint32 {
+	if x != nil {
+		return x.TargetId
+	}
+	return 0
+}
+
+func (x *UnlinkRequest) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+type MetadataInductionRuleProto struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Field         string                 `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
+	RuleType      string                 `protobuf:"bytes,2,opt,name=rule_type,json=ruleType,proto3" json:"rule_type,omitempty"` // "path_hierarchy", "foreign_key", "exact_match"
+	TargetField   *string                `protobuf:"bytes,3,opt,name=target_field,json=targetField,proto3,oneof" json:"target_field,omitempty"`
+	Relation      string                 `protobuf:"bytes,4,opt,name=relation,proto3" json:"relation,omitempty"`
+	Weight        *float32               `protobuf:"fixed32,5,opt,name=weight,proto3,oneof" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetadataInductionRuleProto) Reset() {
+	*x = MetadataInductionRuleProto{}
+	mi := &file_hyperspace_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetadataInductionRuleProto) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetadataInductionRuleProto) ProtoMessage() {}
+
+func (x *MetadataInductionRuleProto) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetadataInductionRuleProto.ProtoReflect.Descriptor instead.
+func (*MetadataInductionRuleProto) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *MetadataInductionRuleProto) GetField() string {
+	if x != nil {
+		return x.Field
+	}
+	return ""
+}
+
+func (x *MetadataInductionRuleProto) GetRuleType() string {
+	if x != nil {
+		return x.RuleType
+	}
+	return ""
+}
+
+func (x *MetadataInductionRuleProto) GetTargetField() string {
+	if x != nil && x.TargetField != nil {
+		return *x.TargetField
+	}
+	return ""
+}
+
+func (x *MetadataInductionRuleProto) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+func (x *MetadataInductionRuleProto) GetWeight() float32 {
+	if x != nil && x.Weight != nil {
+		return *x.Weight
+	}
+	return 0
+}
+
+type InduceEdgesRequest struct {
+	state         protoimpl.MessageState        `protogen:"open.v1"`
+	Collection    string                        `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	Rules         []*MetadataInductionRuleProto `protobuf:"bytes,2,rep,name=rules,proto3" json:"rules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InduceEdgesRequest) Reset() {
+	*x = InduceEdgesRequest{}
+	mi := &file_hyperspace_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InduceEdgesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InduceEdgesRequest) ProtoMessage() {}
+
+func (x *InduceEdgesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InduceEdgesRequest.ProtoReflect.Descriptor instead.
+func (*InduceEdgesRequest) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *InduceEdgesRequest) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+func (x *InduceEdgesRequest) GetRules() []*MetadataInductionRuleProto {
+	if x != nil {
+		return x.Rules
+	}
+	return nil
+}
+
+type InduceEdgesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	EdgesCreated  uint64                 `protobuf:"varint,2,opt,name=edges_created,json=edgesCreated,proto3" json:"edges_created,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InduceEdgesResponse) Reset() {
+	*x = InduceEdgesResponse{}
+	mi := &file_hyperspace_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InduceEdgesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InduceEdgesResponse) ProtoMessage() {}
+
+func (x *InduceEdgesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InduceEdgesResponse.ProtoReflect.Descriptor instead.
+func (*InduceEdgesResponse) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *InduceEdgesResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *InduceEdgesResponse) GetEdgesCreated() uint64 {
+	if x != nil {
+		return x.EdgesCreated
+	}
+	return 0
+}
+
 type MetadataValue struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Kind:
@@ -4642,7 +5114,7 @@ type MetadataValue struct {
 
 func (x *MetadataValue) Reset() {
 	*x = MetadataValue{}
-	mi := &file_hyperspace_proto_msgTypes[70]
+	mi := &file_hyperspace_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4654,7 +5126,7 @@ func (x *MetadataValue) String() string {
 func (*MetadataValue) ProtoMessage() {}
 
 func (x *MetadataValue) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[70]
+	mi := &file_hyperspace_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4667,7 +5139,7 @@ func (x *MetadataValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetadataValue.ProtoReflect.Descriptor instead.
 func (*MetadataValue) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{70}
+	return file_hyperspace_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *MetadataValue) GetKind() isMetadataValue_Kind {
@@ -4751,7 +5223,7 @@ type EventSubscriptionRequest struct {
 
 func (x *EventSubscriptionRequest) Reset() {
 	*x = EventSubscriptionRequest{}
-	mi := &file_hyperspace_proto_msgTypes[71]
+	mi := &file_hyperspace_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4763,7 +5235,7 @@ func (x *EventSubscriptionRequest) String() string {
 func (*EventSubscriptionRequest) ProtoMessage() {}
 
 func (x *EventSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[71]
+	mi := &file_hyperspace_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4776,7 +5248,7 @@ func (x *EventSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*EventSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{71}
+	return file_hyperspace_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *EventSubscriptionRequest) GetTypes() []EventType {
@@ -4807,7 +5279,7 @@ type VectorInsertedEvent struct {
 
 func (x *VectorInsertedEvent) Reset() {
 	*x = VectorInsertedEvent{}
-	mi := &file_hyperspace_proto_msgTypes[72]
+	mi := &file_hyperspace_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4819,7 +5291,7 @@ func (x *VectorInsertedEvent) String() string {
 func (*VectorInsertedEvent) ProtoMessage() {}
 
 func (x *VectorInsertedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[72]
+	mi := &file_hyperspace_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4832,7 +5304,7 @@ func (x *VectorInsertedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorInsertedEvent.ProtoReflect.Descriptor instead.
 func (*VectorInsertedEvent) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{72}
+	return file_hyperspace_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *VectorInsertedEvent) GetId() uint32 {
@@ -4890,7 +5362,7 @@ type TrajectoryStepEvent struct {
 
 func (x *TrajectoryStepEvent) Reset() {
 	*x = TrajectoryStepEvent{}
-	mi := &file_hyperspace_proto_msgTypes[73]
+	mi := &file_hyperspace_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4902,7 +5374,7 @@ func (x *TrajectoryStepEvent) String() string {
 func (*TrajectoryStepEvent) ProtoMessage() {}
 
 func (x *TrajectoryStepEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[73]
+	mi := &file_hyperspace_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4915,7 +5387,7 @@ func (x *TrajectoryStepEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrajectoryStepEvent.ProtoReflect.Descriptor instead.
 func (*TrajectoryStepEvent) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{73}
+	return file_hyperspace_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *TrajectoryStepEvent) GetId() uint32 {
@@ -4965,7 +5437,7 @@ type VectorDeletedEvent struct {
 
 func (x *VectorDeletedEvent) Reset() {
 	*x = VectorDeletedEvent{}
-	mi := &file_hyperspace_proto_msgTypes[74]
+	mi := &file_hyperspace_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4977,7 +5449,7 @@ func (x *VectorDeletedEvent) String() string {
 func (*VectorDeletedEvent) ProtoMessage() {}
 
 func (x *VectorDeletedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[74]
+	mi := &file_hyperspace_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4990,7 +5462,7 @@ func (x *VectorDeletedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorDeletedEvent.ProtoReflect.Descriptor instead.
 func (*VectorDeletedEvent) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{74}
+	return file_hyperspace_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *VectorDeletedEvent) GetId() uint32 {
@@ -5036,7 +5508,7 @@ type EventMessage struct {
 
 func (x *EventMessage) Reset() {
 	*x = EventMessage{}
-	mi := &file_hyperspace_proto_msgTypes[75]
+	mi := &file_hyperspace_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5048,7 +5520,7 @@ func (x *EventMessage) String() string {
 func (*EventMessage) ProtoMessage() {}
 
 func (x *EventMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[75]
+	mi := &file_hyperspace_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5061,7 +5533,7 @@ func (x *EventMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventMessage.ProtoReflect.Descriptor instead.
 func (*EventMessage) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{75}
+	return file_hyperspace_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *EventMessage) GetType() EventType {
@@ -5135,7 +5607,7 @@ type Empty struct {
 
 func (x *Empty) Reset() {
 	*x = Empty{}
-	mi := &file_hyperspace_proto_msgTypes[76]
+	mi := &file_hyperspace_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5147,7 +5619,7 @@ func (x *Empty) String() string {
 func (*Empty) ProtoMessage() {}
 
 func (x *Empty) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[76]
+	mi := &file_hyperspace_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5160,7 +5632,7 @@ func (x *Empty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Empty.ProtoReflect.Descriptor instead.
 func (*Empty) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{76}
+	return file_hyperspace_proto_rawDescGZIP(), []int{84}
 }
 
 type StatusResponse struct {
@@ -5172,7 +5644,7 @@ type StatusResponse struct {
 
 func (x *StatusResponse) Reset() {
 	*x = StatusResponse{}
-	mi := &file_hyperspace_proto_msgTypes[77]
+	mi := &file_hyperspace_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5184,7 +5656,7 @@ func (x *StatusResponse) String() string {
 func (*StatusResponse) ProtoMessage() {}
 
 func (x *StatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[77]
+	mi := &file_hyperspace_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5197,7 +5669,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{77}
+	return file_hyperspace_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *StatusResponse) GetStatus() string {
@@ -5215,7 +5687,7 @@ type MonitorRequest struct {
 
 func (x *MonitorRequest) Reset() {
 	*x = MonitorRequest{}
-	mi := &file_hyperspace_proto_msgTypes[78]
+	mi := &file_hyperspace_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5227,7 +5699,7 @@ func (x *MonitorRequest) String() string {
 func (*MonitorRequest) ProtoMessage() {}
 
 func (x *MonitorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[78]
+	mi := &file_hyperspace_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5240,7 +5712,7 @@ func (x *MonitorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MonitorRequest.ProtoReflect.Descriptor instead.
 func (*MonitorRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{78}
+	return file_hyperspace_proto_rawDescGZIP(), []int{86}
 }
 
 type SystemStats struct {
@@ -5255,7 +5727,7 @@ type SystemStats struct {
 
 func (x *SystemStats) Reset() {
 	*x = SystemStats{}
-	mi := &file_hyperspace_proto_msgTypes[79]
+	mi := &file_hyperspace_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5267,7 +5739,7 @@ func (x *SystemStats) String() string {
 func (*SystemStats) ProtoMessage() {}
 
 func (x *SystemStats) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[79]
+	mi := &file_hyperspace_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5280,7 +5752,7 @@ func (x *SystemStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemStats.ProtoReflect.Descriptor instead.
 func (*SystemStats) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{79}
+	return file_hyperspace_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *SystemStats) GetTotalCollections() uint64 {
@@ -5320,7 +5792,7 @@ type DigestRequest struct {
 
 func (x *DigestRequest) Reset() {
 	*x = DigestRequest{}
-	mi := &file_hyperspace_proto_msgTypes[80]
+	mi := &file_hyperspace_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5332,7 +5804,7 @@ func (x *DigestRequest) String() string {
 func (*DigestRequest) ProtoMessage() {}
 
 func (x *DigestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[80]
+	mi := &file_hyperspace_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5345,7 +5817,7 @@ func (x *DigestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DigestRequest.ProtoReflect.Descriptor instead.
 func (*DigestRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{80}
+	return file_hyperspace_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *DigestRequest) GetCollection() string {
@@ -5367,7 +5839,7 @@ type DigestResponse struct {
 
 func (x *DigestResponse) Reset() {
 	*x = DigestResponse{}
-	mi := &file_hyperspace_proto_msgTypes[81]
+	mi := &file_hyperspace_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5379,7 +5851,7 @@ func (x *DigestResponse) String() string {
 func (*DigestResponse) ProtoMessage() {}
 
 func (x *DigestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[81]
+	mi := &file_hyperspace_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5392,7 +5864,7 @@ func (x *DigestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DigestResponse.ProtoReflect.Descriptor instead.
 func (*DigestResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{81}
+	return file_hyperspace_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *DigestResponse) GetLogicalClock() uint64 {
@@ -5436,7 +5908,7 @@ type SyncHandshakeRequest struct {
 
 func (x *SyncHandshakeRequest) Reset() {
 	*x = SyncHandshakeRequest{}
-	mi := &file_hyperspace_proto_msgTypes[82]
+	mi := &file_hyperspace_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5448,7 +5920,7 @@ func (x *SyncHandshakeRequest) String() string {
 func (*SyncHandshakeRequest) ProtoMessage() {}
 
 func (x *SyncHandshakeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[82]
+	mi := &file_hyperspace_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5461,7 +5933,7 @@ func (x *SyncHandshakeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncHandshakeRequest.ProtoReflect.Descriptor instead.
 func (*SyncHandshakeRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{82}
+	return file_hyperspace_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *SyncHandshakeRequest) GetCollection() string {
@@ -5503,7 +5975,7 @@ type DiffBucket struct {
 
 func (x *DiffBucket) Reset() {
 	*x = DiffBucket{}
-	mi := &file_hyperspace_proto_msgTypes[83]
+	mi := &file_hyperspace_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5515,7 +5987,7 @@ func (x *DiffBucket) String() string {
 func (*DiffBucket) ProtoMessage() {}
 
 func (x *DiffBucket) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[83]
+	mi := &file_hyperspace_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5528,7 +6000,7 @@ func (x *DiffBucket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffBucket.ProtoReflect.Descriptor instead.
 func (*DiffBucket) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{83}
+	return file_hyperspace_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *DiffBucket) GetBucketIndex() uint32 {
@@ -5568,7 +6040,7 @@ type SyncHandshakeResponse struct {
 
 func (x *SyncHandshakeResponse) Reset() {
 	*x = SyncHandshakeResponse{}
-	mi := &file_hyperspace_proto_msgTypes[84]
+	mi := &file_hyperspace_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5580,7 +6052,7 @@ func (x *SyncHandshakeResponse) String() string {
 func (*SyncHandshakeResponse) ProtoMessage() {}
 
 func (x *SyncHandshakeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[84]
+	mi := &file_hyperspace_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5593,7 +6065,7 @@ func (x *SyncHandshakeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncHandshakeResponse.ProtoReflect.Descriptor instead.
 func (*SyncHandshakeResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{84}
+	return file_hyperspace_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *SyncHandshakeResponse) GetDiffBuckets() []*DiffBucket {
@@ -5635,7 +6107,7 @@ type SyncPullRequest struct {
 
 func (x *SyncPullRequest) Reset() {
 	*x = SyncPullRequest{}
-	mi := &file_hyperspace_proto_msgTypes[85]
+	mi := &file_hyperspace_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5647,7 +6119,7 @@ func (x *SyncPullRequest) String() string {
 func (*SyncPullRequest) ProtoMessage() {}
 
 func (x *SyncPullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[85]
+	mi := &file_hyperspace_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5660,7 +6132,7 @@ func (x *SyncPullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncPullRequest.ProtoReflect.Descriptor instead.
 func (*SyncPullRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{85}
+	return file_hyperspace_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *SyncPullRequest) GetCollection() string {
@@ -5691,7 +6163,7 @@ type SyncVectorData struct {
 
 func (x *SyncVectorData) Reset() {
 	*x = SyncVectorData{}
-	mi := &file_hyperspace_proto_msgTypes[86]
+	mi := &file_hyperspace_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5703,7 +6175,7 @@ func (x *SyncVectorData) String() string {
 func (*SyncVectorData) ProtoMessage() {}
 
 func (x *SyncVectorData) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[86]
+	mi := &file_hyperspace_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5716,7 +6188,7 @@ func (x *SyncVectorData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncVectorData.ProtoReflect.Descriptor instead.
 func (*SyncVectorData) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{86}
+	return file_hyperspace_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *SyncVectorData) GetCollection() string {
@@ -5765,7 +6237,7 @@ type SyncPushResponse struct {
 
 func (x *SyncPushResponse) Reset() {
 	*x = SyncPushResponse{}
-	mi := &file_hyperspace_proto_msgTypes[87]
+	mi := &file_hyperspace_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5777,7 +6249,7 @@ func (x *SyncPushResponse) String() string {
 func (*SyncPushResponse) ProtoMessage() {}
 
 func (x *SyncPushResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[87]
+	mi := &file_hyperspace_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5790,7 +6262,7 @@ func (x *SyncPushResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncPushResponse.ProtoReflect.Descriptor instead.
 func (*SyncPushResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{87}
+	return file_hyperspace_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *SyncPushResponse) GetAccepted() uint32 {
@@ -5823,7 +6295,7 @@ type FreezeCollectionRequest struct {
 
 func (x *FreezeCollectionRequest) Reset() {
 	*x = FreezeCollectionRequest{}
-	mi := &file_hyperspace_proto_msgTypes[88]
+	mi := &file_hyperspace_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5835,7 +6307,7 @@ func (x *FreezeCollectionRequest) String() string {
 func (*FreezeCollectionRequest) ProtoMessage() {}
 
 func (x *FreezeCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[88]
+	mi := &file_hyperspace_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5848,7 +6320,7 @@ func (x *FreezeCollectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FreezeCollectionRequest.ProtoReflect.Descriptor instead.
 func (*FreezeCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{88}
+	return file_hyperspace_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *FreezeCollectionRequest) GetName() string {
@@ -5867,7 +6339,7 @@ type UnfreezeCollectionRequest struct {
 
 func (x *UnfreezeCollectionRequest) Reset() {
 	*x = UnfreezeCollectionRequest{}
-	mi := &file_hyperspace_proto_msgTypes[89]
+	mi := &file_hyperspace_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5879,7 +6351,7 @@ func (x *UnfreezeCollectionRequest) String() string {
 func (*UnfreezeCollectionRequest) ProtoMessage() {}
 
 func (x *UnfreezeCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[89]
+	mi := &file_hyperspace_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5892,7 +6364,7 @@ func (x *UnfreezeCollectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnfreezeCollectionRequest.ProtoReflect.Descriptor instead.
 func (*UnfreezeCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{89}
+	return file_hyperspace_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *UnfreezeCollectionRequest) GetName() string {
@@ -5916,7 +6388,7 @@ type VerifyGenerationRequest struct {
 
 func (x *VerifyGenerationRequest) Reset() {
 	*x = VerifyGenerationRequest{}
-	mi := &file_hyperspace_proto_msgTypes[90]
+	mi := &file_hyperspace_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5928,7 +6400,7 @@ func (x *VerifyGenerationRequest) String() string {
 func (*VerifyGenerationRequest) ProtoMessage() {}
 
 func (x *VerifyGenerationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[90]
+	mi := &file_hyperspace_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5941,7 +6413,7 @@ func (x *VerifyGenerationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyGenerationRequest.ProtoReflect.Descriptor instead.
 func (*VerifyGenerationRequest) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{90}
+	return file_hyperspace_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *VerifyGenerationRequest) GetCollection() string {
@@ -5996,7 +6468,7 @@ type VerifyGenerationResponse struct {
 
 func (x *VerifyGenerationResponse) Reset() {
 	*x = VerifyGenerationResponse{}
-	mi := &file_hyperspace_proto_msgTypes[91]
+	mi := &file_hyperspace_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6008,7 +6480,7 @@ func (x *VerifyGenerationResponse) String() string {
 func (*VerifyGenerationResponse) ProtoMessage() {}
 
 func (x *VerifyGenerationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hyperspace_proto_msgTypes[91]
+	mi := &file_hyperspace_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6021,7 +6493,7 @@ func (x *VerifyGenerationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyGenerationResponse.ProtoReflect.Descriptor instead.
 func (*VerifyGenerationResponse) Descriptor() ([]byte, []int) {
-	return file_hyperspace_proto_rawDescGZIP(), []int{91}
+	return file_hyperspace_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *VerifyGenerationResponse) GetTrustScore() float64 {
@@ -6523,7 +6995,48 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\fGraphCluster\x12\x19\n" +
 	"\bnode_ids\x18\x01 \x03(\rR\anodeIds\"T\n" +
 	"\x1cFindSemanticClustersResponse\x124\n" +
-	"\bclusters\x18\x01 \x03(\v2\x18.hyperspace.GraphClusterR\bclusters\"\xa1\x01\n" +
+	"\bclusters\x18\x01 \x03(\v2\x18.hyperspace.GraphClusterR\bclusters\"x\n" +
+	"\bEdgeItem\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\rR\bsourceId\x12\x1b\n" +
+	"\ttarget_id\x18\x02 \x01(\rR\btargetId\x12\x1a\n" +
+	"\brelation\x18\x03 \x01(\tR\brelation\x12\x16\n" +
+	"\x06weight\x18\x04 \x01(\x02R\x06weight\"W\n" +
+	"\vLinkRequest\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\tR\n" +
+	"collection\x12(\n" +
+	"\x04edge\x18\x02 \x01(\v2\x14.hyperspace.EdgeItemR\x04edge\"^\n" +
+	"\x10LinkBatchRequest\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\tR\n" +
+	"collection\x12*\n" +
+	"\x05edges\x18\x02 \x03(\v2\x14.hyperspace.EdgeItemR\x05edges\"P\n" +
+	"\x11LinkBatchResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12!\n" +
+	"\fedges_linked\x18\x02 \x01(\x04R\vedgesLinked\"\x85\x01\n" +
+	"\rUnlinkRequest\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\tR\n" +
+	"collection\x12\x1b\n" +
+	"\tsource_id\x18\x02 \x01(\rR\bsourceId\x12\x1b\n" +
+	"\ttarget_id\x18\x03 \x01(\rR\btargetId\x12\x1a\n" +
+	"\brelation\x18\x04 \x01(\tR\brelation\"\xcc\x01\n" +
+	"\x1aMetadataInductionRuleProto\x12\x14\n" +
+	"\x05field\x18\x01 \x01(\tR\x05field\x12\x1b\n" +
+	"\trule_type\x18\x02 \x01(\tR\bruleType\x12&\n" +
+	"\ftarget_field\x18\x03 \x01(\tH\x00R\vtargetField\x88\x01\x01\x12\x1a\n" +
+	"\brelation\x18\x04 \x01(\tR\brelation\x12\x1b\n" +
+	"\x06weight\x18\x05 \x01(\x02H\x01R\x06weight\x88\x01\x01B\x0f\n" +
+	"\r_target_fieldB\t\n" +
+	"\a_weight\"r\n" +
+	"\x12InduceEdgesRequest\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\tR\n" +
+	"collection\x12<\n" +
+	"\x05rules\x18\x02 \x03(\v2&.hyperspace.MetadataInductionRuleProtoR\x05rules\"T\n" +
+	"\x13InduceEdgesResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
+	"\redges_created\x18\x02 \x01(\x04R\fedgesCreated\"\xa1\x01\n" +
 	"\rMetadataValue\x12#\n" +
 	"\fstring_value\x18\x01 \x01(\tH\x00R\vstringValue\x12\x1d\n" +
 	"\tint_value\x18\x02 \x01(\x03H\x00R\bintValue\x12#\n" +
@@ -6686,7 +7199,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rEVENT_UNKNOWN\x10\x00\x12\x13\n" +
 	"\x0fVECTOR_INSERTED\x10\x01\x12\x12\n" +
 	"\x0eVECTOR_DELETED\x10\x02\x12\x13\n" +
-	"\x0fTRAJECTORY_STEP\x10\x032\xf1\x17\n" +
+	"\x0fTRAJECTORY_STEP\x10\x032\x95\x1a\n" +
 	"\bDatabase\x12S\n" +
 	"\x10CreateCollection\x12#.hyperspace.CreateCollectionRequest\x1a\x1a.hyperspace.StatusResponse\x12S\n" +
 	"\x10DeleteCollection\x12#.hyperspace.DeleteCollectionRequest\x1a\x1a.hyperspace.StatusResponse\x12I\n" +
@@ -6714,7 +7227,11 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x11GetConceptParents\x12$.hyperspace.GetConceptParentsRequest\x1a%.hyperspace.GetConceptParentsResponse\x12E\n" +
 	"\bTraverse\x12\x1b.hyperspace.TraverseRequest\x1a\x1c.hyperspace.TraverseResponse\x12i\n" +
 	"\x14FindSemanticClusters\x12'.hyperspace.FindSemanticClustersRequest\x1a(.hyperspace.FindSemanticClustersResponse\x12c\n" +
-	"\x12GetSubsumptionTree\x12%.hyperspace.GetSubsumptionTreeRequest\x1a&.hyperspace.GetSubsumptionTreeResponse\x12@\n" +
+	"\x12GetSubsumptionTree\x12%.hyperspace.GetSubsumptionTreeRequest\x1a&.hyperspace.GetSubsumptionTreeResponse\x12;\n" +
+	"\x04Link\x12\x17.hyperspace.LinkRequest\x1a\x1a.hyperspace.StatusResponse\x12H\n" +
+	"\tLinkBatch\x12\x1c.hyperspace.LinkBatchRequest\x1a\x1d.hyperspace.LinkBatchResponse\x12?\n" +
+	"\x06Unlink\x12\x19.hyperspace.UnlinkRequest\x1a\x1a.hyperspace.StatusResponse\x12Z\n" +
+	"\x17InduceEdgesFromMetadata\x12\x1e.hyperspace.InduceEdgesRequest\x1a\x1f.hyperspace.InduceEdgesResponse\x12@\n" +
 	"\aMonitor\x12\x1a.hyperspace.MonitorRequest\x1a\x17.hyperspace.SystemStats0\x01\x12@\n" +
 	"\x0fTriggerSnapshot\x12\x11.hyperspace.Empty\x1a\x1a.hyperspace.StatusResponse\x12>\n" +
 	"\rTriggerVacuum\x12\x11.hyperspace.Empty\x1a\x1a.hyperspace.StatusResponse\x12X\n" +
@@ -6743,7 +7260,7 @@ func file_hyperspace_proto_rawDescGZIP() []byte {
 }
 
 var file_hyperspace_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_hyperspace_proto_msgTypes = make([]protoimpl.MessageInfo, 115)
+var file_hyperspace_proto_msgTypes = make([]protoimpl.MessageInfo, 123)
 var file_hyperspace_proto_goTypes = []any{
 	(QuantizationMode)(0),                 // 0: hyperspace.QuantizationMode
 	(DurabilityLevel)(0),                  // 1: hyperspace.DurabilityLevel
@@ -6820,59 +7337,67 @@ var file_hyperspace_proto_goTypes = []any{
 	(*GetConceptParentsResponse)(nil),     // 72: hyperspace.GetConceptParentsResponse
 	(*GraphCluster)(nil),                  // 73: hyperspace.GraphCluster
 	(*FindSemanticClustersResponse)(nil),  // 74: hyperspace.FindSemanticClustersResponse
-	(*MetadataValue)(nil),                 // 75: hyperspace.MetadataValue
-	(*EventSubscriptionRequest)(nil),      // 76: hyperspace.EventSubscriptionRequest
-	(*VectorInsertedEvent)(nil),           // 77: hyperspace.VectorInsertedEvent
-	(*TrajectoryStepEvent)(nil),           // 78: hyperspace.TrajectoryStepEvent
-	(*VectorDeletedEvent)(nil),            // 79: hyperspace.VectorDeletedEvent
-	(*EventMessage)(nil),                  // 80: hyperspace.EventMessage
-	(*Empty)(nil),                         // 81: hyperspace.Empty
-	(*StatusResponse)(nil),                // 82: hyperspace.StatusResponse
-	(*MonitorRequest)(nil),                // 83: hyperspace.MonitorRequest
-	(*SystemStats)(nil),                   // 84: hyperspace.SystemStats
-	(*DigestRequest)(nil),                 // 85: hyperspace.DigestRequest
-	(*DigestResponse)(nil),                // 86: hyperspace.DigestResponse
-	(*SyncHandshakeRequest)(nil),          // 87: hyperspace.SyncHandshakeRequest
-	(*DiffBucket)(nil),                    // 88: hyperspace.DiffBucket
-	(*SyncHandshakeResponse)(nil),         // 89: hyperspace.SyncHandshakeResponse
-	(*SyncPullRequest)(nil),               // 90: hyperspace.SyncPullRequest
-	(*SyncVectorData)(nil),                // 91: hyperspace.SyncVectorData
-	(*SyncPushResponse)(nil),              // 92: hyperspace.SyncPushResponse
-	(*FreezeCollectionRequest)(nil),       // 93: hyperspace.FreezeCollectionRequest
-	(*UnfreezeCollectionRequest)(nil),     // 94: hyperspace.UnfreezeCollectionRequest
-	(*VerifyGenerationRequest)(nil),       // 95: hyperspace.VerifyGenerationRequest
-	(*VerifyGenerationResponse)(nil),      // 96: hyperspace.VerifyGenerationResponse
-	nil,                                   // 97: hyperspace.InsertOp.MetadataEntry
-	nil,                                   // 98: hyperspace.InsertOp.TypedMetadataEntry
-	nil,                                   // 99: hyperspace.InsertRequest.MetadataEntry
-	nil,                                   // 100: hyperspace.InsertRequest.TypedMetadataEntry
-	nil,                                   // 101: hyperspace.VectorData.MetadataEntry
-	nil,                                   // 102: hyperspace.VectorData.TypedMetadataEntry
-	nil,                                   // 103: hyperspace.InsertTextRequest.MetadataEntry
-	nil,                                   // 104: hyperspace.SearchTextRequest.FilterEntry
-	nil,                                   // 105: hyperspace.SearchTextRequest.ComponentWeightsEntry
-	nil,                                   // 106: hyperspace.UpdatePayloadRequest.MetadataEntry
-	nil,                                   // 107: hyperspace.UpdatePayloadRequest.TypedMetadataEntry
-	nil,                                   // 108: hyperspace.SearchRequest.FilterEntry
-	nil,                                   // 109: hyperspace.SearchRequest.ComponentWeightsEntry
-	nil,                                   // 110: hyperspace.SearchMultiCollectionResponse.ResponsesEntry
-	nil,                                   // 111: hyperspace.SearchResult.MetadataEntry
-	nil,                                   // 112: hyperspace.SearchResult.TypedMetadataEntry
-	nil,                                   // 113: hyperspace.GraphNode.MetadataEntry
-	nil,                                   // 114: hyperspace.GraphNode.TypedMetadataEntry
-	nil,                                   // 115: hyperspace.TraverseRequest.FilterEntry
-	nil,                                   // 116: hyperspace.VectorInsertedEvent.MetadataEntry
-	nil,                                   // 117: hyperspace.VectorInsertedEvent.TypedMetadataEntry
-	nil,                                   // 118: hyperspace.TrajectoryStepEvent.MetadataEntry
-	nil,                                   // 119: hyperspace.SyncVectorData.MetadataEntry
+	(*EdgeItem)(nil),                      // 75: hyperspace.EdgeItem
+	(*LinkRequest)(nil),                   // 76: hyperspace.LinkRequest
+	(*LinkBatchRequest)(nil),              // 77: hyperspace.LinkBatchRequest
+	(*LinkBatchResponse)(nil),             // 78: hyperspace.LinkBatchResponse
+	(*UnlinkRequest)(nil),                 // 79: hyperspace.UnlinkRequest
+	(*MetadataInductionRuleProto)(nil),    // 80: hyperspace.MetadataInductionRuleProto
+	(*InduceEdgesRequest)(nil),            // 81: hyperspace.InduceEdgesRequest
+	(*InduceEdgesResponse)(nil),           // 82: hyperspace.InduceEdgesResponse
+	(*MetadataValue)(nil),                 // 83: hyperspace.MetadataValue
+	(*EventSubscriptionRequest)(nil),      // 84: hyperspace.EventSubscriptionRequest
+	(*VectorInsertedEvent)(nil),           // 85: hyperspace.VectorInsertedEvent
+	(*TrajectoryStepEvent)(nil),           // 86: hyperspace.TrajectoryStepEvent
+	(*VectorDeletedEvent)(nil),            // 87: hyperspace.VectorDeletedEvent
+	(*EventMessage)(nil),                  // 88: hyperspace.EventMessage
+	(*Empty)(nil),                         // 89: hyperspace.Empty
+	(*StatusResponse)(nil),                // 90: hyperspace.StatusResponse
+	(*MonitorRequest)(nil),                // 91: hyperspace.MonitorRequest
+	(*SystemStats)(nil),                   // 92: hyperspace.SystemStats
+	(*DigestRequest)(nil),                 // 93: hyperspace.DigestRequest
+	(*DigestResponse)(nil),                // 94: hyperspace.DigestResponse
+	(*SyncHandshakeRequest)(nil),          // 95: hyperspace.SyncHandshakeRequest
+	(*DiffBucket)(nil),                    // 96: hyperspace.DiffBucket
+	(*SyncHandshakeResponse)(nil),         // 97: hyperspace.SyncHandshakeResponse
+	(*SyncPullRequest)(nil),               // 98: hyperspace.SyncPullRequest
+	(*SyncVectorData)(nil),                // 99: hyperspace.SyncVectorData
+	(*SyncPushResponse)(nil),              // 100: hyperspace.SyncPushResponse
+	(*FreezeCollectionRequest)(nil),       // 101: hyperspace.FreezeCollectionRequest
+	(*UnfreezeCollectionRequest)(nil),     // 102: hyperspace.UnfreezeCollectionRequest
+	(*VerifyGenerationRequest)(nil),       // 103: hyperspace.VerifyGenerationRequest
+	(*VerifyGenerationResponse)(nil),      // 104: hyperspace.VerifyGenerationResponse
+	nil,                                   // 105: hyperspace.InsertOp.MetadataEntry
+	nil,                                   // 106: hyperspace.InsertOp.TypedMetadataEntry
+	nil,                                   // 107: hyperspace.InsertRequest.MetadataEntry
+	nil,                                   // 108: hyperspace.InsertRequest.TypedMetadataEntry
+	nil,                                   // 109: hyperspace.VectorData.MetadataEntry
+	nil,                                   // 110: hyperspace.VectorData.TypedMetadataEntry
+	nil,                                   // 111: hyperspace.InsertTextRequest.MetadataEntry
+	nil,                                   // 112: hyperspace.SearchTextRequest.FilterEntry
+	nil,                                   // 113: hyperspace.SearchTextRequest.ComponentWeightsEntry
+	nil,                                   // 114: hyperspace.UpdatePayloadRequest.MetadataEntry
+	nil,                                   // 115: hyperspace.UpdatePayloadRequest.TypedMetadataEntry
+	nil,                                   // 116: hyperspace.SearchRequest.FilterEntry
+	nil,                                   // 117: hyperspace.SearchRequest.ComponentWeightsEntry
+	nil,                                   // 118: hyperspace.SearchMultiCollectionResponse.ResponsesEntry
+	nil,                                   // 119: hyperspace.SearchResult.MetadataEntry
+	nil,                                   // 120: hyperspace.SearchResult.TypedMetadataEntry
+	nil,                                   // 121: hyperspace.GraphNode.MetadataEntry
+	nil,                                   // 122: hyperspace.GraphNode.TypedMetadataEntry
+	nil,                                   // 123: hyperspace.TraverseRequest.FilterEntry
+	nil,                                   // 124: hyperspace.VectorInsertedEvent.MetadataEntry
+	nil,                                   // 125: hyperspace.VectorInsertedEvent.TypedMetadataEntry
+	nil,                                   // 126: hyperspace.TrajectoryStepEvent.MetadataEntry
+	nil,                                   // 127: hyperspace.SyncVectorData.MetadataEntry
 }
 var file_hyperspace_proto_depIdxs = []int32{
 	7,   // 0: hyperspace.ReplicationLog.insert:type_name -> hyperspace.InsertOp
 	8,   // 1: hyperspace.ReplicationLog.create_collection:type_name -> hyperspace.CreateCollectionOp
 	9,   // 2: hyperspace.ReplicationLog.delete_collection:type_name -> hyperspace.DeleteCollectionOp
 	10,  // 3: hyperspace.ReplicationLog.delete:type_name -> hyperspace.DeleteOp
-	97,  // 4: hyperspace.InsertOp.metadata:type_name -> hyperspace.InsertOp.MetadataEntry
-	98,  // 5: hyperspace.InsertOp.typed_metadata:type_name -> hyperspace.InsertOp.TypedMetadataEntry
+	105, // 4: hyperspace.InsertOp.metadata:type_name -> hyperspace.InsertOp.MetadataEntry
+	106, // 5: hyperspace.InsertOp.typed_metadata:type_name -> hyperspace.InsertOp.TypedMetadataEntry
 	15,  // 6: hyperspace.CreateCollectionOp.schema:type_name -> hyperspace.CollectionSchema
 	0,   // 7: hyperspace.QuantizationConfig.mode:type_name -> hyperspace.QuantizationMode
 	15,  // 8: hyperspace.CreateCollectionRequest.schema:type_name -> hyperspace.CollectionSchema
@@ -6882,29 +7407,29 @@ var file_hyperspace_proto_depIdxs = []int32{
 	18,  // 12: hyperspace.ListCollectionsResponse.collections:type_name -> hyperspace.CollectionSummary
 	15,  // 13: hyperspace.CollectionStatsResponse.schema:type_name -> hyperspace.CollectionSchema
 	24,  // 14: hyperspace.RebuildIndexRequest.filter_query:type_name -> hyperspace.VacuumFilterQuery
-	99,  // 15: hyperspace.InsertRequest.metadata:type_name -> hyperspace.InsertRequest.MetadataEntry
+	107, // 15: hyperspace.InsertRequest.metadata:type_name -> hyperspace.InsertRequest.MetadataEntry
 	1,   // 16: hyperspace.InsertRequest.durability:type_name -> hyperspace.DurabilityLevel
-	100, // 17: hyperspace.InsertRequest.typed_metadata:type_name -> hyperspace.InsertRequest.TypedMetadataEntry
-	101, // 18: hyperspace.VectorData.metadata:type_name -> hyperspace.VectorData.MetadataEntry
-	102, // 19: hyperspace.VectorData.typed_metadata:type_name -> hyperspace.VectorData.TypedMetadataEntry
+	108, // 17: hyperspace.InsertRequest.typed_metadata:type_name -> hyperspace.InsertRequest.TypedMetadataEntry
+	109, // 18: hyperspace.VectorData.metadata:type_name -> hyperspace.VectorData.MetadataEntry
+	110, // 19: hyperspace.VectorData.typed_metadata:type_name -> hyperspace.VectorData.TypedMetadataEntry
 	27,  // 20: hyperspace.BatchInsertRequest.vectors:type_name -> hyperspace.VectorData
 	1,   // 21: hyperspace.BatchInsertRequest.durability:type_name -> hyperspace.DurabilityLevel
-	103, // 22: hyperspace.InsertTextRequest.metadata:type_name -> hyperspace.InsertTextRequest.MetadataEntry
+	111, // 22: hyperspace.InsertTextRequest.metadata:type_name -> hyperspace.InsertTextRequest.MetadataEntry
 	1,   // 23: hyperspace.InsertTextRequest.durability:type_name -> hyperspace.DurabilityLevel
-	104, // 24: hyperspace.SearchTextRequest.filter:type_name -> hyperspace.SearchTextRequest.FilterEntry
+	112, // 24: hyperspace.SearchTextRequest.filter:type_name -> hyperspace.SearchTextRequest.FilterEntry
 	46,  // 25: hyperspace.SearchTextRequest.filters:type_name -> hyperspace.Filter
 	33,  // 26: hyperspace.SearchTextRequest.bm25_options:type_name -> hyperspace.Bm25Options
-	105, // 27: hyperspace.SearchTextRequest.component_weights:type_name -> hyperspace.SearchTextRequest.ComponentWeightsEntry
+	113, // 27: hyperspace.SearchTextRequest.component_weights:type_name -> hyperspace.SearchTextRequest.ComponentWeightsEntry
 	27,  // 28: hyperspace.GetPointsResponse.points:type_name -> hyperspace.VectorData
-	106, // 29: hyperspace.UpdatePayloadRequest.metadata:type_name -> hyperspace.UpdatePayloadRequest.MetadataEntry
-	107, // 30: hyperspace.UpdatePayloadRequest.typed_metadata:type_name -> hyperspace.UpdatePayloadRequest.TypedMetadataEntry
+	114, // 29: hyperspace.UpdatePayloadRequest.metadata:type_name -> hyperspace.UpdatePayloadRequest.MetadataEntry
+	115, // 30: hyperspace.UpdatePayloadRequest.typed_metadata:type_name -> hyperspace.UpdatePayloadRequest.TypedMetadataEntry
 	46,  // 31: hyperspace.ScrollRequest.filters:type_name -> hyperspace.Filter
 	27,  // 32: hyperspace.ScrollResponse.points:type_name -> hyperspace.VectorData
 	46,  // 33: hyperspace.CountRequest.filters:type_name -> hyperspace.Filter
-	108, // 34: hyperspace.SearchRequest.filter:type_name -> hyperspace.SearchRequest.FilterEntry
+	116, // 34: hyperspace.SearchRequest.filter:type_name -> hyperspace.SearchRequest.FilterEntry
 	46,  // 35: hyperspace.SearchRequest.filters:type_name -> hyperspace.Filter
 	33,  // 36: hyperspace.SearchRequest.bm25_options:type_name -> hyperspace.Bm25Options
-	109, // 37: hyperspace.SearchRequest.component_weights:type_name -> hyperspace.SearchRequest.ComponentWeightsEntry
+	117, // 37: hyperspace.SearchRequest.component_weights:type_name -> hyperspace.SearchRequest.ComponentWeightsEntry
 	50,  // 38: hyperspace.Filter.match:type_name -> hyperspace.Match
 	52,  // 39: hyperspace.Filter.range:type_name -> hyperspace.Range
 	53,  // 40: hyperspace.Filter.in_cone:type_name -> hyperspace.InCone
@@ -6920,121 +7445,132 @@ var file_hyperspace_proto_depIdxs = []int32{
 	61,  // 50: hyperspace.SearchResponse.results:type_name -> hyperspace.SearchResult
 	45,  // 51: hyperspace.BatchSearchRequest.searches:type_name -> hyperspace.SearchRequest
 	56,  // 52: hyperspace.BatchSearchResponse.responses:type_name -> hyperspace.SearchResponse
-	110, // 53: hyperspace.SearchMultiCollectionResponse.responses:type_name -> hyperspace.SearchMultiCollectionResponse.ResponsesEntry
-	111, // 54: hyperspace.SearchResult.metadata:type_name -> hyperspace.SearchResult.MetadataEntry
-	112, // 55: hyperspace.SearchResult.typed_metadata:type_name -> hyperspace.SearchResult.TypedMetadataEntry
-	113, // 56: hyperspace.GraphNode.metadata:type_name -> hyperspace.GraphNode.MetadataEntry
-	114, // 57: hyperspace.GraphNode.typed_metadata:type_name -> hyperspace.GraphNode.TypedMetadataEntry
+	118, // 53: hyperspace.SearchMultiCollectionResponse.responses:type_name -> hyperspace.SearchMultiCollectionResponse.ResponsesEntry
+	119, // 54: hyperspace.SearchResult.metadata:type_name -> hyperspace.SearchResult.MetadataEntry
+	120, // 55: hyperspace.SearchResult.typed_metadata:type_name -> hyperspace.SearchResult.TypedMetadataEntry
+	121, // 56: hyperspace.GraphNode.metadata:type_name -> hyperspace.GraphNode.MetadataEntry
+	122, // 57: hyperspace.GraphNode.typed_metadata:type_name -> hyperspace.GraphNode.TypedMetadataEntry
 	2,   // 58: hyperspace.GraphNode.edge_types:type_name -> hyperspace.EdgeType
 	63,  // 59: hyperspace.GetNeighborsResponse.neighbors:type_name -> hyperspace.GraphNode
-	115, // 60: hyperspace.TraverseRequest.filter:type_name -> hyperspace.TraverseRequest.FilterEntry
+	123, // 60: hyperspace.TraverseRequest.filter:type_name -> hyperspace.TraverseRequest.FilterEntry
 	46,  // 61: hyperspace.TraverseRequest.filters:type_name -> hyperspace.Filter
 	3,   // 62: hyperspace.TraverseRequest.traversal_mode:type_name -> hyperspace.TraversalMode
 	63,  // 63: hyperspace.TraverseResponse.nodes:type_name -> hyperspace.GraphNode
 	63,  // 64: hyperspace.GetSubsumptionTreeResponse.nodes:type_name -> hyperspace.GraphNode
 	63,  // 65: hyperspace.GetConceptParentsResponse.parents:type_name -> hyperspace.GraphNode
 	73,  // 66: hyperspace.FindSemanticClustersResponse.clusters:type_name -> hyperspace.GraphCluster
-	4,   // 67: hyperspace.EventSubscriptionRequest.types:type_name -> hyperspace.EventType
-	116, // 68: hyperspace.VectorInsertedEvent.metadata:type_name -> hyperspace.VectorInsertedEvent.MetadataEntry
-	117, // 69: hyperspace.VectorInsertedEvent.typed_metadata:type_name -> hyperspace.VectorInsertedEvent.TypedMetadataEntry
-	118, // 70: hyperspace.TrajectoryStepEvent.metadata:type_name -> hyperspace.TrajectoryStepEvent.MetadataEntry
-	4,   // 71: hyperspace.EventMessage.type:type_name -> hyperspace.EventType
-	77,  // 72: hyperspace.EventMessage.vector_inserted:type_name -> hyperspace.VectorInsertedEvent
-	79,  // 73: hyperspace.EventMessage.vector_deleted:type_name -> hyperspace.VectorDeletedEvent
-	78,  // 74: hyperspace.EventMessage.trajectory_step:type_name -> hyperspace.TrajectoryStepEvent
-	88,  // 75: hyperspace.SyncHandshakeResponse.diff_buckets:type_name -> hyperspace.DiffBucket
-	119, // 76: hyperspace.SyncVectorData.metadata:type_name -> hyperspace.SyncVectorData.MetadataEntry
-	75,  // 77: hyperspace.InsertOp.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	75,  // 78: hyperspace.InsertRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	75,  // 79: hyperspace.VectorData.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	75,  // 80: hyperspace.UpdatePayloadRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	56,  // 81: hyperspace.SearchMultiCollectionResponse.ResponsesEntry.value:type_name -> hyperspace.SearchResponse
-	75,  // 82: hyperspace.SearchResult.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	75,  // 83: hyperspace.GraphNode.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	75,  // 84: hyperspace.VectorInsertedEvent.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	12,  // 85: hyperspace.Database.CreateCollection:input_type -> hyperspace.CreateCollectionRequest
-	17,  // 86: hyperspace.Database.DeleteCollection:input_type -> hyperspace.DeleteCollectionRequest
-	81,  // 87: hyperspace.Database.ListCollections:input_type -> hyperspace.Empty
-	20,  // 88: hyperspace.Database.GetCollectionStats:input_type -> hyperspace.CollectionStatsRequest
-	93,  // 89: hyperspace.Database.FreezeCollection:input_type -> hyperspace.FreezeCollectionRequest
-	94,  // 90: hyperspace.Database.UnfreezeCollection:input_type -> hyperspace.UnfreezeCollectionRequest
-	26,  // 91: hyperspace.Database.Insert:input_type -> hyperspace.InsertRequest
-	28,  // 92: hyperspace.Database.BatchInsert:input_type -> hyperspace.BatchInsertRequest
-	29,  // 93: hyperspace.Database.InsertText:input_type -> hyperspace.InsertTextRequest
-	30,  // 94: hyperspace.Database.Vectorize:input_type -> hyperspace.VectorizeRequest
-	32,  // 95: hyperspace.Database.SearchText:input_type -> hyperspace.SearchTextRequest
-	35,  // 96: hyperspace.Database.Delete:input_type -> hyperspace.DeleteRequest
-	37,  // 97: hyperspace.Database.GetPoints:input_type -> hyperspace.GetPointsRequest
-	39,  // 98: hyperspace.Database.UpdatePayload:input_type -> hyperspace.UpdatePayloadRequest
-	40,  // 99: hyperspace.Database.Scroll:input_type -> hyperspace.ScrollRequest
-	42,  // 100: hyperspace.Database.Count:input_type -> hyperspace.CountRequest
-	45,  // 101: hyperspace.Database.Search:input_type -> hyperspace.SearchRequest
-	57,  // 102: hyperspace.Database.SearchBatch:input_type -> hyperspace.BatchSearchRequest
-	59,  // 103: hyperspace.Database.SearchMultiCollection:input_type -> hyperspace.SearchMultiCollectionRequest
-	62,  // 104: hyperspace.Database.GetNode:input_type -> hyperspace.GetNodeRequest
-	64,  // 105: hyperspace.Database.GetNeighbors:input_type -> hyperspace.GetNeighborsRequest
-	71,  // 106: hyperspace.Database.GetConceptParents:input_type -> hyperspace.GetConceptParentsRequest
-	66,  // 107: hyperspace.Database.Traverse:input_type -> hyperspace.TraverseRequest
-	70,  // 108: hyperspace.Database.FindSemanticClusters:input_type -> hyperspace.FindSemanticClustersRequest
-	68,  // 109: hyperspace.Database.GetSubsumptionTree:input_type -> hyperspace.GetSubsumptionTreeRequest
-	83,  // 110: hyperspace.Database.Monitor:input_type -> hyperspace.MonitorRequest
-	81,  // 111: hyperspace.Database.TriggerSnapshot:input_type -> hyperspace.Empty
-	81,  // 112: hyperspace.Database.TriggerVacuum:input_type -> hyperspace.Empty
-	25,  // 113: hyperspace.Database.TriggerReconsolidation:input_type -> hyperspace.ReconsolidationRequest
-	23,  // 114: hyperspace.Database.Configure:input_type -> hyperspace.ConfigUpdate
-	5,   // 115: hyperspace.Database.Replicate:input_type -> hyperspace.ReplicationRequest
-	76,  // 116: hyperspace.Database.SubscribeToEvents:input_type -> hyperspace.EventSubscriptionRequest
-	85,  // 117: hyperspace.Database.GetDigest:input_type -> hyperspace.DigestRequest
-	22,  // 118: hyperspace.Database.RebuildIndex:input_type -> hyperspace.RebuildIndexRequest
-	87,  // 119: hyperspace.Database.SyncHandshake:input_type -> hyperspace.SyncHandshakeRequest
-	90,  // 120: hyperspace.Database.SyncPull:input_type -> hyperspace.SyncPullRequest
-	91,  // 121: hyperspace.Database.SyncPush:input_type -> hyperspace.SyncVectorData
-	81,  // 122: hyperspace.Database.HealthCheck:input_type -> hyperspace.Empty
-	95,  // 123: hyperspace.Database.VerifyGeneration:input_type -> hyperspace.VerifyGenerationRequest
-	82,  // 124: hyperspace.Database.CreateCollection:output_type -> hyperspace.StatusResponse
-	82,  // 125: hyperspace.Database.DeleteCollection:output_type -> hyperspace.StatusResponse
-	19,  // 126: hyperspace.Database.ListCollections:output_type -> hyperspace.ListCollectionsResponse
-	21,  // 127: hyperspace.Database.GetCollectionStats:output_type -> hyperspace.CollectionStatsResponse
-	82,  // 128: hyperspace.Database.FreezeCollection:output_type -> hyperspace.StatusResponse
-	82,  // 129: hyperspace.Database.UnfreezeCollection:output_type -> hyperspace.StatusResponse
-	34,  // 130: hyperspace.Database.Insert:output_type -> hyperspace.InsertResponse
-	34,  // 131: hyperspace.Database.BatchInsert:output_type -> hyperspace.InsertResponse
-	34,  // 132: hyperspace.Database.InsertText:output_type -> hyperspace.InsertResponse
-	31,  // 133: hyperspace.Database.Vectorize:output_type -> hyperspace.VectorizeResponse
-	56,  // 134: hyperspace.Database.SearchText:output_type -> hyperspace.SearchResponse
-	36,  // 135: hyperspace.Database.Delete:output_type -> hyperspace.DeleteResponse
-	38,  // 136: hyperspace.Database.GetPoints:output_type -> hyperspace.GetPointsResponse
-	82,  // 137: hyperspace.Database.UpdatePayload:output_type -> hyperspace.StatusResponse
-	41,  // 138: hyperspace.Database.Scroll:output_type -> hyperspace.ScrollResponse
-	43,  // 139: hyperspace.Database.Count:output_type -> hyperspace.CountResponse
-	56,  // 140: hyperspace.Database.Search:output_type -> hyperspace.SearchResponse
-	58,  // 141: hyperspace.Database.SearchBatch:output_type -> hyperspace.BatchSearchResponse
-	60,  // 142: hyperspace.Database.SearchMultiCollection:output_type -> hyperspace.SearchMultiCollectionResponse
-	63,  // 143: hyperspace.Database.GetNode:output_type -> hyperspace.GraphNode
-	65,  // 144: hyperspace.Database.GetNeighbors:output_type -> hyperspace.GetNeighborsResponse
-	72,  // 145: hyperspace.Database.GetConceptParents:output_type -> hyperspace.GetConceptParentsResponse
-	67,  // 146: hyperspace.Database.Traverse:output_type -> hyperspace.TraverseResponse
-	74,  // 147: hyperspace.Database.FindSemanticClusters:output_type -> hyperspace.FindSemanticClustersResponse
-	69,  // 148: hyperspace.Database.GetSubsumptionTree:output_type -> hyperspace.GetSubsumptionTreeResponse
-	84,  // 149: hyperspace.Database.Monitor:output_type -> hyperspace.SystemStats
-	82,  // 150: hyperspace.Database.TriggerSnapshot:output_type -> hyperspace.StatusResponse
-	82,  // 151: hyperspace.Database.TriggerVacuum:output_type -> hyperspace.StatusResponse
-	82,  // 152: hyperspace.Database.TriggerReconsolidation:output_type -> hyperspace.StatusResponse
-	82,  // 153: hyperspace.Database.Configure:output_type -> hyperspace.StatusResponse
-	6,   // 154: hyperspace.Database.Replicate:output_type -> hyperspace.ReplicationLog
-	80,  // 155: hyperspace.Database.SubscribeToEvents:output_type -> hyperspace.EventMessage
-	86,  // 156: hyperspace.Database.GetDigest:output_type -> hyperspace.DigestResponse
-	82,  // 157: hyperspace.Database.RebuildIndex:output_type -> hyperspace.StatusResponse
-	89,  // 158: hyperspace.Database.SyncHandshake:output_type -> hyperspace.SyncHandshakeResponse
-	91,  // 159: hyperspace.Database.SyncPull:output_type -> hyperspace.SyncVectorData
-	92,  // 160: hyperspace.Database.SyncPush:output_type -> hyperspace.SyncPushResponse
-	44,  // 161: hyperspace.Database.HealthCheck:output_type -> hyperspace.HealthCheckResponse
-	96,  // 162: hyperspace.Database.VerifyGeneration:output_type -> hyperspace.VerifyGenerationResponse
-	124, // [124:163] is the sub-list for method output_type
-	85,  // [85:124] is the sub-list for method input_type
-	85,  // [85:85] is the sub-list for extension type_name
-	85,  // [85:85] is the sub-list for extension extendee
-	0,   // [0:85] is the sub-list for field type_name
+	75,  // 67: hyperspace.LinkRequest.edge:type_name -> hyperspace.EdgeItem
+	75,  // 68: hyperspace.LinkBatchRequest.edges:type_name -> hyperspace.EdgeItem
+	80,  // 69: hyperspace.InduceEdgesRequest.rules:type_name -> hyperspace.MetadataInductionRuleProto
+	4,   // 70: hyperspace.EventSubscriptionRequest.types:type_name -> hyperspace.EventType
+	124, // 71: hyperspace.VectorInsertedEvent.metadata:type_name -> hyperspace.VectorInsertedEvent.MetadataEntry
+	125, // 72: hyperspace.VectorInsertedEvent.typed_metadata:type_name -> hyperspace.VectorInsertedEvent.TypedMetadataEntry
+	126, // 73: hyperspace.TrajectoryStepEvent.metadata:type_name -> hyperspace.TrajectoryStepEvent.MetadataEntry
+	4,   // 74: hyperspace.EventMessage.type:type_name -> hyperspace.EventType
+	85,  // 75: hyperspace.EventMessage.vector_inserted:type_name -> hyperspace.VectorInsertedEvent
+	87,  // 76: hyperspace.EventMessage.vector_deleted:type_name -> hyperspace.VectorDeletedEvent
+	86,  // 77: hyperspace.EventMessage.trajectory_step:type_name -> hyperspace.TrajectoryStepEvent
+	96,  // 78: hyperspace.SyncHandshakeResponse.diff_buckets:type_name -> hyperspace.DiffBucket
+	127, // 79: hyperspace.SyncVectorData.metadata:type_name -> hyperspace.SyncVectorData.MetadataEntry
+	83,  // 80: hyperspace.InsertOp.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 81: hyperspace.InsertRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 82: hyperspace.VectorData.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 83: hyperspace.UpdatePayloadRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	56,  // 84: hyperspace.SearchMultiCollectionResponse.ResponsesEntry.value:type_name -> hyperspace.SearchResponse
+	83,  // 85: hyperspace.SearchResult.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 86: hyperspace.GraphNode.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 87: hyperspace.VectorInsertedEvent.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	12,  // 88: hyperspace.Database.CreateCollection:input_type -> hyperspace.CreateCollectionRequest
+	17,  // 89: hyperspace.Database.DeleteCollection:input_type -> hyperspace.DeleteCollectionRequest
+	89,  // 90: hyperspace.Database.ListCollections:input_type -> hyperspace.Empty
+	20,  // 91: hyperspace.Database.GetCollectionStats:input_type -> hyperspace.CollectionStatsRequest
+	101, // 92: hyperspace.Database.FreezeCollection:input_type -> hyperspace.FreezeCollectionRequest
+	102, // 93: hyperspace.Database.UnfreezeCollection:input_type -> hyperspace.UnfreezeCollectionRequest
+	26,  // 94: hyperspace.Database.Insert:input_type -> hyperspace.InsertRequest
+	28,  // 95: hyperspace.Database.BatchInsert:input_type -> hyperspace.BatchInsertRequest
+	29,  // 96: hyperspace.Database.InsertText:input_type -> hyperspace.InsertTextRequest
+	30,  // 97: hyperspace.Database.Vectorize:input_type -> hyperspace.VectorizeRequest
+	32,  // 98: hyperspace.Database.SearchText:input_type -> hyperspace.SearchTextRequest
+	35,  // 99: hyperspace.Database.Delete:input_type -> hyperspace.DeleteRequest
+	37,  // 100: hyperspace.Database.GetPoints:input_type -> hyperspace.GetPointsRequest
+	39,  // 101: hyperspace.Database.UpdatePayload:input_type -> hyperspace.UpdatePayloadRequest
+	40,  // 102: hyperspace.Database.Scroll:input_type -> hyperspace.ScrollRequest
+	42,  // 103: hyperspace.Database.Count:input_type -> hyperspace.CountRequest
+	45,  // 104: hyperspace.Database.Search:input_type -> hyperspace.SearchRequest
+	57,  // 105: hyperspace.Database.SearchBatch:input_type -> hyperspace.BatchSearchRequest
+	59,  // 106: hyperspace.Database.SearchMultiCollection:input_type -> hyperspace.SearchMultiCollectionRequest
+	62,  // 107: hyperspace.Database.GetNode:input_type -> hyperspace.GetNodeRequest
+	64,  // 108: hyperspace.Database.GetNeighbors:input_type -> hyperspace.GetNeighborsRequest
+	71,  // 109: hyperspace.Database.GetConceptParents:input_type -> hyperspace.GetConceptParentsRequest
+	66,  // 110: hyperspace.Database.Traverse:input_type -> hyperspace.TraverseRequest
+	70,  // 111: hyperspace.Database.FindSemanticClusters:input_type -> hyperspace.FindSemanticClustersRequest
+	68,  // 112: hyperspace.Database.GetSubsumptionTree:input_type -> hyperspace.GetSubsumptionTreeRequest
+	76,  // 113: hyperspace.Database.Link:input_type -> hyperspace.LinkRequest
+	77,  // 114: hyperspace.Database.LinkBatch:input_type -> hyperspace.LinkBatchRequest
+	79,  // 115: hyperspace.Database.Unlink:input_type -> hyperspace.UnlinkRequest
+	81,  // 116: hyperspace.Database.InduceEdgesFromMetadata:input_type -> hyperspace.InduceEdgesRequest
+	91,  // 117: hyperspace.Database.Monitor:input_type -> hyperspace.MonitorRequest
+	89,  // 118: hyperspace.Database.TriggerSnapshot:input_type -> hyperspace.Empty
+	89,  // 119: hyperspace.Database.TriggerVacuum:input_type -> hyperspace.Empty
+	25,  // 120: hyperspace.Database.TriggerReconsolidation:input_type -> hyperspace.ReconsolidationRequest
+	23,  // 121: hyperspace.Database.Configure:input_type -> hyperspace.ConfigUpdate
+	5,   // 122: hyperspace.Database.Replicate:input_type -> hyperspace.ReplicationRequest
+	84,  // 123: hyperspace.Database.SubscribeToEvents:input_type -> hyperspace.EventSubscriptionRequest
+	93,  // 124: hyperspace.Database.GetDigest:input_type -> hyperspace.DigestRequest
+	22,  // 125: hyperspace.Database.RebuildIndex:input_type -> hyperspace.RebuildIndexRequest
+	95,  // 126: hyperspace.Database.SyncHandshake:input_type -> hyperspace.SyncHandshakeRequest
+	98,  // 127: hyperspace.Database.SyncPull:input_type -> hyperspace.SyncPullRequest
+	99,  // 128: hyperspace.Database.SyncPush:input_type -> hyperspace.SyncVectorData
+	89,  // 129: hyperspace.Database.HealthCheck:input_type -> hyperspace.Empty
+	103, // 130: hyperspace.Database.VerifyGeneration:input_type -> hyperspace.VerifyGenerationRequest
+	90,  // 131: hyperspace.Database.CreateCollection:output_type -> hyperspace.StatusResponse
+	90,  // 132: hyperspace.Database.DeleteCollection:output_type -> hyperspace.StatusResponse
+	19,  // 133: hyperspace.Database.ListCollections:output_type -> hyperspace.ListCollectionsResponse
+	21,  // 134: hyperspace.Database.GetCollectionStats:output_type -> hyperspace.CollectionStatsResponse
+	90,  // 135: hyperspace.Database.FreezeCollection:output_type -> hyperspace.StatusResponse
+	90,  // 136: hyperspace.Database.UnfreezeCollection:output_type -> hyperspace.StatusResponse
+	34,  // 137: hyperspace.Database.Insert:output_type -> hyperspace.InsertResponse
+	34,  // 138: hyperspace.Database.BatchInsert:output_type -> hyperspace.InsertResponse
+	34,  // 139: hyperspace.Database.InsertText:output_type -> hyperspace.InsertResponse
+	31,  // 140: hyperspace.Database.Vectorize:output_type -> hyperspace.VectorizeResponse
+	56,  // 141: hyperspace.Database.SearchText:output_type -> hyperspace.SearchResponse
+	36,  // 142: hyperspace.Database.Delete:output_type -> hyperspace.DeleteResponse
+	38,  // 143: hyperspace.Database.GetPoints:output_type -> hyperspace.GetPointsResponse
+	90,  // 144: hyperspace.Database.UpdatePayload:output_type -> hyperspace.StatusResponse
+	41,  // 145: hyperspace.Database.Scroll:output_type -> hyperspace.ScrollResponse
+	43,  // 146: hyperspace.Database.Count:output_type -> hyperspace.CountResponse
+	56,  // 147: hyperspace.Database.Search:output_type -> hyperspace.SearchResponse
+	58,  // 148: hyperspace.Database.SearchBatch:output_type -> hyperspace.BatchSearchResponse
+	60,  // 149: hyperspace.Database.SearchMultiCollection:output_type -> hyperspace.SearchMultiCollectionResponse
+	63,  // 150: hyperspace.Database.GetNode:output_type -> hyperspace.GraphNode
+	65,  // 151: hyperspace.Database.GetNeighbors:output_type -> hyperspace.GetNeighborsResponse
+	72,  // 152: hyperspace.Database.GetConceptParents:output_type -> hyperspace.GetConceptParentsResponse
+	67,  // 153: hyperspace.Database.Traverse:output_type -> hyperspace.TraverseResponse
+	74,  // 154: hyperspace.Database.FindSemanticClusters:output_type -> hyperspace.FindSemanticClustersResponse
+	69,  // 155: hyperspace.Database.GetSubsumptionTree:output_type -> hyperspace.GetSubsumptionTreeResponse
+	90,  // 156: hyperspace.Database.Link:output_type -> hyperspace.StatusResponse
+	78,  // 157: hyperspace.Database.LinkBatch:output_type -> hyperspace.LinkBatchResponse
+	90,  // 158: hyperspace.Database.Unlink:output_type -> hyperspace.StatusResponse
+	82,  // 159: hyperspace.Database.InduceEdgesFromMetadata:output_type -> hyperspace.InduceEdgesResponse
+	92,  // 160: hyperspace.Database.Monitor:output_type -> hyperspace.SystemStats
+	90,  // 161: hyperspace.Database.TriggerSnapshot:output_type -> hyperspace.StatusResponse
+	90,  // 162: hyperspace.Database.TriggerVacuum:output_type -> hyperspace.StatusResponse
+	90,  // 163: hyperspace.Database.TriggerReconsolidation:output_type -> hyperspace.StatusResponse
+	90,  // 164: hyperspace.Database.Configure:output_type -> hyperspace.StatusResponse
+	6,   // 165: hyperspace.Database.Replicate:output_type -> hyperspace.ReplicationLog
+	88,  // 166: hyperspace.Database.SubscribeToEvents:output_type -> hyperspace.EventMessage
+	94,  // 167: hyperspace.Database.GetDigest:output_type -> hyperspace.DigestResponse
+	90,  // 168: hyperspace.Database.RebuildIndex:output_type -> hyperspace.StatusResponse
+	97,  // 169: hyperspace.Database.SyncHandshake:output_type -> hyperspace.SyncHandshakeResponse
+	99,  // 170: hyperspace.Database.SyncPull:output_type -> hyperspace.SyncVectorData
+	100, // 171: hyperspace.Database.SyncPush:output_type -> hyperspace.SyncPushResponse
+	44,  // 172: hyperspace.Database.HealthCheck:output_type -> hyperspace.HealthCheckResponse
+	104, // 173: hyperspace.Database.VerifyGeneration:output_type -> hyperspace.VerifyGenerationResponse
+	131, // [131:174] is the sub-list for method output_type
+	88,  // [88:131] is the sub-list for method input_type
+	88,  // [88:88] is the sub-list for extension type_name
+	88,  // [88:88] is the sub-list for extension extendee
+	0,   // [0:88] is the sub-list for field type_name
 }
 
 func init() { file_hyperspace_proto_init() }
@@ -7072,26 +7608,27 @@ func file_hyperspace_proto_init() {
 	}
 	file_hyperspace_proto_msgTypes[47].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[56].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[70].OneofWrappers = []any{
+	file_hyperspace_proto_msgTypes[75].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[78].OneofWrappers = []any{
 		(*MetadataValue_StringValue)(nil),
 		(*MetadataValue_IntValue)(nil),
 		(*MetadataValue_DoubleValue)(nil),
 		(*MetadataValue_BoolValue)(nil),
 	}
-	file_hyperspace_proto_msgTypes[71].OneofWrappers = []any{}
-	file_hyperspace_proto_msgTypes[75].OneofWrappers = []any{
+	file_hyperspace_proto_msgTypes[79].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[83].OneofWrappers = []any{
 		(*EventMessage_VectorInserted)(nil),
 		(*EventMessage_VectorDeleted)(nil),
 		(*EventMessage_TrajectoryStep)(nil),
 	}
-	file_hyperspace_proto_msgTypes[90].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[98].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hyperspace_proto_rawDesc), len(file_hyperspace_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   115,
+			NumMessages:   123,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

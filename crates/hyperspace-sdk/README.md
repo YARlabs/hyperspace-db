@@ -484,3 +484,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Native Vector-Graph (KAG) & Topology Linking
+
+HyperspaceDB 4.1+ internalizes explicit directed labeled graph relations alongside vector embeddings.
+
+### 1. Linking Nodes (Explicit Directed Edges)
+
+```rust
+// Create a directed edge with relation label and weight
+client.link(1, 2, "OWNS", 1.0, "my_collection").await?;
+
+// Batch link multiple edges
+use hyperspace_sdk::EdgeItem;
+
+let edges = vec![
+    EdgeItem { source_id: 1, target_id: 2, relation: "OWNS".into(), weight: 1.0 },
+    EdgeItem { source_id: 2, target_id: 3, relation: "DEPENDS_ON".into(), weight: 0.95 },
+];
+let count = client.link_batch(edges, "my_collection").await?;
+println!("Linked {count} edges in CSR graph");
+
+// Delete an edge with zero-lag invalidation
+client.unlink(1, 2, "OWNS", "my_collection").await?;
+```
+
+### 2. Declarative Metadata-to-Edge Induction
+
+Generate topological graphs from existing metadata for 100k+ documents without rebuilding HNSW:
+
+```rust
+use hyperspace_sdk::MetadataInductionRuleProto;
+
+let rules = vec![
+    // 1. Directory/file path hierarchy: /a/b/c -> /a/b
+    MetadataInductionRuleProto {
+        field: "file_path".into(),
+        rule_type: "path_hierarchy".into(),
+        target_field: None,
+        relation: "CONTAINS".into(),
+        weight: Some(1.0),
+    },
+    // 2. Foreign-key entity links: parent_id -> target document id
+    MetadataInductionRuleProto {
+        field: "parent_id".into(),
+        rule_type: "foreign_key".into(),
+        target_field: None,
+        relation: "OWNS".into(),
+        weight: Some(0.9),
+    },
+];
+
+let created = client.induce_edges_from_metadata(rules, "my_collection").await?;
+println!("Induced {created} explicit edges directly from metadata");
+```
+

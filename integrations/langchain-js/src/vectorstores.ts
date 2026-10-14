@@ -312,6 +312,48 @@ export class HyperspaceStore extends VectorStore {
         return this.client.updateCacheConfig(this.collectionName, policy, annThreshold);
     }
 
+    /**
+     * Creates an explicit directed edge between two entity nodes in the native Vector-Graph.
+     */
+    public async link(sourceId: number, targetId: number, relation: string = "OWNS", weight: number = 1.0): Promise<boolean> {
+        return this.client.link(sourceId, targetId, relation, weight, this.collectionName);
+    }
+
+    /**
+     * Batch-inserts explicit directed edges in CSR graph.
+     */
+    public async linkBatch(edges: Array<{ sourceId: number; targetId: number; relation?: string; weight?: number }>): Promise<number> {
+        return this.client.linkBatch(edges, this.collectionName);
+    }
+
+    /**
+     * Deletes an explicit directed edge with zero-lag invalidation.
+     */
+    public async unlink(sourceId: number, targetId: number, relation: string = "OWNS"): Promise<boolean> {
+        return this.client.unlink(sourceId, targetId, relation, this.collectionName);
+    }
+
+    /**
+     * Automatically induces explicit edges from existing metadata fields according to declarative rules.
+     */
+    public async induceEdgesFromMetadata(
+        rules: Array<{ field: string; ruleType: string; targetField?: string; relation?: string; weight?: number }>
+    ): Promise<number> {
+        return this.client.induceEdgesFromMetadata(rules, this.collectionName);
+    }
+
+    /**
+     * Mathematically verifies if LLM output stays within geometric context boundaries.
+     */
+    public async verifyGeneration(
+        llmAnswer: string,
+        contextIds: string[],
+        maxDistanceThreshold?: number,
+        checkGeodesic: boolean = true
+    ): Promise<any> {
+        return this.client.verifyGeneration(llmAnswer, contextIds, this.collectionName, maxDistanceThreshold, checkGeodesic);
+    }
+
     static async fromTexts(
         texts: string[],
         metadatas: object[] | object,

@@ -1456,6 +1456,141 @@ class HyperspaceClient:
             print(f"RPC Error in explore_graph: {e}")
             return {}
 
+    def link(
+        self,
+        source_id: int,
+        target_id: int,
+        relation: str = "OWNS",
+        weight: float = 1.0,
+        collection: str = "",
+    ) -> bool:
+        """
+        Creates an explicit directed labeled edge between two nodes in the collection's topology.
+        """
+        edge = hyperspace_pb2.EdgeItem(
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
+            weight=weight,
+        )
+        req = hyperspace_pb2.LinkRequest(
+            collection=collection,
+            edge=edge,
+        )
+        try:
+            resp = self.stub.Link(req, metadata=self.metadata)
+            return resp.status == "OK"
+        except grpc.RpcError as e:
+            print(f"RPC Error in link: {e}")
+            return False
+
+    def link_batch(
+        self,
+        edges: List[Dict[str, Union[int, str, float]]],
+        collection: str = "",
+    ) -> int:
+        """
+        Batch inserts multiple directed labeled edges into the collection's topology.
+        
+        Args:
+            edges: List of dicts, e.g. [{"source_id": 1, "target_id": 2, "relation": "OWNS", "weight": 1.0}]
+            collection: Target collection name
+        """
+        edge_items = [
+            hyperspace_pb2.EdgeItem(
+                source_id=e["source_id"],
+                target_id=e["target_id"],
+                relation=str(e.get("relation", "OWNS")),
+                weight=float(e.get("weight", 1.0)),
+            )
+            for e in edges
+        ]
+        req = hyperspace_pb2.LinkBatchRequest(
+            collection=collection,
+            edges=edge_items,
+        )
+        try:
+            resp = self.stub.LinkBatch(req, metadata=self.metadata)
+            return resp.edges_linked
+        except grpc.RpcError as e:
+            print(f"RPC Error in link_batch: {e}")
+            return 0
+
+    def unlink(
+        self,
+        source_id: int,
+        target_id: int,
+        relation: str = "OWNS",
+        collection: str = "",
+    ) -> bool:
+        """
+        Deletes an explicit directed edge with 0 us invalidation lag.
+        """
+        req = hyperspace_pb2.UnlinkRequest(
+            collection=collection,
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
+        )
+        try:
+            resp = self.stub.Unlink(req, metadata=self.metadata)
+            return resp.status == "OK"
+        except grpc.RpcError as e:
+            print(f"RPC Error in unlink: {e}")
+            return False
+
+    def induce_edges_from_metadata(
+        self,
+        rules: List[Dict[str, Union[str, float]]],
+        collection: str = "",
+    ) -> int:
+        """
+        Automatically induces explicit edges from existing metadata fields according to declarative rules.
+        
+        Rule types:
+            - 'path_hierarchy': Infers tree parent-child links from paths like '/a/b/c' -> '/a/b'.
+            - 'foreign_key': Links nodes referencing target entity IDs in metadata fields.
+            - 'exact_match': Clusters nodes sharing the exact same metadata property.
+        
+        Args:
+            rules: List of rule dicts:
+                [
+                    {
+                        "field": "file_path",
+                        "rule_type": "path_hierarchy",
+                        "relation": "CONTAINS",
+                        "weight": 1.0
+                    },
+                    {
+                        "field": "parent_id",
+                        "rule_type": "foreign_key",
+                        "relation": "OWNS",
+                        "weight": 1.0
+                    }
+                ]
+            collection: Target collection name
+        """
+        rule_protos = [
+            hyperspace_pb2.MetadataInductionRuleProto(
+                field=r["field"],
+                rule_type=r["rule_type"],
+                target_field=r.get("target_field"),
+                relation=str(r.get("relation", "OWNS")),
+                weight=float(r["weight"]) if "weight" in r else None,
+            )
+            for r in rules
+        ]
+        req = hyperspace_pb2.InduceEdgesRequest(
+            collection=collection,
+            rules=rule_protos,
+        )
+        try:
+            resp = self.stub.InduceEdgesFromMetadata(req, metadata=self.metadata)
+            return resp.edges_created
+        except grpc.RpcError as e:
+            print(f"RPC Error in induce_edges_from_metadata: {e}")
+            return 0
+
     def predict_momentum(self, trajectory_ids: List[int], steps: float = 1.0, collection: str = "", curvature: float = 1.0) -> List[float]:
         """
         Client-side trajectory prediction using Koopman/Riemannian math.

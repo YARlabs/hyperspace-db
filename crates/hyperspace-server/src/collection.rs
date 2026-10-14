@@ -88,6 +88,7 @@ pub struct CollectionImpl<M: Metric> {
     chunk_backend: Arc<dyn ChunkBackend>,
     storage_f32: bool,
     raw_vector_cache: Arc<DashMap<u32, Vec<f32>>>,
+    pub explicit_graph: Arc<hyperspace_core::graph::GraphEngine>,
 }
 
 static EMPTY_LEGACY_FILTERS: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
@@ -849,6 +850,37 @@ impl<M: Metric> CollectionImpl<M> {
         let state_path_snap = data_dir.join("state.json");
         let last_clock_snap = last_clock.clone();
 
+        // Native Vector-Graph (KAG) Engine
+        let graph_csr_path = data_dir.join("graph.csr");
+        let explicit_graph = if graph_csr_path.exists() {
+            match hyperspace_core::graph::GraphEngine::load_from_csr_file(
+                config.get_graph_config(),
+                &graph_csr_path,
+            ) {
+                Ok(engine) => {
+                    println!(
+                        "🕸️  Native Vector-Graph Engine loaded from graph.csr ({} edges)",
+                        engine.dynamic.total_edges()
+                    );
+                    Arc::new(engine)
+                }
+                Err(e) => {
+                    eprintln!("⚠️ Failed to load graph.csr: {e}, initializing empty GraphEngine");
+                    Arc::new(hyperspace_core::graph::GraphEngine::new(
+                        config.get_graph_config(),
+                        1024,
+                    ))
+                }
+            }
+        } else {
+            Arc::new(hyperspace_core::graph::GraphEngine::new(
+                config.get_graph_config(),
+                1024,
+            ))
+        };
+        let explicit_graph_snap = explicit_graph.clone();
+        let graph_csr_path_snap = graph_csr_path.clone();
+
         let snap_interval = std::env::var("HYPERSPACE_SNAPSHOT_INTERVAL_SEC")
             .unwrap_or("60".to_string())
             .parse::<u64>()
@@ -860,6 +892,12 @@ impl<M: Metric> CollectionImpl<M> {
                 let idx = idx_link_snap.load().clone();
                 if let Err(e) = idx.save_snapshot(&snap_path_clone) {
                     eprintln!("Snapshot error: {e}");
+                }
+
+                if explicit_graph_snap.dynamic.total_edges() > 0 {
+                    if let Err(e) = explicit_graph_snap.save_to_csr_file(&graph_csr_path_snap) {
+                        eprintln!("Graph snapshot error: {e}");
+                    }
                 }
 
                 // Save State (DashMap iteration)
@@ -1006,6 +1044,7 @@ impl<M: Metric> CollectionImpl<M> {
             chunk_backend,
             storage_f32,
             raw_vector_cache: Arc::new(DashMap::new()),
+            explicit_graph,
         };
 
         // FIX (Bottleneck 4): Cache warmup on startup.
@@ -2440,6 +2479,39 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             .into_iter()
             .map(|c| c.into_iter().map(|n| self.to_user_id(n)).collect())
             .collect())
+    }
+
+    fn graph_link(&self, source_id: u32, target_id: u32, relation: u16, weight: f32) -> Result<(), String> {
+        let internal_src = self.to_internal_id(source_id);
+        let internal_tgt = self.to_internal_id(target_id);
+        self.explicit_graph.insert_edge(internal_src, internal_tgt, relation, weight);
+        Ok(())
+    }
+
+    fn graph_link_batch(&self, edges: &[(u32, u32, u16, f32)]) -> Result<usize, String> {
+        for &(src, tgt, rel, w) in edges {
+            let internal_src = self.to_internal_id(src);
+            let internal_tgt = self.to_internal_id(tgt);
+            self.explicit_graph.insert_edge(internal_src, internal_tgt, rel, w);
+        }
+        Ok(edges.len())
+    }
+
+    fn graph_unlink(&self, source_id: u32, target_id: u32, relation: u16) -> Result<bool, String> {
+        let internal_src = self.to_internal_id(source_id);
+        let internal_tgt = self.to_internal_id(target_id);
+        Ok(self.explicit_graph.delete_edge(internal_src, internal_tgt, relation))
+    }
+
+    fn graph_induce_from_metadata(&self, rules: &[hyperspace_core::graph::MetadataInductionRule]) -> Result<usize, String> {
+        let count = self.count().max(1);
+        let points = self.peek(count, 0);
+        let nodes: Vec<(u32, HashMap<String, String>)> = points
+            .into_iter()
+            .map(|(id, _, meta)| (self.to_internal_id(id), meta))
+            .collect();
+        let added = self.explicit_graph.induce_from_metadata(&nodes, rules);
+        Ok(added)
     }
 
     fn compact_semantic_chunks(&self, target_partitions: usize) -> Result<String, String> {

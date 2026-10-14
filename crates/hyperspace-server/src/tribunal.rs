@@ -7,6 +7,7 @@ use hyperspace_proto::hyperspace::{VerifyGenerationRequest, VerifyGenerationResp
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

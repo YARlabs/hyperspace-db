@@ -5459,6 +5459,616 @@ class FindSemanticClustersResponse extends $pb.GeneratedMessage {
   $pb.PbList<GraphCluster> get clusters => $_getList(0);
 }
 
+class EdgeItem extends $pb.GeneratedMessage {
+  factory EdgeItem({
+    $core.int? sourceId,
+    $core.int? targetId,
+    $core.String? relation,
+    $core.double? weight,
+  }) {
+    final result = create();
+    if (sourceId != null) result.sourceId = sourceId;
+    if (targetId != null) result.targetId = targetId;
+    if (relation != null) result.relation = relation;
+    if (weight != null) result.weight = weight;
+    return result;
+  }
+
+  EdgeItem._();
+
+  factory EdgeItem.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory EdgeItem.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'EdgeItem',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aI(1, _omitFieldNames ? '' : 'sourceId', fieldType: $pb.PbFieldType.OU3)
+    ..aI(2, _omitFieldNames ? '' : 'targetId', fieldType: $pb.PbFieldType.OU3)
+    ..aOS(3, _omitFieldNames ? '' : 'relation')
+    ..aD(4, _omitFieldNames ? '' : 'weight', fieldType: $pb.PbFieldType.OF)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  EdgeItem clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  EdgeItem copyWith(void Function(EdgeItem) updates) =>
+      super.copyWith((message) => updates(message as EdgeItem)) as EdgeItem;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static EdgeItem create() => EdgeItem._();
+  @$core.override
+  EdgeItem createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static EdgeItem getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<EdgeItem>(create);
+  static EdgeItem? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get sourceId => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set sourceId($core.int value) => $_setUnsignedInt32(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSourceId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSourceId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.int get targetId => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set targetId($core.int value) => $_setUnsignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasTargetId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearTargetId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get relation => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set relation($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasRelation() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearRelation() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.double get weight => $_getN(3);
+  @$pb.TagNumber(4)
+  set weight($core.double value) => $_setFloat(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasWeight() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearWeight() => $_clearField(4);
+}
+
+class LinkRequest extends $pb.GeneratedMessage {
+  factory LinkRequest({
+    $core.String? collection,
+    EdgeItem? edge,
+  }) {
+    final result = create();
+    if (collection != null) result.collection = collection;
+    if (edge != null) result.edge = edge;
+    return result;
+  }
+
+  LinkRequest._();
+
+  factory LinkRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory LinkRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'LinkRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'collection')
+    ..aOM<EdgeItem>(2, _omitFieldNames ? '' : 'edge',
+        subBuilder: EdgeItem.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LinkRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LinkRequest copyWith(void Function(LinkRequest) updates) =>
+      super.copyWith((message) => updates(message as LinkRequest))
+          as LinkRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static LinkRequest create() => LinkRequest._();
+  @$core.override
+  LinkRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static LinkRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<LinkRequest>(create);
+  static LinkRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get collection => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set collection($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCollection() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCollection() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  EdgeItem get edge => $_getN(1);
+  @$pb.TagNumber(2)
+  set edge(EdgeItem value) => $_setField(2, value);
+  @$pb.TagNumber(2)
+  $core.bool hasEdge() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearEdge() => $_clearField(2);
+  @$pb.TagNumber(2)
+  EdgeItem ensureEdge() => $_ensure(1);
+}
+
+class LinkBatchRequest extends $pb.GeneratedMessage {
+  factory LinkBatchRequest({
+    $core.String? collection,
+    $core.Iterable<EdgeItem>? edges,
+  }) {
+    final result = create();
+    if (collection != null) result.collection = collection;
+    if (edges != null) result.edges.addAll(edges);
+    return result;
+  }
+
+  LinkBatchRequest._();
+
+  factory LinkBatchRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory LinkBatchRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'LinkBatchRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'collection')
+    ..pPM<EdgeItem>(2, _omitFieldNames ? '' : 'edges',
+        subBuilder: EdgeItem.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LinkBatchRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LinkBatchRequest copyWith(void Function(LinkBatchRequest) updates) =>
+      super.copyWith((message) => updates(message as LinkBatchRequest))
+          as LinkBatchRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static LinkBatchRequest create() => LinkBatchRequest._();
+  @$core.override
+  LinkBatchRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static LinkBatchRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<LinkBatchRequest>(create);
+  static LinkBatchRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get collection => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set collection($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCollection() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCollection() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<EdgeItem> get edges => $_getList(1);
+}
+
+class LinkBatchResponse extends $pb.GeneratedMessage {
+  factory LinkBatchResponse({
+    $core.bool? success,
+    $fixnum.Int64? edgesLinked,
+  }) {
+    final result = create();
+    if (success != null) result.success = success;
+    if (edgesLinked != null) result.edgesLinked = edgesLinked;
+    return result;
+  }
+
+  LinkBatchResponse._();
+
+  factory LinkBatchResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory LinkBatchResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'LinkBatchResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOB(1, _omitFieldNames ? '' : 'success')
+    ..a<$fixnum.Int64>(
+        2, _omitFieldNames ? '' : 'edgesLinked', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LinkBatchResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LinkBatchResponse copyWith(void Function(LinkBatchResponse) updates) =>
+      super.copyWith((message) => updates(message as LinkBatchResponse))
+          as LinkBatchResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static LinkBatchResponse create() => LinkBatchResponse._();
+  @$core.override
+  LinkBatchResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static LinkBatchResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<LinkBatchResponse>(create);
+  static LinkBatchResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get success => $_getBF(0);
+  @$pb.TagNumber(1)
+  set success($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSuccess() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSuccess() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get edgesLinked => $_getI64(1);
+  @$pb.TagNumber(2)
+  set edgesLinked($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasEdgesLinked() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearEdgesLinked() => $_clearField(2);
+}
+
+class UnlinkRequest extends $pb.GeneratedMessage {
+  factory UnlinkRequest({
+    $core.String? collection,
+    $core.int? sourceId,
+    $core.int? targetId,
+    $core.String? relation,
+  }) {
+    final result = create();
+    if (collection != null) result.collection = collection;
+    if (sourceId != null) result.sourceId = sourceId;
+    if (targetId != null) result.targetId = targetId;
+    if (relation != null) result.relation = relation;
+    return result;
+  }
+
+  UnlinkRequest._();
+
+  factory UnlinkRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory UnlinkRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UnlinkRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'collection')
+    ..aI(2, _omitFieldNames ? '' : 'sourceId', fieldType: $pb.PbFieldType.OU3)
+    ..aI(3, _omitFieldNames ? '' : 'targetId', fieldType: $pb.PbFieldType.OU3)
+    ..aOS(4, _omitFieldNames ? '' : 'relation')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UnlinkRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UnlinkRequest copyWith(void Function(UnlinkRequest) updates) =>
+      super.copyWith((message) => updates(message as UnlinkRequest))
+          as UnlinkRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static UnlinkRequest create() => UnlinkRequest._();
+  @$core.override
+  UnlinkRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static UnlinkRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UnlinkRequest>(create);
+  static UnlinkRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get collection => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set collection($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCollection() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCollection() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.int get sourceId => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set sourceId($core.int value) => $_setUnsignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasSourceId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearSourceId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.int get targetId => $_getIZ(2);
+  @$pb.TagNumber(3)
+  set targetId($core.int value) => $_setUnsignedInt32(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasTargetId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearTargetId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get relation => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set relation($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasRelation() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearRelation() => $_clearField(4);
+}
+
+class MetadataInductionRuleProto extends $pb.GeneratedMessage {
+  factory MetadataInductionRuleProto({
+    $core.String? field_1,
+    $core.String? ruleType,
+    $core.String? targetField,
+    $core.String? relation,
+    $core.double? weight,
+  }) {
+    final result = create();
+    if (field_1 != null) result.field_1 = field_1;
+    if (ruleType != null) result.ruleType = ruleType;
+    if (targetField != null) result.targetField = targetField;
+    if (relation != null) result.relation = relation;
+    if (weight != null) result.weight = weight;
+    return result;
+  }
+
+  MetadataInductionRuleProto._();
+
+  factory MetadataInductionRuleProto.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory MetadataInductionRuleProto.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'MetadataInductionRuleProto',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'field')
+    ..aOS(2, _omitFieldNames ? '' : 'ruleType')
+    ..aOS(3, _omitFieldNames ? '' : 'targetField')
+    ..aOS(4, _omitFieldNames ? '' : 'relation')
+    ..aD(5, _omitFieldNames ? '' : 'weight', fieldType: $pb.PbFieldType.OF)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  MetadataInductionRuleProto clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  MetadataInductionRuleProto copyWith(
+          void Function(MetadataInductionRuleProto) updates) =>
+      super.copyWith(
+              (message) => updates(message as MetadataInductionRuleProto))
+          as MetadataInductionRuleProto;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static MetadataInductionRuleProto create() => MetadataInductionRuleProto._();
+  @$core.override
+  MetadataInductionRuleProto createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static MetadataInductionRuleProto getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<MetadataInductionRuleProto>(create);
+  static MetadataInductionRuleProto? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get field_1 => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set field_1($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasField_1() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearField_1() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get ruleType => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set ruleType($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasRuleType() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearRuleType() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get targetField => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set targetField($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasTargetField() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearTargetField() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get relation => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set relation($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasRelation() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearRelation() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.double get weight => $_getN(4);
+  @$pb.TagNumber(5)
+  set weight($core.double value) => $_setFloat(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasWeight() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearWeight() => $_clearField(5);
+}
+
+class InduceEdgesRequest extends $pb.GeneratedMessage {
+  factory InduceEdgesRequest({
+    $core.String? collection,
+    $core.Iterable<MetadataInductionRuleProto>? rules,
+  }) {
+    final result = create();
+    if (collection != null) result.collection = collection;
+    if (rules != null) result.rules.addAll(rules);
+    return result;
+  }
+
+  InduceEdgesRequest._();
+
+  factory InduceEdgesRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory InduceEdgesRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'InduceEdgesRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'collection')
+    ..pPM<MetadataInductionRuleProto>(2, _omitFieldNames ? '' : 'rules',
+        subBuilder: MetadataInductionRuleProto.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InduceEdgesRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InduceEdgesRequest copyWith(void Function(InduceEdgesRequest) updates) =>
+      super.copyWith((message) => updates(message as InduceEdgesRequest))
+          as InduceEdgesRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static InduceEdgesRequest create() => InduceEdgesRequest._();
+  @$core.override
+  InduceEdgesRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static InduceEdgesRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<InduceEdgesRequest>(create);
+  static InduceEdgesRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get collection => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set collection($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCollection() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCollection() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<MetadataInductionRuleProto> get rules => $_getList(1);
+}
+
+class InduceEdgesResponse extends $pb.GeneratedMessage {
+  factory InduceEdgesResponse({
+    $core.bool? success,
+    $fixnum.Int64? edgesCreated,
+  }) {
+    final result = create();
+    if (success != null) result.success = success;
+    if (edgesCreated != null) result.edgesCreated = edgesCreated;
+    return result;
+  }
+
+  InduceEdgesResponse._();
+
+  factory InduceEdgesResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory InduceEdgesResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'InduceEdgesResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOB(1, _omitFieldNames ? '' : 'success')
+    ..a<$fixnum.Int64>(
+        2, _omitFieldNames ? '' : 'edgesCreated', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InduceEdgesResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  InduceEdgesResponse copyWith(void Function(InduceEdgesResponse) updates) =>
+      super.copyWith((message) => updates(message as InduceEdgesResponse))
+          as InduceEdgesResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static InduceEdgesResponse create() => InduceEdgesResponse._();
+  @$core.override
+  InduceEdgesResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static InduceEdgesResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<InduceEdgesResponse>(create);
+  static InduceEdgesResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get success => $_getBF(0);
+  @$pb.TagNumber(1)
+  set success($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSuccess() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSuccess() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get edgesCreated => $_getI64(1);
+  @$pb.TagNumber(2)
+  set edgesCreated($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasEdgesCreated() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearEdgesCreated() => $_clearField(2);
+}
+
 enum MetadataValue_Kind {
   stringValue,
   intValue,
@@ -7050,6 +7660,253 @@ class UnfreezeCollectionRequest extends $pb.GeneratedMessage {
   $core.bool hasName() => $_has(0);
   @$pb.TagNumber(1)
   void clearName() => $_clearField(1);
+}
+
+/// Tribunal Router (Geometric Hallucination Prevention)
+class VerifyGenerationRequest extends $pb.GeneratedMessage {
+  factory VerifyGenerationRequest({
+    $core.String? collection,
+    $core.String? llmAnswer,
+    $core.Iterable<$core.String>? contextIds,
+    $core.double? maxDistanceThreshold,
+    $core.bool? checkGeodesic,
+  }) {
+    final result = create();
+    if (collection != null) result.collection = collection;
+    if (llmAnswer != null) result.llmAnswer = llmAnswer;
+    if (contextIds != null) result.contextIds.addAll(contextIds);
+    if (maxDistanceThreshold != null)
+      result.maxDistanceThreshold = maxDistanceThreshold;
+    if (checkGeodesic != null) result.checkGeodesic = checkGeodesic;
+    return result;
+  }
+
+  VerifyGenerationRequest._();
+
+  factory VerifyGenerationRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory VerifyGenerationRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'VerifyGenerationRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'collection')
+    ..aOS(2, _omitFieldNames ? '' : 'llmAnswer')
+    ..pPS(3, _omitFieldNames ? '' : 'contextIds')
+    ..aD(4, _omitFieldNames ? '' : 'maxDistanceThreshold')
+    ..aOB(5, _omitFieldNames ? '' : 'checkGeodesic')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  VerifyGenerationRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  VerifyGenerationRequest copyWith(
+          void Function(VerifyGenerationRequest) updates) =>
+      super.copyWith((message) => updates(message as VerifyGenerationRequest))
+          as VerifyGenerationRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static VerifyGenerationRequest create() => VerifyGenerationRequest._();
+  @$core.override
+  VerifyGenerationRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static VerifyGenerationRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<VerifyGenerationRequest>(create);
+  static VerifyGenerationRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get collection => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set collection($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCollection() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCollection() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get llmAnswer => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set llmAnswer($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasLlmAnswer() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearLlmAnswer() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $pb.PbList<$core.String> get contextIds => $_getList(2);
+
+  @$pb.TagNumber(4)
+  $core.double get maxDistanceThreshold => $_getN(3);
+  @$pb.TagNumber(4)
+  set maxDistanceThreshold($core.double value) => $_setDouble(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasMaxDistanceThreshold() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearMaxDistanceThreshold() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.bool get checkGeodesic => $_getBF(4);
+  @$pb.TagNumber(5)
+  set checkGeodesic($core.bool value) => $_setBool(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasCheckGeodesic() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearCheckGeodesic() => $_clearField(5);
+}
+
+class VerifyGenerationResponse extends $pb.GeneratedMessage {
+  factory VerifyGenerationResponse({
+    $core.double? trustScore,
+    $core.bool? isValid,
+    $core.double? minDistance,
+    $core.double? avgDistance,
+    $core.double? geodesicDistance,
+    $core.int? geodesicHops,
+    $core.bool? coneSatisfied,
+    $core.String? details,
+    $core.Iterable<$core.int>? resolvedContextIds,
+  }) {
+    final result = create();
+    if (trustScore != null) result.trustScore = trustScore;
+    if (isValid != null) result.isValid = isValid;
+    if (minDistance != null) result.minDistance = minDistance;
+    if (avgDistance != null) result.avgDistance = avgDistance;
+    if (geodesicDistance != null) result.geodesicDistance = geodesicDistance;
+    if (geodesicHops != null) result.geodesicHops = geodesicHops;
+    if (coneSatisfied != null) result.coneSatisfied = coneSatisfied;
+    if (details != null) result.details = details;
+    if (resolvedContextIds != null)
+      result.resolvedContextIds.addAll(resolvedContextIds);
+    return result;
+  }
+
+  VerifyGenerationResponse._();
+
+  factory VerifyGenerationResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory VerifyGenerationResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'VerifyGenerationResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aD(1, _omitFieldNames ? '' : 'trustScore')
+    ..aOB(2, _omitFieldNames ? '' : 'isValid')
+    ..aD(3, _omitFieldNames ? '' : 'minDistance')
+    ..aD(4, _omitFieldNames ? '' : 'avgDistance')
+    ..aD(5, _omitFieldNames ? '' : 'geodesicDistance')
+    ..aI(6, _omitFieldNames ? '' : 'geodesicHops',
+        fieldType: $pb.PbFieldType.OU3)
+    ..aOB(7, _omitFieldNames ? '' : 'coneSatisfied')
+    ..aOS(8, _omitFieldNames ? '' : 'details')
+    ..p<$core.int>(
+        9, _omitFieldNames ? '' : 'resolvedContextIds', $pb.PbFieldType.KU3)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  VerifyGenerationResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  VerifyGenerationResponse copyWith(
+          void Function(VerifyGenerationResponse) updates) =>
+      super.copyWith((message) => updates(message as VerifyGenerationResponse))
+          as VerifyGenerationResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static VerifyGenerationResponse create() => VerifyGenerationResponse._();
+  @$core.override
+  VerifyGenerationResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static VerifyGenerationResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<VerifyGenerationResponse>(create);
+  static VerifyGenerationResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.double get trustScore => $_getN(0);
+  @$pb.TagNumber(1)
+  set trustScore($core.double value) => $_setDouble(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasTrustScore() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearTrustScore() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.bool get isValid => $_getBF(1);
+  @$pb.TagNumber(2)
+  set isValid($core.bool value) => $_setBool(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasIsValid() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearIsValid() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.double get minDistance => $_getN(2);
+  @$pb.TagNumber(3)
+  set minDistance($core.double value) => $_setDouble(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasMinDistance() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearMinDistance() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.double get avgDistance => $_getN(3);
+  @$pb.TagNumber(4)
+  set avgDistance($core.double value) => $_setDouble(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasAvgDistance() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearAvgDistance() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.double get geodesicDistance => $_getN(4);
+  @$pb.TagNumber(5)
+  set geodesicDistance($core.double value) => $_setDouble(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasGeodesicDistance() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearGeodesicDistance() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.int get geodesicHops => $_getIZ(5);
+  @$pb.TagNumber(6)
+  set geodesicHops($core.int value) => $_setUnsignedInt32(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasGeodesicHops() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearGeodesicHops() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.bool get coneSatisfied => $_getBF(6);
+  @$pb.TagNumber(7)
+  set coneSatisfied($core.bool value) => $_setBool(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasConeSatisfied() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearConeSatisfied() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.String get details => $_getSZ(7);
+  @$pb.TagNumber(8)
+  set details($core.String value) => $_setString(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasDetails() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearDetails() => $_clearField(8);
+
+  @$pb.TagNumber(9)
+  $pb.PbList<$core.int> get resolvedContextIds => $_getList(8);
 }
 
 const $core.bool _omitFieldNames =

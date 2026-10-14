@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.0.2** | **The World's First Schema-Driven Spatial AI Engine.**
+**v4.1.0** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,9 +33,13 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v4.0.2)
+## 🚀 Core Pillars (v4.1.0)
 
 <table>
+  <tr>
+    <td>🕸️ <b>Native Vector-Graph (KAG Engine)</b></td>
+    <td>Native in-engine topological graph representation (Property CSR with 12-byte packed edges in <code>graph.csr</code>). Replaces fragile dual-database patterns (vector DB + Neo4j) with sub-microsecond BFS traversals across vector search seed nodes, explicit edge linking (<code>link</code>, <code>link_batch</code>, <code>unlink</code>), declarative metadata induction (<code>path_hierarchy</code>, <code>foreign_key</code>, <code>exact_match</code>), and 33D Lorentz Minkowski light-cone causal subsumption.</td>
+  </tr>
   <tr>
     <td>⚖️ <b>Tribunal Router (Geometric Hallucination Prevention)</b></td>
     <td>Post-generation geometric verification endpoint (<code>VerifyGeneration</code>) in <code>tribunal.rs</code>. Computes on-the-fly geodesic paths and Lorentz light-cone boundaries between LLM generated answers and source context chunks, producing mathematical <code>trust_score</code> (0.0–1.0) and <code>is_hallucination</code> flag without making any assumptions about underlying vector quantization.</td>
@@ -1051,14 +1055,14 @@ Official 1st-party drivers with full **Functional Parity**, Tribunal Verificatio
 
 | Language | Path | Status |
 | --- | --- | --- |
-| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v4.0.2 |
-| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v4.0.2 |
-| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v4.0.2 |
-| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v4.0.2 |
-| 🎯 **Dart/Flutter** | [hyperspacedb: ^4.0.2](https://pub.dev/packages/hyperspacedb) | ✅ v4.0.2 |
-| 🐹 **Go** | `sdks/go` | ✅ v4.0.2 |
-| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v4.0.2 |
-| 🧠 **AI Agent Skills** | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) | ✅ v4.0.2 |
+| 🐍 **Python** | [pip install hyperspacedb](https://pypi.org/project/hyperspacedb/) | ✅ v4.1.0 |
+| 🦀 **Rust** | [cargo install hyperspacedb](https://crates.io/crates/hyperspace-sdk) | ✅ v4.1.0 |
+| 🦕 **TypeScript/JS** | [npm install hyperspace-sdk-ts](https://www.npmjs.com/package/hyperspace-sdk-ts) | ✅ v4.1.0 |
+| 🕸️ **WebAssembly** | `crates/hyperspace-wasm` | ✅ v4.1.0 |
+| 🎯 **Dart/Flutter** | [hyperspacedb: ^4.1.0](https://pub.dev/packages/hyperspacedb) | ✅ v4.1.0 |
+| 🐹 **Go** | `sdks/go` | ✅ v4.1.0 |
+| 🤖 **ROS2 / C++** | `sdks/ros2`, `sdks/cpp` | ✅ v4.1.0 |
+| 🧠 **AI Agent Skills** | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) | ✅ v4.1.0 |
 
 > 🧠 **AI Agent Skills** (`hyperspacedb-skills`) are structured `SKILL.md` files that teach Cursor, Claude Code, Windsurf, Antigravity, and custom agents how to correctly use HyperspaceDB — covering core CRUD, graph traversal, cognitive AI (Lyapunov/Koopman), Tribunal verification, query planning, DePIN node economics, and the full 30+ MCP tool reference. Install once, all your agents understand HyperspaceDB automatically.
 

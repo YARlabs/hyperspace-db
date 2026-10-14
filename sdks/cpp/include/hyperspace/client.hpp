@@ -102,6 +102,13 @@ public:
     bool GetNeighbors(const std::string& collection, uint32_t id, uint32_t layer, uint32_t limit, uint32_t offset, ::hyperspace::GetNeighborsResponse& resp_out);
     bool GetSubsumptionTree(const std::string& collection, uint32_t root_id, uint32_t max_depth, ::hyperspace::GetSubsumptionTreeResponse& resp_out);
     
+    // Native Vector-Graph (KAG) Linking API
+    bool Link(uint32_t source_id, uint32_t target_id, const std::string& relation = "OWNS", float weight = 1.0f, const std::string& collection = "");
+    uint64_t LinkBatch(const std::vector<::hyperspace::EdgeItem>& edges, const std::string& collection = "");
+    bool Unlink(uint32_t source_id, uint32_t target_id, const std::string& relation = "OWNS", const std::string& collection = "");
+    uint64_t InduceEdgesFromMetadata(const std::vector<::hyperspace::MetadataInductionRuleProto>& rules, const std::string& collection = "");
+
+    
     // Sync & Events
     bool GetDigest(const std::string& collection, ::hyperspace::DigestResponse& resp_out);
     std::unique_ptr<::grpc::ClientReader<::hyperspace::SystemStats>> Monitor();

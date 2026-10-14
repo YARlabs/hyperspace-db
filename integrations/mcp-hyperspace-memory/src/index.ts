@@ -345,6 +345,58 @@ class HyperspaceMemoryServer {
           name: "memory_query_planner",
           description: "Alias for hyperspace_query_planner.",
           inputSchema: QUERY_PLANNER_TOOL_SCHEMA
+        },
+        {
+          name: "memory_link",
+          description: "Create an explicit directed, labeled, weighted relationship edge between two memories or concepts in the native KAG vector-graph.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              source_id: { type: "number", description: "Source memory numeric ID" },
+              target_id: { type: "number", description: "Target memory numeric ID" },
+              relation: { type: "string", description: "Semantic relation label (e.g. OWNS, DEPENDS_ON, CAUSES)", default: "OWNS" },
+              weight: { type: "number", description: "Edge weight (default 1.0)", default: 1.0 }
+            },
+            required: ["source_id", "target_id"]
+          }
+        },
+        {
+          name: "memory_unlink",
+          description: "Delete an explicit directed relationship edge with zero-lag invalidation.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              source_id: { type: "number", description: "Source memory numeric ID" },
+              target_id: { type: "number", description: "Target memory numeric ID" },
+              relation: { type: "string", description: "Relation label", default: "OWNS" }
+            },
+            required: ["source_id", "target_id"]
+          }
+        },
+        {
+          name: "memory_induce_edges",
+          description: "Declaratively induce explicit graph edges across memory entries from existing metadata attributes (path_hierarchy, foreign_key, exact_match).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              rules: {
+                type: "array",
+                description: "Array of induction rules",
+                items: {
+                  type: "object",
+                  properties: {
+                    field: { type: "string" },
+                    rule_type: { type: "string", enum: ["path_hierarchy", "foreign_key", "exact_match"] },
+                    target_field: { type: "string" },
+                    relation: { type: "string" },
+                    weight: { type: "number" }
+                  },
+                  required: ["field", "rule_type"]
+                }
+              }
+            },
+            required: ["rules"]
+          }
         }
       ]
     }));
@@ -797,6 +849,71 @@ class HyperspaceMemoryServer {
               content: [{
                 type: "text",
                 text: JSON.stringify(result, null, 2)
+              }]
+            };
+          }
+
+          // ── memory_link ───────────────────────────────────────────────────
+          case "memory_link": {
+            const { source_id, target_id, relation, weight } = z.object({
+              source_id: z.number(),
+              target_id: z.number(),
+              relation: z.string().optional().default("OWNS"),
+              weight: z.number().optional().default(1.0)
+            }).parse(args);
+
+            await this.ensureCollection();
+            const ok = await this.client.link(source_id, target_id, relation, weight, MEMORY_COLLECTION);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({ status: ok ? "linked" : "failed", source_id, target_id, relation, weight }, null, 2)
+              }]
+            };
+          }
+
+          // ── memory_unlink ─────────────────────────────────────────────────
+          case "memory_unlink": {
+            const { source_id, target_id, relation } = z.object({
+              source_id: z.number(),
+              target_id: z.number(),
+              relation: z.string().optional().default("OWNS")
+            }).parse(args);
+
+            await this.ensureCollection();
+            const ok = await this.client.unlink(source_id, target_id, relation, MEMORY_COLLECTION);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({ status: ok ? "unlinked" : "failed", source_id, target_id, relation }, null, 2)
+              }]
+            };
+          }
+
+          // ── memory_induce_edges ───────────────────────────────────────────
+          case "memory_induce_edges": {
+            const { rules } = z.object({
+              rules: z.array(z.object({
+                field: z.string(),
+                rule_type: z.string(),
+                target_field: z.string().optional(),
+                relation: z.string().optional(),
+                weight: z.number().optional()
+              }))
+            }).parse(args);
+
+            await this.ensureCollection();
+            const created = await this.client.induceEdgesFromMetadata(rules.map(r => ({
+              field: r.field,
+              ruleType: r.rule_type,
+              targetField: r.target_field,
+              relation: r.relation || "OWNS",
+              weight: r.weight ?? 1.0
+            })), MEMORY_COLLECTION);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({ status: "induced", edges_created: created, rules_applied: rules.length }, null, 2)
               }]
             };
           }

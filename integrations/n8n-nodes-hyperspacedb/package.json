@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hyperspacedb",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "HyperspaceDB integration for n8n (Vector Store, Embeddings, API)",
   "keywords": [
     "n8n-community-node-package",

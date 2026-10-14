@@ -244,7 +244,64 @@ void main() async {
 }
 ```
 
+## 🕸 Native Vector-Graph (KAG) & Topology Linking
+
+HyperspaceDB 4.1+ internalizes explicit directed labeled graph relations alongside vector embeddings.
+
+### 1. Linking Nodes (Explicit Directed Edges)
+
+```dart
+// Create a directed edge with relation label and weight
+await client.link(
+  sourceId: 1,
+  targetId: 2,
+  relation: 'OWNS',
+  weight: 1.0,
+  collection: 'my_collection',
+);
+
+// Batch link multiple edges in a single atomic RPC
+final count = await client.linkBatch([
+  EdgeItem(sourceId: 1, targetId: 2, relation: 'OWNS', weight: 1.0),
+  EdgeItem(sourceId: 2, targetId: 3, relation: 'DEPENDS_ON', weight: 0.95),
+], collection: 'my_collection');
+print('Linked $count edges in CSR graph');
+
+// Delete an edge with zero-lag invalidation
+await client.unlink(
+  sourceId: 1,
+  targetId: 2,
+  relation: 'OWNS',
+  collection: 'my_collection',
+);
+```
+
+### 2. Declarative Metadata-to-Edge Induction
+
+Generate topological graphs from existing metadata for 100k+ documents without rebuilding HNSW:
+
+```dart
+final rules = [
+  // 1. Directory/file path hierarchy: /a/b/c -> /a/b
+  MetadataInductionRuleProto(
+    field: 'file_path',
+    ruleType: 'path_hierarchy',
+    relation: 'CONTAINS',
+  ),
+  // 2. Foreign-key entity links: parent_id -> target document id
+  MetadataInductionRuleProto(
+    field: 'parent_id',
+    ruleType: 'foreign_key',
+    relation: 'OWNS',
+  ),
+];
+
+final created = await client.induceEdgesFromMetadata(rules, collection: 'my_collection');
+print('Induced $created explicit edges directly from metadata');
+```
+
 ## 📄 License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
 

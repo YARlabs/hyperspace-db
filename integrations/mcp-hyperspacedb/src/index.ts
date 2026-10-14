@@ -61,7 +61,7 @@ class HyperspaceMcpServer {
 
   constructor() {
     this.server = new Server(
-      { name: "mcp-hyperspacedb", version: "4.0.0" },
+      { name: "mcp-hyperspacedb", version: "4.1.0" },
       { capabilities: { tools: {} } }
     );
     const isLocal = HYPERSPACE_HOST.startsWith("localhost") || HYPERSPACE_HOST.startsWith("127.0.0.1");
@@ -419,7 +419,84 @@ class HyperspaceMcpServer {
           description: "Alias for hyperspace_query_planner. Evaluates intent clarity, asks clarifying questions if ambiguous, and splits multi-part questions into isolated search queries.",
           inputSchema: QUERY_PLANNER_TOOL_SCHEMA
         },
-
+        {
+          name: "hyperspace_link",
+          description: "Create an explicit directed, labeled, weighted relationship edge between two entities in the native CSR vector-graph. Parameters: `collection`, `source_id`, `target_id`, optional `relation` (default 'OWNS'), `weight` (default 1.0).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "Collection name" },
+              source_id: { type: "number", description: "Source entity ID" },
+              target_id: { type: "number", description: "Target entity ID" },
+              relation: { type: "string", default: "OWNS", description: "Edge relation label" },
+              weight: { type: "number", default: 1.0, description: "Edge weight" }
+            },
+            required: ["collection", "source_id", "target_id"]
+          }
+        },
+        {
+          name: "hyperspace_link_batch",
+          description: "Bulk-insert explicit directed edges in CSR graph atomically. Parameters: `collection`, `edges` array of {source_id, target_id, relation, weight}.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "Collection name" },
+              edges: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    source_id: { type: "number" },
+                    target_id: { type: "number" },
+                    relation: { type: "string" },
+                    weight: { type: "number" }
+                  },
+                  required: ["source_id", "target_id"]
+                }
+              }
+            },
+            required: ["collection", "edges"]
+          }
+        },
+        {
+          name: "hyperspace_unlink",
+          description: "Delete an explicit directed relationship edge with zero-lag invalidation. Parameters: `collection`, `source_id`, `target_id`, optional `relation`.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "Collection name" },
+              source_id: { type: "number", description: "Source entity ID" },
+              target_id: { type: "number", description: "Target entity ID" },
+              relation: { type: "string", default: "OWNS", description: "Relation label" }
+            },
+            required: ["collection", "source_id", "target_id"]
+          }
+        },
+        {
+          name: "hyperspace_induce_edges",
+          description: "Declaratively induce explicit graph edges from existing document metadata attributes (path_hierarchy, foreign_key, exact_match). Parameters: `collection`, `rules` array.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              collection: { type: "string", description: "Collection name" },
+              rules: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    field: { type: "string" },
+                    rule_type: { type: "string", enum: ["path_hierarchy", "foreign_key", "exact_match"] },
+                    target_field: { type: "string" },
+                    relation: { type: "string" },
+                    weight: { type: "number" }
+                  },
+                  required: ["field", "rule_type"]
+                }
+              }
+            },
+            required: ["collection", "rules"]
+          }
+        }
       ]
     }));
 
@@ -663,6 +740,65 @@ class HyperspaceMcpServer {
             const { collection, trajectory_ids, curvature } = z.object({ collection: z.string(), trajectory_ids: z.array(z.number()), curvature: z.number().optional() }).parse(args);
             const res = await this.client.getTrustScore(trajectory_ids, collection, curvature || 1.0);
             return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+          }
+          case "hyperspace_link": {
+            const { collection, source_id, target_id, relation, weight } = z.object({
+              collection: z.string(),
+              source_id: z.number(),
+              target_id: z.number(),
+              relation: z.string().optional().default("OWNS"),
+              weight: z.number().optional().default(1.0)
+            }).parse(args);
+            const success = await this.client.link(source_id, target_id, relation, weight, collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success, source_id, target_id, relation, weight }, null, 2) }] };
+          }
+          case "hyperspace_link_batch": {
+            const { collection, edges } = z.object({
+              collection: z.string(),
+              edges: z.array(z.object({
+                source_id: z.number(),
+                target_id: z.number(),
+                relation: z.string().optional(),
+                weight: z.number().optional()
+              }))
+            }).parse(args);
+            const edges_linked = await this.client.linkBatch(edges.map(e => ({
+              sourceId: e.source_id,
+              targetId: e.target_id,
+              relation: e.relation || "OWNS",
+              weight: e.weight ?? 1.0
+            })), collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success: true, edges_linked }, null, 2) }] };
+          }
+          case "hyperspace_unlink": {
+            const { collection, source_id, target_id, relation } = z.object({
+              collection: z.string(),
+              source_id: z.number(),
+              target_id: z.number(),
+              relation: z.string().optional().default("OWNS")
+            }).parse(args);
+            const success = await this.client.unlink(source_id, target_id, relation, collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success, source_id, target_id, relation }, null, 2) }] };
+          }
+          case "hyperspace_induce_edges": {
+            const { collection, rules } = z.object({
+              collection: z.string(),
+              rules: z.array(z.object({
+                field: z.string(),
+                rule_type: z.string(),
+                target_field: z.string().optional(),
+                relation: z.string().optional(),
+                weight: z.number().optional()
+              }))
+            }).parse(args);
+            const edges_created = await this.client.induceEdgesFromMetadata(rules.map(r => ({
+              field: r.field,
+              ruleType: r.rule_type,
+              targetField: r.target_field,
+              relation: r.relation || "OWNS",
+              weight: r.weight ?? 1.0
+            })), collection);
+            return { content: [{ type: "text", text: JSON.stringify({ success: true, edges_created, rules_applied: rules.length }, null, 2) }] };
           }
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Tool not found: ${name}`);

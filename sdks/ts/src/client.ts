@@ -35,7 +35,13 @@ import {
     Bm25Options as ProtoBm25Options,
     ReconsolidationRequest,
     VerifyGenerationRequest,
-    VerifyGenerationResponse
+    VerifyGenerationResponse,
+    EdgeItem,
+    LinkRequest,
+    LinkBatchRequest,
+    UnlinkRequest,
+    MetadataInductionRuleProto,
+    InduceEdgesRequest
 } from './proto/hyperspace_pb';
 
 import * as hyperspace_pb from './proto/hyperspace_pb'; // New, for direct access to types
@@ -1807,6 +1813,114 @@ export class HyperspaceClient {
                     centerId: startId,
                     count: nodes.length
                 });
+            });
+        });
+    }
+
+    /**
+     * Creates an explicit directed labeled edge between two nodes in the collection topology.
+     */
+    public async link(
+        sourceId: number,
+        targetId: number,
+        relation: string = 'OWNS',
+        weight: number = 1.0,
+        collection: string = ''
+    ): Promise<boolean> {
+        const edge = new EdgeItem();
+        edge.setSourceId(sourceId);
+        edge.setTargetId(targetId);
+        edge.setRelation(relation);
+        edge.setWeight(weight);
+
+        const req = new LinkRequest();
+        req.setCollection(collection);
+        req.setEdge(edge);
+
+        return new Promise((resolve, reject) => {
+            this.client.link(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus() === 'OK');
+            });
+        });
+    }
+
+    /**
+     * Batch inserts multiple directed labeled edges into the collection topology.
+     */
+    public async linkBatch(
+        edges: Array<{ sourceId: number; targetId: number; relation?: string; weight?: number }>,
+        collection: string = ''
+    ): Promise<number> {
+        const edgeItems = edges.map(e => {
+            const item = new EdgeItem();
+            item.setSourceId(e.sourceId);
+            item.setTargetId(e.targetId);
+            item.setRelation(e.relation || 'OWNS');
+            item.setWeight(e.weight !== undefined ? e.weight : 1.0);
+            return item;
+        });
+
+        const req = new LinkBatchRequest();
+        req.setCollection(collection);
+        req.setEdgesList(edgeItems);
+
+        return new Promise((resolve, reject) => {
+            this.client.linkBatch(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getEdgesLinked());
+            });
+        });
+    }
+
+    /**
+     * Deletes an explicit directed edge with zero-lag invalidation.
+     */
+    public async unlink(
+        sourceId: number,
+        targetId: number,
+        relation: string = 'OWNS',
+        collection: string = ''
+    ): Promise<boolean> {
+        const req = new UnlinkRequest();
+        req.setCollection(collection);
+        req.setSourceId(sourceId);
+        req.setTargetId(targetId);
+        req.setRelation(relation);
+
+        return new Promise((resolve, reject) => {
+            this.client.unlink(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getStatus() === 'OK');
+            });
+        });
+    }
+
+    /**
+     * Automatically induces explicit edges from existing metadata fields according to declarative rules.
+     */
+    public async induceEdgesFromMetadata(
+        rules: Array<{ field: string; ruleType: string; targetField?: string; relation?: string; weight?: number }>,
+        collection: string = ''
+    ): Promise<number> {
+        const ruleItems = rules.map(r => {
+            const proto = new MetadataInductionRuleProto();
+            proto.setField(r.field);
+            proto.setRuleType(r.ruleType);
+            if (r.targetField) proto.setTargetField(r.targetField);
+            proto.setRelation(r.relation || 'OWNS');
+            if (r.weight !== undefined) proto.setWeight(r.weight);
+            return proto;
+        });
+
+        const req = new InduceEdgesRequest();
+        req.setCollection(collection);
+        req.setRulesList(ruleItems);
+
+        return new Promise((resolve, reject) => {
+            this.client.induceEdgesFromMetadata(req, this.metadata, (err, resp) => {
+                if (err) return reject(err);
+                resolve(resp.getEdgesCreated());
             });
         });
     }

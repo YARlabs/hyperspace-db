@@ -2193,6 +2193,163 @@ final $typed_data.Uint8List findSemanticClustersResponseDescriptor =
         'ChxGaW5kU2VtYW50aWNDbHVzdGVyc1Jlc3BvbnNlEjQKCGNsdXN0ZXJzGAEgAygLMhguaHlwZX'
         'JzcGFjZS5HcmFwaENsdXN0ZXJSCGNsdXN0ZXJz');
 
+@$core.Deprecated('Use edgeItemDescriptor instead')
+const EdgeItem$json = {
+  '1': 'EdgeItem',
+  '2': [
+    {'1': 'source_id', '3': 1, '4': 1, '5': 13, '10': 'sourceId'},
+    {'1': 'target_id', '3': 2, '4': 1, '5': 13, '10': 'targetId'},
+    {'1': 'relation', '3': 3, '4': 1, '5': 9, '10': 'relation'},
+    {'1': 'weight', '3': 4, '4': 1, '5': 2, '10': 'weight'},
+  ],
+};
+
+/// Descriptor for `EdgeItem`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List edgeItemDescriptor = $convert.base64Decode(
+    'CghFZGdlSXRlbRIbCglzb3VyY2VfaWQYASABKA1SCHNvdXJjZUlkEhsKCXRhcmdldF9pZBgCIA'
+    'EoDVIIdGFyZ2V0SWQSGgoIcmVsYXRpb24YAyABKAlSCHJlbGF0aW9uEhYKBndlaWdodBgEIAEo'
+    'AlIGd2VpZ2h0');
+
+@$core.Deprecated('Use linkRequestDescriptor instead')
+const LinkRequest$json = {
+  '1': 'LinkRequest',
+  '2': [
+    {'1': 'collection', '3': 1, '4': 1, '5': 9, '10': 'collection'},
+    {
+      '1': 'edge',
+      '3': 2,
+      '4': 1,
+      '5': 11,
+      '6': '.hyperspace.EdgeItem',
+      '10': 'edge'
+    },
+  ],
+};
+
+/// Descriptor for `LinkRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List linkRequestDescriptor = $convert.base64Decode(
+    'CgtMaW5rUmVxdWVzdBIeCgpjb2xsZWN0aW9uGAEgASgJUgpjb2xsZWN0aW9uEigKBGVkZ2UYAi'
+    'ABKAsyFC5oeXBlcnNwYWNlLkVkZ2VJdGVtUgRlZGdl');
+
+@$core.Deprecated('Use linkBatchRequestDescriptor instead')
+const LinkBatchRequest$json = {
+  '1': 'LinkBatchRequest',
+  '2': [
+    {'1': 'collection', '3': 1, '4': 1, '5': 9, '10': 'collection'},
+    {
+      '1': 'edges',
+      '3': 2,
+      '4': 3,
+      '5': 11,
+      '6': '.hyperspace.EdgeItem',
+      '10': 'edges'
+    },
+  ],
+};
+
+/// Descriptor for `LinkBatchRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List linkBatchRequestDescriptor = $convert.base64Decode(
+    'ChBMaW5rQmF0Y2hSZXF1ZXN0Eh4KCmNvbGxlY3Rpb24YASABKAlSCmNvbGxlY3Rpb24SKgoFZW'
+    'RnZXMYAiADKAsyFC5oeXBlcnNwYWNlLkVkZ2VJdGVtUgVlZGdlcw==');
+
+@$core.Deprecated('Use linkBatchResponseDescriptor instead')
+const LinkBatchResponse$json = {
+  '1': 'LinkBatchResponse',
+  '2': [
+    {'1': 'success', '3': 1, '4': 1, '5': 8, '10': 'success'},
+    {'1': 'edges_linked', '3': 2, '4': 1, '5': 4, '10': 'edgesLinked'},
+  ],
+};
+
+/// Descriptor for `LinkBatchResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List linkBatchResponseDescriptor = $convert.base64Decode(
+    'ChFMaW5rQmF0Y2hSZXNwb25zZRIYCgdzdWNjZXNzGAEgASgIUgdzdWNjZXNzEiEKDGVkZ2VzX2'
+    'xpbmtlZBgCIAEoBFILZWRnZXNMaW5rZWQ=');
+
+@$core.Deprecated('Use unlinkRequestDescriptor instead')
+const UnlinkRequest$json = {
+  '1': 'UnlinkRequest',
+  '2': [
+    {'1': 'collection', '3': 1, '4': 1, '5': 9, '10': 'collection'},
+    {'1': 'source_id', '3': 2, '4': 1, '5': 13, '10': 'sourceId'},
+    {'1': 'target_id', '3': 3, '4': 1, '5': 13, '10': 'targetId'},
+    {'1': 'relation', '3': 4, '4': 1, '5': 9, '10': 'relation'},
+  ],
+};
+
+/// Descriptor for `UnlinkRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List unlinkRequestDescriptor = $convert.base64Decode(
+    'Cg1VbmxpbmtSZXF1ZXN0Eh4KCmNvbGxlY3Rpb24YASABKAlSCmNvbGxlY3Rpb24SGwoJc291cm'
+    'NlX2lkGAIgASgNUghzb3VyY2VJZBIbCgl0YXJnZXRfaWQYAyABKA1SCHRhcmdldElkEhoKCHJl'
+    'bGF0aW9uGAQgASgJUghyZWxhdGlvbg==');
+
+@$core.Deprecated('Use metadataInductionRuleProtoDescriptor instead')
+const MetadataInductionRuleProto$json = {
+  '1': 'MetadataInductionRuleProto',
+  '2': [
+    {'1': 'field', '3': 1, '4': 1, '5': 9, '10': 'field'},
+    {'1': 'rule_type', '3': 2, '4': 1, '5': 9, '10': 'ruleType'},
+    {
+      '1': 'target_field',
+      '3': 3,
+      '4': 1,
+      '5': 9,
+      '9': 0,
+      '10': 'targetField',
+      '17': true
+    },
+    {'1': 'relation', '3': 4, '4': 1, '5': 9, '10': 'relation'},
+    {'1': 'weight', '3': 5, '4': 1, '5': 2, '9': 1, '10': 'weight', '17': true},
+  ],
+  '8': [
+    {'1': '_target_field'},
+    {'1': '_weight'},
+  ],
+};
+
+/// Descriptor for `MetadataInductionRuleProto`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List metadataInductionRuleProtoDescriptor = $convert.base64Decode(
+    'ChpNZXRhZGF0YUluZHVjdGlvblJ1bGVQcm90bxIUCgVmaWVsZBgBIAEoCVIFZmllbGQSGwoJcn'
+    'VsZV90eXBlGAIgASgJUghydWxlVHlwZRImCgx0YXJnZXRfZmllbGQYAyABKAlIAFILdGFyZ2V0'
+    'RmllbGSIAQESGgoIcmVsYXRpb24YBCABKAlSCHJlbGF0aW9uEhsKBndlaWdodBgFIAEoAkgBUg'
+    'Z3ZWlnaHSIAQFCDwoNX3RhcmdldF9maWVsZEIJCgdfd2VpZ2h0');
+
+@$core.Deprecated('Use induceEdgesRequestDescriptor instead')
+const InduceEdgesRequest$json = {
+  '1': 'InduceEdgesRequest',
+  '2': [
+    {'1': 'collection', '3': 1, '4': 1, '5': 9, '10': 'collection'},
+    {
+      '1': 'rules',
+      '3': 2,
+      '4': 3,
+      '5': 11,
+      '6': '.hyperspace.MetadataInductionRuleProto',
+      '10': 'rules'
+    },
+  ],
+};
+
+/// Descriptor for `InduceEdgesRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List induceEdgesRequestDescriptor = $convert.base64Decode(
+    'ChJJbmR1Y2VFZGdlc1JlcXVlc3QSHgoKY29sbGVjdGlvbhgBIAEoCVIKY29sbGVjdGlvbhI8Cg'
+    'VydWxlcxgCIAMoCzImLmh5cGVyc3BhY2UuTWV0YWRhdGFJbmR1Y3Rpb25SdWxlUHJvdG9SBXJ1'
+    'bGVz');
+
+@$core.Deprecated('Use induceEdgesResponseDescriptor instead')
+const InduceEdgesResponse$json = {
+  '1': 'InduceEdgesResponse',
+  '2': [
+    {'1': 'success', '3': 1, '4': 1, '5': 8, '10': 'success'},
+    {'1': 'edges_created', '3': 2, '4': 1, '5': 4, '10': 'edgesCreated'},
+  ],
+};
+
+/// Descriptor for `InduceEdgesResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List induceEdgesResponseDescriptor = $convert.base64Decode(
+    'ChNJbmR1Y2VFZGdlc1Jlc3BvbnNlEhgKB3N1Y2Nlc3MYASABKAhSB3N1Y2Nlc3MSIwoNZWRnZX'
+    'NfY3JlYXRlZBgCIAEoBFIMZWRnZXNDcmVhdGVk');
+
 @$core.Deprecated('Use metadataValueDescriptor instead')
 const MetadataValue$json = {
   '1': 'MetadataValue',
@@ -2670,3 +2827,81 @@ const UnfreezeCollectionRequest$json = {
 final $typed_data.Uint8List unfreezeCollectionRequestDescriptor =
     $convert.base64Decode(
         'ChlVbmZyZWV6ZUNvbGxlY3Rpb25SZXF1ZXN0EhIKBG5hbWUYASABKAlSBG5hbWU=');
+
+@$core.Deprecated('Use verifyGenerationRequestDescriptor instead')
+const VerifyGenerationRequest$json = {
+  '1': 'VerifyGenerationRequest',
+  '2': [
+    {'1': 'collection', '3': 1, '4': 1, '5': 9, '10': 'collection'},
+    {'1': 'llm_answer', '3': 2, '4': 1, '5': 9, '10': 'llmAnswer'},
+    {'1': 'context_ids', '3': 3, '4': 3, '5': 9, '10': 'contextIds'},
+    {
+      '1': 'max_distance_threshold',
+      '3': 4,
+      '4': 1,
+      '5': 1,
+      '9': 0,
+      '10': 'maxDistanceThreshold',
+      '17': true
+    },
+    {
+      '1': 'check_geodesic',
+      '3': 5,
+      '4': 1,
+      '5': 8,
+      '9': 1,
+      '10': 'checkGeodesic',
+      '17': true
+    },
+  ],
+  '8': [
+    {'1': '_max_distance_threshold'},
+    {'1': '_check_geodesic'},
+  ],
+};
+
+/// Descriptor for `VerifyGenerationRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List verifyGenerationRequestDescriptor = $convert.base64Decode(
+    'ChdWZXJpZnlHZW5lcmF0aW9uUmVxdWVzdBIeCgpjb2xsZWN0aW9uGAEgASgJUgpjb2xsZWN0aW'
+    '9uEh0KCmxsbV9hbnN3ZXIYAiABKAlSCWxsbUFuc3dlchIfCgtjb250ZXh0X2lkcxgDIAMoCVIK'
+    'Y29udGV4dElkcxI5ChZtYXhfZGlzdGFuY2VfdGhyZXNob2xkGAQgASgBSABSFG1heERpc3Rhbm'
+    'NlVGhyZXNob2xkiAEBEioKDmNoZWNrX2dlb2Rlc2ljGAUgASgISAFSDWNoZWNrR2VvZGVzaWOI'
+    'AQFCGQoXX21heF9kaXN0YW5jZV90aHJlc2hvbGRCEQoPX2NoZWNrX2dlb2Rlc2lj');
+
+@$core.Deprecated('Use verifyGenerationResponseDescriptor instead')
+const VerifyGenerationResponse$json = {
+  '1': 'VerifyGenerationResponse',
+  '2': [
+    {'1': 'trust_score', '3': 1, '4': 1, '5': 1, '10': 'trustScore'},
+    {'1': 'is_valid', '3': 2, '4': 1, '5': 8, '10': 'isValid'},
+    {'1': 'min_distance', '3': 3, '4': 1, '5': 1, '10': 'minDistance'},
+    {'1': 'avg_distance', '3': 4, '4': 1, '5': 1, '10': 'avgDistance'},
+    {
+      '1': 'geodesic_distance',
+      '3': 5,
+      '4': 1,
+      '5': 1,
+      '10': 'geodesicDistance'
+    },
+    {'1': 'geodesic_hops', '3': 6, '4': 1, '5': 13, '10': 'geodesicHops'},
+    {'1': 'cone_satisfied', '3': 7, '4': 1, '5': 8, '10': 'coneSatisfied'},
+    {'1': 'details', '3': 8, '4': 1, '5': 9, '10': 'details'},
+    {
+      '1': 'resolved_context_ids',
+      '3': 9,
+      '4': 3,
+      '5': 13,
+      '10': 'resolvedContextIds'
+    },
+  ],
+};
+
+/// Descriptor for `VerifyGenerationResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List verifyGenerationResponseDescriptor = $convert.base64Decode(
+    'ChhWZXJpZnlHZW5lcmF0aW9uUmVzcG9uc2USHwoLdHJ1c3Rfc2NvcmUYASABKAFSCnRydXN0U2'
+    'NvcmUSGQoIaXNfdmFsaWQYAiABKAhSB2lzVmFsaWQSIQoMbWluX2Rpc3RhbmNlGAMgASgBUgtt'
+    'aW5EaXN0YW5jZRIhCgxhdmdfZGlzdGFuY2UYBCABKAFSC2F2Z0Rpc3RhbmNlEisKEWdlb2Rlc2'
+    'ljX2Rpc3RhbmNlGAUgASgBUhBnZW9kZXNpY0Rpc3RhbmNlEiMKDWdlb2Rlc2ljX2hvcHMYBiAB'
+    'KA1SDGdlb2Rlc2ljSG9wcxIlCg5jb25lX3NhdGlzZmllZBgHIAEoCFINY29uZVNhdGlzZmllZB'
+    'IYCgdkZXRhaWxzGAggASgJUgdkZXRhaWxzEjAKFHJlc29sdmVkX2NvbnRleHRfaWRzGAkgAygN'
+    'UhJyZXNvbHZlZENvbnRleHRJZHM=');

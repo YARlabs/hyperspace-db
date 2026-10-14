@@ -55,6 +55,31 @@ impl EdgeRelation {
     pub fn is_hierarchical(&self) -> bool {
         matches!(self, Self::Supersedes | Self::Contains)
     }
+
+    pub fn from_str_label(label: &str) -> u16 {
+        if let Ok(num) = label.parse::<u16>() {
+            return num;
+        }
+        match label.to_uppercase().as_str() {
+            "OWNS" => Self::Owns.as_u16(),
+            "DEPENDS_ON" | "DEPENDSON" => Self::DependsOn.as_u16(),
+            "SUPERSEDES" => Self::Supersedes.as_u16(),
+            "AMENDS" => Self::Amends.as_u16(),
+            "CONTAINS" => Self::Contains.as_u16(),
+            "REFERENCES" => Self::References.as_u16(),
+            _ => 100, // Custom generic
+        }
+    }
+}
+
+/// Rule for declarative edge induction from document metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataInductionRule {
+    pub field: String,
+    pub rule_type: String, // "path_hierarchy", "foreign_key", "exact_match"
+    pub target_field: Option<String>,
+    pub relation: String,
+    pub weight: Option<f32>,
 }
 
 /// Compact 12-byte packed directed edge structure.
@@ -430,6 +455,20 @@ impl CsrGraph {
             num_nodes,
         })
     }
+
+    /// Saves CSR graph to a file with buffered writing.
+    pub fn save_to_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let file = std::fs::File::create(path)?;
+        let writer = std::io::BufWriter::new(file);
+        self.write_to(writer)
+    }
+
+    /// Loads CSR graph from a file with buffered reading.
+    pub fn load_from_file(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
+        let file = std::fs::File::open(path)?;
+        let reader = std::io::BufReader::new(file);
+        Self::read_from(reader)
+    }
 }
 
 /// Dynamic, thread-safe Adjacency List graph with atomic edge invalidation.
@@ -512,6 +551,18 @@ impl DynamicGraph {
             self.edge_count.fetch_sub(1, Ordering::Relaxed);
         }
         removed
+    }
+
+    /// Returns all active edges originating from the given node.
+    pub fn edges_for(&self, node: u32) -> Vec<CompactEdge> {
+        let guard = self.adj.read();
+        let idx = node as usize;
+        if idx >= guard.len() {
+            return Vec::new();
+        }
+        let list = guard[idx].read();
+        let res: Vec<CompactEdge> = list.iter().filter(|e| e.is_active()).copied().collect();
+        res
     }
 
     /// Multi-hop BFS reachability compiling directly into `RoaringBitmap`.
@@ -669,6 +720,132 @@ impl GraphEngine {
         let dyn_edges = self.dynamic.total_edges();
         let dyn_nodes = self.dynamic.node_count();
         csr_bytes + dyn_edges * std::mem::size_of::<CompactEdge>() + dyn_nodes * 64
+    }
+
+    /// Returns active edges originating from the given node.
+    pub fn edges_for(&self, node: u32) -> Vec<CompactEdge> {
+        self.dynamic.edges_for(node)
+    }
+
+    /// Loads graph from persistent binary CSR file.
+    pub fn load_from_csr_file(config: GraphConfig, path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
+        let csr = CsrGraph::load_from_file(path)?;
+        let num_nodes = csr.num_nodes;
+        let dynamic = DynamicGraph::new(num_nodes);
+        for src in 0..num_nodes as u32 {
+            for edge in csr.neighbors(src) {
+                dynamic.insert_edge(src, edge.target, edge.relation, edge.weight);
+            }
+        }
+        Ok(Self {
+            config,
+            dynamic: Arc::new(dynamic),
+            csr_snapshot: RwLock::new(Arc::new(csr)),
+        })
+    }
+
+    /// Saves graph to persistent binary CSR file.
+    pub fn save_to_csr_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let csr = self.dynamic.to_csr();
+        csr.save_to_file(path)
+    }
+
+    /// Induces explicit directed edges from document metadata according to declarative rules.
+    pub fn induce_from_metadata(
+        &self,
+        nodes: &[(u32, std::collections::HashMap<String, String>)],
+        rules: &[MetadataInductionRule],
+    ) -> usize {
+        if !self.config.enabled || rules.is_empty() {
+            return 0;
+        }
+
+        let mut total_edges_added = 0;
+
+        for rule in rules {
+            let rel_code = EdgeRelation::from_str_label(&rule.relation);
+            let weight = rule.weight.unwrap_or(1.0);
+
+            match rule.rule_type.as_str() {
+                "path_hierarchy" => {
+                    let mut path_to_id = std::collections::HashMap::with_capacity(nodes.len());
+                    for (id, meta) in nodes {
+                        if let Some(path) = meta.get(&rule.field) {
+                            let clean_path = path.trim_end_matches('/');
+                            path_to_id.insert(clean_path.to_string(), *id);
+                        }
+                    }
+
+                    for (id, meta) in nodes {
+                        if let Some(path) = meta.get(&rule.field) {
+                            let clean_path = path.trim_end_matches('/');
+                            if let Some(last_slash) = clean_path.rfind('/') {
+                                let parent_path = &clean_path[..last_slash];
+                                if let Some(&parent_id) = path_to_id.get(parent_path) {
+                                    if parent_id != *id {
+                                        self.insert_edge(parent_id, *id, rel_code, weight);
+                                        total_edges_added += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "foreign_key" => {
+                    if let Some(ref target_field) = rule.target_field {
+                        let mut target_val_to_id = std::collections::HashMap::with_capacity(nodes.len());
+                        for (id, meta) in nodes {
+                            if let Some(val) = meta.get(target_field) {
+                                target_val_to_id.insert(val.clone(), *id);
+                            }
+                        }
+                        for (id, meta) in nodes {
+                            if let Some(foreign_val) = meta.get(&rule.field) {
+                                if let Some(&target_id) = target_val_to_id.get(foreign_val) {
+                                    if target_id != *id {
+                                        self.insert_edge(*id, target_id, rel_code, weight);
+                                        total_edges_added += 1;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        for (id, meta) in nodes {
+                            if let Some(val) = meta.get(&rule.field) {
+                                if let Ok(target_id) = val.parse::<u32>() {
+                                    if target_id != *id {
+                                        self.insert_edge(*id, target_id, rel_code, weight);
+                                        total_edges_added += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "exact_match" => {
+                    let mut groups: std::collections::HashMap<&str, Vec<u32>> = std::collections::HashMap::new();
+                    for (id, meta) in nodes {
+                        if let Some(val) = meta.get(&rule.field) {
+                            if !val.is_empty() {
+                                groups.entry(val.as_str()).or_default().push(*id);
+                            }
+                        }
+                    }
+                    for (_val, member_ids) in groups {
+                        let max_members = member_ids.len().min(16);
+                        for i in 0..max_members {
+                            for j in (i + 1)..max_members {
+                                self.insert_edge(member_ids[i], member_ids[j], rel_code, weight);
+                                total_edges_added += 1;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        total_edges_added
     }
 }
 
@@ -862,5 +1039,54 @@ mod tests {
         let diff = (dist - 0.45).abs();
         assert!(diff < 1e-4, "Hyperbolic hop distance distortion must be < 1e-4");
         assert!(LorentzTreeProjector::is_in_light_cone(&parent, &child, 0.45 + 1e-4));
+    }
+
+    #[test]
+    fn test_metadata_induction() {
+        let engine = GraphEngine::new(GraphConfig::default(), 10);
+        let mut nodes = Vec::new();
+
+        let mut meta0 = std::collections::HashMap::new();
+        meta0.insert("path".to_string(), "/docs".to_string());
+        meta0.insert("category".to_string(), "compliance".to_string());
+        nodes.push((0, meta0));
+
+        let mut meta1 = std::collections::HashMap::new();
+        meta1.insert("path".to_string(), "/docs/api".to_string());
+        meta1.insert("parent_id".to_string(), "0".to_string());
+        meta1.insert("category".to_string(), "compliance".to_string());
+        nodes.push((1, meta1));
+
+        let mut meta2 = std::collections::HashMap::new();
+        meta2.insert("path".to_string(), "/docs/api/v1".to_string());
+        meta2.insert("parent_id".to_string(), "1".to_string());
+        meta2.insert("category".to_string(), "compliance".to_string());
+        nodes.push((2, meta2));
+
+        // 1. Path hierarchy rule: /docs -> /docs/api -> /docs/api/v1
+        let path_rule = MetadataInductionRule {
+            field: "path".to_string(),
+            rule_type: "path_hierarchy".to_string(),
+            target_field: None,
+            relation: "CONTAINS".to_string(),
+            weight: Some(1.0),
+        };
+        let added_path = engine.induce_from_metadata(&nodes, &[path_rule]);
+        assert_eq!(added_path, 2, "Expected 2 hierarchical tree edges");
+
+        // 2. Foreign key rule: 1->0 and 2->1
+        let fk_rule = MetadataInductionRule {
+            field: "parent_id".to_string(),
+            rule_type: "foreign_key".to_string(),
+            target_field: None,
+            relation: "OWNS".to_string(),
+            weight: Some(0.9),
+        };
+        let added_fk = engine.induce_from_metadata(&nodes, &[fk_rule]);
+        assert_eq!(added_fk, 2, "Expected 2 foreign key edges");
+
+        assert_eq!(engine.dynamic.total_edges(), 4);
+        let edges_for_0 = engine.edges_for(0);
+        assert!(edges_for_0.iter().any(|e| e.target == 1 && e.relation == EdgeRelation::Contains.as_u16()));
     }
 }

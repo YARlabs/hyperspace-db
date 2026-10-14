@@ -520,6 +520,78 @@ bool HyperspaceClient::GetNeighbors(const std::string& col, uint32_t id, uint32_
     return stub_->GetNeighbors(&ctx, req, &resp_out).ok();
 }
 
+bool HyperspaceClient::GetSubsumptionTree(const std::string& collection, uint32_t root_id, uint32_t max_depth, ::hyperspace::GetSubsumptionTreeResponse& resp_out) {
+    ::hyperspace::GetSubsumptionTreeRequest req;
+    req.set_collection(collection);
+    req.set_root_id(root_id);
+    req.set_max_depth(max_depth);
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    return stub_->GetSubsumptionTree(&ctx, req, &resp_out).ok();
+}
+
+bool HyperspaceClient::Link(uint32_t source_id, uint32_t target_id, const std::string& relation, float weight, const std::string& collection) {
+    ::hyperspace::LinkRequest req;
+    req.set_collection(collection);
+    auto* edge = req.mutable_edge();
+    edge->set_source_id(source_id);
+    edge->set_target_id(target_id);
+    edge->set_relation(relation.empty() ? "OWNS" : relation);
+    edge->set_weight(weight);
+
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    auto status = stub_->Link(&ctx, req, &resp);
+    return status.ok() && resp.status() == "OK";
+}
+
+uint64_t HyperspaceClient::LinkBatch(const std::vector<::hyperspace::EdgeItem>& edges, const std::string& collection) {
+    ::hyperspace::LinkBatchRequest req;
+    req.set_collection(collection);
+    for (const auto& e : edges) {
+        auto* item = req.add_edges();
+        item->CopyFrom(e);
+    }
+
+    ::hyperspace::LinkBatchResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    auto status = stub_->LinkBatch(&ctx, req, &resp);
+    if (!status.ok()) return 0;
+    return resp.edges_linked();
+}
+
+bool HyperspaceClient::Unlink(uint32_t source_id, uint32_t target_id, const std::string& relation, const std::string& collection) {
+    ::hyperspace::UnlinkRequest req;
+    req.set_collection(collection);
+    req.set_source_id(source_id);
+    req.set_target_id(target_id);
+    req.set_relation(relation.empty() ? "OWNS" : relation);
+
+    ::hyperspace::StatusResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    auto status = stub_->Unlink(&ctx, req, &resp);
+    return status.ok() && resp.status() == "OK";
+}
+
+uint64_t HyperspaceClient::InduceEdgesFromMetadata(const std::vector<::hyperspace::MetadataInductionRuleProto>& rules, const std::string& collection) {
+    ::hyperspace::InduceEdgesRequest req;
+    req.set_collection(collection);
+    for (const auto& r : rules) {
+        auto* rule = req.add_rules();
+        rule->CopyFrom(r);
+    }
+
+    ::hyperspace::InduceEdgesResponse resp;
+    ClientContext ctx;
+    if (!app_id_.empty()) ctx.AddMetadata("x-api-key", app_id_);
+    auto status = stub_->InduceEdgesFromMetadata(&ctx, req, &resp);
+    if (!status.ok()) return 0;
+    return resp.edges_created();
+}
+
 bool HyperspaceClient::GetDigest(const std::string& col, ::hyperspace::DigestResponse& resp_out) {
     ::hyperspace::DigestRequest req;
     req.set_collection(col);

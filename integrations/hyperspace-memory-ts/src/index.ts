@@ -497,6 +497,67 @@ export class Memory {
   }
 
   /**
+   * Create explicit directed edge between memories or concepts in the native KAG graph.
+   */
+  public async link(
+    sourceId: number,
+    targetId: number,
+    relation: string = 'OWNS',
+    weight: number = 1.0
+  ): Promise<boolean> {
+    await this.ensureCollection();
+    try {
+      return await (this.client as any).link(sourceId, targetId, relation, weight, this.collection);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Batch-insert explicit directed edges between memories/entities in CSR topology.
+   */
+  public async linkBatch(
+    edges: Array<{ sourceId: number; targetId: number; relation?: string; weight?: number }>
+  ): Promise<number> {
+    await this.ensureCollection();
+    try {
+      return await (this.client as any).linkBatch(edges, this.collection);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Delete an explicit directed edge with zero-lag invalidation.
+   */
+  public async unlink(
+    sourceId: number,
+    targetId: number,
+    relation: string = 'OWNS'
+  ): Promise<boolean> {
+    await this.ensureCollection();
+    try {
+      return await (this.client as any).unlink(sourceId, targetId, relation, this.collection);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Induce topological edges from metadata properties across memory entries.
+   */
+  public async induceEdges(
+    rules: Array<{ field: string; ruleType: string; targetField?: string; relation?: string; weight?: number }>
+  ): Promise<number> {
+    await this.ensureCollection();
+    try {
+      return await (this.client as any).induceEdgesFromMetadata(rules, this.collection);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
    * Get operational statistics and diagnostics for the memory collection.
    */
   public async stats(): Promise<MemoryStatsResult> {

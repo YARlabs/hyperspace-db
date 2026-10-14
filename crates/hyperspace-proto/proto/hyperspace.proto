@@ -40,6 +40,11 @@ service Database {
   rpc Traverse (TraverseRequest) returns (TraverseResponse);
   rpc FindSemanticClusters (FindSemanticClustersRequest) returns (FindSemanticClustersResponse);
   rpc GetSubsumptionTree (GetSubsumptionTreeRequest) returns (GetSubsumptionTreeResponse);
+  // Native Graph Linkage & Induction API (v4.1)
+  rpc Link (LinkRequest) returns (StatusResponse);
+  rpc LinkBatch (LinkBatchRequest) returns (LinkBatchResponse);
+  rpc Unlink (UnlinkRequest) returns (StatusResponse);
+  rpc InduceEdgesFromMetadata (InduceEdgesRequest) returns (InduceEdgesResponse);
   // Stream statistics for TUI (Global or Collection tailored)
   rpc Monitor (MonitorRequest) returns (stream SystemStats);
   
@@ -546,6 +551,53 @@ message GraphCluster {
 
 message FindSemanticClustersResponse {
   repeated GraphCluster clusters = 1;
+}
+
+message EdgeItem {
+  uint32 source_id = 1;
+  uint32 target_id = 2;
+  string relation = 3;
+  float weight = 4;
+}
+
+message LinkRequest {
+  string collection = 1;
+  EdgeItem edge = 2;
+}
+
+message LinkBatchRequest {
+  string collection = 1;
+  repeated EdgeItem edges = 2;
+}
+
+message LinkBatchResponse {
+  bool success = 1;
+  uint64 edges_linked = 2;
+}
+
+message UnlinkRequest {
+  string collection = 1;
+  uint32 source_id = 2;
+  uint32 target_id = 3;
+  string relation = 4;
+}
+
+message MetadataInductionRuleProto {
+  string field = 1;
+  string rule_type = 2; // "path_hierarchy", "foreign_key", "exact_match"
+  optional string target_field = 3;
+  string relation = 4;
+  optional float weight = 5;
+}
+
+message InduceEdgesRequest {
+  string collection = 1;
+  repeated MetadataInductionRuleProto rules = 2;
+}
+
+message InduceEdgesResponse {
+  bool success = 1;
+  uint64 edges_created = 2;
 }
 
 message MetadataValue {

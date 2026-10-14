@@ -304,13 +304,36 @@ export class Hyperspacedb implements INodeType {
 						returnData.push({ json: status });
 					}
 				} else if (resource === 'graph') {
+					const collectionName = this.getNodeParameter('collectionName', i, 'default') as string;
 					if (operation === 'traverse') {
-						const collectionName = this.getNodeParameter('collectionName', i) as string;
 						const startId = this.getNodeParameter('startId', i, 0) as number;
 						const maxDepth = this.getNodeParameter('maxDepth', i, 3) as number;
 						const maxNodes = this.getNodeParameter('maxNodes', i, 256) as number;
 						const nodes = await client.traverse(startId, 0, maxDepth, maxNodes, collectionName);
 						returnData.push({ json: { nodes } });
+					} else if (operation === 'link') {
+						const sourceId = this.getNodeParameter('sourceId', i) as number;
+						const targetId = this.getNodeParameter('targetId', i) as number;
+						const relation = this.getNodeParameter('relation', i, 'OWNS') as string;
+						const weight = this.getNodeParameter('weight', i, 1.0) as number;
+						const success = await client.link(sourceId, targetId, relation, weight, collectionName);
+						returnData.push({ json: { success, sourceId, targetId, relation, weight, collection: collectionName } });
+					} else if (operation === 'linkBatch') {
+						const edgesJson = this.getNodeParameter('edgesJson', i) as string;
+						const edges = typeof edgesJson === 'string' ? JSON.parse(edgesJson) : edgesJson;
+						const edgesLinked = await client.linkBatch(edges, collectionName);
+						returnData.push({ json: { success: true, edgesLinked, collection: collectionName } });
+					} else if (operation === 'unlink') {
+						const sourceId = this.getNodeParameter('sourceId', i) as number;
+						const targetId = this.getNodeParameter('targetId', i) as number;
+						const relation = this.getNodeParameter('relation', i, 'OWNS') as string;
+						const success = await client.unlink(sourceId, targetId, relation, collectionName);
+						returnData.push({ json: { success, sourceId, targetId, relation, collection: collectionName } });
+					} else if (operation === 'induceEdges') {
+						const rulesJson = this.getNodeParameter('rulesJson', i) as string;
+						const rules = typeof rulesJson === 'string' ? JSON.parse(rulesJson) : rulesJson;
+						const edgesCreated = await client.induceEdgesFromMetadata(rules, collectionName);
+						returnData.push({ json: { success: true, edgesCreated, collection: collectionName } });
 					}
 				}
 			} catch (error: any) {

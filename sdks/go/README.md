@@ -316,3 +316,62 @@ func main() {
 }
 ```
 
+## Native Vector-Graph (KAG) & Topology Linking
+
+HyperspaceDB 4.1+ internalizes explicit directed labeled graph relations alongside vector embeddings.
+
+### 1. Linking Nodes (Explicit Directed Edges)
+
+```go
+// Create a directed edge with relation label and weight
+err := client.Link(ctx, "my_collection", 1, 2, "OWNS", 1.0)
+if err != nil {
+    log.Fatalf("Link failed: %v", err)
+}
+
+// Batch link multiple edges in a single atomic RPC
+edges := []hyperspace.EdgeInput{
+    {SourceID: 1, TargetID: 2, Relation: "OWNS", Weight: 1.0},
+    {SourceID: 2, TargetID: 3, Relation: "DEPENDS_ON", Weight: 0.95},
+}
+count, err := client.LinkBatch(ctx, "my_collection", edges)
+if err != nil {
+    log.Fatalf("LinkBatch failed: %v", err)
+}
+fmt.Printf("Linked %d edges in CSR graph\n", count)
+
+// Delete an edge with zero-lag invalidation
+err = client.Unlink(ctx, "my_collection", 1, 2, "OWNS")
+if err != nil {
+    log.Fatalf("Unlink failed: %v", err)
+}
+```
+
+### 2. Declarative Metadata-to-Edge Induction
+
+Generate topological graphs from existing metadata for 100k+ documents without rebuilding HNSW indices:
+
+```go
+rules := []hyperspace.MetadataInductionRule{
+    // 1. Directory/file path hierarchy: /a/b/c -> /a/b
+    {
+        Field:    "file_path",
+        RuleType: "path_hierarchy",
+        Relation: "CONTAINS",
+    },
+    // 2. Foreign-key entity links: parent_id -> target document id
+    {
+        Field:    "parent_id",
+        RuleType: "foreign_key",
+        Relation: "OWNS",
+    },
+}
+
+created, err := client.InduceEdgesFromMetadata(ctx, "my_collection", rules)
+if err != nil {
+    log.Fatalf("Induce failed: %v", err)
+}
+fmt.Printf("Induced %d explicit edges directly from metadata\n", created)
+```
+
+

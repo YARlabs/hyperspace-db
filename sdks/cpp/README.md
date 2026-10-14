@@ -273,3 +273,66 @@ int main() {
 }
 ```
 
+## Native Vector-Graph (KAG) & Topology Linking
+
+HyperspaceDB 4.1+ internalizes explicit directed labeled graph relations alongside vector embeddings.
+
+### 1. Linking Nodes (Explicit Directed Edges)
+
+```cpp
+#include <hyperspace/client.hpp>
+
+hyperspace::HyperspaceClient client("localhost:50051", "I_LOVE_HYPERSPACEDB");
+
+// Create a directed edge with relation label and weight
+bool ok = client.Link(1, 2, "OWNS", 1.0f, "my_collection");
+
+// Batch link multiple edges in a single atomic RPC
+std::vector<::hyperspace::EdgeItem> edges;
+::hyperspace::EdgeItem e1;
+e1.set_source_id(1);
+e1.set_target_id(2);
+e1.set_relation("OWNS");
+e1.set_weight(1.0f);
+edges.push_back(e1);
+
+::hyperspace::EdgeItem e2;
+e2.set_source_id(2);
+e2.set_target_id(3);
+e2.set_relation("DEPENDS_ON");
+e2.set_weight(0.95f);
+edges.push_back(e2);
+
+uint64_t count = client.LinkBatch(edges, "my_collection");
+std::cout << "Linked " << count << " edges in CSR graph" << std::endl;
+
+// Delete an edge with zero-lag invalidation
+client.Unlink(1, 2, "OWNS", "my_collection");
+```
+
+### 2. Declarative Metadata-to-Edge Induction
+
+Generate topological graphs from existing metadata for 100k+ documents without rebuilding HNSW:
+
+```cpp
+std::vector<::hyperspace::MetadataInductionRuleProto> rules;
+
+// 1. Directory/file path hierarchy: /a/b/c -> /a/b
+::hyperspace::MetadataInductionRuleProto r1;
+r1.set_field("file_path");
+r1.set_rule_type("path_hierarchy");
+r1.set_relation("CONTAINS");
+rules.push_back(r1);
+
+// 2. Foreign-key entity links: parent_id -> target document id
+::hyperspace::MetadataInductionRuleProto r2;
+r2.set_field("parent_id");
+r2.set_rule_type("foreign_key");
+r2.set_relation("OWNS");
+rules.push_back(r2);
+
+uint64_t created = client.InduceEdgesFromMetadata(rules, "my_collection");
+std::cout << "Induced " << created << " explicit edges directly from metadata" << std::endl;
+```
+
+

@@ -185,3 +185,20 @@ class HyperspaceVectorStore(VectorStore):
     def update_cache_config(self, policy: str, ann_threshold: Optional[float] = None) -> bool:
         """Update L0 Cache configuration for the collection."""
         return self._client.update_cache_config(self._collection_name, policy, ann_threshold)
+
+    def link(self, source_id: int, target_id: int, relation: str = "OWNS", weight: float = 1.0) -> bool:
+        """Create an explicit directed edge between nodes in the in-engine vector-graph."""
+        return bool(self._client.link(source_id, target_id, relation=relation, weight=weight, collection=self._collection_name))
+
+    def link_batch(self, edges: List[Dict[str, Any]]) -> int:
+        """Batch-insert explicit directed edges in CSR graph."""
+        return int(self._client.link_batch(edges, collection=self._collection_name))
+
+    def unlink(self, source_id: int, target_id: int, relation: str = "OWNS") -> bool:
+        """Delete an explicit directed edge with zero-lag invalidation."""
+        return bool(self._client.unlink(source_id, target_id, relation=relation, collection=self._collection_name))
+
+    def induce_edges_from_metadata(self, rules: List[Dict[str, Any]]) -> int:
+        """Induce topological edges from metadata properties across document entities."""
+        return int(self._client.induce_edges_from_metadata(rules, collection=self._collection_name))
+

@@ -94,6 +94,24 @@ export class HyperspaceVectorStore implements VectorStore {
   async updateCacheConfig(policy: string, annThreshold?: number): Promise<boolean> {
     return this._client.updateCacheConfig(this.collectionName, policy, annThreshold);
   }
+
+  async link(sourceId: number, targetId: number, relation: string = "OWNS", weight: number = 1.0): Promise<boolean> {
+    return this._client.link(sourceId, targetId, relation, weight, this.collectionName);
+  }
+
+  async linkBatch(edges: Array<{ sourceId: number; targetId: number; relation?: string; weight?: number }>): Promise<number> {
+    return this._client.linkBatch(edges, this.collectionName);
+  }
+
+  async unlink(sourceId: number, targetId: number, relation: string = "OWNS"): Promise<boolean> {
+    return this._client.unlink(sourceId, targetId, relation, this.collectionName);
+  }
+
+  async induceEdgesFromMetadata(
+    rules: Array<{ field: string; ruleType: string; targetField?: string; relation?: string; weight?: number }>
+  ): Promise<number> {
+    return this._client.induceEdgesFromMetadata(rules, this.collectionName);
+  }
 }
 
 export {

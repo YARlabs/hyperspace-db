@@ -124,5 +124,10 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
   - Autonomous zero-downtime startup migration engine (`data/` -> `data_v4/`).
   - Production Product Quantization (`hyperspace-core::pq`) with OPQ and RaBitQ 1-bit ADC.
   - Server core ingest rate of 67,500 vec/s and index construction in 78.54 s.
+* **v4.1.0**: ✅ **Native Vector-Graph (KAG) Engine & Declarative Induction**. *Completed.*
+  - Internalized Property CSR Graph (`DynamicGraph`, 12-byte `CompactEdge`) eliminating dual-database patterns.
+  - Explicit edge linking (`link`, `link_batch`, `unlink`) and declarative metadata induction (`path_hierarchy`, `foreign_key`, `exact_match`).
+  - Minkowski Light-Cone causal subsumption projection for 33D Lorentz hyperbolic manifolds.
+  - Interactive Graph Induction Studio in Web Dashboard and universal synchronization across all 6 SDKs and 10 integrations.
 
 Join us in pushing the boundaries of hyperbolic vector search!

@@ -3,7 +3,10 @@
 import grpc
 import warnings
 
-from . import hyperspace_pb2 as hyperspace__pb2
+try:
+    from . import hyperspace_pb2 as hyperspace__pb2
+except ImportError:
+    import hyperspace_pb2 as hyperspace__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
@@ -158,6 +161,26 @@ class DatabaseStub(object):
                 '/hyperspace.Database/GetSubsumptionTree',
                 request_serializer=hyperspace__pb2.GetSubsumptionTreeRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.GetSubsumptionTreeResponse.FromString,
+                _registered_method=True)
+        self.Link = channel.unary_unary(
+                '/hyperspace.Database/Link',
+                request_serializer=hyperspace__pb2.LinkRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.LinkBatch = channel.unary_unary(
+                '/hyperspace.Database/LinkBatch',
+                request_serializer=hyperspace__pb2.LinkBatchRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.LinkBatchResponse.FromString,
+                _registered_method=True)
+        self.Unlink = channel.unary_unary(
+                '/hyperspace.Database/Unlink',
+                request_serializer=hyperspace__pb2.UnlinkRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.InduceEdgesFromMetadata = channel.unary_unary(
+                '/hyperspace.Database/InduceEdgesFromMetadata',
+                request_serializer=hyperspace__pb2.InduceEdgesRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.InduceEdgesResponse.FromString,
                 _registered_method=True)
         self.Monitor = channel.unary_stream(
                 '/hyperspace.Database/Monitor',
@@ -392,6 +415,31 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Link(self, request, context):
+        """Native Graph Linkage & Induction API (v4.1)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LinkBatch(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Unlink(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def InduceEdgesFromMetadata(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Monitor(self, request, context):
         """Stream statistics for TUI (Global or Collection tailored)
         """
@@ -614,6 +662,26 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.GetSubsumptionTree,
                     request_deserializer=hyperspace__pb2.GetSubsumptionTreeRequest.FromString,
                     response_serializer=hyperspace__pb2.GetSubsumptionTreeResponse.SerializeToString,
+            ),
+            'Link': grpc.unary_unary_rpc_method_handler(
+                    servicer.Link,
+                    request_deserializer=hyperspace__pb2.LinkRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'LinkBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.LinkBatch,
+                    request_deserializer=hyperspace__pb2.LinkBatchRequest.FromString,
+                    response_serializer=hyperspace__pb2.LinkBatchResponse.SerializeToString,
+            ),
+            'Unlink': grpc.unary_unary_rpc_method_handler(
+                    servicer.Unlink,
+                    request_deserializer=hyperspace__pb2.UnlinkRequest.FromString,
+                    response_serializer=hyperspace__pb2.StatusResponse.SerializeToString,
+            ),
+            'InduceEdgesFromMetadata': grpc.unary_unary_rpc_method_handler(
+                    servicer.InduceEdgesFromMetadata,
+                    request_deserializer=hyperspace__pb2.InduceEdgesRequest.FromString,
+                    response_serializer=hyperspace__pb2.InduceEdgesResponse.SerializeToString,
             ),
             'Monitor': grpc.unary_stream_rpc_method_handler(
                     servicer.Monitor,
@@ -1361,6 +1429,114 @@ class Database(object):
             '/hyperspace.Database/GetSubsumptionTree',
             hyperspace__pb2.GetSubsumptionTreeRequest.SerializeToString,
             hyperspace__pb2.GetSubsumptionTreeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Link(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Link',
+            hyperspace__pb2.LinkRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LinkBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/LinkBatch',
+            hyperspace__pb2.LinkBatchRequest.SerializeToString,
+            hyperspace__pb2.LinkBatchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Unlink(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/Unlink',
+            hyperspace__pb2.UnlinkRequest.SerializeToString,
+            hyperspace__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InduceEdgesFromMetadata(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/InduceEdgesFromMetadata',
+            hyperspace__pb2.InduceEdgesRequest.SerializeToString,
+            hyperspace__pb2.InduceEdgesResponse.FromString,
             options,
             channel_credentials,
             insecure,

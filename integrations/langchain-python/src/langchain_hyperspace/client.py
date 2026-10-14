@@ -188,3 +188,72 @@ class HyperspaceClient:
         except Exception as e:
             print(f"Error in update_cache_config: {e}")
             return False
+
+    def link(self, source_id: int, target_id: int, relation: str = "OWNS", weight: float = 1.0, collection: str = "") -> bool:
+        try:
+            req = hyperspace_pb2.LinkRequest(
+                collection=collection,
+                edge=hyperspace_pb2.EdgeItem(
+                    source_id=source_id,
+                    target_id=target_id,
+                    relation=relation,
+                    weight=weight
+                )
+            )
+            resp = self._stub.Link(req, metadata=self._get_metadata())
+            return resp.status == "OK"
+        except Exception:
+            return False
+
+    def link_batch(self, edges: List[Dict[str, Any]], collection: str = "") -> int:
+        try:
+            items = []
+            for e in edges:
+                items.append(hyperspace_pb2.EdgeItem(
+                    source_id=e["source_id"],
+                    target_id=e["target_id"],
+                    relation=e.get("relation", "OWNS"),
+                    weight=float(e.get("weight", 1.0))
+                ))
+            req = hyperspace_pb2.LinkBatchRequest(
+                collection=collection,
+                edges=items
+            )
+            resp = self._stub.LinkBatch(req, metadata=self._get_metadata())
+            return resp.edges_linked
+        except Exception:
+            return 0
+
+    def unlink(self, source_id: int, target_id: int, relation: str = "OWNS", collection: str = "") -> bool:
+        try:
+            req = hyperspace_pb2.UnlinkRequest(
+                collection=collection,
+                source_id=source_id,
+                target_id=target_id,
+                relation=relation
+            )
+            resp = self._stub.Unlink(req, metadata=self._get_metadata())
+            return resp.status == "OK"
+        except Exception:
+            return False
+
+    def induce_edges_from_metadata(self, rules: List[Dict[str, Any]], collection: str = "") -> int:
+        try:
+            protos = []
+            for r in rules:
+                protos.append(hyperspace_pb2.MetadataInductionRuleProto(
+                    field=r["field"],
+                    rule_type=r["rule_type"],
+                    target_field=r.get("target_field"),
+                    relation=r.get("relation", "OWNS"),
+                    weight=float(r["weight"]) if "weight" in r else None
+                ))
+            req = hyperspace_pb2.InduceEdgesRequest(
+                collection=collection,
+                rules=protos
+            )
+            resp = self._stub.InduceEdgesFromMetadata(req, metadata=self._get_metadata())
+            return resp.edges_created
+        except Exception:
+            return 0
+

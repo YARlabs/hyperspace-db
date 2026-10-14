@@ -17,6 +17,12 @@
 #include <hyperspace_interfaces/srv/create_collection.hpp>
 #include <hyperspace_interfaces/srv/trigger_reconsolidation.hpp>
 #include <hyperspace_interfaces/srv/verify_generation.hpp>
+#include <hyperspace_interfaces/msg/edge_item.hpp>
+#include <hyperspace_interfaces/msg/metadata_induction_rule.hpp>
+#include <hyperspace_interfaces/srv/link.hpp>
+#include <hyperspace_interfaces/srv/link_batch.hpp>
+#include <hyperspace_interfaces/srv/unlink.hpp>
+#include <hyperspace_interfaces/srv/induce_edges.hpp>
 #include <google/protobuf/util/json_util.h>
 #include <hyperspace_interfaces/msg/search_result.hpp>
 #include <hyperspace_interfaces/msg/system_stats.hpp>
@@ -131,6 +137,26 @@ public:
         verify_generation_service_ = this->create_service<hyperspace_interfaces::srv::VerifyGeneration>(
             "hyperspace/verify_generation",
             std::bind(&TribunalRouterNode::handle_verify_generation, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        link_service_ = this->create_service<hyperspace_interfaces::srv::Link>(
+            "hyperspace/link",
+            std::bind(&TribunalRouterNode::handle_link, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        link_batch_service_ = this->create_service<hyperspace_interfaces::srv::LinkBatch>(
+            "hyperspace/link_batch",
+            std::bind(&TribunalRouterNode::handle_link_batch, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        unlink_service_ = this->create_service<hyperspace_interfaces::srv::Unlink>(
+            "hyperspace/unlink",
+            std::bind(&TribunalRouterNode::handle_unlink, this, std::placeholders::_1, std::placeholders::_2)
+        );
+
+        induce_edges_service_ = this->create_service<hyperspace_interfaces::srv::InduceEdges>(
+            "hyperspace/induce_edges",
+            std::bind(&TribunalRouterNode::handle_induce_edges, this, std::placeholders::_1, std::placeholders::_2)
         );
 
         metrics_pub_ = this->create_publisher<hyperspace_interfaces::msg::SystemStats>("hyperspace/metrics", 10);
@@ -414,6 +440,80 @@ private:
         response->resolved_context_ids = rec.resolved_context_ids;
     }
 
+    void handle_link(
+        const std::shared_ptr<hyperspace_interfaces::srv::Link::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::Link::Response> response
+    ) {
+        bool ok = client_->Link(
+            request->edge.source_id,
+            request->edge.target_id,
+            request->edge.relation.empty() ? "OWNS" : request->edge.relation,
+            request->edge.weight == 0.0f ? 1.0f : request->edge.weight,
+            request->collection
+        );
+        response->success = ok;
+        response->message = ok ? "Linked successfully." : "Failed to link edge.";
+    }
+
+    void handle_link_batch(
+        const std::shared_ptr<hyperspace_interfaces::srv::LinkBatch::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::LinkBatch::Response> response
+    ) {
+        std::vector<::hyperspace::EdgeItem> edges;
+        edges.reserve(request->edges.size());
+        for (const auto& e : request->edges) {
+            ::hyperspace::EdgeItem item;
+            item.set_source_id(e.source_id);
+            item.set_target_id(e.target_id);
+            item.set_relation(e.relation.empty() ? "OWNS" : e.relation);
+            item.set_weight(e.weight == 0.0f ? 1.0f : e.weight);
+            edges.push_back(item);
+        }
+        uint64_t count = client_->LinkBatch(edges, request->collection);
+        response->edges_linked = count;
+        response->success = (count > 0 || request->edges.empty());
+        response->message = "Batch linked " + std::to_string(count) + " edges.";
+    }
+
+    void handle_unlink(
+        const std::shared_ptr<hyperspace_interfaces::srv::Unlink::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::Unlink::Response> response
+    ) {
+        bool ok = client_->Unlink(
+            request->source_id,
+            request->target_id,
+            request->relation.empty() ? "OWNS" : request->relation,
+            request->collection
+        );
+        response->success = ok;
+        response->message = ok ? "Unlinked successfully." : "Failed to unlink edge.";
+    }
+
+    void handle_induce_edges(
+        const std::shared_ptr<hyperspace_interfaces::srv::InduceEdges::Request> request,
+        std::shared_ptr<hyperspace_interfaces::srv::InduceEdges::Response> response
+    ) {
+        std::vector<::hyperspace::MetadataInductionRuleProto> rules;
+        rules.reserve(request->rules.size());
+        for (const auto& r : request->rules) {
+            ::hyperspace::MetadataInductionRuleProto proto;
+            proto.set_field(r.field);
+            proto.set_rule_type(r.rule_type);
+            if (!r.target_field.empty()) {
+                proto.set_target_field(r.target_field);
+            }
+            proto.set_relation(r.relation.empty() ? "OWNS" : r.relation);
+            if (r.weight != 0.0f) {
+                proto.set_weight(r.weight);
+            }
+            rules.push_back(proto);
+        }
+        uint64_t created = client_->InduceEdgesFromMetadata(rules, request->collection);
+        response->edges_created = created;
+        response->success = true;
+        response->message = "Induced " + std::to_string(created) + " edges.";
+    }
+
     void publish_metrics() {
         // Monitor stream is tricky to bridge to topic directly in one call, 
         // normally we would keep the stream open. For simplicity, we just use the stats we have.
@@ -445,6 +545,10 @@ private:
     rclcpp::Service<hyperspace_interfaces::srv::CreateCollection>::SharedPtr create_collection_service_;
     rclcpp::Service<hyperspace_interfaces::srv::TriggerReconsolidation>::SharedPtr reconsolidation_service_;
     rclcpp::Service<hyperspace_interfaces::srv::VerifyGeneration>::SharedPtr verify_generation_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::Link>::SharedPtr link_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::LinkBatch>::SharedPtr link_batch_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::Unlink>::SharedPtr unlink_service_;
+    rclcpp::Service<hyperspace_interfaces::srv::InduceEdges>::SharedPtr induce_edges_service_;
 
     rclcpp::Publisher<hyperspace_interfaces::msg::SystemStats>::SharedPtr metrics_pub_;
     rclcpp::TimerBase::SharedPtr metrics_timer_;

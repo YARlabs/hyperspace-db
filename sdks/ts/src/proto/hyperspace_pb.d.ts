@@ -2105,6 +2105,224 @@ export namespace FindSemanticClustersResponse {
     }
 }
 
+export class EdgeItem extends jspb.Message { 
+    getSourceId(): number;
+    setSourceId(value: number): EdgeItem;
+    getTargetId(): number;
+    setTargetId(value: number): EdgeItem;
+    getRelation(): string;
+    setRelation(value: string): EdgeItem;
+    getWeight(): number;
+    setWeight(value: number): EdgeItem;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): EdgeItem.AsObject;
+    static toObject(includeInstance: boolean, msg: EdgeItem): EdgeItem.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: EdgeItem, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): EdgeItem;
+    static deserializeBinaryFromReader(message: EdgeItem, reader: jspb.BinaryReader): EdgeItem;
+}
+
+export namespace EdgeItem {
+    export type AsObject = {
+        sourceId: number,
+        targetId: number,
+        relation: string,
+        weight: number,
+    }
+}
+
+export class LinkRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): LinkRequest;
+
+    hasEdge(): boolean;
+    clearEdge(): void;
+    getEdge(): EdgeItem | undefined;
+    setEdge(value?: EdgeItem): LinkRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): LinkRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: LinkRequest): LinkRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: LinkRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): LinkRequest;
+    static deserializeBinaryFromReader(message: LinkRequest, reader: jspb.BinaryReader): LinkRequest;
+}
+
+export namespace LinkRequest {
+    export type AsObject = {
+        collection: string,
+        edge?: EdgeItem.AsObject,
+    }
+}
+
+export class LinkBatchRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): LinkBatchRequest;
+    clearEdgesList(): void;
+    getEdgesList(): Array<EdgeItem>;
+    setEdgesList(value: Array<EdgeItem>): LinkBatchRequest;
+    addEdges(value?: EdgeItem, index?: number): EdgeItem;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): LinkBatchRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: LinkBatchRequest): LinkBatchRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: LinkBatchRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): LinkBatchRequest;
+    static deserializeBinaryFromReader(message: LinkBatchRequest, reader: jspb.BinaryReader): LinkBatchRequest;
+}
+
+export namespace LinkBatchRequest {
+    export type AsObject = {
+        collection: string,
+        edgesList: Array<EdgeItem.AsObject>,
+    }
+}
+
+export class LinkBatchResponse extends jspb.Message { 
+    getSuccess(): boolean;
+    setSuccess(value: boolean): LinkBatchResponse;
+    getEdgesLinked(): number;
+    setEdgesLinked(value: number): LinkBatchResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): LinkBatchResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: LinkBatchResponse): LinkBatchResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: LinkBatchResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): LinkBatchResponse;
+    static deserializeBinaryFromReader(message: LinkBatchResponse, reader: jspb.BinaryReader): LinkBatchResponse;
+}
+
+export namespace LinkBatchResponse {
+    export type AsObject = {
+        success: boolean,
+        edgesLinked: number,
+    }
+}
+
+export class UnlinkRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): UnlinkRequest;
+    getSourceId(): number;
+    setSourceId(value: number): UnlinkRequest;
+    getTargetId(): number;
+    setTargetId(value: number): UnlinkRequest;
+    getRelation(): string;
+    setRelation(value: string): UnlinkRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): UnlinkRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: UnlinkRequest): UnlinkRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: UnlinkRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): UnlinkRequest;
+    static deserializeBinaryFromReader(message: UnlinkRequest, reader: jspb.BinaryReader): UnlinkRequest;
+}
+
+export namespace UnlinkRequest {
+    export type AsObject = {
+        collection: string,
+        sourceId: number,
+        targetId: number,
+        relation: string,
+    }
+}
+
+export class MetadataInductionRuleProto extends jspb.Message { 
+    getField(): string;
+    setField(value: string): MetadataInductionRuleProto;
+    getRuleType(): string;
+    setRuleType(value: string): MetadataInductionRuleProto;
+
+    hasTargetField(): boolean;
+    clearTargetField(): void;
+    getTargetField(): string | undefined;
+    setTargetField(value: string): MetadataInductionRuleProto;
+    getRelation(): string;
+    setRelation(value: string): MetadataInductionRuleProto;
+
+    hasWeight(): boolean;
+    clearWeight(): void;
+    getWeight(): number | undefined;
+    setWeight(value: number): MetadataInductionRuleProto;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): MetadataInductionRuleProto.AsObject;
+    static toObject(includeInstance: boolean, msg: MetadataInductionRuleProto): MetadataInductionRuleProto.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: MetadataInductionRuleProto, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): MetadataInductionRuleProto;
+    static deserializeBinaryFromReader(message: MetadataInductionRuleProto, reader: jspb.BinaryReader): MetadataInductionRuleProto;
+}
+
+export namespace MetadataInductionRuleProto {
+    export type AsObject = {
+        field: string,
+        ruleType: string,
+        targetField?: string,
+        relation: string,
+        weight?: number,
+    }
+}
+
+export class InduceEdgesRequest extends jspb.Message { 
+    getCollection(): string;
+    setCollection(value: string): InduceEdgesRequest;
+    clearRulesList(): void;
+    getRulesList(): Array<MetadataInductionRuleProto>;
+    setRulesList(value: Array<MetadataInductionRuleProto>): InduceEdgesRequest;
+    addRules(value?: MetadataInductionRuleProto, index?: number): MetadataInductionRuleProto;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): InduceEdgesRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: InduceEdgesRequest): InduceEdgesRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: InduceEdgesRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): InduceEdgesRequest;
+    static deserializeBinaryFromReader(message: InduceEdgesRequest, reader: jspb.BinaryReader): InduceEdgesRequest;
+}
+
+export namespace InduceEdgesRequest {
+    export type AsObject = {
+        collection: string,
+        rulesList: Array<MetadataInductionRuleProto.AsObject>,
+    }
+}
+
+export class InduceEdgesResponse extends jspb.Message { 
+    getSuccess(): boolean;
+    setSuccess(value: boolean): InduceEdgesResponse;
+    getEdgesCreated(): number;
+    setEdgesCreated(value: number): InduceEdgesResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): InduceEdgesResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: InduceEdgesResponse): InduceEdgesResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: InduceEdgesResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): InduceEdgesResponse;
+    static deserializeBinaryFromReader(message: InduceEdgesResponse, reader: jspb.BinaryReader): InduceEdgesResponse;
+}
+
+export namespace InduceEdgesResponse {
+    export type AsObject = {
+        success: boolean,
+        edgesCreated: number,
+    }
+}
+
 export class MetadataValue extends jspb.Message { 
 
     hasStringValue(): boolean;

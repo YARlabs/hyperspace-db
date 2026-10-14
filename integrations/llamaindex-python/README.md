@@ -70,6 +70,31 @@ filters = MetadataFilters(
 )
 ```
 
+### Native Vector-Graph (KAG) & Topology Linking
+
+Connect document nodes and entity concepts directly in the in-engine graph:
+
+```python
+# Explicit directed linking
+vector_store.link(source_id=1, target_id=2, relation="OWNS", weight=1.0)
+
+# Batch linking
+vector_store.link_batch([
+    {"source_id": 1, "target_id": 2, "relation": "OWNS", "weight": 1.0},
+    {"source_id": 2, "target_id": 3, "relation": "DEPENDS_ON", "weight": 0.95},
+])
+
+# Unlink edge
+vector_store.unlink(source_id=1, target_id=2, relation="OWNS")
+
+# Declarative edge induction from document metadata
+created = vector_store.induce_edges_from_metadata([
+    {"field": "file_path", "rule_type": "path_hierarchy", "relation": "CONTAINS"},
+    {"field": "parent_id", "rule_type": "foreign_key", "relation": "OWNS"},
+])
+print(f"Induced {created} explicit edges directly from metadata")
+```
+
 ---
 
 ## ⚡ Performance: Reflex-Level Speed

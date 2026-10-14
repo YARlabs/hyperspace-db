@@ -477,3 +477,49 @@ async function main() {
 main().catch(console.error);
 ```
 
+## Native Vector-Graph (KAG) & Topology Linking
+
+HyperspaceDB 4.1+ internalizes explicit directed labeled graph relations alongside vector embeddings.
+
+### 1. Linking Nodes (Explicit Directed Edges)
+
+```ts
+// Link two nodes with an explicit directed relation
+await client.link(1, 2, "OWNS", 1.0, "my_collection");
+
+// Batch link multiple edges into the CSR graph
+const edgesLinked = await client.linkBatch([
+  { sourceId: 1, targetId: 2, relation: "OWNS", weight: 1.0 },
+  { sourceId: 2, targetId: 3, relation: "DEPENDS_ON", weight: 0.95 },
+], "my_collection");
+console.log(`Loaded ${edgesLinked} edges into CSR graph`);
+
+// Delete an edge with zero-lag invalidation
+await client.unlink(1, 2, "OWNS", "my_collection");
+```
+
+### 2. Declarative Metadata-to-Edge Induction
+
+Generate topological graphs from existing metadata for 100k+ documents without rebuilding HNSW:
+
+```ts
+const edgesCreated = await client.induceEdgesFromMetadata([
+  // 1. Directory / file path hierarchy: /a/b/c -> /a/b
+  {
+    field: "file_path",
+    ruleType: "path_hierarchy",
+    relation: "CONTAINS",
+    weight: 1.0
+  },
+  // 2. Foreign-key entity links: parent_id -> target document id
+  {
+    field: "parent_id",
+    ruleType: "foreign_key",
+    relation: "OWNS",
+    weight: 0.9
+  }
+], "my_collection");
+
+console.log(`Induced ${edgesCreated} explicit edges directly from metadata`);
+```
+

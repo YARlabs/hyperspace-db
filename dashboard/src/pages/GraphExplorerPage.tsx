@@ -5,10 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Network, Orbit, RefreshCw, MousePointer2, Info, Search, ArrowRight, Activity, Layers } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import {
+    Network, Orbit, RefreshCw, MousePointer2, Info, Search, ArrowRight,
+    Activity, Layers, Sparkles, Plus, Trash2, CheckCircle2, UploadCloud, Compass
+} from "lucide-react"
 
 interface GraphNode {
     id: number;
@@ -36,6 +40,14 @@ interface GeometryAnalysis {
     recommendation: string;
 }
 
+interface InductionRule {
+    field: string;
+    rule_type: "path_hierarchy" | "foreign_key" | "exact_match";
+    target_field?: string;
+    relation: string;
+    weight: number;
+}
+
 export function GraphExplorerPage() {
     const [collection, setCollection] = useState("")
     const [nodeId, setNodeId] = useState("1")
@@ -44,6 +56,15 @@ export function GraphExplorerPage() {
     const [vizMode, setVizMode] = useState<"poincare" | "euclidean">("poincare")
     const [showMomentum, setShowMomentum] = useState(true)
     const [showSubsumption, setShowSubsumption] = useState(false)
+
+    // Induction Studio State
+    const [showStudio, setShowStudio] = useState(false)
+    const [studioTab, setStudioTab] = useState<"rules" | "batch" | "lorentz">("rules")
+    const [inductionRules, setInductionRules] = useState<InductionRule[]>([
+        { field: "path", rule_type: "path_hierarchy", relation: "CONTAINS", weight: 1.0 }
+    ])
+    const [batchCsv, setBatchCsv] = useState("")
+    const [studioStatus, setStudioStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
     const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
@@ -85,6 +106,61 @@ export function GraphExplorerPage() {
         mutationFn: () => api.get(`/collections/${collection}/analyze/geometry`),
         onSuccess: (res) => setAnalysis(res.data)
     })
+
+    const induceMutation = useMutation({
+        mutationFn: () =>
+            api.post(`/collections/${collection}/graph/induce`, { rules: inductionRules }),
+        onSuccess: (res: any) => {
+            const count = res.data?.edges_created ?? 0;
+            setStudioStatus({
+                type: "success",
+                message: `Topological induction complete: created ${count} explicit edges. Zero HNSW index re-indexing required.`
+            });
+            runNeighbors();
+        },
+        onError: (err: any) => {
+            setStudioStatus({
+                type: "error",
+                message: err?.response?.data || err.message || "Failed to induce edges from metadata"
+            });
+        }
+    });
+
+    const batchLinkMutation = useMutation({
+        mutationFn: () => {
+            const lines = batchCsv.trim().split("\n");
+            const edges = lines
+                .map(line => line.trim())
+                .filter(line => line.length > 0 && !line.startsWith("#"))
+                .map(line => {
+                    const parts = line.split(",").map(p => p.trim());
+                    return {
+                        source_id: Number(parts[0]),
+                        target_id: Number(parts[1]),
+                        relation: parts[2] || "OWNS",
+                        weight: parts[3] ? parseFloat(parts[3]) : 1.0,
+                    };
+                })
+                .filter(e => !isNaN(e.source_id) && !isNaN(e.target_id));
+
+            return api.post(`/collections/${collection}/graph/links`, { edges });
+        },
+        onSuccess: (res: any) => {
+            const count = res.data?.edges_linked ?? 0;
+            setStudioStatus({
+                type: "success",
+                message: `Successfully loaded ${count} explicit edges into CSR graph memory.`
+            });
+            setBatchCsv("");
+            runNeighbors();
+        },
+        onError: (err: any) => {
+            setStudioStatus({
+                type: "error",
+                message: err?.response?.data || err.message || "Failed to load batch edges"
+            });
+        }
+    });
 
     const runNeighbors = (id?: number) => {
         const targetId = id !== undefined ? id : Number(nodeId)
@@ -337,7 +413,18 @@ export function GraphExplorerPage() {
                     <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Graph Explorer</h1>
                     <p className="text-muted-foreground">Spatial manifold traversal and geometric analysis.</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="outline"
+                        className="border-indigo-500/40 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 hover:text-white rounded-xl shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all"
+                        onClick={() => {
+                            setStudioStatus(null);
+                            setShowStudio(true);
+                        }}
+                        disabled={!collection}
+                    >
+                        <Sparkles className="w-4 h-4 mr-2 text-indigo-400" /> Graph Induction Studio
+                    </Button>
                     <Tabs value={vizMode} onValueChange={(v: any) => setVizMode(v)} className="w-[300px]">
                         <TabsList className="grid w-full grid-cols-2 bg-zinc-900 border border-white/5">
                             <TabsTrigger value="poincare"><Orbit className="w-4 h-4 mr-2" /> Poincaré</TabsTrigger>
@@ -517,6 +604,302 @@ export function GraphExplorerPage() {
                     </Card>
                 </div>
             </div>
+
+            {/* Graph Induction Studio Modal */}
+            <Dialog open={showStudio} onOpenChange={setShowStudio}>
+                <DialogContent className="max-w-3xl bg-zinc-950 border border-white/10 text-white backdrop-blur-2xl shadow-2xl rounded-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader className="border-b border-white/5 pb-4">
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2 text-white">
+                            <Sparkles className="w-5 h-5 text-indigo-400" /> Graph Induction Studio
+                            {collection && (
+                                <Badge className="ml-2 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                    {collection}
+                                </Badge>
+                            )}
+                        </DialogTitle>
+                        <DialogDescription className="text-zinc-400 text-xs mt-1">
+                            Instant topological graph generation for 100k+ documents. Zero HNSW rebuilds, zero Python glue code.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {studioStatus && (
+                        <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 border ${
+                            studioStatus.type === "success"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                                : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+                        }`}>
+                            {studioStatus.type === "success" ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            ) : (
+                                <Info className="w-4 h-4 text-rose-400 shrink-0" />
+                            )}
+                            <span>{studioStatus.message}</span>
+                        </div>
+                    )}
+
+                    <Tabs value={studioTab} onValueChange={(v: any) => setStudioTab(v)} className="w-full mt-1">
+                        <TabsList className="grid grid-cols-3 bg-zinc-900 border border-white/5 p-1 rounded-xl">
+                            <TabsTrigger value="rules" className="rounded-lg text-xs">
+                                <Layers className="w-3.5 h-3.5 mr-1.5" /> Declarative Rules
+                            </TabsTrigger>
+                            <TabsTrigger value="batch" className="rounded-lg text-xs">
+                                <UploadCloud className="w-3.5 h-3.5 mr-1.5" /> CSV / Batch Import
+                            </TabsTrigger>
+                            <TabsTrigger value="lorentz" className="rounded-lg text-xs">
+                                <Compass className="w-3.5 h-3.5 mr-1.5" /> Geometric Cone
+                            </TabsTrigger>
+                        </TabsList>
+
+                        {/* TAB 1: RULES */}
+                        <TabsContent value="rules" className="space-y-4 pt-3">
+                            <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
+                                <div>
+                                    <p className="text-xs font-semibold text-zinc-200">Rule Templates</p>
+                                    <p className="text-[11px] text-zinc-400">Apply standard enterprise ontology patterns</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-[11px] h-8 bg-zinc-900 border-white/10 text-zinc-300 hover:text-white"
+                                        onClick={() => {
+                                            setInductionRules([
+                                                ...inductionRules,
+                                                { field: "file_path", rule_type: "path_hierarchy", relation: "CONTAINS", weight: 1.0 }
+                                            ]);
+                                        }}
+                                    >
+                                        + Path Hierarchy
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-[11px] h-8 bg-zinc-900 border-white/10 text-zinc-300 hover:text-white"
+                                        onClick={() => {
+                                            setInductionRules([
+                                                ...inductionRules,
+                                                { field: "parent_id", rule_type: "foreign_key", relation: "OWNS", weight: 1.0 }
+                                            ]);
+                                        }}
+                                    >
+                                        + Foreign Key
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-[11px] h-8 bg-zinc-900 border-white/10 text-zinc-300 hover:text-white"
+                                        onClick={() => {
+                                            setInductionRules([
+                                                ...inductionRules,
+                                                { field: "category", rule_type: "exact_match", relation: "REFERENCES", weight: 0.8 }
+                                            ]);
+                                        }}
+                                    >
+                                        + Exact Match
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                {inductionRules.map((rule, idx) => (
+                                    <div key={idx} className="bg-zinc-900/80 border border-white/5 rounded-xl p-3.5 space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">
+                                                Rule #{idx + 1}
+                                            </span>
+                                            {inductionRules.length > 1 && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-6 w-6 p-0 text-zinc-500 hover:text-rose-400"
+                                                    onClick={() => {
+                                                        setInductionRules(inductionRules.filter((_, i) => i !== idx));
+                                                    }}
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </Button>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-12 gap-3">
+                                            <div className="col-span-3 space-y-1">
+                                                <Label className="text-[10px] text-zinc-400 uppercase font-semibold">Metadata Field</Label>
+                                                <Input
+                                                    className="bg-black/40 border-white/10 text-xs h-8 text-white font-mono"
+                                                    value={rule.field}
+                                                    onChange={e => {
+                                                        const next = [...inductionRules];
+                                                        next[idx].field = e.target.value;
+                                                        setInductionRules(next);
+                                                    }}
+                                                    placeholder="path, parent_id"
+                                                />
+                                            </div>
+
+                                            <div className="col-span-3 space-y-1">
+                                                <Label className="text-[10px] text-zinc-400 uppercase font-semibold">Rule Type</Label>
+                                                <Select
+                                                    value={rule.rule_type}
+                                                    onValueChange={(val: any) => {
+                                                        const next = [...inductionRules];
+                                                        next[idx].rule_type = val;
+                                                        setInductionRules(next);
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="bg-black/40 border-white/10 text-xs h-8 text-white">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="bg-zinc-900 border-white/10 text-white text-xs">
+                                                        <SelectItem value="path_hierarchy">Path Hierarchy</SelectItem>
+                                                        <SelectItem value="foreign_key">Foreign Key</SelectItem>
+                                                        <SelectItem value="exact_match">Exact Match</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            <div className="col-span-3 space-y-1">
+                                                <Label className="text-[10px] text-zinc-400 uppercase font-semibold">Relation</Label>
+                                                <Select
+                                                    value={rule.relation}
+                                                    onValueChange={(val: any) => {
+                                                        const next = [...inductionRules];
+                                                        next[idx].relation = val;
+                                                        setInductionRules(next);
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="bg-black/40 border-white/10 text-xs h-8 text-white">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="bg-zinc-900 border-white/10 text-white text-xs">
+                                                        <SelectItem value="OWNS">OWNS</SelectItem>
+                                                        <SelectItem value="DEPENDS_ON">DEPENDS_ON</SelectItem>
+                                                        <SelectItem value="CONTAINS">CONTAINS</SelectItem>
+                                                        <SelectItem value="SUPERSEDES">SUPERSEDES</SelectItem>
+                                                        <SelectItem value="REFERENCES">REFERENCES</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            <div className="col-span-3 space-y-1">
+                                                <Label className="text-[10px] text-zinc-400 uppercase font-semibold">Weight</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="0.05"
+                                                    min="0.1"
+                                                    max="1.0"
+                                                    className="bg-black/40 border-white/10 text-xs h-8 text-white font-mono"
+                                                    value={rule.weight}
+                                                    onChange={e => {
+                                                        const next = [...inductionRules];
+                                                        next[idx].weight = parseFloat(e.target.value) || 1.0;
+                                                        setInductionRules(next);
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-between items-center pt-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-transparent border-dashed border-white/20 text-zinc-400 hover:text-white text-xs"
+                                    onClick={() => {
+                                        setInductionRules([
+                                            ...inductionRules,
+                                            { field: "category", rule_type: "exact_match", relation: "REFERENCES", weight: 1.0 }
+                                        ]);
+                                    }}
+                                >
+                                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Custom Rule
+                                </Button>
+
+                                <Button
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-5 rounded-xl shadow-lg"
+                                    onClick={() => induceMutation.mutate()}
+                                    disabled={induceMutation.isPending || !collection}
+                                >
+                                    {induceMutation.isPending ? (
+                                        <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" />
+                                    ) : (
+                                        <Sparkles className="w-3.5 h-3.5 mr-2" />
+                                    )}
+                                    Run Induction
+                                </Button>
+                            </div>
+                        </TabsContent>
+
+                        {/* TAB 2: CSV / BATCH */}
+                        <TabsContent value="batch" className="space-y-4 pt-3">
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <Label className="text-xs text-zinc-300">Paste Tuples (CSV format)</Label>
+                                    <span className="text-[10px] text-zinc-500 font-mono">Format: source_id, target_id, relation, weight</span>
+                                </div>
+                                <textarea
+                                    className="w-full h-44 bg-zinc-900 border border-white/10 rounded-xl p-3 text-xs text-zinc-200 font-mono focus:outline-none focus:border-indigo-500/50 resize-none"
+                                    placeholder={`1,2,OWNS,1.0\n2,3,DEPENDS_ON,0.95\n3,4,CONTAINS,1.0\n# Lines starting with # are ignored`}
+                                    value={batchCsv}
+                                    onChange={e => setBatchCsv(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="flex justify-end pt-1">
+                                <Button
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-5 rounded-xl shadow-lg"
+                                    onClick={() => batchLinkMutation.mutate()}
+                                    disabled={batchLinkMutation.isPending || !batchCsv.trim() || !collection}
+                                >
+                                    {batchLinkMutation.isPending ? (
+                                        <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" />
+                                    ) : (
+                                        <UploadCloud className="w-3.5 h-3.5 mr-2" />
+                                    )}
+                                    Load Topology Batch
+                                </Button>
+                            </div>
+                        </TabsContent>
+
+                        {/* TAB 3: LORENTZ GEOMETRIC CONE */}
+                        <TabsContent value="lorentz" className="space-y-4 pt-3">
+                            <div className="bg-purple-950/20 border border-purple-500/20 rounded-2xl p-4 space-y-3">
+                                <div className="flex items-center gap-2 text-purple-300 font-semibold text-xs">
+                                    <Compass className="w-4 h-4 text-purple-400" />
+                                    33D Lorentz Minkowski Light-Cone Subsumption
+                                </div>
+                                <p className="text-xs text-zinc-300 leading-relaxed">
+                                    In collections using <span className="font-mono text-purple-300">lorentz</span> or <span className="font-mono text-purple-300">hybrid</span> manifolds,
+                                    causal and conceptual hierarchies are encoded directly into the geometry without any manual labeling:
+                                </p>
+                                <div className="bg-black/60 border border-white/5 rounded-xl p-3 font-mono text-[11px] text-zinc-300 space-y-1">
+                                    <p className="text-indigo-300">⟨u, v⟩_L = -u₀v₀ + ∑_(i=1..32) uᵢvᵢ</p>
+                                    <p className="text-emerald-300">Cone Subsumption: ⟨u, v⟩_L ≥ -cosh(r)  AND  v₀ ≥ u₀</p>
+                                </div>
+                                <p className="text-[11px] text-zinc-400">
+                                    Parent concepts reside closer to the hyperboloid apex (lower time-coordinate u₀), while specific children expand downward into the future light cone.
+                                </p>
+                            </div>
+
+                            <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
+                                <span className="text-xs text-zinc-300">Activate Lorentz Subsumption View</span>
+                                <Button
+                                    size="sm"
+                                    className="bg-purple-600 hover:bg-purple-500 text-white text-xs rounded-xl"
+                                    onClick={() => {
+                                        setShowSubsumption(true);
+                                        setShowStudio(false);
+                                        runNeighbors();
+                                    }}
+                                >
+                                    Enable Hierarchy View
+                                </Button>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

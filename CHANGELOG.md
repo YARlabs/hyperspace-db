@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-10-14
+
+### Added
+* **Native Vector-Graph (KAG) Engine (`graph.rs`, `DynamicGraph`, `CompactEdge`)**:
+  * Unified Vector + Knowledge Graph architecture eliminating fragile dual-database (e.g. Qdrant + Neo4j) patterns.
+  * Property CSR (Compressed Sparse Row) engine with memory-mapped 12-byte packed edges (`target_node: u64`, `relation_id: u16`, `weight: f16`/`u16`).
+  * Bidirectional edge adjacency indexing with atomic relation string interning.
+  * Explicit graph edge manipulation via `link`, `link_batch`, and `unlink` APIs.
+  * Zero-lag persistence: Graph topology persists directly in collection snapshots via `graph.csr` alongside `.hyp` chunk stores.
+  * Sub-microsecond topological BFS and DFS traversals directly on top of HNSW vector search seed nodes.
+* **Declarative Metadata Induction Engine**:
+  * Automated graph edge generation across large-scale collections (100k+ documents) without manual edge labeling.
+  * Supported induction rules:
+    * `path_hierarchy`: Materializes parent/child tree edges (`CONTAINS`, `PARENT_OF`) from file or URI paths.
+    * `foreign_key`: Connects documents based on matching metadata keys (`source_key` -> `target_key`).
+    * `exact_match`: Generates bidirectional similarity cliques between documents sharing identical tags or categorical attributes.
+  * Server endpoints: gRPC `InduceEdges` and REST `POST /api/collections/{name}/graph/induce`.
+* **Minkowski Light-Cone Subsumption (`LorentzTreeProjector`)**:
+  * Automatic causal DAG derivation for 33D Lorentzian hyperbolic embeddings.
+  * Evaluates relativistic Minkowski interval $\Delta s^2 \le 0$ with $\Delta t > 0$ to construct conceptual subsumption hierarchies (`SUBSUMES`) directly into the CSR graph.
+* **Graph Induction Studio (Web Dashboard)**:
+  * Enhanced `/graph-explorer` UI with visual Rule Induction Builder, CSV Edge Batch Import modal, and Lorentz Light-Cone Projection triggers.
+* **Full Multi-Language SDK Synchronization**:
+  * **Rust** (`hyperspace-sdk`): `link`, `link_batch`, `unlink`, `induce_edges_from_metadata`.
+  * **Python** (`hyperspace-sdk`): `link`, `link_batch`, `unlink`, `induce_edges_from_metadata`.
+  * **TypeScript** (`hyperspace-sdk-ts`): `link`, `linkBatch`, `unlink`, `induceEdgesFromMetadata`.
+  * **Go** (`hyperspace-sdk-go`): `Link`, `LinkBatch`, `Unlink`, `InduceEdgesFromMetadata`.
+  * **C++** (`hyperspace-sdk-cpp`): `link`, `link_batch`, `unlink`, `induce_edges_from_metadata`.
+  * **Dart** (`hyperspace_sdk`): `link`, `linkBatch`, `unlink`, `induceEdgesFromMetadata`.
+  * **ROS2** (`hyperspace_interfaces`, `hyperspace_ros2`): Messages `EdgeItem`, `MetadataInductionRule`, services `Link`, `LinkBatch`, `Unlink`, `InduceEdges`.
+* **Ecosystem & Integrations v4.1.0 Upgrade**:
+  * `hyperspace-memory-py` & `hyperspace-memory-ts`: Graph linking and declarative metadata induction in cognitive memory.
+  * `mcp-hyperspacedb` & `mcp-hyperspace-memory`: New MCP tools `hyperspace_link`, `hyperspace_link_batch`, `hyperspace_unlink`, `hyperspace_induce_edges`, `memory_link`, `memory_unlink`, `memory_induce_edges`.
+  * `langchain-python` & `langchain-js`: VectorStore-level KAG graph methods and verification bindings.
+  * `llamaindex-python` & `llamaindex-js`: VectorStore-level KAG graph methods.
+  * `n8n-nodes-hyperspacedb`: Standalone Graph resource supporting `link`, `linkBatch`, `unlink`, and `induceEdges`.
+  * `hyperspacedb-skills`: Comprehensive agent guide for KAG graph operations and rule induction.
+
 ## [4.0.2] - 2026-10-13
 
 ### Added

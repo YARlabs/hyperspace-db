@@ -345,6 +345,28 @@ function deserialize_hyperspace_HealthCheckResponse(buffer_arg) {
   return hyperspace_pb.HealthCheckResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_InduceEdgesRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.InduceEdgesRequest)) {
+    throw new Error('Expected argument of type hyperspace.InduceEdgesRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_InduceEdgesRequest(buffer_arg) {
+  return hyperspace_pb.InduceEdgesRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_InduceEdgesResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.InduceEdgesResponse)) {
+    throw new Error('Expected argument of type hyperspace.InduceEdgesResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_InduceEdgesResponse(buffer_arg) {
+  return hyperspace_pb.InduceEdgesResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_InsertRequest(arg) {
   if (!(arg instanceof hyperspace_pb.InsertRequest)) {
     throw new Error('Expected argument of type hyperspace.InsertRequest');
@@ -376,6 +398,39 @@ function serialize_hyperspace_InsertTextRequest(arg) {
 
 function deserialize_hyperspace_InsertTextRequest(buffer_arg) {
   return hyperspace_pb.InsertTextRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_LinkBatchRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.LinkBatchRequest)) {
+    throw new Error('Expected argument of type hyperspace.LinkBatchRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_LinkBatchRequest(buffer_arg) {
+  return hyperspace_pb.LinkBatchRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_LinkBatchResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.LinkBatchResponse)) {
+    throw new Error('Expected argument of type hyperspace.LinkBatchResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_LinkBatchResponse(buffer_arg) {
+  return hyperspace_pb.LinkBatchResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_LinkRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.LinkRequest)) {
+    throw new Error('Expected argument of type hyperspace.LinkRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_LinkRequest(buffer_arg) {
+  return hyperspace_pb.LinkRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_ListCollectionsResponse(arg) {
@@ -629,6 +684,17 @@ function serialize_hyperspace_UnfreezeCollectionRequest(arg) {
 
 function deserialize_hyperspace_UnfreezeCollectionRequest(buffer_arg) {
   return hyperspace_pb.UnfreezeCollectionRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_UnlinkRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.UnlinkRequest)) {
+    throw new Error('Expected argument of type hyperspace.UnlinkRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_UnlinkRequest(buffer_arg) {
+  return hyperspace_pb.UnlinkRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_UpdatePayloadRequest(arg) {
@@ -970,6 +1036,51 @@ getNode: {
     requestDeserialize: deserialize_hyperspace_GetSubsumptionTreeRequest,
     responseSerialize: serialize_hyperspace_GetSubsumptionTreeResponse,
     responseDeserialize: deserialize_hyperspace_GetSubsumptionTreeResponse,
+  },
+  // Native Graph Linkage & Induction API (v4.1)
+link: {
+    path: '/hyperspace.Database/Link',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.LinkRequest,
+    responseType: hyperspace_pb.StatusResponse,
+    requestSerialize: serialize_hyperspace_LinkRequest,
+    requestDeserialize: deserialize_hyperspace_LinkRequest,
+    responseSerialize: serialize_hyperspace_StatusResponse,
+    responseDeserialize: deserialize_hyperspace_StatusResponse,
+  },
+  linkBatch: {
+    path: '/hyperspace.Database/LinkBatch',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.LinkBatchRequest,
+    responseType: hyperspace_pb.LinkBatchResponse,
+    requestSerialize: serialize_hyperspace_LinkBatchRequest,
+    requestDeserialize: deserialize_hyperspace_LinkBatchRequest,
+    responseSerialize: serialize_hyperspace_LinkBatchResponse,
+    responseDeserialize: deserialize_hyperspace_LinkBatchResponse,
+  },
+  unlink: {
+    path: '/hyperspace.Database/Unlink',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.UnlinkRequest,
+    responseType: hyperspace_pb.StatusResponse,
+    requestSerialize: serialize_hyperspace_UnlinkRequest,
+    requestDeserialize: deserialize_hyperspace_UnlinkRequest,
+    responseSerialize: serialize_hyperspace_StatusResponse,
+    responseDeserialize: deserialize_hyperspace_StatusResponse,
+  },
+  induceEdgesFromMetadata: {
+    path: '/hyperspace.Database/InduceEdgesFromMetadata',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.InduceEdgesRequest,
+    responseType: hyperspace_pb.InduceEdgesResponse,
+    requestSerialize: serialize_hyperspace_InduceEdgesRequest,
+    requestDeserialize: deserialize_hyperspace_InduceEdgesRequest,
+    responseSerialize: serialize_hyperspace_InduceEdgesResponse,
+    responseDeserialize: deserialize_hyperspace_InduceEdgesResponse,
   },
   // Stream statistics for TUI (Global or Collection tailored)
 monitor: {

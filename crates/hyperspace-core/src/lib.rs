@@ -461,6 +461,32 @@ pub trait Collection: Send + Sync + 'static {
         max_nodes: usize,
     ) -> Result<Vec<Vec<u32>>, String>;
 
+    /// Links two nodes with an explicit directed labeled edge.
+    fn graph_link(&self, source_id: u32, target_id: u32, relation: u16, weight: f32) -> Result<(), String> {
+        let _ = (source_id, target_id, relation, weight);
+        Ok(())
+    }
+
+    /// Batch inserts multiple directed labeled edges.
+    fn graph_link_batch(&self, edges: &[(u32, u32, u16, f32)]) -> Result<usize, String> {
+        for &(src, tgt, rel, w) in edges {
+            self.graph_link(src, tgt, rel, w)?;
+        }
+        Ok(edges.len())
+    }
+
+    /// Deletes an explicit directed edge with 0 μs invalidation lag.
+    fn graph_unlink(&self, source_id: u32, target_id: u32, relation: u16) -> Result<bool, String> {
+        let _ = (source_id, target_id, relation);
+        Ok(false)
+    }
+
+    /// Induces explicit edges from existing metadata fields according to declarative rules.
+    fn graph_induce_from_metadata(&self, rules: &[MetadataInductionRule]) -> Result<usize, String> {
+        let _ = rules;
+        Ok(0)
+    }
+
     /// Repartitions immutable chunks using SuperKMeans into Voronoi partitions.
     fn compact_semantic_chunks(&self, target_partitions: usize) -> Result<String, String> {
         let _ = target_partitions;

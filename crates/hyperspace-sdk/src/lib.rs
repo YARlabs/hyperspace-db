@@ -6,15 +6,16 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
     BatchInsertRequest, BatchSearchRequest, CollectionSchema, CollectionSummary, CountRequest,
-    DurabilityLevel, EventMessage, EventSubscriptionRequest, EventType, Filter, FilterAnd,
+    DurabilityLevel, EdgeItem, EventMessage, EventSubscriptionRequest, EventType, Filter, FilterAnd,
     FilterNot, FilterOr, FindSemanticClustersRequest, FindSemanticClustersResponse,
     GetConceptParentsRequest, GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse,
     GetNodeRequest, GetPointsRequest, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse,
-    GraphNode, InBall, InBox, InCone, InsertRequest, InsertTextRequest, Match, MrlLayer, Prefix,
-    Range, ScrollRequest, SearchRequest, SearchResponse, SearchResult, SearchResult as ResultItem,
-    SearchTextRequest, TraverseRequest, TraverseResponse, UpdatePayloadRequest, VectorComponent,
-    VectorData, VectorizeRequest, VectorizeResponse, VerifyGenerationRequest,
-    VerifyGenerationResponse,
+    GraphNode, InBall, InBox, InCone, InduceEdgesRequest, InduceEdgesResponse, InsertRequest,
+    InsertTextRequest, LinkBatchRequest, LinkBatchResponse, LinkRequest, Match,
+    MetadataInductionRuleProto, MrlLayer, Prefix, Range, ScrollRequest, SearchRequest,
+    SearchResponse, SearchResult, SearchResult as ResultItem, SearchTextRequest, TraverseRequest,
+    TraverseResponse, UnlinkRequest, UpdatePayloadRequest, VectorComponent, VectorData,
+    VectorizeRequest, VectorizeResponse, VerifyGenerationRequest, VerifyGenerationResponse,
 };
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
@@ -1499,6 +1500,88 @@ impl Client {
         };
         let resp = self.inner.get_concept_parents(req).await?;
         Ok(resp.into_inner())
+    }
+
+    /// Creates an explicit directed labeled edge between two nodes in the collection topology.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn link(
+        &mut self,
+        source_id: u32,
+        target_id: u32,
+        relation: impl Into<String>,
+        weight: f32,
+        collection: impl Into<String>,
+    ) -> Result<(), tonic::Status> {
+        let req = LinkRequest {
+            collection: collection.into(),
+            edge: Some(EdgeItem {
+                source_id,
+                target_id,
+                relation: relation.into(),
+                weight,
+            }),
+        };
+        self.inner.link(req).await?;
+        Ok(())
+    }
+
+    /// Batch inserts multiple directed labeled edges into the collection topology.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn link_batch(
+        &mut self,
+        edges: Vec<EdgeItem>,
+        collection: impl Into<String>,
+    ) -> Result<u64, tonic::Status> {
+        let req = LinkBatchRequest {
+            collection: collection.into(),
+            edges,
+        };
+        let resp = self.inner.link_batch(req).await?;
+        Ok(resp.into_inner().edges_linked)
+    }
+
+    /// Deletes an explicit directed labeled edge with zero-lag invalidation.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn unlink(
+        &mut self,
+        source_id: u32,
+        target_id: u32,
+        relation: impl Into<String>,
+        collection: impl Into<String>,
+    ) -> Result<bool, tonic::Status> {
+        let req = UnlinkRequest {
+            collection: collection.into(),
+            source_id,
+            target_id,
+            relation: relation.into(),
+        };
+        let resp = self.inner.unlink(req).await?;
+        Ok(resp.into_inner().status == "OK")
+    }
+
+    /// Induces explicit edges from existing document metadata according to declarative rules.
+    ///
+    /// Supported rule types: `"path_hierarchy"`, `"foreign_key"`, `"exact_match"`.
+    ///
+    /// # Errors
+    /// Returns error if request fails.
+    pub async fn induce_edges_from_metadata(
+        &mut self,
+        rules: Vec<MetadataInductionRuleProto>,
+        collection: impl Into<String>,
+    ) -> Result<u64, tonic::Status> {
+        let req = InduceEdgesRequest {
+            collection: collection.into(),
+            rules,
+        };
+        let resp = self.inner.induce_edges_from_metadata(req).await?;
+        Ok(resp.into_inner().edges_created)
     }
 
     /// Subscribes to CDC event stream (`VectorInserted`/`VectorDeleted`).

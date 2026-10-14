@@ -305,6 +305,18 @@ pub async fn start_http_server(
             "/api/collections/{name}/graph/explore",
             get(graph_explore_http),
         )
+        .route(
+            "/api/collections/{name}/graph/link",
+            post(graph_link_http).delete(graph_unlink_http),
+        )
+        .route(
+            "/api/collections/{name}/graph/links",
+            post(graph_link_batch_http),
+        )
+        .route(
+            "/api/collections/{name}/graph/induce",
+            post(graph_induce_http),
+        )
         // Tribunal Router (Geometric Hallucination Prevention)
         .route(
             "/api/collections/{name}/verify-generation",
@@ -2403,6 +2415,140 @@ async fn graph_get_subsumption_tree(
                     .collect();
                 Json(nodes).into_response()
             }
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+// --- Native Vector-Graph (KAG) HTTP Handlers ---
+
+#[derive(serde::Deserialize)]
+pub struct HttpLinkRequest {
+    pub source_id: u32,
+    pub target_id: u32,
+    pub relation: String,
+    #[serde(default = "default_link_weight")]
+    pub weight: f32,
+}
+
+fn default_link_weight() -> f32 {
+    1.0
+}
+
+#[derive(serde::Deserialize)]
+pub struct HttpLinkBatchRequest {
+    pub edges: Vec<HttpLinkRequest>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct HttpUnlinkRequest {
+    pub source_id: u32,
+    pub target_id: u32,
+    pub relation: String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct HttpInduceRequest {
+    pub rules: Vec<hyperspace_core::graph::MetadataInductionRule>,
+}
+
+async fn graph_link_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<HttpLinkRequest>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        let rel = hyperspace_core::graph::EdgeRelation::from_str_label(&payload.relation);
+        match col.graph_link(payload.source_id, payload.target_id, rel, payload.weight) {
+            Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "status": "OK" }))).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn graph_link_batch_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<HttpLinkBatchRequest>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        let edges: Vec<(u32, u32, u16, f32)> = payload
+            .edges
+            .into_iter()
+            .map(|e| {
+                let rel = hyperspace_core::graph::EdgeRelation::from_str_label(&e.relation);
+                (e.source_id, e.target_id, rel, e.weight)
+            })
+            .collect();
+        match col.graph_link_batch(&edges) {
+            Ok(count) => (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "OK", "edges_linked": count })),
+            )
+                .into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn graph_unlink_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<HttpUnlinkRequest>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        let rel = hyperspace_core::graph::EdgeRelation::from_str_label(&payload.relation);
+        match col.graph_unlink(payload.source_id, payload.target_id, rel) {
+            Ok(removed) => (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": if removed { "OK" } else { "NOT_FOUND" } })),
+            )
+                .into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Collection not found").into_response()
+    }
+}
+
+async fn graph_induce_http(
+    Path(name): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(payload): Json<HttpInduceRequest>,
+) -> impl IntoResponse {
+    if let Some(col) = manager.get(&ctx.user_id, &name).await {
+        match col.graph_induce_from_metadata(&payload.rules) {
+            Ok(count) => (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "OK", "edges_created": count })),
+            )
+                .into_response(),
             Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
         }
     } else {

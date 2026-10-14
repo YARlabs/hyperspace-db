@@ -28,6 +28,11 @@ Server-side vectorization node.
 Direct API access for management and cognitive routing tasks:
 - **Query Planner**: Pre-evaluates intent clarity, generates clarifying questions, and splits compound questions for parallel retrieval.
 - **Verify Generation**: Anti-hallucination mathematical verification of LLM drafts against source context boundaries (`trust_score`, `is_hallucination`).
+- **Native Vector-Graph (KAG)**:
+  - `link`: Create directed labeled edges between documents (`source_id`, `target_id`, `relation`, `weight`).
+  - `linkBatch`: Bulk ingest graph edges from JSON array.
+  - `unlink`: Remove edges between documents.
+  - `induceEdges`: Declarative rule-based graph induction from document metadata (`path_hierarchy`, `foreign_key`, `exact_match`).
 - Create/Delete Collections
 - Get Stats & Cache Management
 - Direct Vector/Text Insertion

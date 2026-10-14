@@ -116,7 +116,7 @@ When running a secured local engine while leveraging continuous cloud embeddings
 
 ---
 
-## 🧩 Complete Tool Inventory (27 Tools)
+## 🧩 Complete Tool Inventory (31 Tools)
 
 ### 📊 Data Plane Tools
 
@@ -135,6 +135,10 @@ When running a secured local engine while leveraging continuous cloud embeddings
 
 | Tool | Required Parameters | Optional Parameters | Description & Return Value |
 |---|---|---|---|
+| `hyperspace_link` | `collection`, `source_id`, `target_id` | `relation`, `weight` | Explicitly creates a directed, labeled, weighted edge between two entities in the CSR vector-graph. |
+| `hyperspace_link_batch` | `collection`, `edges` | — | Atomically bulk-inserts explicit directed edges in the CSR graph. |
+| `hyperspace_unlink` | `collection`, `source_id`, `target_id` | `relation` | Deletes an explicit directed edge with zero-lag invalidation. |
+| `hyperspace_induce_edges` | `collection`, `rules` | — | Declaratively induces graph edges from existing document metadata (`path_hierarchy`, `foreign_key`, `exact_match`). |
 | `hyperspace_graph_traverse` | `collection`, `start_id` | `max_depth`, `max_nodes` | Multi-hop BFS graph traversal starting from `start_id`. Returns graph paths and visited nodes. |
 | `hyperspace_explore_graph` | `collection`, `start_id` | `max_depth`, `max_nodes` | Traverses graph and outputs nodes and links formatted for visual renderers. |
 | `hyperspace_get_neighbors` | `collection`, `id` | `layer`, `limit` | Returns local connectivity and neighboring nodes at a given HNSW graph layer. |

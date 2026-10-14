@@ -521,6 +521,70 @@ class HyperspaceClient {
     return _stub.getSubsumptionTree(req);
   }
 
+  /// Creates an explicit directed edge between source and target entities.
+  Future<bool> link({
+    required int sourceId,
+    required int targetId,
+    String relation = 'OWNS',
+    double weight = 1.0,
+    String collection = '',
+  }) async {
+    final req = LinkRequest(
+      collection: collection,
+      edge: EdgeItem(
+        sourceId: sourceId,
+        targetId: targetId,
+        relation: relation,
+        weight: weight,
+      ),
+    );
+    final resp = await _stub.link(req);
+    return resp.status == 'OK';
+  }
+
+  /// Bulk-inserts explicit directed edges in a single atomic gRPC call.
+  Future<int> linkBatch(
+    List<EdgeItem> edges, {
+    String collection = '',
+  }) async {
+    final req = LinkBatchRequest(
+      collection: collection,
+      edges: edges,
+    );
+    final resp = await _stub.linkBatch(req);
+    return resp.edgesLinked.toInt();
+  }
+
+  /// Deletes an explicit directed edge with zero-lag invalidation.
+  Future<bool> unlink({
+    required int sourceId,
+    required int targetId,
+    String relation = 'OWNS',
+    String collection = '',
+  }) async {
+    final req = UnlinkRequest(
+      collection: collection,
+      sourceId: sourceId,
+      targetId: targetId,
+      relation: relation,
+    );
+    final resp = await _stub.unlink(req);
+    return resp.status == 'OK';
+  }
+
+  /// Automatically induces explicit edges from existing metadata fields according to declarative rules.
+  Future<int> induceEdgesFromMetadata(
+    List<MetadataInductionRuleProto> rules, {
+    String collection = '',
+  }) async {
+    final req = InduceEdgesRequest(
+      collection: collection,
+      rules: rules,
+    );
+    final resp = await _stub.induceEdgesFromMetadata(req);
+    return resp.edgesCreated.toInt();
+  }
+
   // Admin & Sync API
   Future<bool> rebuildIndex(String name) async {
     final req = RebuildIndexRequest(name: name);
@@ -864,49 +928,29 @@ class HyperspaceClient {
     double? maxDistanceThreshold,
     bool checkGeodesic = true,
   }) async {
-    final method = ClientMethod<List<int>, List<int>>(
-      '/hyperspace.Database/VerifyGeneration',
-      (v) => v,
-      (v) => v,
-    );
-
-    // Build binary protobuf request
-    final bb = BytesBuilder();
-    // Use raw gRPC channel call
     try {
-      // Create request payload
-      final reqMap = <String, dynamic>{
-        'collection': collection,
-        'llm_answer': llmAnswer,
-        'context_ids': contextIds,
-        'check_geodesic': checkGeodesic,
-        if (maxDistanceThreshold != null) 'max_distance_threshold': maxDistanceThreshold,
-      };
-      final jsonPayload = utf8.encode(jsonEncode(reqMap));
-
-      // Call gRPC endpoint
-      final call = _channel.createCall(
-        method,
-        Stream.fromIterable([jsonPayload]),
-        options: _callOptions(),
+      final req = VerifyGenerationRequest(
+        collection: collection,
+        llmAnswer: llmAnswer,
+        contextIds: contextIds,
+        checkGeodesic: checkGeodesic,
+        maxDistanceThreshold: maxDistanceThreshold,
       );
-      final rawResp = await call.first;
-      final parsed = jsonDecode(utf8.decode(rawResp)) as Map<String, dynamic>;
-      final isValid = parsed['is_valid'] as bool? ?? true;
+      final resp = await _stub.verifyGeneration(req);
+      final isValid = resp.isValid;
       return VerificationResult(
-        trustScore: (parsed['trust_score'] as num?)?.toDouble() ?? 0.0,
+        trustScore: resp.trustScore,
         isHallucination: !isValid,
         isValid: isValid,
-        minDistance: (parsed['min_distance'] as num?)?.toDouble() ?? 0.0,
-        avgDistance: (parsed['avg_distance'] as num?)?.toDouble() ?? 0.0,
-        geodesicDistance: (parsed['geodesic_distance'] as num?)?.toDouble() ?? 0.0,
-        geodesicHops: (parsed['geodesic_hops'] as num?)?.toInt() ?? 0,
-        coneSatisfied: parsed['cone_satisfied'] as bool? ?? true,
-        details: parsed['details'] as String? ?? '',
-        resolvedContextIds: (parsed['resolved_context_ids'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
+        minDistance: resp.minDistance,
+        avgDistance: resp.avgDistance,
+        geodesicDistance: resp.geodesicDistance,
+        geodesicHops: resp.geodesicHops,
+        coneSatisfied: resp.coneSatisfied,
+        details: resp.details,
+        resolvedContextIds: resp.resolvedContextIds.toList(),
       );
     } catch (e) {
-      // Return safe fallback result on error
       return VerificationResult(
         trustScore: 0.0,
         isHallucination: true,

@@ -1008,3 +1008,114 @@ func (c *HyperspaceClient) VerifyGeneration(ctx context.Context, llmAnswer strin
 	}, nil
 }
 
+// EdgeInput represents an explicit directed edge definition.
+type EdgeInput struct {
+	SourceID uint32  `json:"source_id"`
+	TargetID uint32  `json:"target_id"`
+	Relation string  `json:"relation,omitempty"`
+	Weight   float32 `json:"weight,omitempty"`
+}
+
+// MetadataInductionRule specifies a declarative rule for edge induction from document metadata.
+type MetadataInductionRule struct {
+	Field       string   `json:"field"`
+	RuleType    string   `json:"rule_type"` // "path_hierarchy", "foreign_key", "exact_match"
+	TargetField *string  `json:"target_field,omitempty"`
+	Relation    string   `json:"relation,omitempty"`
+	Weight      *float32 `json:"weight,omitempty"`
+}
+
+// Link creates an explicit directed edge between source and target entities.
+func (c *HyperspaceClient) Link(ctx context.Context, collection string, sourceID, targetID uint32, relation string, weight float32) error {
+	if relation == "" {
+		relation = "OWNS"
+	}
+	if weight == 0 {
+		weight = 1.0
+	}
+	req := &pb.LinkRequest{
+		Collection: collection,
+		Edge: &pb.EdgeItem{
+			SourceId: sourceID,
+			TargetId: targetID,
+			Relation: relation,
+			Weight:   weight,
+		},
+	}
+	_, err := c.client.Link(c.withContext(ctx), req)
+	return err
+}
+
+// LinkBatch bulk-inserts explicit directed edges in a single atomic gRPC call.
+func (c *HyperspaceClient) LinkBatch(ctx context.Context, collection string, edges []EdgeInput) (uint64, error) {
+	pbEdges := make([]*pb.EdgeItem, len(edges))
+	for i, e := range edges {
+		rel := e.Relation
+		if rel == "" {
+			rel = "OWNS"
+		}
+		w := e.Weight
+		if w == 0 {
+			w = 1.0
+		}
+		pbEdges[i] = &pb.EdgeItem{
+			SourceId: e.SourceID,
+			TargetId: e.TargetID,
+			Relation: rel,
+			Weight:   w,
+		}
+	}
+	req := &pb.LinkBatchRequest{
+		Collection: collection,
+		Edges:      pbEdges,
+	}
+	resp, err := c.client.LinkBatch(c.withContext(ctx), req)
+	if err != nil {
+		return 0, err
+	}
+	return resp.EdgesLinked, nil
+}
+
+// Unlink deletes an explicit directed edge with zero-lag invalidation.
+func (c *HyperspaceClient) Unlink(ctx context.Context, collection string, sourceID, targetID uint32, relation string) error {
+	if relation == "" {
+		relation = "OWNS"
+	}
+	req := &pb.UnlinkRequest{
+		Collection: collection,
+		SourceId:   sourceID,
+		TargetId:   targetID,
+		Relation:   relation,
+	}
+	_, err := c.client.Unlink(c.withContext(ctx), req)
+	return err
+}
+
+// InduceEdgesFromMetadata automatically induces explicit edges from existing metadata fields according to declarative rules.
+func (c *HyperspaceClient) InduceEdgesFromMetadata(ctx context.Context, collection string, rules []MetadataInductionRule) (uint64, error) {
+	pbRules := make([]*pb.MetadataInductionRuleProto, len(rules))
+	for i, r := range rules {
+		rel := r.Relation
+		if rel == "" {
+			rel = "OWNS"
+		}
+		pbRules[i] = &pb.MetadataInductionRuleProto{
+			Field:       r.Field,
+			RuleType:    r.RuleType,
+			TargetField: r.TargetField,
+			Relation:    rel,
+			Weight:      r.Weight,
+		}
+	}
+	req := &pb.InduceEdgesRequest{
+		Collection: collection,
+		Rules:      pbRules,
+	}
+	resp, err := c.client.InduceEdgesFromMetadata(c.withContext(ctx), req)
+	if err != nil {
+		return 0, err
+	}
+	return resp.EdgesCreated, nil
+}
+
+

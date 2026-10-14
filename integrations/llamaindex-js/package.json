@@ -1,6 +1,6 @@
 {
   "name": "llamaindex-hyperspace",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "LlamaIndex integration for HyperspaceDB",
   "homepage": "https://yar.ink",
   "author": "YARlabs",

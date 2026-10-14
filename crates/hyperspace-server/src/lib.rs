@@ -88,11 +88,12 @@ use hyperspace_proto::hyperspace::{
     FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
     GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
     GetPointsRequest, GetPointsResponse, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse,
-    GraphCluster, GraphNode, HealthCheckResponse, InsertRequest, InsertResponse, InsertTextRequest,
-    ListCollectionsResponse, MetadataValue, MonitorRequest, ScrollRequest, ScrollResponse,
+    GraphCluster, GraphNode, HealthCheckResponse, InduceEdgesRequest, InduceEdgesResponse,
+    InsertRequest, InsertResponse, InsertTextRequest, LinkBatchRequest, LinkBatchResponse,
+    LinkRequest, ListCollectionsResponse, MetadataValue, MonitorRequest, ScrollRequest, ScrollResponse,
     SearchMultiCollectionRequest, SearchMultiCollectionResponse, SearchRequest, SearchResponse,
     SearchResult, SearchTextRequest, SyncHandshakeRequest, SyncHandshakeResponse, SyncPullRequest,
-    SyncPushResponse, SyncVectorData, SystemStats, TraverseRequest, TraverseResponse,
+    SyncPushResponse, SyncVectorData, SystemStats, TraverseRequest, TraverseResponse, UnlinkRequest,
     UpdatePayloadRequest, VectorData, VectorDeletedEvent, VectorInsertedEvent, VectorizeRequest,
     VectorizeResponse, VerifyGenerationRequest, VerifyGenerationResponse,
 };
@@ -3009,6 +3010,113 @@ impl Database for HyperspaceService {
             .map(|id| build_graph_node(&col, id, 0))
             .collect();
         Ok(Response::new(GetSubsumptionTreeResponse { nodes }))
+    }
+
+    async fn link(
+        &self,
+        request: Request<LinkRequest>,
+    ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let ctx = get_grpc_ctx(&request);
+        let req = request.into_inner();
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+        let Some(col) = self.manager.get(&owner, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let Some(edge) = req.edge else {
+            return Err(Status::invalid_argument("Missing edge definition"));
+        };
+        let relation = hyperspace_core::graph::EdgeRelation::from_str_label(&edge.relation);
+        col.graph_link(edge.source_id, edge.target_id, relation, edge.weight)
+            .map_err(Status::internal)?;
+        Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
+            status: "OK".to_string(),
+        }))
+    }
+
+    async fn link_batch(
+        &self,
+        request: Request<LinkBatchRequest>,
+    ) -> Result<Response<LinkBatchResponse>, Status> {
+        let ctx = get_grpc_ctx(&request);
+        let req = request.into_inner();
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+        let Some(col) = self.manager.get(&owner, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let edges: Vec<(u32, u32, u16, f32)> = req
+            .edges
+            .into_iter()
+            .map(|e| {
+                let rel = hyperspace_core::graph::EdgeRelation::from_str_label(&e.relation);
+                (e.source_id, e.target_id, rel, e.weight)
+            })
+            .collect();
+        let linked = col.graph_link_batch(&edges).map_err(Status::internal)?;
+        Ok(Response::new(LinkBatchResponse {
+            success: true,
+            edges_linked: linked as u64,
+        }))
+    }
+
+    async fn unlink(
+        &self,
+        request: Request<UnlinkRequest>,
+    ) -> Result<Response<hyperspace_proto::hyperspace::StatusResponse>, Status> {
+        let ctx = get_grpc_ctx(&request);
+        let req = request.into_inner();
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+        let Some(col) = self.manager.get(&owner, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let rel = hyperspace_core::graph::EdgeRelation::from_str_label(&req.relation);
+        let removed = col
+            .graph_unlink(req.source_id, req.target_id, rel)
+            .map_err(Status::internal)?;
+        Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
+            status: if removed { "OK".to_string() } else { "NOT_FOUND".to_string() },
+        }))
+    }
+
+    async fn induce_edges_from_metadata(
+        &self,
+        request: Request<InduceEdgesRequest>,
+    ) -> Result<Response<InduceEdgesResponse>, Status> {
+        let ctx = get_grpc_ctx(&request);
+        let req = request.into_inner();
+        let (owner, col_name) =
+            resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
+        let Some(col) = self.manager.get(&owner, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let rules: Vec<hyperspace_core::graph::MetadataInductionRule> = req
+            .rules
+            .into_iter()
+            .map(|r| hyperspace_core::graph::MetadataInductionRule {
+                field: r.field,
+                rule_type: r.rule_type,
+                target_field: r.target_field,
+                relation: r.relation,
+                weight: r.weight,
+            })
+            .collect();
+        let edges_created = col
+            .graph_induce_from_metadata(&rules)
+            .map_err(Status::internal)?;
+        Ok(Response::new(InduceEdgesResponse {
+            success: true,
+            edges_created: edges_created as u64,
+        }))
     }
 
     async fn health_check(

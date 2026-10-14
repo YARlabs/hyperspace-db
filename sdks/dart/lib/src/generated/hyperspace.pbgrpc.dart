@@ -215,6 +215,36 @@ class DatabaseClient extends $grpc.Client {
     return $createUnaryCall(_$getSubsumptionTree, request, options: options);
   }
 
+  /// Native Graph Linkage & Induction API (v4.1)
+  $grpc.ResponseFuture<$0.StatusResponse> link(
+    $0.LinkRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$link, request, options: options);
+  }
+
+  $grpc.ResponseFuture<$0.LinkBatchResponse> linkBatch(
+    $0.LinkBatchRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$linkBatch, request, options: options);
+  }
+
+  $grpc.ResponseFuture<$0.StatusResponse> unlink(
+    $0.UnlinkRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$unlink, request, options: options);
+  }
+
+  $grpc.ResponseFuture<$0.InduceEdgesResponse> induceEdgesFromMetadata(
+    $0.InduceEdgesRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$induceEdgesFromMetadata, request,
+        options: options);
+  }
+
   /// Stream statistics for TUI (Global or Collection tailored)
   $grpc.ResponseStream<$0.SystemStats> monitor(
     $0.MonitorRequest request, {
@@ -323,6 +353,14 @@ class DatabaseClient extends $grpc.Client {
     $grpc.CallOptions? options,
   }) {
     return $createUnaryCall(_$healthCheck, request, options: options);
+  }
+
+  /// Tribunal Router (Geometric Hallucination Prevention)
+  $grpc.ResponseFuture<$0.VerifyGenerationResponse> verifyGeneration(
+    $0.VerifyGenerationRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$verifyGeneration, request, options: options);
   }
 
   // method descriptors
@@ -450,6 +488,25 @@ class DatabaseClient extends $grpc.Client {
       '/hyperspace.Database/GetSubsumptionTree',
       ($0.GetSubsumptionTreeRequest value) => value.writeToBuffer(),
       $0.GetSubsumptionTreeResponse.fromBuffer);
+  static final _$link = $grpc.ClientMethod<$0.LinkRequest, $0.StatusResponse>(
+      '/hyperspace.Database/Link',
+      ($0.LinkRequest value) => value.writeToBuffer(),
+      $0.StatusResponse.fromBuffer);
+  static final _$linkBatch =
+      $grpc.ClientMethod<$0.LinkBatchRequest, $0.LinkBatchResponse>(
+          '/hyperspace.Database/LinkBatch',
+          ($0.LinkBatchRequest value) => value.writeToBuffer(),
+          $0.LinkBatchResponse.fromBuffer);
+  static final _$unlink =
+      $grpc.ClientMethod<$0.UnlinkRequest, $0.StatusResponse>(
+          '/hyperspace.Database/Unlink',
+          ($0.UnlinkRequest value) => value.writeToBuffer(),
+          $0.StatusResponse.fromBuffer);
+  static final _$induceEdgesFromMetadata =
+      $grpc.ClientMethod<$0.InduceEdgesRequest, $0.InduceEdgesResponse>(
+          '/hyperspace.Database/InduceEdgesFromMetadata',
+          ($0.InduceEdgesRequest value) => value.writeToBuffer(),
+          $0.InduceEdgesResponse.fromBuffer);
   static final _$monitor =
       $grpc.ClientMethod<$0.MonitorRequest, $0.SystemStats>(
           '/hyperspace.Database/Monitor',
@@ -515,6 +572,11 @@ class DatabaseClient extends $grpc.Client {
           '/hyperspace.Database/HealthCheck',
           ($0.Empty value) => value.writeToBuffer(),
           $0.HealthCheckResponse.fromBuffer);
+  static final _$verifyGeneration = $grpc.ClientMethod<
+          $0.VerifyGenerationRequest, $0.VerifyGenerationResponse>(
+      '/hyperspace.Database/VerifyGeneration',
+      ($0.VerifyGenerationRequest value) => value.writeToBuffer(),
+      $0.VerifyGenerationResponse.fromBuffer);
 }
 
 @$pb.GrpcServiceName('hyperspace.Database')
@@ -721,6 +783,36 @@ abstract class DatabaseServiceBase extends $grpc.Service {
         ($core.List<$core.int> value) =>
             $0.GetSubsumptionTreeRequest.fromBuffer(value),
         ($0.GetSubsumptionTreeResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.LinkRequest, $0.StatusResponse>(
+        'Link',
+        link_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) => $0.LinkRequest.fromBuffer(value),
+        ($0.StatusResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.LinkBatchRequest, $0.LinkBatchResponse>(
+        'LinkBatch',
+        linkBatch_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) => $0.LinkBatchRequest.fromBuffer(value),
+        ($0.LinkBatchResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.UnlinkRequest, $0.StatusResponse>(
+        'Unlink',
+        unlink_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) => $0.UnlinkRequest.fromBuffer(value),
+        ($0.StatusResponse value) => value.writeToBuffer()));
+    $addMethod(
+        $grpc.ServiceMethod<$0.InduceEdgesRequest, $0.InduceEdgesResponse>(
+            'InduceEdgesFromMetadata',
+            induceEdgesFromMetadata_Pre,
+            false,
+            false,
+            ($core.List<$core.int> value) =>
+                $0.InduceEdgesRequest.fromBuffer(value),
+            ($0.InduceEdgesResponse value) => value.writeToBuffer()));
     $addMethod($grpc.ServiceMethod<$0.MonitorRequest, $0.SystemStats>(
         'Monitor',
         monitor_Pre,
@@ -820,6 +912,15 @@ abstract class DatabaseServiceBase extends $grpc.Service {
         false,
         ($core.List<$core.int> value) => $0.Empty.fromBuffer(value),
         ($0.HealthCheckResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.VerifyGenerationRequest,
+            $0.VerifyGenerationResponse>(
+        'VerifyGeneration',
+        verifyGeneration_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.VerifyGenerationRequest.fromBuffer(value),
+        ($0.VerifyGenerationResponse value) => value.writeToBuffer()));
   }
 
   $async.Future<$0.StatusResponse> createCollection_Pre($grpc.ServiceCall $call,
@@ -1029,6 +1130,39 @@ abstract class DatabaseServiceBase extends $grpc.Service {
   $async.Future<$0.GetSubsumptionTreeResponse> getSubsumptionTree(
       $grpc.ServiceCall call, $0.GetSubsumptionTreeRequest request);
 
+  $async.Future<$0.StatusResponse> link_Pre(
+      $grpc.ServiceCall $call, $async.Future<$0.LinkRequest> $request) async {
+    return link($call, await $request);
+  }
+
+  $async.Future<$0.StatusResponse> link(
+      $grpc.ServiceCall call, $0.LinkRequest request);
+
+  $async.Future<$0.LinkBatchResponse> linkBatch_Pre($grpc.ServiceCall $call,
+      $async.Future<$0.LinkBatchRequest> $request) async {
+    return linkBatch($call, await $request);
+  }
+
+  $async.Future<$0.LinkBatchResponse> linkBatch(
+      $grpc.ServiceCall call, $0.LinkBatchRequest request);
+
+  $async.Future<$0.StatusResponse> unlink_Pre(
+      $grpc.ServiceCall $call, $async.Future<$0.UnlinkRequest> $request) async {
+    return unlink($call, await $request);
+  }
+
+  $async.Future<$0.StatusResponse> unlink(
+      $grpc.ServiceCall call, $0.UnlinkRequest request);
+
+  $async.Future<$0.InduceEdgesResponse> induceEdgesFromMetadata_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.InduceEdgesRequest> $request) async {
+    return induceEdgesFromMetadata($call, await $request);
+  }
+
+  $async.Future<$0.InduceEdgesResponse> induceEdgesFromMetadata(
+      $grpc.ServiceCall call, $0.InduceEdgesRequest request);
+
   $async.Stream<$0.SystemStats> monitor_Pre($grpc.ServiceCall $call,
       $async.Future<$0.MonitorRequest> $request) async* {
     yield* monitor($call, await $request);
@@ -1129,4 +1263,13 @@ abstract class DatabaseServiceBase extends $grpc.Service {
 
   $async.Future<$0.HealthCheckResponse> healthCheck(
       $grpc.ServiceCall call, $0.Empty request);
+
+  $async.Future<$0.VerifyGenerationResponse> verifyGeneration_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.VerifyGenerationRequest> $request) async {
+    return verifyGeneration($call, await $request);
+  }
+
+  $async.Future<$0.VerifyGenerationResponse> verifyGeneration(
+      $grpc.ServiceCall call, $0.VerifyGenerationRequest request);
 }

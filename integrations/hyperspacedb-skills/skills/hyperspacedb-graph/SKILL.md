@@ -10,15 +10,63 @@ description: >
 
 # HyperspaceDB Graph Operations
 
-HyperspaceDB's HNSW index is a navigable graph — you can traverse it directly for
-**knowledge graph exploration**, **ontology navigation**, and **multi-hop reasoning**.
-
-The **Lorentz metric** is specifically designed for **hierarchical data**: taxonomies,
-organizational charts, biological hierarchies, and knowledge bases.
+HyperspaceDB 4.1+ internalizes explicit directed labeled graph relations alongside vector embeddings.
+Its hybrid architecture unifies a Property CSR Graph Engine with HNSW and 33D Lorentz hyperbolic manifolds.
 
 ---
 
-## 1. Get Neighbors (Local Graph Connectivity)
+## 1. Native Vector-Graph (KAG) Explicit Linking
+
+Create directed, weighted, labeled relationships between entities directly inside the database without dual-DB orchestration.
+
+```typescript
+// Single directed edge
+await client.link(
+  sourceId,          // number (e.g. 1)
+  targetId,          // number (e.g. 2)
+  "OWNS",            // relation label
+  1.0,               // edge weight
+  "my_collection"    // collection name
+);
+
+// Batch link multiple edges atomically
+await client.linkBatch([
+  { sourceId: 1, targetId: 2, relation: "OWNS", weight: 1.0 },
+  { sourceId: 2, targetId: 3, relation: "DEPENDS_ON", weight: 0.95 },
+], "my_collection");
+
+// Unlink edge with zero-lag invalidation
+await client.unlink(1, 2, "OWNS", "my_collection");
+```
+
+---
+
+## 2. Declarative Metadata-to-Edge Induction
+
+Induce topology for 100k+ documents instantly from existing document metadata without rebuilding HNSW:
+
+```typescript
+const count = await client.induceEdgesFromMetadata([
+  // Path hierarchy rule: /docs/ai/lorentz -> /docs/ai
+  {
+    field: "file_path",
+    ruleType: "path_hierarchy",
+    relation: "CONTAINS",
+    weight: 1.0
+  },
+  // Foreign-key entity linkage
+  {
+    field: "parent_id",
+    ruleType: "foreign_key",
+    relation: "OWNS",
+    weight: 0.9
+  }
+], "my_collection");
+```
+
+---
+
+## 3. Get Neighbors (Local Graph Connectivity)
 
 Returns the nearest neighbors of a point in the HNSW graph — its direct connections.
 

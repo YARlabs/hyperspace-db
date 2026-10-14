@@ -76,6 +76,10 @@ memory.delete(results[0]["id"])
 
 - `memory.consolidate(topic_query, ...)`: Synthesizes a cluster of related episodic memories into a single abstract semantic concept using the **Fréchet Mean** on the hyperboloid.
 - `memory.verify_claim(premise, conclusion, threshold=0.30)`: Computes **Geodesic Trust Score** (Lorentz $\mathbb{H}^{32}$ + Cosine 96D) to verify that an LLM conclusion does not hallucinate.
+- `memory.link(source_id, target_id, relation="OWNS", weight=1.0)`: Links two memory nodes or concepts with an explicit directed edge in the in-engine CSR graph.
+- `memory.link_batch(edges)`: Atomic bulk edge insertion for rapid knowledge ingestion.
+- `memory.unlink(source_id, target_id, relation="OWNS")`: Zero-lag deletion of graph edges.
+- `memory.induce_edges(rules)`: Declaratively builds edges from metadata attributes (`path_hierarchy`, `foreign_key`, `exact_match`).
 - `memory.list_sessions(limit=100)`: Discovers and enumerates active conversational sessions.
 - `memory.explore_hierarchy(concept_id, direction="down")`: Navigates conceptual taxonomy trees in Lorentz space.
 - `memory.stats()`: Returns vector counts, cascade configuration, and collection status.

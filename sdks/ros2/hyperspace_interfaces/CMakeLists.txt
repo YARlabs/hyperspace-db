@@ -11,6 +11,8 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SearchResult.msg"
   "msg/SystemStats.msg"
+  "msg/EdgeItem.msg"
+  "msg/MetadataInductionRule.msg"
   "srv/NavigateToAttractor.srv"
   "srv/InsertText.srv"
   "srv/SearchText.srv"
@@ -29,6 +31,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/CreateCollection.srv"
   "srv/TriggerReconsolidation.srv"
   "srv/VerifyGeneration.srv"
+  "srv/Link.srv"
+  "srv/LinkBatch.srv"
+  "srv/Unlink.srv"
+  "srv/InduceEdges.srv"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

@@ -19,45 +19,49 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Database_CreateCollection_FullMethodName       = "/hyperspace.Database/CreateCollection"
-	Database_DeleteCollection_FullMethodName       = "/hyperspace.Database/DeleteCollection"
-	Database_ListCollections_FullMethodName        = "/hyperspace.Database/ListCollections"
-	Database_GetCollectionStats_FullMethodName     = "/hyperspace.Database/GetCollectionStats"
-	Database_FreezeCollection_FullMethodName       = "/hyperspace.Database/FreezeCollection"
-	Database_UnfreezeCollection_FullMethodName     = "/hyperspace.Database/UnfreezeCollection"
-	Database_Insert_FullMethodName                 = "/hyperspace.Database/Insert"
-	Database_BatchInsert_FullMethodName            = "/hyperspace.Database/BatchInsert"
-	Database_InsertText_FullMethodName             = "/hyperspace.Database/InsertText"
-	Database_Vectorize_FullMethodName              = "/hyperspace.Database/Vectorize"
-	Database_SearchText_FullMethodName             = "/hyperspace.Database/SearchText"
-	Database_Delete_FullMethodName                 = "/hyperspace.Database/Delete"
-	Database_GetPoints_FullMethodName              = "/hyperspace.Database/GetPoints"
-	Database_UpdatePayload_FullMethodName          = "/hyperspace.Database/UpdatePayload"
-	Database_Scroll_FullMethodName                 = "/hyperspace.Database/Scroll"
-	Database_Count_FullMethodName                  = "/hyperspace.Database/Count"
-	Database_Search_FullMethodName                 = "/hyperspace.Database/Search"
-	Database_SearchBatch_FullMethodName            = "/hyperspace.Database/SearchBatch"
-	Database_SearchMultiCollection_FullMethodName  = "/hyperspace.Database/SearchMultiCollection"
-	Database_GetNode_FullMethodName                = "/hyperspace.Database/GetNode"
-	Database_GetNeighbors_FullMethodName           = "/hyperspace.Database/GetNeighbors"
-	Database_GetConceptParents_FullMethodName      = "/hyperspace.Database/GetConceptParents"
-	Database_Traverse_FullMethodName               = "/hyperspace.Database/Traverse"
-	Database_FindSemanticClusters_FullMethodName   = "/hyperspace.Database/FindSemanticClusters"
-	Database_GetSubsumptionTree_FullMethodName     = "/hyperspace.Database/GetSubsumptionTree"
-	Database_Monitor_FullMethodName                = "/hyperspace.Database/Monitor"
-	Database_TriggerSnapshot_FullMethodName        = "/hyperspace.Database/TriggerSnapshot"
-	Database_TriggerVacuum_FullMethodName          = "/hyperspace.Database/TriggerVacuum"
-	Database_TriggerReconsolidation_FullMethodName = "/hyperspace.Database/TriggerReconsolidation"
-	Database_Configure_FullMethodName              = "/hyperspace.Database/Configure"
-	Database_Replicate_FullMethodName              = "/hyperspace.Database/Replicate"
-	Database_SubscribeToEvents_FullMethodName      = "/hyperspace.Database/SubscribeToEvents"
-	Database_GetDigest_FullMethodName              = "/hyperspace.Database/GetDigest"
-	Database_RebuildIndex_FullMethodName           = "/hyperspace.Database/RebuildIndex"
-	Database_SyncHandshake_FullMethodName          = "/hyperspace.Database/SyncHandshake"
-	Database_SyncPull_FullMethodName               = "/hyperspace.Database/SyncPull"
-	Database_SyncPush_FullMethodName               = "/hyperspace.Database/SyncPush"
-	Database_HealthCheck_FullMethodName            = "/hyperspace.Database/HealthCheck"
-	Database_VerifyGeneration_FullMethodName       = "/hyperspace.Database/VerifyGeneration"
+	Database_CreateCollection_FullMethodName        = "/hyperspace.Database/CreateCollection"
+	Database_DeleteCollection_FullMethodName        = "/hyperspace.Database/DeleteCollection"
+	Database_ListCollections_FullMethodName         = "/hyperspace.Database/ListCollections"
+	Database_GetCollectionStats_FullMethodName      = "/hyperspace.Database/GetCollectionStats"
+	Database_FreezeCollection_FullMethodName        = "/hyperspace.Database/FreezeCollection"
+	Database_UnfreezeCollection_FullMethodName      = "/hyperspace.Database/UnfreezeCollection"
+	Database_Insert_FullMethodName                  = "/hyperspace.Database/Insert"
+	Database_BatchInsert_FullMethodName             = "/hyperspace.Database/BatchInsert"
+	Database_InsertText_FullMethodName              = "/hyperspace.Database/InsertText"
+	Database_Vectorize_FullMethodName               = "/hyperspace.Database/Vectorize"
+	Database_SearchText_FullMethodName              = "/hyperspace.Database/SearchText"
+	Database_Delete_FullMethodName                  = "/hyperspace.Database/Delete"
+	Database_GetPoints_FullMethodName               = "/hyperspace.Database/GetPoints"
+	Database_UpdatePayload_FullMethodName           = "/hyperspace.Database/UpdatePayload"
+	Database_Scroll_FullMethodName                  = "/hyperspace.Database/Scroll"
+	Database_Count_FullMethodName                   = "/hyperspace.Database/Count"
+	Database_Search_FullMethodName                  = "/hyperspace.Database/Search"
+	Database_SearchBatch_FullMethodName             = "/hyperspace.Database/SearchBatch"
+	Database_SearchMultiCollection_FullMethodName   = "/hyperspace.Database/SearchMultiCollection"
+	Database_GetNode_FullMethodName                 = "/hyperspace.Database/GetNode"
+	Database_GetNeighbors_FullMethodName            = "/hyperspace.Database/GetNeighbors"
+	Database_GetConceptParents_FullMethodName       = "/hyperspace.Database/GetConceptParents"
+	Database_Traverse_FullMethodName                = "/hyperspace.Database/Traverse"
+	Database_FindSemanticClusters_FullMethodName    = "/hyperspace.Database/FindSemanticClusters"
+	Database_GetSubsumptionTree_FullMethodName      = "/hyperspace.Database/GetSubsumptionTree"
+	Database_Link_FullMethodName                    = "/hyperspace.Database/Link"
+	Database_LinkBatch_FullMethodName               = "/hyperspace.Database/LinkBatch"
+	Database_Unlink_FullMethodName                  = "/hyperspace.Database/Unlink"
+	Database_InduceEdgesFromMetadata_FullMethodName = "/hyperspace.Database/InduceEdgesFromMetadata"
+	Database_Monitor_FullMethodName                 = "/hyperspace.Database/Monitor"
+	Database_TriggerSnapshot_FullMethodName         = "/hyperspace.Database/TriggerSnapshot"
+	Database_TriggerVacuum_FullMethodName           = "/hyperspace.Database/TriggerVacuum"
+	Database_TriggerReconsolidation_FullMethodName  = "/hyperspace.Database/TriggerReconsolidation"
+	Database_Configure_FullMethodName               = "/hyperspace.Database/Configure"
+	Database_Replicate_FullMethodName               = "/hyperspace.Database/Replicate"
+	Database_SubscribeToEvents_FullMethodName       = "/hyperspace.Database/SubscribeToEvents"
+	Database_GetDigest_FullMethodName               = "/hyperspace.Database/GetDigest"
+	Database_RebuildIndex_FullMethodName            = "/hyperspace.Database/RebuildIndex"
+	Database_SyncHandshake_FullMethodName           = "/hyperspace.Database/SyncHandshake"
+	Database_SyncPull_FullMethodName                = "/hyperspace.Database/SyncPull"
+	Database_SyncPush_FullMethodName                = "/hyperspace.Database/SyncPush"
+	Database_HealthCheck_FullMethodName             = "/hyperspace.Database/HealthCheck"
+	Database_VerifyGeneration_FullMethodName        = "/hyperspace.Database/VerifyGeneration"
 )
 
 // DatabaseClient is the client API for Database service.
@@ -97,6 +101,11 @@ type DatabaseClient interface {
 	Traverse(ctx context.Context, in *TraverseRequest, opts ...grpc.CallOption) (*TraverseResponse, error)
 	FindSemanticClusters(ctx context.Context, in *FindSemanticClustersRequest, opts ...grpc.CallOption) (*FindSemanticClustersResponse, error)
 	GetSubsumptionTree(ctx context.Context, in *GetSubsumptionTreeRequest, opts ...grpc.CallOption) (*GetSubsumptionTreeResponse, error)
+	// Native Graph Linkage & Induction API (v4.1)
+	Link(ctx context.Context, in *LinkRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	LinkBatch(ctx context.Context, in *LinkBatchRequest, opts ...grpc.CallOption) (*LinkBatchResponse, error)
+	Unlink(ctx context.Context, in *UnlinkRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	InduceEdgesFromMetadata(ctx context.Context, in *InduceEdgesRequest, opts ...grpc.CallOption) (*InduceEdgesResponse, error)
 	// Stream statistics for TUI (Global or Collection tailored)
 	Monitor(ctx context.Context, in *MonitorRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SystemStats], error)
 	// Admin Controls
@@ -382,6 +391,46 @@ func (c *databaseClient) GetSubsumptionTree(ctx context.Context, in *GetSubsumpt
 	return out, nil
 }
 
+func (c *databaseClient) Link(ctx context.Context, in *LinkRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, Database_Link_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) LinkBatch(ctx context.Context, in *LinkBatchRequest, opts ...grpc.CallOption) (*LinkBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LinkBatchResponse)
+	err := c.cc.Invoke(ctx, Database_LinkBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) Unlink(ctx context.Context, in *UnlinkRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, Database_Unlink_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) InduceEdgesFromMetadata(ctx context.Context, in *InduceEdgesRequest, opts ...grpc.CallOption) (*InduceEdgesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InduceEdgesResponse)
+	err := c.cc.Invoke(ctx, Database_InduceEdgesFromMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *databaseClient) Monitor(ctx context.Context, in *MonitorRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SystemStats], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Database_ServiceDesc.Streams[0], Database_Monitor_FullMethodName, cOpts...)
@@ -598,6 +647,11 @@ type DatabaseServer interface {
 	Traverse(context.Context, *TraverseRequest) (*TraverseResponse, error)
 	FindSemanticClusters(context.Context, *FindSemanticClustersRequest) (*FindSemanticClustersResponse, error)
 	GetSubsumptionTree(context.Context, *GetSubsumptionTreeRequest) (*GetSubsumptionTreeResponse, error)
+	// Native Graph Linkage & Induction API (v4.1)
+	Link(context.Context, *LinkRequest) (*StatusResponse, error)
+	LinkBatch(context.Context, *LinkBatchRequest) (*LinkBatchResponse, error)
+	Unlink(context.Context, *UnlinkRequest) (*StatusResponse, error)
+	InduceEdgesFromMetadata(context.Context, *InduceEdgesRequest) (*InduceEdgesResponse, error)
 	// Stream statistics for TUI (Global or Collection tailored)
 	Monitor(*MonitorRequest, grpc.ServerStreamingServer[SystemStats]) error
 	// Admin Controls
@@ -707,6 +761,18 @@ func (UnimplementedDatabaseServer) FindSemanticClusters(context.Context, *FindSe
 }
 func (UnimplementedDatabaseServer) GetSubsumptionTree(context.Context, *GetSubsumptionTreeRequest) (*GetSubsumptionTreeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSubsumptionTree not implemented")
+}
+func (UnimplementedDatabaseServer) Link(context.Context, *LinkRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Link not implemented")
+}
+func (UnimplementedDatabaseServer) LinkBatch(context.Context, *LinkBatchRequest) (*LinkBatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LinkBatch not implemented")
+}
+func (UnimplementedDatabaseServer) Unlink(context.Context, *UnlinkRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Unlink not implemented")
+}
+func (UnimplementedDatabaseServer) InduceEdgesFromMetadata(context.Context, *InduceEdgesRequest) (*InduceEdgesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InduceEdgesFromMetadata not implemented")
 }
 func (UnimplementedDatabaseServer) Monitor(*MonitorRequest, grpc.ServerStreamingServer[SystemStats]) error {
 	return status.Error(codes.Unimplemented, "method Monitor not implemented")
@@ -1221,6 +1287,78 @@ func _Database_GetSubsumptionTree_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Database_Link_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).Link(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_Link_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).Link(ctx, req.(*LinkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_LinkBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).LinkBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_LinkBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).LinkBatch(ctx, req.(*LinkBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_Unlink_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnlinkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).Unlink(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_Unlink_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).Unlink(ctx, req.(*UnlinkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_InduceEdgesFromMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InduceEdgesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).InduceEdgesFromMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_InduceEdgesFromMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).InduceEdgesFromMetadata(ctx, req.(*InduceEdgesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Database_Monitor_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(MonitorRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1540,6 +1678,22 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSubsumptionTree",
 			Handler:    _Database_GetSubsumptionTree_Handler,
+		},
+		{
+			MethodName: "Link",
+			Handler:    _Database_Link_Handler,
+		},
+		{
+			MethodName: "LinkBatch",
+			Handler:    _Database_LinkBatch_Handler,
+		},
+		{
+			MethodName: "Unlink",
+			Handler:    _Database_Unlink_Handler,
+		},
+		{
+			MethodName: "InduceEdgesFromMetadata",
+			Handler:    _Database_InduceEdgesFromMetadata_Handler,
 		},
 		{
 			MethodName: "TriggerSnapshot",

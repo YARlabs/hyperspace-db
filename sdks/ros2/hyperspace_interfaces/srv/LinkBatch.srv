@@ -1,0 +1,6 @@
+string collection
+hyperspace_interfaces/EdgeItem[] edges
+---
+bool success
+uint64 edges_linked
+string message

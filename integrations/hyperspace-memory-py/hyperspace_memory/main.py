@@ -438,6 +438,38 @@ class Memory:
         else:
             return getattr(self.client, "get_subsumption_tree", lambda *a, **kw: {})(concept_id, 3, self.collection)
 
+    def link(self, source_id: int, target_id: int, relation: str = "OWNS", weight: float = 1.0) -> bool:
+        """Create explicit directed edge between memories or concepts in the native KAG graph."""
+        self._ensure_collection()
+        try:
+            return bool(self.client.link(source_id, target_id, relation=relation, weight=weight, collection=self.collection))
+        except Exception:
+            return False
+
+    def link_batch(self, edges: List[Dict[str, Any]]) -> int:
+        """Batch-insert explicit directed edges between memories/entities in CSR topology."""
+        self._ensure_collection()
+        try:
+            return int(self.client.link_batch(edges, collection=self.collection))
+        except Exception:
+            return 0
+
+    def unlink(self, source_id: int, target_id: int, relation: str = "OWNS") -> bool:
+        """Delete an explicit directed edge with zero-lag invalidation."""
+        self._ensure_collection()
+        try:
+            return bool(self.client.unlink(source_id, target_id, relation=relation, collection=self.collection))
+        except Exception:
+            return False
+
+    def induce_edges(self, rules: List[Dict[str, Any]]) -> int:
+        """Induce topological edges from metadata properties across memory entries."""
+        self._ensure_collection()
+        try:
+            return int(self.client.induce_edges_from_metadata(rules, collection=self.collection))
+        except Exception:
+            return 0
+
     def stats(self) -> Dict[str, Any]:
         """Get operational statistics and health diagnostics for the memory collection."""
         self._ensure_collection()

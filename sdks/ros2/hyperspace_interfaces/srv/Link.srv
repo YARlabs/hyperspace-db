@@ -1,0 +1,5 @@
+string collection
+hyperspace_interfaces/EdgeItem edge
+---
+bool success
+string message

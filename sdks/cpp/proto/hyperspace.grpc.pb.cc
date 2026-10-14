@@ -48,6 +48,10 @@ static const char* Database_method_names[] = {
   "/hyperspace.Database/Traverse",
   "/hyperspace.Database/FindSemanticClusters",
   "/hyperspace.Database/GetSubsumptionTree",
+  "/hyperspace.Database/Link",
+  "/hyperspace.Database/LinkBatch",
+  "/hyperspace.Database/Unlink",
+  "/hyperspace.Database/InduceEdgesFromMetadata",
   "/hyperspace.Database/Monitor",
   "/hyperspace.Database/TriggerSnapshot",
   "/hyperspace.Database/TriggerVacuum",
@@ -96,20 +100,24 @@ Database::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, 
   , rpcmethod_Traverse_(Database_method_names[22], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_FindSemanticClusters_(Database_method_names[23], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_GetSubsumptionTree_(Database_method_names[24], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_Monitor_(Database_method_names[25], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
-  , rpcmethod_TriggerSnapshot_(Database_method_names[26], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_TriggerVacuum_(Database_method_names[27], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_TriggerReconsolidation_(Database_method_names[28], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_Configure_(Database_method_names[29], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_Replicate_(Database_method_names[30], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
-  , rpcmethod_SubscribeToEvents_(Database_method_names[31], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
-  , rpcmethod_GetDigest_(Database_method_names[32], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_RebuildIndex_(Database_method_names[33], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_SyncHandshake_(Database_method_names[34], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_SyncPull_(Database_method_names[35], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
-  , rpcmethod_SyncPush_(Database_method_names[36], options.suffix_for_stats(),::grpc::internal::RpcMethod::CLIENT_STREAMING, channel)
-  , rpcmethod_HealthCheck_(Database_method_names[37], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_VerifyGeneration_(Database_method_names[38], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Link_(Database_method_names[25], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_LinkBatch_(Database_method_names[26], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Unlink_(Database_method_names[27], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_InduceEdgesFromMetadata_(Database_method_names[28], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Monitor_(Database_method_names[29], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
+  , rpcmethod_TriggerSnapshot_(Database_method_names[30], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_TriggerVacuum_(Database_method_names[31], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_TriggerReconsolidation_(Database_method_names[32], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Configure_(Database_method_names[33], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Replicate_(Database_method_names[34], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
+  , rpcmethod_SubscribeToEvents_(Database_method_names[35], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
+  , rpcmethod_GetDigest_(Database_method_names[36], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_RebuildIndex_(Database_method_names[37], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_SyncHandshake_(Database_method_names[38], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_SyncPull_(Database_method_names[39], options.suffix_for_stats(),::grpc::internal::RpcMethod::SERVER_STREAMING, channel)
+  , rpcmethod_SyncPush_(Database_method_names[40], options.suffix_for_stats(),::grpc::internal::RpcMethod::CLIENT_STREAMING, channel)
+  , rpcmethod_HealthCheck_(Database_method_names[41], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_VerifyGeneration_(Database_method_names[42], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
 
 ::grpc::Status Database::Stub::CreateCollection(::grpc::ClientContext* context, const ::hyperspace::CreateCollectionRequest& request, ::hyperspace::StatusResponse* response) {
@@ -687,6 +695,98 @@ void Database::Stub::async::GetSubsumptionTree(::grpc::ClientContext* context, c
   return result;
 }
 
+::grpc::Status Database::Stub::Link(::grpc::ClientContext* context, const ::hyperspace::LinkRequest& request, ::hyperspace::StatusResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::hyperspace::LinkRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_Link_, context, request, response);
+}
+
+void Database::Stub::async::Link(::grpc::ClientContext* context, const ::hyperspace::LinkRequest* request, ::hyperspace::StatusResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::hyperspace::LinkRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_Link_, context, request, response, std::move(f));
+}
+
+void Database::Stub::async::Link(::grpc::ClientContext* context, const ::hyperspace::LinkRequest* request, ::hyperspace::StatusResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_Link_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::StatusResponse>* Database::Stub::PrepareAsyncLinkRaw(::grpc::ClientContext* context, const ::hyperspace::LinkRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::hyperspace::StatusResponse, ::hyperspace::LinkRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_Link_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::StatusResponse>* Database::Stub::AsyncLinkRaw(::grpc::ClientContext* context, const ::hyperspace::LinkRequest& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncLinkRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
+::grpc::Status Database::Stub::LinkBatch(::grpc::ClientContext* context, const ::hyperspace::LinkBatchRequest& request, ::hyperspace::LinkBatchResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::hyperspace::LinkBatchRequest, ::hyperspace::LinkBatchResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_LinkBatch_, context, request, response);
+}
+
+void Database::Stub::async::LinkBatch(::grpc::ClientContext* context, const ::hyperspace::LinkBatchRequest* request, ::hyperspace::LinkBatchResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::hyperspace::LinkBatchRequest, ::hyperspace::LinkBatchResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_LinkBatch_, context, request, response, std::move(f));
+}
+
+void Database::Stub::async::LinkBatch(::grpc::ClientContext* context, const ::hyperspace::LinkBatchRequest* request, ::hyperspace::LinkBatchResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_LinkBatch_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::LinkBatchResponse>* Database::Stub::PrepareAsyncLinkBatchRaw(::grpc::ClientContext* context, const ::hyperspace::LinkBatchRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::hyperspace::LinkBatchResponse, ::hyperspace::LinkBatchRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_LinkBatch_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::LinkBatchResponse>* Database::Stub::AsyncLinkBatchRaw(::grpc::ClientContext* context, const ::hyperspace::LinkBatchRequest& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncLinkBatchRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
+::grpc::Status Database::Stub::Unlink(::grpc::ClientContext* context, const ::hyperspace::UnlinkRequest& request, ::hyperspace::StatusResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::hyperspace::UnlinkRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_Unlink_, context, request, response);
+}
+
+void Database::Stub::async::Unlink(::grpc::ClientContext* context, const ::hyperspace::UnlinkRequest* request, ::hyperspace::StatusResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::hyperspace::UnlinkRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_Unlink_, context, request, response, std::move(f));
+}
+
+void Database::Stub::async::Unlink(::grpc::ClientContext* context, const ::hyperspace::UnlinkRequest* request, ::hyperspace::StatusResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_Unlink_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::StatusResponse>* Database::Stub::PrepareAsyncUnlinkRaw(::grpc::ClientContext* context, const ::hyperspace::UnlinkRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::hyperspace::StatusResponse, ::hyperspace::UnlinkRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_Unlink_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::StatusResponse>* Database::Stub::AsyncUnlinkRaw(::grpc::ClientContext* context, const ::hyperspace::UnlinkRequest& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncUnlinkRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
+::grpc::Status Database::Stub::InduceEdgesFromMetadata(::grpc::ClientContext* context, const ::hyperspace::InduceEdgesRequest& request, ::hyperspace::InduceEdgesResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::hyperspace::InduceEdgesRequest, ::hyperspace::InduceEdgesResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_InduceEdgesFromMetadata_, context, request, response);
+}
+
+void Database::Stub::async::InduceEdgesFromMetadata(::grpc::ClientContext* context, const ::hyperspace::InduceEdgesRequest* request, ::hyperspace::InduceEdgesResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::hyperspace::InduceEdgesRequest, ::hyperspace::InduceEdgesResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_InduceEdgesFromMetadata_, context, request, response, std::move(f));
+}
+
+void Database::Stub::async::InduceEdgesFromMetadata(::grpc::ClientContext* context, const ::hyperspace::InduceEdgesRequest* request, ::hyperspace::InduceEdgesResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_InduceEdgesFromMetadata_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::InduceEdgesResponse>* Database::Stub::PrepareAsyncInduceEdgesFromMetadataRaw(::grpc::ClientContext* context, const ::hyperspace::InduceEdgesRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::hyperspace::InduceEdgesResponse, ::hyperspace::InduceEdgesRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_InduceEdgesFromMetadata_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::InduceEdgesResponse>* Database::Stub::AsyncInduceEdgesFromMetadataRaw(::grpc::ClientContext* context, const ::hyperspace::InduceEdgesRequest& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncInduceEdgesFromMetadataRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
 ::grpc::ClientReader< ::hyperspace::SystemStats>* Database::Stub::MonitorRaw(::grpc::ClientContext* context, const ::hyperspace::MonitorRequest& request) {
   return ::grpc::internal::ClientReaderFactory< ::hyperspace::SystemStats>::Create(channel_.get(), rpcmethod_Monitor_, context, request);
 }
@@ -1227,6 +1327,46 @@ Database::Service::Service() {
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Database_method_names[25],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::LinkRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Database::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::hyperspace::LinkRequest* req,
+             ::hyperspace::StatusResponse* resp) {
+               return service->Link(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Database_method_names[26],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::LinkBatchRequest, ::hyperspace::LinkBatchResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Database::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::hyperspace::LinkBatchRequest* req,
+             ::hyperspace::LinkBatchResponse* resp) {
+               return service->LinkBatch(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Database_method_names[27],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::UnlinkRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Database::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::hyperspace::UnlinkRequest* req,
+             ::hyperspace::StatusResponse* resp) {
+               return service->Unlink(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Database_method_names[28],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::InduceEdgesRequest, ::hyperspace::InduceEdgesResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Database::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::hyperspace::InduceEdgesRequest* req,
+             ::hyperspace::InduceEdgesResponse* resp) {
+               return service->InduceEdgesFromMetadata(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Database_method_names[29],
       ::grpc::internal::RpcMethod::SERVER_STREAMING,
       new ::grpc::internal::ServerStreamingHandler< Database::Service, ::hyperspace::MonitorRequest, ::hyperspace::SystemStats>(
           [](Database::Service* service,
@@ -1236,7 +1376,7 @@ Database::Service::Service() {
                return service->Monitor(ctx, req, writer);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[26],
+      Database_method_names[30],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::Empty, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1246,7 +1386,7 @@ Database::Service::Service() {
                return service->TriggerSnapshot(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[27],
+      Database_method_names[31],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::Empty, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1256,7 +1396,7 @@ Database::Service::Service() {
                return service->TriggerVacuum(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[28],
+      Database_method_names[32],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::ReconsolidationRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1266,7 +1406,7 @@ Database::Service::Service() {
                return service->TriggerReconsolidation(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[29],
+      Database_method_names[33],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::ConfigUpdate, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1276,7 +1416,7 @@ Database::Service::Service() {
                return service->Configure(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[30],
+      Database_method_names[34],
       ::grpc::internal::RpcMethod::SERVER_STREAMING,
       new ::grpc::internal::ServerStreamingHandler< Database::Service, ::hyperspace::ReplicationRequest, ::hyperspace::ReplicationLog>(
           [](Database::Service* service,
@@ -1286,7 +1426,7 @@ Database::Service::Service() {
                return service->Replicate(ctx, req, writer);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[31],
+      Database_method_names[35],
       ::grpc::internal::RpcMethod::SERVER_STREAMING,
       new ::grpc::internal::ServerStreamingHandler< Database::Service, ::hyperspace::EventSubscriptionRequest, ::hyperspace::EventMessage>(
           [](Database::Service* service,
@@ -1296,7 +1436,7 @@ Database::Service::Service() {
                return service->SubscribeToEvents(ctx, req, writer);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[32],
+      Database_method_names[36],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::DigestRequest, ::hyperspace::DigestResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1306,7 +1446,7 @@ Database::Service::Service() {
                return service->GetDigest(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[33],
+      Database_method_names[37],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::RebuildIndexRequest, ::hyperspace::StatusResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1316,7 +1456,7 @@ Database::Service::Service() {
                return service->RebuildIndex(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[34],
+      Database_method_names[38],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::SyncHandshakeRequest, ::hyperspace::SyncHandshakeResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1326,7 +1466,7 @@ Database::Service::Service() {
                return service->SyncHandshake(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[35],
+      Database_method_names[39],
       ::grpc::internal::RpcMethod::SERVER_STREAMING,
       new ::grpc::internal::ServerStreamingHandler< Database::Service, ::hyperspace::SyncPullRequest, ::hyperspace::SyncVectorData>(
           [](Database::Service* service,
@@ -1336,7 +1476,7 @@ Database::Service::Service() {
                return service->SyncPull(ctx, req, writer);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[36],
+      Database_method_names[40],
       ::grpc::internal::RpcMethod::CLIENT_STREAMING,
       new ::grpc::internal::ClientStreamingHandler< Database::Service, ::hyperspace::SyncVectorData, ::hyperspace::SyncPushResponse>(
           [](Database::Service* service,
@@ -1346,7 +1486,7 @@ Database::Service::Service() {
                return service->SyncPush(ctx, reader, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[37],
+      Database_method_names[41],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::Empty, ::hyperspace::HealthCheckResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1356,7 +1496,7 @@ Database::Service::Service() {
                return service->HealthCheck(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Database_method_names[38],
+      Database_method_names[42],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::VerifyGenerationRequest, ::hyperspace::VerifyGenerationResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
           [](Database::Service* service,
@@ -1539,6 +1679,34 @@ Database::Service::~Service() {
 }
 
 ::grpc::Status Database::Service::GetSubsumptionTree(::grpc::ServerContext* context, const ::hyperspace::GetSubsumptionTreeRequest* request, ::hyperspace::GetSubsumptionTreeResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Database::Service::Link(::grpc::ServerContext* context, const ::hyperspace::LinkRequest* request, ::hyperspace::StatusResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Database::Service::LinkBatch(::grpc::ServerContext* context, const ::hyperspace::LinkBatchRequest* request, ::hyperspace::LinkBatchResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Database::Service::Unlink(::grpc::ServerContext* context, const ::hyperspace::UnlinkRequest* request, ::hyperspace::StatusResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Database::Service::InduceEdgesFromMetadata(::grpc::ServerContext* context, const ::hyperspace::InduceEdgesRequest* request, ::hyperspace::InduceEdgesResponse* response) {
   (void) context;
   (void) request;
   (void) response;
