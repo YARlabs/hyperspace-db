@@ -8,6 +8,14 @@ cohere>=4.0.0
 voyageai>=0.1.0
 google-generativeai>=0.3.0
 sentence-transformers>=2.2.0
+rdkit-pypi>=2022.9.5
+biopython>=1.80
+
+[bio]
+biopython>=1.80
+
+[chem]
+rdkit-pypi>=2022.9.5
 
 [cohere]
 cohere>=4.0.0

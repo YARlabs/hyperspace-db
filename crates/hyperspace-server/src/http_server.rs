@@ -82,11 +82,7 @@ async fn validate_api_key(
 
     let mut key_role = None;
     if let Some(key_str) = provided_key {
-        let mut hasher = Sha256::new();
-        hasher.update(key_str.as_bytes());
-        let hash = hex::encode(hasher.finalize());
-
-        if let Some((uid, role)) = crate::security::validate_key(&hash) {
+        if let Some((uid, role)) = crate::security::validate_raw_key(&key_str) {
             ctx.is_admin = role == crate::security::UserRole::Admin;
             ctx.role = role;
             key_role = Some(role);
@@ -322,10 +318,7 @@ pub async fn start_http_server(
             "/api/collections/{name}/verify-generation",
             post(verify_generation_http),
         )
-        .route(
-            "/api/tribunal/verify",
-            post(verify_generation_global_http),
-        )
+        .route("/api/tribunal/verify", post(verify_generation_global_http))
         .route("/api/status", get(get_status))
         .route("/api/cluster/status", get(get_cluster_status))
         .route("/api/metrics", get(get_metrics))
@@ -542,6 +535,13 @@ async fn index_html() -> Response {
 // Handlers
 
 #[derive(serde::Serialize)]
+struct KagGraphSummary {
+    edges: usize,
+    nodes: usize,
+    enabled: bool,
+}
+
+#[derive(serde::Serialize)]
 struct CollectionSummary {
     name: String,
     count: usize,
@@ -563,6 +563,10 @@ struct CollectionSummary {
     quantization: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     schema: Option<hyperspace_proto::hyperspace::CollectionSchema>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    graph_edges: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kag_graph: Option<KagGraphSummary>,
 }
 
 async fn get_cluster_status(
@@ -614,6 +618,7 @@ async fn list_collections(
                 #[cfg(not(feature = "eco-monitor"))]
                 let (eco_tier, is_eco_certified) = (None, None);
 
+                let (nodes, edges, _) = col.graph_stats();
                 summaries.push(CollectionSummary {
                     name: name.clone(),
                     count: col.count(),
@@ -629,6 +634,12 @@ async fn list_collections(
                     mrl_rerank_top_k,
                     quantization,
                     schema,
+                    graph_edges: Some(edges),
+                    kag_graph: Some(KagGraphSummary {
+                        edges,
+                        nodes,
+                        enabled: true,
+                    }),
                 });
             }
         } else if let Some(meta) = meta_opt {
@@ -662,6 +673,8 @@ async fn list_collections(
                 mrl_rerank_top_k,
                 quantization,
                 schema,
+                graph_edges: Some(0),
+                kag_graph: None,
             });
         }
     }
@@ -696,6 +709,7 @@ async fn list_collections(
                 #[cfg(not(feature = "eco-monitor"))]
                 let (eco_tier, is_eco_certified) = (None, None);
 
+                let (nodes, edges, _) = col.graph_stats();
                 summaries.push(CollectionSummary {
                     name: format!("{owner}:{name}"),
                     count: col.count(),
@@ -711,6 +725,12 @@ async fn list_collections(
                     mrl_rerank_top_k,
                     quantization,
                     schema,
+                    graph_edges: Some(edges),
+                    kag_graph: Some(KagGraphSummary {
+                        edges,
+                        nodes,
+                        enabled: true,
+                    }),
                 });
             }
         } else if let Some(meta) = meta_opt {
@@ -744,6 +764,8 @@ async fn list_collections(
                 mrl_rerank_top_k,
                 quantization,
                 schema,
+                graph_edges: Some(0),
+                kag_graph: None,
             });
         }
     }
@@ -1139,6 +1161,7 @@ async fn get_stats(
         let mrl_cutoff_dimension = meta_opt.as_ref().and_then(|m| m.mrl_cutoff_dimension());
         let mrl_rerank_top_k = meta_opt.as_ref().and_then(|m| m.mrl_rerank_top_k());
         let schema = meta_opt.as_ref().and_then(|m| m.schema.clone());
+        let (g_nodes, g_edges, g_ram) = col.graph_stats();
         Json(serde_json::json!({
             "count": col.count(),
             "dimension": col.dimension(),
@@ -1158,6 +1181,12 @@ async fn get_stats(
             "mrl_cutoff_dimension": mrl_cutoff_dimension,
             "mrl_rerank_top_k": mrl_rerank_top_k,
             "schema": schema,
+            "kag_graph": {
+                "edges": g_edges,
+                "nodes": g_nodes,
+                "memory_bytes": g_ram,
+                "enabled": true,
+            },
         }))
         .into_response()
     } else {
@@ -1278,9 +1307,16 @@ async fn get_metrics(
         };
 
         let (active_count, idle_count) = manager.get_collection_counts();
+        let (total_graph_edges, total_graph_nodes) = manager.total_graph_stats();
+        let total_write_buffer = manager.total_write_buffer_size();
+        let total_indexing_queue = manager.total_indexing_queue_size();
 
         return Json(serde_json::json!({
             "total_vectors": total_vecs,
+            "total_graph_edges": total_graph_edges,
+            "total_graph_nodes": total_graph_nodes,
+            "total_write_buffer": total_write_buffer,
+            "total_indexing_queue": total_indexing_queue,
             "active_collections": active_count,
             "idle_collections": idle_count,
             "total_collections": active_count + idle_count,
@@ -2155,49 +2191,56 @@ async fn search_batch_http(
         };
 
     if let Some(col) = manager.get(&owner, &col_name).await {
-        let mut results = Vec::new();
-        for req in payload.searches {
-            let k = req.top_k.unwrap_or(10);
-            let params = SearchParams {
-                top_k: k,
-                ef_search: default_ef_search(),
-                use_wasserstein: req.use_wasserstein.unwrap_or(false),
-                mrl_dimension: req.mrl_dimension,
-                ..Default::default()
-            };
-            let complex_filters = req
-                .filters
-                .as_ref()
-                .map_or_else(Vec::new, |f| convert_filters(f));
+        let futures: Vec<_> = payload
+            .searches
+            .into_iter()
+            .map(|req| {
+                let col = Arc::clone(&col);
+                async move {
+                    let k = req.top_k.unwrap_or(10);
+                    let params = SearchParams {
+                        top_k: k,
+                        ef_search: default_ef_search(),
+                        use_wasserstein: req.use_wasserstein.unwrap_or(false),
+                        mrl_dimension: req.mrl_dimension,
+                        ..Default::default()
+                    };
+                    let complex_filters = req
+                        .filters
+                        .as_ref()
+                        .map_or_else(Vec::new, |f| convert_filters(f));
 
-            if let Ok(res) = col
-                .search(
-                    &req.vector,
-                    &req.filter.unwrap_or_default(),
-                    &complex_filters,
-                    &params,
-                )
-                .await
-            {
-                let mapped: Vec<serde_json::Value> = res
-                    .iter()
-                    .map(|(id, dist, meta, payload)| {
-                        let (metadata, typed_metadata) = parse_typed_metadata(meta);
-                        let payload_b64 = payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
-                        serde_json::json!({
-                            "id": id,
-                            "distance": dist,
-                            "metadata": metadata,
-                            "typed_metadata": typed_metadata,
-                            "payload": payload_b64
-                        })
-                    })
-                    .collect();
-                results.push(mapped);
-            } else {
-                results.push(Vec::new());
-            }
-        }
+                    if let Ok(res) = col
+                        .search(
+                            &req.vector,
+                            &req.filter.unwrap_or_default(),
+                            &complex_filters,
+                            &params,
+                        )
+                        .await
+                    {
+                        res.iter()
+                            .map(|(id, dist, meta, payload)| {
+                                let (metadata, typed_metadata) = parse_typed_metadata(meta);
+                                let payload_b64 =
+                                    payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
+                                serde_json::json!({
+                                    "id": id,
+                                    "distance": dist,
+                                    "metadata": metadata,
+                                    "typed_metadata": typed_metadata,
+                                    "payload": payload_b64
+                                })
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                }
+            })
+            .collect();
+
+        let results = futures::future::join_all(futures).await;
         Json(results).into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()

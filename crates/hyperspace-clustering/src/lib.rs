@@ -45,19 +45,23 @@ compile_error!(
 pub mod adsampling;
 pub mod batch;
 pub mod common;
+pub mod dataset;
 pub mod distance;
 pub mod gemm;
 pub mod hierarchical;
 pub mod layout;
+pub mod matrix;
 pub mod pdxearch;
 pub mod superkmeans;
 pub mod utils;
 
 pub use common::{DistanceFunction, KnnCandidate};
+pub use dataset::{Dataset, IterDataset};
 pub use hierarchical::{
-    ClusterTree, HierarchicalSuperKMeans, HierarchicalSuperKMeansConfig,
-    HierarchicalSuperKMeansIterationStats, NodeId, TreeNode,
+    FineClusters, HierarchicalSuperKMeans, HierarchicalSuperKMeansConfig,
+    HierarchicalSuperKMeansIterationStats, MesoPartition,
 };
+pub use matrix::Matrix;
 pub use superkmeans::{
     ClusterBalanceStats, SuperKMeans, SuperKMeansConfig, SuperKMeansIterationStats,
 };
@@ -162,4 +166,43 @@ pub fn hierarchical_cluster_f64(
         result.push((c, members));
     }
     Some(result)
+}
+
+/// Clusters a streaming dataset of f32 vectors yielding `Matrix` batches into `k` centroids using SuperKMeans.
+/// Returns `(centroids_flat, assignments)` without loading all batches into memory at once.
+pub fn cluster_streaming_dataset<D: Dataset>(
+    dataset: &mut D,
+    n: usize,
+    d: usize,
+    k: usize,
+) -> Result<(Vec<f32>, Vec<u32>), D::Error> {
+    let actual_k = k.min(n).max(1);
+    let mut kmeans = SuperKMeans::with_config(actual_k, d, SuperKMeansConfig::default());
+    let centroids = kmeans.train_dataset(dataset)?;
+    let mut assignments = Vec::with_capacity(n);
+    dataset.for_each_batch(&mut |batch| {
+        let batch_assignments = kmeans.assign(batch.as_slice(), &centroids, batch.n());
+        assignments.extend(batch_assignments);
+    })?;
+    Ok((centroids, assignments))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cluster_streaming_dataset() {
+        let (n, d, k) = (1000, 32, 10);
+        let data = make_blobs(n, d, k, true, 1.0, 10.0, 42);
+        let matrix = Matrix::new(&data, n, d);
+        let mut dataset = IterDataset::new(matrix.chunks(128));
+
+        let (centroids, assignments) = cluster_streaming_dataset(&mut dataset, n, d, k).unwrap();
+        assert_eq!(centroids.len(), k * d);
+        assert_eq!(assignments.len(), n);
+        for &a in &assignments {
+            assert!((a as usize) < k);
+        }
+    }
 }

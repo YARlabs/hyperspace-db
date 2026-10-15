@@ -6,8 +6,8 @@
 pub use hyperspace_proto::hyperspace::database_client::DatabaseClient;
 pub use hyperspace_proto::hyperspace::{
     BatchInsertRequest, BatchSearchRequest, CollectionSchema, CollectionSummary, CountRequest,
-    DurabilityLevel, EdgeItem, EventMessage, EventSubscriptionRequest, EventType, Filter, FilterAnd,
-    FilterNot, FilterOr, FindSemanticClustersRequest, FindSemanticClustersResponse,
+    DurabilityLevel, EdgeItem, EventMessage, EventSubscriptionRequest, EventType, Filter,
+    FilterAnd, FilterNot, FilterOr, FindSemanticClustersRequest, FindSemanticClustersResponse,
     GetConceptParentsRequest, GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse,
     GetNodeRequest, GetPointsRequest, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse,
     GraphNode, InBall, InBox, InCone, InduceEdgesRequest, InduceEdgesResponse, InsertRequest,
@@ -73,7 +73,6 @@ pub struct VerificationResult {
     /// Resolved context chunk IDs.
     pub resolved_context_ids: Vec<u32>,
 }
-
 
 /// Options for configuring vector search requests across single and batch searches.
 #[derive(Debug, Clone, Default)]
@@ -1888,7 +1887,8 @@ impl Client {
         context_ids: &[String],
         collection: &str,
     ) -> Result<VerificationResult, tonic::Status> {
-        self.verify_generation_with_options(llm_answer, context_ids, collection, None, None).await
+        self.verify_generation_with_options(llm_answer, context_ids, collection, None, None)
+            .await
     }
 
     /// Mathematically verifies if the LLM's answer semantically breaks the topological/geometric
@@ -1935,7 +1935,6 @@ impl Client {
             resolved_context_ids: resp.resolved_context_ids,
         })
     }
-
 
     /// Evaluates a fuzzy logic search query locally by issuing batch search RPCs
     /// and scoring candidates with TNorms/TConorms.
@@ -2487,4 +2486,3 @@ mod tests {
         assert_eq!(res.resolved_context_ids, vec![42, 101]);
     }
 }
-

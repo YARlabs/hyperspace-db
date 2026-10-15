@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: langchain-hyperspace
-Version: 4.0.0
+Version: 4.1.0
 Summary: LangChain integration for HyperspaceDB - Hyperbolic Vector Database with Edge-Cloud Federation
 Author-email: YARlabs <hi@yar.ink>
 License: Apache-2.0
@@ -279,6 +279,31 @@ See the [examples/](examples/) directory for complete examples:
 - `document_qa.py`: Document Q&A system
 - `semantic_search.py`: Semantic search engine
 - `edge_sync.py`: Edge-Cloud synchronization demo
+
+## Native Vector-Graph (KAG) & Topology Linking
+
+HyperspaceDB 4.1+ internalizes explicit directed labeled graph relations alongside vector embeddings:
+
+```python
+# Link documents or concepts with directed labeled edges
+vectorstore.link(source_id=1, target_id=2, relation="OWNS", weight=1.0)
+
+# Batch link edges
+vectorstore.link_batch([
+    {"source_id": 1, "target_id": 2, "relation": "OWNS", "weight": 1.0},
+    {"source_id": 2, "target_id": 3, "relation": "DEPENDS_ON", "weight": 0.95},
+])
+
+# Unlink edge
+vectorstore.unlink(source_id=1, target_id=2, relation="OWNS")
+
+# Declaratively induce graph edges directly from document metadata
+created = vectorstore.induce_edges_from_metadata([
+    {"field": "file_path", "rule_type": "path_hierarchy", "relation": "CONTAINS"},
+    {"field": "parent_id", "rule_type": "foreign_key", "relation": "OWNS"},
+])
+print(f"Induced {created} explicit edges directly from metadata")
+```
 
 ## Documentation
 

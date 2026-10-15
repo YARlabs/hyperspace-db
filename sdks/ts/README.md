@@ -1,6 +1,6 @@
 # HyperspaceDB TypeScript SDK
 
-Official TypeScript client for HyperspaceDB gRPC API v3.1.1.
+Official TypeScript client for HyperspaceDB gRPC API v4.1.0.
 
 Use this SDK for:
 - collection lifecycle management

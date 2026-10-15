@@ -1,6 +1,6 @@
 # HyperspaceDB Skills for AI Agents
 
-[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v3.1.2-cyan)](https://yar.ink/hyperspace)
+[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v4.1.0-cyan)](https://yar.ink/hyperspace)
 [![Skills](https://img.shields.io/badge/Skills-5-green)](./skills/)
 [![MCP](https://img.shields.io/badge/MCP-30%2B_tools-blue)](https://modelcontextprotocol.io)
 

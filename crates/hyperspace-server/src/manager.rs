@@ -637,6 +637,31 @@ impl CollectionManager {
             .sum()
     }
 
+    pub fn total_graph_stats(&self) -> (usize, usize) {
+        let mut total_edges = 0;
+        let mut total_nodes = 0;
+        for entry in self.collections.iter() {
+            let (nodes, edges, _) = entry.value().collection.graph_stats();
+            total_edges += edges;
+            total_nodes += nodes;
+        }
+        (total_edges, total_nodes)
+    }
+
+    pub fn total_write_buffer_size(&self) -> usize {
+        self.collections
+            .iter()
+            .map(|entry| entry.value().collection.write_buffer_size())
+            .sum()
+    }
+
+    pub fn total_indexing_queue_size(&self) -> u64 {
+        self.collections
+            .iter()
+            .map(|entry| entry.value().collection.queue_size())
+            .sum()
+    }
+
     pub async fn tick_cluster_clock(&self) -> u64 {
         let mut state = self.cluster_state.write().await;
         state.tick()

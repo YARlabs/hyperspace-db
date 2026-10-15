@@ -38,9 +38,12 @@ By submitting contributions to HyperspaceDB, you agree that your contributions w
 
 We value stability. Please ensure all tests pass before submitting a PR:
 ```bash
-cargo check
+cargo check --workspace
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --lib
+# Test native clustering and graph benchmarks
+cargo test -p hyperspace-clustering
+cargo bench --bench graph_vs_dual --no-run
 ```
 
 ## 📜 Code Style
@@ -66,6 +69,24 @@ If you are contributing to the **Cognitive Math SDK** or the **Heterogeneous Tri
 1. Add core math to `crates/hyperspace-sdk/src/math.rs` in Rust.
 2. Mirror the functionality to Python (`sdks/python/hyperspace/math.py`) and TypeScript (`sdks/ts/src/math.ts`).
 3. If adding a new multi-agent evaluation metric (e.g. `evaluate_claim` for the Tribunal Router), ensure it leverages the Graph Traversal API efficiently and is added symmetrically across the `agents` module in all SDKs.
+
+## 🕸️ Contributing to the Native Vector-Graph (KAG) Subsystem
+
+If you are extending the **Native Vector-Graph (KAG)** engine:
+1. **Core Data Structures** (`crates/hyperspace-core/src/graph.rs`):
+   - `CompactEdge`: 12-byte packed edge structure (`target_node: u32`, `relation: u16`, `weight: f32`). Always maintain 12-byte struct alignment.
+   - `DynamicGraph`: Fine-grained concurrent adjacency list used for ingestion and dynamic edge updates.
+   - `CsrGraph`: Static, read-optimized Compressed Sparse Row layout for contiguous L1/L2 cache prefetching and sub-microsecond reachability queries.
+2. **Adding Metadata Induction Rules**:
+   - New declarative rules belong in `GraphEngine::induce_from_metadata` in `crates/hyperspace-core/src/graph.rs`.
+   - Ensure rules are bidirectional when symmetric, and respect fanout bounds (e.g. max 16 clique neighbors for `exact_match`) to avoid quadratic edge explosions.
+3. **Thread-Per-Core Integration** (`crates/hyperspace-server/src/sharded_engine.rs`):
+   - Every `ShardedCollection<M>` maintains an `Arc<GraphEngine>`.
+   - Always translate user 32-bit hash IDs through `self.to_graph_id(user_id)` and `self.to_user_id(graph_id)` (`DashMap<u32, u32>`) to ensure dense $0 \dots N$ CSR arrays without allocating gigabytes of empty row offsets.
+   - Changes must persist to `graph_id_map.json` and `graph.csr` upon collection flush.
+4. **Validation**:
+   - Run graph unit tests: `cargo test -p hyperspace-core --lib graph`
+   - Run empirical benchmark: `python3 benchmarks/run_all_collections_kag_benchmark.py --rounds 10`
 
 ## 📊 Adding Quantization Modes
 

@@ -3,6 +3,7 @@ pyproject.toml
 src/langchain_hyperspace/__init__.py
 src/langchain_hyperspace/client.py
 src/langchain_hyperspace/embeddings.py
+src/langchain_hyperspace/query_planner.py
 src/langchain_hyperspace/vectorstores.py
 src/langchain_hyperspace.egg-info/PKG-INFO
 src/langchain_hyperspace.egg-info/SOURCES.txt

@@ -9,12 +9,15 @@ use std::thread;
 
 /// Generates a synthetic enterprise graph topology:
 /// 25,000 entities, 250,000 edges (~10 edges/node average)
-fn generate_enterprise_graph(num_nodes: usize, total_edges: usize) -> (CsrGraph, Vec<Vec<CompactEdge>>) {
+fn generate_enterprise_graph(
+    num_nodes: usize,
+    total_edges: usize,
+) -> (CsrGraph, Vec<Vec<CompactEdge>>) {
     let mut adj = vec![Vec::new(); num_nodes];
     let mut edge_cnt = 0;
 
     // Power-law / scale-free distribution with high-degree hubs and regular nodes
-    for u in 0..num_nodes {
+    for (u, node_edges) in adj.iter_mut().enumerate().take(num_nodes) {
         let degree = if u < 50 {
             // Super-nodes / Core hubs
             200.min(total_edges - edge_cnt)
@@ -29,7 +32,7 @@ fn generate_enterprise_graph(num_nodes: usize, total_edges: usize) -> (CsrGraph,
         for step in 1..=degree {
             let v = ((u * 37 + step * 101) % num_nodes) as u32;
             let rel = ((step % 4) + 1) as u16; // 1: OWNS, 2: DEPENDS_ON, 3: SUPERSEDES, 4: AMENDS
-            adj[u].push(CompactEdge::new(v, rel, 1.0));
+            node_edges.push(CompactEdge::new(v, rel, 1.0));
             edge_cnt += 1;
             if edge_cnt >= total_edges {
                 break;
@@ -109,7 +112,10 @@ impl MockExternalGraphServer {
                             break;
                         }
                     }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
+                    Err(ref e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock
+                            || e.kind() == std::io::ErrorKind::TimedOut =>
+                    {
                         continue;
                     }
                     Err(_) => break,
@@ -140,7 +146,8 @@ fn benchmark_graph_expansion(c: &mut Criterion) {
     let (csr, adj) = generate_enterprise_graph(NUM_NODES, NUM_EDGES);
 
     // Setup Unix Domain Socket IPC pair
-    let (mut client_sock, server_sock) = UnixStream::pair().expect("Failed to create UnixStream pair");
+    let (mut client_sock, server_sock) =
+        UnixStream::pair().expect("Failed to create UnixStream pair");
     let _server = MockExternalGraphServer::spawn(server_sock, adj);
 
     let test_seeds = [42u32, 105, 512, 1204, 8888];
@@ -153,7 +160,8 @@ fn benchmark_graph_expansion(c: &mut Criterion) {
         b.iter(|| {
             let seed = test_seeds[idx % test_seeds.len()];
             idx += 1;
-            let bm: RoaringBitmap = csr.bfs_reachability(black_box(&[seed]), black_box(2), black_box(64), None);
+            let bm: RoaringBitmap =
+                csr.bfs_reachability(black_box(&[seed]), black_box(2), black_box(64), None);
             black_box(bm.len())
         });
     });

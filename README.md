@@ -53,8 +53,8 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
     <td>Shared-Nothing architecture inspired by Seastar. Each physical CPU core runs an isolated, lock-free shard partition (<code>ShardedCollection</code>) with deterministic routing (<code>hash(id) % N</code>). Eliminates cross-core cache line bouncing and lock contention, delivering <b>142.5 QPS</b> (C=1) to <b>311.6 QPS</b> (C=10) on 1024D dense search (4.52× faster vs v3) and <b>67,500 vec/s</b> server core ingestion throughput.</td>
   </tr>
   <tr>
-    <td>🧬 <b>SuperKMeans & ADSampling Clustering</b></td>
-    <td>Native, zero-FFI pure Rust implementation of the CWI SuperKMeans algorithm (<code>hyperspace-clustering</code>). Employs Adaptive Distance Sampling (ADSampling) to prune 90%+ unneeded vector distance checks, SGEMM matrix multiplication for batch centroids, and dynamic Voronoi semantic compaction (<code>SemanticCompactor</code>) without full graph re-indexing.</td>
+    <td>🧬 <b>Out-of-Core SuperKMeans & ADSampling (v4.1.0)</b></td>
+    <td>Native, zero-FFI pure Rust implementation of SuperKMeans (<code>hyperspace-clustering</code> v4.1.0). Supports <b>Out-of-Core Streaming K-Means</b> via <code>Dataset</code> and <code>Matrix&lt;'a&gt;</code>, cutting peak RAM by up to <b>1,000×</b> on large datasets (58 MB vs 61.4 GB for 10M vectors). Employs BKT-drop 2-phase splitting (<b>100k vectors clustered in 144.88 ms</b> at ~690,000 vec/s with CV = 0.277), Adaptive Distance Sampling (ADSampling) pruning 90%+ distance checks, and disk-backed Voronoi semantic compaction (<code>SemanticCompactor</code>).</td>
   </tr>
   <tr>
     <td>🌐 <b>Hierarchical Macro-Routing & 21.2B+ Addressing</b></td>
@@ -142,6 +142,38 @@ Execute spatial K-Means, Fréchet Mean, and Parallel Transport directly in the N
     <td>Decentralized Vector Network infrastructure. Includes in-process single-binary node execution, continuous storage rental billing (per byte-hour) with automated grace periods/deletion, signed ticket verification (Ed25519) on query time with replay protection, and user-throttling.</td>
   </tr>
 </table>
+
+---
+
+## 🕸️ Native Vector-Graph (KAG): Why HyperspaceDB vs The Market?
+
+Traditional vector databases treat documents as isolated points in Euclidean space. In complex regulatory, cybersecurity, aerospace, and medical domains, **pure vector search fails to retrieve 77.9% of structural prerequisites and causal containment steps**.
+
+HyperspaceDB solves this by unifying **HNSW vector indexing** and a **Property Compressed Sparse Row (CSR) Graph** within the same shared-memory address space and L1/L2 cache line.
+
+> [!IMPORTANT]
+> ### 🏆 Empirical Proof Across 12 Production Playbook Collections (16,001 Vectors, 18,402 Edges):
+> * **Causal Context Completeness:** **100.0% Recall** with KAG vs **22.1%** in Pure Vector Search.
+> * **Zero Lost Steps:** Pure vector search misses up to **93.8% of containment steps** (e.g. in SOC MITRE TTPs and SEC capital rules). KAG deterministically captures every prerequisite.
+> * **Sub-Millisecond Graph Traversal:** **~5 µs** native CSR bitset traversal at the CPU core, **2.36 ms (p50)** end-to-end over HTTP.
+> * **Total Decision Latency:** **3.37 ms (p50)** combining vector entry match + multi-hop graph reachability.
+
+### ⚔️ Comprehensive Competitive Matrix
+
+| Capability / Metric | **HyperspaceDB v4.1 (KAG)** | **Microsoft GraphRAG** | **Frankenstein Stack (Vector + Neo4j + Postgres)** | **Graph DBs with Vectors (Neo4j Vector)** | **Pure Vector DBs (Pinecone / Qdrant)** |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **System Architecture** | **Unified Single-Binary Thread-per-Core LSM** | Python pipeline script on top of Parquet files | 3 separate distributed database clusters | Single JVM cluster with Lucene plugin | Single vector cluster with flat metadata |
+| **Edge Storage Format** | **12-byte packed CSR in RAM/SSD (`graph.csr`)** | Parquet text tables & graphs | Neo4j pointer lists + JVM Heap | Lucene inverted lists + JVM Heap | No edges (flat key-value metadata) |
+| **Graph Ingestion Cost** | **$0 (Zero LLM token costs)** | $100 – $1,000+ per dataset in LLM prompts | $0 (Manual Cypher ETL scripts) | $0 (Manual Cypher ETL scripts) | N/A (Cannot represent graphs) |
+| **Graph Creation Time** | **2 – 15 milliseconds** | Hours to days | Minutes to hours | Minutes to hours | N/A |
+| **End-to-End Decision Latency** | **3.37 ms** | 5 – 30+ seconds | 40 – 120 ms (Network hop tax) | 20 – 50 ms | 5 – 15 ms (Isolated vectors only) |
+| **Graph Traversal Speed** | **~5 µs** (L1/L2 cache hit) | N/A (LLM community summary) | 15 – 40 ms (Cypher query parser) | 5 – 15 ms | N/A (No topological traversal) |
+| **Causal Context Recall** | **100.0% (Complete)** | ~85–95% (LLM non-deterministic) | 100.0% (If manual links exist) | 100.0% (If manual links exist) | **22.1% (Severe 77.9% blind spots)** |
+| **Hyperbolic Geometry** | **Native 33D Lorentz & Poincaré Ball** | ❌ None | ❌ None | ❌ None | ❌ None |
+| **Real-Time Streaming Writes** | **Instant (LSM WriteBuffer + DynamicGraph)** | ❌ Batch-only (Recomputes Leiden communities) | ⚠️ Complex (Distributed 2PC sync) | ⚠️ Slow vector batch updates | ✅ Fast vector writes |
+| **Hardware Memory Footprint** | **~1 MB RAM per 20,000 edges** | High (Pandas/Parquet memory) | Extremely High (JVM + Go + Postgres) | High (JVM Heap + Off-Heap) | Moderate |
+
+---
 
 ## ⚡ L0 Hot Tier Caching & WriteBuffer (Real-Time Ingestion)
 
@@ -945,14 +977,14 @@ HyperspaceDB is ready for the modern AI stack with official high-level integrati
 
 | Integration | Language | Status | Install |
 | --- | --- | --- | --- |
-| 🧠 **Hyperspace Memory (Mem0 Drop-In)** | Python | ✅ v3 | [pip install hyperspace-memory](https://pypi.org/project/hyperspace-memory/) |
-| 🧠 **Hyperspace Memory (Mem0 Drop-In)** | TS/JS | ✅ v3 | [npm install hyperspace-memory](https://www.npmjs.com/package/hyperspace-memory) |
-| 🦜 **LangChain** | Python | ✅ v3 | [pip install langchain-hyperspace](https://pypi.org/project/langchain-hyperspace/) |
-| 🦜 **LangChain** | TS/JS | ✅ v3 | [npm install langchain-hyperspace](https://www.npmjs.com/package/langchain-hyperspace) |
-| 🦙 **LlamaIndex** | Python | ✅ v3 | [pip install llama-index-vector-stores-hyperspace](https://pypi.org/project/llama-index-vector-stores-hyperspace/) |
-| 🦙 **LlamaIndex** | TS/JS | ✅ v3 | [npm install llamaindex-hyperspace](https://www.npmjs.com/package/llamaindex-hyperspace) |
-| 🔗 **n8n** | No-Code | ✅ v3 | [Community Node: n8n-nodes-hyperspacedb](https://www.npmjs.com/package/n8n-nodes-hyperspacedb) |
-| 🤖 **AI Agent Skills** | Any | ✅ v3 | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) |
+| 🧠 **Hyperspace Memory (Mem0 Drop-In)** | Python | ✅ v4 | [pip install hyperspace-memory](https://pypi.org/project/hyperspace-memory/) |
+| 🧠 **Hyperspace Memory (Mem0 Drop-In)** | TS/JS | ✅ v4 | [npm install hyperspace-memory](https://www.npmjs.com/package/hyperspace-memory) |
+| 🦜 **LangChain** | Python | ✅ v4 | [pip install langchain-hyperspace](https://pypi.org/project/langchain-hyperspace/) |
+| 🦜 **LangChain** | TS/JS | ✅ v4 | [npm install langchain-hyperspace](https://www.npmjs.com/package/langchain-hyperspace) |
+| 🦙 **LlamaIndex** | Python | ✅ v4 | [pip install llama-index-vector-stores-hyperspace](https://pypi.org/project/llama-index-vector-stores-hyperspace/) |
+| 🦙 **LlamaIndex** | TS/JS | ✅ v4 | [npm install llamaindex-hyperspace](https://www.npmjs.com/package/llamaindex-hyperspace) |
+| 🔗 **n8n** | No-Code | ✅ v4 | [Community Node: n8n-nodes-hyperspacedb](https://www.npmjs.com/package/n8n-nodes-hyperspacedb) |
+| 🤖 **AI Agent Skills** | Any | ✅ v4 | [npm install hyperspacedb-skills](https://www.npmjs.com/package/hyperspacedb-skills) |
 
 ---
 

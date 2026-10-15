@@ -1,6 +1,7 @@
 README.md
 pyproject.toml
 src/llama_index_hyperspace/__init__.py
+src/llama_index_hyperspace/query_planner.py
 src/llama_index_hyperspace/vector_stores.py
 src/llama_index_vector_stores_hyperspace.egg-info/PKG-INFO
 src/llama_index_vector_stores_hyperspace.egg-info/SOURCES.txt

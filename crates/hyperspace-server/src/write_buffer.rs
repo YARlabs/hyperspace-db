@@ -13,6 +13,7 @@ pub struct WriteBufferEntry {
 
 pub struct WriteBuffer {
     entries: DashMap<u32, WriteBufferEntry>, // Key: internal_id
+    user_to_internal: DashMap<u32, u32>,
     count: AtomicUsize,
 }
 
@@ -26,6 +27,7 @@ impl WriteBuffer {
     pub fn new() -> Self {
         Self {
             entries: DashMap::new(),
+            user_to_internal: DashMap::new(),
             count: AtomicUsize::new(0),
         }
     }
@@ -38,6 +40,7 @@ impl WriteBuffer {
         vector: Vec<f64>,
         metadata: HashMap<String, String>,
     ) {
+        self.user_to_internal.insert(user_id, internal_id);
         if self
             .entries
             .insert(
@@ -56,7 +59,8 @@ impl WriteBuffer {
 
     /// Removal when indexing is completed or failed
     pub fn remove(&self, internal_id: u32) {
-        if self.entries.remove(&internal_id).is_some() {
+        if let Some((_, entry)) = self.entries.remove(&internal_id) {
+            self.user_to_internal.remove(&entry.user_id);
             self.count.fetch_sub(1, Ordering::Relaxed);
         }
     }
@@ -71,11 +75,11 @@ impl WriteBuffer {
         self.count.load(Ordering::Relaxed) == 0
     }
 
-    /// Point lookup by user_id across in-memory write buffer entries.
+    /// O(1) point lookup by user_id across in-memory write buffer entries.
     pub fn get_by_user_id(&self, user_id: u32) -> Option<(Vec<f64>, HashMap<String, String>)> {
-        for kv in &self.entries {
-            if kv.value().user_id == user_id {
-                return Some((kv.value().vector.clone(), kv.value().metadata.clone()));
+        if let Some(internal_id) = self.user_to_internal.get(&user_id) {
+            if let Some(entry) = self.entries.get(&*internal_id) {
+                return Some((entry.vector.clone(), entry.metadata.clone()));
             }
         }
         None

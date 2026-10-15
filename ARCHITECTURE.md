@@ -566,28 +566,72 @@ graph TB
 ```
 
 ### 1. Property Compressed Sparse Row (CSR) Architecture
-* **In-Memory Mutable Stage (`DynamicGraph`)**: Uses a sharded, fine-grained adjacency representation with an atomic relation interner (`RwLock<HashMap<String, u16>>`). Edges are indexed bidirectionally (outgoing and incoming) for instant bidirectional traversals.
+* **In-Memory Mutable Stage (`DynamicGraph`)**: Uses a fine-grained adjacency list with an atomic relation interner (`RwLock<HashMap<String, u16>>`). Edges are indexed bidirectionally for complete multi-hop exploration.
 * **Compact Edge Representation (`CompactEdge`)**: Packed into exactly **12 bytes**:
-  * `target_node`: 64-bit document internal identifier (`u64`).
+  * `target_node`: 32-bit dense internal node identifier (`u32`).
   * `relation_id`: 16-bit interned relation enum/string key (`u16`).
-  * `weight`: 16-bit half-precision float (`f16`) or scaled weight (`u16`).
-* **Binary Serialization (`graph.csr`)**: Saved directly inside collection snapshots alongside vector chunks (`chunk_*.hyp`). When loading, offsets and edge arrays are memory-mapped (`mmap`), allowing multi-hop subgraph traversals without heap allocations or object instantiation.
+  * `weight`: 32-bit floating point weight (`f32`).
+* **Dense Node ID Translation (`to_graph_id` / `to_user_id`)**:
+  * Prevents memory blowouts when user IDs are sparse 32-bit hashes (e.g., `391195170`).
+  * Bidirectional lock-free lookup maps sparse user IDs to dense $0 \dots N$ indices using `DashMap<u32, u32>`.
+  * Persisted alongside the binary CSR as `graph_id_map.json` and `graph.csr`. Total memory footprint for tens of thousands of edges is under **1 MB of RAM**.
+* **Thread-Per-Core Native Routing (`ShardedCollection<M>`)**:
+  * `Arc<GraphEngine>` is embedded directly into each shard across all 5 metric spaces: `Poincare`, `Lorentz`, `Euclidean`, `Cosine`, and `Hybrid`.
+  * Eliminates cross-core lock contention and guarantees zero network overhead between HNSW candidate retrieval and topological reachability.
 
 ### 2. Declarative Metadata Induction Engine
-To eliminate manual relationship labeling across massive vector collections (e.g., 100k+ documents), the v4.1 engine features an in-engine induction pipeline that generates topological edges in $O(N)$ time:
-* **`path_hierarchy`**: Parses hierarchical paths (e.g., `/docs/finance/reports/2026/q1.pdf`) and materializes `CONTAINS` / `PARENT_OF` directed edges between folder and document nodes.
-* **`foreign_key`**: Connects documents where `source_key` matches `target_key` (e.g., `ticket.author_id -> user.id`), creating typed semantic links.
-* **`exact_match`**: Identifies documents sharing common tags or categorical fields, establishing bidirectional similarity cliques.
+To eliminate manual relationship labeling and avoid expensive LLM token costs ($0 extraction cost), the v4.1 engine features an in-engine induction pipeline that materializes topological edges in $O(N)$ time:
+* **`path_hierarchy`**: Parses hierarchical paths (e.g., `AUTONOMOUS_TRANSPORT/AUTOMOTIVE_FMVSS_SAFETY/DOT-FMVSS-571-209`) and materializes bidirectional `SUBORDINATE_TO` edges between parent and child nodes.
+* **`foreign_key`**: Connects documents where a foreign attribute matches a primary attribute, creating typed semantic links.
+* **`exact_match`**: Identifies documents sharing common tags, categories, or techniques (e.g., `technique_id: T1059.005`), establishing bounded bidirectional similarity cliques.
 
-### 3. Minkowski Light-Cone Subsumption (`LorentzTreeProjector`)
+### 3. Minkowski Light-Cone Subsumption & Tribunal Verification (`tribunal.rs`)
 For 33D Lorentzian hyperbolic embeddings, semantic hierarchies map naturally to spacetime intervals:
 $$\Delta s^2 = -(\Delta x_0)^2 + \sum_{i=1}^{32} (\Delta x_i)^2$$
-When $\Delta s^2 \le 0$ and $\Delta x_0 > 0$, document $A$ is in the causal past of document $B$, meaning $A$ conceptually **subsumes** $B$. The `LorentzTreeProjector` automatically converts these geometric spacetime inclusions into directed acyclic graph edges (`SUBSUMES`), providing instant transitive closure traversals without metric recalculations.
+When $\Delta s^2 \le 0$ and $\Delta x_0 > 0$, document $A$ is in the causal past of document $B$, meaning $A$ conceptually **subsumes** $B$.
+* **Tribunal Post-Generation Verification**: Computes geometric geodesic distances and Lyapunov stability to verify that LLM responses do not wander outside the Lorentz causal cone of the source context.
+* Returns an exact mathematical `trust_score` (0.0–1.0) and boolean `is_hallucination` flag in microseconds.
 
-### 4. Dual-Database Elimination & Performance
-* **Zero Network Hops**: Replaces inter-process TCP/REST roundtrips between vector DB and graph DB with direct pointer dereferencing in shared memory.
-* **Latency Profile**: 2-hop topological subgraph extraction after top-k vector seed retrieval completes in **< 1.2 ms** (compared to 25–60 ms in dual-database setups).
-* **Zero-Lag Consistency**: Vector inserts, payload updates, and edge mutations share the unified transaction and snapshot boundary.
+### 4. Dual-Database Elimination & Empirical Performance (Full Cluster)
+* **Zero Network Hops**: Replaces inter-process TCP/REST roundtrips between vector DB and graph DB (e.g. Pinecone + Neo4j) with direct pointer dereferencing in shared memory.
+* **Empirical Multi-Collection Benchmark (16,001 vectors, 18,402 active edges across 12 collections)**:
+  * **Context Completeness**: Pure vector search captures only **22.1%** of necessary structural prerequisites (dropping up to **93.8%** of causal containment steps in SOC and Fintech playbooks). Native KAG delivers **100.0% Context Recall** with **zero lost steps**.
+  * **Latency Profile**: 2-hop topological subgraph reachability over native CSR packed bitsets executes in **~5 µs** at the CPU level and **2.36 ms (p50)** end-to-end over HTTP (including JSON deserialization).
+  * **Decision Latency**: Combined Vector Search + Native Graph Traversal resolves in **3.37 ms (p50)** cluster-wide.
+
+---
+
+## 🧬 Out-of-Core SuperKMeans & Semantic Voronoi Compaction (v4.1.0)
+
+HyperspaceDB employs a native, pure-Rust implementation of the CWI SuperKMeans algorithm with Adaptive Distance Sampling (ADSampling) in `crates/hyperspace-clustering`.
+
+```mermaid
+graph LR
+    subgraph "Out-of-Core Streaming Pipeline"
+        DISK[".hyp Chunks on NVMe<br/>mmap / File Scans"] -->|Matrix Chunks| DATASET["Dataset Trait<br/>Zero-Copy Matrix<'a>"]
+        DATASET -->|Pass 0: Reservoir| CENT0["Initial K Centroids"]
+        CENT0 -->|Pass 1..M: Lloyd| WORK["GEMM Coalescing<br/>batch_rows width"]
+        WORK -->|Accumulate| ASSIGN["RAM: Centroids + 4B/vec<br/>(99.9% RAM Reduction)"]
+        ASSIGN -->|2-Phase Split| CLUSTERS["Row-Order Fine Clusters<br/>Max Leaf Bounded"]
+        CLUSTERS -->|Sequential Write| COMPACT[".hyp Voronoi Chunks<br/>SemanticCompactor"]
+    end
+```
+
+### 1. Zero-Copy `Matrix<'a>` and Replayable `Dataset`
+* Traditional in-memory clustering requires allocating $N \times D \times 4$ contiguous bytes. For 100M 768D vectors, this exceeds 300 GB RAM.
+* `hyperspace-clustering` introduces the `Dataset` trait, which streams `Matrix<'a>` batches directly from memory-mapped files or network channels. Small matrices are coalesced into hardware GEMM-sized blocks so SIMD kernels (NEON/AVX2/AVX-512) execute at peak memory-bus saturation.
+* **Peak Memory Reduction**: Only cluster centroids ($K \times D \times 4$ bytes) and row assignment tokens ($N \times 4$ bytes) persist between iterations. Peak RAM drops from **61.4 GB to 58 MB for 10M vectors (1,058× reduction)**.
+
+### 2. BKT-Drop 2-Phase Split
+* Legacy Balanced K-Means Trees (`ClusterTree`, `TreeNode`, `NodeId`) created millions of heap allocations for node pointers and forced rigid fan-out constraints.
+* v4.1.0 replaces search trees with a streamlined 2-phase split:
+  1. **Meso Split**: Quickly partitions data into $\lceil\sqrt{K}\rceil$ macro clusters in **3 Lloyd iterations**.
+  2. **Leaf Refinement**: Re-clusters only groups exceeding `max_leaf_size` in **5 iterations** until all clusters fit within the leaf size cap.
+* **Throughput**: Clustered **100,000 vectors (128D) into 604 balanced clusters in 144.88 ms** (~690,000 vectors/sec) with coefficient of variation $CV = 0.277$.
+
+### 3. Disk-Backed Voronoi Compaction (`SemanticCompactor`)
+* During background index consolidation, `SemanticCompactor` partitions immutable `.hyp` files into Voronoi chunks.
+* Leaves are emitted strictly in **row order**, enabling sequential streaming disk writes without filesystem random-access fragmentation.
 
 ---
 

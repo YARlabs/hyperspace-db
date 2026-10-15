@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hyperspacedb"
-version = "4.0.1"
-description = "Fastest Hyperbolic Vector DB Client"
+version = "4.1.0"
+description = "Fastest Hyperbolic Vector DB Client with Domain-Specific Cognitive SDKs"
 readme = "README.md"
 authors = [
     {name = "YARlabs"}
@@ -16,7 +16,20 @@ dependencies = [
     "numpy>=1.20.0"
 ]
 requires-python = ">=3.8"
-keywords = ["vector-database", "ann", "grpc", "embeddings", "hyperspace"]
+keywords = [
+    "vector-database", 
+    "ann", 
+    "grpc", 
+    "embeddings", 
+    "hyperspace", 
+    "hyperbolic", 
+    "cheminformatics", 
+    "genomics", 
+    "threat-intelligence", 
+    "legaltech", 
+    "knowledge-graphs",
+    "quantitative-finance"
+]
 
 [project.optional-dependencies]
 openai = ["openai>=1.0.0"]
@@ -24,7 +37,17 @@ cohere = ["cohere>=4.0.0"]
 voyage = ["voyageai>=0.1.0"]
 google = ["google-generativeai>=0.3.0"]
 sentence-transformers = ["sentence-transformers>=2.2.0"]
-all = ["openai>=1.0.0", "cohere>=4.0.0", "voyageai>=0.1.0", "google-generativeai>=0.3.0", "sentence-transformers>=2.2.0"]
+chem = ["rdkit-pypi>=2022.9.5"]
+bio = ["biopython>=1.80"]
+all = [
+    "openai>=1.0.0", 
+    "cohere>=4.0.0", 
+    "voyageai>=0.1.0", 
+    "google-generativeai>=0.3.0", 
+    "sentence-transformers>=2.2.0",
+    "rdkit-pypi>=2022.9.5",
+    "biopython>=1.80"
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

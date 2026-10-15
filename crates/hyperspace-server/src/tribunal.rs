@@ -1,12 +1,11 @@
-use hyperspace_core::{
-    Collection, EuclideanMetric, LorentzMetric, Metric, PoincareMetric,
-};
+use hyperspace_core::{Collection, EuclideanMetric, LorentzMetric, Metric, PoincareMetric};
 #[cfg(feature = "embed")]
 use hyperspace_embed::MultiVectorizer;
 use hyperspace_proto::hyperspace::{VerifyGenerationRequest, VerifyGenerationResponse};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashSet, VecDeque};
+#[cfg(feature = "embed")]
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -578,13 +577,19 @@ mod tests {
         // Apex root parent subsumes moderate child
         let mut apex_root = vec![0.0; 33];
         apex_root[0] = 1.0;
-        assert!(check_lorentz_cone_containment(&inside_child, &[apex_root.clone()]));
+        assert!(check_lorentz_cone_containment(
+            &inside_child,
+            &[apex_root.clone()]
+        ));
 
         // Distant outside point exceeding manifold threshold
         let mut distant_point = vec![0.0; 33];
         distant_point[1] = 3.0;
         distant_point[0] = (1.0 + 9.0f64).sqrt();
-        assert!(!check_lorentz_cone_containment(&distant_point, &[apex_root]));
+        assert!(!check_lorentz_cone_containment(
+            &distant_point,
+            &[apex_root]
+        ));
     }
 
     #[test]
@@ -593,7 +598,7 @@ mod tests {
         let v2 = vec![1.0, 0.0, 0.0];
         let v3 = vec![0.0, 1.0, 0.0];
 
-        assert_eq!(compute_manifold_distance("cosine", &v1, &v2), 0.0);
+        assert!(compute_manifold_distance("cosine", &v1, &v2).abs() < 1e-6);
         assert!((compute_manifold_distance("cosine", &v1, &v3) - 1.0).abs() < 1e-6);
     }
 
@@ -685,8 +690,8 @@ mod tests {
         // 2. Verify Hallucinated / Out-of-bounds Generation (Low trust score, marked invalid)
         let hallucinated_req = VerifyGenerationRequest {
             collection: col_name.to_string(),
-            llm_answer:
-                "Unrelated quantum electrodynamics and astrophysical nebula synthesis".to_string(),
+            llm_answer: "Unrelated quantum electrodynamics and astrophysical nebula synthesis"
+                .to_string(),
             context_ids: vec!["101".to_string()],
             max_distance_threshold: Some(0.3),
             check_geodesic: Some(true),

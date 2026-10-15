@@ -128,7 +128,8 @@ impl Wal {
         metadata: &HashMap<String, String>,
         logical_clock: u64,
     ) -> io::Result<Vec<u8>> {
-        let mut buf = Vec::new();
+        let estimated_size = 1 + 4 + 8 + 4 + vector.len() * 8 + metadata.len() * 32;
+        let mut buf = Vec::with_capacity(estimated_size);
         // Internal Format: OpCode 3 (Insert V3 with clock)
         buf.write_u8(3)?;
         buf.write_u32::<LittleEndian>(id)?;
@@ -136,8 +137,18 @@ impl Wal {
 
         // Vector
         buf.write_u32::<LittleEndian>(vector.len() as u32)?;
-        for &val in vector {
-            buf.write_f64::<LittleEndian>(val)?;
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe {
+                std::slice::from_raw_parts(vector.as_ptr().cast::<u8>(), vector.len() * 8)
+            };
+            buf.write_all(bytes)?;
+        }
+        #[cfg(not(target_endian = "little"))]
+        {
+            for &val in vector {
+                buf.write_f64::<LittleEndian>(val)?;
+            }
         }
 
         // Metadata
@@ -216,7 +227,8 @@ impl Wal {
         metadata: &HashMap<String, String>,
         logical_clock: u64,
     ) -> io::Result<Vec<u8>> {
-        let mut buf = Vec::new();
+        let estimated_size = 1 + 8 + 8 + 4 + vector.len() * 8 + metadata.len() * 32;
+        let mut buf = Vec::with_capacity(estimated_size);
         // Internal Format: OpCode 4 (Insert V4 with u64 ID and clock)
         buf.write_u8(4)?;
         buf.write_u64::<LittleEndian>(id)?;
@@ -224,8 +236,18 @@ impl Wal {
 
         // Vector
         buf.write_u32::<LittleEndian>(vector.len() as u32)?;
-        for &val in vector {
-            buf.write_f64::<LittleEndian>(val)?;
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe {
+                std::slice::from_raw_parts(vector.as_ptr().cast::<u8>(), vector.len() * 8)
+            };
+            buf.write_all(bytes)?;
+        }
+        #[cfg(not(target_endian = "little"))]
+        {
+            for &val in vector {
+                buf.write_f64::<LittleEndian>(val)?;
+            }
         }
 
         // Metadata
@@ -458,10 +480,23 @@ impl Wal {
             4 => {
                 let id = cursor.read_u64::<LittleEndian>()?;
                 let logical_clock = cursor.read_u64::<LittleEndian>()?;
-                let vec_len = cursor.read_u32::<LittleEndian>()?;
-                let mut vector = Vec::with_capacity(vec_len as usize);
-                for _ in 0..vec_len {
-                    vector.push(cursor.read_f64::<LittleEndian>()?);
+                let vec_len = cursor.read_u32::<LittleEndian>()? as usize;
+                let mut vector = vec![0.0f64; vec_len];
+                #[cfg(target_endian = "little")]
+                {
+                    let bytes = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            vector.as_mut_ptr().cast::<u8>(),
+                            vec_len * 8,
+                        )
+                    };
+                    cursor.read_exact(bytes)?;
+                }
+                #[cfg(not(target_endian = "little"))]
+                {
+                    for val in &mut vector {
+                        *val = cursor.read_f64::<LittleEndian>()?;
+                    }
                 }
                 let meta_len = cursor.read_u32::<LittleEndian>()?;
                 let mut metadata = HashMap::with_capacity(meta_len as usize);
@@ -489,10 +524,23 @@ impl Wal {
             3 => {
                 let id = cursor.read_u32::<LittleEndian>()?;
                 let logical_clock = cursor.read_u64::<LittleEndian>()?;
-                let vec_len = cursor.read_u32::<LittleEndian>()?;
-                let mut vector = Vec::with_capacity(vec_len as usize);
-                for _ in 0..vec_len {
-                    vector.push(cursor.read_f64::<LittleEndian>()?);
+                let vec_len = cursor.read_u32::<LittleEndian>()? as usize;
+                let mut vector = vec![0.0f64; vec_len];
+                #[cfg(target_endian = "little")]
+                {
+                    let bytes = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            vector.as_mut_ptr().cast::<u8>(),
+                            vec_len * 8,
+                        )
+                    };
+                    cursor.read_exact(bytes)?;
+                }
+                #[cfg(not(target_endian = "little"))]
+                {
+                    for val in &mut vector {
+                        *val = cursor.read_f64::<LittleEndian>()?;
+                    }
                 }
                 let meta_len = cursor.read_u32::<LittleEndian>()?;
                 let mut metadata = HashMap::with_capacity(meta_len as usize);
@@ -519,10 +567,23 @@ impl Wal {
             }
             2 => {
                 let id = cursor.read_u32::<LittleEndian>()?;
-                let vec_len = cursor.read_u32::<LittleEndian>()?;
-                let mut vector = Vec::with_capacity(vec_len as usize);
-                for _ in 0..vec_len {
-                    vector.push(cursor.read_f64::<LittleEndian>()?);
+                let vec_len = cursor.read_u32::<LittleEndian>()? as usize;
+                let mut vector = vec![0.0f64; vec_len];
+                #[cfg(target_endian = "little")]
+                {
+                    let bytes = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            vector.as_mut_ptr().cast::<u8>(),
+                            vec_len * 8,
+                        )
+                    };
+                    cursor.read_exact(bytes)?;
+                }
+                #[cfg(not(target_endian = "little"))]
+                {
+                    for val in &mut vector {
+                        *val = cursor.read_f64::<LittleEndian>()?;
+                    }
                 }
                 let meta_len = cursor.read_u32::<LittleEndian>()?;
                 let mut metadata = HashMap::with_capacity(meta_len as usize);

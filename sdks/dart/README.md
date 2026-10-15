@@ -4,7 +4,7 @@ Official Dart/Flutter SDK for [HyperspaceDB](https://github.com/yarlabs/hyperspa
 
 ## 🚀 Features
 
-- **100% Feature Parity**: Supports all gRPC v3.1.1 operations (Parity with TS/Python).
+- **100% Feature Parity**: Supports all gRPC v4.1.0 operations (Parity with TS/Python).
 - **Multi-Geometry**: Native support for `Euclidean`, `Cosine`, `Poincaré`, and `Lorentz` metrics.
 - **Hybrid Retrieval**: Seamlessly combine semantic vector search with BM25 lexical ranking.
 - **Recursive Filtering**: Complex logical filters (`AND`, `OR`, `NOT`) and spatial constraints (`InCone`, `InBall`, `InBox`).

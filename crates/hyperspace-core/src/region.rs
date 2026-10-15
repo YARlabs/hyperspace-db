@@ -14,15 +14,18 @@ impl BoxRegion {
         }
     }
 
-    pub fn contains(&self, vector: &HyperVector) -> bool {
-        for (d, coord) in vector.coords.iter().enumerate() {
-            if d < self.min_bounds.len()
-                && (*coord < self.min_bounds[d] || *coord > self.max_bounds[d])
-            {
+    #[inline]
+    pub fn check_contains(min_bounds: &[f64], max_bounds: &[f64], coords: &[f64]) -> bool {
+        for (d, coord) in coords.iter().enumerate() {
+            if d < min_bounds.len() && (*coord < min_bounds[d] || *coord > max_bounds[d]) {
                 return false;
             }
         }
         true
+    }
+
+    pub fn contains(&self, vector: &HyperVector) -> bool {
+        Self::check_contains(&self.min_bounds, &self.max_bounds, &vector.coords)
     }
 }
 
@@ -44,11 +47,12 @@ impl ConeRegion {
         }
     }
 
-    pub fn contains(&self, vector: &HyperVector) -> bool {
-        for (d, &entity_axis) in vector.coords.iter().enumerate() {
-            if d < self.axes.len() {
-                let query_axis = self.axes[d];
-                let query_aperture = self.apertures[d];
+    #[inline]
+    pub fn check_contains(axes: &[f64], apertures: &[f64], cen: f64, coords: &[f64]) -> bool {
+        for (d, &entity_axis) in coords.iter().enumerate() {
+            if d < axes.len() {
+                let query_axis = axes[d];
+                let query_aperture = apertures[d];
 
                 // distance_to_axis[i] = |sin((entity_axis[i] - query_axis[i]) / 2)|
                 // distance_base[i]    = |sin(query_aperture[i] / 2)|
@@ -56,12 +60,16 @@ impl ConeRegion {
                 let dist_base = (query_aperture / 2.0).sin().abs();
 
                 // Point is inside if distance to axis <= base + tolerance
-                if dist_to_axis > dist_base + self.cen {
+                if dist_to_axis > dist_base + cen {
                     return false;
                 }
             }
         }
         true
+    }
+
+    pub fn contains(&self, vector: &HyperVector) -> bool {
+        Self::check_contains(&self.axes, &self.apertures, self.cen, &vector.coords)
     }
 }
 
@@ -76,26 +84,31 @@ impl BallRegion {
         Self { center, radius }
     }
 
-    pub fn contains(&self, vector: &HyperVector) -> bool {
-        if self.center.len() == 33 {
-            if vector.coords.len() < 33 {
+    #[inline]
+    pub fn check_contains(center: &[f64], radius: f64, coords: &[f64]) -> bool {
+        if center.len() == 33 {
+            if coords.len() < 33 {
                 return false;
             }
-            let mut inner = -self.center[0] * vector.coords[0];
+            let mut inner = -center[0] * coords[0];
             for d in 1..33 {
-                inner += self.center[d] * vector.coords[d];
+                inner += center[d] * coords[d];
             }
             let arg = (-inner).max(1.0 + 1e-12);
-            arg.acosh() <= self.radius
+            arg.acosh() <= radius
         } else {
             let mut dist_sq = 0.0;
-            for (d, coord) in vector.coords.iter().enumerate() {
-                if d < self.center.len() {
-                    let diff = *coord - self.center[d];
+            for (d, coord) in coords.iter().enumerate() {
+                if d < center.len() {
+                    let diff = *coord - center[d];
                     dist_sq += diff * diff;
                 }
             }
-            dist_sq.sqrt() <= self.radius
+            dist_sq.sqrt() <= radius
         }
+    }
+
+    pub fn contains(&self, vector: &HyperVector) -> bool {
+        Self::check_contains(&self.center, self.radius, &vector.coords)
     }
 }

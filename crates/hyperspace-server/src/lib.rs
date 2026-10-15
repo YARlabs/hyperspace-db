@@ -90,12 +90,13 @@ use hyperspace_proto::hyperspace::{
     GetPointsRequest, GetPointsResponse, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse,
     GraphCluster, GraphNode, HealthCheckResponse, InduceEdgesRequest, InduceEdgesResponse,
     InsertRequest, InsertResponse, InsertTextRequest, LinkBatchRequest, LinkBatchResponse,
-    LinkRequest, ListCollectionsResponse, MetadataValue, MonitorRequest, ScrollRequest, ScrollResponse,
-    SearchMultiCollectionRequest, SearchMultiCollectionResponse, SearchRequest, SearchResponse,
-    SearchResult, SearchTextRequest, SyncHandshakeRequest, SyncHandshakeResponse, SyncPullRequest,
-    SyncPushResponse, SyncVectorData, SystemStats, TraverseRequest, TraverseResponse, UnlinkRequest,
-    UpdatePayloadRequest, VectorData, VectorDeletedEvent, VectorInsertedEvent, VectorizeRequest,
-    VectorizeResponse, VerifyGenerationRequest, VerifyGenerationResponse,
+    LinkRequest, ListCollectionsResponse, MetadataValue, MonitorRequest, ScrollRequest,
+    ScrollResponse, SearchMultiCollectionRequest, SearchMultiCollectionResponse, SearchRequest,
+    SearchResponse, SearchResult, SearchTextRequest, SyncHandshakeRequest, SyncHandshakeResponse,
+    SyncPullRequest, SyncPushResponse, SyncVectorData, SystemStats, TraverseRequest,
+    TraverseResponse, UnlinkRequest, UpdatePayloadRequest, VectorData, VectorDeletedEvent,
+    VectorInsertedEvent, VectorizeRequest, VectorizeResponse, VerifyGenerationRequest,
+    VerifyGenerationResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
@@ -3031,9 +3032,11 @@ impl Database for HyperspaceService {
         let relation = hyperspace_core::graph::EdgeRelation::from_str_label(&edge.relation);
         col.graph_link(edge.source_id, edge.target_id, relation, edge.weight)
             .map_err(Status::internal)?;
-        Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-            status: "OK".to_string(),
-        }))
+        Ok(Response::new(
+            hyperspace_proto::hyperspace::StatusResponse {
+                status: "OK".to_string(),
+            },
+        ))
     }
 
     async fn link_batch(
@@ -3081,9 +3084,15 @@ impl Database for HyperspaceService {
         let removed = col
             .graph_unlink(req.source_id, req.target_id, rel)
             .map_err(Status::internal)?;
-        Ok(Response::new(hyperspace_proto::hyperspace::StatusResponse {
-            status: if removed { "OK".to_string() } else { "NOT_FOUND".to_string() },
-        }))
+        Ok(Response::new(
+            hyperspace_proto::hyperspace::StatusResponse {
+                status: if removed {
+                    "OK".to_string()
+                } else {
+                    "NOT_FOUND".to_string()
+                },
+            },
+        ))
     }
 
     async fn induce_edges_from_metadata(

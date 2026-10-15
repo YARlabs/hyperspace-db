@@ -174,12 +174,12 @@ impl GraphConfig {
     /// Loads configuration from environment variables with production defaults.
     pub fn from_env() -> Self {
         let enabled = std::env::var("HS_GRAPH_ENGINE_ENABLED")
-            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-            .unwrap_or(true);
+            .map_or(true, |v| v.eq_ignore_ascii_case("true") || v == "1");
 
         let storage_layout = std::env::var("HS_GRAPH_STORAGE_LAYOUT")
-            .map(|v| GraphStorageLayout::from_str_opt(&v))
-            .unwrap_or(GraphStorageLayout::AdjacencyList);
+            .map_or(GraphStorageLayout::AdjacencyList, |v| {
+                GraphStorageLayout::from_str_opt(&v)
+            });
 
         let max_memory_mb = std::env::var("HS_GRAPH_MAX_MEMORY_MB")
             .ok()
@@ -240,8 +240,7 @@ impl CsrGraph {
     pub const MAGIC: &'static [u8; 8] = b"HYPR_CSR";
 
     pub fn new(num_nodes: usize, estimated_edges: usize) -> Self {
-        let mut row_offsets = Vec::with_capacity(num_nodes + 1);
-        row_offsets.resize(num_nodes + 1, 0);
+        let row_offsets = vec![0; num_nodes + 1];
         let edges = Vec::with_capacity(estimated_edges);
         Self {
             row_offsets,
@@ -253,7 +252,10 @@ impl CsrGraph {
     /// Builds a CSR graph from an adjacency list snapshot.
     pub fn from_adjacency_list(adj: &[Vec<CompactEdge>]) -> Self {
         let num_nodes = adj.len();
-        let total_edges: usize = adj.iter().map(|edges| edges.iter().filter(|e| e.is_active()).count()).sum();
+        let total_edges: usize = adj
+            .iter()
+            .map(|edges| edges.iter().filter(|e| e.is_active()).count())
+            .sum();
 
         let mut row_offsets = Vec::with_capacity(num_nodes + 1);
         let mut flat_edges = Vec::with_capacity(total_edges);
@@ -336,14 +338,22 @@ impl CsrGraph {
         max_fanout: usize,
         relation_filter: Option<&[u16]>,
     ) -> RoaringBitmap {
-        let mut bitmap = RoaringBitmap::new();
-        let mut current_frontier = Vec::with_capacity(seeds.len() * 4);
-        let mut next_frontier = Vec::with_capacity(seeds.len() * 16);
+        if seeds.is_empty() {
+            return RoaringBitmap::new();
+        }
 
+        let mut bitmap = RoaringBitmap::new();
         for &seed in seeds {
             bitmap.insert(seed);
-            current_frontier.push(seed);
         }
+
+        if max_hops == 0 {
+            return bitmap;
+        }
+
+        let mut current_frontier = Vec::with_capacity(seeds.len() * 4);
+        let mut next_frontier = Vec::with_capacity(seeds.len() * 16);
+        current_frontier.extend_from_slice(seeds);
 
         for _hop in 0..max_hops {
             if current_frontier.is_empty() {
@@ -493,6 +503,10 @@ impl DynamicGraph {
 
     /// Automatically expands capacity if node ID exceeds current bounds.
     fn ensure_node_capacity(&self, node_id: u32) {
+        if node_id >= 20_000_000 {
+            eprintln!("⚠️ [GraphEngine] Node ID {node_id} exceeds safety limit (20M). Skipping oversized allocation.");
+            return;
+        }
         let required = (node_id as usize) + 1;
         let current_len = self.adj.read().len();
         if required > current_len {
@@ -573,14 +587,22 @@ impl DynamicGraph {
         max_fanout: usize,
         relation_filter: Option<&[u16]>,
     ) -> RoaringBitmap {
-        let mut bitmap = RoaringBitmap::new();
-        let mut current_frontier = Vec::with_capacity(seeds.len() * 4);
-        let mut next_frontier = Vec::with_capacity(seeds.len() * 16);
+        if seeds.is_empty() {
+            return RoaringBitmap::new();
+        }
 
+        let mut bitmap = RoaringBitmap::new();
         for &seed in seeds {
             bitmap.insert(seed);
-            current_frontier.push(seed);
         }
+
+        if max_hops == 0 {
+            return bitmap;
+        }
+
+        let mut current_frontier = Vec::with_capacity(seeds.len() * 4);
+        let mut next_frontier = Vec::with_capacity(seeds.len() * 16);
+        current_frontier.extend_from_slice(seeds);
 
         let outer_guard = self.adj.read();
         let num_nodes = outer_guard.len();
@@ -626,7 +648,10 @@ impl DynamicGraph {
     /// Compacts dynamic adjacency lists into an immutable, cache-optimal CSR graph.
     pub fn to_csr(&self) -> CsrGraph {
         let outer_guard = self.adj.read();
-        let snapshot: Vec<Vec<CompactEdge>> = outer_guard.iter().map(|edges| edges.read().clone()).collect();
+        let snapshot: Vec<Vec<CompactEdge>> = outer_guard
+            .iter()
+            .map(|edges| edges.read().clone())
+            .collect();
         CsrGraph::from_adjacency_list(&snapshot)
     }
 
@@ -703,7 +728,8 @@ impl GraphEngine {
                 csr.bfs_reachability(seeds, bounded_hops, max_fanout, relation_filter)
             }
             GraphStorageLayout::AdjacencyList => {
-                self.dynamic.bfs_reachability(seeds, bounded_hops, max_fanout, relation_filter)
+                self.dynamic
+                    .bfs_reachability(seeds, bounded_hops, max_fanout, relation_filter)
             }
         }
     }
@@ -728,7 +754,10 @@ impl GraphEngine {
     }
 
     /// Loads graph from persistent binary CSR file.
-    pub fn load_from_csr_file(config: GraphConfig, path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
+    pub fn load_from_csr_file(
+        config: GraphConfig,
+        path: impl AsRef<std::path::Path>,
+    ) -> std::io::Result<Self> {
         let csr = CsrGraph::load_from_file(path)?;
         let num_nodes = csr.num_nodes;
         let dynamic = DynamicGraph::new(num_nodes);
@@ -793,7 +822,8 @@ impl GraphEngine {
                 }
                 "foreign_key" => {
                     if let Some(ref target_field) = rule.target_field {
-                        let mut target_val_to_id = std::collections::HashMap::with_capacity(nodes.len());
+                        let mut target_val_to_id =
+                            std::collections::HashMap::with_capacity(nodes.len());
                         for (id, meta) in nodes {
                             if let Some(val) = meta.get(target_field) {
                                 target_val_to_id.insert(val.clone(), *id);
@@ -823,7 +853,8 @@ impl GraphEngine {
                     }
                 }
                 "exact_match" => {
-                    let mut groups: std::collections::HashMap<&str, Vec<u32>> = std::collections::HashMap::new();
+                    let mut groups: std::collections::HashMap<&str, Vec<u32>> =
+                        std::collections::HashMap::new();
                     for (id, meta) in nodes {
                         if let Some(val) = meta.get(&rule.field) {
                             if !val.is_empty() {
@@ -836,7 +867,8 @@ impl GraphEngine {
                         for i in 0..max_members {
                             for j in (i + 1)..max_members {
                                 self.insert_edge(member_ids[i], member_ids[j], rel_code, weight);
-                                total_edges_added += 1;
+                                self.insert_edge(member_ids[j], member_ids[i], rel_code, weight);
+                                total_edges_added += 2;
                             }
                         }
                     }
@@ -884,7 +916,11 @@ impl LorentzTreeProjector {
     }
 
     /// Projects an ideal tree node into 33D Lorentz space.
-    pub fn project_hyperbolic_tree_node(depth: usize, branch_index: usize, step_r: f64) -> Vec<f64> {
+    pub fn project_hyperbolic_tree_node(
+        depth: usize,
+        branch_index: usize,
+        step_r: f64,
+    ) -> Vec<f64> {
         let r = (depth as f64) * step_r;
         let mut coords = vec![0.0; 33];
         coords[0] = r.cosh();
@@ -1037,8 +1073,15 @@ mod tests {
 
         let dist = LorentzTreeProjector::lorentz_distance(&parent, &child);
         let diff = (dist - 0.45).abs();
-        assert!(diff < 1e-4, "Hyperbolic hop distance distortion must be < 1e-4");
-        assert!(LorentzTreeProjector::is_in_light_cone(&parent, &child, 0.45 + 1e-4));
+        assert!(
+            diff < 1e-4,
+            "Hyperbolic hop distance distortion must be < 1e-4"
+        );
+        assert!(LorentzTreeProjector::is_in_light_cone(
+            &parent,
+            &child,
+            0.45 + 1e-4
+        ));
     }
 
     #[test]
@@ -1087,6 +1130,8 @@ mod tests {
 
         assert_eq!(engine.dynamic.total_edges(), 4);
         let edges_for_0 = engine.edges_for(0);
-        assert!(edges_for_0.iter().any(|e| e.target == 1 && e.relation == EdgeRelation::Contains.as_u16()));
+        assert!(edges_for_0
+            .iter()
+            .any(|e| e.target == 1 && e.relation == EdgeRelation::Contains.as_u16()));
     }
 }

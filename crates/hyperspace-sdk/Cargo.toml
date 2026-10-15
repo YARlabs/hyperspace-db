@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-sdk"
-version = "4.0.0"
+version = "4.1.0"
 edition = "2021"
 authors = ["YARlabs <hi@yar.ink>"]
 description = "Official Rust SDK for HyperspaceDB gRPC API"

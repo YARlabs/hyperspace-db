@@ -158,20 +158,13 @@ impl FilterExpr {
                 axes,
                 apertures,
                 cen,
-            } => {
-                let region = region::ConeRegion::new(axes.clone(), apertures.clone(), *cen);
-                region.contains(vector)
-            }
+            } => region::ConeRegion::check_contains(axes, apertures, *cen, &vector.coords),
             Self::InBox {
                 min_bounds,
                 max_bounds,
-            } => {
-                let region = region::BoxRegion::new(min_bounds.clone(), max_bounds.clone());
-                region.contains(vector)
-            }
+            } => region::BoxRegion::check_contains(min_bounds, max_bounds, &vector.coords),
             Self::InBall { center, radius } => {
-                let region = region::BallRegion::new(center.clone(), *radius);
-                region.contains(vector)
+                region::BallRegion::check_contains(center, *radius, &vector.coords)
             }
             Self::And(conds) => conds.iter().all(|c| c.check(vector, metadata)),
             Self::Or(conds) => conds.iter().any(|c| c.check(vector, metadata)),
@@ -405,6 +398,9 @@ pub trait Collection: Send + Sync + 'static {
     }
     fn quantization_mode(&self) -> crate::QuantizationMode;
     fn get_usage(&self) -> CollectionUsage;
+    fn graph_stats(&self) -> (usize, usize, usize) {
+        (0, 0, 0)
+    }
     fn get_hnsw_config(&self) -> HnswConfig {
         // Default implementation — overridden by CollectionImpl with real atomics.
         HnswConfig {
@@ -462,7 +458,13 @@ pub trait Collection: Send + Sync + 'static {
     ) -> Result<Vec<Vec<u32>>, String>;
 
     /// Links two nodes with an explicit directed labeled edge.
-    fn graph_link(&self, source_id: u32, target_id: u32, relation: u16, weight: f32) -> Result<(), String> {
+    fn graph_link(
+        &self,
+        source_id: u32,
+        target_id: u32,
+        relation: u16,
+        weight: f32,
+    ) -> Result<(), String> {
         let _ = (source_id, target_id, relation, weight);
         Ok(())
     }
@@ -656,9 +658,19 @@ impl Metric for PoincareMetric {
 
     #[inline(always)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
-        let norm_u_sq: f64 = a.iter().map(|&x| x * x).sum();
-        let norm_v_sq: f64 = b.iter().map(|&x| x * x).sum();
-        let diff_sq: f64 = a.iter().zip(b.iter()).map(|(u, v)| (u - v).powi(2)).sum();
+        let mut norm_u_sq = 0.0;
+        let mut norm_v_sq = 0.0;
+        let mut diff_sq = 0.0;
+
+        let n = a.len().min(b.len());
+        for i in 0..n {
+            let u = a[i];
+            let v = b[i];
+            norm_u_sq += u * u;
+            norm_v_sq += v * v;
+            let diff = u - v;
+            diff_sq += diff * diff;
+        }
 
         let denom = (1.0 - norm_u_sq) * (1.0 - norm_v_sq);
         let arg = 1.0 + 2.0 * diff_sq / denom.max(1e-9);

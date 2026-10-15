@@ -28,7 +28,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",
-    "hyperspace-sdk-ts": "4.0.0",
+    "hyperspace-sdk-ts": "4.1.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

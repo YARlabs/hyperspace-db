@@ -16,7 +16,7 @@ Welcome to the HyperspaceDB C++ SDK. This SDK provides gRPC generated clients an
 
 ## Generated Protobufs
 
-All protobufs (`hyperspace.pb.h` / `hyperspace.grpc.pb.h`) are pre-generated and located in the `proto/` directory. They sync perfectly with HyperspaceDB server `v3.1.1`.
+All protobufs (`hyperspace.pb.h` / `hyperspace.grpc.pb.h`) are pre-generated and located in the `proto/` directory. They sync perfectly with HyperspaceDB server `v4.1.0`.
 
 ## Using the SDK
 

@@ -23,7 +23,7 @@
   "author": "YARlabs",
   "license": "MIT",
   "dependencies": {
-    "hyperspace-sdk-ts": "4.0.0"
+    "hyperspace-sdk-ts": "4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",

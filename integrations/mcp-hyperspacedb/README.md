@@ -2,7 +2,7 @@
 
 [![MCP](https://img.shields.io/badge/MCP-Protocol-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
-[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v4.0-cyan)](https://github.com/yarlabs/hyperspace-db)
+[![HyperspaceDB](https://img.shields.io/badge/HyperspaceDB-v4.1.0-cyan)](https://github.com/yarlabs/hyperspace-db)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 The **HyperspaceDB MCP Server** (`mcp-hyperspacedb`) exposes the complete low-level data plane, cognitive geometry engine, graph navigation, and administration interface of **HyperspaceDB** to Large Language Models (LLMs) via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io).

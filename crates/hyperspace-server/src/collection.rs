@@ -1331,6 +1331,14 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         self.mode
     }
 
+    fn graph_stats(&self) -> (usize, usize, usize) {
+        (
+            self.explicit_graph.dynamic.node_count(),
+            self.explicit_graph.dynamic.total_edges(),
+            self.explicit_graph.memory_usage_bytes(),
+        )
+    }
+
     fn get_usage(&self) -> hyperspace_core::CollectionUsage {
         let mut disk_usage = 0;
         if let Ok(entries) = std::fs::read_dir(&self.data_dir) {
@@ -1675,8 +1683,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let layout_owned = self.layout.clone();
         let component_weights_owned = params.component_weights.clone();
 
-        // Quick Win: For small top_k, run search inline to avoid spawn_blocking overhead
-        let use_blocking = top_k > 50 || rerank_enabled;
+        // Quick Win: For small top_k with no cold chunks, run search inline to avoid spawn_blocking overhead
+        let use_blocking = top_k > 50 || rerank_enabled || self.meta_router.chunk_count() > 0;
 
         let index_link_for_cache = index_link.clone();
         if use_blocking {
@@ -2387,6 +2395,17 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     }
 
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {
+        if self.explicit_graph.config.enabled && self.explicit_graph.dynamic.total_edges() > 0 {
+            let internal_id = self.to_internal_id(id);
+            let edges = self.explicit_graph.edges_for(internal_id);
+            if !edges.is_empty() {
+                return Ok(edges
+                    .into_iter()
+                    .take(limit)
+                    .map(|e| self.to_user_id(e.target))
+                    .collect());
+            }
+        }
         let internal_id = self.to_internal_id(id);
         let neighbors = self
             .index_link
@@ -2422,6 +2441,20 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         max_nodes: usize,
         breadth_limit: usize,
     ) -> Result<Vec<u32>, String> {
+        if self.explicit_graph.config.enabled && self.explicit_graph.dynamic.total_edges() > 0 {
+            let internal_start = self.to_internal_id(start_id);
+            let mask =
+                self.explicit_graph
+                    .get_reachability_mask(&[internal_start], max_depth, None);
+            let res: Vec<u32> = mask
+                .iter()
+                .take(max_nodes)
+                .map(|n| self.to_user_id(n))
+                .collect();
+            if !res.is_empty() {
+                return Ok(res);
+            }
+        }
         let internal_start = self.to_internal_id(start_id);
         let traversed = self.index_link.load().graph_traverse(
             internal_start,
@@ -2481,10 +2514,17 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             .collect())
     }
 
-    fn graph_link(&self, source_id: u32, target_id: u32, relation: u16, weight: f32) -> Result<(), String> {
+    fn graph_link(
+        &self,
+        source_id: u32,
+        target_id: u32,
+        relation: u16,
+        weight: f32,
+    ) -> Result<(), String> {
         let internal_src = self.to_internal_id(source_id);
         let internal_tgt = self.to_internal_id(target_id);
-        self.explicit_graph.insert_edge(internal_src, internal_tgt, relation, weight);
+        self.explicit_graph
+            .insert_edge(internal_src, internal_tgt, relation, weight);
         Ok(())
     }
 
@@ -2492,7 +2532,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         for &(src, tgt, rel, w) in edges {
             let internal_src = self.to_internal_id(src);
             let internal_tgt = self.to_internal_id(tgt);
-            self.explicit_graph.insert_edge(internal_src, internal_tgt, rel, w);
+            self.explicit_graph
+                .insert_edge(internal_src, internal_tgt, rel, w);
         }
         Ok(edges.len())
     }
@@ -2500,10 +2541,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     fn graph_unlink(&self, source_id: u32, target_id: u32, relation: u16) -> Result<bool, String> {
         let internal_src = self.to_internal_id(source_id);
         let internal_tgt = self.to_internal_id(target_id);
-        Ok(self.explicit_graph.delete_edge(internal_src, internal_tgt, relation))
+        Ok(self
+            .explicit_graph
+            .delete_edge(internal_src, internal_tgt, relation))
     }
 
-    fn graph_induce_from_metadata(&self, rules: &[hyperspace_core::graph::MetadataInductionRule]) -> Result<usize, String> {
+    fn graph_induce_from_metadata(
+        &self,
+        rules: &[hyperspace_core::graph::MetadataInductionRule],
+    ) -> Result<usize, String> {
         let count = self.count().max(1);
         let points = self.peek(count, 0);
         let nodes: Vec<(u32, HashMap<String, String>)> = points

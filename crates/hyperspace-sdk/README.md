@@ -18,7 +18,7 @@ This crate provides:
 
 ```toml
 [dependencies]
-hyperspace-sdk = "3.1.0"
+hyperspace-sdk = "4.1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 

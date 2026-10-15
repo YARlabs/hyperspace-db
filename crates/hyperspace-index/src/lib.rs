@@ -29,6 +29,7 @@ use rayon::prelude::*;
 use rkyv::ser::Serializer;
 use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
+use smallvec::SmallVec;
 use std::cell::RefCell;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::{BinaryHeap, HashMap};
@@ -302,7 +303,7 @@ impl<M: Metric> HnswIndex<M> {
             }
 
             // Reconstruct node
-            let mut layers = Vec::with_capacity(s_node.layers.len());
+            let mut layers = SmallVec::with_capacity(s_node.layers.len());
             for s_layer in s_node.layers {
                 layers.push(ArcSwap::from_pointee(s_layer));
             }
@@ -327,10 +328,14 @@ impl<M: Metric> HnswIndex<M> {
         println!("   📦 Restoring Metadata Index...");
 
         let inverted = DashMap::new();
-        for (k, v) in deserialized.metadata.inverted {
-            let bitmap = RoaringBitmap::deserialize_from(&v[..]).unwrap_or_default();
-            inverted.insert(k, bitmap);
-        }
+        deserialized
+            .metadata
+            .inverted
+            .into_par_iter()
+            .for_each(|(k, v)| {
+                let bitmap = RoaringBitmap::deserialize_from(&v[..]).unwrap_or_default();
+                inverted.insert(k, bitmap);
+            });
 
         let numeric = DashMap::new();
         for (k, v) in deserialized.metadata.numeric {
@@ -346,17 +351,22 @@ impl<M: Metric> HnswIndex<M> {
             RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]).unwrap_or_default();
 
         let forward = DashMap::new();
-        let mut has_nonempty_metadata = false;
-        for (k, v) in deserialized.metadata.forward {
-            let mut attributes = std::collections::HashMap::new();
-            for (mk, mv) in v {
-                attributes.insert(mk, mv);
-            }
-            if !attributes.is_empty() {
-                has_nonempty_metadata = true;
-            }
-            forward.insert(k, attributes);
-        }
+        let has_nonempty = AtomicBool::new(false);
+        deserialized
+            .metadata
+            .forward
+            .into_par_iter()
+            .for_each(|(k, v)| {
+                let mut attributes = std::collections::HashMap::with_capacity(v.len());
+                for (mk, mv) in v {
+                    attributes.insert(mk, mv);
+                }
+                if !attributes.is_empty() {
+                    has_nonempty.store(true, Ordering::Relaxed);
+                }
+                forward.insert(k, attributes);
+            });
+        let has_nonempty_metadata = has_nonempty.load(Ordering::Relaxed);
 
         let fast_routing = std::env::var("HS_FAST_ROUTING")
             .is_ok_and(|v| v.to_lowercase() == "true")
@@ -521,7 +531,7 @@ impl<M: Metric> HnswIndex<M> {
 
         let nodes_bc: boxcar::Vec<Node> = boxcar::Vec::with_capacity(deserialized.nodes.len());
         for s_node in deserialized.nodes {
-            let mut layers = Vec::new();
+            let mut layers = SmallVec::with_capacity(s_node.layers.len());
             for s_layer in s_node.layers {
                 layers.push(ArcSwap::from_pointee(s_layer));
             }
@@ -707,7 +717,7 @@ struct Node {
     id: NodeId,
     // Neighbor lists by layer.
     // layers[0] - detailed layer.
-    layers: Vec<ArcSwap<Vec<NodeId>>>,
+    layers: SmallVec<[ArcSwap<Vec<NodeId>>; 2]>,
 }
 
 #[derive(Default)]
@@ -2471,7 +2481,7 @@ impl<M: Metric> HnswIndex<M> {
             let id = self.storage.append(&q_bytes)?;
 
             let new_level = self.random_level();
-            let mut layers = Vec::with_capacity(new_level + 1);
+            let mut layers = SmallVec::with_capacity(new_level + 1);
             for _ in 0..=new_level {
                 layers.push(ArcSwap::from_pointee(Vec::new()));
             }

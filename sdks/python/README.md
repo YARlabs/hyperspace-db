@@ -1,6 +1,6 @@
 # HyperspaceDB Python SDK
-
-Official Python client for HyperspaceDB gRPC API v3.1.1
+ 
+Official Python client for HyperspaceDB gRPC API v4.1.0
 
 The SDK is designed for production services and benchmark tooling:
 - collection management
@@ -10,6 +10,7 @@ The SDK is designed for production services and benchmark tooling:
 - bulk data management (`get_points`, `update_payload`, `scroll`, `count`)
 - system health monitoring (`health_check`)
 - tribunal verification (`verify_generation`) for mathematical anti-hallucination boundary checks
+- specialized domain cognitive SDKs (`chemSDK`, `bioSDK`, `secSDK`, `legalSDK`, `ontoSDK`, `finSDK`)
 - graph traversal API methods
 - optional embedder integrations
 
@@ -26,9 +27,14 @@ The SDK is designed for production services and benchmark tooling:
 pip install hyperspacedb
 ```
 
-Optional embedder extras:
+Optional domain and embedder extras:
 
 ```bash
+# Domain extras
+pip install "hyperspacedb[chem]"  # RDKit molecular tools
+pip install "hyperspacedb[bio]"   # BioPython genomic tools
+
+# Embedder extras
 pip install "hyperspacedb[openai]"
 pip install "hyperspacedb[all]"
 ```
@@ -323,6 +329,182 @@ synced_thought = context_resonance(thought, global_context, resonance_factor=0.5
 
 # 5. Predict Semantic Relation (A + R ≈ B)
 relation = client.predict_relation(id_a=1, id_b=2)
+```
+
+## Specialized Domain Cognitive SDKs
+
+HyperspaceDB natively embeds hierarchical, causal, and dynamic phenomena using non-Euclidean geometry (Poincaré Ball, Lorentz Minkowski Spacetime, and Fréchet/Lyapunov dynamics). The Python SDK provides six specialized domain modules:
+
+### 1. `chemSDK` (Cheminformatics & Molecular AI)
+
+Model molecular structures, reaction spaces, and scaffold hierarchies:
+
+```python
+from hyperspace import (
+    ChemSDK,
+    smiles_to_fingerprint,
+    scaffold_to_lorentz,
+    is_substructure_subsumed,
+    reaction_step,
+    verify_chemical_validity,
+)
+
+# 1. Topological fingerprinting (SMILES -> 128D normalized fingerprint)
+fp_benzene = smiles_to_fingerprint("c1ccccc1", n_bits=128)
+fp_toluene = smiles_to_fingerprint("Cc1ccccc1", n_bits=128)
+
+# 2. Lorentz light cone substructure matching (scaffold subsumption)
+scaffold_cone = scaffold_to_lorentz(fp_benzene, complexity_score=1.0)
+molecule_cone = scaffold_to_lorentz(fp_toluene, complexity_score=2.0)
+assert is_substructure_subsumed(scaffold_cone, molecule_cone) == True
+
+# 3. Hyperbolic reaction vector arithmetic (A (+) R = B via Möbius addition)
+product = reaction_step(reactant=fp_benzene, reaction_vector=[0.05] * 128, c=1.0)
+
+# 4. Anti-hallucination check for generative chemistry
+status = verify_chemical_validity(candidate=product, reference_library=[fp_benzene, fp_toluene])
+print(status["is_valid"], status["status"])
+```
+
+### 2. `bioSDK` / `genomicsSDK` (Phylogenetics & Epigenetic Dynamics)
+
+Embed evolutionary cladograms and track single-cell differentiation trajectories:
+
+```python
+from hyperspace import (
+    BioSDK,
+    PhyloNode,
+    embed_phylogenetic_tree,
+    evolutionary_distance,
+    ancestral_state_reconstruction,
+    analyze_differentiation_trajectory,
+)
+
+# 1. Hyperbolic phylogenetic tree embedding (divergence preserved without distortion)
+homo = PhyloNode(name="Homo", branch_length=0.2)
+pan = PhyloNode(name="Pan", branch_length=0.2)
+hominidae = PhyloNode(name="Hominidae", branch_length=0.4, children=[homo, pan])
+tree = embed_phylogenetic_tree(hominidae, dim=16, c=1.0)
+
+# 2. Exact evolutionary distance in the Poincaré Ball
+d = evolutionary_distance(tree["Homo"], tree["Pan"], c=1.0)
+
+# 3. Ancestral state reconstruction via Fréchet mean
+ancestor_state = ancestral_state_reconstruction([tree["Homo"], tree["Pan"]], c=1.0)
+
+# 4. Waddington's epigenetic landscape stability (Lyapunov & Koopman)
+fate = analyze_differentiation_trajectory(cell_trajectory=time_series_expression_vectors)
+print(fate["is_converging"], fate["fate"], fate["predicted_future_state"])
+```
+
+### 3. `secSDK` / `cyberSDK` (Causal Attack Graphs & Threat Intel)
+
+Enforce physical causality in incident response using Minkowski spacetime light cones:
+
+```python
+from hyperspace import (
+    SecSDK,
+    SecurityEvent,
+    to_spacetime_lorentz,
+    is_causally_linked,
+    mitre_attack_cone,
+    is_technique_subsumed,
+    predict_adversary_next_hop,
+    detect_behavioral_intrusion,
+)
+
+# 1. Spacetime event mapping (ct, x_1, ..., x_d)
+recon = SecurityEvent(event_id=1, timestamp=100.0, host_id="web", technique_id="T1595", vector=[0.1, 0.2])
+exploit = SecurityEvent(event_id=2, timestamp=105.0, host_id="web", technique_id="T1190", vector=[0.15, 0.22])
+
+# 2. Causal light-cone verification (excludes retroactive or impossible propagation)
+assert is_causally_linked(to_spacetime_lorentz(recon), to_spacetime_lorentz(exploit)) == True
+
+# 3. MITRE ATT&CK tactic/technique subsumption cones
+tactic = mitre_attack_cone(depth_level=1, technique_vector=[0.2, 0.1])
+technique = mitre_attack_cone(depth_level=2, technique_vector=[0.22, 0.12])
+assert is_technique_subsumed(tactic, technique) == True
+
+# 4. Behavioral zero-day anomaly detection via local entropy
+alert = detect_behavioral_intrusion(action_vector=current_telemetry, baseline_profile=normal_cluster)
+```
+
+### 4. `legalSDK` / `patentSDK` (Normative Pyramids & Intellectual Property)
+
+Validate legal hierarchies (Kelsen's pyramid) and patent infringement scope:
+
+```python
+from hyperspace import (
+    LegalSDK,
+    LegalNorm,
+    norm_to_lorentz_cone,
+    is_norm_valid_under,
+    doctrine_of_equivalents,
+    synthesize_precedents,
+)
+
+# 1. Normative hierarchy validation (Constitution -> Statute -> Regulation)
+constitution = LegalNorm(norm_id=1, rank=1, title="Commerce Clause", vector=[0.1, 0.05])
+statute = LegalNorm(norm_id=2, rank=2, title="FTC Act", vector=[0.12, 0.06])
+assert is_norm_valid_under(norm_to_lorentz_cone(constitution), norm_to_lorentz_cone(statute)) == True
+
+# 2. Doctrine of Equivalents evaluation in hyperbolic functional space
+equiv = doctrine_of_equivalents(claim_vector=patented_claim, accused_product_vector=accused_device)
+print(equiv["is_equivalent_infringement"], equiv["verdict"])
+
+# 3. Precedent consensus (Ratio Decidendi) via Fréchet mean
+consensus_holding = synthesize_precedents(precedent_vectors=[opinion_a, opinion_b, opinion_c])
+```
+
+### 5. `ontoSDK` / `kgSDK` (Knowledge Graph Completion & Ontologies)
+
+Hyperbolic TransE translations and taxonomic IS-A light cones:
+
+```python
+from hyperspace import (
+    OntoSDK,
+    hyperbolic_translate,
+    score_triple,
+    concept_subsumption_cone,
+    is_concept_subsumed,
+    align_ontologies,
+)
+
+# 1. Hyperbolic TransE (head (+) relation = tail)
+predicted_tail = hyperbolic_translate(head_vec=[0.1, 0.2], relation_vec=[0.05, 0.1], c=1.0)
+energy_score = score_triple(head_vec=[0.1, 0.2], relation_vec=[0.05, 0.1], tail_vec=predicted_tail)
+
+# 2. Ontological IS-A hierarchy (Living Organism -> Mammal -> Canine)
+cone_living = concept_subsumption_cone(taxonomy_depth=1, concept_vector=[0.1, 0.1])
+cone_mammal = concept_subsumption_cone(taxonomy_depth=2, concept_vector=[0.12, 0.11])
+assert is_concept_subsumed(cone_living, cone_mammal) == True
+
+# 3. Cross-ontology schema alignment via phase-locked resonance
+aligned_concept = align_ontologies(source_concept, target_concept, resonance_factor=0.6)
+```
+
+### 6. `finSDK` / `quantSDK` (Systemic Contagion & Market Dynamics)
+
+Model interbank systemic default cascades and detect flash crash regimes:
+
+```python
+from hyperspace import (
+    FinSDK,
+    FinancialEntity,
+    to_contagion_cone,
+    is_in_default_cascade,
+    analyze_market_stability,
+    forecast_liquidity_trajectory,
+)
+
+# 1. Systemic default contagion light cones (Tier 1 G-SIB -> Regional Banks)
+gsib = FinancialEntity(entity_id=1, tier=1, leverage_ratio=18.5, vector=[0.1, 0.2])
+regional = FinancialEntity(entity_id=2, tier=2, leverage_ratio=12.0, vector=[0.12, 0.22])
+assert is_in_default_cascade(to_contagion_cone(gsib), to_contagion_cone(regional)) == True
+
+# 2. Market regime stability (Lyapunov exponent: mean-reverting vs liquidity crisis)
+stability = analyze_market_stability(price_trajectory=sequential_market_vectors)
+print(stability["is_orderly_regime"], stability["regime"])
 ```
 
 ## Implicit Graph Engine (v3.1.1)

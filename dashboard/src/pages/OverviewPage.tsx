@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { fetchStatus, getCacheStats, fetchMetrics, fetchCollections, triggerVacuum, fetchEcoMetrics, fetchEsgReportBlob } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Database, HardDrive, Server, Zap, FolderOpen, Layers, TrendingUp, Leaf } from "lucide-react"
+import { Database, HardDrive, Server, Zap, FolderOpen, Layers, TrendingUp, Leaf, Network, Cpu, GitBranch, Activity } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useState } from "react"
@@ -43,15 +43,27 @@ export function OverviewPage() {
     return (
         <div className="space-y-6 fade-in">
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold tracking-tight">System Overview</h1>
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">System Overview</h1>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        Spatial AI &amp; Native Vector-Graph (KAG) Engine v4.1.0
+                    </p>
+                </div>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <div className={`h-2 w-2 rounded-full ${status?.status === 'ONLINE' ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500'}`}></div>
                     {status?.status || "Connecting..."}
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
                 <StatCard title="Total Vectors" value={metrics?.total_vectors?.toLocaleString() || "0"} icon={Database} desc="Across all collections" />
+                <StatCard
+                    title="KAG Graph Edges"
+                    value={(metrics?.total_graph_edges ?? 0).toLocaleString()}
+                    icon={Network}
+                    desc="5.08 µs CSR Reachability"
+                    badge="v4.1"
+                />
                 <StatCard
                     title="RAM Usage"
                     value={`${metrics?.ram_usage_mb || 0} MB`}
@@ -309,7 +321,7 @@ function ConfigRow({ label, value }: any) {
 }
 
 function IngestionStatusCard({ metrics }: any) {
-    const [refreshInterval, setRefreshInterval] = useState("30")
+    const [refreshInterval, setRefreshInterval] = useState("10")
 
     const { data: liveMetrics } = useQuery({
         queryKey: ['live-metrics'],
@@ -320,42 +332,102 @@ function IngestionStatusCard({ metrics }: any) {
     const currentMetrics = liveMetrics || metrics
 
     return (
-        <Card>
+        <Card className="border-purple-500/20 bg-gradient-to-br from-purple-950/20 via-zinc-950 to-zinc-950">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <div>
-                    <CardTitle>Ingestion Status</CardTitle>
-                    <CardDescription>Auto-refresh monitoring</CardDescription>
+                    <div className="flex items-center gap-2">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Activity className="h-4 w-4 text-purple-400 animate-pulse" />
+                            Ingestion &amp; KAG Graph Pipeline
+                        </CardTitle>
+                        <Badge variant="secondary" className="bg-purple-900/50 text-purple-300 text-[10px] font-mono border-purple-500/30">
+                            v4.1.0 Real-Time
+                        </Badge>
+                    </div>
+                    <CardDescription className="text-xs">WriteBuffer, In-Memory CSR Graph &amp; Indexer</CardDescription>
                 </div>
                 <Select value={refreshInterval} onValueChange={setRefreshInterval}>
-                    <SelectTrigger className="w-[110px]">
+                    <SelectTrigger className="w-[100px] h-8 text-xs bg-zinc-900 border-white/5">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                        <SelectItem value="2">2 sec</SelectItem>
                         <SelectItem value="5">5 sec</SelectItem>
                         <SelectItem value="10">10 sec</SelectItem>
                         <SelectItem value="30">30 sec</SelectItem>
-                        <SelectItem value="60">60 sec</SelectItem>
                     </SelectContent>
                 </Select>
             </CardHeader>
             <CardContent>
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">Total Vectors</span>
-                        <span className="font-mono font-bold text-lg">{currentMetrics?.total_vectors?.toLocaleString() || "0"}</span>
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                            <Database className="h-3.5 w-3.5 text-blue-400" />
+                            <span className="text-xs text-muted-foreground">Total Ingested Vectors</span>
+                        </div>
+                        <span className="font-mono font-bold text-sm">{currentMetrics?.total_vectors?.toLocaleString() || "0"}</span>
                     </div>
-                    <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">Active Collections</span>
-                        <span className="font-mono font-bold text-lg">{currentMetrics?.total_collections || 0}</span>
+
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                            <Layers className="h-3.5 w-3.5 text-emerald-400" />
+                            <span className="text-xs text-muted-foreground">WriteBuffer (RAM Ingest)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-sm text-emerald-400">
+                                {(currentMetrics?.total_write_buffer ?? 0).toLocaleString()}
+                            </span>
+                            <Badge variant="outline" className="text-[9px] py-0 px-1 border-emerald-500/30 text-emerald-300 font-mono">
+                                AVX2/NEON Scan
+                            </Badge>
+                        </div>
                     </div>
-                    <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">RAM Usage</span>
-                        <span className="font-mono font-bold text-lg">{currentMetrics?.ram_usage_mb || 0} MB</span>
+
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                            <Cpu className="h-3.5 w-3.5 text-amber-400" />
+                            <span className="text-xs text-muted-foreground">HNSW Indexing Queue</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className={`font-mono font-bold text-sm ${(currentMetrics?.total_indexing_queue ?? 0) > 0 ? "text-amber-400" : "text-zinc-400"}`}>
+                                {(currentMetrics?.total_indexing_queue ?? 0).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">pending tasks</span>
+                        </div>
                     </div>
-                    <div className="flex items-center justify-between py-2">
-                        <span className="text-sm text-muted-foreground">Disk Usage</span>
-                        <span className="font-mono font-bold text-lg">
-                            {currentMetrics?.disk_usage_mb >= 1024
+
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                            <Network className="h-3.5 w-3.5 text-purple-400" />
+                            <span className="text-xs text-muted-foreground">KAG Native Graph Edges</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-sm text-purple-400">
+                                {(currentMetrics?.total_graph_edges ?? 0).toLocaleString()}
+                            </span>
+                            <Badge variant="outline" className="text-[9px] py-0 px-1 border-purple-500/30 text-purple-300 font-mono">
+                                5.08 µs Reachability
+                            </Badge>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                            <GitBranch className="h-3.5 w-3.5 text-sky-400" />
+                            <span className="text-xs text-muted-foreground">KAG Connected Nodes</span>
+                        </div>
+                        <span className="font-mono font-bold text-sm text-sky-400">
+                            {(currentMetrics?.total_graph_nodes ?? 0).toLocaleString()}
+                        </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/40">
+                        <div className="flex items-center gap-2">
+                            <HardDrive className="h-3.5 w-3.5 text-zinc-400" />
+                            <span className="text-xs text-muted-foreground">RAM / Disk Usage</span>
+                        </div>
+                        <span className="font-mono text-xs">
+                            {currentMetrics?.ram_usage_mb || 0} MB RAM / {currentMetrics?.disk_usage_mb >= 1024
                                 ? `${(currentMetrics.disk_usage_mb / 1024).toFixed(2)} GB`
                                 : `${currentMetrics?.disk_usage_mb || 0} MB`}
                         </span>
@@ -366,11 +438,18 @@ function IngestionStatusCard({ metrics }: any) {
     )
 }
 
-function StatCard({ title, value, icon: Icon, desc }: any) {
+function StatCard({ title, value, icon: Icon, desc, badge }: any) {
     return (
-        <Card>
+        <Card className="relative overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{title}</CardTitle>
+                <div className="flex items-center gap-1.5">
+                    <CardTitle className="text-sm font-medium">{title}</CardTitle>
+                    {badge && (
+                        <Badge variant="secondary" className="text-[10px] bg-purple-500/15 text-purple-400 border-purple-500/20 px-1 py-0 font-semibold">
+                            {badge}
+                        </Badge>
+                    )}
+                </div>
                 <Icon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -382,7 +461,7 @@ function StatCard({ title, value, icon: Icon, desc }: any) {
 }
 
 function OverviewSkeleton() {
-    return <div className="space-y-6"><Skeleton className="h-10 w-48" /><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></div>
+    return <div className="space-y-6"><Skeleton className="h-10 w-48" /><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></div>
 }
 
 function formatCarbonMass(kg: number): string {

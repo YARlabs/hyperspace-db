@@ -175,6 +175,47 @@ def project_to_hyperboloid(v: Sequence[float]) -> List[float]:
     return res
 
 
+def poincare_dist(u: Sequence[float], v: Sequence[float], c: float = 1.0) -> float:
+    """Computes the geodesic distance between two points in the Poincaré Ball."""
+    if len(u) != len(v):
+        raise ValueError("Dimension mismatch")
+    if c <= 0.0:
+        raise ValueError("Curvature c must be > 0")
+    neg_u = [-x for x in u]
+    diff = mobius_add(neg_u, v, c=c)
+    diff_norm = math.sqrt(max(_norm_sq(diff), 0.0))
+    arg = min(math.sqrt(c) * diff_norm, 1.0 - 1e-15)
+    return (2.0 / math.sqrt(c)) * math.atanh(arg)
+
+
+def minkowski_interval(u: Sequence[float], v: Sequence[float]) -> float:
+    """
+    Computes the squared spacetime interval ds^2 = -(u0 - v0)^2 + sum((ui - vi)^2).
+    Negative => timelike separation (causal).
+    Zero => lightlike / null separation.
+    Positive => spacelike separation (non-causal).
+    """
+    if len(u) != len(v):
+        raise ValueError("Dimension mismatch")
+    dt = u[0] - v[0]
+    spatial_dist_sq = sum((ui - vi) ** 2 for ui, vi in zip(u[1:], v[1:]))
+    return -(dt * dt) + spatial_dist_sq
+
+
+def is_minkowski_subsumed(parent: Sequence[float], child: Sequence[float], epsilon: float = 1e-9) -> bool:
+    """
+    Checks if `child` is in the future causal light cone of `parent`:
+    1. child[0] >= parent[0] - epsilon (temporal ordering)
+    2. minkowski_interval(parent, child) <= epsilon (inside or on the light cone)
+    """
+    if len(parent) != len(child):
+        raise ValueError("Dimension mismatch")
+    if child[0] < parent[0] - epsilon:
+        return False
+    interval = minkowski_interval(parent, child)
+    return interval <= epsilon
+
+
 # ==========================================
 # Cognitive Math SDK (Spatial AI Engine)
 # ==========================================

@@ -2,7 +2,7 @@
 
 Official Go client for the **HyperspaceDB** gRPC API. 
 
-This SDK features pre-generated protocol buffers (`proto/`) to interact directly with the high-performance HyperspaceDB server (`v3.1.1`). It is tailored for high-concurrency event-streaming systems, CDC syncs, and microservices managing hyperspatial graph databases.
+This SDK features pre-generated protocol buffers (`proto/`) to interact directly with the high-performance HyperspaceDB server (`v4.1.0`). It is tailored for high-concurrency event-streaming systems, CDC syncs, and microservices managing hyperspatial graph databases.
 
 ## Integration
 

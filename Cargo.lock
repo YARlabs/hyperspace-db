@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cache"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -2432,7 +2432,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "chrono",
  "crossterm",
@@ -2446,7 +2446,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-clustering"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "criterion",
  "matrixmultiply",
@@ -2475,7 +2475,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-eco"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "hyperspace-core",
  "memmap2",
@@ -2506,7 +2506,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "arc-swap",
  "boxcar",
@@ -2567,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -2648,7 +2648,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "arc-swap",
  "byteorder",
@@ -2664,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-tiering"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "bytes",
  "futures",
@@ -2679,7 +2679,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-wasm"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",

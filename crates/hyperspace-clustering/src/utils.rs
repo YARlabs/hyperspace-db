@@ -415,7 +415,99 @@ fn sum_rows_in_band(
 ) {
     centroids.fill(0.0);
     cluster_sizes.fill(0);
+    accumulate_rows_in_band(
+        vectors,
+        assignments,
+        centroids,
+        cluster_sizes,
+        first_cluster,
+        d,
+    );
+}
 
+/// Add the vectors assigned to each cluster onto existing sums and counts.
+///
+/// Same scatter as [`sum_rows_by_assignment`], but does **not** zero the
+/// outputs first. Streaming k-means zeros once per iteration, then folds each
+/// batch in with this kernel so the reduction order matches a single pass.
+///
+/// # Panics
+///
+/// If `centroids` is shorter than `cluster_sizes.len() * d`.
+pub fn accumulate_rows_by_assignment(
+    vectors: &[f32],
+    assignments: &[u32],
+    centroids: &mut [f32],
+    cluster_sizes: &mut [u32],
+    d: usize,
+) {
+    let enough_input = assignments.len() * d >= SCATTER_PARALLEL_MIN_INPUT_ELEMENTS;
+    let enough_output = cluster_sizes.len() * d >= SCATTER_PARALLEL_MIN_OUTPUT_ELEMENTS;
+    if enough_input && enough_output {
+        accumulate_rows_by_assignment_parallel(vectors, assignments, centroids, cluster_sizes, d);
+    } else {
+        accumulate_rows_by_assignment_sequential(vectors, assignments, centroids, cluster_sizes, d);
+    }
+}
+
+/// Single-threaded [`accumulate_rows_by_assignment`].
+pub fn accumulate_rows_by_assignment_sequential(
+    vectors: &[f32],
+    assignments: &[u32],
+    centroids: &mut [f32],
+    cluster_sizes: &mut [u32],
+    d: usize,
+) {
+    accumulate_rows_in_band(
+        vectors,
+        assignments,
+        &mut centroids[..cluster_sizes.len() * d],
+        cluster_sizes,
+        0,
+        d,
+    );
+}
+
+/// One rayon work item per band of clusters [`accumulate_rows_by_assignment`].
+pub fn accumulate_rows_by_assignment_parallel(
+    vectors: &[f32],
+    assignments: &[u32],
+    centroids: &mut [f32],
+    cluster_sizes: &mut [u32],
+    d: usize,
+) {
+    let n_clusters = cluster_sizes.len();
+    if n_clusters == 0 {
+        return;
+    }
+
+    let per_task = n_clusters.div_ceil(rayon::current_num_threads().max(1));
+    centroids[..n_clusters * d]
+        .par_chunks_mut(per_task * d)
+        .zip(cluster_sizes.par_chunks_mut(per_task))
+        .enumerate()
+        .for_each(|(task, (centroids, cluster_sizes))| {
+            accumulate_rows_in_band(
+                vectors,
+                assignments,
+                centroids,
+                cluster_sizes,
+                task * per_task,
+                d,
+            );
+        });
+}
+
+/// Add the vectors belonging to the `cluster_sizes.len()` clusters starting at
+/// `first_cluster` onto the existing sums, ignoring every other vector.
+fn accumulate_rows_in_band(
+    vectors: &[f32],
+    assignments: &[u32],
+    centroids: &mut [f32],
+    cluster_sizes: &mut [u32],
+    first_cluster: usize,
+    d: usize,
+) {
     let band = first_cluster..first_cluster + cluster_sizes.len();
     for (vector, &cluster) in vectors.chunks_exact(d).zip(assignments) {
         let cluster = cluster as usize;
@@ -753,6 +845,65 @@ mod tests {
 
         assert_eq!(sequential, parallel);
         assert_eq!(sequential_sizes, parallel_sizes);
+    }
+
+    #[test]
+    fn accumulate_rows_by_assignment_adds_onto_existing_sums() {
+        let first = [1.0, 2.0, 10.0, 20.0];
+        let first_assign = [0, 1];
+        let second = [3.0, 4.0];
+        let second_assign = [0];
+
+        for accumulate in [
+            accumulate_rows_by_assignment_sequential,
+            accumulate_rows_by_assignment_parallel,
+        ] {
+            let mut centroids = [0.0; 4];
+            let mut cluster_sizes = [0; 2];
+            accumulate(&first, &first_assign, &mut centroids, &mut cluster_sizes, 2);
+            accumulate(
+                &second,
+                &second_assign,
+                &mut centroids,
+                &mut cluster_sizes,
+                2,
+            );
+            assert_eq!(centroids, [4.0, 6.0, 10.0, 20.0]);
+            assert_eq!(cluster_sizes, [2, 1]);
+        }
+    }
+
+    #[test]
+    fn accumulate_then_matches_a_single_sum_pass() {
+        let (n, d, k) = (2_000, 24, 7);
+        let vectors = make_blobs(n, d, k, false, 1.0, 10.0, 3);
+        let assignments: Vec<u32> = (0..n).map(|i| (i * 7 % k) as u32).collect();
+
+        let mut expected = vec![0.0_f32; k * d];
+        let mut expected_sizes = vec![0_u32; k];
+        sum_rows_by_assignment_sequential(
+            &vectors,
+            &assignments,
+            &mut expected,
+            &mut expected_sizes,
+            d,
+        );
+
+        let mut got = vec![0.0_f32; k * d];
+        let mut got_sizes = vec![0_u32; k];
+        let batch = 128;
+        for start in (0..n).step_by(batch) {
+            let end = (start + batch).min(n);
+            accumulate_rows_by_assignment(
+                &vectors[start * d..end * d],
+                &assignments[start..end],
+                &mut got,
+                &mut got_sizes,
+                d,
+            );
+        }
+        assert_eq!(got, expected);
+        assert_eq!(got_sizes, expected_sizes);
     }
 
     #[test]

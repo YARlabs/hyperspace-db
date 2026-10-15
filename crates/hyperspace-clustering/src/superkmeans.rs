@@ -14,10 +14,12 @@ use crate::common::{
     N_CLUSTERS_THRESHOLD_FOR_PRUNING, PRUNER_INITIAL_THRESHOLD, RECALL_CONVERGENCE_PATIENCE,
     X_BATCH_SIZE, Y_BATCH_SIZE,
 };
+use crate::dataset::{self, Dataset, IterDataset};
 use crate::layout;
+use crate::matrix::Matrix;
 use crate::utils::{
-    centroid_shift, mean_rows_by_count, normalize_rows_l2, squared_norms, squared_norms_partial,
-    sum_rows_by_assignment,
+    accumulate_rows_by_assignment, centroid_shift, mean_rows_by_count, normalize_rows_l2,
+    squared_norms, squared_norms_partial, sum_rows_by_assignment,
 };
 
 /// Configuration parameters for SuperKMeans clustering.
@@ -310,6 +312,297 @@ impl SuperKMeans {
         self.get_output_centroids(self.config.unrotate_centroids)
     }
 
+    /// Train from a replayable iterator of [`Matrix`] batches and return
+    /// row-major centroids (n_clusters × d).
+    ///
+    /// `clone()` on the iterator must yield the same batches again; see
+    /// [`Self::train_dataset`] for how the data is walked.
+    ///
+    /// ```
+    /// use hyperspace_clustering::{Matrix, SuperKMeans, make_blobs};
+    ///
+    /// let (n, d, k) = (2_000, 32, 10);
+    /// let data = make_blobs(n, d, k, true, 1.0, 10.0, 42);
+    /// let mut kmeans = SuperKMeans::new(k, d);
+    /// let centroids = kmeans.train_iter(Matrix::new(&data, n, d).chunks(256));
+    /// assert_eq!(centroids.len(), k * d);
+    /// ```
+    pub fn train_iter<'a, I>(&mut self, batches: I) -> Vec<f32>
+    where
+        I: IntoIterator<Item = Matrix<'a>>,
+        I::IntoIter: Clone,
+    {
+        let mut dataset = IterDataset::new(batches.into_iter());
+        match self.train_dataset(&mut dataset) {
+            Ok(centroids) => centroids,
+            Err(never) => match never {},
+        }
+    }
+
+    /// Train from a replayable [`Dataset`] without holding it in memory, and
+    /// return row-major centroids (n_clusters × d).
+    ///
+    /// The first pass counts the rows and reservoir-samples the starting
+    /// centroids; each Lloyd iteration is one more pass. Vectors are rotated
+    /// and scored one work batch at a time, so the only per-row state is one
+    /// assignment (4 bytes), kept to seed pruning in the next pass.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first error [`Dataset::for_each_batch`] fails with.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the model is already trained, the dataset yields fewer rows
+    /// than `n_clusters`, or two passes yield different row counts.
+    pub fn train_dataset<D: Dataset + ?Sized>(
+        &mut self,
+        data: &mut D,
+    ) -> Result<Vec<f32>, D::Error> {
+        assert!(!self.trained, "The clustering has already been trained");
+        let rotate = !self.config.data_already_rotated;
+        let (n, sample) = self.reservoir_sample(data)?;
+        self.prepare_stream_state(n);
+        self.install_centroids(&sample, rotate);
+        self.run_dataset_loop(data, rotate)?;
+        self.trained = true;
+        Ok(self.get_output_centroids(self.config.unrotate_centroids))
+    }
+
+    /// One pass: count the rows and reservoir-sample `n_clusters` of them
+    /// (Algorithm R, seeded from [`SuperKMeansConfig::seed`]).
+    fn reservoir_sample<D: Dataset + ?Sized>(
+        &self,
+        data: &mut D,
+    ) -> Result<(usize, Vec<f32>), D::Error> {
+        let d = self.d;
+        let k = self.n_clusters;
+        let mut reservoir = vec![0.0_f32; k * d];
+        let mut n = 0usize;
+        let mut rng = ChaCha8Rng::seed_from_u64(self.config.seed);
+        data.for_each_batch(&mut |matrix| {
+            assert_eq!(
+                matrix.d(),
+                d,
+                "matrix dimensionality {} does not match the model ({d})",
+                matrix.d()
+            );
+            for row in matrix.rows() {
+                if n < k {
+                    reservoir[n * d..(n + 1) * d].copy_from_slice(row);
+                } else {
+                    let j = rng.gen_range(0..=n);
+                    if j < k {
+                        reservoir[j * d..(j + 1) * d].copy_from_slice(row);
+                    }
+                }
+                n += 1;
+            }
+        })?;
+        Ok((n, reservoir))
+    }
+
+    fn prepare_stream_state(&mut self, n: usize) {
+        assert!(n > 0, "n must be positive");
+        assert!(
+            n >= self.n_clusters,
+            "n must be >= n_clusters ({} < {})",
+            n,
+            self.n_clusters
+        );
+        self.iteration_stats.clear();
+        self.n_samples = n;
+        let d = self.d;
+        let n_clusters = self.n_clusters;
+        self.horizontal_centroids = vec![0.0_f32; n_clusters * d];
+        self.prev_centroids = vec![0.0_f32; n_clusters * d];
+        self.cluster_sizes = vec![0_u32; n_clusters];
+        self.assignments = vec![0_u32; n];
+        self.distances = Vec::new();
+        self.data_norms = Vec::new();
+        self.centroid_norms = vec![0.0_f32; n_clusters];
+    }
+
+    /// Seed both centroid buffers with `sample`, rotated into the pruning
+    /// domain when `rotate` is set.
+    fn install_centroids(&mut self, sample: &[f32], rotate: bool) {
+        let len = self.n_clusters * self.d;
+        if rotate {
+            self.pruner.rotate(
+                &sample[..len],
+                &mut self.horizontal_centroids[..len],
+                self.n_clusters,
+            );
+        } else {
+            self.horizontal_centroids[..len].copy_from_slice(&sample[..len]);
+        }
+        self.prev_centroids[..len].copy_from_slice(&self.horizontal_centroids[..len]);
+    }
+
+    /// The streaming Lloyd driver: [`Self::run_core_loop`], one pass over
+    /// `data` per iteration.
+    fn run_dataset_loop<D: Dataset + ?Sized>(
+        &mut self,
+        data: &mut D,
+        rotate: bool,
+    ) -> Result<(), D::Error> {
+        self.partial_d = self.initial_partial_d();
+        let always_gemm_only = self.d < DIMENSION_THRESHOLD_FOR_PRUNING
+            || self.config.use_blas_only
+            || self.n_clusters <= N_CLUSTERS_THRESHOLD_FOR_PRUNING;
+        let mut best_recall = 0.0_f32;
+        let mut iters_without_improvement: usize = 0;
+        let mut scratch = StreamScratch::default();
+
+        for iter_idx in 0..self.config.iters {
+            let gemm_only = iter_idx == 0 || always_gemm_only;
+            self.run_dataset_iteration(data, iter_idx, gemm_only, rotate, &mut scratch)?;
+            if self.config.early_termination
+                && self.should_stop_early(
+                    false,
+                    &mut best_recall,
+                    &mut iters_without_improvement,
+                    iter_idx,
+                )
+            {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// One streaming pass: [`Self::run_iteration`], a work batch at a time.
+    fn run_dataset_iteration<D: Dataset + ?Sized>(
+        &mut self,
+        data: &mut D,
+        iter_idx: u32,
+        gemm_only: bool,
+        rotate: bool,
+        scratch: &mut StreamScratch,
+    ) -> Result<(), D::Error> {
+        let d = self.d;
+        let n_clusters = self.n_clusters;
+        let n_samples = self.n_samples;
+        let partial_d = self.partial_d as usize;
+
+        if iter_idx > 0 {
+            std::mem::swap(&mut self.horizontal_centroids, &mut self.prev_centroids);
+        }
+        self.horizontal_centroids[..n_clusters * d].fill(0.0);
+        self.cluster_sizes[..n_clusters].fill(0);
+        self.centroid_norms = if gemm_only {
+            squared_norms(&self.prev_centroids, n_clusters, d)
+        } else {
+            squared_norms_partial(&self.prev_centroids, n_clusters, d, partial_d)
+        };
+
+        let mut offset = 0usize;
+        // Summed row by row in scan order, like `compute_cost` over the
+        // in-memory distances.
+        let mut cost = 0.0_f32;
+        let mut not_pruned = 0.0_f64;
+        {
+            let pruner = &*self.pruner;
+            let (vertical_d, horizontal_d) = (self.vertical_d, self.horizontal_d);
+            let prev_centroids = &self.prev_centroids;
+            let centroid_norms = &self.centroid_norms;
+            let assignments = &mut self.assignments;
+            let gemm_buf = &mut self.gemm_buf;
+            let sums = &mut self.horizontal_centroids;
+            let cluster_sizes = &mut self.cluster_sizes;
+            let StreamScratch {
+                coalesce,
+                rotated,
+                distances,
+                not_pruned_counts,
+            } = scratch;
+
+            dataset::visit_work_batches(data, d, X_BATCH_SIZE, coalesce, |batch| {
+                let n = batch.n();
+                assert!(
+                    offset + n <= n_samples,
+                    "dataset yielded more rows than on its first pass ({n_samples})"
+                );
+                let x: &[f32] = if rotate {
+                    rotated.resize(n * d, 0.0);
+                    pruner.rotate(batch.as_slice(), rotated, n);
+                    &rotated[..]
+                } else {
+                    batch.as_slice()
+                };
+                let knn = &mut assignments[offset..offset + n];
+                distances.resize(n, 0.0);
+
+                if gemm_only {
+                    let norms = squared_norms(x, n, d);
+                    batch::find_nearest_neighbor(
+                        x,
+                        prev_centroids,
+                        n,
+                        n_clusters,
+                        d,
+                        &norms,
+                        centroid_norms,
+                        knn,
+                        distances,
+                        gemm_buf,
+                    );
+                } else {
+                    let norms = squared_norms_partial(x, n, d, partial_d);
+                    not_pruned_counts.clear();
+                    not_pruned_counts.resize(n, 0);
+                    batch::find_nearest_neighbor_with_pruning(
+                        x,
+                        prev_centroids,
+                        n,
+                        n_clusters,
+                        d,
+                        vertical_d,
+                        horizontal_d,
+                        &norms,
+                        centroid_norms,
+                        knn,
+                        distances,
+                        pruner,
+                        partial_d,
+                        not_pruned_counts,
+                        gemm_buf,
+                    );
+                    not_pruned += not_pruned_counts.iter().map(|&v| v as f64).sum::<f64>();
+                }
+
+                for &dist in distances.iter() {
+                    cost += dist;
+                }
+                accumulate_rows_by_assignment(x, knn, sums, cluster_sizes, d);
+                offset += n;
+            })?;
+        }
+        assert_eq!(
+            offset, n_samples,
+            "dataset yielded {offset} rows, but {n_samples} on its first pass"
+        );
+
+        let old_partial_d = self.partial_d;
+        let avg_not_pruned_pct = if gemm_only {
+            -1.0
+        } else {
+            self.adjust_partial_d((not_pruned / (n_samples as f64 * n_clusters as f64)) as f32)
+        };
+
+        self.consolidate_centroids(n_samples, n_clusters);
+        self.prev_cost = self.cost;
+        self.cost = cost;
+        self.shift = centroid_shift(
+            &self.horizontal_centroids,
+            &self.prev_centroids,
+            n_clusters,
+            d,
+        );
+        self.push_iteration_stats(iter_idx, gemm_only, avg_not_pruned_pct, old_partial_d);
+        Ok(())
+    }
+
     /// The Lloyd driver: alternate assignment and centroid update for `iters`
     /// passes, widening `d'` as the pruning bound tightens and stopping early
     /// on convergence.
@@ -573,6 +866,16 @@ impl SuperKMeans {
             d,
         );
 
+        self.push_iteration_stats(iter_idx, gemm_only, avg_not_pruned_pct, old_partial_d);
+    }
+
+    fn push_iteration_stats(
+        &mut self,
+        iter_idx: u32,
+        gemm_only: bool,
+        avg_not_pruned_pct: f32,
+        old_partial_d: u32,
+    ) {
         let stats = SuperKMeansIterationStats {
             iteration: (iter_idx + 1) as usize,
             objective: self.cost,
@@ -738,8 +1041,14 @@ impl SuperKMeans {
             .take(n_samples)
             .map(|&v| v as f64)
             .sum();
-        let avg = (sum / (n_samples as f64 * n_y as f64)) as f32;
         let old_partial_d = self.partial_d;
+        let avg = self.adjust_partial_d((sum / (n_samples as f64 * n_y as f64)) as f32);
+        (avg, old_partial_d != self.partial_d)
+    }
+
+    /// Widen or narrow `d'` given the average fraction of centroids that
+    /// survived pruning, and return that fraction.
+    fn adjust_partial_d(&mut self, avg: f32) -> f32 {
         if avg > self.config.max_not_pruned_pct {
             let increase = ((self.partial_d as f32)
                 * self.config.adjustment_factor_for_partial_d
@@ -750,7 +1059,7 @@ impl SuperKMeans {
                 ((self.partial_d as f32) * self.config.adjustment_factor_for_partial_d) as u32;
             self.partial_d = (self.partial_d.saturating_sub(decrease.max(1))).max(MIN_PARTIAL_D);
         }
-        (avg, old_partial_d != self.partial_d)
+        avg
     }
 
     pub(crate) fn should_stop_early(
@@ -916,6 +1225,18 @@ impl SuperKMeans {
             max,
         }
     }
+}
+
+/// Buffers reused across the work batches of every streaming pass; each is
+/// sized for one work batch, not for the dataset.
+#[derive(Default)]
+struct StreamScratch {
+    /// Small batches packed up to a full work batch.
+    coalesce: Vec<f32>,
+    /// The current work batch, rotated into the pruning domain.
+    rotated: Vec<f32>,
+    distances: Vec<f32>,
+    not_pruned_counts: Vec<usize>,
 }
 
 /// Borrow two disjoint rows of a row-major matrix mutably.

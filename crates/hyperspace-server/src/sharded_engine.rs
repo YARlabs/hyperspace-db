@@ -1,5 +1,6 @@
 use crate::collection::CollectionImpl;
 use async_trait::async_trait;
+use dashmap::DashMap;
 use hyperspace_core::{
     Collection, CollectionConfigUpdate, CollectionUsage, Durability, FilterExpr, HnswConfig,
     Metric, SearchParams, SearchResult, VacuumFilterQuery,
@@ -8,7 +9,7 @@ use hyperspace_proto::hyperspace::{CollectionSchema, ReplicationLog};
 use hyperspace_store::wal::{Wal, WalSyncMode};
 use std::collections::{BinaryHeap, HashMap};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -85,6 +86,7 @@ impl Ord for ScoredCandidate64 {
 /// Each CPU core processes shard-local ingestion and scatter-gather searches without cross-core locks.
 pub struct ShardedCollection<M: Metric> {
     name: String,
+    col_dir: PathBuf,
     dimension: usize,
     mode: hyperspace_core::QuantizationMode,
     #[allow(dead_code)]
@@ -93,6 +95,10 @@ pub struct ShardedCollection<M: Metric> {
     num_shards: usize,
     root_hash: AtomicU64,
     wal: Option<Arc<tokio::sync::Mutex<Wal>>>,
+    pub explicit_graph: Arc<hyperspace_core::graph::GraphEngine>,
+    user_to_graph: DashMap<u32, u32>,
+    graph_to_user: DashMap<u32, u32>,
+    next_graph_id: AtomicU32,
 }
 
 impl<M: Metric> ShardedCollection<M> {
@@ -287,8 +293,65 @@ impl<M: Metric> ShardedCollection<M> {
             }
         }
 
+        // Native Vector-Graph (KAG) Engine
+        let graph_csr_path = col_dir.join("graph.csr");
+        let explicit_graph = if graph_csr_path.exists() {
+            match hyperspace_core::graph::GraphEngine::load_from_csr_file(
+                hyperspace_core::graph::GraphConfig::from_env(),
+                &graph_csr_path,
+            ) {
+                Ok(engine) => {
+                    println!(
+                        "🕸️  [v4] Native Vector-Graph Engine loaded from graph.csr ({} edges) for '{name}'",
+                        engine.dynamic.total_edges()
+                    );
+                    Arc::new(engine)
+                }
+                Err(e) => {
+                    eprintln!("⚠️ [v4] Failed to load graph.csr for '{name}': {e}, initializing empty GraphEngine");
+                    Arc::new(hyperspace_core::graph::GraphEngine::from_env(1024))
+                }
+            }
+        } else {
+            Arc::new(hyperspace_core::graph::GraphEngine::from_env(1024))
+        };
+
+        let user_to_graph = DashMap::new();
+        let graph_to_user = DashMap::new();
+        let mut max_gid = 0u32;
+        let id_map_path = col_dir.join("graph_id_map.json");
+        if id_map_path.exists() {
+            if let Ok(file) = std::fs::File::open(&id_map_path) {
+                if let Ok(pairs) = serde_json::from_reader::<_, Vec<(u32, u32)>>(file) {
+                    for (uid, gid) in pairs {
+                        if gid >= max_gid {
+                            max_gid = gid + 1;
+                        }
+                        user_to_graph.insert(uid, gid);
+                        graph_to_user.insert(gid, uid);
+                    }
+                }
+            }
+        } else {
+            for shard in &shards {
+                let count = shard.count();
+                if count > 0 {
+                    for (uid, _, _) in shard.peek(count, 0) {
+                        if !user_to_graph.contains_key(&uid) {
+                            let gid = max_gid;
+                            max_gid += 1;
+                            user_to_graph.insert(uid, gid);
+                            graph_to_user.insert(gid, uid);
+                        }
+                    }
+                }
+            }
+        }
+        let next_graph_id = AtomicU32::new(max_gid);
+
         Ok(Self {
             name,
+            col_dir,
             dimension,
             mode: quant_mode,
             schema,
@@ -296,12 +359,46 @@ impl<M: Metric> ShardedCollection<M> {
             num_shards,
             root_hash: AtomicU64::new(0),
             wal,
+            explicit_graph,
+            user_to_graph,
+            graph_to_user,
+            next_graph_id,
         })
     }
 
     #[inline]
     fn get_shard_index(&self, id: u32) -> usize {
         (id as usize) % self.num_shards
+    }
+
+    #[inline]
+    pub fn to_graph_id(&self, user_id: u32) -> u32 {
+        if let Some(gid) = self.user_to_graph.get(&user_id) {
+            return *gid;
+        }
+        let new_gid = self.next_graph_id.fetch_add(1, Ordering::Relaxed);
+        self.user_to_graph.insert(user_id, new_gid);
+        self.graph_to_user.insert(new_gid, user_id);
+        new_gid
+    }
+
+    #[inline]
+    pub fn to_user_id(&self, graph_id: u32) -> u32 {
+        if self.graph_to_user.is_empty() {
+            return graph_id;
+        }
+        self.graph_to_user.get(&graph_id).map_or(graph_id, |v| *v)
+    }
+
+    pub fn save_graph_id_map(&self) {
+        let pairs: Vec<(u32, u32)> = self
+            .user_to_graph
+            .iter()
+            .map(|e| (*e.key(), *e.value()))
+            .collect();
+        if let Ok(file) = std::fs::File::create(self.col_dir.join("graph_id_map.json")) {
+            let _ = serde_json::to_writer(file, &pairs);
+        }
     }
 
     /// Decomposes a global 64-bit ID into a target shard index and local 32-bit ID.
@@ -379,6 +476,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             }
         }
 
+        self.to_graph_id(id);
         let shard_idx = self.get_shard_index(id);
         self.shards[shard_idx]
             .insert_internal(vector, id, metadata, clock, durability, false)
@@ -395,9 +493,16 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         durability: Durability,
     ) -> Result<(), String> {
         if self.num_shards == 1 {
+            for item in &vectors {
+                self.to_graph_id(item.1);
+            }
             return self.shards[0]
                 .insert_batch(vectors, clock, durability)
                 .await;
+        }
+
+        for item in &vectors {
+            self.to_graph_id(item.1);
         }
 
         let t0 = std::time::Instant::now();
@@ -572,7 +677,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         let shard_top_k = (top_k + 6).max(top_k * 2);
         let shard_ef = params.ef_search.max(shard_top_k);
 
-        let shard_params = SearchParams {
+        let shard_params = Arc::new(SearchParams {
             top_k: shard_top_k,
             ef_search: shard_ef,
             hybrid_query: params.hybrid_query.clone(),
@@ -584,19 +689,32 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             mrl_dimension: params.mrl_dimension,
             include_payload: params.include_payload,
             use_wave: params.use_wave,
-        };
+        });
 
-        let futures: Vec<_> = self
+        let vector_arc: Arc<[f64]> = Arc::from(vector);
+        let filter_arc = Arc::new(filter.clone());
+        let complex_filters_arc = Arc::new(complex_filters.to_vec());
+
+        let handles: Vec<_> = self
             .shards
             .iter()
             .map(|shard| {
                 let shard_ref = Arc::clone(shard);
-                let sp = shard_params.clone();
-                async move { shard_ref.search(vector, filter, complex_filters, &sp).await }
+                let sp = Arc::clone(&shard_params);
+                let v = Arc::clone(&vector_arc);
+                let f = Arc::clone(&filter_arc);
+                let cf = Arc::clone(&complex_filters_arc);
+                tokio::spawn(async move { shard_ref.search(&v, &f, &cf, &sp).await })
             })
             .collect();
 
-        let shard_results = futures::future::join_all(futures).await;
+        let mut shard_results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            match handle.await {
+                Ok(res) => shard_results.push(res),
+                Err(e) => return Err(format!("Shard query task failed: {e}")),
+            }
+        }
 
         // ── Global Top-K Merge ───────────────────────────────────────────────
         // Max-heap keyed by distance: peek() always holds the worst (largest
@@ -657,7 +775,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         let shard_top_k = (top_k + 6).max(top_k * 2);
         let shard_ef = params.ef_search.max(shard_top_k);
 
-        let shard_params = SearchParams {
+        let shard_params = Arc::new(SearchParams {
             top_k: shard_top_k,
             ef_search: shard_ef,
             hybrid_query: params.hybrid_query.clone(),
@@ -669,23 +787,36 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             mrl_dimension: params.mrl_dimension,
             include_payload: params.include_payload,
             use_wave: params.use_wave,
-        };
+        });
 
-        let futures: Vec<_> = self
+        let vector_arc: Arc<[f64]> = Arc::from(vector);
+        let filter_arc = Arc::new(filter.clone());
+        let complex_filters_arc = Arc::new(complex_filters.to_vec());
+
+        let handles: Vec<_> = self
             .shards
             .iter()
             .enumerate()
             .map(|(shard_idx, shard)| {
                 let shard_ref = Arc::clone(shard);
-                let sp = shard_params.clone();
-                async move {
-                    let res = shard_ref.search(vector, filter, complex_filters, &sp).await;
+                let sp = Arc::clone(&shard_params);
+                let v = Arc::clone(&vector_arc);
+                let f = Arc::clone(&filter_arc);
+                let cf = Arc::clone(&complex_filters_arc);
+                tokio::spawn(async move {
+                    let res = shard_ref.search(&v, &f, &cf, &sp).await;
                     (shard_idx, res)
-                }
+                })
             })
             .collect();
 
-        let shard_results = futures::future::join_all(futures).await;
+        let mut shard_results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            match handle.await {
+                Ok(res) => shard_results.push(res),
+                Err(e) => return Err(format!("Shard query task failed: {e}")),
+            }
+        }
 
         let mut heap: BinaryHeap<ScoredCandidate64> = BinaryHeap::with_capacity(top_k + 1);
 
@@ -920,9 +1051,104 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         results.into_iter().flatten().collect()
     }
 
+    fn graph_stats(&self) -> (usize, usize, usize) {
+        if self.explicit_graph.config.enabled {
+            (
+                self.explicit_graph.dynamic.node_count(),
+                self.explicit_graph.dynamic.total_edges(),
+                self.explicit_graph.memory_usage_bytes(),
+            )
+        } else {
+            (0, 0, 0)
+        }
+    }
+
+    fn graph_link(
+        &self,
+        source_id: u32,
+        target_id: u32,
+        relation: u16,
+        weight: f32,
+    ) -> Result<(), String> {
+        let internal_src = self.to_graph_id(source_id);
+        let internal_tgt = self.to_graph_id(target_id);
+        self.explicit_graph
+            .insert_edge(internal_src, internal_tgt, relation, weight);
+        self.save_graph_id_map();
+        let _ = self
+            .explicit_graph
+            .save_to_csr_file(self.col_dir.join("graph.csr"));
+        Ok(())
+    }
+
+    fn graph_link_batch(&self, edges: &[(u32, u32, u16, f32)]) -> Result<usize, String> {
+        for &(src, tgt, rel, w) in edges {
+            let internal_src = self.to_graph_id(src);
+            let internal_tgt = self.to_graph_id(tgt);
+            self.explicit_graph
+                .insert_edge(internal_src, internal_tgt, rel, w);
+        }
+        self.save_graph_id_map();
+        let _ = self
+            .explicit_graph
+            .save_to_csr_file(self.col_dir.join("graph.csr"));
+        Ok(edges.len())
+    }
+
+    fn graph_unlink(&self, source_id: u32, target_id: u32, relation: u16) -> Result<bool, String> {
+        let internal_src = self.to_graph_id(source_id);
+        let internal_tgt = self.to_graph_id(target_id);
+        let res = self
+            .explicit_graph
+            .delete_edge(internal_src, internal_tgt, relation);
+        if res {
+            let _ = self
+                .explicit_graph
+                .save_to_csr_file(self.col_dir.join("graph.csr"));
+        }
+        Ok(res)
+    }
+
+    fn graph_induce_from_metadata(
+        &self,
+        rules: &[hyperspace_core::graph::MetadataInductionRule],
+    ) -> Result<usize, String> {
+        let mut all_nodes = Vec::new();
+        for s in &self.shards {
+            let count = s.count().max(1);
+            let points = s.peek(count, 0);
+            for (uid, _, meta) in points {
+                let gid = self.to_graph_id(uid);
+                all_nodes.push((gid, meta));
+            }
+        }
+        let added = self.explicit_graph.induce_from_metadata(&all_nodes, rules);
+        if added > 0 {
+            self.save_graph_id_map();
+            let _ = self
+                .explicit_graph
+                .save_to_csr_file(self.col_dir.join("graph.csr"));
+        }
+        Ok(added)
+    }
+
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {
+        if self.explicit_graph.config.enabled && self.explicit_graph.dynamic.total_edges() > 0 {
+            let gid = self.to_graph_id(id);
+            let edges = self.explicit_graph.edges_for(gid);
+            if !edges.is_empty() {
+                return Ok(edges
+                    .into_iter()
+                    .take(limit)
+                    .map(|e| self.to_user_id(e.target))
+                    .collect());
+            }
+            return Ok(Vec::new());
+        }
         let shard_idx = self.get_shard_index(id);
-        self.shards[shard_idx].graph_neighbors(id, layer, limit)
+        self.shards[shard_idx]
+            .graph_neighbors(id, layer, limit)
+            .or_else(|_| Ok(Vec::new()))
     }
 
     fn graph_neighbor_distances(
@@ -942,8 +1168,24 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         max_nodes: usize,
         breadth_limit: usize,
     ) -> Result<Vec<u32>, String> {
+        if self.explicit_graph.config.enabled && self.explicit_graph.dynamic.total_edges() > 0 {
+            let gid = self.to_graph_id(start_id);
+            let mask = self
+                .explicit_graph
+                .get_reachability_mask(&[gid], max_depth, None);
+            let res: Vec<u32> = mask
+                .iter()
+                .take(max_nodes)
+                .map(|gid| self.to_user_id(gid))
+                .collect();
+            if !res.is_empty() {
+                return Ok(res);
+            }
+        }
         let shard_idx = self.get_shard_index(start_id);
-        self.shards[shard_idx].graph_traverse(start_id, layer, max_depth, max_nodes, breadth_limit)
+        self.shards[shard_idx]
+            .graph_traverse(start_id, layer, max_depth, max_nodes, breadth_limit)
+            .or_else(|_| Ok(vec![start_id]))
     }
 
     fn graph_clusters(
@@ -962,6 +1204,34 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         }
         all_clusters.truncate(max_clusters);
         Ok(all_clusters)
+    }
+
+    fn evaluate_trust_score(&self, trajectory_ids: &[u32]) -> Result<f64, String> {
+        if trajectory_ids.len() < 3 {
+            return Err("Trust scoring requires a trajectory of at least 3 nodes".into());
+        }
+
+        let mut vectors = Vec::new();
+        for &id in trajectory_ids {
+            let pts = self.get_points(&[id]);
+            if pts.is_empty() {
+                return Err(format!("Node {id} not found"));
+            }
+            vectors.push(pts[0].1.clone());
+        }
+
+        let attractor = &vectors[vectors.len() - 1];
+        let mut v_diff_sum = 0.0;
+
+        for i in 0..vectors.len() - 1 {
+            let v_t0 = M::distance(&vectors[i], attractor);
+            let v_t1 = M::distance(&vectors[i + 1], attractor);
+            v_diff_sum += v_t1 - v_t0;
+        }
+
+        let avg_change = v_diff_sum / (vectors.len() - 1) as f64;
+        let score = 1.0 / (1.0 + avg_change.max(0.0).exp());
+        Ok(score)
     }
 
     fn compact_semantic_chunks(&self, target_partitions: usize) -> Result<String, String> {

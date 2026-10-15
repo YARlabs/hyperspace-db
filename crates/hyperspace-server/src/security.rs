@@ -169,6 +169,33 @@ pub fn init(data_dir: &Path) {
     REGISTRY.set(registry).ok();
 }
 
+static RAW_KEY_CACHE: OnceLock<dashmap::DashMap<String, (String, UserRole)>> = OnceLock::new();
+
+fn raw_key_cache() -> &'static dashmap::DashMap<String, (String, UserRole)> {
+    RAW_KEY_CACHE.get_or_init(dashmap::DashMap::new)
+}
+
+pub fn validate_raw_key(raw_key: &str) -> Option<(String, UserRole)> {
+    let cache = raw_key_cache();
+    if let Some(entry) = cache.get(raw_key) {
+        return Some(entry.clone());
+    }
+
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(raw_key.as_bytes());
+    use sha2::Digest;
+    let hash = hex::encode(hasher.finalize());
+
+    if let Some(res) = validate_key(&hash) {
+        if cache.len() < 10_000 {
+            cache.insert(raw_key.to_string(), res.clone());
+        }
+        Some(res)
+    } else {
+        None
+    }
+}
+
 pub fn validate_key(hash: &str) -> Option<(String, UserRole)> {
     let registry = REGISTRY.get()?;
     let guard = registry.api_keys.read().ok()?;
@@ -239,6 +266,7 @@ pub fn add_api_key(key: &str, user_id: &str, role: UserRole) -> Result<(), Strin
         .write()
         .unwrap()
         .insert(hash, (user_id.to_string(), role));
+    raw_key_cache().clear();
     Ok(())
 }
 

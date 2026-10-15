@@ -5,16 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.1.0] - 2026-10-14
+## [4.1.0] - 2026-10-15
 
 ### Added
-* **Native Vector-Graph (KAG) Engine (`graph.rs`, `DynamicGraph`, `CompactEdge`)**:
-  * Unified Vector + Knowledge Graph architecture eliminating fragile dual-database (e.g. Qdrant + Neo4j) patterns.
-  * Property CSR (Compressed Sparse Row) engine with memory-mapped 12-byte packed edges (`target_node: u64`, `relation_id: u16`, `weight: f16`/`u16`).
-  * Bidirectional edge adjacency indexing with atomic relation string interning.
-  * Explicit graph edge manipulation via `link`, `link_batch`, and `unlink` APIs.
-  * Zero-lag persistence: Graph topology persists directly in collection snapshots via `graph.csr` alongside `.hyp` chunk stores.
-  * Sub-microsecond topological BFS and DFS traversals directly on top of HNSW vector search seed nodes.
+* **Specialized Domain Cognitive SDKs (`hyperspace` Python SDK)**:
+  * **`chemSDK` (Cheminformatics & Molecular AI)**:
+    * Deterministic circular atom-environment topological fingerprinting (`smiles_to_fingerprint`) with pure-Python fallback and optional RDKit ECFP4 integration.
+    * Lorentz light-cone scaffold subsumption (`scaffold_to_lorentz`, `is_substructure_subsumed`) enabling instant sub-structure matching without graph isomorphism overhead.
+    * Hyperbolic reaction algebra via Möbius addition (`reaction_step`, `estimate_reaction_vector`).
+    * Anti-hallucination verification for generative molecular AI (`verify_chemical_validity`).
+  * **`bioSDK` / `genomicsSDK` (Phylogenetics & Epigenetic Dynamics)**:
+    * Zero-distortion Poincaré Ball cladogram embedding (`embed_phylogenetic_tree`).
+    * Exact evolutionary divergence distance in hyperbolic Riemannian metric (`evolutionary_distance`).
+    * Ancestral genomic state reconstruction via Riemannian Fréchet mean (`ancestral_state_reconstruction`).
+    * Protein domain hierarchies (CATH / SCOP) modeled via Lorentz light cones (`protein_domain_lorentz`, `is_domain_subsumed`).
+    * Single-cell differentiation trajectory stability analysis on Waddington's landscape via Lyapunov exponents and Koopman extrapolation (`analyze_differentiation_trajectory`).
+  * **`secSDK` / `cyberSDK` (Causal Forensics & Threat Intel)**:
+    * Relativistic Minkowski spacetime event mapping and causal light-cone verification (`to_spacetime_lorentz`, `is_causally_linked`), eliminating false correlation in incident response.
+    * MITRE ATT&CK tactic/technique/procedure subsumption cones (`mitre_attack_cone`, `is_technique_subsumed`).
+    * Adversary lateral movement & kill-chain trajectory forecasting via Koopman linearization (`predict_adversary_next_hop`).
+    * Zero-day behavioral intrusion detection via local spatial entropy (`detect_behavioral_intrusion`).
+  * **`legalSDK` / `patentSDK` (Normative Law & Patents)**:
+    * Kelsen's normative pyramid validation via Lorentz validity cones (`norm_to_lorentz_cone`, `is_norm_valid_under`).
+    * Patent independent vs dependent claim scope subsumption (`patent_claim_cone`, `is_claim_subsumed`).
+    * Doctrine of Equivalents evaluation via hyperbolic functional manifold distance (`doctrine_of_equivalents`).
+    * Consensus judicial holding (*ratio decidendi*) synthesis via Fréchet mean (`synthesize_precedents`).
+  * **`ontoSDK` / `kgSDK` (Knowledge Graph Completion & Ontologies)**:
+    * Hyperbolic TransE translations ($h \oplus_c r = \hat{t}$) and triple plausibility energy scoring (`hyperbolic_translate`, `score_triple`).
+    * Taxonomic IS-A light cones for formal ontologies such as SNOMED-CT and WordNet (`concept_subsumption_cone`, `is_concept_subsumed`).
+    * Cross-ontology entity alignment via phase-locked context resonance (`align_ontologies`).
+  * **`finSDK` / `quantSDK` (Systemic Contagion & Market Dynamics)**:
+    * Interbank systemic default cascades and counterparty exposure light cones (`to_contagion_cone`, `is_in_default_cascade`).
+    * Market regime stability assessment via Lyapunov exponents (`analyze_market_stability`).
+    * Market liquidity momentum forecasting via Koopman operator (`forecast_liquidity_trajectory`).
+* **Riemannian MathSDK Extensions (`hyperspace.math`)**:
+  * Added `poincare_dist`: Exact hyperbolic geodesic metric on Poincaré Ball.
+  * Added `minkowski_interval`: Spacetime interval $\Delta s^2 = -(c\Delta t)^2 + \|\Delta \vec{x}\|^2$ evaluation.
+  * Added `is_minkowski_subsumed`: Light-cone causal subsumption predicate.
+* **Comprehensive Test Suite**:
+  * Added dedicated test modules: `test_chem.py`, `test_bio.py`, `test_sec.py`, `test_legal.py`, `test_onto.py`, `test_fin.py` (48 total unit tests, 100% passing).
+* **PyPI Package Enhancements**:
+  * Added optional domain extras in `pyproject.toml`: `pip install "hyperspacedb[chem]"`, `pip install "hyperspacedb[bio]"`.
+* **Native Vector-Graph (KAG) Engine (`graph.rs`, `sharded_engine.rs`, `CompactEdge`)**:
+  * Unified Vector + Knowledge Graph architecture eliminating fragile dual-database (e.g. Qdrant + Neo4j) patterns and Microsoft GraphRAG LLM extraction costs.
+  * Embedded `Arc<GraphEngine>` directly inside `ShardedCollection<M>`, enabling native KAG routing across all 5 metric spaces: `Poincare`, `Lorentz`, `Euclidean`, `Cosine`, and `Hybrid`.
+  * **Dense ID Translation**: Lock-free bidirectional mapping between sparse 32-bit user hash IDs and dense $0 \dots N$ internal CSR nodes via `DashMap<u32, u32>`, persisted as `graph_id_map.json` and `graph.csr` (under 1 MB RAM for tens of thousands of edges).
+  * **Bidirectional Declarative Induction Engine**: Generates graph edges in $O(N)$ time from document metadata:
+    * `path_hierarchy`: Materializes parent/child relationships along hierarchical taxonomy paths.
+    * `exact_match`: Bounded clique materialization for common categories, techniques, or domains.
+  * **Empirical Multi-Collection Benchmark**: Verified across 12 production collections (16,001 vectors, 18,402 active edges):
+    * **100.0% Causal Context Recall** (vs 22.1% in Pure Vector Search, eliminating 77.9% of missing structural prerequisites).
+    * **~5 µs** in-engine CSR bitset reachability, **2.36 ms (p50)** end-to-end over HTTP.
+    * **3.37 ms (p50)** combined vector entry match + multi-hop graph decision latency.
+  * **Web Dashboard Integration**: Updated `CollectionsPage.tsx` and `OverviewPage.tsx` via `/api/collections` and `/api/metrics` to monitor real-time cluster-wide KAG edges, connected nodes, and reachability SLAs.
+* **Out-of-Core Streaming SuperKMeans v4.1.0 & BKT-Drop (`hyperspace-clustering`)**:
+  * Integrated ParadeDB SuperKMeans v0.3.0 innovations into pure-Rust `hyperspace-clustering`:
+    * Zero-copy `Matrix<'a>` and replayable `Dataset` / `IterDataset` traits enabling out-of-core clustering without loading datasets into memory.
+    * Up to **1,000× peak RAM reduction** during large-scale clustering (from ~61 GB down to ~58 MB on 10M vectors, and from ~614 GB to ~425 MB on 100M vectors).
+    * `train_iter` and `train_dataset` flat k-means with reservoir-sampled initialization and coalesced GEMM work batches.
+    * Streaming hierarchical clustering (`train_meso`, `train_meso_cluster`, `MesoPartition`, `FineClusters`).
+    * **BKT-Drop Optimization**: Eliminated legacy Balanced K-Means Tree structs (`ClusterTree`, `TreeNode`, `NodeId`) in favor of a streamlined 2-phase split (3 iters meso + 5 iters overflow leaves), achieving **100,000 vectors (128D) clustered in 144.88 ms** (~690,000 vec/s) with optimal cluster balance (CV = 0.277, max leaf size strictly bounded).
+    * Added `cluster_streaming_dataset` helper for disk-backed out-of-core Voronoi chunking in `SemanticCompactor`.
+* **In-Engine Graph vs Dual-DB Criterion Benchmark (`graph_vs_dual`)**:
+  * Added automated Criterion micro-benchmarks comparing native CSR graph reachability against client-orchestrated dual-database queries:
+    * `native_csr_2hop_reachability`: **5.08 µs** (in-memory CSR traversal).
+    * `native_prefilter_bitmask_scoring`: **1.02 µs** vs `naive_postfilter_pruning_scoring`: **111.91 µs** (**110× speedup** for native SIMD bitmask pre-filtering).
 * **Declarative Metadata Induction Engine**:
   * Automated graph edge generation across large-scale collections (100k+ documents) without manual edge labeling.
   * Supported induction rules:
