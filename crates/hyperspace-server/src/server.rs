@@ -100,7 +100,7 @@ impl Interceptor for AuthInterceptor {
             Some(t) => t.to_str().ok().map(String::from),
             None => request.metadata().get("authorization").and_then(|t| {
                 t.to_str().ok().and_then(|s| {
-                    if s.to_lowercase().starts_with("bearer ") {
+                    if s.len() >= 7 && s[..7].eq_ignore_ascii_case("bearer ") {
                         Some(s[7..].to_string())
                     } else {
                         None
@@ -120,11 +120,7 @@ impl Interceptor for AuthInterceptor {
             .map(std::string::ToString::to_string);
 
         if let Some(key_str) = provided_key {
-            let mut hasher = Sha256::new();
-            hasher.update(key_str.as_bytes());
-            let request_hash = hex::encode(hasher.finalize());
-
-            if let Some((uid, r)) = security::validate_key(&request_hash) {
+            if let Some((uid, r)) = security::validate_raw_key(key_str) {
                 role = r;
                 is_admin = r == security::UserRole::Admin;
                 if is_admin {
@@ -620,18 +616,23 @@ fn parse_vacuum_filter(
     let Some(filter) = filter else {
         return Ok(None);
     };
-    let op = match filter.op.to_lowercase().as_str() {
-        "lt" => hyperspace_core::VacuumFilterOp::Lt,
-        "lte" => hyperspace_core::VacuumFilterOp::Lte,
-        "gt" => hyperspace_core::VacuumFilterOp::Gt,
-        "gte" => hyperspace_core::VacuumFilterOp::Gte,
-        "eq" => hyperspace_core::VacuumFilterOp::Eq,
-        "ne" => hyperspace_core::VacuumFilterOp::Ne,
-        other => {
-            return Err(Status::invalid_argument(format!(
-                "Unsupported vacuum filter op '{other}', use lt/lte/gt/gte/eq/ne"
-            )))
-        }
+    let op = if filter.op.eq_ignore_ascii_case("lt") {
+        hyperspace_core::VacuumFilterOp::Lt
+    } else if filter.op.eq_ignore_ascii_case("lte") {
+        hyperspace_core::VacuumFilterOp::Lte
+    } else if filter.op.eq_ignore_ascii_case("gt") {
+        hyperspace_core::VacuumFilterOp::Gt
+    } else if filter.op.eq_ignore_ascii_case("gte") {
+        hyperspace_core::VacuumFilterOp::Gte
+    } else if filter.op.eq_ignore_ascii_case("eq") {
+        hyperspace_core::VacuumFilterOp::Eq
+    } else if filter.op.eq_ignore_ascii_case("ne") {
+        hyperspace_core::VacuumFilterOp::Ne
+    } else {
+        return Err(Status::invalid_argument(format!(
+            "Unsupported vacuum filter op '{}', use lt/lte/gt/gte/eq/ne",
+            filter.op
+        )));
     };
     Ok(Some(hyperspace_core::VacuumFilterQuery {
         key: filter.key,
@@ -2346,7 +2347,7 @@ impl Database for HyperspaceService {
         };
 
         if let Some(col) = self.manager.get(&user_id, name).await {
-            let clock = self.manager.cluster_state.read().await.logical_clock;
+            let clock = self.manager.get_cluster_clock();
             Ok(Response::new(DigestResponse {
                 logical_clock: clock,
                 state_hash: col.state_hash(),
@@ -2657,7 +2658,7 @@ impl Database for HyperspaceService {
             .ok_or_else(|| Status::not_found(format!("Collection '{col_name}' not found")))?;
 
         let server_buckets = col.buckets();
-        let server_clock = self.manager.cluster_state.read().await.logical_clock;
+        let server_clock = self.manager.get_cluster_clock();
         let server_count = col.count() as u64;
 
         // Compare bucket hashes to find diffs
@@ -3181,7 +3182,7 @@ pub async fn start_server(
                             let mut client = DatabaseClient::with_interceptor(channel, interceptor);
 
                             let current_clock = match manager_weak.upgrade() {
-                                Some(m) => m.cluster_state.read().await.logical_clock,
+                                Some(m) => m.get_cluster_clock(),
                                 None => 0,
                             };
 

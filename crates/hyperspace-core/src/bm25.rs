@@ -90,6 +90,22 @@ pub fn tfc(
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
+pub fn score_with_idf(
+    idf_val: f32,
+    method: Bm25Method,
+    tf: f32,
+    doc_len: f32,
+    avg_doc_len: f32,
+    k1: f32,
+    b: f32,
+    delta: f32,
+) -> f32 {
+    let tfc_val = tfc(method, tf, doc_len, avg_doc_len, k1, b, delta) as f64;
+    ((idf_val as f64) * tfc_val) as f32
+}
+
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub fn score(
     method: Bm25Method,
     tf: f32,
@@ -101,7 +117,6 @@ pub fn score(
     b: f32,
     delta: f32,
 ) -> f32 {
-    let idf_val = idf(method, num_docs, doc_freq) as f64;
-    let tfc_val = tfc(method, tf, doc_len, avg_doc_len, k1, b, delta) as f64;
-    (idf_val * tfc_val) as f32
+    let idf_val = idf(method, num_docs, doc_freq);
+    score_with_idf(idf_val, method, tf, doc_len, avg_doc_len, k1, b, delta)
 }

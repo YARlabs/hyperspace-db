@@ -18,6 +18,10 @@ pub mod direct_io;
 #[cfg(not(target_arch = "wasm32"))]
 pub use direct_io::{AlignedBuffer, DirectFile, DirectVectorStore, DIRECT_IO_ALIGNMENT};
 
+// Batched positional reads (io_uring on Linux with the `io-uring` feature, pread elsewhere).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod uring_io;
+
 // Sidecar Payload Storage: available regardless of vector storage backend.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod payload_store;

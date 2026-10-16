@@ -32,9 +32,9 @@ pub fn generate_deterministic_embedding(text: &str, metric: &str, dim: usize) ->
     }
 
     let mut coords = vec![0.0f64; dim];
-    let words: Vec<&str> = text.split_whitespace().collect();
-
-    for (word_idx, word) in words.iter().enumerate() {
+    let mut words_count = 0;
+    for (word_idx, word) in text.split_whitespace().enumerate() {
+        words_count += 1;
         let mut hasher = Sha256::new();
         hasher.update(word.as_bytes());
         let hash = hasher.finalize();
@@ -48,7 +48,7 @@ pub fn generate_deterministic_embedding(text: &str, metric: &str, dim: usize) ->
     }
 
     // If text was empty or had no words, set small non-zero values
-    if words.is_empty() {
+    if words_count == 0 {
         for (i, c) in coords.iter_mut().enumerate() {
             *c = 0.01 * ((i % 5) as f64 + 1.0);
         }
@@ -150,28 +150,36 @@ pub fn compute_manifold_distance(metric_name: &str, a: &[f64], b: &[f64]) -> f64
 /// In Lorentz geometry, a parent/root node near the apex (t ~ 1.0, spatial ~ 0)
 /// subsumes child nodes in its forward direction. For directional nodes, containment
 /// evaluates angular aperture alignment and forward depth bounds.
-pub fn check_lorentz_cone_containment(answer_vec: &[f64], context_vecs: &[Vec<f64>]) -> bool {
+pub fn check_lorentz_cone_containment<V: AsRef<[f64]>>(
+    answer_vec: &[f64],
+    context_vecs: &[V],
+) -> bool {
     if answer_vec.len() < 2 || context_vecs.is_empty() {
         return true;
     }
 
-    for ctx in context_vecs {
+    let a0 = answer_vec[0];
+    let mut norm_a_sq = 0.0;
+    for &ai in &answer_vec[1..] {
+        norm_a_sq += ai * ai;
+    }
+    let norm_a = norm_a_sq.sqrt();
+
+    for ctx_ref in context_vecs {
+        let ctx = ctx_ref.as_ref();
         if ctx.len() != answer_vec.len() {
             continue;
         }
 
-        let a0 = answer_vec[0];
         let c0 = ctx[0];
 
         let mut norm_c_sq = 0.0;
-        let mut norm_a_sq = 0.0;
         let mut dot_ca = 0.0;
 
         for i in 1..answer_vec.len() {
             let ai = answer_vec[i];
             let ci = ctx[i];
             norm_c_sq += ci * ci;
-            norm_a_sq += ai * ai;
             dot_ca += ci * ai;
         }
 
@@ -185,7 +193,6 @@ pub fn check_lorentz_cone_containment(answer_vec: &[f64], context_vecs: &[Vec<f6
 
         // 2. Angular Aperture Subsumption: Evaluate angular alignment along context branch
         let norm_c = norm_c_sq.sqrt();
-        let norm_a = norm_a_sq.sqrt();
 
         if norm_c > 1e-6 && norm_a > 1e-6 {
             let cos_angle = (dot_ca / (norm_c * norm_a)).clamp(-1.0, 1.0);
@@ -390,8 +397,6 @@ pub async fn verify_generation_against_context_with_vectorizer(
         });
     }
 
-    let context_vecs: Vec<Vec<f64>> = context_pts.iter().map(|p| p.1.clone()).collect();
-
     // 4. Calculate geometric distances
     let mut min_dist = f64::MAX;
     let mut total_dist = 0.0;
@@ -419,7 +424,8 @@ pub async fn verify_generation_against_context_with_vectorizer(
 
     // 6. Evaluate Lorentz light cone containment (if metric == "lorentz")
     let cone_satisfied = if metric == "lorentz" {
-        check_lorentz_cone_containment(&answer_vec, &context_vecs)
+        let ctx_slices: Vec<&[f64]> = context_pts.iter().map(|p| p.1.as_slice()).collect();
+        check_lorentz_cone_containment(&answer_vec, &ctx_slices)
     } else {
         true
     };

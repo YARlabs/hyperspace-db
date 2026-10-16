@@ -13,6 +13,8 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
+static TMP_MAP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 #[derive(Debug)]
 struct ScoredCandidate {
     distance: f64,
@@ -319,6 +321,17 @@ impl<M: Metric> ShardedCollection<M> {
         let user_to_graph = DashMap::new();
         let graph_to_user = DashMap::new();
         let mut max_gid = 0u32;
+        if let Ok(entries) = std::fs::read_dir(&col_dir) {
+            for entry in entries.flatten() {
+                let ep = entry.path();
+                if let Some(name) = ep.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with("graph_id_map.json.tmp.") {
+                        let _ = std::fs::remove_file(ep);
+                    }
+                }
+            }
+        }
+
         let id_map_path = col_dir.join("graph_id_map.json");
         if id_map_path.exists() {
             if let Ok(file) = std::fs::File::open(&id_map_path) {
@@ -376,10 +389,15 @@ impl<M: Metric> ShardedCollection<M> {
         if let Some(gid) = self.user_to_graph.get(&user_id) {
             return *gid;
         }
-        let new_gid = self.next_graph_id.fetch_add(1, Ordering::Relaxed);
-        self.user_to_graph.insert(user_id, new_gid);
-        self.graph_to_user.insert(new_gid, user_id);
-        new_gid
+        match self.user_to_graph.entry(user_id) {
+            dashmap::mapref::entry::Entry::Occupied(entry) => *entry.get(),
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                let new_gid = self.next_graph_id.fetch_add(1, Ordering::Relaxed);
+                entry.insert(new_gid);
+                self.graph_to_user.insert(new_gid, user_id);
+                new_gid
+            }
+        }
     }
 
     #[inline]
@@ -396,8 +414,28 @@ impl<M: Metric> ShardedCollection<M> {
             .iter()
             .map(|e| (*e.key(), *e.value()))
             .collect();
-        if let Ok(file) = std::fs::File::create(self.col_dir.join("graph_id_map.json")) {
-            let _ = serde_json::to_writer(file, &pairs);
+        let count = TMP_MAP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let target = self.col_dir.join("graph_id_map.json");
+        let tmp = self.col_dir.join(format!(
+            "graph_id_map.json.tmp.{}.{}",
+            std::process::id(),
+            count
+        ));
+        if let Ok(file) = std::fs::File::create(&tmp) {
+            use std::io::Write;
+            let mut writer = std::io::BufWriter::new(file);
+            if serde_json::to_writer(&mut writer, &pairs).is_ok() && writer.flush().is_ok() {
+                if let Ok(f) = writer.into_inner() {
+                    let _ = f.sync_all();
+                }
+                if std::fs::rename(&tmp, &target).is_ok() {
+                    if let Ok(dir) = std::fs::File::open(&self.col_dir) {
+                        let _ = dir.sync_all();
+                    }
+                    return;
+                }
+            }
+            let _ = std::fs::remove_file(&tmp);
         }
     }
 
@@ -672,6 +710,24 @@ impl<M: Metric> Collection for ShardedCollection<M> {
                 .await;
         }
 
+        let active_shards: Vec<(usize, &Arc<CollectionImpl<M>>)> = self
+            .shards
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.count() > 0)
+            .collect();
+
+        if active_shards.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        if active_shards.len() == 1 {
+            return active_shards[0]
+                .1
+                .search(vector, filter, complex_filters, params)
+                .await;
+        }
+
         // ── Scatter-Gather Oversampling ──────────────────────────────────────
         let top_k = params.top_k.max(1);
         let shard_top_k = (top_k + 6).max(top_k * 2);
@@ -687,7 +743,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             bm25_options: params.bm25_options.clone(),
             fusion_method: params.fusion_method.clone(),
             mrl_dimension: params.mrl_dimension,
-            include_payload: params.include_payload,
+            include_payload: false,
             use_wave: params.use_wave,
         });
 
@@ -695,10 +751,9 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         let filter_arc = Arc::new(filter.clone());
         let complex_filters_arc = Arc::new(complex_filters.to_vec());
 
-        let handles: Vec<_> = self
-            .shards
-            .iter()
-            .map(|shard| {
+        let handles: Vec<_> = active_shards
+            .into_iter()
+            .map(|(_, shard)| {
                 let shard_ref = Arc::clone(shard);
                 let sp = Arc::clone(&shard_params);
                 let v = Arc::clone(&vector_arc);
@@ -743,6 +798,10 @@ impl<M: Metric> Collection for ShardedCollection<M> {
                                     metadata: meta,
                                     payload,
                                 });
+                            } else {
+                                // Since items are sorted in ascending distance order,
+                                // no subsequent item in this shard can beat `worst`.
+                                break;
                             }
                         }
                     }
@@ -761,6 +820,16 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         // `into_sorted_vec` already returns ascending order for a max-heap;
         // verify and ensure correctness regardless of future stdlib changes.
         output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Fetch payload lazily only for the top-K winners across shards
+        if params.include_payload && !output.is_empty() {
+            let ids: Vec<u32> = output.iter().map(|(id, ..)| *id).collect();
+            let payloads = self.fetch_payloads(&ids).await;
+            for (out, payload) in output.iter_mut().zip(payloads) {
+                out.3 = payload;
+            }
+        }
+
         Ok(output)
     }
 
@@ -771,6 +840,40 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         complex_filters: &[FilterExpr],
         params: &SearchParams,
     ) -> Result<Vec<hyperspace_core::SearchResultU64>, String> {
+        if self.num_shards == 1 {
+            let res = self.shards[0]
+                .search(vector, filter, complex_filters, params)
+                .await?;
+            let mapped = res
+                .into_iter()
+                .map(|(lid, d, m, p)| (self.compose_id64(0, lid), d, m, p))
+                .collect();
+            return Ok(mapped);
+        }
+
+        let active_shards: Vec<(usize, &Arc<CollectionImpl<M>>)> = self
+            .shards
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.count() > 0)
+            .collect();
+
+        if active_shards.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        if active_shards.len() == 1 {
+            let (shard_idx, shard) = active_shards[0];
+            let res = shard
+                .search(vector, filter, complex_filters, params)
+                .await?;
+            let mapped = res
+                .into_iter()
+                .map(|(lid, d, m, p)| (self.compose_id64(shard_idx, lid), d, m, p))
+                .collect();
+            return Ok(mapped);
+        }
+
         let top_k = params.top_k.max(1);
         let shard_top_k = (top_k + 6).max(top_k * 2);
         let shard_ef = params.ef_search.max(shard_top_k);
@@ -785,7 +888,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             bm25_options: params.bm25_options.clone(),
             fusion_method: params.fusion_method.clone(),
             mrl_dimension: params.mrl_dimension,
-            include_payload: params.include_payload,
+            include_payload: false,
             use_wave: params.use_wave,
         });
 
@@ -793,10 +896,8 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         let filter_arc = Arc::new(filter.clone());
         let complex_filters_arc = Arc::new(complex_filters.to_vec());
 
-        let handles: Vec<_> = self
-            .shards
-            .iter()
-            .enumerate()
+        let handles: Vec<_> = active_shards
+            .into_iter()
             .map(|(shard_idx, shard)| {
                 let shard_ref = Arc::clone(shard);
                 let sp = Arc::clone(&shard_params);
@@ -824,8 +925,8 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             match res {
                 Ok(items) => {
                     for (local_id, dist, meta, payload) in items {
-                        let global_id = self.compose_id64(shard_idx, local_id);
                         if heap.len() < top_k {
+                            let global_id = self.compose_id64(shard_idx, local_id);
                             heap.push(ScoredCandidate64 {
                                 distance: dist,
                                 id: global_id,
@@ -835,6 +936,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
                         } else {
                             let worst = heap.peek().unwrap().distance;
                             if dist < worst {
+                                let global_id = self.compose_id64(shard_idx, local_id);
                                 heap.pop();
                                 heap.push(ScoredCandidate64 {
                                     distance: dist,
@@ -842,6 +944,10 @@ impl<M: Metric> Collection for ShardedCollection<M> {
                                     metadata: meta,
                                     payload,
                                 });
+                            } else {
+                                // Shard items are sorted ascending by distance;
+                                // no subsequent item can beat `worst`.
+                                break;
                             }
                         }
                     }
@@ -856,6 +962,35 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             .map(|c| (c.id, c.distance, c.metadata, c.payload))
             .collect();
         output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Fetch payload lazily only for the top-K winners across shards
+        if params.include_payload && !output.is_empty() {
+            let mut shard_winner_map: Vec<Vec<(usize, u32)>> = vec![Vec::new(); self.num_shards];
+            for (pos, item) in output.iter().enumerate() {
+                if let Ok((shard_idx, local_id)) = self.decompose_id64(item.0) {
+                    shard_winner_map[shard_idx].push((pos, local_id));
+                }
+            }
+            let mut tasks = Vec::with_capacity(self.num_shards);
+            for (shard_idx, items) in shard_winner_map.into_iter().enumerate() {
+                if !items.is_empty() {
+                    let shard = Arc::clone(&self.shards[shard_idx]);
+                    tasks.push(tokio::spawn(async move {
+                        let local_ids: Vec<u32> = items.iter().map(|(_, lid)| *lid).collect();
+                        let payloads = shard.fetch_payloads(&local_ids).await;
+                        (items, payloads)
+                    }));
+                }
+            }
+            for task in tasks {
+                if let Ok((items, payloads)) = task.await {
+                    for ((orig_pos, _), payload) in items.into_iter().zip(payloads) {
+                        output[orig_pos].3 = payload;
+                    }
+                }
+            }
+        }
+
         Ok(output)
     }
 
@@ -1000,20 +1135,49 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             shard_buckets[shard_idx].push((pos, id));
         }
 
-        let mut results = vec![None; ids.len()];
-        for (shard_idx, reqs) in shard_buckets.into_iter().enumerate() {
-            if reqs.is_empty() {
-                continue;
-            }
+        let active_shards: Vec<(usize, Vec<(usize, u32)>)> = shard_buckets
+            .into_iter()
+            .enumerate()
+            .filter(|(_, reqs)| !reqs.is_empty())
+            .collect();
+
+        if active_shards.is_empty() {
+            return Vec::new();
+        }
+
+        let shard_results: Vec<(
+            Vec<(usize, u32)>,
+            Vec<(u32, Vec<f64>, HashMap<String, String>)>,
+        )> = if active_shards.len() == 1 {
+            let (shard_idx, reqs) = active_shards.into_iter().next().unwrap();
             let local_ids: Vec<u32> = reqs.iter().map(|(_, lid)| *lid).collect();
             let points = self.shards[shard_idx].get_points(&local_ids);
-            let map: HashMap<u32, (Vec<f64>, HashMap<String, String>)> = points
+            vec![(reqs, points)]
+        } else {
+            std::thread::scope(|s| {
+                let handles: Vec<_> = active_shards
+                    .into_iter()
+                    .map(|(shard_idx, reqs)| {
+                        s.spawn(move || {
+                            let local_ids: Vec<u32> = reqs.iter().map(|(_, lid)| *lid).collect();
+                            let points = self.shards[shard_idx].get_points(&local_ids);
+                            (reqs, points)
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            })
+        };
+
+        let mut results = vec![None; ids.len()];
+        for (reqs, points) in shard_results {
+            let mut map: HashMap<u32, (Vec<f64>, HashMap<String, String>)> = points
                 .into_iter()
                 .map(|(lid, vec, meta)| (lid, (vec, meta)))
                 .collect();
             for (pos, lid) in reqs {
-                if let Some((vec, meta)) = map.get(&lid) {
-                    results[pos] = Some((lid, vec.clone(), meta.clone()));
+                if let Some((vec, meta)) = map.remove(&lid) {
+                    results[pos] = Some((lid, vec, meta));
                 }
             }
         }
@@ -1029,21 +1193,50 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             }
         }
 
-        let mut results = vec![None; ids.len()];
-        for (shard_idx, reqs) in shard_buckets.into_iter().enumerate() {
-            if reqs.is_empty() {
-                continue;
-            }
+        let active_shards: Vec<(usize, Vec<(usize, u32)>)> = shard_buckets
+            .into_iter()
+            .enumerate()
+            .filter(|(_, reqs)| !reqs.is_empty())
+            .collect();
+
+        if active_shards.is_empty() {
+            return Vec::new();
+        }
+
+        let shard_results: Vec<(
+            Vec<(usize, u32)>,
+            Vec<(u32, Vec<f64>, HashMap<String, String>)>,
+        )> = if active_shards.len() == 1 {
+            let (shard_idx, reqs) = active_shards.into_iter().next().unwrap();
             let local_ids: Vec<u32> = reqs.iter().map(|(_, lid)| *lid).collect();
             let points = self.shards[shard_idx].get_points(&local_ids);
-            let map: HashMap<u32, (Vec<f64>, HashMap<String, String>)> = points
+            vec![(reqs, points)]
+        } else {
+            std::thread::scope(|s| {
+                let handles: Vec<_> = active_shards
+                    .into_iter()
+                    .map(|(shard_idx, reqs)| {
+                        s.spawn(move || {
+                            let local_ids: Vec<u32> = reqs.iter().map(|(_, lid)| *lid).collect();
+                            let points = self.shards[shard_idx].get_points(&local_ids);
+                            (reqs, points)
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            })
+        };
+
+        let mut results = vec![None; ids.len()];
+        for (reqs, points) in shard_results {
+            let mut map: HashMap<u32, (Vec<f64>, HashMap<String, String>)> = points
                 .into_iter()
                 .map(|(lid, vec, meta)| (lid, (vec, meta)))
                 .collect();
             for (pos, lid) in reqs {
-                if let Some((vec, meta)) = map.get(&lid) {
+                if let Some((vec, meta)) = map.remove(&lid) {
                     let global_id = ids[pos];
-                    results[pos] = Some((global_id, vec.clone(), meta.clone()));
+                    results[pos] = Some((global_id, vec, meta));
                 }
             }
         }
@@ -1302,6 +1495,16 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         }
 
         results
+    }
+}
+
+impl<M: Metric> Drop for ShardedCollection<M> {
+    fn drop(&mut self) {
+        if let Some(ref wal) = self.wal {
+            if let Ok(mut wal_guard) = wal.try_lock() {
+                let _ = wal_guard.sync();
+            };
+        }
     }
 }
 

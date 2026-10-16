@@ -119,8 +119,18 @@ impl HyperVector {
 
         #[cfg(not(feature = "nightly-simd"))]
         {
-            let mut sum_sq_diff = 0.0;
-            for (u, v) in self.coords.iter().zip(other.coords.iter()) {
+            let n = self.coords.len().min(other.coords.len());
+            let (chunks_a, rem_a) = self.coords[..n].as_chunks::<4>();
+            let (chunks_b, rem_b) = other.coords[..n].as_chunks::<4>();
+            let mut acc = [0.0; 4];
+            for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+                for l in 0..4 {
+                    let diff = ca[l] - cb[l];
+                    acc[l] += diff * diff;
+                }
+            }
+            let mut sum_sq_diff = acc[0] + acc[1] + acc[2] + acc[3];
+            for (&u, &v) in rem_a.iter().zip(rem_b.iter()) {
                 let diff = u - v;
                 sum_sq_diff += diff * diff;
             }
@@ -190,8 +200,18 @@ impl HyperVector {
 
         #[cfg(not(feature = "nightly-simd"))]
         {
-            let mut sum_sq_diff = 0.0;
-            for (u, v) in self.coords.iter().zip(other.coords.iter()) {
+            let n = self.coords.len().min(other.coords.len());
+            let (chunks_a, rem_a) = self.coords[..n].as_chunks::<4>();
+            let (chunks_b, rem_b) = other.coords[..n].as_chunks::<4>();
+            let mut acc = [0.0; 4];
+            for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+                for l in 0..4 {
+                    let diff = ca[l] - cb[l];
+                    acc[l] += diff * diff;
+                }
+            }
+            let mut sum_sq_diff = acc[0] + acc[1] + acc[2] + acc[3];
+            for (&u, &v) in rem_a.iter().zip(rem_b.iter()) {
                 let diff = u - v;
                 sum_sq_diff += diff * diff;
             }
@@ -415,10 +435,20 @@ impl QuantizedHyperVector {
         #[cfg(not(feature = "nightly-simd"))]
         {
             const SCALE_INV: f64 = 1.0 / 127.0;
-            let mut sum_sq_diff = 0.0;
-
-            for (a_i8, b_f64) in self.coords.iter().zip(query.coords.iter()) {
-                let a_val = f64::from(*a_i8) * SCALE_INV;
+            let n = self.coords.len().min(query.coords.len());
+            let (chunks_a, rem_a) = self.coords[..n].as_chunks::<4>();
+            let (chunks_b, rem_b) = query.coords[..n].as_chunks::<4>();
+            let mut acc = [0.0; 4];
+            for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+                for l in 0..4 {
+                    let a_val = f64::from(ca[l]) * SCALE_INV;
+                    let diff = a_val - cb[l];
+                    acc[l] += diff * diff;
+                }
+            }
+            let mut sum_sq_diff = acc[0] + acc[1] + acc[2] + acc[3];
+            for (&a_i8, &b_f64) in rem_a.iter().zip(rem_b.iter()) {
+                let a_val = f64::from(a_i8) * SCALE_INV;
                 let diff = a_val - b_f64;
                 sum_sq_diff += diff * diff;
             }
@@ -504,6 +534,86 @@ impl QuantizedHyperVector {
             let minkowski_dot = a_time * b_time - spatial_dot;
             minkowski_dot.max(1.0).acosh()
         }
+    }
+
+    #[inline]
+    pub fn distance_bytes_poincare_sq(bytes: &[u8], query: &HyperVector) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        let alpha = f32::from_le_bytes(bytes[alpha_offset..].try_into().unwrap_or([0; 4]));
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let n = alpha_offset.min(query.coords.len());
+        let (chunks_a, rem_a) = bytes[..n].as_chunks::<4>();
+        let (chunks_b, rem_b) = query.coords[..n].as_chunks::<4>();
+        let mut acc = [0.0; 4];
+        for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+            for l in 0..4 {
+                let a_val = f64::from(ca[l].cast_signed()) * SCALE_INV;
+                let diff = a_val - cb[l];
+                acc[l] += diff * diff;
+            }
+        }
+        let mut sum_sq_diff = acc[0] + acc[1] + acc[2] + acc[3];
+        for (&a_u8, &b_f64) in rem_a.iter().zip(rem_b.iter()) {
+            let a_val = f64::from(a_u8.cast_signed()) * SCALE_INV;
+            let diff = a_val - b_f64;
+            sum_sq_diff += diff * diff;
+        }
+        let delta = sum_sq_diff * f64::from(alpha) * query.alpha;
+        1.0 + 2.0 * delta
+    }
+
+    #[inline]
+    pub fn distance_bytes_euclidean_sq(bytes: &[u8], query: &HyperVector) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let n = alpha_offset.min(query.coords.len());
+        let (chunks_a, rem_a) = bytes[..n].as_chunks::<4>();
+        let (chunks_b, rem_b) = query.coords[..n].as_chunks::<4>();
+        let mut acc = [0.0; 4];
+        for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+            for l in 0..4 {
+                let a_val = f64::from(ca[l].cast_signed()) * SCALE_INV;
+                let diff = a_val - cb[l];
+                acc[l] += diff * diff;
+            }
+        }
+        let mut sum_sq_diff = acc[0] + acc[1] + acc[2] + acc[3];
+        for (&a_u8, &b_f64) in rem_a.iter().zip(rem_b.iter()) {
+            let a_val = f64::from(a_u8.cast_signed()) * SCALE_INV;
+            let diff = a_val - b_f64;
+            sum_sq_diff += diff * diff;
+        }
+        sum_sq_diff
+    }
+
+    #[inline]
+    pub fn distance_bytes_lorentz(bytes: &[u8], query: &HyperVector) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        let alpha = f32::from_le_bytes(bytes[alpha_offset..].try_into().unwrap_or([0; 4]));
+        let n = alpha_offset.min(query.coords.len());
+        if n == 0 {
+            return 0.0;
+        }
+        let scale = f64::from(alpha);
+        let inv_127 = 1.0 / 127.0;
+        let mut spatial_dot = 0.0;
+        for i in 1..n {
+            let a_val = (f64::from(bytes[i].cast_signed()) * inv_127) * scale;
+            spatial_dot += a_val * query.coords[i];
+        }
+        let a_time = (f64::from(bytes[0].cast_signed()) * inv_127) * scale;
+        let b_time = query.coords[0];
+        let minkowski_dot = a_time * b_time - spatial_dot;
+        minkowski_dot.max(1.0).acosh()
     }
 }
 
@@ -673,6 +783,52 @@ impl BinaryHyperVector {
             i += 1;
         }
 
+        let cos_dist = 2.0 * (1.0 - (dot * scale).clamp(-1.0, 1.0));
+        cos_dist.max(0.0)
+    }
+
+    #[inline(always)]
+    pub fn poincare_distance_sq_bytes(bytes: &[u8], query: &HyperVector) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        let alpha = f32::from_le_bytes(bytes[alpha_offset..].try_into().unwrap_or([0; 4]));
+        let bits = &bytes[..alpha_offset];
+        let n = query.coords.len();
+        let mut sum_sq_diff = 0.0;
+        let mut i = 0;
+        while i < n && i / 8 < bits.len() {
+            let bit = (bits[i / 8] >> (i % 8)) & 1;
+            let val = (bit as f64) * 2.0 - 1.0;
+            let diff = val - query.coords[i];
+            sum_sq_diff += diff * diff;
+            i += 1;
+        }
+        let delta = sum_sq_diff * f64::from(alpha) * query.alpha;
+        1.0 + 2.0 * delta
+    }
+
+    #[inline(always)]
+    pub fn adc_distance_bytes(bytes: &[u8], query: &HyperVector) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        let bits = &bytes[..alpha_offset];
+        let n = query.coords.len();
+        if n == 0 {
+            return 0.0;
+        }
+        let scale = 1.0 / (n as f64).sqrt();
+        let mut dot = 0.0;
+        let mut i = 0;
+        while i < n && i / 8 < bits.len() {
+            let bit = (bits[i / 8] >> (i % 8)) & 1;
+            let val = (bit as f64) * 2.0 - 1.0;
+            dot += val * query.coords[i];
+            i += 1;
+        }
         let cos_dist = 2.0 * (1.0 - (dot * scale).clamp(-1.0, 1.0));
         cos_dist.max(0.0)
     }

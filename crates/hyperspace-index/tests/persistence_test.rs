@@ -102,3 +102,36 @@ fn test_index_save_load() {
         .unwrap()
         .contains(1));
 }
+
+#[test]
+fn test_atomic_snapshot_save_and_stale_cleanup() {
+    let dir = tempfile::tempdir().unwrap();
+    let snap_path = dir.path().join("index.snap");
+    let storage_path = dir.path().join("vectors_atomic");
+
+    let config = Arc::new(GlobalConfig::default());
+    let storage = Arc::new(VectorStore::new(&storage_path, 4));
+    let index: HnswIndex<EuclideanMetric> =
+        HnswIndex::new(storage.clone(), QuantizationMode::None, config.clone(), 1);
+
+    // Create a fake stale .tmp file from a simulated past crash
+    let stale_tmp = dir.path().join("index.snap.tmp.99999.1");
+    std::fs::write(&stale_tmp, b"stale data").unwrap();
+    assert!(stale_tmp.exists());
+
+    // Save snapshot atomically
+    index
+        .save_snapshot(&snap_path)
+        .expect("Save snapshot should succeed");
+    assert!(snap_path.exists());
+
+    // Load snapshot - should clean up the stale .tmp file
+    let loaded: HnswIndex<EuclideanMetric> =
+        HnswIndex::load_snapshot(&snap_path, storage, QuantizationMode::None, config, 1)
+            .expect("Load snapshot should succeed");
+    assert_eq!(loaded.dimension, 1);
+    assert!(
+        !stale_tmp.exists(),
+        "Stale tmp file must be cleaned up on load"
+    );
+}

@@ -11,6 +11,8 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+static TMP_CSR_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 /// Standard directed relation labels for enterprise knowledge topologies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u16)]
@@ -395,17 +397,28 @@ impl CsrGraph {
         writer.write_all(&(self.num_nodes as u64).to_le_bytes())?;
         writer.write_all(&(self.edges.len() as u64).to_le_bytes())?;
 
-        // Write row offsets
-        for &offset in &self.row_offsets {
-            writer.write_all(&offset.to_le_bytes())?;
+        // Write row offsets in chunks
+        let mut raw_buf = [0u8; 4096];
+        for chunk in self.row_offsets.chunks(1024) {
+            let bytes_len = chunk.len() * 4;
+            for (i, &offset) in chunk.iter().enumerate() {
+                raw_buf[i * 4..(i + 1) * 4].copy_from_slice(&offset.to_le_bytes());
+            }
+            writer.write_all(&raw_buf[..bytes_len])?;
         }
 
-        // Write compact edges
-        for edge in &self.edges {
-            writer.write_all(&edge.target.to_le_bytes())?;
-            writer.write_all(&edge.relation.to_le_bytes())?;
-            writer.write_all(&edge.flags.to_le_bytes())?;
-            writer.write_all(&edge.weight.to_le_bytes())?;
+        // Write compact edges in chunks
+        let mut edge_buf = [0u8; 12 * 512];
+        for chunk in self.edges.chunks(512) {
+            let bytes_len = chunk.len() * 12;
+            for (i, edge) in chunk.iter().enumerate() {
+                let base = i * 12;
+                edge_buf[base..base + 4].copy_from_slice(&edge.target.to_le_bytes());
+                edge_buf[base + 4..base + 6].copy_from_slice(&edge.relation.to_le_bytes());
+                edge_buf[base + 6..base + 8].copy_from_slice(&edge.flags.to_le_bytes());
+                edge_buf[base + 8..base + 12].copy_from_slice(&edge.weight.to_le_bytes());
+            }
+            writer.write_all(&edge_buf[..bytes_len])?;
         }
 
         Ok(())
@@ -430,33 +443,39 @@ impl CsrGraph {
         let edge_count = u64::from_le_bytes(buf8) as usize;
 
         let mut row_offsets = Vec::with_capacity(num_nodes + 1);
-        let mut buf4 = [0u8; 4];
-        for _ in 0..=num_nodes {
-            reader.read_exact(&mut buf4)?;
-            row_offsets.push(u32::from_le_bytes(buf4));
+        let mut raw_buf = [0u8; 4096];
+        let mut remaining_offsets = num_nodes + 1;
+        while remaining_offsets > 0 {
+            let to_read = remaining_offsets.min(1024);
+            let bytes_to_read = to_read * 4;
+            reader.read_exact(&mut raw_buf[..bytes_to_read])?;
+            for &chunk in raw_buf[..bytes_to_read].as_chunks::<4>().0 {
+                let val = u32::from_le_bytes(chunk);
+                row_offsets.push(val);
+            }
+            remaining_offsets -= to_read;
         }
 
         let mut edges = Vec::with_capacity(edge_count);
-        let mut buf2 = [0u8; 2];
-        for _ in 0..edge_count {
-            reader.read_exact(&mut buf4)?;
-            let target = u32::from_le_bytes(buf4);
-
-            reader.read_exact(&mut buf2)?;
-            let relation = u16::from_le_bytes(buf2);
-
-            reader.read_exact(&mut buf2)?;
-            let flags = u16::from_le_bytes(buf2);
-
-            reader.read_exact(&mut buf4)?;
-            let weight = f32::from_le_bytes(buf4);
-
-            edges.push(CompactEdge {
-                target,
-                relation,
-                flags,
-                weight,
-            });
+        let mut edge_buf = [0u8; 12 * 512];
+        let mut remaining_edges = edge_count;
+        while remaining_edges > 0 {
+            let to_read = remaining_edges.min(512);
+            let bytes_to_read = to_read * 12;
+            reader.read_exact(&mut edge_buf[..bytes_to_read])?;
+            for chunk in edge_buf[..bytes_to_read].as_chunks::<12>().0 {
+                let target = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                let relation = u16::from_le_bytes([chunk[4], chunk[5]]);
+                let flags = u16::from_le_bytes([chunk[6], chunk[7]]);
+                let weight = f32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
+                edges.push(CompactEdge {
+                    target,
+                    relation,
+                    flags,
+                    weight,
+                });
+            }
+            remaining_edges -= to_read;
         }
 
         Ok(Self {
@@ -466,16 +485,43 @@ impl CsrGraph {
         })
     }
 
-    /// Saves CSR graph to a file with buffered writing.
+    /// Saves CSR graph to a file with buffered writing atomically.
     pub fn save_to_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
-        let file = std::fs::File::create(path)?;
-        let writer = std::io::BufWriter::new(file);
-        self.write_to(writer)
+        let p = path.as_ref();
+        let count = TMP_CSR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp = p.with_extension(format!("tmp.{}.{}", std::process::id(), count));
+        {
+            let file = std::fs::File::create(&tmp)?;
+            let mut writer = std::io::BufWriter::new(file);
+            self.write_to(&mut writer)?;
+            writer.flush()?;
+            writer.get_ref().sync_all()?;
+        }
+        std::fs::rename(&tmp, p)?;
+        if let Some(parent) = p.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+        Ok(())
     }
 
     /// Loads CSR graph from a file with buffered reading.
     pub fn load_from_file(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
-        let file = std::fs::File::open(path)?;
+        let p = path.as_ref();
+        if let Some(parent) = p.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    let ep = entry.path();
+                    if let Some(name) = ep.file_name().and_then(|n| n.to_str()) {
+                        if name.starts_with("graph.") && name.contains(".tmp.") {
+                            let _ = std::fs::remove_file(ep);
+                        }
+                    }
+                }
+            }
+        }
+        let file = std::fs::File::open(p)?;
         let reader = std::io::BufReader::new(file);
         Self::read_from(reader)
     }
@@ -508,16 +554,18 @@ impl DynamicGraph {
             return;
         }
         let required = (node_id as usize) + 1;
-        let current_len = self.adj.read().len();
-        if required > current_len {
-            let mut write_guard = self.adj.write();
-            let len = write_guard.len();
-            if required > len {
-                let to_add = required - len;
-                write_guard.reserve(to_add);
-                for _ in 0..to_add {
-                    write_guard.push(RwLock::new(Vec::new()));
-                }
+        if required <= self.adj.read().len() {
+            return;
+        }
+        let mut write_guard = self.adj.write();
+        let len = write_guard.len();
+        if required > len {
+            let chunk_grow = (len / 2).max(1024);
+            let target = required.max(len + chunk_grow).min(20_000_000);
+            let to_add = target - len;
+            write_guard.reserve(to_add);
+            for _ in 0..to_add {
+                write_guard.push(RwLock::new(Vec::new()));
             }
         }
     }
@@ -604,37 +652,39 @@ impl DynamicGraph {
         let mut next_frontier = Vec::with_capacity(seeds.len() * 16);
         current_frontier.extend_from_slice(seeds);
 
-        let outer_guard = self.adj.read();
-        let num_nodes = outer_guard.len();
-
         for _hop in 0..max_hops {
             if current_frontier.is_empty() {
                 break;
             }
             next_frontier.clear();
 
-            for &node in &current_frontier {
-                let idx = node as usize;
-                if idx >= num_nodes {
-                    continue;
-                }
-                let edges = outer_guard[idx].read();
-                let mut count = 0;
-                for edge in edges.iter() {
-                    if !edge.is_active() {
+            {
+                let outer_guard = self.adj.read();
+                let num_nodes = outer_guard.len();
+
+                for &node in &current_frontier {
+                    let idx = node as usize;
+                    if idx >= num_nodes {
                         continue;
                     }
-                    if let Some(filter) = relation_filter {
-                        if !filter.contains(&edge.relation) {
+                    let edges = outer_guard[idx].read();
+                    let mut count = 0;
+                    for edge in edges.iter() {
+                        if !edge.is_active() {
                             continue;
                         }
-                    }
-                    if bitmap.insert(edge.target) {
-                        next_frontier.push(edge.target);
-                    }
-                    count += 1;
-                    if count >= max_fanout {
-                        break;
+                        if let Some(filter) = relation_filter {
+                            if !filter.contains(&edge.relation) {
+                                continue;
+                            }
+                        }
+                        if bitmap.insert(edge.target) {
+                            next_frontier.push(edge.target);
+                        }
+                        count += 1;
+                        if count >= max_fanout {
+                            break;
+                        }
                     }
                 }
             }
@@ -797,11 +847,12 @@ impl GraphEngine {
 
             match rule.rule_type.as_str() {
                 "path_hierarchy" => {
-                    let mut path_to_id = std::collections::HashMap::with_capacity(nodes.len());
+                    let mut path_to_id: std::collections::HashMap<&str, u32> =
+                        std::collections::HashMap::with_capacity(nodes.len());
                     for (id, meta) in nodes {
                         if let Some(path) = meta.get(&rule.field) {
                             let clean_path = path.trim_end_matches('/');
-                            path_to_id.insert(clean_path.to_string(), *id);
+                            path_to_id.insert(clean_path, *id);
                         }
                     }
 
@@ -822,16 +873,17 @@ impl GraphEngine {
                 }
                 "foreign_key" => {
                     if let Some(ref target_field) = rule.target_field {
-                        let mut target_val_to_id =
+                        let mut target_val_to_id: std::collections::HashMap<&str, u32> =
                             std::collections::HashMap::with_capacity(nodes.len());
                         for (id, meta) in nodes {
                             if let Some(val) = meta.get(target_field) {
-                                target_val_to_id.insert(val.clone(), *id);
+                                target_val_to_id.insert(val.as_str(), *id);
                             }
                         }
                         for (id, meta) in nodes {
                             if let Some(foreign_val) = meta.get(&rule.field) {
-                                if let Some(&target_id) = target_val_to_id.get(foreign_val) {
+                                if let Some(&target_id) = target_val_to_id.get(foreign_val.as_str())
+                                {
                                     if target_id != *id {
                                         self.insert_edge(*id, target_id, rel_code, weight);
                                         total_edges_added += 1;

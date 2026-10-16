@@ -70,6 +70,19 @@ fn generate_plan(dim: usize) -> TransformPlan {
 }
 
 fn get_or_create_plan(dim: usize) -> TransformPlan {
+    static PLAN_768: OnceLock<TransformPlan> = OnceLock::new();
+    static PLAN_801: OnceLock<TransformPlan> = OnceLock::new();
+    static PLAN_1024: OnceLock<TransformPlan> = OnceLock::new();
+    static PLAN_1536: OnceLock<TransformPlan> = OnceLock::new();
+
+    match dim {
+        768 => return PLAN_768.get_or_init(|| generate_plan(768)).clone(),
+        801 => return PLAN_801.get_or_init(|| generate_plan(801)).clone(),
+        1024 => return PLAN_1024.get_or_init(|| generate_plan(1024)).clone(),
+        1536 => return PLAN_1536.get_or_init(|| generate_plan(1536)).clone(),
+        _ => {}
+    }
+
     let rwlock = PLANS.get_or_init(|| RwLock::new(HashMap::new()));
     {
         let map = rwlock.read().unwrap();
@@ -96,11 +109,30 @@ pub fn fwht_in_place(buf: &mut [f32]) {
         let step = len * 2;
         for chunk in buf.chunks_exact_mut(step) {
             let (u, v) = chunk.split_at_mut(len);
-            for (a, b) in u.iter_mut().zip(v.iter_mut()) {
-                let x = *a;
-                let y = *b;
-                *a = x + y;
-                *b = x - y;
+            if len >= 4 {
+                let (cu, ru) = u.as_chunks_mut::<4>();
+                let (cv, rv) = v.as_chunks_mut::<4>();
+                for (a_chunk, b_chunk) in cu.iter_mut().zip(cv.iter_mut()) {
+                    for l in 0..4 {
+                        let x = a_chunk[l];
+                        let y = b_chunk[l];
+                        a_chunk[l] = x + y;
+                        b_chunk[l] = x - y;
+                    }
+                }
+                for (a, b) in ru.iter_mut().zip(rv.iter_mut()) {
+                    let x = *a;
+                    let y = *b;
+                    *a = x + y;
+                    *b = x - y;
+                }
+            } else {
+                for (a, b) in u.iter_mut().zip(v.iter_mut()) {
+                    let x = *a;
+                    let y = *b;
+                    *a = x + y;
+                    *b = x - y;
+                }
             }
         }
         len = step;
@@ -129,8 +161,15 @@ pub fn rotate_vector_in_place(vec: &mut [f32]) {
     let signs = &plan.scaled_signs;
 
     // Step 1: Pre-multiply coordinates by scaled signs: s_i / sqrt(N)
-    for i in 0..dim {
-        vec[i] *= signs[i];
+    let (v_chunks, v_rem) = vec.as_chunks_mut::<4>();
+    let (s_chunks, s_rem) = signs.as_chunks::<4>();
+    for (v_c, s_c) in v_chunks.iter_mut().zip(s_chunks.iter()) {
+        for l in 0..4 {
+            v_c[l] *= s_c[l];
+        }
+    }
+    for (v, &s) in v_rem.iter_mut().zip(s_rem.iter()) {
+        *v *= s;
     }
 
     // Step 2: Apply in-place FWHT butterfly to each power-of-two block
@@ -166,8 +205,15 @@ pub fn unrotate_vector_in_place(vec: &mut [f32]) {
     }
 
     // Step 2: Multiply by scaled signs: s_i / sqrt(N)
-    for i in 0..dim {
-        vec[i] *= signs[i];
+    let (v_chunks, v_rem) = vec.as_chunks_mut::<4>();
+    let (s_chunks, s_rem) = signs.as_chunks::<4>();
+    for (v_c, s_c) in v_chunks.iter_mut().zip(s_chunks.iter()) {
+        for l in 0..4 {
+            v_c[l] *= s_c[l];
+        }
+    }
+    for (v, &s) in v_rem.iter_mut().zip(s_rem.iter()) {
+        *v *= s;
     }
 }
 

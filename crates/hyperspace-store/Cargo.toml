@@ -16,9 +16,14 @@ zstd = "0.13"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { version = "0.7", optional = true }
+
 [features]
 default = ["mmap"]
 mmap = ["dep:memmap2"]
+# Batched positional reads through Linux io_uring (no-op on other platforms).
+io-uring = ["dep:io-uring"]
 
 [dev-dependencies]
 tempfile = "3.8"

@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use hyperspace_core::{vector::HyperVector, FilterExpr, Metric, SearchResult};
+use hyperspace_core::{FilterExpr, Metric, SearchResult};
 use std::collections::HashMap;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -98,7 +98,35 @@ impl WriteBuffer {
             return Vec::new();
         }
 
-        let mut scored: Vec<(u32, f64)> = Vec::with_capacity(self.entries.len().min(1024));
+        if k == 0 {
+            return Vec::new();
+        }
+
+        #[derive(Clone)]
+        struct Candidate {
+            internal_id: u32,
+            user_id: u32,
+            dist: f64,
+        }
+        impl PartialEq for Candidate {
+            fn eq(&self, other: &Self) -> bool {
+                self.dist == other.dist
+            }
+        }
+        impl Eq for Candidate {}
+        impl PartialOrd for Candidate {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+        impl Ord for Candidate {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                self.dist.total_cmp(&other.dist) // Max-heap: largest distance on top
+            }
+        }
+
+        let mut heap: std::collections::BinaryHeap<Candidate> =
+            std::collections::BinaryHeap::with_capacity(k.min(self.size()).min(1024));
 
         for kv in &self.entries {
             let entry = kv.value();
@@ -114,14 +142,10 @@ impl WriteBuffer {
                 continue;
             }
 
-            // 2. Match advanced semantic/geometric/logical FilterExprs
+            // 2. Match advanced semantic/geometric/logical FilterExprs (Zero-Copy)
             if !complex_filters.is_empty() {
-                let hv = HyperVector {
-                    coords: entry.vector.clone(),
-                    alpha: 1.0,
-                };
                 for expr in complex_filters {
-                    if !expr.check(&hv, &entry.metadata) {
+                    if !expr.check_coords(&entry.vector, &entry.metadata) {
                         matches = false;
                         break;
                     }
@@ -132,20 +156,31 @@ impl WriteBuffer {
             }
 
             let dist = M::distance(query, &entry.vector);
-            scored.push((*kv.key(), dist));
+            if heap.len() < k {
+                heap.push(Candidate {
+                    internal_id: *kv.key(),
+                    user_id: entry.user_id,
+                    dist,
+                });
+            } else if let Some(top) = heap.peek() {
+                if dist < top.dist {
+                    heap.pop();
+                    heap.push(Candidate {
+                        internal_id: *kv.key(),
+                        user_id: entry.user_id,
+                        dist,
+                    });
+                }
+            }
         }
 
-        // Sort ascending by distance (closest first)
-        scored.sort_by(|a, b| a.1.total_cmp(&b.1));
-        scored.truncate(k);
-
-        // Only clone metadata for the top-k winners
-        scored
+        // into_sorted_vec() returns elements in ascending order (closest first)
+        heap.into_sorted_vec()
             .into_iter()
-            .filter_map(|(internal_id, dist)| {
+            .filter_map(|cand| {
                 self.entries
-                    .get(&internal_id)
-                    .map(|entry| (entry.user_id, dist, entry.metadata.clone(), None))
+                    .get(&cand.internal_id)
+                    .map(|entry| (cand.user_id, cand.dist, entry.metadata.clone(), None))
             })
             .collect()
     }

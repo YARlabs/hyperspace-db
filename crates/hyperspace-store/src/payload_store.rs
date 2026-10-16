@@ -15,6 +15,7 @@
 
 #![allow(clippy::cast_possible_truncation)]
 
+use crate::uring_io::{read_batch_at, ReadRequest};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
@@ -52,10 +53,86 @@ pub struct PayloadSlot {
     pub uncompressed_len: u32,
 }
 
-/// The in-RAM index — a sparse map from vector ID to payload slot.
-/// Only IDs with actual payloads consume memory (~24-32 bytes per payload),
-/// completely eliminating OOM crashes when user-supplied IDs are large/sparse.
-type PayloadIndex = HashMap<u32, PayloadSlot>;
+const NUM_PAYLOAD_SHARDS: usize = 32;
+
+/// Thread-safe sharded in-RAM index to eliminate lock contention between concurrent readers and writers.
+#[derive(Debug)]
+pub struct ShardedPayloadIndex {
+    shards: [RwLock<HashMap<u32, PayloadSlot>>; NUM_PAYLOAD_SHARDS],
+}
+
+impl Default for ShardedPayloadIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShardedPayloadIndex {
+    pub fn new() -> Self {
+        Self {
+            shards: std::array::from_fn(|_| RwLock::new(HashMap::new())),
+        }
+    }
+
+    #[inline]
+    fn shard_idx(id: u32) -> usize {
+        (id as usize) & (NUM_PAYLOAD_SHARDS - 1)
+    }
+
+    #[inline]
+    pub fn get(&self, id: u32) -> Option<PayloadSlot> {
+        let shard = Self::shard_idx(id);
+        self.shards[shard].read().get(&id).copied()
+    }
+
+    pub fn get_many(&self, ids: &[u32]) -> Vec<Option<PayloadSlot>> {
+        ids.iter().map(|&id| self.get(id)).collect()
+    }
+
+    #[inline]
+    pub fn contains_key(&self, id: u32) -> bool {
+        let shard = Self::shard_idx(id);
+        self.shards[shard].read().contains_key(&id)
+    }
+
+    #[inline]
+    pub fn insert(&self, id: u32, slot: PayloadSlot) {
+        let shard = Self::shard_idx(id);
+        self.shards[shard].write().insert(id, slot);
+    }
+
+    pub fn insert_batch(&self, slots: &[(u32, PayloadSlot)]) {
+        let mut by_shard: [Vec<(u32, PayloadSlot)>; NUM_PAYLOAD_SHARDS] =
+            std::array::from_fn(|_| Vec::new());
+        for &(id, slot) in slots {
+            by_shard[Self::shard_idx(id)].push((id, slot));
+        }
+        for (shard, entries) in by_shard.iter().enumerate() {
+            if !entries.is_empty() {
+                let mut guard = self.shards[shard].write();
+                for &(id, slot) in entries {
+                    guard.insert(id, slot);
+                }
+            }
+        }
+    }
+
+    #[inline]
+    pub fn remove(&self, id: u32) -> Option<PayloadSlot> {
+        let shard = Self::shard_idx(id);
+        self.shards[shard].write().remove(&id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.shards.iter().map(|s| s.read().len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+type PayloadIndex = ShardedPayloadIndex;
 
 /// Append-only, zstd-compressed sidecar payload store.
 ///
@@ -68,8 +145,8 @@ pub struct PayloadStore {
     /// Separate read-only handle for positional reads — avoids lock contention
     /// with the writer during concurrent searches.
     reader: Arc<File>,
-    /// In-RAM index: 16 bytes per slot. This is the ONLY payload data in RAM.
-    index: RwLock<PayloadIndex>,
+    /// In-RAM index: sharded across 32 stripes to eliminate lock contention.
+    index: ShardedPayloadIndex,
     /// Byte offset at which the next entry will be written.
     next_offset: Mutex<u64>,
     /// Paths for crash recovery.
@@ -114,7 +191,7 @@ impl PayloadStore {
 
         // ── Initialize file (write magic if new) ──────────────────────────────
         let file_len = write_file.metadata()?.len();
-        let mut writer = BufWriter::new(write_file);
+        let mut writer = BufWriter::with_capacity(128 * 1024, write_file);
         let next_offset = if file_len == 0 {
             writer.write_all(PAYLOAD_FILE_MAGIC)?;
             writer.flush()?;
@@ -129,6 +206,7 @@ impl PayloadStore {
                     "payloads.hyp: invalid magic bytes — file may be corrupt",
                 ));
             }
+            writer.seek(SeekFrom::End(0))?;
             file_len
         };
 
@@ -136,19 +214,19 @@ impl PayloadStore {
         let index = if index_path.exists() {
             Self::load_index(&index_path)?
         } else {
-            HashMap::new()
+            ShardedPayloadIndex::new()
         };
 
         let index_writer_file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&index_path)?;
-        let index_writer = Mutex::new(BufWriter::new(index_writer_file));
+        let index_writer = Mutex::new(BufWriter::with_capacity(128 * 1024, index_writer_file));
 
         Ok(Self {
             writer: Mutex::new(writer),
             reader: Arc::new(read_file),
-            index: RwLock::new(index),
+            index,
             next_offset: Mutex::new(next_offset),
             payload_path,
             index_writer,
@@ -175,6 +253,20 @@ impl PayloadStore {
         Ok(())
     }
 
+    /// Helper to append multiple index records in a single batch with one lock and flush.
+    fn append_index_records_batch(&self, slots: &[(u32, PayloadSlot)]) -> io::Result<()> {
+        let mut w = self.index_writer.lock();
+        for &(id, slot) in slots {
+            w.write_u32::<LittleEndian>(id)?;
+            w.write_u8(1)?;
+            w.write_u64::<LittleEndian>(slot.offset)?;
+            w.write_u32::<LittleEndian>(slot.compressed_len)?;
+            w.write_u32::<LittleEndian>(slot.uncompressed_len)?;
+        }
+        w.flush()?;
+        Ok(())
+    }
+
     /// Insert a payload for the given vector `id`.
     ///
     /// **Memory contract:** only the compressed bytes exist temporarily on the stack
@@ -196,9 +288,6 @@ impl PayloadStore {
             let entry_offset = *off_guard;
 
             let mut w = self.writer.lock();
-            // Seek to end (the BufWriter may have buffered data)
-            w.seek(SeekFrom::End(0))?;
-
             // Write the 8-byte entry header
             w.write_u32::<LittleEndian>(compressed_len)?;
             w.write_u32::<LittleEndian>(uncompressed_len)?;
@@ -216,10 +305,7 @@ impl PayloadStore {
             compressed_len,
             uncompressed_len,
         };
-        {
-            let mut idx = self.index.write();
-            idx.insert(id, slot);
-        }
+        self.index.insert(id, slot);
 
         // 4. Persist the index using incremental append (O(1))
         self.append_index_record(id, true, entry_offset, compressed_len, uncompressed_len)?;
@@ -233,11 +319,16 @@ impl PayloadStore {
             return Ok(());
         }
 
+        let mut compressor = zstd::bulk::Compressor::new(self.zstd_level).ok();
         let compressed_entries: Vec<(u32, Vec<u8>, u32)> = entries
             .iter()
             .map(|(id, raw)| {
-                let comp = zstd::encode_all(raw.as_slice(), self.zstd_level)?;
                 let raw_len = raw.len() as u32;
+                let comp = if let Some(ref mut c) = compressor {
+                    c.compress(raw.as_slice())?
+                } else {
+                    zstd::encode_all(raw.as_slice(), self.zstd_level)?
+                };
                 Ok((*id, comp, raw_len))
             })
             .collect::<io::Result<Vec<_>>>()?;
@@ -246,8 +337,6 @@ impl PayloadStore {
         let mut cur_offset = *off_guard;
 
         let mut w = self.writer.lock();
-        w.seek(SeekFrom::End(0))?;
-
         let mut slots_to_update = Vec::with_capacity(compressed_entries.len());
 
         for (id, comp, raw_len) in &compressed_entries {
@@ -272,22 +361,9 @@ impl PayloadStore {
         w.flush()?;
         *off_guard = cur_offset;
 
-        {
-            let mut idx = self.index.write();
-            for &(id, slot) in &slots_to_update {
-                idx.insert(id, slot);
-            }
-        }
+        self.index.insert_batch(&slots_to_update);
 
-        for &(id, slot) in &slots_to_update {
-            self.append_index_record(
-                id,
-                true,
-                slot.offset,
-                slot.compressed_len,
-                slot.uncompressed_len,
-            )?;
-        }
+        self.append_index_records_batch(&slots_to_update)?;
 
         Ok(())
     }
@@ -299,13 +375,9 @@ impl PayloadStore {
     ///
     /// Returns `None` if the ID has no payload or if the ID is out of range.
     pub fn fetch_blocking(&self, id: u32) -> io::Result<Option<Vec<u8>>> {
-        // 1. Look up the slot under a cheap read lock
-        let slot = {
-            let idx = self.index.read();
-            match idx.get(&id) {
-                Some(s) => *s,
-                None => return Ok(None),
-            }
+        // 1. Look up the slot under sharded read lock
+        let Some(slot) = self.index.get(id) else {
+            return Ok(None);
         };
 
         // 2. Read the compressed bytes via positional I/O (no seek lock needed)
@@ -314,8 +386,18 @@ impl PayloadStore {
         let mut compressed = vec![0u8; slot.compressed_len as usize];
         self.reader.read_exact_at(&mut compressed, data_offset)?;
 
-        // 3. Decompress — the result lives only as long as needed by the caller
-        let decompressed = zstd::decode_all(Cursor::new(&compressed))?;
+        // 3. Decompress using reusable bulk decompressor or decode_all fallback
+        let uncomp_len = slot.uncompressed_len as usize;
+        let decompressed = if let Ok(mut dec) = zstd::bulk::Decompressor::new() {
+            let mut buf = vec![0u8; uncomp_len];
+            if dec.decompress_to_buffer(&compressed, &mut buf).is_ok() {
+                buf
+            } else {
+                zstd::decode_all(Cursor::new(&compressed))?
+            }
+        } else {
+            zstd::decode_all(Cursor::new(&compressed))?
+        };
 
         // Integrity check
         debug_assert_eq!(
@@ -339,37 +421,77 @@ impl PayloadStore {
 
     /// Fetch payloads for multiple IDs concurrently.
     ///
-    /// All reads are dispatched as concurrent `spawn_blocking` tasks.
+    /// Reads are dispatched under a single `spawn_blocking` task to eliminate thread-pool
+    /// churn and lock contention: the index lock is acquired exactly once.
     /// The returned `Vec` is aligned with the input `ids` slice.
     pub async fn fetch_many(store: Arc<Self>, ids: &[u32]) -> Vec<Option<Vec<u8>>> {
-        let handles: Vec<_> = ids
-            .iter()
-            .copied()
-            .map(|id| {
-                let s = Arc::clone(&store);
-                tokio::task::spawn_blocking(move || s.fetch_blocking(id).ok().flatten())
-            })
-            .collect();
-
-        let mut results = Vec::with_capacity(handles.len());
-        for h in handles {
-            results.push(h.await.ok().flatten());
+        if ids.is_empty() {
+            return Vec::new();
         }
-        results
+        let ids_vec = ids.to_vec();
+        tokio::task::spawn_blocking(move || {
+            // 1. Snapshot slots under sharded read access
+            let slots: Vec<Option<PayloadSlot>> = store.index.get_many(&ids_vec);
+
+            // 2. Issue all disk reads as ONE batch (single io_uring submission on Linux,
+            //    pread loop elsewhere). Header is 8 bytes (compressed_len + uncompressed_len).
+            let mut reqs: Vec<ReadRequest> = Vec::with_capacity(slots.len());
+            let mut req_of_slot: Vec<Option<usize>> = Vec::with_capacity(slots.len());
+            for slot_opt in &slots {
+                if let Some(slot) = slot_opt {
+                    req_of_slot.push(Some(reqs.len()));
+                    reqs.push(ReadRequest::new(
+                        slot.offset + 8,
+                        slot.compressed_len as usize,
+                    ));
+                } else {
+                    req_of_slot.push(None);
+                }
+            }
+            let _ = read_batch_at(&store.reader, &mut reqs);
+
+            // 3. Decode payloads sequentially reusing the bulk decompressor
+            let mut results = Vec::with_capacity(ids_vec.len());
+            let mut decompressor = zstd::bulk::Decompressor::new().ok();
+            for (slot_opt, req_idx) in slots.into_iter().zip(req_of_slot) {
+                if let (Some(slot), Some(ri)) = (slot_opt, req_idx) {
+                    let req = &reqs[ri];
+                    if req.ok {
+                        let compressed = &req.buf;
+                        let uncomp_len = slot.uncompressed_len as usize;
+                        if let Some(ref mut dec) = decompressor {
+                            let mut decompressed = vec![0u8; uncomp_len];
+                            if dec
+                                .decompress_to_buffer(compressed, &mut decompressed)
+                                .is_ok()
+                            {
+                                results.push(Some(decompressed));
+                                continue;
+                            }
+                        }
+                        if let Ok(decompressed) = zstd::decode_all(Cursor::new(compressed)) {
+                            results.push(Some(decompressed));
+                            continue;
+                        }
+                    }
+                }
+                results.push(None);
+            }
+            results
+        })
+        .await
+        .unwrap_or_else(|_| vec![None; ids.len()])
     }
 
     /// Returns `true` if the given ID has a stored payload.
     pub fn has_payload(&self, id: u32) -> bool {
-        self.index.read().contains_key(&id)
+        self.index.contains_key(id)
     }
 
     /// Remove the payload slot for `id` (used when a vector is deleted / tombstoned).
     /// The on-disk bytes are reclaimed during the next compaction.
     pub fn remove(&self, id: u32) -> io::Result<()> {
-        {
-            let mut idx = self.index.write();
-            idx.remove(&id);
-        }
+        self.index.remove(id);
         self.append_index_record(id, false, 0, 0, 0)?;
         Ok(())
     }
@@ -381,12 +503,8 @@ impl PayloadStore {
     /// This is called by the background vacuum/compaction loop.
     pub fn compact_copy_from(&self, old_store: &Self, id: u32) -> io::Result<()> {
         // Fast path: no payload, nothing to copy
-        let slot = {
-            let idx = old_store.index.read();
-            match idx.get(&id) {
-                Some(s) => *s,
-                None => return Ok(()),
-            }
+        let Some(slot) = old_store.index.get(id) else {
+            return Ok(());
         };
 
         // Read the compressed bytes directly (no decompression — save CPU)
@@ -402,7 +520,6 @@ impl PayloadStore {
             let entry_offset = *off_guard;
 
             let mut w = self.writer.lock();
-            w.seek(SeekFrom::End(0))?;
             w.write_u32::<LittleEndian>(slot.compressed_len)?;
             w.write_u32::<LittleEndian>(slot.uncompressed_len)?;
             w.write_all(&compressed)?;
@@ -418,10 +535,7 @@ impl PayloadStore {
             compressed_len: slot.compressed_len,
             uncompressed_len: slot.uncompressed_len,
         };
-        {
-            let mut idx = self.index.write();
-            idx.insert(id, new_slot);
-        }
+        self.index.insert(id, new_slot);
 
         self.append_index_record(
             id,
@@ -434,6 +548,13 @@ impl PayloadStore {
         Ok(())
     }
 
+    /// Flush all buffered payload data and index records to disk.
+    pub fn flush(&self) -> io::Result<()> {
+        self.writer.lock().flush()?;
+        self.index_writer.lock().flush()?;
+        Ok(())
+    }
+
     /// Returns the on-disk size of the payload blob file in bytes.
     pub fn disk_size_bytes(&self) -> u64 {
         *self.next_offset.lock()
@@ -441,7 +562,7 @@ impl PayloadStore {
 
     /// Returns the number of payload slots (including empty ones).
     pub fn slot_count(&self) -> usize {
-        self.index.read().len()
+        self.index.len()
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
@@ -450,7 +571,7 @@ impl PayloadStore {
     fn load_index(path: &Path) -> io::Result<PayloadIndex> {
         let data = std::fs::read(path)?;
         let mut cursor = Cursor::new(data);
-        let mut index = HashMap::new();
+        let index = ShardedPayloadIndex::new();
 
         let len = cursor.get_ref().len();
         while cursor.position() < len as u64 {
@@ -470,7 +591,7 @@ impl PayloadStore {
                     },
                 );
             } else {
-                index.remove(&id);
+                index.remove(id);
             }
         }
 

@@ -33,6 +33,8 @@ pub struct Wal {
     last_fsync_time: std::time::Instant,
     /// Batch mode fsync interval in milliseconds
     batch_fsync_interval_ms: u64,
+    /// Reusable scratch buffer for zero-alloc serialization
+    scratch_buf: Vec<u8>,
 }
 
 /// Represents an operation stored in the WAL.
@@ -69,7 +71,7 @@ impl Wal {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(100);
         Ok(Self {
-            file: BufWriter::new(file),
+            file: BufWriter::with_capacity(128 * 1024, file),
             mode,
             path: path.to_owned(),
             current_size,
@@ -77,6 +79,7 @@ impl Wal {
             pending_entries: 0,
             last_fsync_time: std::time::Instant::now(),
             batch_fsync_interval_ms,
+            scratch_buf: Vec::with_capacity(4096),
         })
     }
 
@@ -115,21 +118,23 @@ impl Wal {
             .truncate(true)
             .write(true)
             .open(&self.path)?;
-        self.file = BufWriter::new(file);
+        self.file = BufWriter::with_capacity(128 * 1024, file);
         self.current_size = 0;
         self.pending_entries = 0;
         self.last_fsync_time = std::time::Instant::now(); // Reset fsync timer for new WAL
         Ok(frozen_path)
     }
 
-    fn serialize_entry(
+    fn serialize_entry_into(
+        buf: &mut Vec<u8>,
         id: u32,
         vector: &[f64],
         metadata: &HashMap<String, String>,
         logical_clock: u64,
-    ) -> io::Result<Vec<u8>> {
+    ) -> io::Result<()> {
+        buf.clear();
         let estimated_size = 1 + 4 + 8 + 4 + vector.len() * 8 + metadata.len() * 32;
-        let mut buf = Vec::with_capacity(estimated_size);
+        buf.reserve(estimated_size);
         // Internal Format: OpCode 3 (Insert V3 with clock)
         buf.write_u8(3)?;
         buf.write_u32::<LittleEndian>(id)?;
@@ -162,9 +167,43 @@ impl Wal {
             buf.write_u32::<LittleEndian>(v_bytes.len() as u32)?;
             buf.write_all(v_bytes)?;
         }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn serialize_entry(
+        id: u32,
+        vector: &[f64],
+        metadata: &HashMap<String, String>,
+        logical_clock: u64,
+    ) -> io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        Self::serialize_entry_into(&mut buf, id, vector, metadata, logical_clock)?;
         Ok(buf)
     }
 
+    fn write_scratch_packet(&mut self) -> io::Result<()> {
+        let len = self.scratch_buf.len() as u32;
+        let mut hasher = Hasher::new();
+        hasher.update(&self.scratch_buf);
+        let crc = hasher.finalize();
+
+        // Header: [Magic: 1][Length: 4][CRC: 4]
+        self.file.write_u8(WAL_V3_MAGIC)?;
+        self.file.write_u32::<LittleEndian>(len)?;
+        self.file.write_u32::<LittleEndian>(crc)?;
+
+        // Payload
+        self.file.write_all(&self.scratch_buf)?;
+
+        // 9 bytes header + payload length
+        self.current_size += 9 + self.scratch_buf.len() as u64;
+        self.pending_entries += 1;
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
     fn write_packet_internal(&mut self, payload: &[u8]) -> io::Result<()> {
         let len = payload.len() as u32;
         let mut hasher = Hasher::new();
@@ -186,6 +225,28 @@ impl Wal {
         Ok(())
     }
 
+    #[inline]
+    fn apply_sync_policy(&mut self) -> io::Result<()> {
+        match self.mode {
+            WalSyncMode::Strict => {
+                self.file.flush()?;
+                self.file.get_ref().sync_all()?;
+                self.last_fsync_time = std::time::Instant::now();
+            }
+            WalSyncMode::Batch => {
+                if self.last_fsync_time.elapsed().as_millis()
+                    >= u128::from(self.batch_fsync_interval_ms)
+                {
+                    self.file.flush()?;
+                    self.file.get_ref().sync_all()?;
+                    self.last_fsync_time = std::time::Instant::now();
+                }
+            }
+            WalSyncMode::Async => {}
+        }
+        Ok(())
+    }
+
     pub fn append(
         &mut self,
         id: u32,
@@ -193,42 +254,21 @@ impl Wal {
         metadata: &HashMap<String, String>,
         logical_clock: u64,
     ) -> io::Result<()> {
-        let payload = Self::serialize_entry(id, vector, metadata, logical_clock)?;
-        self.write_packet_internal(&payload)?;
-        self.file.flush()?;
-
-        // P0: Async fsync for Batch mode - only fsync if interval elapsed
-        match self.mode {
-            WalSyncMode::Strict => {
-                // Strict: fsync on every write (safest, slowest)
-                self.file.get_ref().sync_all()?;
-                self.last_fsync_time = std::time::Instant::now();
-            }
-            WalSyncMode::Batch => {
-                // Batch: fsync only if interval elapsed (balanced durability/speed)
-                if self.last_fsync_time.elapsed().as_millis()
-                    >= u128::from(self.batch_fsync_interval_ms)
-                {
-                    self.file.get_ref().sync_all()?;
-                    self.last_fsync_time = std::time::Instant::now();
-                }
-            }
-            WalSyncMode::Async => {
-                // Async: rely on OS cache flush (fastest, least durable)
-                // No explicit fsync
-            }
-        }
-        Ok(())
+        Self::serialize_entry_into(&mut self.scratch_buf, id, vector, metadata, logical_clock)?;
+        self.write_scratch_packet()?;
+        self.apply_sync_policy()
     }
 
-    fn serialize_entry_u64(
+    fn serialize_entry_u64_into(
+        buf: &mut Vec<u8>,
         id: u64,
         vector: &[f64],
         metadata: &HashMap<String, String>,
         logical_clock: u64,
-    ) -> io::Result<Vec<u8>> {
+    ) -> io::Result<()> {
+        buf.clear();
         let estimated_size = 1 + 8 + 8 + 4 + vector.len() * 8 + metadata.len() * 32;
-        let mut buf = Vec::with_capacity(estimated_size);
+        buf.reserve(estimated_size);
         // Internal Format: OpCode 4 (Insert V4 with u64 ID and clock)
         buf.write_u8(4)?;
         buf.write_u64::<LittleEndian>(id)?;
@@ -261,39 +301,46 @@ impl Wal {
             buf.write_u32::<LittleEndian>(v_bytes.len() as u32)?;
             buf.write_all(v_bytes)?;
         }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn serialize_entry_u64(
+        id: u64,
+        vector: &[f64],
+        metadata: &HashMap<String, String>,
+        logical_clock: u64,
+    ) -> io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        Self::serialize_entry_u64_into(&mut buf, id, vector, metadata, logical_clock)?;
         Ok(buf)
     }
 
-    fn serialize_delete_entry(id: u64, logical_clock: u64) -> io::Result<Vec<u8>> {
-        let mut buf = Vec::new();
+    fn serialize_delete_entry_into(
+        buf: &mut Vec<u8>,
+        id: u64,
+        logical_clock: u64,
+    ) -> io::Result<()> {
+        buf.clear();
+        buf.reserve(17);
         // Internal Format: OpCode 5 (Delete V4 with u64 ID and clock)
         buf.write_u8(5)?;
         buf.write_u64::<LittleEndian>(id)?;
         buf.write_u64::<LittleEndian>(logical_clock)?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn serialize_delete_entry(id: u64, logical_clock: u64) -> io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        Self::serialize_delete_entry_into(&mut buf, id, logical_clock)?;
         Ok(buf)
     }
 
     pub fn append_delete(&mut self, id: u64, logical_clock: u64) -> io::Result<()> {
-        let payload = Self::serialize_delete_entry(id, logical_clock)?;
-        self.write_packet_internal(&payload)?;
-        self.file.flush()?;
-
-        match self.mode {
-            WalSyncMode::Strict => {
-                self.file.get_ref().sync_all()?;
-                self.last_fsync_time = std::time::Instant::now();
-            }
-            WalSyncMode::Batch => {
-                if self.last_fsync_time.elapsed().as_millis()
-                    >= u128::from(self.batch_fsync_interval_ms)
-                {
-                    self.file.get_ref().sync_all()?;
-                    self.last_fsync_time = std::time::Instant::now();
-                }
-            }
-            WalSyncMode::Async => {}
-        }
-        Ok(())
+        Self::serialize_delete_entry_into(&mut self.scratch_buf, id, logical_clock)?;
+        self.write_scratch_packet()?;
+        self.apply_sync_policy()
     }
 
     pub fn append_batch(
@@ -302,30 +349,34 @@ impl Wal {
         logical_clock: u64,
     ) -> io::Result<()> {
         for (vector, id, metadata) in entries {
-            let payload = Self::serialize_entry(*id, vector, metadata, logical_clock)?;
-            self.write_packet_internal(&payload)?;
+            Self::serialize_entry_into(
+                &mut self.scratch_buf,
+                *id,
+                vector,
+                metadata,
+                logical_clock,
+            )?;
+            self.write_scratch_packet()?;
         }
-        self.file.flush()?;
+        self.apply_sync_policy()
+    }
 
-        // P0: Async fsync for Batch mode - only fsync if interval elapsed
-        match self.mode {
-            WalSyncMode::Strict => {
-                self.file.get_ref().sync_all()?;
-                self.last_fsync_time = std::time::Instant::now();
-            }
-            WalSyncMode::Batch => {
-                if self.last_fsync_time.elapsed().as_millis()
-                    >= u128::from(self.batch_fsync_interval_ms)
-                {
-                    self.file.get_ref().sync_all()?;
-                    self.last_fsync_time = std::time::Instant::now();
-                }
-            }
-            WalSyncMode::Async => {
-                // No explicit fsync
-            }
+    pub fn append_batch_borrowed(
+        &mut self,
+        entries: &[(&[f64], u32, &HashMap<String, String>)],
+        logical_clock: u64,
+    ) -> io::Result<()> {
+        for (vector, id, metadata) in entries {
+            Self::serialize_entry_into(
+                &mut self.scratch_buf,
+                *id,
+                vector,
+                metadata,
+                logical_clock,
+            )?;
+            self.write_scratch_packet()?;
         }
-        Ok(())
+        self.apply_sync_policy()
     }
 
     pub fn append_u64(
@@ -335,26 +386,9 @@ impl Wal {
         metadata: &HashMap<String, String>,
         logical_clock: u64,
     ) -> io::Result<()> {
-        let payload = Self::serialize_entry_u64(id, vector, metadata, logical_clock)?;
-        self.write_packet_internal(&payload)?;
-        self.file.flush()?;
-
-        match self.mode {
-            WalSyncMode::Strict => {
-                self.file.get_ref().sync_all()?;
-                self.last_fsync_time = std::time::Instant::now();
-            }
-            WalSyncMode::Batch => {
-                if self.last_fsync_time.elapsed().as_millis()
-                    >= u128::from(self.batch_fsync_interval_ms)
-                {
-                    self.file.get_ref().sync_all()?;
-                    self.last_fsync_time = std::time::Instant::now();
-                }
-            }
-            WalSyncMode::Async => {}
-        }
-        Ok(())
+        Self::serialize_entry_u64_into(&mut self.scratch_buf, id, vector, metadata, logical_clock)?;
+        self.write_scratch_packet()?;
+        self.apply_sync_policy()
     }
 
     pub fn append_batch_u64(
@@ -363,27 +397,34 @@ impl Wal {
         logical_clock: u64,
     ) -> io::Result<()> {
         for (vector, id, metadata) in entries {
-            let payload = Self::serialize_entry_u64(*id, vector, metadata, logical_clock)?;
-            self.write_packet_internal(&payload)?;
+            Self::serialize_entry_u64_into(
+                &mut self.scratch_buf,
+                *id,
+                vector,
+                metadata,
+                logical_clock,
+            )?;
+            self.write_scratch_packet()?;
         }
-        self.file.flush()?;
+        self.apply_sync_policy()
+    }
 
-        match self.mode {
-            WalSyncMode::Strict => {
-                self.file.get_ref().sync_all()?;
-                self.last_fsync_time = std::time::Instant::now();
-            }
-            WalSyncMode::Batch => {
-                if self.last_fsync_time.elapsed().as_millis()
-                    >= u128::from(self.batch_fsync_interval_ms)
-                {
-                    self.file.get_ref().sync_all()?;
-                    self.last_fsync_time = std::time::Instant::now();
-                }
-            }
-            WalSyncMode::Async => {}
+    pub fn append_batch_u64_borrowed(
+        &mut self,
+        entries: &[(&[f64], u64, &HashMap<String, String>)],
+        logical_clock: u64,
+    ) -> io::Result<()> {
+        for (vector, id, metadata) in entries {
+            Self::serialize_entry_u64_into(
+                &mut self.scratch_buf,
+                *id,
+                vector,
+                metadata,
+                logical_clock,
+            )?;
+            self.write_scratch_packet()?;
         }
-        Ok(())
+        self.apply_sync_policy()
     }
 
     /// Force sync all changes to disk immediately.
@@ -393,7 +434,15 @@ impl Wal {
         self.last_fsync_time = std::time::Instant::now();
         Ok(())
     }
+}
 
+impl Drop for Wal {
+    fn drop(&mut self) {
+        let _ = self.file.flush();
+    }
+}
+
+impl Wal {
     pub fn replay<F>(path: &Path, mut callback: F) -> io::Result<()>
     where
         F: FnMut(WalEntry),

@@ -74,7 +74,7 @@ async fn validate_api_key(
         }
     } else if let Some(auth_header) = request.headers().get("authorization") {
         if let Ok(auth_str) = auth_header.to_str() {
-            if auth_str.to_lowercase().starts_with("bearer ") {
+            if auth_str.len() >= 7 && auth_str[..7].eq_ignore_ascii_case("bearer ") {
                 provided_key = Some(auth_str[7..].to_string());
             }
         }
@@ -887,7 +887,7 @@ async fn insert_vector(
             .await
             .ok_or_else(|| (StatusCode::NOT_FOUND, "Collection not found".to_string()))?;
 
-        let clock = manager.cluster_state.read().await.logical_clock;
+        let clock = manager.get_cluster_clock();
         let meta = payload.metadata.unwrap_or_default();
 
         col.insert(
@@ -950,7 +950,7 @@ async fn batch_insert_http(
             .await
             .ok_or_else(|| (StatusCode::NOT_FOUND, "Collection not found".to_string()))?;
 
-        let clock = manager.cluster_state.read().await.logical_clock;
+        let clock = manager.get_cluster_clock();
         let vectors: Vec<_> = payload
             .vectors
             .into_iter()
@@ -1236,7 +1236,7 @@ async fn get_collection_digest(
         };
 
     if let Some(col) = manager.get(&owner, &col_name).await {
-        let clock = manager.cluster_state.read().await.logical_clock;
+        let clock = manager.get_cluster_clock();
         let digest =
             crate::sync::CollectionDigest::new(col_name, clock, col.count(), col.buckets());
         Json(digest).into_response()
@@ -1895,6 +1895,31 @@ fn default_ef_search() -> usize {
     })
 }
 
+#[derive(serde::Serialize)]
+struct SearchResultHit {
+    id: u32,
+    distance: f64,
+    metadata: HashMap<String, String>,
+    typed_metadata: HashMap<String, serde_json::Value>,
+    payload: Option<String>,
+}
+
+impl SearchResultHit {
+    fn from_tuple(
+        (id, dist, meta, payload): (u32, f64, HashMap<String, String>, Option<Vec<u8>>),
+    ) -> Self {
+        let (metadata, typed_metadata) = parse_typed_metadata(&meta);
+        let payload = payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
+        Self {
+            id,
+            distance: dist,
+            metadata,
+            typed_metadata,
+            payload,
+        }
+    }
+}
+
 async fn search_collection(
     Path(name): Path<String>,
     State((manager, _, _)): State<(
@@ -1942,20 +1967,8 @@ async fn search_collection(
             .await
         {
             Ok(res) => {
-                let mapped: Vec<serde_json::Value> = res
-                    .iter()
-                    .map(|(id, dist, meta, payload)| {
-                        let (metadata, typed_metadata) = parse_typed_metadata(meta);
-                        let payload_b64 = payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
-                        serde_json::json!({
-                            "id": id,
-                            "distance": dist,
-                            "metadata": metadata,
-                            "typed_metadata": typed_metadata,
-                            "payload": payload_b64
-                        })
-                    })
-                    .collect();
+                let mapped: Vec<SearchResultHit> =
+                    res.into_iter().map(SearchResultHit::from_tuple).collect();
                 Json(mapped).into_response()
             }
             Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
@@ -2153,20 +2166,8 @@ async fn search_multi_http(
                 .search(&payload.vector, &HashMap::new(), &[], &params)
                 .await
             {
-                let mapped: Vec<serde_json::Value> = res
-                    .iter()
-                    .map(|(id, dist, meta, payload)| {
-                        let (metadata, typed_metadata) = parse_typed_metadata(meta);
-                        let payload_b64 = payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
-                        serde_json::json!({
-                            "id": id,
-                            "distance": dist,
-                            "metadata": metadata,
-                            "typed_metadata": typed_metadata,
-                            "payload": payload_b64
-                        })
-                    })
-                    .collect();
+                let mapped: Vec<SearchResultHit> =
+                    res.into_iter().map(SearchResultHit::from_tuple).collect();
                 responses.insert(name, mapped);
             }
         }
@@ -2191,9 +2192,8 @@ async fn search_batch_http(
         };
 
     if let Some(col) = manager.get(&owner, &col_name).await {
-        let futures: Vec<_> = payload
-            .searches
-            .into_iter()
+        use futures::StreamExt;
+        let results = futures::stream::iter(payload.searches)
             .map(|req| {
                 let col = Arc::clone(&col);
                 async move {
@@ -2219,28 +2219,15 @@ async fn search_batch_http(
                         )
                         .await
                     {
-                        res.iter()
-                            .map(|(id, dist, meta, payload)| {
-                                let (metadata, typed_metadata) = parse_typed_metadata(meta);
-                                let payload_b64 =
-                                    payload.as_ref().map(|p| BASE64_STANDARD.encode(p));
-                                serde_json::json!({
-                                    "id": id,
-                                    "distance": dist,
-                                    "metadata": metadata,
-                                    "typed_metadata": typed_metadata,
-                                    "payload": payload_b64
-                                })
-                            })
-                            .collect()
+                        res.into_iter().map(SearchResultHit::from_tuple).collect()
                     } else {
                         Vec::new()
                     }
                 }
             })
-            .collect();
-
-        let results = futures::future::join_all(futures).await;
+            .buffered(32)
+            .collect::<Vec<_>>()
+            .await;
         Json(results).into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
@@ -2767,14 +2754,20 @@ async fn rebuild_collection_http(
         };
 
     let filter = payload.and_then(|Json(p)| p.filter_query).and_then(|f| {
-        let op = match f.op.to_lowercase().as_str() {
-            "lt" => hyperspace_core::VacuumFilterOp::Lt,
-            "lte" => hyperspace_core::VacuumFilterOp::Lte,
-            "gt" => hyperspace_core::VacuumFilterOp::Gt,
-            "gte" => hyperspace_core::VacuumFilterOp::Gte,
-            "eq" => hyperspace_core::VacuumFilterOp::Eq,
-            "ne" => hyperspace_core::VacuumFilterOp::Ne,
-            _ => return None,
+        let op = if f.op.eq_ignore_ascii_case("lt") {
+            hyperspace_core::VacuumFilterOp::Lt
+        } else if f.op.eq_ignore_ascii_case("lte") {
+            hyperspace_core::VacuumFilterOp::Lte
+        } else if f.op.eq_ignore_ascii_case("gt") {
+            hyperspace_core::VacuumFilterOp::Gt
+        } else if f.op.eq_ignore_ascii_case("gte") {
+            hyperspace_core::VacuumFilterOp::Gte
+        } else if f.op.eq_ignore_ascii_case("eq") {
+            hyperspace_core::VacuumFilterOp::Eq
+        } else if f.op.eq_ignore_ascii_case("ne") {
+            hyperspace_core::VacuumFilterOp::Ne
+        } else {
+            return None;
         };
         Some(hyperspace_core::VacuumFilterQuery {
             key: f.key,
@@ -2951,7 +2944,7 @@ async fn sync_handshake_http(
     };
 
     let server_buckets = col.buckets();
-    let server_clock = manager.cluster_state.read().await.logical_clock;
+    let server_clock = manager.get_cluster_clock();
     let server_count = col.count() as u64;
 
     if body.client_buckets.len() != server_buckets.len() {

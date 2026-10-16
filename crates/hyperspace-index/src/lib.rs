@@ -53,6 +53,8 @@ use hyperspace_core::{GlobalConfig, LorentzMetric, Metric, PoincareMetric};
 use hyperspace_store::VectorStore;
 use std::marker::PhantomData;
 
+static TMP_SNAP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 #[derive(Archive, Deserialize, Serialize)]
 #[archive(check_bytes)]
 pub struct SnapshotData {
@@ -91,6 +93,7 @@ use hyperspace_core::FilterExpr;
 #[derive(Debug)]
 pub struct MetadataIndex {
     pub inverted: DashMap<String, RoaringBitmap>,
+    pub prefix_index: DashMap<String, crossbeam_skiplist::SkipSet<String>>,
     pub numeric: DashMap<String, crossbeam_skiplist::SkipMap<i64, RwLock<RoaringBitmap>>>,
     pub deleted: RwLock<RoaringBitmap>,
     pub forward: DashMap<u32, std::collections::HashMap<String, String>>,
@@ -104,6 +107,7 @@ impl Default for MetadataIndex {
     fn default() -> Self {
         Self {
             inverted: DashMap::new(),
+            prefix_index: DashMap::new(),
             numeric: DashMap::new(),
             deleted: RwLock::new(RoaringBitmap::new()),
             forward: DashMap::new(),
@@ -116,17 +120,26 @@ impl Default for MetadataIndex {
 }
 
 impl<M: Metric> HnswIndex<M> {
-    fn metadata_numeric_value(
+    fn metadata_numeric_value_fast(
         meta: &std::collections::HashMap<String, String>,
         key: &str,
+        typed_key: &str,
     ) -> Option<f64> {
         if let Some(raw) = meta.get(key) {
             return raw.parse::<f64>().ok();
         }
-        let typed_key = format!("__hs_typed__{key}");
-        let raw_typed = meta.get(&typed_key)?;
+        let raw_typed = meta.get(typed_key)?;
         let parsed = serde_json::from_str::<serde_json::Value>(raw_typed).ok()?;
         parsed.get("v")?.as_f64()
+    }
+
+    #[allow(dead_code)]
+    fn metadata_numeric_value(
+        meta: &std::collections::HashMap<String, String>,
+        key: &str,
+    ) -> Option<f64> {
+        let typed_key = format!("__hs_typed__{key}");
+        Self::metadata_numeric_value_fast(meta, key, &typed_key)
     }
 
     #[cfg(feature = "persistence")]
@@ -205,6 +218,7 @@ impl<M: Metric> HnswIndex<M> {
         serializer.serialize_value(&data).map_err(
             |e: rkyv::ser::serializers::CompositeSerializerError<_, _, _>| e.to_string(),
         )?;
+        drop(data);
         let bytes = serializer.into_serializer().into_inner();
 
         if let Some(parent) = path.parent() {
@@ -213,8 +227,23 @@ impl<M: Metric> HnswIndex<M> {
             }
         }
 
-        let mut file = File::create(path).map_err(|e| e.to_string())?;
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        let count = TMP_SNAP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = path.with_extension(format!("snap.tmp.{}.{}", std::process::id(), count));
+        {
+            let mut file = File::create(&tmp_path).map_err(|e| e.to_string())?;
+            file.write_all(&bytes).map_err(|e| e.to_string())?;
+            file.sync_all().map_err(|e| e.to_string())?;
+        }
+        drop(bytes);
+        std::fs::rename(&tmp_path, path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            e.to_string()
+        })?;
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
 
         if let Some(ref pq) = self.pq {
             if let Some(parent) = path.parent() {
@@ -250,6 +279,19 @@ impl<M: Metric> HnswIndex<M> {
         let start = Instant::now();
 
         println!("📂 Loading snapshot: {}", path.display());
+
+        if let Some(parent) = path.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    let ep = entry.path();
+                    if let Some(name) = ep.file_name().and_then(|n| n.to_str()) {
+                        if name.contains(".tmp.") {
+                            let _ = std::fs::remove_file(ep);
+                        }
+                    }
+                }
+            }
+        }
 
         // Memory-map the snapshot file for zero-copy access.
         let file = File::open(path).map_err(|e| format!("Failed to open snapshot: {e}"))?;
@@ -328,24 +370,36 @@ impl<M: Metric> HnswIndex<M> {
         println!("   📦 Restoring Metadata Index...");
 
         let inverted = DashMap::new();
+        let prefix_index: DashMap<String, crossbeam_skiplist::SkipSet<String>> = DashMap::new();
         deserialized
             .metadata
             .inverted
             .into_par_iter()
             .for_each(|(k, v)| {
                 let bitmap = RoaringBitmap::deserialize_from(&v[..]).unwrap_or_default();
+                if let Some((field, val)) = k.split_once(':') {
+                    prefix_index
+                        .entry(field.to_string())
+                        .or_default()
+                        .insert(val.to_string());
+                }
                 inverted.insert(k, bitmap);
             });
 
         let numeric = DashMap::new();
-        for (k, v) in deserialized.metadata.numeric {
-            let inner_map = crossbeam_skiplist::SkipMap::new();
-            for (val, bitmap_bytes) in v {
-                let bitmap = RoaringBitmap::deserialize_from(&bitmap_bytes[..]).unwrap_or_default();
-                inner_map.insert(val, RwLock::new(bitmap));
-            }
-            numeric.insert(k, inner_map);
-        }
+        deserialized
+            .metadata
+            .numeric
+            .into_par_iter()
+            .for_each(|(k, v)| {
+                let inner_map = crossbeam_skiplist::SkipMap::new();
+                for (val, bitmap_bytes) in v {
+                    let bitmap =
+                        RoaringBitmap::deserialize_from(&bitmap_bytes[..]).unwrap_or_default();
+                    inner_map.insert(val, RwLock::new(bitmap));
+                }
+                numeric.insert(k, inner_map);
+            });
 
         let deleted =
             RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]).unwrap_or_default();
@@ -413,6 +467,7 @@ impl<M: Metric> HnswIndex<M> {
             append_lock: Mutex::new(()),
             metadata: MetadataIndex {
                 inverted,
+                prefix_index,
                 numeric,
                 deleted: RwLock::new(deleted),
                 forward,
@@ -544,8 +599,15 @@ impl<M: Metric> HnswIndex<M> {
         storage.set_count(nodes_bc.count());
 
         let inverted = DashMap::new();
+        let prefix_index: DashMap<String, crossbeam_skiplist::SkipSet<String>> = DashMap::new();
         for (k, v) in deserialized.metadata.inverted {
             let bitmap = RoaringBitmap::deserialize_from(&v[..]).unwrap_or_default();
+            if let Some((field, val)) = k.split_once(':') {
+                prefix_index
+                    .entry(field.to_string())
+                    .or_default()
+                    .insert(val.to_string());
+            }
             inverted.insert(k, bitmap);
         }
 
@@ -607,6 +669,7 @@ impl<M: Metric> HnswIndex<M> {
             append_lock: Mutex::new(()),
             metadata: MetadataIndex {
                 inverted,
+                prefix_index,
                 numeric,
                 deleted: RwLock::new(deleted),
                 forward,
@@ -728,6 +791,7 @@ struct VisitedScratch {
     results_l0: BinaryHeap<std::cmp::Reverse<Candidate>>,
     candidates_layer: BinaryHeap<Candidate>,
     results_layer: BinaryHeap<std::cmp::Reverse<Candidate>>,
+    query_f32: Vec<f32>,
 }
 
 impl VisitedScratch {
@@ -761,6 +825,8 @@ fn mark_visited(marks: &mut [u64], generation: u64, id: u32) -> bool {
 
 thread_local! {
     static VISITED_SCRATCH: RefCell<VisitedScratch> = RefCell::new(VisitedScratch::default());
+    static QUERY_F32_SCRATCH: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };
+    static QUERY_F64_SCRATCH: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Nearest Neighbor Candidate
@@ -782,6 +848,25 @@ impl Ord for Candidate {
     }
 }
 impl PartialOrd for Candidate {
+    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+struct MaxCandidate {
+    id: NodeId,
+    distance: f64,
+}
+impl Eq for MaxCandidate {}
+impl Ord for MaxCandidate {
+    fn cmp(&self, other: &Self) -> CmpOrdering {
+        self.distance
+            .partial_cmp(&other.distance)
+            .unwrap_or(CmpOrdering::Equal)
+    }
+}
+impl PartialOrd for MaxCandidate {
     fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
         Some(self.cmp(other))
     }
@@ -938,10 +1023,15 @@ impl<M: Metric> HnswIndex<M> {
                 }
                 FilterExpr::Prefix { key, prefix } => {
                     let mut prefix_union = RoaringBitmap::new();
-                    let prefix_tag = format!("{key}:{prefix}");
-                    for entry in &self.metadata.inverted {
-                        if entry.key().starts_with(&prefix_tag) {
-                            prefix_union |= entry.value();
+                    if let Some(set) = self.metadata.prefix_index.get(key) {
+                        for val in set.range(prefix.clone()..) {
+                            if !val.value().starts_with(prefix) {
+                                break;
+                            }
+                            let tag = format!("{key}:{}", val.value());
+                            if let Some(tag_bitmap) = self.metadata.inverted.get(&tag) {
+                                prefix_union |= &*tag_bitmap;
+                            }
                         }
                     }
                     if prefix_union.is_empty() {
@@ -976,13 +1066,16 @@ impl<M: Metric> HnswIndex<M> {
                         true
                     };
 
+                    let typed_key = format!("__hs_typed__{key}");
                     if let Some(ref bm) = bitmap {
                         let mut filtered_range_union = RoaringBitmap::new();
                         for id in bm {
                             if range_union.contains(id) {
                                 filtered_range_union.insert(id);
                             } else if let Some(item) = self.metadata.forward.get(&id) {
-                                if let Some(num) = Self::metadata_numeric_value(item.value(), key) {
+                                if let Some(num) =
+                                    Self::metadata_numeric_value_fast(item.value(), key, &typed_key)
+                                {
                                     if check_range(num) {
                                         filtered_range_union.insert(id);
                                     }
@@ -996,7 +1089,9 @@ impl<M: Metric> HnswIndex<M> {
                             if range_union.contains(id) {
                                 continue;
                             }
-                            if let Some(num) = Self::metadata_numeric_value(item.value(), key) {
+                            if let Some(num) =
+                                Self::metadata_numeric_value_fast(item.value(), key, &typed_key)
+                            {
                                 if check_range(num) {
                                     range_union.insert(id);
                                 }
@@ -1025,20 +1120,15 @@ impl<M: Metric> HnswIndex<M> {
                         deleted,
                         count,
                     );
-                    let ids: Vec<u32> = if candidate_bm.len() > 1024 {
-                        candidate_bm
-                            .iter()
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                            .filter(|&i| region.contains(&self.get_vector(i)))
-                            .collect()
-                    } else {
-                        candidate_bm
-                            .iter()
-                            .filter(|&i| region.contains(&self.get_vector(i)))
-                            .collect()
-                    };
-                    let box_match: RoaringBitmap = ids.into_iter().collect();
+                    let mut box_match = RoaringBitmap::new();
+                    let mut scratch = Vec::with_capacity(self.dimension);
+                    for i in candidate_bm {
+                        if self.with_vector_coords(i, &mut scratch, |coords| {
+                            region.contains_coords(coords)
+                        }) {
+                            box_match.insert(i);
+                        }
+                    }
                     if box_match.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
@@ -1055,28 +1145,29 @@ impl<M: Metric> HnswIndex<M> {
                         apertures.clone(),
                         *cen,
                     );
-                    let ids: Vec<u32> = if let Some(ref bm) = bitmap {
-                        if bm.len() > 1024 {
-                            bm.iter()
-                                .collect::<Vec<_>>()
-                                .into_par_iter()
-                                .filter(|&i| !deleted.contains(i))
-                                .filter(|&i| region.contains(&self.get_vector(i)))
-                                .collect()
-                        } else {
-                            bm.iter()
-                                .filter(|&i| !deleted.contains(i))
-                                .filter(|&i| region.contains(&self.get_vector(i)))
-                                .collect()
+                    let mut cone_match = RoaringBitmap::new();
+                    let mut scratch = Vec::with_capacity(self.dimension);
+                    if let Some(ref bm) = bitmap {
+                        for i in bm {
+                            if !deleted.contains(i)
+                                && self.with_vector_coords(i, &mut scratch, |coords| {
+                                    region.contains_coords(coords)
+                                })
+                            {
+                                cone_match.insert(i);
+                            }
                         }
                     } else {
-                        (0..count)
-                            .into_par_iter()
-                            .filter(|&i| !deleted.contains(i))
-                            .filter(|&i| region.contains(&self.get_vector(i)))
-                            .collect()
-                    };
-                    let cone_match: RoaringBitmap = ids.into_iter().collect();
+                        for i in 0..count {
+                            if !deleted.contains(i)
+                                && self.with_vector_coords(i, &mut scratch, |coords| {
+                                    region.contains_coords(coords)
+                                })
+                            {
+                                cone_match.insert(i);
+                            }
+                        }
+                    }
                     if cone_match.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
@@ -1092,20 +1183,15 @@ impl<M: Metric> HnswIndex<M> {
                         deleted,
                         count,
                     );
-                    let ids: Vec<u32> = if candidate_bm.len() > 1024 {
-                        candidate_bm
-                            .iter()
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                            .filter(|&i| region.contains(&self.get_vector(i)))
-                            .collect()
-                    } else {
-                        candidate_bm
-                            .iter()
-                            .filter(|&i| region.contains(&self.get_vector(i)))
-                            .collect()
-                    };
-                    let ball_match: RoaringBitmap = ids.into_iter().collect();
+                    let mut ball_match = RoaringBitmap::new();
+                    let mut scratch = Vec::with_capacity(self.dimension);
+                    for i in candidate_bm {
+                        if self.with_vector_coords(i, &mut scratch, |coords| {
+                            region.contains_coords(coords)
+                        }) {
+                            ball_match.insert(i);
+                        }
+                    }
                     if ball_match.is_empty() {
                         return Some(RoaringBitmap::new());
                     }
@@ -1214,6 +1300,19 @@ impl<M: Metric> HnswIndex<M> {
             return Vec::new();
         }
 
+        self.search_with_allowed(query, allowed_bitmap.as_ref(), params)
+    }
+
+    pub fn search_with_allowed(
+        &self,
+        query: &[f64],
+        allowed_bitmap: Option<&roaring::RoaringBitmap>,
+        params: &hyperspace_core::SearchParams,
+    ) -> Vec<(NodeId, f64)> {
+        if allowed_bitmap.is_some_and(roaring::RoaringBitmap::is_empty) {
+            return Vec::new();
+        }
+
         // 1. Create HyperVector from query.
         if query.len() != self.dimension {
             return Vec::new();
@@ -1232,18 +1331,27 @@ impl<M: Metric> HnswIndex<M> {
                 0
             };
             let tail_dim = self.dimension.saturating_sub(head_dim);
-            let mut tail_f32: Vec<f32> =
-                q_vec.coords[head_dim..].iter().map(|&x| x as f32).collect();
-            tail_f32 = hyperspace_core::turbo_rot::rotate_vector(&tail_f32, tail_dim);
-            for i in 0..tail_dim {
-                q_vec.coords[head_dim + i] = tail_f32[i] as f64;
-            }
+            QUERY_F32_SCRATCH.with(|buf| {
+                let mut b = buf.borrow_mut();
+                b.clear();
+                b.reserve(tail_dim);
+                b.extend(q_vec.coords[head_dim..].iter().map(|&x| x as f32));
+                hyperspace_core::turbo_rot::rotate_vector_in_place(&mut b);
+                for i in 0..tail_dim {
+                    q_vec.coords[head_dim + i] = b[i] as f64;
+                }
+            });
         } else if self.mode == QuantizationMode::Binary {
-            let mut q_f32: Vec<f32> = q_vec.coords.iter().map(|&x| x as f32).collect();
-            hyperspace_core::turbo_rot::rotate_vector_in_place(&mut q_f32);
-            for i in 0..q_vec.coords.len() {
-                q_vec.coords[i] = q_f32[i] as f64;
-            }
+            QUERY_F32_SCRATCH.with(|buf| {
+                let mut b = buf.borrow_mut();
+                b.clear();
+                b.reserve(q_vec.coords.len());
+                b.extend(q_vec.coords.iter().map(|&x| x as f32));
+                hyperspace_core::turbo_rot::rotate_vector_in_place(&mut b);
+                for i in 0..q_vec.coords.len() {
+                    q_vec.coords[i] = b[i] as f64;
+                }
+            });
         }
 
         let entry_node = self.entry_point.load(Ordering::Relaxed);
@@ -1268,8 +1376,17 @@ impl<M: Metric> HnswIndex<M> {
         let pq_lut_buf = if self.mode == QuantizationMode::ProductQuantization
             || self.mode == QuantizationMode::OPQ
         {
-            let q_f32: Vec<f32> = q_vec.coords.iter().map(|&x| x as f32).collect();
-            self.pq.as_ref().map(|pq| pq.compute_lut(&q_f32))
+            if let Some(pq) = self.pq.as_ref() {
+                QUERY_F32_SCRATCH.with(|buf| {
+                    let mut b = buf.borrow_mut();
+                    b.clear();
+                    b.reserve(q_vec.coords.len());
+                    b.extend(q_vec.coords.iter().map(|&x| x as f32));
+                    Some(pq.compute_lut(&b))
+                })
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -1330,7 +1447,7 @@ impl<M: Metric> HnswIndex<M> {
             &q_vec,
             params.top_k,
             ef_for_search,
-            allowed_bitmap.as_ref(),
+            allowed_bitmap,
             pq_lut_ref,
             params.mrl_dimension,
         );
@@ -1385,7 +1502,7 @@ impl<M: Metric> HnswIndex<M> {
                 continue;
             }
 
-            let vec = self.get_vector_original(id).coords.clone();
+            let vec = self.get_vector_original(id).coords;
             let meta = self
                 .metadata
                 .forward
@@ -1409,7 +1526,7 @@ impl<M: Metric> HnswIndex<M> {
             if deleted.contains(id) {
                 continue;
             }
-            let vec = self.get_vector_original(id).coords.clone();
+            let vec = self.get_vector_original(id).coords;
             let meta = self
                 .metadata
                 .forward
@@ -1460,66 +1577,36 @@ impl<M: Metric> HnswIndex<M> {
                 }
             }
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::from_bytes(bytes);
-                M::distance_quantized(&q, query)
+                let name = M::name();
+                if name == "l2" || name == "cosine" {
+                    QuantizedHyperVector::distance_bytes_euclidean_sq(bytes, query)
+                } else if name == "poincare" {
+                    QuantizedHyperVector::distance_bytes_poincare_sq(bytes, query)
+                } else if name == "lorentz" {
+                    QuantizedHyperVector::distance_bytes_lorentz(bytes, query)
+                } else {
+                    let q = QuantizedHyperVector::from_bytes(bytes);
+                    M::distance_quantized(&q, query)
+                }
             }
             QuantizationMode::AsymmetricHybrid801 => {
                 // Specialized hybrid path
                 assert!(self.dimension == 801, "AsymmetricHybrid801 quantization mode is only supported for 801-dimensional vectors");
-                let q = HybridQuantizedVector::from_bytes(bytes);
-                if let Some(dim) = mrl_dim {
-                    q.distance_mrl(
-                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
-                        dim,
-                    )
-                } else {
-                    let d_lor = q.lorentz_distance_to_float(unsafe {
-                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
-                    });
-                    let d_euc = q.euclidean_distance_sq_to_float(unsafe {
-                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
-                    });
-                    d_lor + d_euc
-                }
+                HybridQuantizedVector::distance_bytes_mrl(bytes, query, mrl_dim)
             }
             QuantizationMode::AsymmetricHybridLowBit => {
                 assert!(self.dimension == 801, "AsymmetricHybridLowBit quantization mode is only supported for 801-dimensional vectors");
-                let q = HybridLowBitQuantizedVector::from_bytes(bytes);
-                if let Some(dim) = mrl_dim {
-                    q.distance_mrl(
-                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
-                        dim,
-                    )
-                } else {
-                    let d_lor = q.lorentz_distance_to_float(unsafe {
-                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
-                    });
-                    let d_euc = q.euclidean_distance_sq_mrl(
-                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
-                        768,
-                    );
-                    d_lor + d_euc
-                }
+                let euc_dim = mrl_dim.unwrap_or(768);
+                HybridLowBitQuantizedVector::distance_bytes_mrl(bytes, query, euc_dim)
             }
             QuantizationMode::AsymmetricHybridExtreme => {
                 assert!(self.dimension == 801, "AsymmetricHybridExtreme quantization mode is only supported for 801-dimensional vectors");
-                let q = HybridExtremeQuantizedVector::from_bytes(bytes);
-                if let Some(dim) = mrl_dim {
-                    let euc_cutoff = dim.saturating_sub(33);
-                    q.distance_mrl(
-                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
-                        euc_cutoff,
-                    )
+                let euc_cutoff = if let Some(dim) = mrl_dim {
+                    dim.saturating_sub(33)
                 } else {
-                    let d_lor = q.lorentz_distance_to_float(unsafe {
-                        std::mem::transmute::<&HyperVector, &HyperVector>(query)
-                    });
-                    let d_euc = q.euclidean_distance_sq_mrl(
-                        unsafe { std::mem::transmute::<&HyperVector, &HyperVector>(query) },
-                        768,
-                    );
-                    d_lor + d_euc
-                }
+                    768
+                };
+                HybridExtremeQuantizedVector::distance_bytes_mrl(bytes, query, euc_cutoff)
             }
             QuantizationMode::ScalarI4 => {
                 let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
@@ -1527,24 +1614,39 @@ impl<M: Metric> HnswIndex<M> {
                 } else {
                     0
                 };
-                let q = ScalarI4Vector::from_bytes(bytes, self.dimension, head_dim);
                 let active_dim = mrl_dim.unwrap_or(self.dimension);
                 let name = M::name();
                 if name == "hybrid" && self.dimension == 801 {
-                    let d_lor = <LorentzMetric as Metric>::distance(
-                        &q.reconstruct(self.dimension)[..33],
-                        &query.coords[..33],
-                    );
-                    let d_euc = q.distance_l2_sq_mrl(query, active_dim);
+                    let d_lor = QUERY_F64_SCRATCH.with(|buf| {
+                        let mut b = buf.borrow_mut();
+                        b.clear();
+                        b.reserve(33);
+                        for i in 0..33 {
+                            let offset = i * 4;
+                            let h = f32::from_le_bytes(
+                                bytes[offset..offset + 4].try_into().unwrap_or([0; 4]),
+                            );
+                            b.push(f64::from(h));
+                        }
+                        <LorentzMetric as Metric>::distance(&b, &query.coords[..33])
+                    });
+                    let d_euc =
+                        ScalarI4Vector::distance_bytes_l2_sq_mrl(bytes, query, active_dim, 33);
                     d_lor + d_euc
                 } else if name == "poincare" {
-                    let deq = q.reconstruct(active_dim);
-                    <PoincareMetric as Metric>::distance(&deq, &query.coords[..active_dim])
+                    QUERY_F64_SCRATCH.with(|buf| {
+                        let mut b = buf.borrow_mut();
+                        ScalarI4Vector::reconstruct_bytes_into(bytes, active_dim, head_dim, &mut b);
+                        <PoincareMetric as Metric>::distance(&b, &query.coords[..active_dim])
+                    })
                 } else if name == "lorentz" {
-                    let deq = q.reconstruct(active_dim);
-                    <LorentzMetric as Metric>::distance(&deq, &query.coords[..active_dim])
+                    QUERY_F64_SCRATCH.with(|buf| {
+                        let mut b = buf.borrow_mut();
+                        ScalarI4Vector::reconstruct_bytes_into(bytes, active_dim, head_dim, &mut b);
+                        <LorentzMetric as Metric>::distance(&b, &query.coords[..active_dim])
+                    })
                 } else {
-                    q.distance_l2_sq_mrl(query, active_dim)
+                    ScalarI4Vector::distance_bytes_l2_sq_mrl(bytes, query, active_dim, head_dim)
                 }
             }
             QuantizationMode::Turbo => {
@@ -1570,116 +1672,71 @@ impl<M: Metric> HnswIndex<M> {
                 }
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::from_bytes(bytes);
-                M::distance_binary(&b, query)
+                let name = M::name();
+                if name == "poincare" {
+                    BinaryHyperVector::poincare_distance_sq_bytes(bytes, query)
+                } else {
+                    BinaryHyperVector::adc_distance_bytes(bytes, query)
+                }
             }
             QuantizationMode::None => {
                 if self.storage_f32 {
-                    let v = HyperVectorF32::from_bytes(bytes);
                     let name = M::name();
                     if name == "l2" || name == "cosine" {
                         if let Some(b) = query_f32 {
-                            let n = v.coords.len().min(b.len());
-                            let a = &v.coords;
+                            let n = (bytes.len().saturating_sub(4) / 4).min(b.len());
                             let thresh_f32 = threshold.map(|t| t as f32);
-
-                            #[cfg(feature = "nightly-simd")]
-                            {
-                                use std::simd::{f32x8, num::SimdFloat};
-                                let mut sum = f32x8::splat(0.0);
-                                let mut i = 0;
-                                while i + 16 <= n {
-                                    let va1 = f32x8::from_slice(&a[i..i + 8]);
-                                    let vb1 = f32x8::from_slice(&b[i..i + 8]);
-                                    let va2 = f32x8::from_slice(&a[i + 8..i + 16]);
-                                    let vb2 = f32x8::from_slice(&b[i + 8..i + 16]);
-                                    let d1 = va1 - vb1;
-                                    let d2 = va2 - vb2;
-                                    sum += d1 * d1 + d2 * d2;
-                                    i += 16;
-
-                                    if let Some(t) = thresh_f32 {
-                                        if i % 32 == 0 && sum.reduce_sum() > t {
-                                            return sum.reduce_sum() as f64;
-                                        }
-                                    }
-                                }
-                                while i + 8 <= n {
-                                    let va = f32x8::from_slice(&a[i..i + 8]);
-                                    let vb = f32x8::from_slice(&b[i..i + 8]);
-                                    let d = va - vb;
-                                    sum += d * d;
-                                    i += 8;
-                                }
-                                let mut total = f64::from(sum.reduce_sum());
-                                while i < n {
-                                    let diff = a[i] - b[i];
-                                    total += f64::from(diff * diff);
-                                    i += 1;
-                                }
-                                total
+                            return f64::from(hyperspace_core::simd::l2_sq_f32_bytes(
+                                &bytes[..n * 4],
+                                &b[..n],
+                                thresh_f32,
+                            ));
+                        }
+                        let v = HyperVectorF32::from_bytes(bytes);
+                        #[cfg(feature = "nightly-simd")]
+                        {
+                            use std::simd::{f32x4, f64x4, num::SimdFloat};
+                            let mut sum = f32x4::splat(0.0);
+                            let mut i = 0;
+                            let n = v.coords.len();
+                            let a = &v.coords;
+                            let b = &query.coords;
+                            while i + 8 <= n {
+                                let va1 = f32x4::from_slice(&a[i..i + 4]);
+                                let va2 = f32x4::from_slice(&a[i + 4..i + 8]);
+                                let vb1: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
+                                let vb2: f32x4 = f64x4::from_slice(&b[i + 4..i + 8]).cast();
+                                let d1 = va1 - vb1;
+                                let d2 = va2 - vb2;
+                                sum += d1 * d1 + d2 * d2;
+                                i += 8;
                             }
-                            #[cfg(not(feature = "nightly-simd"))]
-                            {
-                                let mut sum = 0.0f32;
-                                for (idx, (&a_val, &b_val)) in
-                                    a[..n].iter().zip(b[..n].iter()).enumerate()
-                                {
-                                    let diff = a_val - b_val;
-                                    sum += diff * diff;
-                                    if let Some(t) = thresh_f32 {
-                                        if idx % 32 == 31 && sum > t {
-                                            return sum as f64;
-                                        }
-                                    }
-                                }
-                                f64::from(sum)
+                            while i + 4 <= n {
+                                let va = f32x4::from_slice(&a[i..i + 4]);
+                                let vb: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
+                                let d = va - vb;
+                                sum += d * d;
+                                i += 4;
                             }
-                        } else {
-                            #[cfg(feature = "nightly-simd")]
-                            {
-                                use std::simd::{f32x4, f64x4, num::SimdFloat};
-                                let mut sum = f32x4::splat(0.0);
-                                let mut i = 0;
-                                let n = v.coords.len();
-                                let a = &v.coords;
-                                let b = &query.coords;
-                                while i + 8 <= n {
-                                    let va1 = f32x4::from_slice(&a[i..i + 4]);
-                                    let va2 = f32x4::from_slice(&a[i + 4..i + 8]);
-                                    let vb1: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
-                                    let vb2: f32x4 = f64x4::from_slice(&b[i + 4..i + 8]).cast();
-                                    let d1 = va1 - vb1;
-                                    let d2 = va2 - vb2;
-                                    sum += d1 * d1 + d2 * d2;
-                                    i += 8;
-                                }
-                                while i + 4 <= n {
-                                    let va = f32x4::from_slice(&a[i..i + 4]);
-                                    let vb: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
-                                    let d = va - vb;
-                                    sum += d * d;
-                                    i += 4;
-                                }
-                                let mut total = f64::from(sum.reduce_sum());
-                                while i < n {
-                                    let diff = f64::from(a[i]) - b[i];
-                                    total += diff * diff;
-                                    i += 1;
-                                }
-                                total
+                            let mut total = f64::from(sum.reduce_sum());
+                            while i < n {
+                                let diff = f64::from(a[i]) - b[i];
+                                total += diff * diff;
+                                i += 1;
                             }
-                            #[cfg(not(feature = "nightly-simd"))]
-                            {
-                                let mut sum = 0.0;
-                                for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
-                                    let diff = f64::from(a) - b;
-                                    sum += diff * diff;
-                                }
-                                sum
+                            total
+                        }
+                        #[cfg(not(feature = "nightly-simd"))]
+                        {
+                            let mut sum = 0.0;
+                            for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
+                                let diff = f64::from(a) - b;
+                                sum += diff * diff;
                             }
+                            sum
                         }
                     } else {
+                        let v = HyperVectorF32::from_bytes(bytes);
                         let v64 = v.to_float64();
                         M::distance(&v64.coords, &query.coords)
                     }
@@ -1743,6 +1800,7 @@ impl<M: Metric> HnswIndex<M> {
         self.dist_mrl_opt(node_id, query, None, None, mrl_dim, None)
     }
 
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     fn dist_upper(
         &self,
         node_id: NodeId,
@@ -1758,12 +1816,63 @@ impl<M: Metric> HnswIndex<M> {
             }
             let bytes = self.storage.get(node_id);
             if self.storage_f32 {
-                let v = HyperVectorF32::from_bytes(bytes);
-                let v64 = v.to_float64();
-                return v64.to_klein().klein_chord_distance_sq(qk);
+                let n = (bytes.len().saturating_sub(4) / 4).min(qk.coords.len());
+                let alpha_bytes: [u8; 4] = match bytes
+                    .get(bytes.len().saturating_sub(4)..)
+                    .and_then(|b| b.try_into().ok())
+                {
+                    Some(ab) => ab,
+                    None => return f64::MAX,
+                };
+                let alpha = f64::from(f32::from_le_bytes(alpha_bytes));
+                let factor = if alpha == 0.0 {
+                    1.0
+                } else {
+                    let denom = 2.0 - (1.0 / alpha);
+                    if denom.abs() > 1e-12 {
+                        2.0 / denom
+                    } else {
+                        0.0
+                    }
+                };
+
+                let mut sum = 0.0;
+                for (c, &qk_val) in bytes[..n * 4].chunks_exact(4).zip(qk.coords[..n].iter()) {
+                    let p_i = f64::from(f32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+                    let k_i = p_i * factor;
+                    let diff = k_i - qk_val;
+                    sum += diff * diff;
+                }
+                return sum;
             }
-            let v = HyperVector::from_bytes(bytes);
-            return v.to_klein().klein_chord_distance_sq(qk);
+            let n = (bytes.len().saturating_sub(8) / 8).min(qk.coords.len());
+            let alpha_bytes: [u8; 8] = match bytes
+                .get(bytes.len().saturating_sub(8)..)
+                .and_then(|b| b.try_into().ok())
+            {
+                Some(ab) => ab,
+                None => return f64::MAX,
+            };
+            let alpha = f64::from_le_bytes(alpha_bytes);
+            let factor = if alpha == 0.0 {
+                1.0
+            } else {
+                let denom = 2.0 - (1.0 / alpha);
+                if denom.abs() > 1e-12 {
+                    2.0 / denom
+                } else {
+                    0.0
+                }
+            };
+
+            let mut sum = 0.0;
+            for (c, &qk_val) in bytes[..n * 8].chunks_exact(8).zip(qk.coords[..n].iter()) {
+                let p_i = f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]);
+                let k_i = p_i * factor;
+                let diff = k_i - qk_val;
+                sum += diff * diff;
+            }
+            return sum;
         }
         self.dist_mrl_opt(node_id, query, None, pq_lut, mrl_dim, None)
     }
@@ -1785,22 +1894,71 @@ impl<M: Metric> HnswIndex<M> {
         query: &HyperVector,
         k: usize,
         allowed: &RoaringBitmap,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
+        mrl_dim: Option<usize>,
     ) -> Vec<(NodeId, f64)> {
         if k == 0 || allowed.is_empty() {
             return Vec::new();
         }
         let nodes_len = self.nodes.count() as u32;
 
-        let mut out = Vec::with_capacity(allowed.len().min(k as u64) as usize);
-        for id in allowed {
-            if id >= nodes_len {
-                continue;
+        let local_lut = if pq_lut.is_none()
+            && (self.mode == QuantizationMode::ProductQuantization
+                || self.mode == QuantizationMode::OPQ)
+        {
+            self.pq.as_ref().map(|pq| {
+                let q_f32: Vec<f32> = query.coords.iter().map(|&x| x as f32).collect();
+                pq.compute_lut(&q_f32)
+            })
+        } else {
+            None
+        };
+        let effective_lut = pq_lut.or(local_lut.as_ref());
+
+        let q_f32_vec = if self.storage_f32 {
+            Some(query.coords.iter().map(|&x| x as f32).collect::<Vec<_>>())
+        } else {
+            None
+        };
+        let q_f32_ref = q_f32_vec.as_deref();
+
+        if (allowed.len() as usize) <= k * 2 {
+            let mut out = Vec::with_capacity(allowed.len() as usize);
+            for id in allowed {
+                if id >= nodes_len {
+                    continue;
+                }
+                out.push((
+                    id,
+                    self.dist_mrl_opt(id, query, q_f32_ref, effective_lut, mrl_dim, None),
+                ));
             }
-            out.push((id, self.dist(id, query)));
+            out.sort_by(|a, b| a.1.total_cmp(&b.1));
+            out.truncate(k);
+            out
+        } else {
+            let mut heap = std::collections::BinaryHeap::with_capacity(k + 1);
+            for id in allowed {
+                if id >= nodes_len {
+                    continue;
+                }
+                let d = self.dist_mrl_opt(id, query, q_f32_ref, effective_lut, mrl_dim, None);
+                if heap.len() < k {
+                    heap.push(MaxCandidate { id, distance: d });
+                } else if let Some(worst) = heap.peek() {
+                    if d < worst.distance {
+                        heap.pop();
+                        heap.push(MaxCandidate { id, distance: d });
+                    }
+                }
+            }
+            let mut out = Vec::with_capacity(heap.len());
+            while let Some(c) = heap.pop() {
+                out.push((c.id, c.distance));
+            }
+            out.reverse();
+            out
         }
-        out.sort_by(|a, b| a.1.total_cmp(&b.1));
-        out.truncate(k);
-        out
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1836,7 +1994,7 @@ impl<M: Metric> HnswIndex<M> {
 
         if let Some(allowed_bitmap) = allowed {
             if allowed_bitmap.len() <= Self::filtered_bruteforce_threshold() {
-                return self.search_bruteforce_bitmap(query, k, allowed_bitmap);
+                return self.search_bruteforce_bitmap(query, k, allowed_bitmap, pq_lut, mrl_dim);
             }
         }
 
@@ -1862,12 +2020,16 @@ impl<M: Metric> HnswIndex<M> {
                 results.reserve(ef_capacity - results.capacity());
             }
 
-            let query_f32_buf = if self.storage_f32 {
-                Some(query.coords.iter().map(|&x| x as f32).collect::<Vec<f32>>())
+            let mut query_f32 = std::mem::take(&mut scratch.query_f32);
+            if self.storage_f32 {
+                query_f32.clear();
+                query_f32.extend(query.coords.iter().map(|&x| x as f32));
+            }
+            let q_f32_ref = if self.storage_f32 {
+                Some(query_f32.as_slice())
             } else {
                 None
             };
-            let q_f32_ref = query_f32_buf.as_deref();
 
             let d = self.dist_mrl_opt(start_node, query, q_f32_ref, pq_lut, mrl_dim, None);
             let first = Candidate {
@@ -1961,6 +2123,7 @@ impl<M: Metric> HnswIndex<M> {
             results.clear();
             scratch.candidates_l0 = candidates;
             scratch.results_l0 = results;
+            scratch.query_f32 = query_f32;
             output
         })
     }
@@ -2112,6 +2275,7 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         let mut result = Vec::with_capacity(actual_m);
+        let mut result_vecs: Vec<HyperVector> = Vec::with_capacity(actual_m);
 
         while let Some(cand) = sorted_candidates.pop() {
             // Gets closest (sorted vec is ascending, pop from end)
@@ -2120,11 +2284,9 @@ impl<M: Metric> HnswIndex<M> {
             }
 
             let mut is_good = true;
-            let cand_vec = self.get_vector(cand.id);
 
-            for &existing_neighbor in &result {
-                let neighbor_vec = self.get_vector(existing_neighbor);
-                let dist_to_neighbor = M::distance(&cand_vec.coords, &neighbor_vec.coords);
+            for neighbor_vec in &result_vecs {
+                let dist_to_neighbor = self.dist(cand.id, neighbor_vec);
 
                 if dist_to_neighbor < cand.distance {
                     is_good = false;
@@ -2134,9 +2296,82 @@ impl<M: Metric> HnswIndex<M> {
 
             if is_good {
                 result.push(cand.id);
+                result_vecs.push(self.get_vector(cand.id));
             }
         }
         result
+    }
+
+    /// Extracts node vector coordinates without heap allocation into caller-provided scratch buffer.
+    #[allow(clippy::chunks_exact_to_as_chunks)]
+    pub fn with_vector_coords<R>(
+        &self,
+        id: NodeId,
+        scratch: &mut Vec<f64>,
+        f: impl FnOnce(&[f64]) -> R,
+    ) -> R {
+        if self.zonal {
+            if let Some(zv) = self.zonal_storage.get(&id) {
+                match zv.value() {
+                    hyperspace_core::vector::ZonalVector::Core(ref i8_coords) => {
+                        scratch.resize(self.dimension, 0.0);
+                        for (i, &c) in i8_coords.iter().enumerate() {
+                            scratch[i] = f64::from(c) / 127.0;
+                        }
+                        return f(scratch);
+                    }
+                    hyperspace_core::vector::ZonalVector::Boundary(ref f64_coords) => {
+                        return f(f64_coords);
+                    }
+                }
+            }
+        }
+
+        if id as usize >= self.storage.count() {
+            scratch.resize(self.dimension, 0.0);
+            return f(scratch);
+        }
+
+        let bytes = self.storage.get(id);
+        match self.mode {
+            QuantizationMode::ScalarI8 => {
+                let q = QuantizedHyperVector::from_bytes(bytes);
+                scratch.resize(self.dimension, 0.0);
+                if M::name() == "lorentz" {
+                    let scale = f64::from(q.alpha);
+                    for (i, &c) in q.coords.iter().enumerate() {
+                        scratch[i] = f64::from(c) / 127.0 * scale;
+                    }
+                } else {
+                    for (i, &c) in q.coords.iter().enumerate() {
+                        scratch[i] = f64::from(c) / 127.0;
+                    }
+                }
+                f(scratch)
+            }
+            QuantizationMode::None => {
+                if self.storage_f32 {
+                    let n = (bytes.len().saturating_sub(4) / 4).min(self.dimension);
+                    scratch.resize(n, 0.0);
+                    for (i, c) in bytes[..n * 4].chunks_exact(4).enumerate() {
+                        scratch[i] = f64::from(f32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+                    }
+                    f(scratch)
+                } else {
+                    let n = (bytes.len().saturating_sub(8) / 8).min(self.dimension);
+                    scratch.resize(n, 0.0);
+                    for (i, c) in bytes[..n * 8].chunks_exact(8).enumerate() {
+                        scratch[i] =
+                            f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]);
+                    }
+                    f(scratch)
+                }
+            }
+            _ => {
+                let vec = self.get_vector(id);
+                f(&vec.coords)
+            }
+        }
     }
 
     // Helper to get HyperVector from id
@@ -2613,6 +2848,12 @@ impl<M: Metric> HnswIndex<M> {
             let tag = format!("{key}:{val}");
             self.metadata.inverted.entry(tag).or_default().insert(id);
 
+            self.metadata
+                .prefix_index
+                .entry(key.clone())
+                .or_default()
+                .insert(val.clone());
+
             // B. Numeric Index (i64)
             // Try parsing
             if let Ok(num) = val.parse::<i64>() {
@@ -2800,10 +3041,17 @@ impl<M: Metric> HnswIndex<M> {
         if node.layers.len() <= level {
             return;
         }
+        if node.layers[level].load().contains(&dst) {
+            return;
+        }
         node.layers[level].rcu(|links| {
-            let mut new_links = (**links).clone();
+            if links.contains(&dst) {
+                return Arc::clone(links);
+            }
+            let mut new_links = Vec::with_capacity(links.len() + 1);
+            new_links.extend_from_slice(links);
             new_links.push(dst);
-            new_links
+            Arc::new(new_links)
         });
     }
 
@@ -2823,8 +3071,7 @@ impl<M: Metric> HnswIndex<M> {
         let node_vec = self.get_vector(node_id);
         let mut candidates = Vec::with_capacity(initial_links.len());
         for &n in initial_links.iter() {
-            let n_vec = self.get_vector(n);
-            let d = M::distance(&node_vec.coords, &n_vec.coords);
+            let d = self.dist(n, &node_vec);
             candidates.push(Candidate { id: n, distance: d });
         }
 
@@ -2840,16 +3087,18 @@ impl<M: Metric> HnswIndex<M> {
             return;
         }
 
+        let keepers_arc = Arc::new(keepers);
         node.layers[level].rcu(|current_links| {
-            let mut final_keepers = keepers.clone();
-            if current_links.len() > initial_links.len() {
-                for &id in current_links.iter() {
-                    if !initial_links.contains(&id) && !final_keepers.contains(&id) {
-                        final_keepers.push(id);
-                    }
+            if current_links.len() == initial_links.len() {
+                return Arc::clone(&keepers_arc);
+            }
+            let mut final_keepers = (*keepers_arc).clone();
+            for &id in current_links.iter() {
+                if !initial_links.contains(&id) && !final_keepers.contains(&id) {
+                    final_keepers.push(id);
                 }
             }
-            final_keepers
+            Arc::new(final_keepers)
         });
     }
 
@@ -3176,6 +3425,14 @@ impl<M: Metric> HnswIndex<M> {
         (term_freq, doc_len)
     }
 
+    #[inline]
+    fn make_token_key(token: &str) -> String {
+        let mut s = String::with_capacity(5 + token.len());
+        s.push_str("_txt:");
+        s.push_str(token);
+        s
+    }
+
     fn remove_doc_lexical_stats(&self, id: NodeId) {
         let old_len = if let Some(entry) = self.metadata.doc_token_len.get(id as usize) {
             entry.swap(0, Ordering::Relaxed)
@@ -3187,10 +3444,13 @@ impl<M: Metric> HnswIndex<M> {
                 .total_token_len
                 .fetch_sub(u64::from(old_len), Ordering::Relaxed);
         }
+        if old_len == 0 && !self.metadata.forward.contains_key(&id) {
+            return;
+        }
         if let Some(old_meta) = self.metadata.forward.get(&id) {
             let (term_freq, _) = Self::build_doc_term_stats(old_meta.value(), &self.config);
             for token in term_freq.keys() {
-                let token_key = format!("_txt:{token}");
+                let token_key = Self::make_token_key(token);
                 if let Some(mut bitmap) = self.metadata.inverted.get_mut(&token_key) {
                     bitmap.remove(id);
                 }
@@ -3203,7 +3463,9 @@ impl<M: Metric> HnswIndex<M> {
                     }
                 }
                 if let Some(mut tdf_ref) = self.metadata.term_doc_freq.get_mut(token) {
-                    tdf_ref.retain(|(doc_id, _)| *doc_id != id);
+                    if let Some(pos) = tdf_ref.iter().position(|(doc_id, _)| *doc_id == id) {
+                        tdf_ref.swap_remove(pos);
+                    }
                 }
             }
         }
@@ -3222,7 +3484,7 @@ impl<M: Metric> HnswIndex<M> {
             .total_token_len
             .fetch_add(u64::from(doc_len), Ordering::Relaxed);
         for (token, tf) in term_freq {
-            let token_key = format!("_txt:{token}");
+            let token_key = Self::make_token_key(&token);
             self.metadata
                 .inverted
                 .entry(token_key)
@@ -3277,15 +3539,25 @@ impl<M: Metric> HnswIndex<M> {
             }
         }
 
+        // Precompute allowed_bitmap ONCE for both semantic and lexical passes
+        let allowed_bitmap = self.build_allowed_bitmap(filter, complex_filters);
+        if allowed_bitmap
+            .as_ref()
+            .is_some_and(roaring::RoaringBitmap::is_empty)
+        {
+            return Vec::new();
+        }
+
         // 1. Get Vector Search Results (Semantic) -> Top K*10 (min 100) for recall
-        // We reuse the basic search but with NO hybrid query to avoid recursion
+        // We reuse search_with_allowed with the precomputed bitmap to avoid duplicate work and recursion
         let vec_k = (params.top_k * 10).max(100);
         let mut inner_params = params.clone();
         inner_params.hybrid_query = None;
         inner_params.top_k = vec_k;
         inner_params.ef_search = inner_params.ef_search.max(vec_k);
 
-        let vector_results = self.search(query, filter, complex_filters, &inner_params);
+        let vector_results =
+            self.search_with_allowed(query, allowed_bitmap.as_ref(), &inner_params);
 
         // 2. BM25 lexical ranking over the same filtered space.
         let tokens = Self::tokenize(text, &self.config);
@@ -3295,14 +3567,6 @@ impl<M: Metric> HnswIndex<M> {
         let mut uniq_tokens = std::collections::HashSet::new();
         for token in tokens {
             uniq_tokens.insert(token);
-        }
-
-        let allowed_bitmap = self.build_allowed_bitmap(filter, complex_filters);
-        if allowed_bitmap
-            .as_ref()
-            .is_some_and(roaring::RoaringBitmap::is_empty)
-        {
-            return Vec::new();
         }
         let deleted = self.metadata.deleted.read();
         let is_allowed = |id: u32| -> bool {
@@ -3329,16 +3593,13 @@ impl<M: Metric> HnswIndex<M> {
             .clone()
             .unwrap_or_else(|| self.config.get_bm25_params());
 
-        let keyword_scores = uniq_tokens
-            .into_par_iter()
-            .fold(HashMap::new, |mut acc, token| {
+        let keyword_scores = if uniq_tokens.len() <= 8 {
+            let mut acc = HashMap::with_capacity(1024);
+            for token in uniq_tokens {
                 if let Some(doc_freqs) = self.metadata.term_doc_freq.get(&token) {
-                    let df = self
-                        .metadata
-                        .token_df
-                        .get(&token)
-                        .map_or_else(|| doc_freqs.value().len() as u32, |v| *v)
-                        .max(1);
+                    let df = (doc_freqs.value().len() as u32).max(1);
+                    let idf_val =
+                        hyperspace_core::bm25::idf(bm25_params.method, global_docs as u32, df);
 
                     for &(id, tf) in doc_freqs.value() {
                         if !is_allowed(id) {
@@ -3352,13 +3613,12 @@ impl<M: Metric> HnswIndex<M> {
                             .map_or(0.0, |v| v.load(Ordering::Relaxed) as f32)
                             .max(1.0);
 
-                        let score = f64::from(hyperspace_core::bm25::score(
+                        let score = f64::from(hyperspace_core::bm25::score_with_idf(
+                            idf_val,
                             bm25_params.method,
                             tf_f32,
                             dl,
                             avgdl as f32,
-                            global_docs as u32, // Note: not total_docs (f64)
-                            df,
                             bm25_params.k1,
                             bm25_params.b,
                             bm25_params.delta,
@@ -3367,14 +3627,52 @@ impl<M: Metric> HnswIndex<M> {
                         *acc.entry(id).or_insert(0.0) += score;
                     }
                 }
-                acc
-            })
-            .reduce(HashMap::new, |mut a, b| {
-                for (k, v) in b {
-                    *a.entry(k).or_insert(0.0) += v;
-                }
-                a
-            });
+            }
+            acc
+        } else {
+            uniq_tokens
+                .into_par_iter()
+                .fold(HashMap::new, |mut acc, token| {
+                    if let Some(doc_freqs) = self.metadata.term_doc_freq.get(&token) {
+                        let df = (doc_freqs.value().len() as u32).max(1);
+                        let idf_val =
+                            hyperspace_core::bm25::idf(bm25_params.method, global_docs as u32, df);
+
+                        for &(id, tf) in doc_freqs.value() {
+                            if !is_allowed(id) {
+                                continue;
+                            }
+                            let tf_f32 = f32::from(tf);
+                            let dl = self
+                                .metadata
+                                .doc_token_len
+                                .get(id as usize)
+                                .map_or(0.0, |v| v.load(Ordering::Relaxed) as f32)
+                                .max(1.0);
+
+                            let score = f64::from(hyperspace_core::bm25::score_with_idf(
+                                idf_val,
+                                bm25_params.method,
+                                tf_f32,
+                                dl,
+                                avgdl as f32,
+                                bm25_params.k1,
+                                bm25_params.b,
+                                bm25_params.delta,
+                            ));
+
+                            *acc.entry(id).or_insert(0.0) += score;
+                        }
+                    }
+                    acc
+                })
+                .reduce(HashMap::new, |mut a, b| {
+                    for (k, v) in b {
+                        *a.entry(k).or_insert(0.0) += v;
+                    }
+                    a
+                })
+        };
 
         let max_k = (params.top_k * 3).max(200);
         let mut heap = std::collections::BinaryHeap::with_capacity(max_k + 1);

@@ -39,10 +39,19 @@ pub fn analyze_delta_hyperbolicity(vectors: &[Vec<f64>], num_samples: usize) -> 
         let s2 = d_ik + d_jl;
         let s3 = d_il + d_jk;
 
-        let mut sums = [s1, s2, s3];
-        sums.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        let (first, second) = if s1 >= s2 {
+            if s1 >= s3 {
+                (s1, s2.max(s3))
+            } else {
+                (s3, s1)
+            }
+        } else if s2 >= s3 {
+            (s2, s1.max(s3))
+        } else {
+            (s3, s2)
+        };
 
-        let delta = (sums[0] - sums[1]) / 2.0;
+        let delta = (first - second) * 0.5;
         if delta > max_delta {
             max_delta = delta;
         }
@@ -74,11 +83,22 @@ pub fn analyze_delta_hyperbolicity(vectors: &[Vec<f64>], num_samples: usize) -> 
 }
 
 fn l2_dist(a: &[f64], b: &[f64]) -> f64 {
-    a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| (x - y).powi(2))
-        .sum::<f64>()
-        .sqrt()
+    let n = a.len().min(b.len());
+    let (chunks_a, rem_a) = a[..n].as_chunks::<4>();
+    let (chunks_b, rem_b) = b[..n].as_chunks::<4>();
+    let mut acc = [0.0; 4];
+    for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+        for l in 0..4 {
+            let diff = ca[l] - cb[l];
+            acc[l] += diff * diff;
+        }
+    }
+    let mut sum = acc[0] + acc[1] + acc[2] + acc[3];
+    for (&x, &y) in rem_a.iter().zip(rem_b.iter()) {
+        let diff = x - y;
+        sum += diff * diff;
+    }
+    sum.sqrt()
 }
 
 #[cfg(test)]

@@ -31,6 +31,46 @@ struct CollectionState {
     last_persisted_clock: u64,
 }
 
+#[inline]
+fn env_rerank_enabled() -> bool {
+    static VAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *VAL.get_or_init(|| {
+        std::env::var("HS_RERANK_ENABLED")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+    })
+}
+
+#[inline]
+fn env_rerank_oversample() -> usize {
+    static VAL: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *VAL.get_or_init(|| {
+        std::env::var("HS_RERANK_OVERSAMPLE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(4)
+            .max(1)
+    })
+}
+
+#[inline]
+fn env_chunk_probe_k() -> usize {
+    static VAL: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *VAL.get_or_init(|| {
+        std::env::var("HS_CHUNK_PROBE_K")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(3)
+    })
+}
+
+#[inline]
+fn env_cache_read_through() -> bool {
+    static VAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *VAL.get_or_init(|| {
+        std::env::var("HYPERSPACE_CACHE_READ_THROUGH").map_or(true, |v| v.to_lowercase() != "false")
+    })
+}
+
 pub struct CollectionImpl<M: Metric> {
     name: String,
     node_id: String,
@@ -88,6 +128,7 @@ pub struct CollectionImpl<M: Metric> {
     chunk_backend: Arc<dyn ChunkBackend>,
     storage_f32: bool,
     raw_vector_cache: Arc<DashMap<u32, Vec<f32>>>,
+    raw_vector_cache_len: Arc<AtomicUsize>,
     pub explicit_graph: Arc<hyperspace_core::graph::GraphEngine>,
 }
 
@@ -1044,6 +1085,7 @@ impl<M: Metric> CollectionImpl<M> {
             chunk_backend,
             storage_f32,
             raw_vector_cache: Arc::new(DashMap::new()),
+            raw_vector_cache_len: Arc::new(AtomicUsize::new(0)),
             explicit_graph,
         };
 
@@ -1537,7 +1579,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
 
         idx.delete(internal_id);
-        self.raw_vector_cache.remove(&internal_id);
+        if self.raw_vector_cache.remove(&internal_id).is_some() {
+            self.raw_vector_cache_len.fetch_sub(1, Ordering::Relaxed);
+        }
         if let Some(ref cache) = self.cache {
             cache.invalidate(id);
         }
@@ -1644,21 +1688,34 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             }
         });
 
-        let env_rerank_enabled = std::env::var("HS_RERANK_ENABLED")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
-        let env_rerank_oversample = std::env::var("HS_RERANK_OVERSAMPLE")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(4)
-            .max(1);
+        let env_rerank_enabled = env_rerank_enabled();
+        let env_rerank_oversample = env_rerank_oversample();
 
-        let mut clean_filters = filters.clone();
-        let request_rerank = clean_filters
-            .remove("rerank")
-            .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
-        let request_oversample = clean_filters
-            .remove("oversample")
-            .and_then(|v| v.parse::<usize>().ok());
+        let (request_rerank, request_oversample, clean_filters_cow) = if filters.is_empty() {
+            (None, None, None)
+        } else {
+            let req_rerank = filters.get("rerank").map(|v| {
+                v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
+            });
+            let req_oversample = filters
+                .get("oversample")
+                .and_then(|v| v.parse::<usize>().ok());
+
+            let clean: Option<Cow<'_, HashMap<String, String>>> =
+                if req_rerank.is_none() && req_oversample.is_none() {
+                    Some(Cow::Borrowed(filters))
+                } else {
+                    let mut f = filters.clone();
+                    f.remove("rerank");
+                    f.remove("oversample");
+                    if f.is_empty() {
+                        None
+                    } else {
+                        Some(Cow::Owned(f))
+                    }
+                };
+            (req_rerank, req_oversample, clean)
+        };
 
         let rerank_enabled = request_rerank
             .unwrap_or(env_rerank_enabled || schema_rerank_top_k.is_some())
@@ -1667,8 +1724,6 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let rerank_oversample = request_oversample.unwrap_or(env_rerank_oversample).max(1);
 
         let use_wasserstein = params.use_wasserstein;
-        let filters_owned = (!clean_filters.is_empty()).then_some(clean_filters);
-        let complex_filters_owned = (!complex_filters.is_empty()).then(|| complex_filters.to_vec());
         let meta_router_ref = self.meta_router.clone();
         let chunk_backend_ref = self.chunk_backend.clone();
         let mode_for_search = self.mode;
@@ -1691,8 +1746,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // Convert to owned only when entering blocking task
             let (query_owned, filters_owned, complex_filters_owned) = (
                 processed_query_cow.into_owned(),
-                filters_owned,
-                complex_filters_owned,
+                clean_filters_cow.map(|c| c.into_owned()),
+                (!complex_filters.is_empty()).then(|| complex_filters.to_vec()),
             );
             let write_buffer_for_search = self.write_buffer.clone();
             let mut search_params_owned = params.clone();
@@ -1729,10 +1784,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 );
 
                 // === 2. Search cold chunks via MetaRouter (disk mmap / S3 tiering) ===
-                let probe_k = std::env::var("HS_CHUNK_PROBE_K")
-                    .ok()
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(3);
+                let probe_k = env_chunk_probe_k();
                 let routed_chunks = meta_router_ref.route(&processed_query, probe_k);
                 let mut chunk_dirs: Vec<std::path::PathBuf> = Vec::with_capacity(routed_chunks.len());
                 for (chunk_id, default_path, _) in &routed_chunks {
@@ -1795,40 +1847,54 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
-                    let get_exact_coords = |id: u32| -> Vec<f64> {
+                    let with_exact_coords = |id: u32, scratch: &mut Vec<f64>, f: &mut dyn FnMut(&[f64]) -> f64| -> f64 {
                         if let Some(v_f32) = raw_vector_cache_owned.get(&id) {
-                            return v_f32.iter().map(|&x| x as f64).collect();
+                            if scratch.len() != v_f32.len() {
+                                scratch.resize(v_f32.len(), 0.0);
+                            }
+                            for (dst, &src) in scratch.iter_mut().zip(v_f32.iter()) {
+                                *dst = src as f64;
+                            }
+                            return f(scratch);
                         }
                         if let Ok(Some(bytes)) = payload_store_owned.fetch_blocking(id) {
                             if bytes.len() == processed_query.len() * 4 {
-                                let mut exact_vec = vec![0.0; processed_query.len()];
-                                for i in 0..processed_query.len() {
-                                    let mut b = [0u8; 4];
-                                    b.copy_from_slice(&bytes[i*4..(i+1)*4]);
-                                    exact_vec[i] = f64::from(f32::from_le_bytes(b));
+                                if scratch.len() != processed_query.len() {
+                                    scratch.resize(processed_query.len(), 0.0);
                                 }
-                                return exact_vec;
+                                for (i, chunk) in bytes.as_chunks::<4>().0.iter().enumerate() {
+                                    if i < scratch.len() {
+                                        scratch[i] = f64::from(f32::from_le_bytes(*chunk));
+                                    }
+                                }
+                                return f(scratch);
                             } else if bytes.len() == processed_query.len() * 8 {
-                                let mut exact_vec = vec![0.0; processed_query.len()];
-                                for i in 0..processed_query.len() {
-                                    let mut b = [0u8; 8];
-                                    b.copy_from_slice(&bytes[i*8..(i+1)*8]);
-                                    exact_vec[i] = f64::from_le_bytes(b);
+                                if scratch.len() != processed_query.len() {
+                                    scratch.resize(processed_query.len(), 0.0);
                                 }
-                                return exact_vec;
+                                for (i, chunk) in bytes.as_chunks::<8>().0.iter().enumerate() {
+                                    if i < scratch.len() {
+                                        scratch[i] = f64::from_le_bytes(*chunk);
+                                    }
+                                }
+                                return f(scratch);
                             }
                         }
-                        index.get_vector_original(id).coords
+                        let orig = index.get_vector_original(id);
+                        f(&orig.coords)
                     };
 
                     if layout_owned.components.len() > 1 {
                         let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
-                        let candidate_vectors: Vec<Vec<f64>> = candidate_ids
-                            .iter()
-                            .map(|id| get_exact_coords(*id))
-                            .collect();
+                        let q_len = processed_query.len();
+                        let mut flat_vectors = vec![0.0; candidate_ids.len() * q_len];
+                        let mut scratch = vec![0.0; q_len];
+                        for (idx, id) in candidate_ids.iter().enumerate() {
+                            with_exact_coords(*id, &mut scratch, &mut |_| 0.0);
+                            flat_vectors[idx * q_len..(idx + 1) * q_len].copy_from_slice(&scratch);
+                        }
                         let candidate_refs: Vec<&[f64]> =
-                            candidate_vectors.iter().map(Vec::as_slice).collect();
+                            flat_vectors.chunks_exact(q_len).collect();
                         rerank_topk_exact(
                             metric_tag,
                             &processed_query,
@@ -1838,11 +1904,13 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                             component_weights_owned.as_ref(),
                         )
                     } else {
+                        let mut exact_scratch = vec![0.0; processed_query.len()];
                         let mut exact_scores: Vec<(u32, f64)> = results
                             .iter()
                             .map(|(id, _)| {
-                                let coords = get_exact_coords(*id);
-                                let exact_d = M::distance(&coords, &processed_query);
+                                let exact_d = with_exact_coords(*id, &mut exact_scratch, &mut |coords| {
+                                    M::distance(coords, &processed_query)
+                                });
                                 (*id, exact_d)
                             })
                             .collect();
@@ -1907,8 +1975,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // When enabled, top-K results from every disk HNSW search are inserted
             // into the L1 cache so that future queries for the same or nearby vectors
             // become L1 hits. Controlled by HYPERSPACE_CACHE_READ_THROUGH (default: true).
-            let read_through_enabled = std::env::var("HYPERSPACE_CACHE_READ_THROUGH")
-                .map_or(true, |v| v.to_lowercase() != "false");
+            let read_through_enabled = env_cache_read_through();
             if read_through_enabled {
                 if let Some(ref cache) = self.cache {
                     let index_snap = index_link_for_cache.load_full();
@@ -1958,10 +2025,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             let _permit = permit;
             let index = index_link.load();
             let include_metadata = index.has_nonempty_metadata();
-            let filters_ref = filters_owned.as_ref().unwrap_or(&EMPTY_LEGACY_FILTERS);
-            let complex_filters_ref = complex_filters_owned
-                .as_ref()
-                .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
+            let filters_ref = clean_filters_cow
+                .as_deref()
+                .unwrap_or(&*EMPTY_LEGACY_FILTERS);
+            let complex_filters_ref = complex_filters;
 
             // === 1. Search the hot MemTable (in-RAM HNSW) ===
             let mem_results =
@@ -2723,6 +2790,10 @@ impl<M: Metric> Drop for CollectionImpl<M> {
         for task in &self.bg_tasks {
             task.abort();
         }
+        let wal_arc = self.wal_link.load_full();
+        if let Ok(mut wal) = wal_arc.try_lock() {
+            let _ = wal.sync();
+        };
     }
 }
 
@@ -2861,8 +2932,10 @@ impl<M: Metric> CollectionImpl<M> {
 
         if self.mode != hyperspace_core::QuantizationMode::None {
             let v_f32: Vec<f32> = processed_vector.iter().map(|&x| x as f32).collect();
-            if self.raw_vector_cache.len() < 200_000 {
-                self.raw_vector_cache.insert(internal_id, v_f32);
+            if self.raw_vector_cache_len.load(Ordering::Relaxed) < 200_000 {
+                if self.raw_vector_cache.insert(internal_id, v_f32).is_none() {
+                    self.raw_vector_cache_len.fetch_add(1, Ordering::Relaxed);
+                }
             }
             let mut vector_bytes = Vec::with_capacity(processed_vector.len() * 4);
             for &v in processed_vector.iter() {
@@ -3031,12 +3104,12 @@ impl<M: Metric> CollectionImpl<M> {
         if write_wal {
             let wal_data: Vec<_> = entries
                 .iter()
-                .map(|e| (e.vector.to_vec(), e.id, e.metadata.clone()))
+                .map(|e| (&e.vector[..], e.id, e.metadata))
                 .collect();
 
             let wal_guard = self.wal_link.load();
             let mut wal = wal_guard.lock().await;
-            wal.append_batch(&wal_data, clock)
+            wal.append_batch_borrowed(&wal_data, clock)
                 .map_err(|e| e.to_string())?;
 
             self.last_clock.fetch_max(clock, Ordering::Relaxed);
@@ -3094,9 +3167,15 @@ impl<M: Metric> CollectionImpl<M> {
 
         if self.mode != hyperspace_core::QuantizationMode::None {
             for entry in &entries {
-                if self.raw_vector_cache.len() < 200_000 {
+                if self.raw_vector_cache_len.load(Ordering::Relaxed) < 200_000 {
                     let v_f32: Vec<f32> = entry.vector.iter().map(|&x| x as f32).collect();
-                    self.raw_vector_cache.insert(entry.internal_id, v_f32);
+                    if self
+                        .raw_vector_cache
+                        .insert(entry.internal_id, v_f32)
+                        .is_none()
+                    {
+                        self.raw_vector_cache_len.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             }
         }
@@ -3104,17 +3183,16 @@ impl<M: Metric> CollectionImpl<M> {
         let wb_has_capacity = self.write_buffer.size() < 100_000;
         for entry in &entries {
             if entry.reindex_needed {
+                let meta_cloned = (*entry.metadata).clone();
                 if wb_has_capacity {
                     self.write_buffer.insert(
                         entry.internal_id,
                         entry.id,
                         entry.vector.to_vec(),
-                        (*entry.metadata).clone(),
+                        meta_cloned.clone(),
                     );
                 }
-                let _ = self
-                    .index_tx
-                    .send((entry.internal_id, entry.metadata.clone()));
+                let _ = self.index_tx.send((entry.internal_id, meta_cloned));
             }
         }
 

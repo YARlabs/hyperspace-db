@@ -87,7 +87,7 @@ pub struct CacheHit {
 struct RateTracker {
     hits: AtomicU64,
     misses: AtomicU64,
-    history: Mutex<Vec<(Instant, u64, u64)>>,
+    history: Mutex<std::collections::VecDeque<(Instant, u64, u64)>>,
 }
 
 impl RateTracker {
@@ -95,7 +95,7 @@ impl RateTracker {
         Self {
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
-            history: Mutex::new(Vec::new()),
+            history: Mutex::new(std::collections::VecDeque::with_capacity(64)),
         }
     }
 
@@ -113,12 +113,18 @@ impl RateTracker {
         let current_misses = self.misses.load(Ordering::Relaxed);
 
         let mut history = self.history.lock();
-        history.push((now, current_hits, current_misses));
+        history.push_back((now, current_hits, current_misses));
 
         // std::time::Duration has no from_mins in stable Rust; from_secs(60) is idiomatic.
         #[allow(clippy::duration_suboptimal_units)]
         let cutoff = now.checked_sub(Duration::from_secs(60)).unwrap_or(now);
-        history.retain(|(t, _, _)| *t >= cutoff);
+        while let Some(front) = history.front() {
+            if front.0 < cutoff {
+                history.pop_front();
+            } else {
+                break;
+            }
+        }
 
         if history.len() < 2 {
             let total = current_hits + current_misses;
@@ -130,8 +136,8 @@ impl RateTracker {
                 rate
             }
         } else {
-            let first = history.first().unwrap();
-            let last = history.last().unwrap();
+            let first = history.front().unwrap();
+            let last = history.back().unwrap();
             let delta_hits = last.1.saturating_sub(first.1);
             let delta_misses = last.2.saturating_sub(first.2);
             let total = delta_hits + delta_misses;

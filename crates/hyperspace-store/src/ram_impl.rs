@@ -1,4 +1,5 @@
-use parking_lot::RwLock;
+use arc_swap::ArcSwap;
+use parking_lot::{Mutex, RwLock};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -6,24 +7,58 @@ use std::sync::Arc;
 const CHUNK_SIZE: usize = 65536;
 
 #[derive(Debug)]
+struct RamSegment {
+    data: RwLock<Vec<u8>>,
+    raw_ptr: *mut u8,
+}
+
+unsafe impl Send for RamSegment {}
+unsafe impl Sync for RamSegment {}
+
+impl RamSegment {
+    fn new(element_size: usize) -> Self {
+        let seg_size = element_size * CHUNK_SIZE;
+        let mut vec = vec![0u8; seg_size];
+        let raw_ptr = vec.as_mut_ptr();
+        Self {
+            data: RwLock::new(vec),
+            raw_ptr,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct VectorStore {
-    segments: RwLock<Vec<Arc<RwLock<Vec<u8>>>>>,
+    segments: ArcSwap<Vec<Arc<RamSegment>>>,
+    growth_lock: Mutex<()>,
     count: AtomicUsize,
     element_size: usize,
 }
 
 impl VectorStore {
     pub fn new(_base_path: &Path, element_size: usize) -> Self {
-        let mut segments = Vec::new();
-        // Pre-allocate first segment
-        let seg_size = element_size * CHUNK_SIZE;
-        let vec = vec![0u8; seg_size];
-        segments.push(Arc::new(RwLock::new(vec)));
+        let segments = vec![Arc::new(RamSegment::new(element_size))];
 
         Self {
-            segments: RwLock::new(segments),
+            segments: ArcSwap::from_pointee(segments),
+            growth_lock: Mutex::new(()),
             count: AtomicUsize::new(0),
             element_size,
+        }
+    }
+
+    fn ensure_segment(&self, segment_idx: usize) {
+        if segment_idx < self.segments.load().len() {
+            return;
+        }
+        let _guard = self.growth_lock.lock();
+        let current_segs = self.segments.load();
+        if segment_idx >= current_segs.len() {
+            let mut new_segs = (**current_segs).clone();
+            while new_segs.len() <= segment_idx {
+                new_segs.push(Arc::new(RamSegment::new(self.element_size)));
+            }
+            self.segments.store(Arc::new(new_segs));
         }
     }
 
@@ -36,56 +71,38 @@ impl VectorStore {
         let segment_idx = id / CHUNK_SIZE;
         let local_idx = id % CHUNK_SIZE;
 
-        let has_segment = {
-            let segs = self.segments.read();
-            segment_idx < segs.len()
-        };
+        self.ensure_segment(segment_idx);
 
-        if !has_segment {
-            let mut segs = self.segments.write();
-            if segment_idx >= segs.len() {
-                // Grow
-                let seg_size = self.element_size * CHUNK_SIZE;
-                let vec = vec![0u8; seg_size];
-                segs.push(Arc::new(RwLock::new(vec)));
-            }
-        }
+        let segs = self.segments.load();
+        let segment = &segs[segment_idx];
 
-        {
-            let segs = self.segments.read();
-            let segment = &segs[segment_idx];
-            let mut data = segment.write();
-
-            let start = local_idx * self.element_size;
-            let end = start + self.element_size;
-            data[start..end].copy_from_slice(vector_bytes);
+        let start = local_idx * self.element_size;
+        unsafe {
+            let dest_ptr = segment.raw_ptr.add(start);
+            std::ptr::copy_nonoverlapping(vector_bytes.as_ptr(), dest_ptr, self.element_size);
         }
 
         #[allow(clippy::cast_possible_truncation)]
         Ok(id as u32)
     }
 
+    #[inline(always)]
     pub fn get(&self, id: u32) -> &[u8] {
         let id_val = id as usize;
         let segment_idx = id_val / CHUNK_SIZE;
         let local_idx = id_val % CHUNK_SIZE;
 
-        let segs = self.segments.read();
+        let segs = self.segments.load();
         assert!(
             segment_idx < segs.len(),
             "VectorStore RAM: OOB access id {id}"
         );
         let segment = &segs[segment_idx];
 
-        let data_guard = segment.read();
-        let ptr = data_guard.as_ptr();
         let start = local_idx * self.element_size;
 
-        // UNSAFE: We assume the Vec is pinned and never reallocated/resized.
-        // The pointer is valid as long as Vec exists (which is kept in Arc in self.segments).
-        // Since we wrap inner Vec in RwLock and Arc, the buffer address is stable.
         unsafe {
-            let ptr = ptr.add(start);
+            let ptr = segment.raw_ptr.add(start);
             std::slice::from_raw_parts(ptr, self.element_size)
         }
     }
@@ -98,24 +115,24 @@ impl VectorStore {
         let segment_idx = id_val / CHUNK_SIZE;
         let local_idx = id_val % CHUNK_SIZE;
 
-        let segs = self.segments.read();
+        let segs = self.segments.load();
         if segment_idx >= segs.len() {
             return Err("OOB".into());
         }
 
         let segment = &segs[segment_idx];
-        let mut data = segment.write();
+        let mut data = segment.data.write();
         let start = local_idx * self.element_size;
         data[start..start + self.element_size].copy_from_slice(vector_bytes);
         Ok(())
     }
 
     pub fn segment_count(&self) -> usize {
-        self.segments.read().len()
+        self.segments.load().len()
     }
 
     pub fn total_size_bytes(&self) -> usize {
-        self.segments.read().len() * CHUNK_SIZE * self.element_size
+        self.segments.load().len() * CHUNK_SIZE * self.element_size
     }
 
     pub fn count(&self) -> usize {
@@ -132,11 +149,11 @@ impl VectorStore {
         let total_bytes = count * self.element_size;
         let mut result = Vec::with_capacity(total_bytes);
 
-        let segs = self.segments.read();
+        let segs = self.segments.load();
         let mut bytes_read = 0;
 
         for segment in segs.iter() {
-            let data = segment.read();
+            let data = segment.data.read();
             let remaining = total_bytes - bytes_read;
             if remaining == 0 {
                 break;
@@ -153,56 +170,37 @@ impl VectorStore {
     }
 
     /// Reconstructs the store from bytes.
-    pub fn from_bytes(path: &Path, element_size: usize, data: &[u8]) -> Self {
-        let store = Self::new(path, element_size);
+    pub fn from_bytes(_path: &Path, element_size: usize, data: &[u8]) -> Self {
+        let count = if element_size > 0 {
+            data.len() / element_size
+        } else {
+            0
+        };
+        let seg_size = element_size * CHUNK_SIZE;
+        let num_segs = if seg_size > 0 {
+            data.len().div_ceil(seg_size).max(1)
+        } else {
+            1
+        };
 
-        // Calculate count derived from data length
-        let count = data.len() / element_size;
-        store.set_count(count);
-
-        // Fill segments
-        // Self::new created the first empty segment.
-        // We write data into it (and grow if needed).
-        // Since 'new' allocates full Chunk, we can just copy if it fits.
-
+        let mut segs = Vec::with_capacity(num_segs);
         let mut offset = 0;
-        let segs = store.segments.read(); // Read lock is enough to access Arc<RwLock>
-
-        // We might need write lock on segments vector if we need to grow beyond first chunk
-        // Use loop logic similar to append but batching
-        drop(segs); // Drop read lock to allow logic
-
-        // Naive implementation: just use update/append logic or unsafe copy?
-        // Better: fill segment 0, then create segment 1...
-
-        let mut current_seg_idx = 0;
-
-        while offset < data.len() {
-            let segs = store.segments.read();
-            if current_seg_idx >= segs.len() {
-                drop(segs);
-                let mut w_segs = store.segments.write();
-                // Grow
-                let seg_size = element_size * CHUNK_SIZE;
-                let vec = vec![0u8; seg_size];
-                w_segs.push(Arc::new(RwLock::new(vec)));
-                continue;
+        for _ in 0..num_segs {
+            let mut seg = RamSegment::new(element_size);
+            if offset < data.len() {
+                let to_copy = std::cmp::min(data.len() - offset, seg_size);
+                seg.data.get_mut()[..to_copy].copy_from_slice(&data[offset..offset + to_copy]);
+                offset += to_copy;
             }
-
-            let segment = &segs[current_seg_idx];
-            let mut seg_data = segment.write();
-
-            let seg_capacity = seg_data.len();
-            let remaining_data = data.len() - offset;
-            let to_copy = std::cmp::min(remaining_data, seg_capacity);
-
-            seg_data[0..to_copy].copy_from_slice(&data[offset..offset + to_copy]);
-
-            offset += to_copy;
-            current_seg_idx += 1;
+            segs.push(Arc::new(seg));
         }
 
-        store
+        Self {
+            segments: ArcSwap::from_pointee(segs),
+            growth_lock: Mutex::new(()),
+            count: AtomicUsize::new(count),
+            element_size,
+        }
     }
 }
 

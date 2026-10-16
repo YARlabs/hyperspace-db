@@ -9,27 +9,32 @@ impl MemoryReconsolidator {
         Self { learning_rate: lr }
     }
 
-    /// Pulls the source vector slightly closer to the target vector using Riemannian SGD.
-    /// This represents the "Flow Matching" micro-shift in AI sleep mode.
-    pub fn step_towards_poincare(&self, source: &[f64], target: &[f64]) -> Vec<f64> {
-        let mut new_pos = vec![0.0; source.len()];
+    /// In-place variant of `step_towards_poincare` that mutates `source` without any heap allocations.
+    pub fn step_towards_poincare_inplace(&self, source: &mut [f64], target: &[f64]) {
         let mut norm_sq = 0.0;
+        let len = source.len().min(target.len());
 
         // Euclidean direction as unscaled tangent proxy
-        for i in 0..source.len() {
+        for i in 0..len {
             let step = target[i] - source[i];
-            new_pos[i] = source[i] + self.learning_rate * step;
-            norm_sq += new_pos[i] * new_pos[i];
+            source[i] += self.learning_rate * step;
+            norm_sq += source[i] * source[i];
         }
 
         // Project back to ensure it stays precisely within the Poincare manifold limits
         if norm_sq >= 1.0 {
             let scale = 0.999_999 / norm_sq.sqrt();
-            for i in 0..source.len() {
-                new_pos[i] *= scale;
+            for item in &mut source[..len] {
+                *item *= scale;
             }
         }
+    }
 
+    /// Pulls the source vector slightly closer to the target vector using Riemannian SGD.
+    /// This represents the "Flow Matching" micro-shift in AI sleep mode.
+    pub fn step_towards_poincare(&self, source: &[f64], target: &[f64]) -> Vec<f64> {
+        let mut new_pos = source.to_vec();
+        self.step_towards_poincare_inplace(&mut new_pos, target);
         new_pos
     }
 }

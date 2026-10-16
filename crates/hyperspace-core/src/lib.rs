@@ -32,6 +32,7 @@ pub mod hybrid;
 pub mod optim;
 pub mod pq;
 pub mod region;
+pub mod simd;
 pub mod turbo_rot;
 pub mod vector;
 pub use hybrid::{HybridExtremeQuantizedVector, HybridMetric};
@@ -47,11 +48,13 @@ use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 #[cfg(feature = "nightly-simd")]
 pub fn check_simd() {
     println!("🚀 SIMD Acceleration: ENABLED (AVX/Neon)");
+    println!("⚡ Runtime f32 kernels: {}", simd::backend().name());
 }
 
 #[cfg(not(feature = "nightly-simd"))]
 pub fn check_simd() {
     println!("🐢 SIMD Acceleration: DISABLED (Scalar Fallback)");
+    println!("⚡ Runtime f32 kernels: {}", simd::backend().name());
 }
 
 #[cfg(test)]
@@ -127,30 +130,34 @@ impl FilterExpr {
         vector: &HyperVector,
         metadata: &std::collections::HashMap<String, String>,
     ) -> bool {
+        self.check_coords(&vector.coords, metadata)
+    }
+
+    pub fn check_coords(
+        &self,
+        coords: &[f64],
+        metadata: &std::collections::HashMap<String, String>,
+    ) -> bool {
         match self {
-            Self::Match { key, value } => metadata.get(key) == Some(value),
+            Self::Match { key, value } => {
+                get_meta_string(metadata, key).as_deref() == Some(value.as_str())
+            }
             Self::Prefix { key, prefix } => {
-                if let Some(val_str) = metadata.get(key) {
-                    val_str.starts_with(prefix)
-                } else {
-                    false
-                }
+                get_meta_string(metadata, key).is_some_and(|s| s.starts_with(prefix))
             }
             Self::Range { key, gte, lte } => {
-                if let Some(val_str) = metadata.get(key) {
-                    if let Ok(val) = val_str.parse::<f64>() {
-                        if let Some(g) = gte {
-                            if val < *g {
-                                return false;
-                            }
+                if let Some(val) = get_meta_numeric(metadata, key) {
+                    if let Some(g) = gte {
+                        if val < *g {
+                            return false;
                         }
-                        if let Some(l) = lte {
-                            if val > *l {
-                                return false;
-                            }
-                        }
-                        return true;
                     }
+                    if let Some(l) = lte {
+                        if val > *l {
+                            return false;
+                        }
+                    }
+                    return true;
                 }
                 false
             }
@@ -158,17 +165,17 @@ impl FilterExpr {
                 axes,
                 apertures,
                 cen,
-            } => region::ConeRegion::check_contains(axes, apertures, *cen, &vector.coords),
+            } => region::ConeRegion::check_contains(axes, apertures, *cen, coords),
             Self::InBox {
                 min_bounds,
                 max_bounds,
-            } => region::BoxRegion::check_contains(min_bounds, max_bounds, &vector.coords),
+            } => region::BoxRegion::check_contains(min_bounds, max_bounds, coords),
             Self::InBall { center, radius } => {
-                region::BallRegion::check_contains(center, *radius, &vector.coords)
+                region::BallRegion::check_contains(center, *radius, coords)
             }
-            Self::And(conds) => conds.iter().all(|c| c.check(vector, metadata)),
-            Self::Or(conds) => conds.iter().any(|c| c.check(vector, metadata)),
-            Self::Not(cond) => !cond.check(vector, metadata),
+            Self::And(conds) => conds.iter().all(|c| c.check_coords(coords, metadata)),
+            Self::Or(conds) => conds.iter().any(|c| c.check_coords(coords, metadata)),
+            Self::Not(cond) => !cond.check_coords(coords, metadata),
         }
     }
 
@@ -176,29 +183,25 @@ impl FilterExpr {
     /// are skipped (return `true`) because vector data is unavailable in scroll context.
     pub fn check_meta(&self, metadata: &std::collections::HashMap<String, String>) -> bool {
         match self {
-            Self::Match { key, value } => metadata.get(key) == Some(value),
+            Self::Match { key, value } => {
+                get_meta_string(metadata, key).as_deref() == Some(value.as_str())
+            }
             Self::Prefix { key, prefix } => {
-                if let Some(val_str) = metadata.get(key) {
-                    val_str.starts_with(prefix)
-                } else {
-                    false
-                }
+                get_meta_string(metadata, key).is_some_and(|s| s.starts_with(prefix))
             }
             Self::Range { key, gte, lte } => {
-                if let Some(val_str) = metadata.get(key) {
-                    if let Ok(val) = val_str.parse::<f64>() {
-                        if let Some(g) = gte {
-                            if val < *g {
-                                return false;
-                            }
+                if let Some(val) = get_meta_numeric(metadata, key) {
+                    if let Some(g) = gte {
+                        if val < *g {
+                            return false;
                         }
-                        if let Some(l) = lte {
-                            if val > *l {
-                                return false;
-                            }
-                        }
-                        return true;
                     }
+                    if let Some(l) = lte {
+                        if val > *l {
+                            return false;
+                        }
+                    }
+                    return true;
                 }
                 false
             }
@@ -209,6 +212,82 @@ impl FilterExpr {
             Self::Not(cond) => !cond.check_meta(metadata),
         }
     }
+}
+
+#[inline]
+fn get_typed_key<'a>(key: &str, buf: &'a mut [u8; 256]) -> Option<&'a str> {
+    const PREFIX: &[u8] = b"__hs_typed__";
+    if PREFIX.len() + key.len() <= buf.len() {
+        buf[..PREFIX.len()].copy_from_slice(PREFIX);
+        buf[PREFIX.len()..PREFIX.len() + key.len()].copy_from_slice(key.as_bytes());
+        std::str::from_utf8(&buf[..PREFIX.len() + key.len()]).ok()
+    } else {
+        None
+    }
+}
+
+fn get_meta_string<'a>(
+    metadata: &'a std::collections::HashMap<String, String>,
+    key: &str,
+) -> Option<std::borrow::Cow<'a, str>> {
+    if let Some(v) = metadata.get(key) {
+        return Some(std::borrow::Cow::Borrowed(v.as_str()));
+    }
+    let mut buf = [0u8; 256];
+    let raw_typed = if let Some(k) = get_typed_key(key, &mut buf) {
+        metadata.get(k)
+    } else {
+        metadata.get(&format!("__hs_typed__{key}"))
+    }?;
+
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum ShadowPayload<'b> {
+        Str(std::borrow::Cow<'b, str>),
+        Int(i64),
+        Float(f64),
+        Bool(bool),
+    }
+    #[derive(serde::Deserialize)]
+    struct ShadowObj<'b> {
+        #[serde(borrow)]
+        v: ShadowPayload<'b>,
+    }
+
+    if let Ok(shadow) = serde_json::from_str::<ShadowObj>(raw_typed) {
+        return match shadow.v {
+            ShadowPayload::Str(s) => Some(s),
+            ShadowPayload::Int(i) => Some(std::borrow::Cow::Owned(i.to_string())),
+            ShadowPayload::Float(f) => Some(std::borrow::Cow::Owned(f.to_string())),
+            ShadowPayload::Bool(b) => Some(std::borrow::Cow::Owned(b.to_string())),
+        };
+    }
+    None
+}
+
+fn get_meta_numeric(
+    metadata: &std::collections::HashMap<String, String>,
+    key: &str,
+) -> Option<f64> {
+    if let Some(v) = metadata.get(key) {
+        if let Ok(num) = v.parse::<f64>() {
+            return Some(num);
+        }
+    }
+    let mut buf = [0u8; 256];
+    let raw_typed = if let Some(k) = get_typed_key(key, &mut buf) {
+        metadata.get(k)
+    } else {
+        metadata.get(&format!("__hs_typed__{key}"))
+    }?;
+
+    #[derive(serde::Deserialize)]
+    struct ShadowNumeric {
+        v: f64,
+    }
+    serde_json::from_str::<ShadowNumeric>(raw_typed)
+        .ok()
+        .map(|s| s.v)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -657,15 +736,32 @@ impl Metric for PoincareMetric {
     }
 
     #[inline(always)]
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
-        let mut norm_u_sq = 0.0;
-        let mut norm_v_sq = 0.0;
-        let mut diff_sq = 0.0;
-
+        const LANES: usize = 4;
         let n = a.len().min(b.len());
-        for i in 0..n {
-            let u = a[i];
-            let v = b[i];
+        let mut acc_u = [0.0; LANES];
+        let mut acc_v = [0.0; LANES];
+        let mut acc_d = [0.0; LANES];
+        let chunks_a = a[..n].chunks_exact(LANES);
+        let chunks_b = b[..n].chunks_exact(LANES);
+        let rem_a = chunks_a.remainder();
+        let rem_b = chunks_b.remainder();
+
+        for (ca, cb) in chunks_a.zip(chunks_b) {
+            for l in 0..LANES {
+                let u = ca[l];
+                let v = cb[l];
+                acc_u[l] += u * u;
+                acc_v[l] += v * v;
+                let diff = u - v;
+                acc_d[l] += diff * diff;
+            }
+        }
+        let mut norm_u_sq = acc_u[0] + acc_u[1] + acc_u[2] + acc_u[3];
+        let mut norm_v_sq = acc_v[0] + acc_v[1] + acc_v[2] + acc_v[3];
+        let mut diff_sq = acc_d[0] + acc_d[1] + acc_d[2] + acc_d[3];
+        for (&u, &v) in rem_a.iter().zip(rem_b.iter()) {
             norm_u_sq += u * u;
             norm_v_sq += v * v;
             let diff = u - v;
@@ -844,7 +940,7 @@ impl Metric for LorentzMetric {
         );
         let mut spatial_dot = 0.0;
         let mut i = 1;
-        let n = a.len();
+        let n = a.len().min(b.len());
 
         #[cfg(feature = "nightly-simd")]
         {
@@ -858,6 +954,24 @@ impl Metric for LorentzMetric {
                 i += 4;
             }
             spatial_dot += sum_vec.reduce_sum();
+        }
+
+        #[cfg(not(feature = "nightly-simd"))]
+        if n > 1 {
+            let mut acc = [0.0; 4];
+            let (chunks_a, rem_a) = a[1..n].as_chunks::<4>();
+            let (chunks_b, rem_b) = b[1..n].as_chunks::<4>();
+
+            for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+                for l in 0..4 {
+                    acc[l] += ca[l] * cb[l];
+                }
+            }
+            spatial_dot += acc[0] + acc[1] + acc[2] + acc[3];
+            for (&va, &vb) in rem_a.iter().zip(rem_b.iter()) {
+                spatial_dot += va * vb;
+            }
+            i = n;
         }
 
         while i < n {
@@ -974,11 +1088,28 @@ impl Metric for EuclideanMetric {
 
     #[cfg(not(feature = "nightly-simd"))]
     #[inline(always)]
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
-        let mut sum = 0.0f32;
-        let n = a.len();
-        for i in 0..n {
-            let diff = (a[i] as f32) - (b[i] as f32);
+        const LANES: usize = 8;
+        let n = a.len().min(b.len());
+        let mut acc = [0.0_f32; LANES];
+        let chunks_a = a[..n].chunks_exact(LANES);
+        let chunks_b = b[..n].chunks_exact(LANES);
+        let rem_a = chunks_a.remainder();
+        let rem_b = chunks_b.remainder();
+
+        for (ca, cb) in chunks_a.zip(chunks_b) {
+            for l in 0..LANES {
+                let diff = (ca[l] as f32) - (cb[l] as f32);
+                acc[l] += diff * diff;
+            }
+        }
+        let mut sum = 0.0_f32;
+        for l in 0..LANES {
+            sum += acc[l];
+        }
+        for (x, y) in rem_a.iter().zip(rem_b.iter()) {
+            let diff = (*x as f32) - (*y as f32);
             sum += diff * diff;
         }
         f64::from(sum)
@@ -1039,15 +1170,34 @@ impl Metric for EuclideanMetric {
     }
 
     #[cfg(not(feature = "nightly-simd"))]
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         const SCALE_INV: f64 = 1.0 / 127.0;
-        let mut sum_sq_diff = 0.0;
-        for (a_i8, b_f64) in a.coords.iter().zip(b.coords.iter()) {
-            let a_val = f64::from(*a_i8) * SCALE_INV;
-            let diff = a_val - b_f64;
-            sum_sq_diff += diff * diff;
+        const LANES: usize = 8;
+        let n = a.coords.len().min(b.coords.len());
+        let mut acc = [0.0_f64; LANES];
+        let chunks_a = a.coords[..n].chunks_exact(LANES);
+        let chunks_b = b.coords[..n].chunks_exact(LANES);
+        let rem_a = chunks_a.remainder();
+        let rem_b = chunks_b.remainder();
+
+        for (ca, cb) in chunks_a.zip(chunks_b) {
+            for l in 0..LANES {
+                let a_val = f64::from(ca[l]) * SCALE_INV;
+                let diff = a_val - cb[l];
+                acc[l] += diff * diff;
+            }
         }
-        sum_sq_diff
+        let mut sum = 0.0_f64;
+        for l in 0..LANES {
+            sum += acc[l];
+        }
+        for (x, y) in rem_a.iter().zip(rem_b.iter()) {
+            let a_val = f64::from(*x) * SCALE_INV;
+            let diff = a_val - *y;
+            sum += diff * diff;
+        }
+        sum
     }
 
     fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {

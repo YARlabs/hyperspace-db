@@ -57,6 +57,9 @@ hyperspace-eco = { workspace = true, optional = true }
 hyperspace-p2p = { workspace = true, optional = true }
 hyperspace-billing = { workspace = true, optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3.10"
 
@@ -64,6 +67,8 @@ tempfile = "3.10"
 default = ["embed"]
 embed = ["dep:hyperspace-embed"]
 nightly-simd = ["hyperspace-core/nightly-simd", "hyperspace-index/nightly-simd"]
+# Linux io_uring batched payload / Direct-I/O reads (transparent pread fallback elsewhere).
+io-uring = ["hyperspace-store/io-uring"]
 # S3 tiering: optional cloud storage for cold chunks.
 # Not compiled by default — edge devices get zero cloud dependencies.
 # Enable with: cargo build --features s3-tiering

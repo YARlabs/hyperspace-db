@@ -35,11 +35,20 @@ fn v4_engine_enabled() -> bool {
     })
 }
 
+static COARSE_TIME_SECS: AtomicU64 = AtomicU64::new(0);
+
 fn current_time_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    let t = COARSE_TIME_SECS.load(Ordering::Relaxed);
+    if t != 0 {
+        t
+    } else {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        COARSE_TIME_SECS.store(now, Ordering::Relaxed);
+        now
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -101,6 +110,7 @@ pub struct CollectionManager {
     replication_tx: broadcast::Sender<ReplicationLog>,
     pub event_tx: broadcast::Sender<hyperspace_proto::hyperspace::EventMessage>,
     pub cluster_state: Arc<RwLock<ClusterState>>,
+    pub cluster_clock: Arc<AtomicU64>,
     pub system: Arc<Mutex<System>>,
 }
 
@@ -142,7 +152,18 @@ impl CollectionManager {
         };
 
         let collections = Arc::new(DashMap::<String, CollectionEntry>::new());
-        let mgr_map = collections.clone();
+        let mgr_weak = Arc::downgrade(&collections);
+
+        // Background coarse clock ticker: updates atomic timestamp every second to avoid syscalls in hot path.
+        tokio::spawn(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+                if let Ok(dur) = SystemTime::now().duration_since(UNIX_EPOCH) {
+                    COARSE_TIME_SECS.store(dur.as_secs(), Ordering::Relaxed);
+                }
+            }
+        });
 
         // Spawns background reaper for idle collection eviction.
         tokio::spawn(async move {
@@ -161,6 +182,10 @@ impl CollectionManager {
 
             loop {
                 tokio::time::sleep(check_interval).await;
+
+                let Some(mgr_map) = mgr_weak.upgrade() else {
+                    break;
+                };
 
                 let now_secs = current_time_secs();
                 let mut to_remove = Vec::new();
@@ -182,18 +207,23 @@ impl CollectionManager {
         });
 
         let system = Arc::new(Mutex::new(System::new_all()));
-        let sys_clone = system.clone();
+        let sys_weak = Arc::downgrade(&system);
 
         // Spawn background task to refresh system metrics (CPU usage calculation requires history)
         tokio::spawn(async move {
             loop {
-                {
-                    let mut sys = sys_clone.lock();
-                    sys.refresh_all();
-                }
                 tokio::time::sleep(Duration::from_secs(30)).await;
+                let Some(sys) = sys_weak.upgrade() else {
+                    break;
+                };
+                {
+                    let mut s = sys.lock();
+                    s.refresh_all();
+                }
             }
         });
+
+        let cluster_clock = Arc::new(AtomicU64::new(state.logical_clock));
 
         Self {
             base_path,
@@ -201,6 +231,7 @@ impl CollectionManager {
             replication_tx,
             event_tx,
             cluster_state: Arc::new(RwLock::new(state)),
+            cluster_clock,
             system,
         }
     }
@@ -662,14 +693,23 @@ impl CollectionManager {
             .sum()
     }
 
+    #[inline]
+    pub fn get_cluster_clock(&self) -> u64 {
+        self.cluster_clock.load(Ordering::Relaxed)
+    }
+
     pub async fn tick_cluster_clock(&self) -> u64 {
         let mut state = self.cluster_state.write().await;
-        state.tick()
+        let c = state.tick();
+        self.cluster_clock.store(c, Ordering::Relaxed);
+        c
     }
 
     pub async fn merge_cluster_clock(&self, remote_clock: u64) {
         let mut state = self.cluster_state.write().await;
         state.merge(remote_clock);
+        self.cluster_clock
+            .store(state.logical_clock, Ordering::Relaxed);
     }
 
     pub async fn delete_collection(&self, user_id: &str, name: &str) -> Result<(), String> {
@@ -953,6 +993,12 @@ impl CollectionMetadata {
                 }
             }
         }
+    }
+}
+
+impl Drop for CollectionManager {
+    fn drop(&mut self) {
+        self.collections.clear();
     }
 }
 

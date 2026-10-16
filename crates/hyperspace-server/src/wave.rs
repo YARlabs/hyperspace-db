@@ -136,6 +136,8 @@ impl WaveInferenceEngine {
             query_potential.insert(*id, similarity);
         }
 
+        let inv_sigma_sq = 1.0 / (params.sigma * params.sigma).max(1e-9);
+
         // ── 2. DIFFUSION PHASE (Klein-Gordon) ───────────────────────────────────────
         for step in 0..params.steps {
             // a. Transfer energy along graph edges
@@ -157,7 +159,7 @@ impl WaveInferenceEngine {
                     if let Ok(distances) = collection.graph_neighbor_distances(id, &neighbors) {
                         for (neighbor_id, dist) in neighbors.into_iter().zip(distances) {
                             // Gaussian edge kernel: higher weight for closer neighbors
-                            let edge_weight = (-dist.powi(2) / params.sigma.powi(2)).exp();
+                            let edge_weight = (-dist * dist * inv_sigma_sq).exp();
                             // Energy transferred through this edge, damped by global factor
                             let transferred = psi * edge_weight * params.damping;
                             *next_energy.entry(neighbor_id).or_insert(0.0) += transferred;
@@ -213,28 +215,31 @@ impl WaveInferenceEngine {
             // d. Beam pruning: keep only the top `beam_width` nodes by energy.
             //    This prevents exponential node explosion on dense graphs.
             if next_energy.len() > params.beam_width {
-                let mut sorted_nodes: Vec<(u32, f64)> = next_energy.into_iter().collect();
-                sorted_nodes
-                    .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                sorted_nodes.truncate(params.beam_width);
-                energy_map = sorted_nodes.into_iter().collect();
+                let mut nodes: Vec<(u32, f64)> = next_energy.into_iter().collect();
+                nodes.select_nth_unstable_by(params.beam_width, |a, b| {
+                    b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                nodes.truncate(params.beam_width);
+                energy_map = nodes.into_iter().collect();
             } else {
                 energy_map = next_energy;
             }
         }
 
         // ── 3. RESULT PHASE ─────────────────────────────────────────────────────────
-        let mut results: Vec<(u32, f64, HashMap<String, String>)> = energy_map
+        let mut sorted_energy: Vec<(u32, f64)> = energy_map.into_iter().collect();
+        // Sort by energy descending (highest resonance = most relevant)
+        sorted_energy.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        sorted_energy.truncate(params.top_k);
+
+        // Fetch metadata only for the final Top-K winners
+        let results: Vec<(u32, f64, HashMap<String, String>)> = sorted_energy
             .into_iter()
             .map(|(id, energy)| {
                 let meta = collection.metadata_by_id(id);
                 (id, energy, meta)
             })
             .collect();
-
-        // Sort by energy descending (highest resonance = most relevant)
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        results.truncate(params.top_k);
 
         Ok(results)
     }

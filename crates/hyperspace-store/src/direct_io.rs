@@ -390,6 +390,92 @@ impl DirectVectorStore {
         Ok(())
     }
 
+    /// Reads many vectors at once into `out` (`out.len() == ids.len() * element_size`,
+    /// results laid out in `ids` order).
+    ///
+    /// With the `io-uring` feature on Linux all reads of a segment are submitted to the kernel
+    /// in a single batch; otherwise (or on any io_uring failure) this degrades to a loop over
+    /// [`Self::read_vector`], so the result is identical on every platform.
+    pub fn read_vectors_batch(&self, ids: &[u32], out: &mut [u8]) -> Result<(), String> {
+        let es = self.element_size;
+        if out.len() != ids.len() * es {
+            return Err(format!(
+                "Output buffer size mismatch: {} vs {}",
+                out.len(),
+                ids.len() * es
+            ));
+        }
+        if ids.len() >= 2
+            && crate::uring_io::io_uring_active()
+            && self.read_vectors_batch_uring(ids, out).is_ok()
+        {
+            return Ok(());
+        }
+        for (i, &id) in ids.iter().enumerate() {
+            self.read_vector(id, &mut out[i * es..(i + 1) * es])?;
+        }
+        Ok(())
+    }
+
+    fn read_vectors_batch_uring(&self, ids: &[u32], out: &mut [u8]) -> io::Result<()> {
+        use crate::uring_io::{read_raw_batch_at, RawRead};
+        use std::collections::BTreeMap;
+
+        let es = self.element_size;
+        let segs = self.segments.load();
+        // Worst case: vector starts at the last byte of a block and spans one extra block.
+        let slot_len =
+            (DIRECT_IO_ALIGNMENT + es + DIRECT_IO_ALIGNMENT - 1) & !(DIRECT_IO_ALIGNMENT - 1);
+        let mut buf = AlignedBuffer::new(slot_len * ids.len());
+        let base = buf.as_mut_ptr();
+
+        // segment -> [(position in `ids`, in-block offset, raw read)]
+        let mut per_seg: BTreeMap<usize, Vec<(usize, usize, RawRead)>> = BTreeMap::new();
+        for (i, &id) in ids.iter().enumerate() {
+            let id_val = id as usize;
+            let seg_idx = id_val / Self::VECTORS_PER_SEGMENT;
+            if seg_idx >= segs.len() {
+                return Err(io::Error::other("vector id out of bounds"));
+            }
+            let offset = ((id_val % Self::VECTORS_PER_SEGMENT) * self.stride) as u64;
+            let block_offset = offset & !(DIRECT_IO_ALIGNMENT as u64 - 1);
+            let in_block = (offset - block_offset) as usize;
+            let len = (in_block + es + DIRECT_IO_ALIGNMENT - 1) & !(DIRECT_IO_ALIGNMENT - 1);
+            per_seg.entry(seg_idx).or_default().push((
+                i,
+                in_block,
+                RawRead {
+                    offset: block_offset,
+                    // SAFETY: `i * slot_len + len <= buf.len()` because len <= slot_len.
+                    ptr: unsafe { base.add(i * slot_len) },
+                    len,
+                },
+            ));
+        }
+
+        for (seg_idx, items) in &per_seg {
+            let raws: Vec<RawRead> = items
+                .iter()
+                .map(|(_, _, r)| RawRead {
+                    offset: r.offset,
+                    ptr: r.ptr,
+                    len: r.len,
+                })
+                .collect();
+            // SAFETY: each RawRead targets a disjoint, 4096-aligned slot of `buf`, which
+            // outlives the call.
+            unsafe { read_raw_batch_at(&segs[*seg_idx].file.file, &raws)? };
+        }
+
+        for items in per_seg.values() {
+            for (i, in_block, _) in items {
+                let src = i * slot_len + in_block;
+                out[i * es..(i + 1) * es].copy_from_slice(&buf[src..src + es]);
+            }
+        }
+        Ok(())
+    }
+
     fn ensure_segment(&self, segment_idx: usize) -> Result<(), String> {
         let segs = self.segments.load();
         if segment_idx < segs.len() {
@@ -459,5 +545,32 @@ mod tests {
 
         store.read_vector(2, &mut out).unwrap();
         assert_eq!(out, v2);
+    }
+
+    #[test]
+    fn test_read_vectors_batch_matches_single_reads() {
+        let dir = tempdir().unwrap();
+        // 1000-byte elements -> stride 1024; vectors straddle 4 KiB block boundaries.
+        let element_size = 1000;
+        let store = DirectVectorStore::new(dir.path(), element_size).unwrap();
+        let mut expected = Vec::new();
+        for i in 0..40u32 {
+            let v: Vec<u8> = (0..element_size)
+                .map(|j| ((i as usize * 7 + j) % 253) as u8)
+                .collect();
+            store.append(&v).unwrap();
+            expected.push(v);
+        }
+        let ids = [39u32, 0, 5, 4, 17, 17, 31];
+        let mut out = vec![0u8; ids.len() * element_size];
+        store.read_vectors_batch(&ids, &mut out).unwrap();
+        for (i, &id) in ids.iter().enumerate() {
+            assert_eq!(
+                &out[i * element_size..(i + 1) * element_size],
+                &expected[id as usize][..]
+            );
+        }
+        let mut bad = vec![0u8; element_size];
+        assert!(store.read_vectors_batch(&[1_000_000], &mut bad).is_err());
     }
 }

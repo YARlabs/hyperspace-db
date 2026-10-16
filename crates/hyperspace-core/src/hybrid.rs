@@ -184,6 +184,39 @@ impl HybridQuantizedVector {
         let d_euc = self.euclidean_distance_sq_mrl(other, euc_dim);
         d_lor + d_euc
     }
+
+    #[inline(always)]
+    pub fn distance_bytes_mrl(bytes: &[u8], query: &HyperVector, euc_dim: Option<usize>) -> f64 {
+        if bytes.len() < 132 || query.coords.len() < 33 {
+            return f64::MAX;
+        }
+        let t0 = f64::from(f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4])));
+        let mut inner = -t0 * query.coords[0];
+        for i in 1..33 {
+            let offset = i * 4;
+            let val = f64::from(f32::from_le_bytes(
+                bytes[offset..offset + 4].try_into().unwrap_or([0; 4]),
+            ));
+            inner += val * query.coords[i];
+        }
+        let d_lor = (-inner).max(1.0 + 1e-12).acosh();
+
+        let euc_bytes = &bytes[132..bytes.len().saturating_sub(4)];
+        let limit = match euc_dim {
+            Some(dim) => dim.min(euc_bytes.len()),
+            None => euc_bytes.len(),
+        };
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let mut d_euc = 0.0;
+        let q_offset = 33;
+        let n = limit.min(query.coords.len().saturating_sub(q_offset));
+        for i in 0..n {
+            let a = f64::from(euc_bytes[i].cast_signed()) * SCALE_INV;
+            let diff = a - query.coords[q_offset + i];
+            d_euc += diff * diff;
+        }
+        d_lor + d_euc
+    }
 }
 
 pub struct HybridMetric;
@@ -424,6 +457,75 @@ impl HybridLowBitQuantizedVector {
         let d_euc = self.euclidean_distance_sq_mrl(other, euc_dim);
         d_lor + d_euc
     }
+
+    #[inline(always)]
+    pub fn distance_bytes_mrl(bytes: &[u8], query: &HyperVector, euc_dim: usize) -> f64 {
+        if bytes.len() < 136 || query.coords.len() < 33 {
+            return f64::MAX;
+        }
+        let t0 = f64::from(f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4])));
+        let mut inner = -t0 * query.coords[0];
+        for i in 1..33 {
+            let offset = i * 4;
+            let val = f64::from(f32::from_le_bytes(
+                bytes[offset..offset + 4].try_into().unwrap_or([0; 4]),
+            ));
+            inner += val * query.coords[i];
+        }
+        let d_lor = (-inner).max(1.0 + 1e-12).acosh();
+
+        let scales_count =
+            u32::from_le_bytes(bytes[132..136].try_into().unwrap_or([0; 4])) as usize;
+        let scales_offset = 136;
+        let packed_offset = scales_offset + scales_count * 4;
+        if bytes.len() < packed_offset {
+            return d_lor;
+        }
+        let packed_tail = &bytes[packed_offset..];
+
+        let offset = 33;
+        let limit = euc_dim.min(scales_count * 16);
+        let block_size = 16;
+        let num_blocks = scales_count;
+        let mut d_euc = 0.0;
+
+        for b in 0..num_blocks {
+            let start = b * block_size;
+            if start >= limit {
+                break;
+            }
+            let end = (start + block_size).min(limit);
+            let s_off = scales_offset + b * 4;
+            let scale = f64::from(f32::from_le_bytes(
+                bytes[s_off..s_off + 4].try_into().unwrap_or([0; 4]),
+            ));
+            let packed_block_offset = b * 8;
+
+            for i in start..end {
+                let relative_idx = i - start;
+                let pair_idx = relative_idx / 2;
+                let is_second = relative_idx % 2 == 1;
+
+                if packed_block_offset + pair_idx >= packed_tail.len()
+                    || offset + i >= query.coords.len()
+                {
+                    break;
+                }
+                let packed_byte = packed_tail[packed_block_offset + pair_idx];
+                let u_val = if is_second {
+                    packed_byte & 0x0F
+                } else {
+                    packed_byte >> 4
+                };
+                let q = u_val.cast_signed() - 8;
+                let a = f64::from(q) * scale;
+                let b_val = query.coords[offset + i];
+                let d = a - b_val;
+                d_euc += d * d;
+            }
+        }
+        d_lor + d_euc
+    }
 }
 
 pub struct HybridExtremeQuantizedVector {
@@ -530,6 +632,39 @@ impl HybridExtremeQuantizedVector {
     pub fn distance_mrl(&self, other: &HyperVector, euc_dim: usize) -> f64 {
         let d_lor = self.lorentz_distance_to_float(other);
         let d_euc = self.euclidean_distance_sq_mrl(other, euc_dim);
+        d_lor + d_euc
+    }
+
+    #[inline(always)]
+    pub fn distance_bytes_mrl(bytes: &[u8], query: &HyperVector, euc_cutoff: usize) -> f64 {
+        if bytes.len() < 136 || query.coords.len() < 33 {
+            return f64::MAX;
+        }
+        let t0 = f64::from(f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4])));
+        let mut inner = -t0 * query.coords[0];
+        for i in 1..33 {
+            let offset = i * 4;
+            let val = f64::from(f32::from_le_bytes(
+                bytes[offset..offset + 4].try_into().unwrap_or([0; 4]),
+            ));
+            inner += val * query.coords[i];
+        }
+        let d_lor = (-inner).max(1.0 + 1e-12).acosh();
+
+        let alpha = f32::from_le_bytes(bytes[132..136].try_into().unwrap_or([0; 4]));
+        let euclidean_bits = &bytes[136..];
+        let offset = 33;
+        let limit = euc_cutoff.min(euclidean_bits.len() * 8);
+        let alpha_f64 = f64::from(alpha);
+        let mut d_euc = 0.0;
+        let n = limit.min(query.coords.len().saturating_sub(offset));
+
+        for i in 0..n {
+            let bit = (euclidean_bits[i / 8] >> (i % 8)) & 1;
+            let val = if bit == 1 { alpha_f64 } else { -alpha_f64 };
+            let diff = val - query.coords[offset + i];
+            d_euc += diff * diff;
+        }
         d_lor + d_euc
     }
 }
@@ -645,8 +780,9 @@ impl ScalarI4Vector {
     }
 
     #[allow(clippy::cast_possible_wrap)]
-    pub fn reconstruct(&self, total_dim: usize) -> Vec<f64> {
-        let mut out = Vec::with_capacity(total_dim);
+    pub fn reconstruct_into(&self, total_dim: usize, out: &mut Vec<f64>) {
+        out.clear();
+        out.reserve(total_dim);
         let head_len = self.head.len().min(total_dim);
         for &h in &self.head[..head_len] {
             out.push(f64::from(h));
@@ -679,6 +815,12 @@ impl ScalarI4Vector {
                 out.push(f64::from(q) * scale);
             }
         }
+    }
+
+    #[allow(clippy::cast_possible_wrap)]
+    pub fn reconstruct(&self, total_dim: usize) -> Vec<f64> {
+        let mut out = Vec::with_capacity(total_dim);
+        self.reconstruct_into(total_dim, &mut out);
         out
     }
 
@@ -737,6 +879,146 @@ impl ScalarI4Vector {
             }
         }
         sum
+    }
+
+    #[inline(always)]
+    #[allow(clippy::cast_possible_wrap)]
+    pub fn distance_bytes_l2_sq_mrl(
+        bytes: &[u8],
+        other: &HyperVector,
+        active_dim: usize,
+        head_dim: usize,
+    ) -> f64 {
+        let head_bytes_len = head_dim * 4;
+        if bytes.len() < head_bytes_len + 4 {
+            return f64::MAX;
+        }
+        let mut sum = 0.0;
+        let actual_head = head_dim.min(active_dim).min(other.coords.len());
+        for i in 0..actual_head {
+            let offset = i * 4;
+            let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+            let diff = f64::from(h) - other.coords[i];
+            sum += diff * diff;
+        }
+        if active_dim <= head_dim {
+            return sum;
+        }
+
+        let scales_count = u32::from_le_bytes(
+            bytes[head_bytes_len..head_bytes_len + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        ) as usize;
+        let scales_offset = head_bytes_len + 4;
+        let packed_offset = scales_offset + scales_count * 4;
+        if bytes.len() < packed_offset {
+            return sum;
+        }
+        let packed_tail = &bytes[packed_offset..];
+        let tail_active = active_dim - head_dim;
+        let block_size = 16;
+
+        for b in 0..scales_count {
+            let start = b * block_size;
+            if start >= tail_active {
+                break;
+            }
+            let end = (start + block_size).min(tail_active);
+            let s_off = scales_offset + b * 4;
+            let scale = f64::from(f32::from_le_bytes(
+                bytes[s_off..s_off + 4].try_into().unwrap_or([0; 4]),
+            ));
+            let packed_block_offset = b * 8;
+
+            for i in start..end {
+                let relative_idx = i - start;
+                let pair_idx = relative_idx / 2;
+                let is_second = relative_idx % 2 == 1;
+                let other_idx = head_dim + i;
+                if other_idx >= other.coords.len()
+                    || packed_block_offset + pair_idx >= packed_tail.len()
+                {
+                    break;
+                }
+                let packed_byte = packed_tail[packed_block_offset + pair_idx];
+                let u_val = if is_second {
+                    packed_byte & 0x0F
+                } else {
+                    packed_byte >> 4
+                };
+                let q = (u_val as i8) - 8;
+                let a = f64::from(q) * scale;
+                let diff = a - other.coords[other_idx];
+                sum += diff * diff;
+            }
+        }
+        sum
+    }
+
+    #[allow(clippy::cast_possible_wrap)]
+    pub fn reconstruct_bytes_into(
+        bytes: &[u8],
+        total_dim: usize,
+        head_dim: usize,
+        out: &mut Vec<f64>,
+    ) {
+        out.clear();
+        out.reserve(total_dim);
+        let head_bytes_len = head_dim * 4;
+        if bytes.len() < head_bytes_len + 4 {
+            return;
+        }
+        let head_len = head_dim.min(total_dim);
+        for i in 0..head_len {
+            let offset = i * 4;
+            let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+            out.push(f64::from(h));
+        }
+        if total_dim <= head_len {
+            return;
+        }
+        let tail_dim = total_dim - head_len;
+        let scales_count = u32::from_le_bytes(
+            bytes[head_bytes_len..head_bytes_len + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        ) as usize;
+        let scales_offset = head_bytes_len + 4;
+        let packed_offset = scales_offset + scales_count * 4;
+        if bytes.len() < packed_offset {
+            return;
+        }
+        let packed_tail = &bytes[packed_offset..];
+        let block_size = 16;
+        for b in 0..scales_count {
+            let start = b * block_size;
+            if start >= tail_dim {
+                break;
+            }
+            let end = (start + block_size).min(tail_dim);
+            let s_off = scales_offset + b * 4;
+            let scale = f64::from(f32::from_le_bytes(
+                bytes[s_off..s_off + 4].try_into().unwrap_or([0; 4]),
+            ));
+            let packed_block_offset = b * 8;
+            for i in start..end {
+                let relative_idx = i - start;
+                let pair_idx = relative_idx / 2;
+                let is_second = relative_idx % 2 == 1;
+                if packed_block_offset + pair_idx >= packed_tail.len() {
+                    break;
+                }
+                let packed_byte = packed_tail[packed_block_offset + pair_idx];
+                let u_val = if is_second {
+                    packed_byte & 0x0F
+                } else {
+                    packed_byte >> 4
+                };
+                let q = (u_val as i8) - 8;
+                out.push(f64::from(q) * scale);
+            }
+        }
     }
 }
 
