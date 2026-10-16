@@ -421,4 +421,52 @@ mod tests {
         let exact = l2_sq_f32_bytes(&bytes, &b, Some(full * 2.0));
         assert!((exact - full).abs() <= full * 1e-5);
     }
+
+    #[test]
+    fn bench_simd_vs_scalar() {
+        let a = sample(1024, 0.5);
+        let b = sample(1024, 1.5);
+        let bytes = to_bytes(&a);
+        let iters = 50_000;
+
+        let t0 = std::time::Instant::now();
+        let mut s_scalar = 0.0f32;
+        for _ in 0..iters {
+            s_scalar += l2_sq_dispatch(SimdBackend::Scalar, &bytes, &b);
+        }
+        let dur_scalar = t0.elapsed();
+
+        #[cfg(target_arch = "aarch64")]
+        let hw_be = SimdBackend::Neon;
+        #[cfg(target_arch = "x86_64")]
+        let hw_be = SimdBackend::Avx2;
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+        let hw_be = SimdBackend::Scalar;
+
+        let t1 = std::time::Instant::now();
+        let mut s_hw = 0.0f32;
+        for _ in 0..iters {
+            s_hw += l2_sq_dispatch(hw_be, &bytes, &b);
+        }
+        let dur_hw = t1.elapsed();
+
+        let ns_scalar = (dur_scalar.as_nanos() as f64) / iters as f64;
+        let ns_hw = (dur_hw.as_nanos() as f64) / iters as f64;
+        let speedup = ns_scalar / ns_hw;
+
+        println!("\n=== SIMD Micro-Benchmark (1024D, 50,000 iterations) ===");
+        println!(
+            "Scalar Backend:   {:.2} ns/vector ({:.2?}) [checksum: {:.2}]",
+            ns_scalar, dur_scalar, s_scalar
+        );
+        println!(
+            "Hardware Backend ({:?}): {:.2} ns/vector ({:.2?}) [checksum: {:.2}]",
+            hw_be, ns_hw, dur_hw, s_hw
+        );
+        println!(
+            "Hardware Speedup: {:.2}x (+{:.1}% throughput)",
+            speedup,
+            (speedup - 1.0) * 100.0
+        );
+    }
 }

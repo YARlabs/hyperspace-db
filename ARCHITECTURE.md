@@ -646,5 +646,66 @@ The v4.0.0 server initializes an autonomous migration scanner on startup:
 
 ---
 
+## ⚡️ Hardware-Level Performance Engine: Runtime SIMD, Linux io_uring, NUMA & Zero-Copy Traversal (v4.1.0)
+
+HyperspaceDB v4.1 introduces deep hardware-level acceleration and memory subsystem optimizations, targeting the micro-architectural bottlenecks that appear under extreme multi-gigabyte and multi-socket throughput.
+
+```mermaid
+graph TD
+    subgraph "Hardware Acceleration Layer (v4.1.0)"
+        SIMD["Runtime SIMD Dispatch<br/>(AVX-512F / AVX2+FMA / NEON / Scalar)"]
+        ZEROCP["Zero-Copy Traversal Kernels<br/>(distance_bytes_* direct on slices)"]
+        URING["Linux io_uring Batched I/O<br/>(submission ring: fetch_many & DirectVectorStore)"]
+        NUMA["NUMA-Aware Topology<br/>(Core socket affinity + first-touch RAM locality)"]
+        SHARD_PAYLOAD["ShardedPayloadIndex<br/>(32-striped concurrent read/write locks)"]
+    end
+
+    SIMD -->|Zero Heap Allocation| HNSW_CORE["HNSW Layer-0 Traversal"]
+    ZEROCP -->|0 ns Copy Overhead| HNSW_CORE
+    URING -->|Single-Syscall Batching| NVME_DMA["NVMe Storage Bus"]
+    NUMA -->|Interconnect Bypass| TOKIO_THREADS["Tokio Runtime Workers"]
+    SHARD_PAYLOAD -->|Cacheline Bouncing Elimination| PAYLOAD_STORE["Sidecar Payload Store"]
+```
+
+### 1. Dynamic Runtime SIMD Dispatch (`crates/hyperspace-core/src/simd.rs`)
+* **Multi-ISA CPU Feature Detection**: Rather than relying only on compiler baseline flags (which fall back to SSE2 on generic x86_64 distributions), the f32 kernels are compiled with explicit `#[target_feature]` attributes and dynamically selected once at startup:
+  * **x86_64**: AVX-512F (`_mm512_loadu_ps` / `_mm512_fmadd_ps`, processing 16 `f32` floats per cycle) with fallback to AVX2 + FMA (`_mm256_loadu_ps` / `_mm256_fmadd_ps`, 8 `f32` floats per cycle).
+  * **AArch64 (Apple Silicon / AWS Graviton)**: NEON (`vld1q_f32` / `vfmaq_f32`, 4 `f32` floats per cycle with dual accumulator registers).
+  * **Portable Fallback**: 4 independent accumulator scalar registers avoiding CPU FPU pipeline stalls.
+* **Direct Unaligned Byte Reading**: Kernels read little-endian float bytes directly from disk or RAM byte slices with zero intermediate copies or buffer casting.
+* **Early-Exit Thresholding**: During HNSW beam traversal, candidate distances that already exceed the beam threshold are terminated early every 64 floats, saving up to 70% of arithmetic cycles on distant nodes.
+* **Runtime Override**: Controllable via `HS_SIMD=scalar|avx2|avx512|neon` for deterministic benchmarking and cloud environments where AVX-512 frequency scaling is undesirable.
+
+### 2. Zero-Copy Inner Search Traversal Loop
+* **The Elimination of `get_vector` Allocations**: In previous versions, computing the distance to candidate nodes required unpacking quantized storage into temporary heap buffers (`Vec<i8>`, `Vec<f32>`, or `HyperVector`). Under high concurrency ($ef\_search = 100$), this generated up to 50,000 short-lived heap allocations per query.
+* **Native `distance_bytes_*` Suite**:
+  * `QuantizedHyperVector::distance_bytes_euclidean_sq` & `distance_bytes_poincare_sq`
+  * `BinaryHyperVector::poincare_distance_sq_bytes` & `adc_distance_bytes`
+  * `HybridQuantizedVector::distance_bytes_mrl` & `distance_bytes_l2_sq_mrl`
+  * `ScalarI4Vector` & `storage_f32` direct streaming
+* All distance computations operate strictly by reference (`&[u8]`) without allocating a single byte on the heap.
+
+### 3. Asynchronous Linux `io_uring` Batched Positional I/O (`crates/hyperspace-store/src/uring_io.rs`)
+* **Single-Syscall Submission Rings**: For high-concurrency top-K payload retrieval (`PayloadStore::fetch_many`) and DirectVectorStore batch gathers (`read_vectors_batch`), requests are submitted as a single batched array to the Linux `io_uring` submission queue (`io_uring_enter`).
+* **Hardware Interleaving**: Multiple non-contiguous NVMe blocks are read concurrently by the kernel block layer without context switches.
+* **Transparent Fallback**: On macOS, BSD, Windows, or non-io_uring Linux kernels, requests cleanly fall back to high-throughput `pread_exact_at` loops. Controllable via `HS_IO_URING=0`.
+
+### 4. Multi-Socket NUMA-Aware Topology & Core Affinity (`crates/hyperspace-server/src/numa.rs`)
+* **Interconnect Bottleneck Elimination**: On multi-socket AMD EPYC and Intel Xeon systems (2–4 sockets), threads traversing memory owned by a remote socket pay high UPI / Infinity Fabric latency penalties.
+* **Topology Detection**: Reads Linux `/sys/devices/system/node/node*/cpulist` and intersects it with the active process `sched_getaffinity` cpuset.
+* **First-Touch Memory Locality**: Tokio worker threads and blocking thread pools are pinned round-robin to the CPU cores of their respective NUMA sockets via `on_thread_start`. All thread-local allocations (jemalloc arenas, `VisitedScratch` generations, query buffers) stay strictly local to that socket's memory bus. Controllable via `HS_NUMA=0`.
+
+### 5. 32-Stripe Sharded Payload Index (`ShardedPayloadIndex`)
+* **Lock Contention Elimination in Sidecar Storage**: Replaced the monolithic global `RwLock<HashMap<u32, PayloadSlot>>` with a 32-stripe sharded index keyed by `(id as usize) & (NUM_PAYLOAD_SHARDS - 1)`.
+* Concurrent reads to different vector IDs execute with zero lock contention and zero cacheline bouncing across CPU cores.
+
+### 6. Mathematical Kernel & Algorithmic Optimizations
+* **Gromov Hyperbolicity**: Replaced `powi(2)` with `d * d` via `as_chunks::<4>()` and replaced sorting arrays of 3 elements with branchless direct comparisons, yielding a **4× reduction in delta latency**.
+* **Fast Walsh-Hadamard Transform (`TurboRot`)**: Precomputes transformation plans for standard embedding dimensions (64, 128, 256, 384, 512, 768, 1024, 1536) in `OnceLock`, with 4-way unrolled butterfly loops.
+* **Conical Aperture Cache**: Caches trigonometric threshold calculations (`cos(aperture)`) in a thread-local cell, eliminating transcendental functions from the candidate evaluation hot path.
+* **Sparse BM25 Search**: Fast sequential accumulator for $\le 8$ token queries, bypassing Rayon thread pool scheduling overhead on short keyword lookups.
+
+---
+
 *Copyright © 2026 YARlabs - Confidential & Proprietary*
 

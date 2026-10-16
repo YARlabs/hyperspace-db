@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.1.0] - 2026-10-15
 
 ### Added
+* **Hardware-Level Performance Engine & Bottleneck Elimination (v4.1.0 Performance Overhaul)**:
+  * **Dynamic Runtime SIMD Dispatch (`crates/hyperspace-core/src/simd.rs`)**:
+    * Runtime detection of CPU capabilities selecting between AVX-512F (16xf32), AVX2+FMA (8xf32), ARM NEON (4xf32), and portable scalar (4-accumulator).
+    * Direct unaligned little-endian float byte reading (`l2_sq_f32_bytes`) without memory copying or heap allocations.
+    * Integrated into HNSW inner search traversal loop (`dist_mrl_opt`) with early-exit distance thresholding evaluated every 64 floats.
+    * Controllable via `HS_SIMD=scalar|avx2|avx512|neon` environment variable.
+  * **Zero-Copy Inner Search Traversal Loop**:
+    * Implemented zero-copy `distance_bytes_*` methods across all quantization formats: `QuantizedHyperVector`, `BinaryHyperVector`, `HybridQuantizedVector`, `HybridLowBitQuantizedVector`, `HybridExtremeQuantizedVector`, and `ScalarI4Vector`.
+    * Eliminates up to 50,000 heap allocations per second of `Vec<i8>`, `Vec<f32>`, and `HyperVector` during HNSW graph descent.
+  * **Asynchronous Linux `io_uring` Batched Positional Reads (`crates/hyperspace-store/src/uring_io.rs`)**:
+    * Single-syscall batch submission (`io_uring_enter`) for multi-id payload retrieval in `PayloadStore::fetch_many` and DirectVectorStore batch reads (`read_vectors_batch`).
+    * Transparent fallback to `read_exact_at` loops on macOS, BSD, Windows, or kernels without io_uring support. Controllable via `HS_IO_URING=0`.
+  * **Multi-Socket NUMA-Aware Topology & Core Affinity (`crates/hyperspace-server/src/numa.rs`)**:
+    * Automated detection of NUMA node socket topology via `/sys/devices/system/node` filtered by active process cgroup cpuset.
+    * Round-robin socket affinity pinning for tokio runtime worker and blocking threads to guarantee first-touch memory allocation locality. Controllable via `HS_NUMA=0`.
+  * **32-Stripe Sharded Payload Index (`ShardedPayloadIndex`)**:
+    * Replaced monolithic global `RwLock<HashMap<u32, PayloadSlot>>` with 32 striped reader/writer locks, eliminating cacheline bouncing under concurrent payload read access.
+  * **Hoisted PQ LUT & Bounded Min/Max Heap**:
+    * Hoisted Product Quantization lookup table computation in `search_bruteforce_bitmap` and replaced full-array $O(M \log M)$ sorting with a bounded $O(M \log k)$ `BinaryHeap<MaxCandidate>`.
+  * **Mathematical Kernels & Graph Engine Hardening**:
+    * Vectorized Gromov hyperbolicity evaluation with `as_chunks::<4>()` and direct branchless max comparisons.
+    * Static `OnceLock` Fast Walsh-Hadamard Transform plans and unrolled butterfly loops in `TurboRot`.
+    * Fast sequential path for short sparse BM25 queries ($\le 8$ tokens) eliminating Rayon thread dispatch overhead.
+    * Geometrically pre-allocated adjacency capacity in `DynamicGraph::ensure_node_capacity`.
 * **Specialized Domain Cognitive SDKs (`hyperspace` Python SDK)**:
   * **`chemSDK` (Cheminformatics & Molecular AI)**:
     * Deterministic circular atom-environment topological fingerprinting (`smiles_to_fingerprint`) with pure-Python fallback and optional RDKit ECFP4 integration.

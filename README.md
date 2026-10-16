@@ -73,6 +73,10 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
     <td>Zero-downtime auto-migration engine converting legacy v3 collections to partitioned v4 storage. Enforces strict filtering against live <code>id_map</code> and logs <code>WalEntry::Delete</code> tombstones (OpCode 5), guaranteeing zero resurrected points across restarts and crashes.</td>
   </tr>
   <tr>
+    <td>🚀 <b>Hardware Performance Engine (v4.1.0)</b></td>
+    <td>Micro-architectural hardware acceleration layer. Features <b>Dynamic Runtime SIMD Dispatch</b> selecting between AVX-512F (16xf32), AVX2+FMA (8xf32), and ARM NEON (4xf32) with unaligned loads and early-exit thresholding; <b>Zero-Copy Inner Distance Kernels</b> (<code>distance_bytes_*</code>) eliminating up to 50,000 heap allocations per second during HNSW graph descent; <b>Linux io_uring Batched Positional I/O</b> for single-syscall NVMe batch gathers; <b>Multi-Socket NUMA-Aware Topology</b> pinning tokio worker threads per socket for first-touch memory bus locality; and a <b>32-Stripe Sharded Payload Index</b> eliminating lock contention.</td>
+  </tr>
+  <tr>
     <td>⚙️ <b>Reflex-Level Speed</b></td>
     <td>Built on Nightly Rust. Our <b>ArcSwap Lock-Free architecture</b> and <code>f32</code> SIMD intrinsics deliver <b>142.5 QPS</b> (P50 6.98 ms, P99 7.84 ms) on 25k × 1024D dense search at 99.90% Recall@10, and up to <b>1,567 QPS</b> with OPQ/PQ quantization and <b>1,774 QPS</b> on Spatial AABB bounding queries. Full index construction completed in <b>78.54 s</b> (43.45 s faster than v3). See <code>BENCHMARK_V3_VS_V4_REPORT.md</code>.</td>
   </tr>

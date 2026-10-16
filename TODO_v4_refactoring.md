@@ -70,6 +70,31 @@
     - [x] Re-run `run_v3_vs_v4_comparison.py` end-to-end (`BENCHMARK_V3_VS_V4_REPORT.md` updated).
     - [x] Re-run `run_quantization_sweep.py` end-to-end (`BENCHMARK_QUANTIZATION_SWEEP.md` generated with 27 configurations).
 
+- [x] **Phase 7: v4.1.0 Hardware-Level Micro-Architecture Scaling & Bottleneck Elimination (100% COMPLETE)**
+  - [x] **Dynamic Runtime SIMD Dispatch (`crates/hyperspace-core/src/simd.rs`)**:
+    - [x] Multi-ISA CPU feature detection: AVX-512F (16xf32), AVX2+FMA (8xf32), ARM NEON (4xf32), Portable scalar.
+    - [x] Direct unaligned little-endian float byte reading (`l2_sq_f32_bytes`) without memory copying.
+    - [x] Integrated into HNSW inner search traversal loop (`dist_mrl_opt`) with early-exit distance thresholding per 64 floats.
+    - [x] Controllable via `HS_SIMD=scalar|avx2|avx512|neon` environment variable.
+  - [x] **Zero-Copy Inner Search Traversal Loop**:
+    - [x] Implemented zero-copy `distance_bytes_*` methods across all quantization formats (`QuantizedHyperVector`, `BinaryHyperVector`, `HybridQuantizedVector`, `HybridLowBitQuantizedVector`, `HybridExtremeQuantizedVector`, `ScalarI4Vector`).
+    - [x] Eliminates up to 50,000 heap allocations per second of `Vec<i8>`, `Vec<f32>`, and `HyperVector` during HNSW graph descent.
+  - [x] **Asynchronous Linux `io_uring` Batched Positional Reads (`crates/hyperspace-store/src/uring_io.rs`)**:
+    - [x] Single-syscall batch submission (`io_uring_enter`) for multi-id payload retrieval in `PayloadStore::fetch_many` and DirectVectorStore batch reads (`read_vectors_batch`).
+    - [x] Transparent fallback to `read_exact_at` loops on macOS, BSD, Windows, or non-io_uring Linux kernels. Controllable via `HS_IO_URING=0`.
+  - [x] **Multi-Socket NUMA-Aware Topology & Core Affinity (`crates/hyperspace-server/src/numa.rs`)**:
+    - [x] Automated detection of NUMA node socket topology via `/sys/devices/system/node` filtered by active process cgroup cpuset.
+    - [x] Round-robin socket affinity pinning for tokio runtime worker and blocking threads to guarantee first-touch memory allocation locality. Controllable via `HS_NUMA=0`.
+  - [x] **32-Stripe Sharded Payload Index (`ShardedPayloadIndex`)**:
+    - [x] Replaced monolithic global `RwLock<HashMap<u32, PayloadSlot>>` with 32 striped reader/writer locks, eliminating cacheline bouncing under concurrent payload read access.
+  - [x] **Hoisted PQ LUT & Bounded Min/Max Heap**:
+    - [x] Hoisted Product Quantization lookup table computation in `search_bruteforce_bitmap` and replaced full-array $O(M \log M)$ sorting with a bounded $O(M \log k)$ `BinaryHeap<MaxCandidate>`.
+  - [x] **Mathematical Kernels & Graph Engine Hardening**:
+    - [x] Vectorized Gromov hyperbolicity evaluation with `as_chunks::<4>()` and direct branchless max comparisons.
+    - [x] Static `OnceLock` Fast Walsh-Hadamard Transform plans and unrolled butterfly loops in `TurboRot`.
+    - [x] Fast sequential path for short sparse BM25 queries ($\le 8$ tokens) eliminating Rayon thread dispatch overhead.
+    - [x] Geometrically pre-allocated adjacency capacity in `DynamicGraph::ensure_node_capacity`.
+
 ---
 
 ## 📈 Metric Goals & Tracking

@@ -88,13 +88,29 @@ If you are extending the **Native Vector-Graph (KAG)** engine:
    - Run graph unit tests: `cargo test -p hyperspace-core --lib graph`
    - Run empirical benchmark: `python3 benchmarks/run_all_collections_kag_benchmark.py --rounds 10`
 
+## ⚡ Hardware Acceleration & SIMD Development
+
+If you are contributing to low-level mathematical kernels or storage acceleration:
+1. **Dynamic SIMD Kernels (`crates/hyperspace-core/src/simd.rs`)**:
+   - Explicit target features: Use `#[target_feature(enable = "avx512f")]`, `#[target_feature(enable = "avx2,fma")]`, and `#[target_feature(enable = "neon")]`.
+   - Never assume pointer alignment: always use unaligned vector loads (`_mm512_loadu_ps`, `_mm256_loadu_ps`, `vld1q_f32`) so distance kernels can run directly over unaligned slices of memory-mapped or RAM storage.
+   - Dual/Quad accumulators: Unroll loops by at least 2 to 4 vector registers to break latency chains and maximize instruction-level parallelism (FMA pipelining).
+   - Support `HS_SIMD` override: All dispatch logic must respect `detect()` and runtime override for A/B testing (`HS_SIMD=scalar|avx2|avx512|neon`).
+2. **Batched Positional I/O (`crates/hyperspace-store/src/uring_io.rs`)**:
+   - The `io-uring` feature is Linux-only. All callers must use `read_batch_at` or `read_raw_batch_at` with zero-cost fallback to `pread` on other platforms.
+   - Buffer lifetimes: Memory passed to submission rings must remain valid until completions are reaped (`submit_and_wait`).
+3. **Multi-Socket NUMA Placement (`crates/hyperspace-server/src/numa.rs`)**:
+   - Always filter detected socket CPU lists against the active process affinity set (`sched_getaffinity`) to respect container cpusets and `taskset`.
+   - Thread placement must be configurable via `HS_NUMA=0`.
+
 ## 📊 Adding Quantization Modes
 
 To implement a new quantization mode:
 1. Add a variant to `QuantizationMode` enum in `crates/hyperspace-core/src/lib.rs`.
 2. Implement encoder in `crates/hyperspace-core/src/vector.rs` (see `QuantizedHyperVector::from_float()` for the SQ8 Anisotropic reference — it uses coordinate-descent refinement with an anisotropic loss $L = \|e_\parallel\|^2 + t_w \cdot \|e_\perp\|^2$).
-3. Wire the new variant in `CollectionMetadata::quantization_mode()` in `crates/hyperspace-server/src/manager.rs`.
-4. Update `HS_QUANTIZATION_LEVEL` docs in `docs/book/src/quantization.md`.
+3. Implement a corresponding zero-copy `distance_bytes_*` method on raw byte slices to avoid heap allocations in the HNSW beam traversal loop.
+4. Wire the new variant in `CollectionMetadata::quantization_mode()` in `crates/hyperspace-server/src/manager.rs`.
+5. Update `HS_QUANTIZATION_LEVEL` docs in `docs/book/src/quantization.md`.
 
 ## 🤖 Adding Embedding Providers
 
@@ -135,8 +151,8 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v3.1.2**: ✅ **DePIN Infrastructure & Zero-Knowledge Privacy**. Unified `hyperspace-miner` node, signed ticket validation, per-byte storage billing, and client-side ZK-encryption. *Completed.*
 * **v3.1.3**: ✅ **AsymmetricHybrid801 Quantization & Cognitive MCP**. hardware resource telemetry (`sysinfo`), Zero-RAM Sidecar Payload integration for LangChain/LlamaIndex, and 6 standardized Cognitive Skills tools. *Completed.*
 
-### Phase 4: Thread-per-Core & Hardware Direct I/O (v4.x)
-*The goal: Reflex-Level Speed, Zero Lock Contention, and Hardware NVMe Alignment.*
+### Phase 4: Thread-per-Core, Hardware Direct I/O & Micro-Architecture Acceleration (v4.x)
+*The goal: Reflex-Level Speed, Zero Lock Contention, and Hardware NVMe/SIMD Alignment.*
 
 * **v4.0.0**: ✅ **Thread-per-Core Shared-Nothing Sharding & Direct I/O**. *Completed.*
   - `ShardedCollection` eliminating cross-core lock contention (0 ns lock contention).
@@ -149,6 +165,14 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
   - Internalized Property CSR Graph (`DynamicGraph`, 12-byte `CompactEdge`) eliminating dual-database patterns.
   - Explicit edge linking (`link`, `link_batch`, `unlink`) and declarative metadata induction (`path_hierarchy`, `foreign_key`, `exact_match`).
   - Minkowski Light-Cone causal subsumption projection for 33D Lorentz hyperbolic manifolds.
-  - Interactive Graph Induction Studio in Web Dashboard and universal synchronization across all 6 SDKs and 10 integrations.
+  - Out-of-Core SuperKMeans Streaming Clustering cutting peak memory by 1,000× (58 MB on 10M vectors).
+  - Specialized Domain Cognitive SDKs (`chemSDK`, `bioSDK`, `secSDK`, `legalSDK`, `ontoSDK`, `finSDK`).
+* **v4.1.0 (Performance Engine)**: ✅ **Hardware-Level Micro-Architecture Scaling**. *Completed.*
+  - Dynamic Runtime SIMD Dispatch (AVX-512F / AVX2+FMA / ARM NEON / Scalar).
+  - Zero-Copy Inner Search Traversal kernels (`distance_bytes_*`) eliminating heap allocations in HNSW beam descent.
+  - 32-Stripe Sharded Payload Storage Index (`ShardedPayloadIndex`) with Linux `io_uring` batched reads.
+  - Multi-Socket NUMA-Aware Topology & Core Affinity pinning.
+  - Hoisted PQ lookup tables and bounded candidate heaps.
 
 Join us in pushing the boundaries of hyperbolic vector search!
+
