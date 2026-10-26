@@ -335,4 +335,18 @@ uint64_t created = client.InduceEdgesFromMetadata(rules, "my_collection");
 std::cout << "Induced " << created << " explicit edges directly from metadata" << std::endl;
 ```
 
+### 3. Encrypted Collections & Schema Stats
+
+```cpp
+// Create an encrypted collection (flags collection as encrypted in metadata and dashboard)
+bool ok = client.CreateCollection("secure_telemetry", 128, "cosine", /*encrypted=*/true);
+
+// Retrieve stats including encryption status
+auto stats = client.GetCollectionStats("secure_telemetry");
+std::cout << "Collection: " << stats.name 
+          << ", Vectors: " << stats.vector_count 
+          << ", Encrypted: " << (stats.encrypted ? "true" : "false") << std::endl;
+```
+
+
 

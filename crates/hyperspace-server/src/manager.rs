@@ -488,12 +488,14 @@ impl CollectionManager {
             tracing::info!("[v4] Creating '{name}' with ShardedCollection (HS_V4_ENGINE=1)");
         }
 
+        let encrypted = schema.encrypted.unwrap_or(false);
         let meta = CollectionMetadata {
             schema: Some(schema.clone()),
             dimension: None,
             metric: None,
             quantization,
             sharded,
+            encrypted,
         };
 
         meta.save(&col_dir).map_err(|e| e.to_string())?;
@@ -633,14 +635,14 @@ impl CollectionManager {
         let mut summaries = Vec::new();
         for name in names {
             if let Some(col) = self.get(user_id, &name).await {
-                let schema = self
-                    .get_metadata(user_id, &name)
-                    .await
-                    .and_then(|m| m.schema);
+                let meta = self.get_metadata(user_id, &name).await;
+                let schema = meta.as_ref().and_then(|m| m.schema.clone());
+                let encrypted = meta.map(|m| m.encrypted);
                 summaries.push(hyperspace_proto::hyperspace::CollectionSummary {
                     name: name.clone(),
                     count: col.count() as u64,
                     schema,
+                    encrypted,
                 });
             }
         }
@@ -882,6 +884,8 @@ pub struct CollectionMetadata {
     /// existing `meta.json` files without this field continue to load correctly.
     #[serde(default)]
     pub sharded: bool,
+    #[serde(default)]
+    pub encrypted: bool,
 }
 
 impl CollectionMetadata {
@@ -908,6 +912,7 @@ impl CollectionMetadata {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(self.encrypted),
             }
         }
     }

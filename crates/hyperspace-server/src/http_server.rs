@@ -567,6 +567,8 @@ struct CollectionSummary {
     graph_edges: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     kag_graph: Option<KagGraphSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    encrypted: Option<bool>,
 }
 
 async fn get_cluster_status(
@@ -640,6 +642,7 @@ async fn list_collections(
                         nodes,
                         enabled: true,
                     }),
+                    encrypted: meta_opt.as_ref().map(|m| m.encrypted),
                 });
             }
         } else if let Some(meta) = meta_opt {
@@ -675,6 +678,7 @@ async fn list_collections(
                 schema,
                 graph_edges: Some(0),
                 kag_graph: None,
+                encrypted: Some(meta.encrypted),
             });
         }
     }
@@ -731,6 +735,7 @@ async fn list_collections(
                         nodes,
                         enabled: true,
                     }),
+                    encrypted: meta_opt.as_ref().map(|m| m.encrypted),
                 });
             }
         } else if let Some(meta) = meta_opt {
@@ -766,6 +771,7 @@ async fn list_collections(
                 schema,
                 graph_edges: Some(0),
                 kag_graph: None,
+                encrypted: Some(meta.encrypted),
             });
         }
     }
@@ -779,6 +785,7 @@ struct CreateCollectionRequest {
     mrl_cutoff_dimension: Option<u32>,
     mrl_rerank_top_k: Option<u32>,
     quantization: Option<String>,
+    encrypted: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -815,6 +822,7 @@ async fn create_collection(
             weight: 1.0,
         }],
         cascade_pipeline,
+        encrypted: payload.encrypted,
     };
 
     let result = manager

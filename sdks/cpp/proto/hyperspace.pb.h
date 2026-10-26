@@ -17386,6 +17386,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionSchema final : public ::g
   enum : int {
     kComponentsFieldNumber = 1,
     kCascadePipelineFieldNumber = 2,
+    kEncryptedFieldNumber = 3,
   };
   // repeated .hyperspace.VectorComponent components = 1;
   [[nodiscard]] int components_size()
@@ -17427,11 +17428,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionSchema final : public ::g
   ::hyperspace::MrlLayer* PROTOBUF_NONNULL add_cascade_pipeline();
   [[nodiscard]] const ::google::protobuf::RepeatedPtrField<::hyperspace::MrlLayer>& cascade_pipeline()
       const;
+  // optional bool encrypted = 3;
+  [[nodiscard]] bool has_encrypted()
+      const;
+  void clear_encrypted() ;
+  [[nodiscard]] bool encrypted() const;
+  void set_encrypted(bool value);
+
+  private:
+  bool _internal_encrypted() const;
+  void _internal_set_encrypted(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:hyperspace.CollectionSchema)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<1, 2,
+  static const ::google::protobuf::internal::TcParseTable<2, 3,
                                    2, 0,
                                    2>
       _table_;
@@ -17457,6 +17470,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionSchema final : public ::g
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::RepeatedPtrField< ::hyperspace::VectorComponent > components_;
     ::google::protobuf::RepeatedPtrField< ::hyperspace::MrlLayer > cascade_pipeline_;
+    bool encrypted_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -21459,6 +21473,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionSummary final : public ::
     kNameFieldNumber = 1,
     kSchemaFieldNumber = 5,
     kCountFieldNumber = 2,
+    kEncryptedFieldNumber = 6,
   };
   // string name = 1;
   void clear_name() ;
@@ -21501,11 +21516,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionSummary final : public ::
   void _internal_set_count(::uint64_t value);
 
   public:
+  // optional bool encrypted = 6;
+  [[nodiscard]] bool has_encrypted()
+      const;
+  void clear_encrypted() ;
+  [[nodiscard]] bool encrypted() const;
+  void set_encrypted(bool value);
+
+  private:
+  bool _internal_encrypted() const;
+  void _internal_set_encrypted(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:hyperspace.CollectionSummary)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<1, 3,
+  static const ::google::protobuf::internal::TcParseTable<3, 4,
                                    1, 41,
                                    2>
       _table_;
@@ -21532,6 +21559,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionSummary final : public ::
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::hyperspace::CollectionSchema* PROTOBUF_NULLABLE schema_;
     ::uint64_t count_;
+    bool encrypted_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -21693,6 +21721,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionStatsResponse final : pub
     kDiskUsageBytesFieldNumber = 5,
     kRamUsageBytesFieldNumber = 6,
     kActiveTasksFieldNumber = 7,
+    kEncryptedFieldNumber = 9,
   };
   // optional .hyperspace.CollectionSchema schema = 8;
   [[nodiscard]] bool has_schema()
@@ -21760,11 +21789,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionStatsResponse final : pub
   void _internal_set_active_tasks(::uint64_t value);
 
   public:
+  // optional bool encrypted = 9;
+  [[nodiscard]] bool has_encrypted()
+      const;
+  void clear_encrypted() ;
+  [[nodiscard]] bool encrypted() const;
+  void set_encrypted(bool value);
+
+  private:
+  bool _internal_encrypted() const;
+  void _internal_set_encrypted(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:hyperspace.CollectionStatsResponse)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 6,
+  static const ::google::protobuf::internal::TcParseTable<3, 7,
                                    1, 0,
                                    2>
       _table_;
@@ -21794,6 +21835,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED CollectionStatsResponse final : pub
     ::uint64_t disk_usage_bytes_;
     ::uint64_t ram_usage_bytes_;
     ::uint64_t active_tasks_;
+    bool encrypted_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -26468,6 +26510,35 @@ CollectionSchema::_internal_mutable_cascade_pipeline() {
   return &_impl_.cascade_pipeline_;
 }
 
+// optional bool encrypted = 3;
+inline bool CollectionSchema::has_encrypted() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000004U);
+  return value;
+}
+inline void CollectionSchema::clear_encrypted() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.encrypted_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000004U);
+}
+inline bool CollectionSchema::encrypted() const {
+  // @@protoc_insertion_point(field_get:hyperspace.CollectionSchema.encrypted)
+  return _internal_encrypted();
+}
+inline void CollectionSchema::set_encrypted(bool value) {
+  _internal_set_encrypted(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  // @@protoc_insertion_point(field_set:hyperspace.CollectionSchema.encrypted)
+}
+inline bool CollectionSchema::_internal_encrypted() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.encrypted_;
+}
+inline void CollectionSchema::_internal_set_encrypted(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.encrypted_ = value;
+}
+
 // -------------------------------------------------------------------
 
 // CollectionComponent
@@ -26918,6 +26989,35 @@ inline void CollectionSummary::set_allocated_schema(::hyperspace::CollectionSche
   // @@protoc_insertion_point(field_set_allocated:hyperspace.CollectionSummary.schema)
 }
 
+// optional bool encrypted = 6;
+inline bool CollectionSummary::has_encrypted() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000008U);
+  return value;
+}
+inline void CollectionSummary::clear_encrypted() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.encrypted_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000008U);
+}
+inline bool CollectionSummary::encrypted() const {
+  // @@protoc_insertion_point(field_get:hyperspace.CollectionSummary.encrypted)
+  return _internal_encrypted();
+}
+inline void CollectionSummary::set_encrypted(bool value) {
+  _internal_set_encrypted(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  // @@protoc_insertion_point(field_set:hyperspace.CollectionSummary.encrypted)
+}
+inline bool CollectionSummary::_internal_encrypted() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.encrypted_;
+}
+inline void CollectionSummary::_internal_set_encrypted(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.encrypted_ = value;
+}
+
 // -------------------------------------------------------------------
 
 // ListCollectionsResponse
@@ -27273,6 +27373,35 @@ inline void CollectionStatsResponse::set_allocated_schema(::hyperspace::Collecti
 
   _impl_.schema_ = reinterpret_cast<::hyperspace::CollectionSchema*>(value);
   // @@protoc_insertion_point(field_set_allocated:hyperspace.CollectionStatsResponse.schema)
+}
+
+// optional bool encrypted = 9;
+inline bool CollectionStatsResponse::has_encrypted() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000040U);
+  return value;
+}
+inline void CollectionStatsResponse::clear_encrypted() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.encrypted_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000040U);
+}
+inline bool CollectionStatsResponse::encrypted() const {
+  // @@protoc_insertion_point(field_get:hyperspace.CollectionStatsResponse.encrypted)
+  return _internal_encrypted();
+}
+inline void CollectionStatsResponse::set_encrypted(bool value) {
+  _internal_set_encrypted(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_set:hyperspace.CollectionStatsResponse.encrypted)
+}
+inline bool CollectionStatsResponse::_internal_encrypted() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.encrypted_;
+}
+inline void CollectionStatsResponse::_internal_set_encrypted(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.encrypted_ = value;
 }
 
 // -------------------------------------------------------------------

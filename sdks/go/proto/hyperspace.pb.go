@@ -879,6 +879,7 @@ type CollectionSchema struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Components      []*VectorComponent     `protobuf:"bytes,1,rep,name=components,proto3" json:"components,omitempty"`
 	CascadePipeline []*MrlLayer            `protobuf:"bytes,2,rep,name=cascade_pipeline,json=cascadePipeline,proto3" json:"cascade_pipeline,omitempty"`
+	Encrypted       *bool                  `protobuf:"varint,3,opt,name=encrypted,proto3,oneof" json:"encrypted,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -925,6 +926,13 @@ func (x *CollectionSchema) GetCascadePipeline() []*MrlLayer {
 		return x.CascadePipeline
 	}
 	return nil
+}
+
+func (x *CollectionSchema) GetEncrypted() bool {
+	if x != nil && x.Encrypted != nil {
+		return *x.Encrypted
+	}
+	return false
 }
 
 type CollectionComponent struct {
@@ -1044,6 +1052,7 @@ type CollectionSummary struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Count         uint64                 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 	Schema        *CollectionSchema      `protobuf:"bytes,5,opt,name=schema,proto3,oneof" json:"schema,omitempty"`
+	Encrypted     *bool                  `protobuf:"varint,6,opt,name=encrypted,proto3,oneof" json:"encrypted,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1097,6 +1106,13 @@ func (x *CollectionSummary) GetSchema() *CollectionSchema {
 		return x.Schema
 	}
 	return nil
+}
+
+func (x *CollectionSummary) GetEncrypted() bool {
+	if x != nil && x.Encrypted != nil {
+		return *x.Encrypted
+	}
+	return false
 }
 
 type ListCollectionsResponse struct {
@@ -1195,6 +1211,7 @@ type CollectionStatsResponse struct {
 	RamUsageBytes  uint64                 `protobuf:"varint,6,opt,name=ram_usage_bytes,json=ramUsageBytes,proto3" json:"ram_usage_bytes,omitempty"`
 	ActiveTasks    uint64                 `protobuf:"varint,7,opt,name=active_tasks,json=activeTasks,proto3" json:"active_tasks,omitempty"`
 	Schema         *CollectionSchema      `protobuf:"bytes,8,opt,name=schema,proto3,oneof" json:"schema,omitempty"`
+	Encrypted      *bool                  `protobuf:"varint,9,opt,name=encrypted,proto3,oneof" json:"encrypted,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1269,6 +1286,13 @@ func (x *CollectionStatsResponse) GetSchema() *CollectionSchema {
 		return x.Schema
 	}
 	return nil
+}
+
+func (x *CollectionStatsResponse) GetEncrypted() bool {
+	if x != nil && x.Encrypted != nil {
+		return *x.Encrypted
+	}
+	return false
 }
 
 type RebuildIndexRequest struct {
@@ -6612,12 +6636,15 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\fstore_in_ram\x18\x03 \x01(\bR\n" +
 	"storeInRam\x12 \n" +
 	"\frerank_top_k\x18\x04 \x01(\rR\n" +
-	"rerankTopK\"\x90\x01\n" +
+	"rerankTopK\"\xc1\x01\n" +
 	"\x10CollectionSchema\x12;\n" +
 	"\n" +
 	"components\x18\x01 \x03(\v2\x1b.hyperspace.VectorComponentR\n" +
 	"components\x12?\n" +
-	"\x10cascade_pipeline\x18\x02 \x03(\v2\x14.hyperspace.MrlLayerR\x0fcascadePipeline\"\x89\x01\n" +
+	"\x10cascade_pipeline\x18\x02 \x03(\v2\x14.hyperspace.MrlLayerR\x0fcascadePipeline\x12!\n" +
+	"\tencrypted\x18\x03 \x01(\bH\x00R\tencrypted\x88\x01\x01B\f\n" +
+	"\n" +
+	"_encrypted\"\x89\x01\n" +
 	"\x13CollectionComponent\x12\x14\n" +
 	"\x05space\x18\x01 \x01(\tR\x05space\x12\x1c\n" +
 	"\tdimension\x18\x02 \x01(\rR\tdimension\x12\x16\n" +
@@ -6625,24 +6652,30 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x06weight\x18\x04 \x01(\x02H\x00R\x06weight\x88\x01\x01B\t\n" +
 	"\a_weight\"-\n" +
 	"\x17DeleteCollectionRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x8f\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xc0\x01\n" +
 	"\x11CollectionSummary\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x04R\x05count\x129\n" +
-	"\x06schema\x18\x05 \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01B\t\n" +
-	"\a_schemaJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"Z\n" +
+	"\x06schema\x18\x05 \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01\x12!\n" +
+	"\tencrypted\x18\x06 \x01(\bH\x01R\tencrypted\x88\x01\x01B\t\n" +
+	"\a_schemaB\f\n" +
+	"\n" +
+	"_encryptedJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"Z\n" +
 	"\x17ListCollectionsResponse\x12?\n" +
 	"\vcollections\x18\x01 \x03(\v2\x1d.hyperspace.CollectionSummaryR\vcollections\",\n" +
 	"\x16CollectionStatsRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x9d\x02\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xce\x02\n" +
 	"\x17CollectionStatsResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x04R\x05count\x12%\n" +
 	"\x0eindexing_queue\x18\x04 \x01(\x04R\rindexingQueue\x12(\n" +
 	"\x10disk_usage_bytes\x18\x05 \x01(\x04R\x0ediskUsageBytes\x12&\n" +
 	"\x0fram_usage_bytes\x18\x06 \x01(\x04R\rramUsageBytes\x12!\n" +
 	"\factive_tasks\x18\a \x01(\x04R\vactiveTasks\x129\n" +
-	"\x06schema\x18\b \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01B\t\n" +
-	"\a_schemaJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04\"\x81\x01\n" +
+	"\x06schema\x18\b \x01(\v2\x1c.hyperspace.CollectionSchemaH\x00R\x06schema\x88\x01\x01\x12!\n" +
+	"\tencrypted\x18\t \x01(\bH\x01R\tencrypted\x88\x01\x01B\t\n" +
+	"\a_schemaB\f\n" +
+	"\n" +
+	"_encryptedJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04\"\x81\x01\n" +
 	"\x13RebuildIndexRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12E\n" +
 	"\ffilter_query\x18\x02 \x01(\v2\x1d.hyperspace.VacuumFilterQueryH\x00R\vfilterQuery\x88\x01\x01B\x0f\n" +
@@ -7586,6 +7619,7 @@ func file_hyperspace_proto_init() {
 	}
 	file_hyperspace_proto_msgTypes[3].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[7].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[10].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[11].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[13].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[16].OneofWrappers = []any{}

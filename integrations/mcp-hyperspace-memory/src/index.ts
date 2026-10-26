@@ -20,6 +20,7 @@ const HYPERSPACE_API_KEY = process.env.HYPERSPACE_API_KEY || process.env.YAR_API
 // MEMORY_COLLECTION: set once in env, agent never needs to pass it per-call.
 // Defaults to "agent_cognitive_memories_129" on SaaS for zero-config experience.
 const MEMORY_COLLECTION = process.env.MEMORY_COLLECTION || "agent_cognitive_memories_129";
+const HYPERSPACE_ENCRYPTION_KEY = process.env.HYPERSPACE_ENCRYPTION_KEY || "";
 
 if (!HYPERSPACE_API_KEY) {
   console.error("[mcp-hyperspace-memory] WARNING: HYPERSPACE_API_KEY is not set. Set it in your MCP config env.");
@@ -77,6 +78,9 @@ class HyperspaceMemoryServer {
       ? process.env.HYPERSPACE_LOCAL_ADMIN_KEY
       : (HYPERSPACE_API_KEY || "");
     this.client = new HyperspaceClient(HYPERSPACE_HOST, grpcKey);
+    if (HYPERSPACE_ENCRYPTION_KEY) {
+      this.client.registerCollectionKey(MEMORY_COLLECTION, HYPERSPACE_ENCRYPTION_KEY, "hybrid");
+    }
     this.setupTools();
     this.server.onerror = (error) => console.error("[Memory MCP Error]", error);
   }
@@ -124,7 +128,8 @@ class HyperspaceMemoryServer {
               rerankTopK: 50
             }
           ]
-        }
+        },
+        HYPERSPACE_ENCRYPTION_KEY
       ).catch(() => { });
     } catch {
       // Ignore

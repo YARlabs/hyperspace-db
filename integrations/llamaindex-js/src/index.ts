@@ -14,9 +14,13 @@ export class HyperspaceVectorStore implements VectorStore {
   constructor(config: {
     client: HyperspaceClient;
     collectionName: string;
+    encryptionKey?: string;
   }) {
     this._client = config.client;
     this.collectionName = config.collectionName;
+    if (config.encryptionKey) {
+      this._client.registerCollectionKey(this.collectionName, config.encryptionKey);
+    }
     this._ensureCollection();
   }
 

@@ -374,4 +374,14 @@ if err != nil {
 fmt.Printf("Induced %d explicit edges directly from metadata\n", created)
 ```
 
+### 3. Collection Stats & Encryption Verification
+
+```go
+stats, err := client.GetCollectionStats(ctx, "secure_docs")
+if err != nil {
+    log.Fatalf("Stats failed: %v", err)
+}
+fmt.Printf("Collection %s: VectorCount=%d, Encrypted=%v\n", stats.Name, stats.VectorCount, stats.Encrypted)
+```
+
 

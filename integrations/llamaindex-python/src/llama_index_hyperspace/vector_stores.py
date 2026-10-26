@@ -41,15 +41,19 @@ class HyperspaceVectorStore(VectorStore):
         port: int = 50051,
         api_key: Optional[str] = None,
         user_id: Optional[str] = None,
+        encryption_key: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """Init params."""
         self._collection_name = collection_name
+        self.encryption_key = encryption_key
         self._client = HyperspaceClient(
             host=f"{host}:{port}",
             api_key=api_key,
             user_id=user_id
         )
+        if encryption_key:
+            self._client.register_collection_key(collection_name, encryption_key)
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:

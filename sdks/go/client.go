@@ -87,6 +87,8 @@ func (c *HyperspaceClient) CreateCollectionWithQuantization(ctx context.Context,
 	}
 	if encryptionKey != "" {
 		c.RegisterCollectionKey(name, encryptionKey, metric, noiseSigma, schema)
+		isEnc := true
+		schema.Encrypted = &isEnc
 	}
 	req := &pb.CreateCollectionRequest{
 		Name:   name,

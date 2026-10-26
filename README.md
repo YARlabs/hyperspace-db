@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.1.0** | **The World's First Schema-Driven Spatial AI Engine.**
+**v4.1.1** | **The World's First Schema-Driven Spatial AI Engine.**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -99,6 +99,14 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
   <tr>
     <td>💾 <b>O(1) Payload Indexing</b></td>
     <td>High-throughput O(1) incremental indexing via append-only index write-ahead logging (WAL) in <code>payload_store.rs</code>, eliminating latency spikes and write amplification.</td>
+  </tr>
+  <tr>
+    <td>🔐 <b>Zero-Knowledge Client Encryption & Vec2Text Defense (v4.1.1)</b></td>
+    <td>Client-side isometric orthogonal $O(n)$ and Lorentz $SO^+(1, d)$ projections with calibrated anisotropic noise injection ($\sigma \le 0.02$). Neutralizes <i>Vec2Text</i> neural inversion attacks while preserving 100.0% Top-K neighbor recall across all 6 metrics (L2, Cosine, Dot, Lorentz, Poincaré, Hybrid). Raw text and payload attributes encrypted with AES-256-GCM. Surfaced as an <code>ENCRYPTED</code> badge in the Dashboard.</td>
+  </tr>
+  <tr>
+    <td>🧠 <b>Autonomous Cognitive Agent Memory (v4.1.1)</b></td>
+    <td>Native sub-4ms episodic memory layer for autonomous agents (Python, TypeScript, MCP). Combines <b>Ebbinghaus Exponential Temporal Decay</b> ($S(t) = S_0 \cdot e^{-\lambda \Delta t}$) integrated directly into vector scoring with zero LLM calls, and autonomous <b>Temporal Superseding</b> (directed <code>SUPERSEDES</code> edges) to instantly obsolete contradictory facts without external graph databases or secondary LLM consolidation passes.</td>
   </tr>
   <tr>
     <td>🤖 <b>Cognitive MCP & Zero-RAM Sidecar</b></td>

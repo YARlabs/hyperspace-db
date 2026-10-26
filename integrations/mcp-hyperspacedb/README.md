@@ -126,10 +126,9 @@ When running a secured local engine while leveraging continuous cloud embeddings
 | `hyperspace_search_wasserstein` | `collection`, `text` | `top_k` | Optimal Transport (Wasserstein) search. Returns array of top matches ranked by Wasserstein distance. |
 | `hyperspace_insert_text` | `collection`, `id`, `text` | `metadata` | Inserts text under numeric `id` with auto-vectorization. Returns status string or error. |
 | `hyperspace_get_points` | `collection`, `ids` | — | Retrieves vector coordinates and metadata for a list of point IDs. Returns JSON array of points. |
-| `hyperspace_delete_points` | `collection`, `id` | — | Deletes a point by its numeric ID. Returns `{ success }` object. |
-| `hyperspace_create_collection` | `collection` | `dimension`, `metric`, `quantization` | Creates a new vector space with chosen geometry and quantization. Returns `{ success }` object. |
+| `hyperspace_create_collection` | `collection` | `dimension`, `metric`, `quantization`, `encryption_key` | Creates a new vector space with chosen geometry, quantization, and optional client-side Zero-Knowledge encryption. Returns `{ success }` object. |
 | `hyperspace_delete_collection` | `collection` | — | Permanently deletes a collection and its vectors. Returns `{ success }` object. |
-| `hyperspace_list_collections` | — | — | Lists all active collections. Returns array of `{ name, dimension, metric, count }`. |
+| `hyperspace_list_collections` | — | — | Lists all active collections. Returns array of `{ name, dimension, metric, count, encrypted }`. |
 
 ### 🕸️ Graph & Hierarchical Navigation Tools
 

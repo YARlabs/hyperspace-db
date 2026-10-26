@@ -25,6 +25,7 @@ struct CollectionSummaryRec {
     std::string name;
     uint64_t count;
     ::hyperspace::CollectionSchema schema;
+    bool encrypted = false;
 };
 
 struct VerificationResultRec {
@@ -48,6 +49,7 @@ struct CollectionStats {
     uint64_t ram_usage_bytes;
     uint64_t active_tasks;
     ::hyperspace::CollectionSchema schema;
+    bool encrypted = false;
 };
 
 struct Bm25Params {
@@ -64,7 +66,7 @@ public:
     ~HyperspaceClient() = default;
 
     // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
-    bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "");
+    bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "", bool encrypted = false);
     std::vector<CollectionSummaryRec> ListCollections();
     std::string FreezeCollection(const std::string& name);
     std::string UnfreezeCollection(const std::string& name);

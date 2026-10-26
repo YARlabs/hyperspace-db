@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api, fetchStatus } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Plus, Trash2, MoreHorizontal, Database, Search, HardDrive, Cpu, Settings2, BarChart3, Moon, Zap, Layers, FlameKindling, TrendingUp, Clock, Leaf, Network } from "lucide-react"
+import { Plus, Trash2, MoreHorizontal, Database, Search, HardDrive, Cpu, Settings2, BarChart3, Moon, Zap, Layers, FlameKindling, TrendingUp, Clock, Leaf, Network, Lock } from "lucide-react"
 import { getCollectionStats, updateCollectionConfig, freezeCollection, unfreezeCollection, getCacheStats, clearCache, updateCacheConfig, fetchCollections, deleteCollection, grantCollectionAccess, revokeCollectionAccess, listCollectionGrants } from "@/lib/api"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -229,6 +229,12 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                             <Badge className="bg-sky-950/70 text-sky-300 border border-sky-500/30 text-[9px] font-mono px-1.5 py-0 flex items-center gap-1 shadow-sm">
                                 <Layers className="h-2.5 w-2.5 text-sky-400" />
                                 MRL
+                            </Badge>
+                        )}
+                        {(collection.encrypted || (collection as any).schema?.encrypted) && (
+                            <Badge className="bg-emerald-950/70 text-emerald-300 border border-emerald-500/30 text-[9px] font-mono px-1.5 py-0 flex items-center gap-1 shadow-sm" title="Zero-Knowledge Lie Group Orthogonal Encryption Active">
+                                <Lock className="h-2.5 w-2.5 text-emerald-400" />
+                                ENCRYPTED
                             </Badge>
                         )}
                     </div>

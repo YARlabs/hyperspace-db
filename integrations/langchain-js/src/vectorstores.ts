@@ -21,6 +21,10 @@ export interface HyperspaceStoreArgs {
      * @default "l2"
      */
     metric?: string;
+    /**
+     * Optional AES-256-GCM + Isometric client-side encryption key
+     */
+    encryptionKey?: string;
 }
 
 export class HyperspaceStore extends VectorStore {
@@ -28,6 +32,7 @@ export class HyperspaceStore extends VectorStore {
     private collectionName: string;
     private enableDeduplication: boolean;
     private useServerSideEmbedding: boolean;
+    private encryptionKey?: string;
 
     constructor(embeddings: Embeddings | undefined, args: HyperspaceStoreArgs) {
         // Use a dummy embeddings if server-side is enabled but none provided
@@ -36,7 +41,12 @@ export class HyperspaceStore extends VectorStore {
         this.collectionName = args.collectionName ?? "default";
         this.enableDeduplication = args.enableDeduplication ?? true;
         this.useServerSideEmbedding = args.useServerSideEmbedding ?? false;
+        this.encryptionKey = args.encryptionKey;
         
+        if (this.encryptionKey) {
+            this.client.registerCollectionKey(this.collectionName, this.encryptionKey, args.metric || "l2");
+        }
+
         this._ensureCollection(args.dimension, args.metric);
     }
 
@@ -59,8 +69,9 @@ export class HyperspaceStore extends VectorStore {
                              weight: 1.0
                          }
                      ],
-                     cascadePipeline: []
-                 });
+                     cascadePipeline: [],
+                     encrypted: !!this.encryptionKey
+                 }, this.encryptionKey || '');
             }
         } catch (e) {
             console.error("Failed to check/create collection", e);

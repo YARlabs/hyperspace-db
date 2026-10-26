@@ -30,6 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     leader
         .create_collection(collection_name.clone(), schema.clone())

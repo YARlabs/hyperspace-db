@@ -362,29 +362,41 @@ def project_vector(v: Sequence[float], projection_matrix) -> List[float]:
     return v_projected.tolist()
 
 
-def inject_anisotropic_noise(vector: Sequence[float], noise_seed: bytes, sigma: float = 0.02) -> List[float]:
+def inject_anisotropic_noise(vector: Sequence[float], noise_seed: bytes, sigma: float = 0.02, is_lorentz: bool = False) -> List[float]:
     """
     Injects deterministic, anisotropic noise calibrated to the vector norm.
     Protects against Manifold Alignment Attacks (Manifold Reconstruction).
+    Uses binary buffer hashing instead of str() for performance and numerical stability.
     """
-    if sigma <= 0.0:
+    if sigma <= 0.0 or len(vector) == 0:
         return list(vector)
     import numpy as np
     import hashlib
     vec_arr = np.array(vector, dtype=np.float64)
-    # Generate deterministic seed from the vector data + noise_seed
-    vec_bytes = str(vector).encode('utf-8')
-    vec_hash = hashlib.sha256(noise_seed + vec_bytes).digest()
+    # Generate deterministic seed from the binary vector data + noise_seed
+    vec_hash = hashlib.sha256(noise_seed + vec_arr.tobytes()).digest()
     seed_int = int.from_bytes(vec_hash[:8], 'big')
     rng = np.random.default_rng(seed_int)
     
+    if is_lorentz and len(vector) >= 2:
+        # For Lorentz space, perturb only spatial components and project back to hyperboloid
+        spatial = vec_arr[1:]
+        noise = rng.normal(0, sigma, len(spatial))
+        noisy_spatial = spatial + noise
+        orig_spatial_norm = np.linalg.norm(spatial)
+        noisy_spatial_norm = np.linalg.norm(noisy_spatial)
+        if noisy_spatial_norm > 1e-15 and orig_spatial_norm > 0:
+            noisy_spatial = (noisy_spatial / noisy_spatial_norm) * orig_spatial_norm
+        time_coord = np.sqrt(1.0 + np.sum(noisy_spatial ** 2))
+        return [float(time_coord)] + noisy_spatial.tolist()
+
     noise = rng.normal(0, sigma, len(vector))
     noisy = vec_arr + noise
     
-    # Re-normalize to original norm to preserve cosine / lorentz distance metrics
+    # Re-normalize to original norm to preserve cosine / l2 scale
     orig_norm = np.linalg.norm(vec_arr)
     noisy_norm = np.linalg.norm(noisy)
-    if noisy_norm > 1e-15:
+    if noisy_norm > 1e-15 and orig_norm > 0:
         noisy = (noisy / noisy_norm) * orig_norm
         
     return noisy.tolist()

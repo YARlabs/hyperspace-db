@@ -387,6 +387,18 @@ const CollectionSchema$json = {
       '6': '.hyperspace.MrlLayer',
       '10': 'cascadePipeline'
     },
+    {
+      '1': 'encrypted',
+      '3': 3,
+      '4': 1,
+      '5': 8,
+      '9': 0,
+      '10': 'encrypted',
+      '17': true
+    },
+  ],
+  '8': [
+    {'1': '_encrypted'},
   ],
 };
 
@@ -394,7 +406,8 @@ const CollectionSchema$json = {
 final $typed_data.Uint8List collectionSchemaDescriptor = $convert.base64Decode(
     'ChBDb2xsZWN0aW9uU2NoZW1hEjsKCmNvbXBvbmVudHMYASADKAsyGy5oeXBlcnNwYWNlLlZlY3'
     'RvckNvbXBvbmVudFIKY29tcG9uZW50cxI/ChBjYXNjYWRlX3BpcGVsaW5lGAIgAygLMhQuaHlw'
-    'ZXJzcGFjZS5NcmxMYXllclIPY2FzY2FkZVBpcGVsaW5l');
+    'ZXJzcGFjZS5NcmxMYXllclIPY2FzY2FkZVBpcGVsaW5lEiEKCWVuY3J5cHRlZBgDIAEoCEgAUg'
+    'llbmNyeXB0ZWSIAQFCDAoKX2VuY3J5cHRlZA==');
 
 @$core.Deprecated('Use collectionComponentDescriptor instead')
 const CollectionComponent$json = {
@@ -445,9 +458,19 @@ const CollectionSummary$json = {
       '10': 'schema',
       '17': true
     },
+    {
+      '1': 'encrypted',
+      '3': 6,
+      '4': 1,
+      '5': 8,
+      '9': 1,
+      '10': 'encrypted',
+      '17': true
+    },
   ],
   '8': [
     {'1': '_schema'},
+    {'1': '_encrypted'},
   ],
   '9': [
     {'1': 3, '2': 4},
@@ -459,7 +482,8 @@ const CollectionSummary$json = {
 final $typed_data.Uint8List collectionSummaryDescriptor = $convert.base64Decode(
     'ChFDb2xsZWN0aW9uU3VtbWFyeRISCgRuYW1lGAEgASgJUgRuYW1lEhQKBWNvdW50GAIgASgEUg'
     'Vjb3VudBI5CgZzY2hlbWEYBSABKAsyHC5oeXBlcnNwYWNlLkNvbGxlY3Rpb25TY2hlbWFIAFIG'
-    'c2NoZW1hiAEBQgkKB19zY2hlbWFKBAgDEARKBAgEEAU=');
+    'c2NoZW1hiAEBEiEKCWVuY3J5cHRlZBgGIAEoCEgBUgllbmNyeXB0ZWSIAQFCCQoHX3NjaGVtYU'
+    'IMCgpfZW5jcnlwdGVkSgQIAxAESgQIBBAF');
 
 @$core.Deprecated('Use listCollectionsResponseDescriptor instead')
 const ListCollectionsResponse$json = {
@@ -514,9 +538,19 @@ const CollectionStatsResponse$json = {
       '10': 'schema',
       '17': true
     },
+    {
+      '1': 'encrypted',
+      '3': 9,
+      '4': 1,
+      '5': 8,
+      '9': 1,
+      '10': 'encrypted',
+      '17': true
+    },
   ],
   '8': [
     {'1': '_schema'},
+    {'1': '_encrypted'},
   ],
   '9': [
     {'1': 2, '2': 3},
@@ -530,8 +564,9 @@ final $typed_data.Uint8List collectionStatsResponseDescriptor = $convert.base64D
     'hpbmdfcXVldWUYBCABKARSDWluZGV4aW5nUXVldWUSKAoQZGlza191c2FnZV9ieXRlcxgFIAEo'
     'BFIOZGlza1VzYWdlQnl0ZXMSJgoPcmFtX3VzYWdlX2J5dGVzGAYgASgEUg1yYW1Vc2FnZUJ5dG'
     'VzEiEKDGFjdGl2ZV90YXNrcxgHIAEoBFILYWN0aXZlVGFza3MSOQoGc2NoZW1hGAggASgLMhwu'
-    'aHlwZXJzcGFjZS5Db2xsZWN0aW9uU2NoZW1hSABSBnNjaGVtYYgBAUIJCgdfc2NoZW1hSgQIAh'
-    'ADSgQIAxAE');
+    'aHlwZXJzcGFjZS5Db2xsZWN0aW9uU2NoZW1hSABSBnNjaGVtYYgBARIhCgllbmNyeXB0ZWQYCS'
+    'ABKAhIAVIJZW5jcnlwdGVkiAEBQgkKB19zY2hlbWFCDAoKX2VuY3J5cHRlZEoECAIQA0oECAMQ'
+    'BA==');
 
 @$core.Deprecated('Use rebuildIndexRequestDescriptor instead')
 const RebuildIndexRequest$json = {

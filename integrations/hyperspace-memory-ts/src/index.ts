@@ -5,10 +5,14 @@ export interface MemoryConfig {
   apiKey?: string;
   collectionName?: string;
   quantization?: "none" | "medium_plus" | "turbo" | "extreme";
+  encryptionKey?: string;
+  decayLambda?: number;
+  autoSupersede?: boolean;
   vectorStore?: {
     config?: {
       host?: string;
       apiKey?: string;
+      encryptionKey?: string;
     };
   };
 }
@@ -23,6 +27,7 @@ export interface MemoryOptions {
   memoryType?: "semantic" | "episodic" | "procedural";
   limit?: number;
   minScore?: number;
+  applyDecay?: boolean;
   metadata?: Record<string, any>;
   filters?: Record<string, any>;
 }
@@ -31,6 +36,8 @@ export interface MemoryItem {
   id: string;
   memory: string;
   score?: number;
+  rawSimilarity?: number;
+  isSuperseded?: boolean;
   userId?: string;
   agentId?: string;
   runId?: string;
@@ -46,6 +53,7 @@ export interface AddMemoryResponse {
     event: "ADD";
     data: string;
     metadata?: Record<string, any>;
+    supersededMemories?: string[];
   }>;
 }
 
@@ -85,6 +93,15 @@ export interface MemoryStatsResult {
   host: string;
   status: string;
   approxVectorCount: number;
+  schema: any;
+}
+
+export interface MemoryStats {
+  collection: string;
+  host: string;
+  status: string;
+  approxVectorCount: number;
+  encrypted?: boolean;
   schema?: any;
 }
 
@@ -116,6 +133,9 @@ export class Memory {
   private collection: string;
   private quantization: string;
   private host: string;
+  private encryptionKey?: string;
+  private decayLambda: number;
+  private autoSupersede: boolean;
 
   constructor(config: MemoryConfig = {}) {
     const host = config.host || config.vectorStore?.config?.host || process.env.HYPERSPACE_HOST || "the.yar.ink";
@@ -123,6 +143,9 @@ export class Memory {
     this.host = host;
     this.collection = config.collectionName || "agent_memories";
     this.quantization = config.quantization || "extreme";
+    this.encryptionKey = config.encryptionKey || config.vectorStore?.config?.encryptionKey || process.env.HYPERSPACE_ENCRYPTION_KEY;
+    this.decayLambda = config.decayLambda ?? 0.005;
+    this.autoSupersede = config.autoSupersede ?? true;
 
     const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
     const grpcKey = (isLocal && apiKey.startsWith("sk_")) ? "I_LOVE_HYPERSPACEDB" : (apiKey || "I_LOVE_HYPERSPACEDB");
@@ -132,7 +155,7 @@ export class Memory {
 
   private async ensureCollection(): Promise<void> {
     try {
-      const schema = {
+      const schema: any = {
         components: [
           {
             name: "default",
@@ -148,13 +171,17 @@ export class Memory {
             storeInRam: true,
             rerankTopK: 50
           }
-        ]
+        ],
+        encrypted: !!this.encryptionKey
       };
+      if (this.encryptionKey) {
+        this.client.registerCollectionKey(this.collection, this.encryptionKey, "hybrid", 0.0, schema);
+      }
       await (this.client as any).createCollection(
         this.collection,
         schema,
-        "",
-        0.02,
+        this.encryptionKey || "",
+        0.0,
         this.quantization
       );
     } catch {
@@ -184,12 +211,17 @@ export class Memory {
 
     const memoryId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const numId = this.generateNumericId(memoryId);
+    const nowTs = Date.now();
 
     const metadata: Record<string, string> = {
       memory_id: memoryId,
       text: text,
-      timestamp: String(Date.now()),
-      stored_at: new Date().toISOString()
+      timestamp: String(nowTs),
+      created_at: String(nowTs),
+      last_accessed_at: String(nowTs),
+      access_count: "0",
+      is_superseded: "false",
+      stored_at: new Date(nowTs).toISOString()
     };
 
     if (options.userId) metadata.user_id = options.userId;
@@ -209,13 +241,31 @@ export class Memory {
     const vector = await this.client.vectorize(text, 'hybrid');
     await this.client.insert(numId, vector, metadata, this.collection, 0, undefined, Buffer.from(text, "utf-8"));
 
+    // Autonomous conflict resolution: find previous conflicting/outdated memories
+    const supersededIds: string[] = [];
+    if (this.autoSupersede && text.length > 10) {
+      try {
+        const candidates = await this.search(text, { userId: options.userId, sessionId: options.sessionId, limit: 3 });
+        for (const cand of candidates) {
+          if (cand.id && cand.id !== memoryId && (cand.score ?? 0) >= 0.82) {
+            const candNumId = this.generateNumericId(cand.id);
+            await this.link(numId, candNumId, "SUPERSEDES", cand.score ?? 1.0);
+            supersededIds.push(cand.id);
+          }
+        }
+      } catch {
+        // Silently skip if induction fails
+      }
+    }
+
     return {
       results: [
         {
           id: memoryId,
           event: "ADD",
           data: text,
-          metadata
+          metadata,
+          supersededMemories: supersededIds
         }
       ]
     };
@@ -224,9 +274,14 @@ export class Memory {
   public async search(query: string, options: MemoryOptions = {}): Promise<MemoryItem[]> {
     const limit = options.limit || 5;
     const queryVector = await this.client.vectorize(query, 'hybrid');
-    const results = await this.client.search(queryVector, limit, this.collection);
+    // Oversample candidates for cognitive decay re-ranking
+    const candidateLimit = Math.max(limit * 4, 25);
+    const results = await this.client.search(queryVector, candidateLimit, this.collection);
 
+    const nowTs = Date.now();
+    const applyDecay = options.applyDecay ?? true;
     const memories: MemoryItem[] = [];
+
     for (const match of results) {
       const meta = (match as any).metadata || {};
 
@@ -235,18 +290,35 @@ export class Memory {
       if (options.runId && meta.run_id !== options.runId) continue;
       if (options.sessionId && meta.session_id !== options.sessionId) continue;
 
-      const score = (match as any).score ?? (
+      const rawSimilarity = (match as any).score ?? (
         (match as any).distance !== undefined
           ? 1.0 / (1.0 + Math.max(0, (match as any).distance))
           : 0.95
       );
 
-      if (options.minScore !== undefined && score < options.minScore) continue;
+      let finalScore = rawSimilarity;
+      if (applyDecay) {
+        const storedTs = parseFloat(meta.last_accessed_at || meta.timestamp || String(nowTs));
+        const hoursElapsed = Math.max(0, (nowTs - storedTs) / (3600 * 1000));
+        const recencyDecay = Math.exp(-this.decayLambda * hoursElapsed);
+        const accessCount = parseInt(meta.access_count || "0", 10);
+        const accessBoost = 1.0 + 0.05 * Math.log(1.0 + accessCount);
+        const imp = parseFloat(meta.importance || "5.0");
+        const importanceBoost = 1.0 + 0.05 * (imp - 5.0);
+        const isSuperseded = meta.is_superseded === "true";
+        const supersedePenalty = isSuperseded ? 0.20 : 1.0;
+
+        finalScore = rawSimilarity * recencyDecay * accessBoost * importanceBoost * supersedePenalty;
+      }
+
+      if (options.minScore !== undefined && finalScore < options.minScore) continue;
 
       memories.push({
         id: meta.memory_id || String((match as any).id),
         memory: meta.text || query,
-        score,
+        score: parseFloat(finalScore.toFixed(4)),
+        rawSimilarity: parseFloat(rawSimilarity.toFixed(4)),
+        isSuperseded: meta.is_superseded === "true",
         userId: meta.user_id || options.userId,
         agentId: meta.agent_id || options.agentId,
         runId: meta.run_id || options.runId,
@@ -257,7 +329,9 @@ export class Memory {
       });
     }
 
-    return memories;
+    // Rank by cognitive score
+    memories.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return memories.slice(0, limit);
   }
 
   public async getAll(options: MemoryOptions = {}): Promise<MemoryItem[]> {

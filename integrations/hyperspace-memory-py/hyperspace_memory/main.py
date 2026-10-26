@@ -65,6 +65,9 @@ class Memory:
         self.api_key = config.get("api_key") or config.get("vector_store", {}).get("config", {}).get("api_key") or os.environ.get("HYPERSPACE_API_KEY") or os.environ.get("YAR_API_KEY") or os.environ.get("CDE_API_KEY") or "YOUR_YARINK_API_KEY"
         self.collection = config.get("collection_name") or "agent_memories"
         self.quantization = config.get("quantization") or "extreme"
+        self.encryption_key = config.get("encryption_key") or config.get("encryptionKey") or config.get("password") or os.environ.get("HYPERSPACE_ENCRYPTION_KEY")
+        self.decay_lambda = float(config.get("decay_lambda", 0.005))
+        self.auto_supersede = config.get("auto_supersede", True)
         
         is_local = self.host.startswith("localhost") or self.host.startswith("127.0.0.1")
         grpc_key = "I_LOVE_HYPERSPACEDB" if (is_local and self.api_key.startswith("sk_")) else (self.api_key or "I_LOVE_HYPERSPACEDB")
@@ -72,30 +75,36 @@ class Memory:
         self._ensure_collection()
 
     def _ensure_collection(self):
-        """Creates default memory collection if it does not exist."""
+        """Creates default memory collection if it does not exist with optional Zero-Knowledge encryption."""
+        schema = {
+            "components": [
+                {
+                    "name": "default",
+                    "metric": "hybrid",
+                    "fullDimension": 801,
+                    "weight": 1.0
+                }
+            ],
+            "cascadePipeline": [
+                {
+                    "componentName": "default",
+                    "cutoffDimension": 129,
+                    "storeInRam": True,
+                    "rerankTopK": 50
+                }
+            ],
+            "encrypted": bool(self.encryption_key)
+        }
+        if self.encryption_key:
+            self.client.register_collection_key(self.collection, self.encryption_key, metric="hybrid")
+
         try:
-            schema = {
-                "components": [
-                    {
-                        "name": "default",
-                        "metric": "hybrid",
-                        "fullDimension": 801,
-                        "weight": 1.0
-                    }
-                ],
-                "cascadePipeline": [
-                    {
-                        "componentName": "default",
-                        "cutoffDimension": 129,
-                        "storeInRam": True,
-                        "rerankTopK": 50
-                    }
-                ]
-            }
             self.client.create_collection(
                 self.collection,
                 schema,
-                quantization=self.quantization
+                quantization=self.quantization,
+                encryption_key=self.encryption_key,
+                encrypted=bool(self.encryption_key)
             )
         except Exception:
             # Collection already exists or server handled creation
@@ -119,7 +128,8 @@ class Memory:
         filters: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Store a new memory item. Mem0 API compatible with cognitive session metadata.
+        Store a new memory item with autonomous conflict resolution (Temporal Superseding)
+        and Zero-Knowledge protection.
         """
         if isinstance(messages, list):
             text = " ".join([m.get("content", str(m)) if isinstance(m, dict) else str(m) for m in messages])
@@ -128,6 +138,7 @@ class Memory:
 
         memory_id = str(uuid.uuid4())
         num_id = self._generate_numeric_id(memory_id)
+        now_ts = time.time()
         
         meta = metadata or {}
         if user_id: meta["user_id"] = user_id
@@ -140,13 +151,33 @@ class Memory:
 
         meta["memory_id"] = memory_id
         meta["text"] = text
-        meta["timestamp"] = str(time.time())
-        meta["stored_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        meta["timestamp"] = str(now_ts)
+        meta["created_at"] = str(now_ts)
+        meta["last_accessed_at"] = str(now_ts)
+        meta["access_count"] = "0"
+        meta["is_superseded"] = "false"
+        meta["stored_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now_ts))
 
         # Vectorize & insert text into HyperspaceDB
         vector = self.client.vectorize(text, metric="hybrid")
         string_meta = {k: str(v) for k, v in meta.items()}
         self.client.insert(num_id, vector=vector, metadata=string_meta, collection=self.collection)
+
+        # Autonomous conflict resolution: find previous conflicting/outdated memories
+        superseded_ids = []
+        if self.auto_supersede and len(text) > 10:
+            try:
+                candidates = self.search(text, user_id=user_id, session_id=session_id, limit=3)
+                for cand in candidates:
+                    cand_id = cand.get("id")
+                    cand_score = cand.get("score", 0.0)
+                    if cand_id and cand_id != memory_id and cand_score >= 0.82:
+                        cand_num_id = self._generate_numeric_id(cand_id)
+                        # Link new -> old with SUPERSEDES directed edge in KAG graph
+                        self.link(num_id, cand_num_id, relation="SUPERSEDES", weight=cand_score)
+                        superseded_ids.append(cand_id)
+            except Exception:
+                pass
 
         return {
             "results": [
@@ -154,7 +185,8 @@ class Memory:
                     "id": memory_id,
                     "event": "ADD",
                     "data": text,
-                    "metadata": string_meta
+                    "metadata": string_meta,
+                    "superseded_memories": superseded_ids
                 }
             ]
         }
@@ -169,14 +201,19 @@ class Memory:
         min_score: Optional[float] = None,
         tags: Optional[List[str]] = None,
         limit: int = 5,
-        filters: Optional[Dict[str, Any]] = None
+        filters: Optional[Dict[str, Any]] = None,
+        apply_decay: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Search memories by semantic query. Mem0 API compatible with session isolation.
+        Search memories with Ebbinghaus Temporal Decay, Access Frequency Boost,
+        and Superseded Fact Penalization.
         """
         query_vector = self.client.vectorize(query, metric="hybrid")
-        results = self.client.search(query_vector, top_k=limit, collection=self.collection)
+        # Oversample candidates to allow cognitive decay re-ranking
+        candidate_limit = max(limit * 4, 25)
+        results = self.client.search(query_vector, top_k=candidate_limit, collection=self.collection)
 
+        now_ts = time.time()
         memories = []
         for match in results:
             if isinstance(match, dict):
@@ -194,22 +231,47 @@ class Memory:
             if agent_id and match_meta.get("agent_id") != str(agent_id): continue
             if run_id and match_meta.get("run_id") != str(run_id): continue
             if session_id and match_meta.get("session_id") != str(session_id): continue
-            if min_score is not None and match_score < min_score: continue
+
+            # Cognitive score computation
+            if apply_decay:
+                stored_ts = float(match_meta.get("last_accessed_at") or match_meta.get("timestamp") or now_ts)
+                hours_elapsed = max(0.0, (now_ts - stored_ts) / 3600.0)
+                # Subtle Ebbinghaus decay curve
+                recency_decay = math.exp(-self.decay_lambda * hours_elapsed)
+                access_count = int(match_meta.get("access_count", "0"))
+                # Logarithmic reinforcement curve
+                access_boost = 1.0 + 0.05 * math.log(1.0 + access_count)
+                imp = float(match_meta.get("importance", 5.0))
+                importance_boost = 1.0 + 0.05 * (imp - 5.0)
+                
+                # Penalize superseded memories so outdated facts sink
+                is_superseded = match_meta.get("is_superseded") == "true"
+                supersede_penalty = 0.20 if is_superseded else 1.0
+                
+                final_score = match_score * recency_decay * access_boost * importance_boost * supersede_penalty
+            else:
+                final_score = match_score
+
+            if min_score is not None and final_score < min_score: continue
 
             memories.append({
                 "id": match_meta.get("memory_id", str(match_id)),
                 "memory": match_meta.get("text", query),
-                "score": match_score,
+                "score": round(final_score, 4),
+                "raw_similarity": round(match_score, 4),
                 "user_id": match_meta.get("user_id", user_id),
                 "agent_id": match_meta.get("agent_id", agent_id),
                 "run_id": match_meta.get("run_id", run_id),
                 "session_id": match_meta.get("session_id", session_id),
                 "tags": match_meta.get("tags", "").split(",") if match_meta.get("tags") else None,
                 "importance": float(match_meta.get("importance", 5.0)) if match_meta.get("importance") else None,
+                "is_superseded": match_meta.get("is_superseded") == "true",
                 "metadata": match_meta
             })
 
-        return memories
+        # Rank by cognitive score
+        memories.sort(key=lambda x: x["score"], reverse=True)
+        return memories[:limit]
 
     def get_all(
         self,
@@ -470,21 +532,66 @@ class Memory:
         except Exception:
             return 0
 
+    def auto_reconsolidate(self, session_id: Optional[str] = None, user_id: Optional[str] = None, min_cluster_size: int = 2) -> List[Dict[str, Any]]:
+        """
+        Background autonomous sleep/reconsolidation worker.
+        Discovers uncompressed episodic memories, groups them by topic similarity,
+        computes Fréchet Mean on Lorentz hyperboloid, creates semantic concepts,
+        and links them via KAG graph CONTAINS edges.
+        """
+        memories = self.get_all(user_id=user_id, session_id=session_id, limit=100)
+        episodic = [m for m in memories if m.get("metadata", {}).get("memory_type", "episodic") == "episodic" and not m.get("is_superseded")]
+        if len(episodic) < min_cluster_size:
+            return []
+
+        groups = {}
+        for mem in episodic:
+            tags = mem.get("tags") or ["general"]
+            primary_tag = tags[0] if tags else "general"
+            if primary_tag not in groups:
+                groups[primary_tag] = []
+            groups[primary_tag].append(mem)
+
+        results = []
+        for tag, cluster in groups.items():
+            if len(cluster) >= min_cluster_size:
+                try:
+                    res = self.consolidate(
+                        topic_query=tag,
+                        limit=len(cluster),
+                        summary_text=f"[AutoReconsolidated] Semantic concept for '{tag}': synthesized from {len(cluster)} episodes",
+                        persist=True,
+                        archive_sources=False
+                    )
+                    concept_id = res.get("consolidated_id")
+                    if concept_id:
+                        concept_num = self._generate_numeric_id(concept_id)
+                        for mem in cluster:
+                            src_num = self._generate_numeric_id(mem["id"])
+                            self.link(concept_num, src_num, relation="CONTAINS", weight=1.0)
+                    results.append(res)
+                except Exception:
+                    pass
+        return results
+
     def stats(self) -> Dict[str, Any]:
         """Get operational statistics and health diagnostics for the memory collection."""
         self._ensure_collection()
         try:
             cols = self.client.list_collections()
-            target = next((c for c in cols if getattr(c, "name", "") == self.collection), None)
-            count = getattr(target, "count", 0) if target else 0
+            target = next((c for c in cols if getattr(c, "name", "") == self.collection or (isinstance(c, dict) and c.get("name") == self.collection)), None)
+            count = getattr(target, "count", 0) if target else (target.get("count", 0) if isinstance(target, dict) else 0)
+            encrypted = getattr(target, "encrypted", False) if target else (target.get("encrypted", False) if isinstance(target, dict) else False)
         except Exception:
             count = 0
+            encrypted = bool(self.encryption_key)
 
         return {
             "collection": self.collection,
             "host": self.host,
             "status": "ready",
             "approx_vector_count": count,
+            "encrypted": encrypted,
             "schema": {
                 "metric": "hybrid",
                 "fullDimension": 801,

@@ -124,12 +124,14 @@ export interface MrlLayer {
 export interface CollectionSchema {
     components: VectorComponent[];
     cascadePipeline: MrlLayer[];
+    encrypted?: boolean;
 }
 
 export interface CollectionInfo {
     name: string;
     count: number;
     schema?: CollectionSchema;
+    encrypted?: boolean;
 }
 
 export interface CollectionStats {
@@ -139,6 +141,7 @@ export interface CollectionStats {
     diskUsageBytes: number;
     ramUsageBytes: number;
     activeTasks: number;
+    encrypted?: boolean;
 }
 
 export interface SystemMetrics {
@@ -697,6 +700,7 @@ export class HyperspaceClient {
                 dimension: comp ? comp.fullDimension : 1024,
                 metric: comp ? comp.metric : "l2",
                 quantization,
+                encrypted: !!(schema.encrypted || encryptionKey),
             };
             if (schema.cascadePipeline && schema.cascadePipeline.length > 0) {
                 payload.mrl_cutoff_dimension = schema.cascadePipeline[0].cutoffDimension;
@@ -728,6 +732,9 @@ export class HyperspaceClient {
             req.setName(name);
             
             const protoSchema = new hyperspace_pb.CollectionSchema();
+            if ((protoSchema as any).setEncrypted) {
+                (protoSchema as any).setEncrypted(!!(schema.encrypted || this.collectionKeys[name]));
+            }
             
             const components = schema.components.map(c => {
                 const comp = new hyperspace_pb.VectorComponent();
@@ -801,13 +808,15 @@ export class HyperspaceClient {
             this.client.listCollections(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
                 const list = (resp.getCollectionsList() as any as ProtoCollectionSummary[]).map(c => {
+                    const protoSchema = c.getSchema();
                     const info: CollectionInfo = {
                         name: c.getName(),
-                        count: c.getCount()
+                        count: c.getCount(),
+                        encrypted: (c as any).getEncrypted ? (c as any).getEncrypted() : (protoSchema && (protoSchema as any).getEncrypted ? (protoSchema as any).getEncrypted() : false)
                     };
-                    const protoSchema = c.getSchema();
                     if (protoSchema) {
                         info.schema = {
+                            encrypted: (protoSchema as any).getEncrypted ? (protoSchema as any).getEncrypted() : false,
                             components: protoSchema.getComponentsList().map((comp: any) => ({
                                 name: comp.getName(),
                                 metric: comp.getMetric(),
@@ -1601,19 +1610,20 @@ export class HyperspaceClient {
         return new Promise((resolve, reject) => {
             const req = new CollectionStatsRequest();
             req.setName(name);
-
             this.client.getCollectionStats(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);
+                const protoSchema = resp.getSchema();
                 const stats: CollectionStats = {
                     count: resp.getCount(),
                     indexingQueue: resp.getIndexingQueue(),
                     diskUsageBytes: resp.getDiskUsageBytes(),
                     ramUsageBytes: resp.getRamUsageBytes(),
-                    activeTasks: resp.getActiveTasks()
+                    activeTasks: resp.getActiveTasks(),
+                    encrypted: (resp as any).getEncrypted ? (resp as any).getEncrypted() : (protoSchema && (protoSchema as any).getEncrypted ? (protoSchema as any).getEncrypted() : false)
                 };
-                const protoSchema = resp.getSchema();
                 if (protoSchema) {
                     stats.schema = {
+                        encrypted: (protoSchema as any).getEncrypted ? (protoSchema as any).getEncrypted() : false,
                         components: protoSchema.getComponentsList().map((comp: any) => ({
                             name: comp.getName(),
                             metric: comp.getMetric(),

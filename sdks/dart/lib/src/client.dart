@@ -132,6 +132,7 @@ class HyperspaceClient {
     final metric = schema.components.isNotEmpty ? schema.components[0].metric : "l2";
     if (encryptionKey.isNotEmpty) {
       registerCollectionKey(name, encryptionKey, metric: metric, noiseSigma: noiseSigma, schema: schema);
+      schema.encrypted = true;
     }
     final req = CreateCollectionRequest(name: name, schema: schema);
     final resp = await _stub.createCollection(req);

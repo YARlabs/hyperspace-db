@@ -361,13 +361,15 @@ class HyperspaceClient:
 
     # ... (create/delete/list unchanged) ...
 
-    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None, encryption_key: str = None, noise_sigma: float = 0.02, quantization: str = None) -> bool:
+    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None, encryption_key: str = None, noise_sigma: float = 0.0, quantization: str = None, encrypted: bool = None) -> bool:
         # Extract metric for encryption context
         derived_metric = metric
         if not derived_metric and isinstance(schema, dict) and "components" in schema and schema["components"]:
             derived_metric = schema["components"][0].get("metric")
         if not derived_metric:
             derived_metric = "l2"
+
+        is_encrypted = bool(encryption_key or encrypted or (isinstance(schema, dict) and schema.get("encrypted")) or (isinstance(schema, hyperspace_pb2.CollectionSchema) and schema.HasField("encrypted") and schema.encrypted))
 
         if encryption_key:
             self.register_collection_key(name, encryption_key, derived_metric, noise_sigma)
@@ -393,6 +395,7 @@ class HyperspaceClient:
                 "dimension": full_dim,
                 "metric": metric_space,
                 "quantization": quantization,
+                "encrypted": is_encrypted,
             }
             pipeline = (schema.get("cascade_pipeline") or schema.get("cascadePipeline", [])) if (schema and isinstance(schema, dict)) else []
             if pipeline:
@@ -418,13 +421,15 @@ class HyperspaceClient:
                             "full_dimension": dimension,
                             "weight": 1.0
                         }
-                    ]
+                    ],
+                    "encrypted": is_encrypted
                 }
             else:
                 raise ValueError("Either schema or both dimension and metric must be provided")
 
         if isinstance(schema, dict):
             proto_schema = hyperspace_pb2.CollectionSchema()
+            proto_schema.encrypted = is_encrypted
             if "components" in schema:
                 for c in schema["components"]:
                     dim = c.get("full_dimension") or c.get("fullDimension", 801)
@@ -492,7 +497,8 @@ class HyperspaceClient:
                 {
                     "name": c.name,
                     "count": c.count,
-                    "schema": self._schema_to_dict(c.schema) if c.HasField("schema") else None
+                    "schema": self._schema_to_dict(c.schema) if c.HasField("schema") else None,
+                    "encrypted": c.encrypted if c.HasField("encrypted") else (c.schema.encrypted if c.HasField("schema") and c.schema.HasField("encrypted") else False)
                 }
                 for c in resp.collections
             ]
@@ -501,7 +507,7 @@ class HyperspaceClient:
             return []
 
     def _schema_to_dict(self, schema: hyperspace_pb2.CollectionSchema) -> Dict:
-        return {
+        res = {
             "components": [
                 {
                     "name": c.name,
@@ -521,7 +527,9 @@ class HyperspaceClient:
                 for p in schema.cascade_pipeline
             ]
         }
-
+        if schema.HasField("encrypted"):
+            res["encrypted"] = schema.encrypted
+        return res
 
     def get_collection_stats(self, name: str) -> Dict:
         req = hyperspace_pb2.CollectionStatsRequest(name=name)
@@ -533,7 +541,8 @@ class HyperspaceClient:
                 "disk_usage_bytes": resp.disk_usage_bytes,
                 "ram_usage_bytes": resp.ram_usage_bytes,
                 "active_tasks": resp.active_tasks,
-                "schema": self._schema_to_dict(resp.schema) if resp.HasField("schema") else None
+                "schema": self._schema_to_dict(resp.schema) if resp.HasField("schema") else None,
+                "encrypted": resp.encrypted if resp.HasField("encrypted") else (resp.schema.encrypted if resp.HasField("schema") and resp.schema.HasField("encrypted") else False)
             }
         except grpc.RpcError as e:
             print(f"RPC Error in get_collection_stats: {e}")

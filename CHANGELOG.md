@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.1] - 2026-10-25
+
+### Added
+* **Zero-Knowledge Client-Side Vector & Payload Encryption**:
+  * **Metric-Preserving Isometric Transformations**: Deterministic seed-based orthogonal matrices $O(n)$ for Euclidean, Cosine, and Poincaré spaces; proper orthochronous Lorentz matrices $SO^+(1, d)$ preserving the Minkowski bilinear form and hyperboloid invariant $x_0 = \sqrt{1 + \|x_{spatial}\|^2}$; block-diagonal projections for Hybrid MRL spaces.
+  * **Vec2Text Neural Inversion Resistance**: Anisotropic perturbation with binary buffer hashing defeating manifold alignment and prompt reconstruction attacks (observed cross-cosine $0.052$ vs theoretical random sphere expectation $0.088$).
+  * **Per-Collection Encryption Configuration**: Explicit `optional bool encrypted = 3` in `CollectionSchema`, `CollectionSummary`, and `CollectionStatsResponse`. Stored in collection `meta.json` and surfaced in Dashboard collections view as an `ENCRYPTED` badge.
+  * **Comprehensive Metric & Quantization Validation**: 100.0% Recall@10 preservation and $\sim 10^{-16}$ distance distortion across all 6 metrics (`l2`, `cosine`, `dot_product`, `lorentz`, `poincare`, `hybrid`); 90% Recall@10 under INT8 (`medium_plus`) and 4-bit (`turbo`) quantization with mild noise.
+* **Autonomous Cognitive Agent Memory Architecture**:
+  * **Native Ebbinghaus Temporal Decay**: Exponential retention scoring $S(t) = S_0 \cdot e^{-\lambda \Delta t}$ integrated directly into retrieval kernels with zero LLM calls.
+  * **Real-Time Temporal Superseding**: Directed `SUPERSEDES` graph edges linking incoming contradictory assertions to obsolete historical facts without external graph databases or multi-second consolidation passes.
+  * **Unified Integration Support**: Added across `hyperspace-memory-py`, `hyperspace-memory-ts`, `mcp-hyperspace-memory`, and `mcp-hyperspacedb`.
+* **Honest Evaluation & Benchmark Suite**:
+  * Standalone reproducible benchmark `benchmarks/honest_crypto_memory_benchmark.py` generating `HONEST_CAPABILITY_AND_BENCHMARK_REPORT.md`.
+  * Transparent Capability and Limitation Matrix defining exact operational boundaries (e.g. server-side BM25 limitations on encrypted payloads, 1-bit quantization boundaries).
+
 ## [4.1.0] - 2026-10-15
 
 ### Added

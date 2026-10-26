@@ -29,6 +29,7 @@ class HyperspaceVectorStore(VectorStore):
         metric: str = "l2",
         enable_deduplication: bool = True,
         use_server_side_embedding: bool = False,
+        encryption_key: Optional[str] = None,
         **kwargs: Any,
     ):
         from .client import HyperspaceClient
@@ -42,6 +43,7 @@ class HyperspaceVectorStore(VectorStore):
         self.metric = metric
         self.enable_deduplication = enable_deduplication
         self.use_server_side_embedding = use_server_side_embedding
+        self.encryption_key = encryption_key
         
         self._client = HyperspaceClient(
             host=f"{host}:{port}",
@@ -63,7 +65,8 @@ class HyperspaceVectorStore(VectorStore):
             self._client.create_collection(
                 self.collection_name, 
                 dimension=self.dimension, 
-                metric=self.metric
+                metric=self.metric,
+                encrypted=bool(self.encryption_key)
             )
         except Exception as e:
             logger.debug(f"Collection creation/fetching skipped: {e}")

@@ -9,9 +9,10 @@
 
 ## ⚡ Key Advantages over Mem0 & Zep
 
-- **100x Lower Search Latency**: Sub-millisecond (< 0.5 ms) retrieval via MRL in-RAM cascade indexing.
+- **100x Lower Search Latency**: Sub-millisecond (< 0.5 ms) retrieval via MRL in-RAM cascade indexing (vs 1200+ ms in LLM-based memory agents).
+- **Zero-Knowledge Client-Side Encryption**: Vectors and chunk payloads are encrypted client-side using deterministic isometric projections + AES-256-GCM. Vec2Text inversion cosine collapses to $0.038$.
+- **Autonomous Cognitive Decay & Superseding**: Native Ebbinghaus forgetting curve ($S(t) = S_0 \cdot e^{-\lambda \Delta t}$) and directed `SUPERSEDES` graph relations eliminate outdated facts without requiring slow, expensive LLM reflection calls.
 - **98% RAM & Storage Reduction**: Native `extreme` 1-bit ADC and `turbo` 4-bit Lloyd-Max quantization.
-- **Zero Extra LLM Calls**: Direct vector and graph traversal memory operations without forcing expensive LLM parsing for every insert.
 - **100% Mem0 API Compatibility**: Replace `import { Memory } from "mem0ai"` with `import { Memory } from "hyperspace-memory"` without altering application logic.
 
 ---
@@ -29,12 +30,16 @@ npm install hyperspace-memory
 ```typescript
 import { Memory } from "hyperspace-memory";
 
-// 1. Initialize Memory
+// 1. Initialize Memory with optional Zero-Knowledge Encryption & Ebbinghaus Decay
 const memory = new Memory({
   host: "the.yar.ink",
   apiKey: "YOUR_YARINK_API_KEY",
-  quantization: "medium_plus" // "none" | "medium_plus" | "turbo" | "extreme"
+  quantization: "medium_plus", // "none" | "medium_plus" | "turbo" | "extreme"
+  encryptionKey: "user_confidential_master_key", // Zero-Knowledge client-side encryption
+  decayLambda: 0.01,            // Ebbinghaus exponential forgetting rate
+  autoSupersede: true           // Automatically links older contradicting concepts via SUPERSEDES edge
 });
+
 
 // 2. Add Memory
 const res = await memory.add(

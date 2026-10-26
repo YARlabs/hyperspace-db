@@ -132,6 +132,7 @@ async fn test_basic_operations() -> Result<(), Box<dyn std::error::Error>> {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             },
         )
         .await?;
@@ -183,6 +184,7 @@ async fn test_leader_follower_sync() -> Result<(), Box<dyn std::error::Error>> {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     leader
         .create_collection(collection.clone(), schema.clone())
@@ -257,6 +259,7 @@ async fn test_merkle_tree_consistency() -> Result<(), Box<dyn std::error::Error>
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             },
         )
         .await?;
@@ -324,6 +327,7 @@ async fn test_high_volume_inserts() -> Result<(), Box<dyn std::error::Error>> {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             },
         )
         .await?;
@@ -384,6 +388,7 @@ async fn test_concurrent_inserts() -> Result<(), Box<dyn std::error::Error>> {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             },
         )
         .await?;
@@ -453,6 +458,7 @@ async fn test_collection_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             },
         )
         .await?;

@@ -41,7 +41,7 @@ class HyperspaceClient:
             meta.append(("x-hyperspace-user-id", self.user_id))
         return meta
     
-    def create_collection(self, name: str, dimension: int, metric: str = "l2") -> bool:
+    def create_collection(self, name: str, dimension: int, metric: str = "l2", encrypted: bool = False) -> bool:
         try:
             schema = hyperspace_pb2.CollectionSchema(
                 components=[
@@ -51,7 +51,8 @@ class HyperspaceClient:
                         full_dimension=dimension,
                         weight=1.0
                     )
-                ]
+                ],
+                encrypted=encrypted
             )
             req = hyperspace_pb2.CreateCollectionRequest(name=name, schema=schema)
             self._stub.CreateCollection(req, metadata=self._get_metadata())

@@ -149,6 +149,7 @@ message MrlLayer {
 message CollectionSchema {
     repeated VectorComponent components = 1;
     repeated MrlLayer cascade_pipeline = 2;
+    optional bool encrypted = 3;
 }
 
 message CollectionComponent {
@@ -168,6 +169,7 @@ message CollectionSummary {
   reserved 3;
   reserved 4;
   optional CollectionSchema schema = 5;
+  optional bool encrypted = 6;
 }
 
 message ListCollectionsResponse {
@@ -188,6 +190,7 @@ message CollectionStatsResponse {
   uint64 ram_usage_bytes = 6;
   uint64 active_tasks = 7;
   optional CollectionSchema schema = 8;
+  optional bool encrypted = 9;
 }
 
 message RebuildIndexRequest {

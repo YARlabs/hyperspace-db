@@ -43,9 +43,11 @@ Get your API key at **[yar.ink/dashboard](https://yar.ink/dashboard)**.
 | Variable | Default | Required | Description |
 |:---------|:--------|:--------:|:------------|
 | `HYPERSPACE_API_KEY` | — | ✅ | Database API key (`sk_...` for SaaS or your local DB password) |
+| `HYPERSPACE_ENCRYPTION_KEY` | — | — | Client-side Zero-Knowledge encryption key (activates orthogonal/Lorentz projection + AES-256-GCM payload encryption) |
 | `CDE_API_KEY` / `YAR_API_KEY` | — | — | Cloud API key for `v5_Embedding_801` (used when local DB has a custom password) |
 | `MEMORY_COLLECTION` | `agent_memory` | — | Collection name to store memories in |
 | `HYPERSPACE_HOST` | `the.yar.ink` | — | Set to `localhost:50051` to run with a self-hosted instance |
+
 
 ---
 

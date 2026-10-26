@@ -989,15 +989,14 @@ impl Database for HyperspaceService {
         let shared = security::list_shared_collections(&ctx.user_id);
         for (owner, name, _) in shared {
             if let Some(col) = self.manager.get(&owner, &name).await {
-                let schema = self
-                    .manager
-                    .get_metadata(&owner, &name)
-                    .await
-                    .and_then(|m| m.schema);
+                let meta = self.manager.get_metadata(&owner, &name).await;
+                let schema = meta.as_ref().and_then(|m| m.schema.clone());
+                let encrypted = meta.map(|m| m.encrypted);
                 collections.push(hyperspace_proto::hyperspace::CollectionSummary {
                     name: format!("{owner}/{name}"),
                     count: col.count() as u64,
                     schema,
+                    encrypted,
                 });
             }
         }
@@ -1013,11 +1012,9 @@ impl Database for HyperspaceService {
         let req = request.into_inner();
         if let Some(col) = self.manager.get(&user_id, &req.name).await {
             let usage = col.get_usage();
-            let schema = self
-                .manager
-                .get_metadata(&user_id, &req.name)
-                .await
-                .and_then(|m| m.schema);
+            let meta = self.manager.get_metadata(&user_id, &req.name).await;
+            let schema = meta.as_ref().and_then(|m| m.schema.clone());
+            let encrypted = meta.map(|m| m.encrypted);
             Ok(Response::new(CollectionStatsResponse {
                 count: col.count() as u64,
                 indexing_queue: col.queue_size(),
@@ -1025,6 +1022,7 @@ impl Database for HyperspaceService {
                 ram_usage_bytes: usage.ram_usage_bytes,
                 active_tasks: usage.active_indexing_tasks,
                 schema,
+                encrypted,
             }))
         } else {
             Err(Status::not_found("Collection not found"))

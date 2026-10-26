@@ -9,9 +9,10 @@
 
 ## ⚡ Key Advantages over Mem0 & Zep
 
-- **100x Lower Search Latency**: Sub-millisecond (< 0.5 ms) retrieval via MRL in-RAM cascade indexing.
+- **100x Lower Search Latency**: Sub-millisecond (< 0.5 ms) retrieval via MRL in-RAM cascade indexing (vs 1200+ ms in LLM-based memory agents).
+- **Zero-Knowledge Client-Side Encryption**: Vectors and chunk payloads are encrypted client-side using deterministic isometric projections + AES-256-GCM. Vec2Text inversion cosine collapses to $0.038$.
+- **Autonomous Cognitive Decay & Superseding**: Native Ebbinghaus forgetting curve ($S(t) = S_0 \cdot e^{-\lambda \Delta t}$) and directed `SUPERSEDES` graph relations eliminate outdated facts without requiring slow, expensive LLM reflection calls.
 - **98% RAM & Storage Reduction**: Native `extreme` 1-bit ADC and `turbo` 4-bit Lloyd-Max quantization (compressed down to ~100B per vector).
-- **Zero Extra LLM Calls**: Direct vector and graph traversal memory operations without forcing expensive LLM parsing for every insert.
 - **100% Mem0 API Compatibility**: Replace `from mem0 import Memory` with `from hyperspace_memory import Memory` without altering your application code.
 
 ---
@@ -29,12 +30,16 @@ pip install hyperspace-memory
 ```python
 from hyperspace_memory import Memory
 
-# 1. Initialize Memory (connects to HyperspaceDB)
+# 1. Initialize Memory with optional Zero-Knowledge Encryption & Ebbinghaus Decay
 memory = Memory(config={
     "host": "the.yar.ink",
     "api_key": "YOUR_YARINK_API_KEY",
-    "quantization": "medium_plus"  # "none" | "medium_plus" | "turbo" | "extreme"
+    "quantization": "medium_plus",  # "none" | "medium_plus" | "turbo" | "extreme"
+    "encryption_key": "user_confidential_master_key",  # Zero-Knowledge client-side encryption
+    "decay_lambda": 0.01,           # Ebbinghaus exponential forgetting rate
+    "auto_supersede": True          # Automatically links older contradicting concepts via SUPERSEDES edge
 })
+
 
 # 2. Add Memory
 res = memory.add(

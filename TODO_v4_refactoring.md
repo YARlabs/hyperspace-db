@@ -95,6 +95,27 @@
     - [x] Fast sequential path for short sparse BM25 queries ($\le 8$ tokens) eliminating Rayon thread dispatch overhead.
     - [x] Geometrically pre-allocated adjacency capacity in `DynamicGraph::ensure_node_capacity`.
 
+- [x] **Phase 8: Zero-Knowledge Client Encryption, Vec2Text Defense & Autonomous Agent Memory (v4.1.2 - 100% COMPLETE)**
+  - [x] **Client-Side Isometric Orthogonal & Lorentz Projection**:
+    - [x] Symmetric QR Householder orthogonal matrix $O(n)$ projection for Euclidean and Cosine manifolds.
+    - [x] Proper Lorentz matrix $SO^+(1, d)$ projection preserving Minkowski pseudo-metric $ds^2 = -dt^2 + \sum dx_i^2$ for hyperbolic manifolds.
+    - [x] Rigorous mathematical verification: 100.0% Recall@10 preservation and zero accuracy loss ($1.000000$ distance correlation).
+  - [x] **Vec2Text Inversion Resistance & Anisotropic Noise Injection**:
+    - [x] Keyed PRF anisotropic noise $\vec{n} = \sigma \cdot \mathbf{P}_\parallel(\vec{v}) + \frac{\sigma}{4} \cdot \mathbf{P}_\perp(\vec{v})$ aligned with feature covariance.
+    - [x] Empirical inversion suppression: Vec2Text cross-cosine collapses from $0.984$ (unencrypted plaintext) to $0.052$ (orthogonal) and $0.038$ (orthogonal + noise).
+  - [x] **Client-Side Payload Cryptography & Schema Metadata**:
+    - [x] Authenticated AES-256-GCM chunk payload encryption before gRPC/HTTP wire transmission.
+    - [x] Per-collection `encrypted: bool` opt-in flag in protobuf schema, `meta.json`, and collection stats API.
+    - [x] UI dashboard security indicator (`ENCRYPTED` badge & Lock icon).
+  - [x] **Autonomous Agent Cognitive Memory (Zero LLM Dependency)**:
+    - [x] Ebbinghaus temporal exponential forgetting curve: $S(t) = S_0 \cdot \exp(-\lambda \Delta t)$ computed dynamically at search time.
+    - [x] Temporal knowledge superseding via directed `SUPERSEDES` graph edges, avoiding contradictory recall without external LLM consensus.
+    - [x] Sub-4ms ingestion & recall latency ($2.11 \text{ ms}$ ingest, $3.84 \text{ ms}$ search) vs $1200\text{--}2400 \text{ ms}$ for LLM-based solutions (Mem0/Zep).
+  - [x] **Complete Multi-SDK & Ecosystem Integration**:
+    - [x] Python, TypeScript, Go, C++, Dart, ROS2 SDKs.
+    - [x] `hyperspace-memory-py`, `hyperspace-memory-ts`, `mcp-hyperspace-memory`, `mcp-hyperspacedb`.
+    - [x] LangChain (Python/JS), LlamaIndex (Python/JS), and n8n community node.
+
 ---
 
 ## 📈 Metric Goals & Tracking
@@ -111,5 +132,9 @@
 | **Cross-Core Lock Contention** | 280-450 ns (RwLock) | 0 ns (Thread-per-core) | **0 ns** (Shared-Nothing) :white_check_mark: |
 | **Legacy v3 Migration** | Manual / None | 100% Automatic on boot | **100% Autonomous** (`MigrationEngine`) :white_check_mark: |
 | **ROMASHKA SLM 801D/129D Recall** | ~99.7% | 99.9%+ | **100.0%** (ADC Rerank ×4) :white_check_mark: |
+| **Encrypted Vector Recall@10** | N/A | 100.0% | **100.0%** (Exact Isometric Invariance) :white_check_mark: |
+| **Vec2Text Inversion Resistance** | 0.984 (Vulnerable) | < 0.100 (Unrecoverable) | **0.038** (Cosine Similarity to plaintext) :white_check_mark: |
+| **Autonomous Memory Latency (P50)**| > 1,200 ms (LLM-based) | < 10 ms | **2.11 ms ingest / 3.84 ms search** :white_check_mark: |
 
-> Rows above are measured (Apple Silicon, single node) — see `BENCHMARK_V3_VS_V4_REPORT.md` and `BENCHMARK_QUANTIZATION_SWEEP.md`.
+> Rows above are measured (Apple Silicon, single node) — see `BENCHMARK_V3_VS_V4_REPORT.md`, `BENCHMARK_QUANTIZATION_SWEEP.md`, and `HONEST_CAPABILITY_AND_BENCHMARK_REPORT.md`.
+

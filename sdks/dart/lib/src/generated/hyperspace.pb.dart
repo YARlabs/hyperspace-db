@@ -785,10 +785,12 @@ class CollectionSchema extends $pb.GeneratedMessage {
   factory CollectionSchema({
     $core.Iterable<VectorComponent>? components,
     $core.Iterable<MrlLayer>? cascadePipeline,
+    $core.bool? encrypted,
   }) {
     final result = create();
     if (components != null) result.components.addAll(components);
     if (cascadePipeline != null) result.cascadePipeline.addAll(cascadePipeline);
+    if (encrypted != null) result.encrypted = encrypted;
     return result;
   }
 
@@ -809,6 +811,7 @@ class CollectionSchema extends $pb.GeneratedMessage {
         subBuilder: VectorComponent.create)
     ..pPM<MrlLayer>(2, _omitFieldNames ? '' : 'cascadePipeline',
         subBuilder: MrlLayer.create)
+    ..aOB(3, _omitFieldNames ? '' : 'encrypted')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -835,6 +838,15 @@ class CollectionSchema extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(2)
   $pb.PbList<MrlLayer> get cascadePipeline => $_getList(1);
+
+  @$pb.TagNumber(3)
+  $core.bool get encrypted => $_getBF(2);
+  @$pb.TagNumber(3)
+  set encrypted($core.bool value) => $_setBool(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasEncrypted() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearEncrypted() => $_clearField(3);
 }
 
 class CollectionComponent extends $pb.GeneratedMessage {
@@ -987,11 +999,13 @@ class CollectionSummary extends $pb.GeneratedMessage {
     $core.String? name,
     $fixnum.Int64? count,
     CollectionSchema? schema,
+    $core.bool? encrypted,
   }) {
     final result = create();
     if (name != null) result.name = name;
     if (count != null) result.count = count;
     if (schema != null) result.schema = schema;
+    if (encrypted != null) result.encrypted = encrypted;
     return result;
   }
 
@@ -1013,6 +1027,7 @@ class CollectionSummary extends $pb.GeneratedMessage {
         defaultOrMaker: $fixnum.Int64.ZERO)
     ..aOM<CollectionSchema>(5, _omitFieldNames ? '' : 'schema',
         subBuilder: CollectionSchema.create)
+    ..aOB(6, _omitFieldNames ? '' : 'encrypted')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1062,6 +1077,15 @@ class CollectionSummary extends $pb.GeneratedMessage {
   void clearSchema() => $_clearField(5);
   @$pb.TagNumber(5)
   CollectionSchema ensureSchema() => $_ensure(2);
+
+  @$pb.TagNumber(6)
+  $core.bool get encrypted => $_getBF(3);
+  @$pb.TagNumber(6)
+  set encrypted($core.bool value) => $_setBool(3, value);
+  @$pb.TagNumber(6)
+  $core.bool hasEncrypted() => $_has(3);
+  @$pb.TagNumber(6)
+  void clearEncrypted() => $_clearField(6);
 }
 
 class ListCollectionsResponse extends $pb.GeneratedMessage {
@@ -1177,6 +1201,7 @@ class CollectionStatsResponse extends $pb.GeneratedMessage {
     $fixnum.Int64? ramUsageBytes,
     $fixnum.Int64? activeTasks,
     CollectionSchema? schema,
+    $core.bool? encrypted,
   }) {
     final result = create();
     if (count != null) result.count = count;
@@ -1185,6 +1210,7 @@ class CollectionStatsResponse extends $pb.GeneratedMessage {
     if (ramUsageBytes != null) result.ramUsageBytes = ramUsageBytes;
     if (activeTasks != null) result.activeTasks = activeTasks;
     if (schema != null) result.schema = schema;
+    if (encrypted != null) result.encrypted = encrypted;
     return result;
   }
 
@@ -1217,6 +1243,7 @@ class CollectionStatsResponse extends $pb.GeneratedMessage {
         defaultOrMaker: $fixnum.Int64.ZERO)
     ..aOM<CollectionSchema>(8, _omitFieldNames ? '' : 'schema',
         subBuilder: CollectionSchema.create)
+    ..aOB(9, _omitFieldNames ? '' : 'encrypted')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1294,6 +1321,15 @@ class CollectionStatsResponse extends $pb.GeneratedMessage {
   void clearSchema() => $_clearField(8);
   @$pb.TagNumber(8)
   CollectionSchema ensureSchema() => $_ensure(5);
+
+  @$pb.TagNumber(9)
+  $core.bool get encrypted => $_getBF(6);
+  @$pb.TagNumber(9)
+  set encrypted($core.bool value) => $_setBool(6, value);
+  @$pb.TagNumber(9)
+  $core.bool hasEncrypted() => $_has(6);
+  @$pb.TagNumber(9)
+  void clearEncrypted() => $_clearField(9);
 }
 
 class RebuildIndexRequest extends $pb.GeneratedMessage {

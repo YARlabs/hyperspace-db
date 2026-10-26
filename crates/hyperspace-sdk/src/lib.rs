@@ -187,6 +187,7 @@ impl CollectionSchemaBuilder {
                 weight: 1.0,
             }],
             cascade_pipeline: vec![],
+            encrypted: Some(false),
         }
     }
 
@@ -214,6 +215,7 @@ impl CollectionSchemaBuilder {
                 weight: 1.0,
             }],
             cascade_pipeline,
+            encrypted: Some(false),
         }
     }
 
@@ -255,6 +257,7 @@ impl CollectionSchemaBuilder {
         CollectionSchema {
             components: self.components,
             cascade_pipeline: self.cascade_pipeline,
+            encrypted: Some(false),
         }
     }
 }

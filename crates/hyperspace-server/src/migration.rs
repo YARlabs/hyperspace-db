@@ -349,6 +349,7 @@ impl MigrationEngine {
                 metric: Some("euclidean".to_string()),
                 quantization: "none".to_string(),
                 sharded: true,
+                encrypted: false,
                 schema: Some(CollectionSchema {
                     components: vec![hyperspace_proto::hyperspace::VectorComponent {
                         name: "default".to_string(),
@@ -357,6 +358,7 @@ impl MigrationEngine {
                         weight: 1.0,
                     }],
                     cascade_pipeline: vec![],
+                    encrypted: Some(false),
                 }),
             }
         };

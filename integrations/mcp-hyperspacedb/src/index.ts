@@ -132,7 +132,8 @@ class HyperspaceMcpServer {
               collection: { type: "string" },
               dimension: { type: "number", default: 1024, description: "Vector dimension (e.g., 1024)" },
               metric: { type: "string", default: "cosine", description: "Distance metric: l2, cosine, poincare, lorentz, hybrid" },
-              quantization: { type: "string", default: "medium_plus", description: "Quantization level: none, medium, medium_plus, turbo, extreme" }
+              quantization: { type: "string", default: "medium_plus", description: "Quantization level: none, medium, medium_plus, turbo, extreme" },
+              encryption_key: { type: "string", description: "Optional client-side AES-256-GCM + Isometric projection key for zero-knowledge encryption" }
             },
             required: ["collection"]
           }
@@ -555,11 +556,12 @@ class HyperspaceMcpServer {
             return { content: [{ type: "text", text: `Stored ${id} in ${collection}` }] };
           }
           case "hyperspace_create_collection": {
-            const { collection, dimension, metric, quantization } = z.object({
+            const { collection, dimension, metric, quantization, encryption_key } = z.object({
               collection: z.string(),
               dimension: z.number().optional(),
               metric: z.string().optional(),
-              quantization: z.string().optional()
+              quantization: z.string().optional(),
+              encryption_key: z.string().optional()
             }).parse(args);
 
             const isHybrid129 = (metric === 'hybrid' && dimension === 129);
@@ -569,9 +571,10 @@ class HyperspaceMcpServer {
               components: [{ name: 'default', metric: metric || 'cosine', fullDimension: fullDim, weight: 1.0 }],
               cascadePipeline: isHybrid129 ? [
                 { componentName: 'default', cutoffDimension: 129, storeInRam: true, rerankTopK: 0 }
-              ] : []
-            }, '', 0.02, quantization || 'medium_plus');
-            return { content: [{ type: "text", text: JSON.stringify({ success }, null, 2) }] };
+              ] : [],
+              encrypted: !!encryption_key
+            }, encryption_key || '', 0.02, quantization || 'medium_plus');
+            return { content: [{ type: "text", text: JSON.stringify({ success, encrypted: !!encryption_key }, null, 2) }] };
           }
           case "hyperspace_graph_traverse": {
             const { collection, start_id, max_depth, max_nodes } = z.object({ collection: z.string(), start_id: z.number(), max_depth: z.number().optional(), max_nodes: z.number().optional() }).parse(args);
@@ -637,7 +640,7 @@ class HyperspaceMcpServer {
             if (!grpcStats.count && !digest.logical_clock) {
               try {
                 const cols = await this.client.listCollections();
-                const found = cols.find(c => c.name === collection);
+                const found = cols.find((c: any) => c.name === collection);
                 if (found) {
                   grpcStats = { name: found.name, count: found.count, schema: found.schema };
                 }

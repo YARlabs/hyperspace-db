@@ -300,8 +300,28 @@ final created = await client.induceEdgesFromMetadata(rules, collection: 'my_coll
 print('Induced $created explicit edges directly from metadata');
 ```
 
+### 3. Encrypted Collections & Stats
+
+```dart
+// Create collection with client-side encryption key
+await client.createCollection(
+  'secure_docs', 
+  pb.CollectionSchema(
+    components: [
+      pb.VectorComponent(name: 'primary', metric: 'cosine', fullDimension: 128)
+    ],
+  ),
+  encryptionKey: 'my-super-secret-key',
+);
+
+// Inspect collection stats and encryption flag
+final stats = await client.getCollectionStats('secure_docs');
+print('Collection: ${stats.name}, Encrypted: ${stats.encrypted}');
+```
+
 ## 📄 License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
 
 

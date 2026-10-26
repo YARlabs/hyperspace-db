@@ -22,10 +22,14 @@ HyperspaceClient::HyperspaceClient(const std::string& endpoint, const std::strin
     stub_ = Database::NewStub(channel);
 }
 
-bool HyperspaceClient::CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization) {
+bool HyperspaceClient::CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization, bool encrypted) {
     ::hyperspace::CreateCollectionRequest request;
     request.set_name(name);
-    *request.mutable_schema() = schema;
+    auto* s = request.mutable_schema();
+    *s = schema;
+    if (encrypted || (schema.has_encrypted() && schema.encrypted())) {
+        s->set_encrypted(true);
+    }
 
     ::hyperspace::StatusResponse response;
     ClientContext context;
@@ -53,7 +57,8 @@ std::vector<CollectionSummaryRec> HyperspaceClient::ListCollections() {
     if (status.ok()) {
         output.reserve(response.collections_size());
         for (const auto& c : response.collections()) {
-            output.push_back({c.name(), (uint64_t)c.count(), c.schema()});
+            bool enc = c.has_encrypted() ? c.encrypted() : (c.schema().has_encrypted() ? c.schema().encrypted() : false);
+            output.push_back({c.name(), (uint64_t)c.count(), c.schema(), enc});
         }
     }
     return output;
@@ -452,6 +457,7 @@ bool HyperspaceClient::GetCollectionStats(const std::string& name, CollectionSta
         stats_out.ram_usage_bytes = response.ram_usage_bytes();
         stats_out.active_tasks = response.active_tasks();
         stats_out.schema = response.schema();
+        stats_out.encrypted = response.has_encrypted() ? response.encrypted() : (response.schema().has_encrypted() ? response.schema().encrypted() : false);
         return true;
     }
     return false;

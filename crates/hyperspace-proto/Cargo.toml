@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-proto"
-version = "4.1.0"
+version = "4.1.1"
 edition = "2021"
 description = "Protobuf definitions and generated gRPC code for HyperspaceDB"
 license = "MIT"

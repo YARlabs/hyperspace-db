@@ -19,7 +19,7 @@ This package provides a bridge between HyperspaceDB and the ROS2 environment, al
 You can now define complex schemas (Multi-Vector, MRL, Hybrid) using JSON via the ROS2 service:
 
 ```bash
-ros2 service call /hyperspace/create_collection hyperspace_interfaces/srv/CreateCollection "{name: 'robot_memory', schema_json: '{\"components\": [{\"name\": \"main\", \"metric\": \"lorentz\", \"full_dimension\": 1025}], \"quantization\": \"turbo\"}'}"
+ros2 service call /hyperspace/create_collection hyperspace_interfaces/srv/CreateCollection "{name: 'robot_memory', schema_json: '{\"components\": [{\"name\": \"main\", \"metric\": \"lorentz\", \"full_dimension\": 1025}], \"quantization\": \"turbo\", \"encrypted\": true}'}"
 ```
 
 ## Hybrid Search Usage
