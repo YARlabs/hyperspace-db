@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.1.1** | **The World's First Schema-Driven Spatial AI Engine.**
+**v4.2.0** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,9 +33,17 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v4.1.0)
+## 🚀 Core Pillars (v4.2.0)
 
 <table>
+  <tr>
+    <td>🔌 <b>Hyperspace PDK (<code>hyperspace-pdk</code> v4.2.0)</b></td>
+    <td><code>pgrx</code>-inspired extension architecture turning HyperspaceDB into an extensible Spatial Runtime. Includes 3 built-in flagship plugins out of the box: <b><code>hs-embed</code></b> (Zero-Python in-engine Markdown chunker, multi-manifold vectorizer &amp; sequential KAG graph linker), <b><code>hs-git-ast</code></b> (instant AST codebase symbol &amp; KAG topology builder for Rust, Python, TypeScript/JS, and Go), and <b><code>hs-shield</code></b> (Zero-Knowledge <code>O(D log D)</code> FWHT orthogonal projection defending against <code>Vec2Text</code> inversion with 100% distance preservation). Exposed dynamically in Python, TypeScript, and Rust SDKs via <code>client.ext.&lt;plugin&gt;.&lt;method&gt;(...)</code>.</td>
+  </tr>
+  <tr>
+    <td>📐 <b>Universal 12-Metric SIMD Vector Engine (v4.2.0)</b></td>
+    <td>First-class support for <b>12 distance metrics</b> (<code>l2</code>, <code>cosine</code>, <code>dot</code>, <code>l1</code>, <code>linf</code>, <code>angular</code>, <code>jaccard</code>, <code>hamming</code>, <code>poincare</code>, <code>lorentz</code>, <code>hybrid</code>, <code>wasserstein</code>) backed by hardware-dispatched (AVX-512F, AVX2+FMA, ARM NEON) zero-copy byte-slice kernels and zero-allocation HNSW search hot paths.</td>
+  </tr>
   <tr>
     <td>🕸️ <b>Native Vector-Graph (KAG Engine)</b></td>
     <td>Native in-engine topological graph representation (Property CSR with 12-byte packed edges in <code>graph.csr</code>). Replaces fragile dual-database patterns (vector DB + Neo4j) with sub-microsecond BFS traversals across vector search seed nodes, explicit edge linking (<code>link</code>, <code>link_batch</code>, <code>unlink</code>), declarative metadata induction (<code>path_hierarchy</code>, <code>foreign_key</code>, <code>exact_match</code>), and 33D Lorentz Minkowski light-cone causal subsumption.</td>

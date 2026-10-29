@@ -47,7 +47,7 @@ mod write_buffer;
 use manager::CollectionManager;
 
 #[cfg(feature = "embed")]
-use hyperspace_embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
+use hyperspace_pdk::embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
     metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,

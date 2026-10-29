@@ -6,6 +6,10 @@ use std::sync::Arc;
 
 const CHUNK_SIZE: usize = 65536;
 
+#[repr(align(64))]
+struct AlignedZeroBuf([u8; 131_072]);
+static ZERO_BUF: AlignedZeroBuf = AlignedZeroBuf([0u8; 131_072]);
+
 #[derive(Debug)]
 struct RamSegment {
     data: RwLock<Vec<u8>>,
@@ -93,10 +97,10 @@ impl VectorStore {
         let local_idx = id_val % CHUNK_SIZE;
 
         let segs = self.segments.load();
-        assert!(
-            segment_idx < segs.len(),
-            "VectorStore RAM: OOB access id {id}"
-        );
+        if segment_idx >= segs.len() {
+            let safe_len = self.element_size.min(ZERO_BUF.0.len());
+            return &ZERO_BUF.0[..safe_len];
+        }
         let segment = &segs[segment_idx];
 
         let start = local_idx * self.element_size;

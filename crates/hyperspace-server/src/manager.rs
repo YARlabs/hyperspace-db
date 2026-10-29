@@ -3,7 +3,8 @@ use crate::sharded_engine::ShardedCollection;
 use dashmap::DashMap;
 use hyperspace_core::VacuumFilterQuery;
 use hyperspace_core::{
-    Collection, CosineMetric, EuclideanMetric, HybridMetric, LorentzMetric, PoincareMetric,
+    AngularMetric, ChebyshevMetric, Collection, CosineMetric, DotProductMetric, EuclideanMetric,
+    HammingMetric, HybridMetric, JaccardMetric, LorentzMetric, ManhattanMetric, PoincareMetric,
 };
 use hyperspace_proto::hyperspace::{
     replication_log, CreateCollectionOp, DeleteCollectionOp, ReplicationLog,
@@ -112,6 +113,7 @@ pub struct CollectionManager {
     pub cluster_state: Arc<RwLock<ClusterState>>,
     pub cluster_clock: Arc<AtomicU64>,
     pub system: Arc<Mutex<System>>,
+    pub plugins: Arc<hyperspace_pdk::PluginRegistry>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -233,7 +235,30 @@ impl CollectionManager {
             cluster_state: Arc::new(RwLock::new(state)),
             cluster_clock,
             system,
+            plugins: Arc::new(hyperspace_pdk::PluginRegistry::with_standard_plugins()),
         }
+    }
+
+    pub async fn call_extension(
+        &self,
+        owner: &str,
+        col_name: Option<&str>,
+        plugin: &str,
+        method: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let col = match col_name {
+            Some(c) if !c.is_empty() => self.get(owner, c).await,
+            _ => None,
+        };
+        let clock = self.cluster_clock.load(Ordering::Relaxed);
+        let ctx = hyperspace_pdk::EngineContext::new(
+            owner,
+            col_name.filter(|s| !s.is_empty()).map(str::to_string),
+            col,
+            clock,
+        );
+        self.plugins.call_procedure(plugin, method, args, &ctx).await
     }
 
     pub async fn load_existing(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -320,12 +345,21 @@ impl CollectionManager {
 
         let collection: Arc<dyn Collection> = if use_sharded {
             tracing::info!("[v4] Loading '{name}' as ShardedCollection (Thread-per-Core engine)");
-            match meta.metric_name().as_str() {
+            match meta.metric_name().trim().to_ascii_lowercase().as_str() {
                 "poincare" => inst_sharded!(PoincareMetric),
                 "euclidean" | "l2" => inst_sharded!(EuclideanMetric),
                 "cosine" => inst_sharded!(CosineMetric),
+                "dot" | "ip" | "inner_product" => inst_sharded!(DotProductMetric),
+                "l1" | "manhattan" | "taxicab" => inst_sharded!(ManhattanMetric),
+                "linf" | "chebyshev" | "chessboard" => inst_sharded!(ChebyshevMetric),
+                "angular" => inst_sharded!(AngularMetric),
+                "jaccard" | "tanimoto" => inst_sharded!(JaccardMetric),
+                "hamming" => inst_sharded!(HammingMetric),
                 "lorentz" => inst_sharded!(LorentzMetric),
                 "hybrid" => inst_sharded!(HybridMetric),
+                "wasserstein" | "emd" | "sinkhorn" => {
+                    inst_sharded!(hyperspace_core::WassersteinMetric)
+                }
                 other => {
                     return Err(format!(
                         "[v4] Unsupported metric '{other}' for ShardedCollection (dim={dim})"
@@ -334,12 +368,21 @@ impl CollectionManager {
                 }
             }
         } else {
-            match meta.metric_name().as_str() {
+            match meta.metric_name().trim().to_ascii_lowercase().as_str() {
                 "poincare" => inst_classic!(PoincareMetric),
                 "euclidean" | "l2" => inst_classic!(EuclideanMetric),
                 "cosine" => inst_classic!(CosineMetric),
+                "dot" | "ip" | "inner_product" => inst_classic!(DotProductMetric),
+                "l1" | "manhattan" | "taxicab" => inst_classic!(ManhattanMetric),
+                "linf" | "chebyshev" | "chessboard" => inst_classic!(ChebyshevMetric),
+                "angular" => inst_classic!(AngularMetric),
+                "jaccard" | "tanimoto" => inst_classic!(JaccardMetric),
+                "hamming" => inst_classic!(HammingMetric),
                 "lorentz" => inst_classic!(LorentzMetric),
                 "hybrid" => inst_classic!(HybridMetric),
+                "wasserstein" | "emd" | "sinkhorn" => {
+                    inst_classic!(hyperspace_core::WassersteinMetric)
+                }
                 _ => {
                     return Err(format!(
                         "Unsupported configuration: dim={dim}, metric={}",

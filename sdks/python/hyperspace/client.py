@@ -91,6 +91,7 @@ class HyperspaceClient:
         self._collection_metrics = {}
         self._collection_noise_sigmas = {}
         self._collection_schemas = {}
+        self.ext = _ExtensionNamespace(self)
 
     def register_collection_key(self, collection_name: str, key: str, metric: str = "l2", noise_sigma: float = 0.02, schema: Optional[Dict] = None):
         self.collection_keys[collection_name] = key
@@ -1881,6 +1882,129 @@ class HyperspaceClient:
             details=resp.details,
             resolved_context_ids=list(resp.resolved_context_ids),
         )
+
+    def _resolve_http_base_url(self, http_url: Optional[str] = None) -> str:
+        if http_url:
+            return http_url.rstrip("/")
+        host_part = self.host.split(":")[0] if ":" in self.host else self.host
+        return f"http://{host_part}:8080"
+
+    def list_extensions(self, http_url: Optional[str] = None) -> Dict:
+        """
+        Lists all registered Hyperspace PDK server-side extensions and their procedure schemas.
+        Uses gRPC `ListExtensions` when available in generated stubs, with automatic HTTP fallback.
+        """
+        import json
+        if hasattr(hyperspace_pb2, "ExtensionRequest") and hasattr(self.stub, "ListExtensions"):
+            resp = self.stub.ListExtensions(hyperspace_pb2.Empty(), metadata=self.metadata)
+            plugins = []
+            for ext in resp.extensions:
+                plugins.append({
+                    "name": ext.name,
+                    "version": ext.version,
+                    "description": ext.description,
+                    "author": ext.author,
+                    "hooks": list(ext.hooks),
+                    "procedures": [
+                        {
+                            "name": p.name,
+                            "description": p.description,
+                            "requires_collection": p.requires_collection,
+                            "input_schema": json.loads(p.input_schema_json or "{}"),
+                            "output_schema": json.loads(p.output_schema_json or "{}"),
+                        }
+                        for p in ext.procedures
+                    ],
+                })
+            return {
+                "pdk_version": getattr(resp, "pdk_version", "4.2.0"),
+                "supported_metrics": list(getattr(resp, "supported_metrics", [])),
+                "plugins": plugins,
+            }
+
+        import urllib.request
+        base = self._resolve_http_base_url(http_url)
+        req = urllib.request.Request(f"{base}/v1/extensions/schema", method="GET")
+        if self.api_key:
+            req.add_header("x-api-key", self.api_key)
+        if self.user_id:
+            req.add_header("x-hyperspace-user-id", self.user_id)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+    def call_extension(
+        self,
+        plugin: str,
+        method: str,
+        payload: Optional[Dict] = None,
+        collection: Optional[str] = None,
+        http_url: Optional[str] = None,
+    ) -> Dict:
+        """
+        Invokes a procedure on a server-side Hyperspace PDK plugin (`embed`, `git_ast`, `shield`, etc.).
+        """
+        import json
+        body_dict = dict(payload or {})
+        target_col = collection or body_dict.get("collection", "")
+        if hasattr(hyperspace_pb2, "ExtensionRequest") and hasattr(self.stub, "CallExtension"):
+            req = hyperspace_pb2.ExtensionRequest(
+                plugin=plugin,
+                method=method,
+                collection=target_col or "",
+                json_payload=json.dumps(body_dict),
+            )
+            resp = self.stub.CallExtension(req, metadata=self.metadata)
+            if not resp.success:
+                raise RuntimeError(f"Plugin {plugin}.{method} failed: {resp.error}")
+            return json.loads(resp.json_result or "{}")
+
+        import urllib.request
+        base = self._resolve_http_base_url(http_url)
+        if target_col:
+            url = f"{base}/api/collections/{target_col}/ext/{plugin}/{method}"
+        else:
+            url = f"{base}/api/ext/{plugin}/{method}"
+        data = json.dumps(body_dict).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        if self.api_key:
+            req.add_header("x-api-key", self.api_key)
+        if self.user_id:
+            req.add_header("x-hyperspace-user-id", self.user_id)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            parsed = json.loads(r.read().decode("utf-8"))
+            if isinstance(parsed, dict) and not parsed.get("success", True):
+                raise RuntimeError(parsed.get("error", "Extension call failed"))
+            return parsed.get("result", parsed) if isinstance(parsed, dict) else parsed
+
+
+class _PluginProxy:
+    """Dynamic proxy for a single Hyperspace PDK plugin (`client.ext.<plugin>.<method>(**kwargs)`)."""
+
+    def __init__(self, client: HyperspaceClient, plugin_name: str):
+        self._client = client
+        self._plugin_name = plugin_name
+
+    def __getattr__(self, method_name: str):
+        def _invoke(collection: Optional[str] = None, http_url: Optional[str] = None, **kwargs):
+            return self._client.call_extension(
+                plugin=self._plugin_name,
+                method=method_name,
+                payload=kwargs,
+                collection=collection,
+                http_url=http_url,
+            )
+        return _invoke
+
+
+class _ExtensionNamespace:
+    """Adaptive namespace exposing installed server-side plugins via `client.ext.<plugin>.<method>(...)`."""
+
+    def __init__(self, client: HyperspaceClient):
+        self._client = client
+
+    def __getattr__(self, plugin_name: str) -> _PluginProxy:
+        return _PluginProxy(self._client, plugin_name)
 
 
 def analyze_delta_hyperbolicity(vectors: List[List[float]], num_samples: int = 1000) -> (float, str):

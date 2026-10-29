@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-sdk"
-version = "4.1.0"
+version = "4.2.0"
 edition = "2021"
 authors = ["YARlabs <hi@yar.ink>"]
 description = "Official Rust SDK for HyperspaceDB gRPC API"
@@ -15,25 +15,25 @@ categories = ["database", "api-bindings"]
 [features]
 default = []
 nightly-simd = []
-embedders = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait"]
-local-onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "dep:serde", "dep:async-trait"]
+embedders = ["dep:reqwest", "dep:async-trait"]
+local-onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "dep:async-trait"]
 huggingface = ["local-onnx", "dep:hf-hub"]
 
 [dependencies]
-hyperspace-proto = { path = "../hyperspace-proto", version = "4.1.1" }
+hyperspace-proto = { path = "../hyperspace-proto", version = "4.2.0" }
 tonic = "0.10"
 tokio = { version = "1.35", features = ["full"] }
 aes-gcm = "0.10"
-pbkdf2 = { version = "0.12", features = ["simple"] }
+pbkdf2 = "0.12"
 sha2 = "0.10"
 hmac = "0.12"
 parking_lot = "0.12"
 hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 # Embedder dependencies (Optional)
 reqwest = { version = "0.11", features = ["json", "rustls-tls"], optional = true }
-serde = { version = "1.0", features = ["derive"], optional = true }
-serde_json = { version = "1.0", optional = true }
 async-trait = { version = "0.1", optional = true }
 rand = "0.10.0"
 

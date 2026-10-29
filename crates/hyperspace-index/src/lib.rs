@@ -1253,10 +1253,20 @@ impl<M: Metric> HnswIndex<M> {
         }
     }
 
-    // Support Soft Delete
+    // Support Soft Delete and reclaim metadata memory immediately
     pub fn delete(&self, id: NodeId) {
-        let mut del = self.metadata.deleted.write();
-        del.insert(id);
+        {
+            let mut del = self.metadata.deleted.write();
+            del.insert(id);
+        }
+        if let Some((_, old_meta)) = self.metadata.forward.remove(&id) {
+            for (k, v) in old_meta {
+                let tag = format!("{k}:{v}");
+                if let Some(mut bm) = self.metadata.inverted.get_mut(&tag) {
+                    bm.remove(id);
+                }
+            }
+        }
     }
 
     pub fn search_momentum(
@@ -1680,116 +1690,84 @@ impl<M: Metric> HnswIndex<M> {
                 }
             }
             QuantizationMode::None => {
+                let name = M::name();
                 if self.storage_f32 {
-                    let name = M::name();
-                    if name == "l2" || name == "cosine" {
-                        if let Some(b) = query_f32 {
-                            let n = (bytes.len().saturating_sub(4) / 4).min(b.len());
-                            let thresh_f32 = threshold.map(|t| t as f32);
-                            return f64::from(hyperspace_core::simd::l2_sq_f32_bytes(
-                                &bytes[..n * 4],
-                                &b[..n],
-                                thresh_f32,
-                            ));
+                    let coord_bytes = &bytes[..bytes.len().saturating_sub(4)];
+                    let eval_f32 = |b: &[f32]| -> Option<f64> {
+                        let n = (coord_bytes.len() / 4).min(b.len());
+                        let cb = &coord_bytes[..n * 4];
+                        let qb = &b[..n];
+                        let thresh_f32 = threshold.map(|t| t as f32);
+                        match name {
+                            "l2" | "cosine" => Some(f64::from(
+                                hyperspace_core::simd::l2_sq_f32_bytes(cb, qb, thresh_f32),
+                            )),
+                            "dot" => {
+                                Some(1.0 - f64::from(hyperspace_core::simd::dot_f32_bytes(cb, qb)))
+                            }
+                            "l1" => Some(f64::from(hyperspace_core::simd::l1_f32_bytes(
+                                cb, qb, thresh_f32,
+                            ))),
+                            "linf" => Some(f64::from(hyperspace_core::simd::linf_f32_bytes(
+                                cb, qb, thresh_f32,
+                            ))),
+                            "poincare" => Some(hyperspace_core::simd::poincare_f32_bytes(cb, qb)),
+                            "lorentz" => Some(hyperspace_core::simd::lorentz_f32_bytes(cb, qb)),
+                            "angular" => {
+                                let cos_dist = hyperspace_core::simd::cosine_f32_bytes(cb, qb);
+                                let cos = (1.0 - cos_dist).clamp(-1.0, 1.0);
+                                Some(cos.acos() / std::f64::consts::PI)
+                            }
+                            "jaccard" => Some(hyperspace_core::simd::jaccard_f32_bytes(cb, qb)),
+                            "hamming" => Some(hyperspace_core::simd::hamming_f32_bytes(cb, qb)),
+                            _ => None,
                         }
-                        let v = HyperVectorF32::from_bytes(bytes);
-                        #[cfg(feature = "nightly-simd")]
-                        {
-                            use std::simd::{f32x4, f64x4, num::SimdFloat};
-                            let mut sum = f32x4::splat(0.0);
-                            let mut i = 0;
-                            let n = v.coords.len();
-                            let a = &v.coords;
-                            let b = &query.coords;
-                            while i + 8 <= n {
-                                let va1 = f32x4::from_slice(&a[i..i + 4]);
-                                let va2 = f32x4::from_slice(&a[i + 4..i + 8]);
-                                let vb1: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
-                                let vb2: f32x4 = f64x4::from_slice(&b[i + 4..i + 8]).cast();
-                                let d1 = va1 - vb1;
-                                let d2 = va2 - vb2;
-                                sum += d1 * d1 + d2 * d2;
-                                i += 8;
-                            }
-                            while i + 4 <= n {
-                                let va = f32x4::from_slice(&a[i..i + 4]);
-                                let vb: f32x4 = f64x4::from_slice(&b[i..i + 4]).cast();
-                                let d = va - vb;
-                                sum += d * d;
-                                i += 4;
-                            }
-                            let mut total = f64::from(sum.reduce_sum());
-                            while i < n {
-                                let diff = f64::from(a[i]) - b[i];
-                                total += diff * diff;
-                                i += 1;
-                            }
-                            total
-                        }
-                        #[cfg(not(feature = "nightly-simd"))]
-                        {
-                            let mut sum = 0.0;
-                            for (&a, &b) in v.coords.iter().zip(query.coords.iter()) {
-                                let diff = f64::from(a) - b;
-                                sum += diff * diff;
-                            }
-                            sum
-                        }
-                    } else {
-                        let v = HyperVectorF32::from_bytes(bytes);
-                        let v64 = v.to_float64();
-                        M::distance(&v64.coords, &query.coords)
-                    }
-                } else {
-                    let v = HyperVector::from_bytes(bytes);
-                    let name = M::name();
-                    if name == "l2" || name == "cosine" {
-                        #[cfg(feature = "nightly-simd")]
-                        {
-                            use std::simd::{f64x4, num::SimdFloat};
-                            let mut sum = f64x4::splat(0.0);
-                            let mut i = 0;
-                            let n = v.coords.len().min(query.coords.len());
-                            let a = &v.coords;
-                            let b = &query.coords;
-                            while i + 8 <= n {
-                                let va1 = f64x4::from_slice(&a[i..i + 4]);
-                                let vb1 = f64x4::from_slice(&b[i..i + 4]);
-                                let va2 = f64x4::from_slice(&a[i + 4..i + 8]);
-                                let vb2 = f64x4::from_slice(&b[i + 4..i + 8]);
-                                let d1 = va1 - vb1;
-                                let d2 = va2 - vb2;
-                                sum += d1 * d1 + d2 * d2;
-                                i += 8;
+                    };
 
-                                if let Some(t) = threshold {
-                                    if i % 32 == 0 && sum.reduce_sum() > t {
-                                        return sum.reduce_sum();
-                                    }
-                                }
-                            }
-                            while i + 4 <= n {
-                                let va = f64x4::from_slice(&a[i..i + 4]);
-                                let vb = f64x4::from_slice(&b[i..i + 4]);
-                                let d = va - vb;
-                                sum += d * d;
-                                i += 4;
-                            }
-                            let mut total = sum.reduce_sum();
-                            while i < n {
-                                let diff = a[i] - b[i];
-                                total += diff * diff;
-                                i += 1;
-                            }
-                            total
-                        }
-                        #[cfg(not(feature = "nightly-simd"))]
-                        {
-                            M::distance(&v.coords, &query.coords)
+                    if let Some(b) = query_f32 {
+                        if let Some(d) = eval_f32(b) {
+                            return d;
                         }
                     } else {
-                        M::distance(&v.coords, &query.coords)
+                        let maybe_d = QUERY_F32_SCRATCH.with(|buf| {
+                            let mut b = buf.borrow_mut();
+                            b.clear();
+                            b.extend(query.coords.iter().map(|&x| x as f32));
+                            eval_f32(&b)
+                        });
+                        if let Some(d) = maybe_d {
+                            return d;
+                        }
                     }
+
+                    // Fallback for composite/custom metrics (e.g., hybrid, wasserstein) using thread-local scratch
+                    QUERY_F64_SCRATCH.with(|buf| {
+                        let mut b = buf.borrow_mut();
+                        b.clear();
+                        let n = coord_bytes.len() / 4;
+                        b.reserve(n);
+                        for chunk in coord_bytes[..n * 4].chunks_exact(4) {
+                            b.push(f64::from(f32::from_le_bytes([
+                                chunk[0], chunk[1], chunk[2], chunk[3],
+                            ])));
+                        }
+                        M::distance(&b, &query.coords)
+                    })
+                } else {
+                    let coord_bytes = &bytes[..bytes.len().saturating_sub(8)];
+                    QUERY_F64_SCRATCH.with(|buf| {
+                        let mut b = buf.borrow_mut();
+                        b.clear();
+                        let n = (coord_bytes.len() / 8).min(query.coords.len());
+                        b.reserve(n);
+                        for chunk in coord_bytes[..n * 8].chunks_exact(8) {
+                            b.push(f64::from_le_bytes([
+                                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
+                                chunk[6], chunk[7],
+                            ]));
+                        }
+                        M::distance(&b, &query.coords[..n])
+                    })
                 }
             }
         }

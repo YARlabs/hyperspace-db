@@ -101,6 +101,7 @@ pub struct ShardedCollection<M: Metric> {
     user_to_graph: DashMap<u32, u32>,
     graph_to_user: DashMap<u32, u32>,
     next_graph_id: AtomicU32,
+    graph_dirty: std::sync::atomic::AtomicBool,
 }
 
 impl<M: Metric> ShardedCollection<M> {
@@ -376,6 +377,7 @@ impl<M: Metric> ShardedCollection<M> {
             user_to_graph,
             graph_to_user,
             next_graph_id,
+            graph_dirty: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -1069,6 +1071,12 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         for s in &self.shards {
             s.create_snapshot()?;
         }
+        if self.graph_dirty.swap(false, Ordering::AcqRel) {
+            self.save_graph_id_map();
+            let _ = self
+                .explicit_graph
+                .save_to_csr_file(self.col_dir.join("graph.csr"));
+        }
         if let Some(ref wal) = self.wal {
             if let Ok(mut wal_guard) = wal.try_lock() {
                 let _ = wal_guard.sync();
@@ -1267,10 +1275,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         let internal_tgt = self.to_graph_id(target_id);
         self.explicit_graph
             .insert_edge(internal_src, internal_tgt, relation, weight);
-        self.save_graph_id_map();
-        let _ = self
-            .explicit_graph
-            .save_to_csr_file(self.col_dir.join("graph.csr"));
+        self.graph_dirty.store(true, Ordering::Release);
         Ok(())
     }
 
@@ -1281,6 +1286,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             self.explicit_graph
                 .insert_edge(internal_src, internal_tgt, rel, w);
         }
+        self.graph_dirty.store(false, Ordering::Release);
         self.save_graph_id_map();
         let _ = self
             .explicit_graph
@@ -1295,9 +1301,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             .explicit_graph
             .delete_edge(internal_src, internal_tgt, relation);
         if res {
-            let _ = self
-                .explicit_graph
-                .save_to_csr_file(self.col_dir.join("graph.csr"));
+            self.graph_dirty.store(true, Ordering::Release);
         }
         Ok(res)
     }
@@ -1349,8 +1353,29 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         source_id: u32,
         neighbor_ids: &[u32],
     ) -> Result<Vec<f64>, String> {
-        let shard_idx = self.get_shard_index(source_id);
-        self.shards[shard_idx].graph_neighbor_distances(source_id, neighbor_ids)
+        if neighbor_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut all_ids = Vec::with_capacity(1 + neighbor_ids.len());
+        all_ids.push(source_id);
+        all_ids.extend_from_slice(neighbor_ids);
+        let pts = self.get_points(&all_ids);
+        let mut vec_map: HashMap<u32, Vec<f64>> =
+            pts.into_iter().map(|(id, vec, _)| (id, vec)).collect();
+        let Some(src_vec) = vec_map.remove(&source_id) else {
+            return Ok(vec![0.0; neighbor_ids.len()]);
+        };
+        let mut out = Vec::with_capacity(neighbor_ids.len());
+        for &nid in neighbor_ids {
+            if nid == source_id {
+                out.push(0.0);
+            } else if let Some(n_vec) = vec_map.get(&nid) {
+                out.push(M::distance(&src_vec, n_vec));
+            } else {
+                out.push(f64::MAX);
+            }
+        }
+        Ok(out)
     }
 
     fn graph_traverse(
@@ -1500,6 +1525,12 @@ impl<M: Metric> Collection for ShardedCollection<M> {
 
 impl<M: Metric> Drop for ShardedCollection<M> {
     fn drop(&mut self) {
+        if self.graph_dirty.swap(false, Ordering::AcqRel) {
+            self.save_graph_id_map();
+            let _ = self
+                .explicit_graph
+                .save_to_csr_file(self.col_dir.join("graph.csr"));
+        }
         if let Some(ref wal) = self.wal {
             if let Ok(mut wal_guard) = wal.try_lock() {
                 let _ = wal_guard.sync();
@@ -1526,6 +1557,7 @@ mod tests {
                 weight: 1.0,
             }],
             cascade_pipeline: vec![],
+            encrypted: Some(false),
         };
 
         // Create sharded collection with 4 core shards

@@ -2390,6 +2390,68 @@ impl Client {
             })
             .collect()
     }
+
+    /// Lists all active server-side PDK extensions (`hs-embed`, `hs-git-ast`, `hs-shield`, etc.)
+    /// along with their procedure schemas and lifecycle hooks.
+    pub async fn list_extensions(
+        &mut self,
+    ) -> Result<hyperspace_proto::hyperspace::ListExtensionsResponse, tonic::Status> {
+        let resp = self
+            .inner
+            .list_extensions(hyperspace_proto::hyperspace::Empty {})
+            .await?;
+        Ok(resp.into_inner())
+    }
+
+    /// Invokes a custom procedure on a registered server-side PDK plugin.
+    pub async fn call_extension(
+        &mut self,
+        plugin: &str,
+        method: &str,
+        collection: Option<&str>,
+        payload: &serde_json::Value,
+    ) -> Result<serde_json::Value, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::ExtensionRequest {
+            plugin: plugin.to_string(),
+            method: method.to_string(),
+            collection: collection.map(str::to_string),
+            json_payload: serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string()),
+        };
+        let resp = self.inner.call_extension(req).await?.into_inner();
+        if !resp.success {
+            return Err(tonic::Status::internal(resp.error));
+        }
+        serde_json::from_str(&resp.json_result)
+            .map_err(|e| tonic::Status::internal(format!("Invalid plugin JSON response: {e}")))
+    }
+
+    /// Returns an ergonomic scoped handle for invoking methods on a server-side plugin.
+    pub fn ext<'a>(&'a mut self, plugin: &'a str) -> ExtensionClient<'a> {
+        ExtensionClient {
+            client: self,
+            plugin,
+        }
+    }
+}
+
+/// Scoped client for calling procedures on a specific Hyperspace PDK plugin.
+pub struct ExtensionClient<'a> {
+    client: &'a mut Client,
+    plugin: &'a str,
+}
+
+impl<'a> ExtensionClient<'a> {
+    /// Invokes `method` on the bound plugin with an optional target `collection` and JSON `payload`.
+    pub async fn call(
+        &mut self,
+        method: &str,
+        collection: Option<&str>,
+        payload: &serde_json::Value,
+    ) -> Result<serde_json::Value, tonic::Status> {
+        self.client
+            .call_extension(self.plugin, method, collection, payload)
+            .await
+    }
 }
 
 #[cfg(test)]

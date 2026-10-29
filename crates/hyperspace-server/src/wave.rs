@@ -278,6 +278,7 @@ mod tests {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             },
         )
         .await
@@ -373,6 +374,7 @@ mod tests {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             },
         )
         .await

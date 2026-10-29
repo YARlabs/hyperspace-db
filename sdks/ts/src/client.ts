@@ -325,6 +325,11 @@ export class HyperspaceClient {
     private collectionMetrics: { [key: string]: string } = {};
     private collectionNoiseSigmas: { [key: string]: number } = {};
     private collectionSchemas: { [key: string]: CollectionSchema } = {};
+    /**
+     * Adaptive proxy for calling server-side Hyperspace PDK plugins:
+     * `await client.ext.git_ast.ingest_files({ collection: 'code', files: [...] })`
+     */
+    public readonly ext: Record<string, Record<string, (args?: Record<string, any>, collection?: string) => Promise<any>>>;
     private static toVectorList(vector: number[] | Float32Array | Float64Array): number[] {
         if (Array.isArray(vector)) {
             return vector;
@@ -444,6 +449,18 @@ export class HyperspaceClient {
         if (userId) {
             this.metadata.add('x-hyperspace-user-id', userId);
         }
+        this.ext = new Proxy({}, {
+            get: (_target, pluginProp) => {
+                const pluginName = String(pluginProp);
+                return new Proxy({}, {
+                    get: (_pTarget, methodProp) => {
+                        const methodName = String(methodProp);
+                        return (args: Record<string, any> = {}, collection?: string) =>
+                            this.callExtension(pluginName, methodName, args, collection);
+                    }
+                });
+            }
+        });
     }
 
     public registerCollectionKey(collectionName: string, key: string, metric: string = "l2", noiseSigma: number = 0.02, schema?: CollectionSchema) {
@@ -2101,6 +2118,57 @@ export class HyperspaceClient {
         check_geodesic: boolean = true
     ): Promise<VerificationResult> {
         return this.verifyGeneration(llm_answer, context_ids, collection, max_distance_threshold, check_geodesic);
+    }
+
+    private resolveHttpBaseUrl(httpUrl?: string): string {
+        if (httpUrl) return httpUrl.replace(/\/+$/, '');
+        const hostPart = this.host.includes(':') ? this.host.split(':')[0] : this.host;
+        return `http://${hostPart}:8080`;
+    }
+
+    /**
+     * Lists all active server-side Hyperspace PDK plugins and their schemas.
+     */
+    public async listExtensions(httpUrl?: string): Promise<any> {
+        const base = this.resolveHttpBaseUrl(httpUrl);
+        const headers: Record<string, string> = {};
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+        const resp = await fetch(`${base}/v1/extensions/schema`, { method: 'GET', headers });
+        if (!resp.ok) {
+            throw new Error(`listExtensions failed with HTTP ${resp.status}`);
+        }
+        return await resp.json();
+    }
+
+    /**
+     * Invokes a custom procedure on a server-side Hyperspace PDK plugin (`embed`, `git_ast`, `shield`, etc.).
+     */
+    public async callExtension(
+        plugin: string,
+        method: string,
+        payload: Record<string, any> = {},
+        collection?: string,
+        httpUrl?: string
+    ): Promise<any> {
+        const base = this.resolveHttpBaseUrl(httpUrl);
+        const targetCol = collection || payload.collection;
+        const url = targetCol
+            ? `${base}/api/collections/${encodeURIComponent(targetCol)}/ext/${encodeURIComponent(plugin)}/${encodeURIComponent(method)}`
+            : `${base}/api/ext/${encodeURIComponent(plugin)}/${encodeURIComponent(method)}`;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (this.apiKey) headers['x-api-key'] = this.apiKey;
+        if (this.userId) headers['x-hyperspace-user-id'] = this.userId;
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload)
+        });
+        const data: any = await resp.json();
+        if (!resp.ok || (data && data.success === false)) {
+            throw new Error((data && data.error) || `Extension ${plugin}.${method} failed with HTTP ${resp.status}`);
+        }
+        return data && data.result !== undefined ? data.result : data;
     }
 
     public close() {

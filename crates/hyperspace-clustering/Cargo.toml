@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-clustering"
-version = "4.1.0"
+version = "4.2.0"
 edition = "2021"
 authors = ["ParadeDB <support@paradedb.com>", "YARlabs <hi@yar.ink>"]
 description = "High-performance vector clustering (SuperKMeans & HierarchicalSuperKMeans) for HyperspaceDB"

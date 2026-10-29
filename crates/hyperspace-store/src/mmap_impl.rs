@@ -143,12 +143,8 @@ impl VectorStore {
         if segment_idx >= segs.len() {
             // Defensive: Return a 64-byte aligned zero slice instead of panicking.
             // This prevents crashes during MemTable swaps/race conditions.
-            let ptr = ZERO_BUF.0.as_ptr();
-            let offset = ptr.align_offset(64);
-            if offset != 0 {
-                eprintln!("⚠️ ZERO_BUF is misaligned! offset={offset}, addr={ptr:?}");
-            }
-            return &ZERO_BUF.0[..self.element_size];
+            let safe_len = self.element_size.min(ZERO_BUF.0.len());
+            return &ZERO_BUF.0[..safe_len];
         }
         let segment = &segs[segment_idx];
 

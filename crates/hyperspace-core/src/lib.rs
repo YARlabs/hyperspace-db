@@ -1246,3 +1246,350 @@ impl Metric for CosineMetric {
         EuclideanMetric::extrapolate_momentum(past, current, steps)
     }
 }
+
+/// Inner Product (Dot Product) metric (`1.0 - a · b`), monotonically equivalent to `-a · b`
+/// and equal to `0.0` for identical unit vectors.
+pub struct DotProductMetric;
+
+impl Metric for DotProductMetric {
+    fn name() -> &'static str {
+        "dot"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len().min(b.len());
+        let (chunks_a, rem_a) = a[..n].as_chunks::<4>();
+        let (chunks_b, rem_b) = b[..n].as_chunks::<4>();
+        let mut acc = [0.0_f64; 4];
+        for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+            for l in 0..4 {
+                acc[l] += ca[l] * cb[l];
+            }
+        }
+        let mut dot = (acc[0] + acc[1]) + (acc[2] + acc[3]);
+        for (&x, &y) in rem_a.iter().zip(rem_b.iter()) {
+            dot += x * y;
+        }
+        1.0 - dot
+    }
+
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let n = a.coords.len().min(b.coords.len());
+        let mut dot = 0.0_f64;
+        for i in 0..n {
+            dot += (f64::from(a.coords[i]) * SCALE_INV) * b.coords[i];
+        }
+        1.0 - dot
+    }
+
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.adc_distance_to_float(b)
+    }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        EuclideanMetric::extrapolate_momentum(past, current, steps)
+    }
+}
+
+/// Manhattan / Taxicab ($L_1$) metric: $\sum_i |a_i - b_i|$.
+pub struct ManhattanMetric;
+
+impl Metric for ManhattanMetric {
+    fn name() -> &'static str {
+        "l1"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len().min(b.len());
+        let (chunks_a, rem_a) = a[..n].as_chunks::<4>();
+        let (chunks_b, rem_b) = b[..n].as_chunks::<4>();
+        let mut acc = [0.0_f64; 4];
+        for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+            for l in 0..4 {
+                acc[l] += (ca[l] - cb[l]).abs();
+            }
+        }
+        let mut sum = (acc[0] + acc[1]) + (acc[2] + acc[3]);
+        for (&x, &y) in rem_a.iter().zip(rem_b.iter()) {
+            sum += (x - y).abs();
+        }
+        sum
+    }
+
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let n = a.coords.len().min(b.coords.len());
+        let mut sum = 0.0_f64;
+        for i in 0..n {
+            sum += (f64::from(a.coords[i]) * SCALE_INV - b.coords[i]).abs();
+        }
+        sum
+    }
+
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.adc_distance_to_float(b)
+    }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        EuclideanMetric::extrapolate_momentum(past, current, steps)
+    }
+}
+
+/// Chebyshev ($L_\infty$) metric: $\max_i |a_i - b_i|$.
+pub struct ChebyshevMetric;
+
+impl Metric for ChebyshevMetric {
+    fn name() -> &'static str {
+        "linf"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len().min(b.len());
+        let mut max_diff = 0.0_f64;
+        for i in 0..n {
+            let d = (a[i] - b[i]).abs();
+            if d > max_diff {
+                max_diff = d;
+            }
+        }
+        max_diff
+    }
+
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let n = a.coords.len().min(b.coords.len());
+        let mut max_diff = 0.0_f64;
+        for i in 0..n {
+            let d = (f64::from(a.coords[i]) * SCALE_INV - b.coords[i]).abs();
+            if d > max_diff {
+                max_diff = d;
+            }
+        }
+        max_diff
+    }
+
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.adc_distance_to_float(b)
+    }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        EuclideanMetric::extrapolate_momentum(past, current, steps)
+    }
+}
+
+/// Geodesic Angular distance on the unit hypersphere: $\arccos(\cos(a, b)) / \pi \in [0, 1]$.
+/// Unlike raw Cosine distance, Angular distance satisfies the strict triangle inequality.
+pub struct AngularMetric;
+
+impl Metric for AngularMetric {
+    fn name() -> &'static str {
+        "angular"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len().min(b.len());
+        let mut dot = 0.0_f64;
+        let mut na = 0.0_f64;
+        let mut nb = 0.0_f64;
+        for i in 0..n {
+            let x = a[i];
+            let y = b[i];
+            dot += x * y;
+            na += x * x;
+            nb += y * y;
+        }
+        if na <= 1e-24 || nb <= 1e-24 {
+            return 1.0;
+        }
+        let cos = (dot / (na * nb).sqrt()).clamp(-1.0, 1.0);
+        cos.acos() / std::f64::consts::PI
+    }
+
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let n = a.coords.len().min(b.coords.len());
+        let mut dot = 0.0_f64;
+        let mut na = 0.0_f64;
+        let mut nb = 0.0_f64;
+        for i in 0..n {
+            let x = f64::from(a.coords[i]) * SCALE_INV;
+            let y = b.coords[i];
+            dot += x * y;
+            na += x * x;
+            nb += y * y;
+        }
+        if na <= 1e-24 || nb <= 1e-24 {
+            return 1.0;
+        }
+        let cos = (dot / (na * nb).sqrt()).clamp(-1.0, 1.0);
+        cos.acos() / std::f64::consts::PI
+    }
+
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.adc_distance_to_float(b)
+    }
+
+    fn extrapolate_momentum(past: &[f64], current: &[f64], steps: f64) -> Result<Vec<f64>, String> {
+        EuclideanMetric::extrapolate_momentum(past, current, steps)
+    }
+}
+
+/// Continuous Jaccard / Tanimoto metric: $1 - \frac{a \cdot b}{\|a\|^2 + \|b\|^2 - a \cdot b}$.
+pub struct JaccardMetric;
+
+impl Metric for JaccardMetric {
+    fn name() -> &'static str {
+        "jaccard"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len().min(b.len());
+        let mut dot = 0.0_f64;
+        let mut na = 0.0_f64;
+        let mut nb = 0.0_f64;
+        for i in 0..n {
+            let x = a[i];
+            let y = b[i];
+            dot += x * y;
+            na += x * x;
+            nb += y * y;
+        }
+        let denom = na + nb - dot;
+        if denom <= 1e-24 {
+            return 0.0;
+        }
+        (1.0 - (dot / denom)).clamp(0.0, 2.0)
+    }
+
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
+        const SCALE_INV: f64 = 1.0 / 127.0;
+        let n = a.coords.len().min(b.coords.len());
+        let mut dot = 0.0_f64;
+        let mut na = 0.0_f64;
+        let mut nb = 0.0_f64;
+        for i in 0..n {
+            let x = f64::from(a.coords[i]) * SCALE_INV;
+            let y = b.coords[i];
+            dot += x * y;
+            na += x * x;
+            nb += y * y;
+        }
+        let denom = na + nb - dot;
+        if denom <= 1e-24 {
+            return 0.0;
+        }
+        (1.0 - (dot / denom)).clamp(0.0, 2.0)
+    }
+
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.adc_distance_to_float(b)
+    }
+}
+
+/// Normalized Hamming distance over vector coordinates (sign/activation mismatch ratio).
+pub struct HammingMetric;
+
+impl Metric for HammingMetric {
+    fn name() -> &'static str {
+        "hamming"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len().min(b.len());
+        if n == 0 {
+            return 0.0;
+        }
+        let mut diff = 0usize;
+        for i in 0..n {
+            if (a[i] > 0.0) != (b[i] > 0.0) || (a[i] == 0.0) != (b[i] == 0.0) {
+                diff += 1;
+            }
+        }
+        diff as f64 / n as f64
+    }
+
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
+        let n = a.coords.len().min(b.coords.len());
+        if n == 0 {
+            return 0.0;
+        }
+        let mut diff = 0usize;
+        for i in 0..n {
+            if (a.coords[i] > 0) != (b.coords[i] > 0.0)
+                || (a.coords[i] == 0) != (b.coords[i] == 0.0)
+            {
+                diff += 1;
+            }
+        }
+        diff as f64 / n as f64
+    }
+
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.adc_distance_to_float(b)
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct WassersteinMetric;
+
+impl Metric for WassersteinMetric {
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        wasserstein::WassersteinDistance::compute(a, b)
+    }
+
+    fn name() -> &'static str {
+        "wasserstein"
+    }
+
+    fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
+        let alpha = f64::from(a.alpha);
+        let a_f64: Vec<f64> = a.coords.iter().map(|&c| f64::from(c) * alpha).collect();
+        Self::distance(&a_f64, &b.coords)
+    }
+
+    fn distance_binary(a: &BinaryHyperVector, b: &HyperVector) -> f64 {
+        a.adc_distance_to_float(b)
+    }
+}
+
+/// Canonical list of built-in multi-metric spaces supported by HyperspaceDB.
+pub const SUPPORTED_METRICS: &[&str] = &[
+    "l2",
+    "cosine",
+    "dot",
+    "l1",
+    "linf",
+    "angular",
+    "jaccard",
+    "hamming",
+    "poincare",
+    "lorentz",
+    "hybrid",
+    "wasserstein",
+];
+
+/// Dynamically evaluates distance between two vectors under the named metric.
+pub fn compute_metric_distance(metric: &str, a: &[f64], b: &[f64]) -> Result<f64, String> {
+    match metric.trim().to_ascii_lowercase().as_str() {
+        "l2" | "euclidean" => Ok(EuclideanMetric::distance(a, b)),
+        "cosine" => Ok(CosineMetric::distance(a, b)),
+        "dot" | "ip" | "inner_product" => Ok(DotProductMetric::distance(a, b)),
+        "l1" | "manhattan" | "taxicab" => Ok(ManhattanMetric::distance(a, b)),
+        "linf" | "chebyshev" | "chessboard" => Ok(ChebyshevMetric::distance(a, b)),
+        "angular" => Ok(AngularMetric::distance(a, b)),
+        "jaccard" | "tanimoto" => Ok(JaccardMetric::distance(a, b)),
+        "hamming" => Ok(HammingMetric::distance(a, b)),
+        "poincare" => Ok(PoincareMetric::distance(a, b)),
+        "lorentz" => Ok(LorentzMetric::distance(a, b)),
+        "hybrid" => Ok(HybridMetric::distance(a, b)),
+        "wasserstein" | "emd" | "sinkhorn" => Ok(WassersteinMetric::distance(a, b)),
+        other => Err(format!("Unsupported metric '{other}'")),
+    }
+}

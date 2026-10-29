@@ -1,6 +1,6 @@
 {
   "name": "hyperspace-sdk-ts",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Official TypeScript SDK for HyperspaceDB gRPC API",
   "main": "dist/client.js",
   "types": "dist/client.d.ts",

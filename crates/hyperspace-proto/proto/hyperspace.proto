@@ -76,6 +76,10 @@ service Database {
 
   // Tribunal Router (Geometric Hallucination Prevention)
   rpc VerifyGeneration (VerifyGenerationRequest) returns (VerifyGenerationResponse);
+
+  // Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+  rpc CallExtension (ExtensionRequest) returns (ExtensionResponse);
+  rpc ListExtensions (Empty) returns (ListExtensionsResponse);
 }
 
 message ReplicationRequest {
@@ -758,4 +762,45 @@ message VerifyGenerationResponse {
   bool cone_satisfied = 7;
   string details = 8;
   repeated uint32 resolved_context_ids = 9;
+}
+
+// ============================================================================
+// Extension & Plugin Architecture (v4.2.0 pgrx-style PDK)
+// ============================================================================
+
+message ExtensionRequest {
+  string plugin = 1;
+  string method = 2;
+  optional string collection = 3;
+  string json_payload = 4;
+}
+
+message ExtensionResponse {
+  bool success = 1;
+  string json_result = 2;
+  string error = 3;
+}
+
+message ExtensionProcedureInfo {
+  string name = 1;
+  string description = 2;
+  bool requires_collection = 3;
+  string input_schema_json = 4;
+  string output_schema_json = 5;
+}
+
+message ExtensionInfo {
+  string name = 1;
+  string version = 2;
+  string author = 3;
+  string description = 4;
+  string runtime = 5;
+  repeated string hooks = 6;
+  repeated ExtensionProcedureInfo procedures = 7;
+}
+
+message ListExtensionsResponse {
+  string pdk_version = 1;
+  repeated string supported_metrics = 2;
+  repeated ExtensionInfo extensions = 3;
 }

@@ -77,28 +77,30 @@ pub mod tribunal;
 pub mod wave;
 #[path = "write_buffer.rs"]
 pub mod write_buffer;
+pub use hyperspace_pdk;
 use manager::CollectionManager;
 
 #[cfg(feature = "embed")]
-use hyperspace_embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
+use hyperspace_pdk::embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
     metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
     CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate, CountRequest, CountResponse,
     CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DiffBucket,
-    DigestRequest, DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
+    DigestRequest, DigestResponse, EventMessage, EventSubscriptionRequest, EventType,
+    ExtensionInfo, ExtensionProcedureInfo, ExtensionRequest, ExtensionResponse, Filter,
     FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
     GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
     GetPointsRequest, GetPointsResponse, GetSubsumptionTreeRequest, GetSubsumptionTreeResponse,
     GraphCluster, GraphNode, HealthCheckResponse, InduceEdgesRequest, InduceEdgesResponse,
     InsertRequest, InsertResponse, InsertTextRequest, LinkBatchRequest, LinkBatchResponse,
-    LinkRequest, ListCollectionsResponse, MetadataValue, MonitorRequest, ScrollRequest,
-    ScrollResponse, SearchMultiCollectionRequest, SearchMultiCollectionResponse, SearchRequest,
-    SearchResponse, SearchResult, SearchTextRequest, SyncHandshakeRequest, SyncHandshakeResponse,
-    SyncPullRequest, SyncPushResponse, SyncVectorData, SystemStats, TraverseRequest,
-    TraverseResponse, UnlinkRequest, UpdatePayloadRequest, VectorData, VectorDeletedEvent,
-    VectorInsertedEvent, VectorizeRequest, VectorizeResponse, VerifyGenerationRequest,
-    VerifyGenerationResponse,
+    LinkRequest, ListCollectionsResponse, ListExtensionsResponse, MetadataValue, MonitorRequest,
+    ScrollRequest, ScrollResponse, SearchMultiCollectionRequest, SearchMultiCollectionResponse,
+    SearchRequest, SearchResponse, SearchResult, SearchTextRequest, SyncHandshakeRequest,
+    SyncHandshakeResponse, SyncPullRequest, SyncPushResponse, SyncVectorData, SystemStats,
+    TraverseRequest, TraverseResponse, UnlinkRequest, UpdatePayloadRequest, VectorData,
+    VectorDeletedEvent, VectorInsertedEvent, VectorizeRequest, VectorizeResponse,
+    VerifyGenerationRequest, VerifyGenerationResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use tonic::Streaming;
@@ -1126,6 +1128,18 @@ impl Database for HyperspaceService {
                     req.metadata.clone().into_iter().collect(),
                     req.typed_metadata.into_iter().collect(),
                 );
+                let mut points = vec![hyperspace_pdk::PluginPoint {
+                    id: req.id,
+                    vector: req.vector,
+                    metadata: meta,
+                    payload: req.payload,
+                }];
+                self.manager
+                    .plugins
+                    .run_before_insert(&col_name, col.metric_name(), col.dimension(), &mut points)
+                    .await
+                    .map_err(Status::internal)?;
+                let point = points.into_iter().next().unwrap();
                 let clock = self.manager.tick_cluster_clock().await;
 
                 let durability =
@@ -1144,14 +1158,14 @@ impl Database for HyperspaceService {
                         _ => hyperspace_core::Durability::Default,
                     };
 
-                col.insert(&req.vector, req.id, meta, clock, durability)
+                col.insert(&point.vector, point.id, point.metadata, clock, durability)
                     .await
                     .map_err(Status::internal)?;
 
-                if let Some(payload_bytes) = req.payload {
+                if let Some(payload_bytes) = point.payload {
                     if !payload_bytes.is_empty() {
-                        if let Err(e) = col.insert_payload(req.id, payload_bytes).await {
-                            eprintln!("⚠️  insert_payload failed for id={}: {e}", req.id);
+                        if let Err(e) = col.insert_payload(point.id, payload_bytes).await {
+                            eprintln!("⚠️  insert_payload failed for id={}: {e}", point.id);
                         }
                     }
                 }
@@ -1218,18 +1232,39 @@ impl Database for HyperspaceService {
                     Status::not_found(format!("Collection '{}' not found", col_name))
                 })?;
 
-                // Convert protos to internal types
-                let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req
+                // Convert protos to internal plugin points and run BeforeInsert hooks
+                let mut points: Vec<hyperspace_pdk::InsertPoint> = req
                     .vectors
                     .into_iter()
-                    .map(|v| {
-                        (
-                            v.vector,
-                            v.id,
-                            merge_metadata(v.metadata.into_iter().collect(), v.typed_metadata),
-                        )
+                    .map(|v| hyperspace_pdk::InsertPoint {
+                        id: v.id,
+                        vector: v.vector,
+                        metadata: merge_metadata(
+                            v.metadata.into_iter().collect(),
+                            v.typed_metadata,
+                        ),
+                        payload: None,
                     })
                     .collect();
+                self.manager
+                    .plugins
+                    .run_before_insert(&col_name, col.metric_name(), col.dimension(), &mut points)
+                    .await
+                    .map_err(Status::internal)?;
+
+                let mut payloads_to_store = Vec::new();
+                let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> =
+                    points
+                        .into_iter()
+                        .map(|p| {
+                            if let Some(bytes) = p.payload {
+                                if !bytes.is_empty() {
+                                    payloads_to_store.push((p.id, bytes));
+                                }
+                            }
+                            (p.vector, p.id, p.metadata)
+                        })
+                        .collect();
 
                 // Tick clock
                 let clock = self.manager.tick_cluster_clock().await;
@@ -1254,6 +1289,10 @@ impl Database for HyperspaceService {
                 col.insert_batch(vectors, clock, durability)
                     .await
                     .map_err(Status::internal)?;
+
+                for (id, bytes) in payloads_to_store {
+                    let _ = col.insert_payload(id, bytes).await;
+                }
 
                 Ok(Response::new(InsertResponse { success: true }))
             }
@@ -1660,6 +1699,23 @@ impl Database for HyperspaceService {
             resolve_collection(&ctx, &col_name, security::UserRole::ReadOnly)?;
 
         if let Some(col) = self.manager.get(&owner, &actual_col_name).await {
+            let mut search_ctx = hyperspace_pdk::SearchContext {
+                collection: actual_col_name.clone(),
+                metric: col.metric_name().to_string(),
+                query: vector,
+                filter: exact_filter,
+                top_k: params.top_k,
+            };
+            self.manager
+                .plugins
+                .run_before_search(&mut search_ctx)
+                .await
+                .map_err(Status::internal)?;
+            let vector = search_ctx.query;
+            let exact_filter = search_ctx.filter;
+            let mut params = params;
+            params.top_k = search_ctx.top_k;
+
             let wave_requested = params.use_wave;
             let wave_enabled = std::env::var("HS_SERVER_WAVE_SEARCH_ENABLED")
                 .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
@@ -3163,6 +3219,82 @@ impl Database for HyperspaceService {
 
         Ok(Response::new(result))
     }
+
+    async fn call_extension(
+        &self,
+        request: Request<ExtensionRequest>,
+    ) -> Result<Response<ExtensionResponse>, Status> {
+        let ctx = get_grpc_ctx(&request);
+        let req = request.into_inner();
+        let raw_col = req.collection.unwrap_or_default();
+        let (owner, col_name) = if raw_col.is_empty() {
+            (ctx.user_id.clone(), String::new())
+        } else {
+            resolve_collection(&ctx, &raw_col, security::UserRole::ReadWrite)?
+        };
+        let args: serde_json::Value = if req.json_payload.trim().is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str(&req.json_payload)
+                .map_err(|e| Status::invalid_argument(format!("Invalid JSON payload: {e}")))?
+        };
+        let col_opt = (!col_name.is_empty()).then_some(col_name.as_str());
+        match self
+            .manager
+            .call_extension(&owner, col_opt, &req.plugin, &req.method, args)
+            .await
+        {
+            Ok(val) => Ok(Response::new(ExtensionResponse {
+                success: true,
+                json_result: serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string()),
+                error: String::new(),
+            })),
+            Err(err) => Ok(Response::new(ExtensionResponse {
+                success: false,
+                json_result: "{}".to_string(),
+                error: err,
+            })),
+        }
+    }
+
+    async fn list_extensions(
+        &self,
+        _request: Request<Empty>,
+    ) -> Result<Response<ListExtensionsResponse>, Status> {
+        let manifests = self.manager.plugins.list_manifests();
+        let extensions = manifests
+            .into_iter()
+            .map(|m| ExtensionInfo {
+                name: m.name,
+                version: m.version,
+                description: m.description,
+                author: m.author,
+                runtime: format!("{:?}", m.runtime),
+                hooks: m.hooks.iter().map(|h| format!("{h:?}")).collect(),
+                procedures: m
+                    .procedures
+                    .into_iter()
+                    .map(|p| ExtensionProcedureInfo {
+                        name: p.name,
+                        description: p.description,
+                        requires_collection: p.requires_collection,
+                        input_schema_json: serde_json::to_string(&p.input_schema)
+                            .unwrap_or_default(),
+                        output_schema_json: serde_json::to_string(&p.output_schema)
+                            .unwrap_or_default(),
+                    })
+                    .collect(),
+            })
+            .collect();
+        Ok(Response::new(ListExtensionsResponse {
+            pdk_version: hyperspace_pdk::PDK_VERSION.to_string(),
+            supported_metrics: hyperspace_core::SUPPORTED_METRICS
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            extensions,
+        }))
+    }
 }
 
 pub async fn start_server(
@@ -3575,6 +3707,8 @@ pub async fn start_server(
             None
         }
     };
+    #[cfg(feature = "embed")]
+    manager.plugins.set_embed_vectorizer(vectorizer.clone());
 
     // 2. Prepare Embedding Info for Dashboard
     let embedding_info = {

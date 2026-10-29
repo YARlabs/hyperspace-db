@@ -382,6 +382,17 @@ pub async fn start_http_server(
         .route("/api/admin/runs/end", post(end_run_http))
         .route("/api/admin/runs", get(get_runs_http))
         .route("/api/admin/runs/{session_id}", get(get_run_by_id_http))
+        // Hyperspace PDK Extension System (v4.2.0)
+        .route("/api/extensions", get(list_extensions_http))
+        .route("/v1/extensions/schema", get(list_extensions_http))
+        .route(
+            "/api/ext/{plugin}/{method}",
+            post(call_extension_global_http),
+        )
+        .route(
+            "/api/collections/{name}/ext/{plugin}/{method}",
+            post(call_extension_collection_http),
+        )
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -897,16 +908,34 @@ async fn insert_vector(
 
         let clock = manager.get_cluster_clock();
         let meta = payload.metadata.unwrap_or_default();
+        let mut points = vec![hyperspace_pdk::PluginPoint {
+            id: payload.id,
+            vector: payload.vector,
+            metadata: meta,
+            payload: None,
+        }];
+        manager
+            .plugins
+            .run_before_insert(&col_name, col.metric_name(), col.dimension(), &mut points)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        let point = points.into_iter().next().unwrap();
 
         col.insert(
-            &payload.vector,
-            payload.id,
-            meta,
+            &point.vector,
+            point.id,
+            point.metadata,
             clock,
             hyperspace_core::Durability::Default,
         )
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        if let Some(bytes) = point.payload {
+            if !bytes.is_empty() {
+                let _ = col.insert_payload(point.id, bytes).await;
+            }
+        }
 
         Ok(StatusCode::OK)
     }
@@ -959,15 +988,41 @@ async fn batch_insert_http(
             .ok_or_else(|| (StatusCode::NOT_FOUND, "Collection not found".to_string()))?;
 
         let clock = manager.get_cluster_clock();
-        let vectors: Vec<_> = payload
+        let mut points: Vec<hyperspace_pdk::PluginPoint> = payload
             .vectors
             .into_iter()
-            .map(|p| (p.vector, p.id, p.metadata.unwrap_or_default()))
+            .map(|p| hyperspace_pdk::PluginPoint {
+                id: p.id,
+                vector: p.vector,
+                metadata: p.metadata.unwrap_or_default(),
+                payload: None,
+            })
+            .collect();
+        manager
+            .plugins
+            .run_before_insert(&col_name, col.metric_name(), col.dimension(), &mut points)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        let mut payloads_to_store = Vec::new();
+        let vectors: Vec<_> = points
+            .into_iter()
+            .map(|p| {
+                if let Some(bytes) = p.payload {
+                    if !bytes.is_empty() {
+                        payloads_to_store.push((p.id, bytes));
+                    }
+                }
+                (p.vector, p.id, p.metadata)
+            })
             .collect();
 
         col.insert_batch(vectors, clock, hyperspace_core::Durability::Default)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        for (id, bytes) in payloads_to_store {
+            let _ = col.insert_payload(id, bytes).await;
+        }
 
         Ok(StatusCode::OK)
     }
@@ -1952,8 +2007,18 @@ async fn search_collection(
         };
 
     if let Some(col) = manager.get(&owner, &col_name).await {
-        let dummy_params = SearchParams {
+        let mut search_ctx = hyperspace_pdk::SearchContext {
+            collection: col_name.clone(),
+            metric: col.metric_name().to_string(),
+            query: payload.vector,
+            filter: exact_filter,
             top_k: k,
+        };
+        if let Err(e) = manager.plugins.run_before_search(&mut search_ctx).await {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
+        let dummy_params = SearchParams {
+            top_k: search_ctx.top_k,
             ef_search: default_ef_search(),
             hybrid_query: None,
             hybrid_alpha: None,
@@ -1967,8 +2032,8 @@ async fn search_collection(
         };
         match col
             .search(
-                &payload.vector,
-                &exact_filter,
+                &search_ctx.query,
+                &search_ctx.filter,
                 &complex_filters,
                 &dummy_params,
             )
@@ -3565,5 +3630,95 @@ async fn get_run_by_id_http(
         }
     } else {
         (StatusCode::NOT_FOUND, "Run session not found").into_response()
+    }
+}
+
+async fn list_extensions_http(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+) -> impl IntoResponse {
+    Json(manager.plugins.schema_catalog_json()).into_response()
+}
+
+async fn call_extension_global_http(
+    Path((plugin, method)): Path<(String, String)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    body: Option<Json<serde_json::Value>>,
+) -> impl IntoResponse {
+    let args = body.map_or_else(|| serde_json::json!({}), |Json(v)| v);
+    let col_from_args = args
+        .get("collection")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let (owner, resolved_col) = if let Some(ref c) = col_from_args {
+        match resolve_http_collection(&ctx, c, crate::security::UserRole::ReadWrite) {
+            Ok((o, cn)) => (o, Some(cn)),
+            Err(status) => return status.into_response(),
+        }
+    } else {
+        (ctx.user_id.clone(), None)
+    };
+    match manager
+        .call_extension(&owner, resolved_col.as_deref(), &plugin, &method, args)
+        .await
+    {
+        Ok(res) => Json(serde_json::json!({
+            "success": true,
+            "result": res
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "success": false,
+                "error": err
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn call_extension_collection_http(
+    Path((name, plugin, method)): Path<(String, String, String)>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+    body: Option<Json<serde_json::Value>>,
+) -> impl IntoResponse {
+    let (owner, col_name) =
+        match resolve_http_collection(&ctx, &name, crate::security::UserRole::ReadWrite) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+    let args = body.map_or_else(|| serde_json::json!({}), |Json(v)| v);
+    match manager
+        .call_extension(&owner, Some(&col_name), &plugin, &method, args)
+        .await
+    {
+        Ok(res) => Json(serde_json::json!({
+            "success": true,
+            "result": res
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "success": false,
+                "error": err
+            })),
+        )
+            .into_response(),
     }
 }

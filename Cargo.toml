@@ -16,6 +16,7 @@ hyperspace-tiering = { path = "crates/hyperspace-tiering" }
 hyperspace-cache = { path = "crates/hyperspace-cache" }
 hyperspace-eco = { path = "crates/hyperspace-eco" }
 hyperspace-clustering = { path = "crates/hyperspace-clustering" }
+hyperspace-pdk = { path = "crates/hyperspace-pdk" }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24" # Check recent version or use what fits

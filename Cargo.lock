@@ -2394,7 +2394,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-billing"
-version = "0.0.1"
+version = "4.2.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cache"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -2432,7 +2432,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "4.1.1"
+version = "4.2.0"
 dependencies = [
  "chrono",
  "crossterm",
@@ -2446,7 +2446,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-clustering"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "criterion",
  "matrixmultiply",
@@ -2459,7 +2459,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2476,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-eco"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "hyperspace-core",
  "memmap2",
@@ -2490,24 +2490,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyperspace-embed"
-version = "3.1.3"
-dependencies = [
- "anyhow",
- "async-trait",
- "hf-hub",
- "ndarray",
- "ort",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "tokenizers 0.22.2",
- "tokio",
-]
-
-[[package]]
 name = "hyperspace-index"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "arc-swap",
  "boxcar",
@@ -2557,8 +2541,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperspace-pdk"
+version = "4.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "dashmap 6.1.0",
+ "hex",
+ "hf-hub",
+ "hyperspace-core",
+ "ndarray",
+ "ort",
+ "parking_lot",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokenizers 0.22.2",
+ "tokio",
+]
+
+[[package]]
 name = "hyperspace-proto"
-version = "4.1.1"
+version = "4.2.0"
 dependencies = [
  "prost 0.12.6",
  "serde",
@@ -2568,7 +2573,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -2593,7 +2598,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "4.1.1"
+version = "4.2.0"
 dependencies = [
  "arc-swap",
  "async-stream",
@@ -2613,9 +2618,9 @@ dependencies = [
  "hyperspace-clustering",
  "hyperspace-core",
  "hyperspace-eco",
- "hyperspace-embed",
  "hyperspace-index",
  "hyperspace-p2p",
+ "hyperspace-pdk",
  "hyperspace-proto",
  "hyperspace-store",
  "hyperspace-tiering",
@@ -2650,7 +2655,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "arc-swap",
  "byteorder",
@@ -2682,7 +2687,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-wasm"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",
@@ -4427,17 +4432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "password-hash"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
-dependencies = [
- "base64ct",
- "rand_core 0.6.4",
- "subtle",
-]
-
-[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4451,8 +4445,6 @@ checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
 dependencies = [
  "digest",
  "hmac",
- "password-hash",
- "sha2",
 ]
 
 [[package]]

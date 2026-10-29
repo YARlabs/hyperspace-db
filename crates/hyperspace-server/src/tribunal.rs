@@ -1,6 +1,6 @@
 use hyperspace_core::{Collection, EuclideanMetric, LorentzMetric, Metric, PoincareMetric};
 #[cfg(feature = "embed")]
-use hyperspace_embed::MultiVectorizer;
+use hyperspace_pdk::embed::MultiVectorizer;
 use hyperspace_proto::hyperspace::{VerifyGenerationRequest, VerifyGenerationResponse};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -627,6 +627,7 @@ mod tests {
                 weight: 1.0,
             }],
             cascade_pipeline: vec![],
+            encrypted: Some(false),
         };
         manager
             .create_collection("default_admin", col_name, schema)

@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-server"
-version = "4.1.1"
+version = "4.2.0"
 default-run = "hyperspace-server"
 edition = "2021"
 
@@ -14,6 +14,7 @@ hyperspace-index = { workspace = true }
 hyperspace-store = { workspace = true }
 hyperspace-cache = { workspace = true }
 hyperspace-clustering = { workspace = true }
+hyperspace-pdk = { workspace = true }
 tokio-stream = "0.1"
 rand = "0.8"
 sha2 = "0.10.9"
@@ -38,7 +39,6 @@ rustls-pki-types = "1.14"
 hyper = { version = "1.8", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 tower-service = "0.3"
-hyperspace-embed = { path = "../hyperspace-embed", optional = true }
 tikv-jemallocator = "0.6"
 tikv-jemalloc-ctl = "0.6"
 prometheus = { version = "0.13", features = ["process"] }
@@ -65,7 +65,7 @@ tempfile = "3.10"
 
 [features]
 default = ["embed"]
-embed = ["dep:hyperspace-embed"]
+embed = []
 nightly-simd = ["hyperspace-core/nightly-simd", "hyperspace-index/nightly-simd"]
 # Linux io_uring batched payload / Direct-I/O reads (transparent pread fallback elsewhere).
 io-uring = ["hyperspace-store/io-uring"]

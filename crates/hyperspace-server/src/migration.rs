@@ -849,6 +849,7 @@ mod tests {
             metric: Some("euclidean".to_string()),
             quantization: "none".to_string(),
             sharded: false,
+            encrypted: false,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -857,6 +858,7 @@ mod tests {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             }),
         };
         meta.save(&legacy_col).unwrap();
@@ -914,6 +916,7 @@ mod tests {
             metric: Some("euclidean".to_string()),
             quantization: "none".to_string(),
             sharded: false,
+            encrypted: false,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -922,6 +925,7 @@ mod tests {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             }),
         };
         meta.save(&legacy_col).unwrap();
@@ -978,6 +982,7 @@ mod tests {
             metric: Some("hybrid".to_string()),
             quantization: "medium_plus".to_string(),
             sharded: false,
+            encrypted: false,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -986,6 +991,7 @@ mod tests {
                     weight: 1.0,
                 }],
                 cascade_pipeline: vec![],
+                encrypted: Some(false),
             }),
         };
         meta.save(&legacy_col).unwrap();
@@ -1041,6 +1047,7 @@ mod tests {
             metric: Some("cosine".to_string()),
             quantization: "none".to_string(),
             sharded: false,
+            encrypted: false,
             schema: None,
         };
         meta.save(&col_dir).unwrap();
@@ -1097,6 +1104,7 @@ mod tests {
             metric: Some("euclidean".to_string()),
             quantization: "none".to_string(),
             sharded: false,
+            encrypted: false,
             schema: None,
         };
         meta.save(&col_dir).unwrap();
@@ -1203,6 +1211,7 @@ mod tests {
             metric: Some("euclidean".to_string()),
             quantization: "none".to_string(),
             sharded: false,
+            encrypted: false,
             schema: None,
         };
         meta.save(&col_dir).unwrap();

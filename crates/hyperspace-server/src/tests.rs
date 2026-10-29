@@ -30,6 +30,7 @@ async fn test_rebuild_and_queue() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     manager
         .create_collection("default_admin", col_name, schema)
@@ -118,6 +119,7 @@ async fn test_vacuum() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     manager
         .create_collection("default_admin", "vac_col", schema)
@@ -164,6 +166,7 @@ async fn test_delta_sync() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     let schema_b = schema_a.clone();
     manager_a
@@ -341,6 +344,7 @@ async fn test_opq_collection_lifecycle_and_search() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
 
     manager
@@ -463,6 +467,7 @@ async fn test_pq_collection_lifecycle_and_search() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
 
     manager
@@ -583,6 +588,7 @@ async fn test_tenant_isolation_list_and_access() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
 
     // 1. default_admin creates playbooks
@@ -650,6 +656,7 @@ async fn test_large_uint32_vector_ids_no_oom() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     manager
         .create_collection("default_admin", col_name, schema)
@@ -726,6 +733,7 @@ async fn test_superkmeans_hierarchical_memory_clustering_efficiency() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     manager
         .create_collection("default_admin", col_name, schema)
@@ -807,6 +815,7 @@ async fn test_superkmeans_semantic_compactor_and_meta_router() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     manager
         .create_collection("default_admin", col_name, schema)
@@ -887,6 +896,7 @@ async fn test_billion_scale_64bit_id_addressing_and_routing() {
             weight: 1.0,
         }],
         cascade_pipeline: vec![],
+        encrypted: Some(false),
     };
     manager
         .create_collection("default_admin", col_name, schema)
@@ -990,6 +1000,137 @@ async fn test_billion_scale_64bit_id_addressing_and_routing() {
         2,
         "Batch 64-bit points must be retrieved"
     );
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_v4_2_0_plugins_and_multi_metric_engine() {
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "hs_test_v4_2_0_pdk_{}_{}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (rep_tx, _) = broadcast::channel(64);
+    let (evt_tx, _) = broadcast::channel(64);
+    let manager = CollectionManager::new(tmp_dir.clone(), rep_tx, evt_tx);
+
+    // 1. Verify all 3 standard plugins are registered in CollectionManager
+    let manifests = manager.plugins.list_manifests();
+    assert_eq!(manifests.len(), 3);
+
+    let simple_schema = |dim: u32, metric: &str| hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: metric.to_string(),
+            full_dimension: dim,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+
+    // 2. Test hs-embed end-to-end on a collection
+    manager
+        .create_collection("test_user", "docs", simple_schema(64, "cosine"))
+        .await
+        .expect("create docs collection");
+
+    let embed_res = manager
+        .call_extension(
+            "test_user",
+            Some("docs"),
+            "embed",
+            "ingest_text",
+            serde_json::json!({
+                "text": "# HyperspaceDB v4.2.0\nZero-Python in-engine embedding.\n\n## Architecture\nDeterministic manifold projection and KAG linking.",
+                "start_id": 100,
+                "max_chars": 80,
+                "link_sequential": true
+            }),
+        )
+        .await
+        .expect("hs-embed ingest_text must succeed");
+    let chunks_inserted = embed_res["chunks_inserted"].as_u64().unwrap_or(0);
+    assert!(chunks_inserted >= 2, "Expected at least 2 markdown chunks");
+
+    let docs_col = manager.get("test_user", "docs").await.unwrap();
+    assert_eq!(docs_col.count() as u64, chunks_inserted);
+
+    // 3. Test hs-git-ast end-to-end on a codebase collection
+    manager
+        .create_collection("test_user", "code_kag", simple_schema(64, "l2"))
+        .await
+        .expect("create code_kag collection");
+
+    let ast_res = manager
+        .call_extension(
+            "test_user",
+            Some("code_kag"),
+            "git_ast",
+            "ingest_files",
+            serde_json::json!({
+                "base_id": 500,
+                "files": [
+                    {
+                        "path": "src/engine.rs",
+                        "content": "pub trait Plugin {}\npub struct Host;\nimpl Plugin for Host {}\npub fn init() { run(); }\npub fn run() {}"
+                    }
+                ]
+            }),
+        )
+        .await
+        .expect("hs-git-ast ingest_files must succeed");
+    assert!(ast_res["symbols_inserted"].as_u64().unwrap_or(0) >= 4);
+    assert!(ast_res["edges_linked"].as_u64().unwrap_or(0) >= 4);
+
+    // 4. Test hs-shield configure + isometric vector rotation
+    let _ = manager
+        .call_extension(
+            "test_user",
+            Some("code_kag"),
+            "shield",
+            "configure",
+            serde_json::json!({
+                "collection": "code_kag",
+                "secret_key": "enterprise-ciso-key-2026"
+            }),
+        )
+        .await
+        .expect("hs-shield configure must succeed");
+
+    // 5. Verify multi-metric collections instantiate and search cleanly across new metrics
+    for metric in ["dot", "l1", "linf", "angular", "jaccard", "hamming"] {
+        let cname = format!("col_{metric}");
+        manager
+            .create_collection("test_user", &cname, simple_schema(16, metric))
+            .await
+            .unwrap_or_else(|e| panic!("Failed to create collection for metric {metric}: {e}"));
+        let c = manager.get("test_user", &cname).await.unwrap();
+        c.insert(&vec![0.5; 16], 1, HashMap::new(), 1, Durability::Default)
+            .await
+            .unwrap();
+        c.insert(&vec![0.25; 16], 2, HashMap::new(), 2, Durability::Default)
+            .await
+            .unwrap();
+        let hits = c
+            .search(
+                &vec![0.5; 16],
+                &HashMap::new(),
+                &[],
+                &hyperspace_core::SearchParams {
+                    top_k: 2,
+                    ef_search: 16,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!hits.is_empty(), "Metric {metric} search must return results");
+    }
 
     let _ = fs::remove_dir_all(&tmp_dir);
 }
