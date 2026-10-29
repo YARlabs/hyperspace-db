@@ -350,6 +350,7 @@ impl MigrationEngine {
                 quantization: "none".to_string(),
                 sharded: true,
                 encrypted: false,
+                vector_count: 0,
                 schema: Some(CollectionSchema {
                     components: vec![hyperspace_proto::hyperspace::VectorComponent {
                         name: "default".to_string(),
@@ -515,6 +516,9 @@ impl MigrationEngine {
                                 if migrated > 0 {
                                     migrated -= 1;
                                 }
+                            }
+                            hyperspace_store::wal::WalEntry::UpdatePayload { id, metadata, .. } => {
+                                let _ = v4_col.update_payload(id as u32, metadata).await;
                             }
                         }
                     }
@@ -850,6 +854,7 @@ mod tests {
             quantization: "none".to_string(),
             sharded: false,
             encrypted: false,
+            vector_count: 0,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -917,6 +922,7 @@ mod tests {
             quantization: "none".to_string(),
             sharded: false,
             encrypted: false,
+            vector_count: 0,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -983,6 +989,7 @@ mod tests {
             quantization: "medium_plus".to_string(),
             sharded: false,
             encrypted: false,
+            vector_count: 0,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -1048,6 +1055,7 @@ mod tests {
             quantization: "none".to_string(),
             sharded: false,
             encrypted: false,
+            vector_count: 0,
             schema: None,
         };
         meta.save(&col_dir).unwrap();
@@ -1105,6 +1113,7 @@ mod tests {
             quantization: "none".to_string(),
             sharded: false,
             encrypted: false,
+            vector_count: 0,
             schema: None,
         };
         meta.save(&col_dir).unwrap();
@@ -1212,6 +1221,7 @@ mod tests {
             quantization: "none".to_string(),
             sharded: false,
             encrypted: false,
+            vector_count: 0,
             schema: None,
         };
         meta.save(&col_dir).unwrap();

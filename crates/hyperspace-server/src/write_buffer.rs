@@ -85,6 +85,25 @@ impl WriteBuffer {
         None
     }
 
+    /// O(1) metadata lookup by internal_id across in-memory write buffer entries.
+    pub fn get_metadata_by_internal_id(&self, internal_id: u32) -> Option<HashMap<String, String>> {
+        self.entries.get(&internal_id).map(|e| e.metadata.clone())
+    }
+
+    /// Update payload metadata for an entry in the write buffer if present.
+    /// Returns true if the entry was found and updated in write buffer.
+    pub fn update_payload(&self, user_id: u32, patch: &HashMap<String, String>) -> bool {
+        if let Some(internal_id) = self.user_to_internal.get(&user_id) {
+            if let Some(mut entry) = self.entries.get_mut(&*internal_id) {
+                for (k, v) in patch {
+                    entry.metadata.insert(k.clone(), v.clone());
+                }
+                return true;
+            }
+        }
+        false
+    }
+
     /// Zero-copy scan across in-memory write buffer entries.
     /// Filters and distances are evaluated by reference; only top-K winners clone metadata.
     pub fn search<M: Metric>(

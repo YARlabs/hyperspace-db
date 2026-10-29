@@ -56,6 +56,11 @@ pub enum WalEntry {
         id: u64,
         logical_clock: u64,
     },
+    UpdatePayload {
+        id: u64,
+        metadata: HashMap<String, String>,
+        logical_clock: u64,
+    },
 }
 
 impl Wal {
@@ -339,6 +344,45 @@ impl Wal {
 
     pub fn append_delete(&mut self, id: u64, logical_clock: u64) -> io::Result<()> {
         Self::serialize_delete_entry_into(&mut self.scratch_buf, id, logical_clock)?;
+        self.write_scratch_packet()?;
+        self.apply_sync_policy()
+    }
+
+    fn serialize_update_payload_entry_into(
+        buf: &mut Vec<u8>,
+        id: u64,
+        metadata: &HashMap<String, String>,
+        logical_clock: u64,
+    ) -> io::Result<()> {
+        buf.clear();
+        let estimated_size = 1 + 8 + 8 + 4 + metadata.len() * 32;
+        buf.reserve(estimated_size);
+        // Internal Format: OpCode 6 (UpdatePayload with u64 ID, clock, and metadata)
+        buf.write_u8(6)?;
+        buf.write_u64::<LittleEndian>(id)?;
+        buf.write_u64::<LittleEndian>(logical_clock)?;
+
+        // Metadata
+        buf.write_u32::<LittleEndian>(metadata.len() as u32)?;
+        for (k, v) in metadata {
+            let k_bytes = k.as_bytes();
+            buf.write_u32::<LittleEndian>(k_bytes.len() as u32)?;
+            buf.write_all(k_bytes)?;
+
+            let v_bytes = v.as_bytes();
+            buf.write_u32::<LittleEndian>(v_bytes.len() as u32)?;
+            buf.write_all(v_bytes)?;
+        }
+        Ok(())
+    }
+
+    pub fn append_update_payload(
+        &mut self,
+        id: u64,
+        metadata: &HashMap<String, String>,
+        logical_clock: u64,
+    ) -> io::Result<()> {
+        Self::serialize_update_payload_entry_into(&mut self.scratch_buf, id, metadata, logical_clock)?;
         self.write_scratch_packet()?;
         self.apply_sync_policy()
     }
@@ -662,6 +706,31 @@ impl Wal {
                 let id = cursor.read_u64::<LittleEndian>()?;
                 let logical_clock = cursor.read_u64::<LittleEndian>()?;
                 Ok(WalEntry::Delete { id, logical_clock })
+            }
+            6 => {
+                let id = cursor.read_u64::<LittleEndian>()?;
+                let logical_clock = cursor.read_u64::<LittleEndian>()?;
+                let meta_len = cursor.read_u32::<LittleEndian>()?;
+                let mut metadata = HashMap::with_capacity(meta_len as usize);
+                for _ in 0..meta_len {
+                    let k_len = cursor.read_u32::<LittleEndian>()?;
+                    let mut k_buf = vec![0u8; k_len as usize];
+                    cursor.read_exact(&mut k_buf)?;
+                    let key = String::from_utf8(k_buf)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+                    let v_len = cursor.read_u32::<LittleEndian>()?;
+                    let mut v_buf = vec![0u8; v_len as usize];
+                    cursor.read_exact(&mut v_buf)?;
+                    let val = String::from_utf8(v_buf)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    metadata.insert(key, val);
+                }
+                Ok(WalEntry::UpdatePayload {
+                    id,
+                    metadata,
+                    logical_clock,
+                })
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,

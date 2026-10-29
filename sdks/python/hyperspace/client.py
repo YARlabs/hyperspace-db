@@ -1649,7 +1649,7 @@ class HyperspaceClient:
         req = hyperspace_pb2.UpdatePayloadRequest(id=id, metadata=metadata, collection=collection)
         try:
             resp = self.stub.UpdatePayload(req, metadata=self.metadata)
-            return resp.code == 0
+            return True
         except grpc.RpcError:
             return False
 

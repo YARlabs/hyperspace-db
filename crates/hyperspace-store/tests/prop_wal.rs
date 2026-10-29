@@ -63,7 +63,7 @@ proptest! {
             let (id, vector, metadata) = match entry {
                 WalEntry::Insert { id, vector, metadata, .. } => (id, vector, metadata),
                 WalEntry::Insert64 { id, vector, metadata, .. } => (id as u32, vector, metadata),
-                WalEntry::Delete { .. } => unreachable!(),
+                WalEntry::Delete { .. } | WalEntry::UpdatePayload { .. } => unreachable!(),
             };
             replayed.push(TestEntry { id, vector, metadata });
         }).unwrap();
@@ -107,7 +107,7 @@ proptest! {
             let (id, vector, metadata) = match entry {
                 WalEntry::Insert { id, vector, metadata, .. } => (id, vector, metadata),
                 WalEntry::Insert64 { id, vector, metadata, .. } => (id as u32, vector, metadata),
-                WalEntry::Delete { .. } => unreachable!(),
+                WalEntry::Delete { .. } | WalEntry::UpdatePayload { .. } => unreachable!(),
             };
             replayed.push(TestEntry { id, vector, metadata });
         });

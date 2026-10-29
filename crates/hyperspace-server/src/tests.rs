@@ -1155,3 +1155,143 @@ async fn test_v4_2_0_plugins_and_multi_metric_engine() {
 
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_issue_20_update_payload_persistence_across_restarts() {
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "hs_test_issue_20_{}_{}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir).unwrap();
+
+    let (rep_tx, _) = broadcast::channel(64);
+    let (evt_tx, _) = broadcast::channel(64);
+
+    let user = "issue20_user";
+    let col_name = "test_col";
+
+    let schema_fn = |dim: u32, metric: &str| hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: metric.to_string(),
+            full_dimension: dim,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+
+    // --- Phase 1: Create collection, insert initial points, update payload, snapshot, update again ---
+    {
+        let manager = CollectionManager::new(tmp_dir.clone(), rep_tx.clone(), evt_tx.clone());
+        manager
+            .create_collection(user, col_name, schema_fn(8, "euclidean"))
+            .await
+            .expect("Create collection should succeed");
+
+        let col = manager.get(user, col_name).await.expect("Collection must exist");
+
+        // 1. Insert point 1 with initial metadata
+        let mut meta1 = HashMap::new();
+        meta1.insert("status".to_string(), "initial".to_string());
+        meta1.insert("tag".to_string(), "v1".to_string());
+        col.insert(&[0.1; 8], 1, meta1, 1, Durability::Strict)
+            .await
+            .expect("Insert 1 must succeed");
+
+        // 2. Update payload before snapshot
+        let mut patch1 = HashMap::new();
+        patch1.insert("status".to_string(), "updated".to_string());
+        patch1.insert("color".to_string(), "blue".to_string());
+        col.update_payload(1, patch1)
+            .await
+            .expect("update_payload 1 must succeed");
+
+        let m = col.metadata_by_id(1);
+        assert_eq!(m.get("status"), Some(&"updated".to_string()));
+        assert_eq!(m.get("tag"), Some(&"v1".to_string()));
+        assert_eq!(m.get("color"), Some(&"blue".to_string()));
+
+        // 3. Wait for async indexing to finish and trigger snapshot
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        col.create_snapshot().expect("Snapshot must succeed");
+
+        // 4. Update payload AFTER snapshot (only in WAL now)
+        let mut patch2 = HashMap::new();
+        patch2.insert("status".to_string(), "post_snapshot".to_string());
+        patch2.insert("version".to_string(), "2".to_string());
+        col.update_payload(1, patch2)
+            .await
+            .expect("update_payload 2 must succeed");
+
+        let m_after = col.metadata_by_id(1);
+        assert_eq!(m_after.get("status"), Some(&"post_snapshot".to_string()));
+        assert_eq!(m_after.get("version"), Some(&"2".to_string()));
+    }
+
+    // --- Phase 2: Restart (simulate restart by creating new CollectionManager pointing to same disk) ---
+    {
+        let manager2 = CollectionManager::new(tmp_dir.clone(), rep_tx, evt_tx);
+        let col2 = manager2.get(user, col_name).await.expect("Collection must reload on restart");
+
+        let reloaded_meta = col2.metadata_by_id(1);
+        assert_eq!(
+            reloaded_meta.get("status"),
+            Some(&"post_snapshot".to_string()),
+            "Metadata updated with update_payload must survive restart!"
+        );
+        assert_eq!(
+            reloaded_meta.get("tag"),
+            Some(&"v1".to_string()),
+            "Original unchanged fields must be preserved"
+        );
+        assert_eq!(
+            reloaded_meta.get("color"),
+            Some(&"blue".to_string()),
+            "Pre-snapshot patched fields must be preserved"
+        );
+        assert_eq!(
+            reloaded_meta.get("version"),
+            Some(&"2".to_string()),
+            "Post-snapshot WAL-replayed patched fields must be preserved"
+        );
+
+        // Verify filter search uses updated inverted index
+        let mut filter_new = HashMap::new();
+        filter_new.insert("status".to_string(), "post_snapshot".to_string());
+        let hits = col2
+            .search(
+                &[0.1; 8],
+                &filter_new,
+                &[],
+                &hyperspace_core::SearchParams {
+                    top_k: 5,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("Search with updated filter must succeed");
+        assert_eq!(hits.len(), 1, "Should find point by updated metadata filter");
+        assert_eq!(hits[0].0, 1);
+
+        let mut filter_old = HashMap::new();
+        filter_old.insert("status".to_string(), "initial".to_string());
+        let old_hits = col2
+            .search(
+                &[0.1; 8],
+                &filter_old,
+                &[],
+                &hyperspace_core::SearchParams {
+                    top_k: 5,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("Search with old filter must succeed");
+        assert_eq!(old_hits.len(), 0, "Old overwritten metadata tag must not match in inverted index");
+    }
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

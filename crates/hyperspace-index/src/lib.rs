@@ -3324,10 +3324,63 @@ impl<M: Metric> HnswIndex<M> {
         id: NodeId,
         patch: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
+        if !patch.is_empty() {
+            self.has_nonempty_metadata.store(true, Ordering::Relaxed);
+        }
         if let Some(mut entry) = self.metadata.forward.get_mut(&id) {
-            for (k, v) in patch {
-                entry.insert(k, v);
+            for (key, new_val) in &patch {
+                // If key existed with a different value, clean up old inverted/numeric entries
+                if let Some(old_val) = entry.get(key) {
+                    if old_val != new_val {
+                        let old_tag = format!("{key}:{old_val}");
+                        if let Some(mut bm) = self.metadata.inverted.get_mut(&old_tag) {
+                            bm.remove(id);
+                        }
+                        if let Ok(old_num) = old_val.parse::<i64>() {
+                            if let Some(tree) = self.metadata.numeric.get(key) {
+                                if let Some(e) = tree.get(&old_num) {
+                                    e.value().write().remove(id);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Index new value in inverted index
+                let tag = format!("{key}:{new_val}");
+                self.metadata.inverted.entry(tag).or_default().insert(id);
+
+                self.metadata
+                    .prefix_index
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(new_val.clone());
+
+                // Index new value in numeric index if parseable
+                if let Ok(num) = new_val.parse::<i64>() {
+                    let tree = self.metadata.numeric.entry(key.clone()).or_default();
+                    let has_entry = {
+                        if let Some(e) = tree.get(&num) {
+                            e.value().write().insert(id);
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    if !has_entry {
+                        let mut bm = roaring::RoaringBitmap::new();
+                        bm.insert(id);
+                        tree.insert(num, parking_lot::RwLock::new(bm));
+                    }
+                }
+
+                entry.insert(key.clone(), new_val.clone());
             }
+
+            let updated_meta = entry.clone();
+            drop(entry);
+
+            self.upsert_doc_lexical_stats(id, &updated_meta);
             Ok(())
         } else {
             Err(format!("Node {id} not found"))

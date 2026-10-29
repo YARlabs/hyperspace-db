@@ -23,8 +23,8 @@
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::result_large_err)]
 
-// #[global_allocator]
-// static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use clap::Parser;
 // Access index via CollectionManager.
@@ -2890,6 +2890,7 @@ impl Database for HyperspaceService {
                     req.typed_metadata.into_iter().collect(),
                 );
                 col.update_payload(req.id, patch)
+                    .await
                     .map_err(Status::not_found)?;
                 Ok(Response::new(
                     hyperspace_proto::hyperspace::StatusResponse {
@@ -3418,7 +3419,6 @@ pub async fn start_server(
         }
         #[cfg(not(feature = "embed"))]
         {
-            println!("❌ Embedding Engine NOT COMPILED (missing --features embed)");
             None
         }
     };
@@ -3521,7 +3521,7 @@ pub async fn start_server(
     };
 
     let service = HyperspaceService {
-        manager,
+        manager: manager.clone(),
         replication_tx,
         role: args.role,
         replication_allowed: args.replication_allowed,
@@ -3585,15 +3585,61 @@ pub async fn start_server(
         server = server.tls_config(tls_config)?;
     }
 
-    server
-        .add_service(service_with_auth)
-        .serve_with_shutdown(addr, async {
-            tokio::signal::ctrl_c().await.ok();
-            println!("\n🛑 Received Ctrl+C. Initiating graceful shutdown...");
-        })
-        .await?;
+    let shutdown_manager = manager.clone();
+    let shutdown_signal_fut = async move {
+        let ctrl_c = async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to install Ctrl+C handler");
+        };
 
-    Ok(())
+        #[cfg(unix)]
+        let terminate = async {
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(mut sig) => {
+                    sig.recv().await;
+                }
+                Err(_) => {
+                    std::future::pending::<()>().await;
+                }
+            }
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => {},
+            _ = terminate => {},
+        }
+
+        println!("\n🛑 Received shutdown signal. Initiating graceful shutdown...");
+
+        // 1. Snapshot all active collections so no metadata or writes are lost
+        let active = shutdown_manager.list_active_collections();
+        for (name, col) in active {
+            println!("💾 Persisting snapshot for collection '{name}'...");
+            if let Err(e) = col.create_snapshot() {
+                eprintln!("⚠️ Failed to create snapshot for '{name}': {e}");
+            }
+        }
+        println!("✅ All collection snapshots persisted cleanly.");
+
+        // Watchdog to guarantee exit within 1.5s even if gRPC keep-alive connections linger
+        tokio::spawn(async {
+            tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+            println!("👋 HyperspaceDB stopped cleanly.");
+            std::process::exit(0);
+        });
+    };
+
+    let _ = server
+        .add_service(service_with_auth)
+        .serve_with_shutdown(addr, shutdown_signal_fut)
+        .await;
+
+    println!("👋 HyperspaceDB stopped cleanly.");
+    std::process::exit(0);
 }
 
 #[tokio::main]

@@ -326,11 +326,13 @@ macro_rules! hs_plugin_manifest {
 #[macro_export]
 macro_rules! hs_export_plugin {
     ($constructor:expr) => {
+        #[cfg(not(feature = "builtin"))]
         #[no_mangle]
         pub extern "C" fn hs_pdk_api_version() -> u32 {
             $crate::PDK_API_VERSION
         }
 
+        #[cfg(not(feature = "builtin"))]
         #[no_mangle]
         pub extern "C" fn hs_plugin_create() -> *mut ::std::boxed::Box<dyn $crate::HsPlugin> {
             let plugin: ::std::boxed::Box<dyn $crate::HsPlugin> =
@@ -351,6 +353,12 @@ static LOADED_LIBS_CACHE: parking_lot::RwLock<Option<HashMap<PathBuf, Arc<libloa
 
 /// Thread-safe registry managing built-in and dynamically loaded external HyperspaceDB plugins,
 /// activation states (`enabled` / `disabled`), lifecycle pipeline hooks, and RPC procedures.
+impl PluginRegistry {
+    pub fn get_plugins_dir(&self) -> PathBuf {
+        self.plugins_dir.read().clone()
+    }
+}
+
 pub struct PluginRegistry {
     plugins: DashMap<String, Arc<RegisteredPluginEntry>>,
     hook_order: RwLock<Vec<String>>,
@@ -480,6 +488,19 @@ impl PluginRegistry {
                 "External plugin shared library not found: {}",
                 path_ref.display()
             ));
+        }
+
+        let stem = path_ref
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .trim_start_matches("lib");
+        let normalized_stem = Self::normalize_plugin_name(stem);
+        if let Some(entry) = self.plugins.get(&normalized_stem) {
+            if entry.source == "builtin" {
+                // Already statically registered as built-in, skip foreign dylib dlopen
+                return self.get_manifest(&normalized_stem).ok_or_else(|| "Already loaded".to_string());
+            }
         }
 
         let canonical_path = path_ref

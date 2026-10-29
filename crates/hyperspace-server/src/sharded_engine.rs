@@ -290,6 +290,31 @@ impl<M: Metric> ShardedCollection<M> {
                                     let _ = shard.delete(local_id);
                                 }
                             }
+                            hyperspace_store::wal::WalEntry::UpdatePayload {
+                                id,
+                                metadata,
+                                logical_clock,
+                            } => {
+                                let (shard_idx, local_id) = if id > u32::MAX as u64 {
+                                    (
+                                        (id % (num_shards as u64)) as usize,
+                                        (id / (num_shards as u64)) as u32,
+                                    )
+                                } else {
+                                    ((id as usize) % num_shards, id as u32)
+                                };
+                                let shard = &shards[shard_idx];
+                                if logical_clock > shard.last_clock() {
+                                    let _ = shard
+                                        .update_payload_internal(
+                                            local_id,
+                                            metadata,
+                                            logical_clock,
+                                            false,
+                                        )
+                                        .await;
+                                }
+                            }
                         }
                     }
                 }
@@ -689,9 +714,24 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         self.shards[shard_idx].delete(local_id)
     }
 
-    fn update_payload(&self, id: u32, metadata: HashMap<String, String>) -> Result<(), String> {
+    async fn update_payload(&self, id: u32, metadata: HashMap<String, String>) -> Result<(), String> {
+        if self.num_shards == 1 {
+            return self.shards[0].update_payload(id, metadata).await;
+        }
+
         let shard_idx = self.get_shard_index(id);
-        self.shards[shard_idx].update_payload(id, metadata)
+        let clock = self.shards[shard_idx].last_clock() + 1;
+
+        if let Some(ref wal) = self.wal {
+            let mut wal_guard = wal.lock().await;
+            wal_guard
+                .append_update_payload(id as u64, &metadata, clock)
+                .map_err(|e| format!("Unified WAL append_update_payload failed: {e}"))?;
+        }
+
+        self.shards[shard_idx]
+            .update_payload_internal(id, metadata, clock, self.wal.is_none())
+            .await
     }
 
     fn metadata_by_id(&self, id: u32) -> HashMap<String, String> {
@@ -1068,6 +1108,17 @@ impl<M: Metric> Collection for ShardedCollection<M> {
     }
 
     fn create_snapshot(&self) -> Result<(), String> {
+        let start = std::time::Instant::now();
+        while self.queue_size() > 0
+            || self.write_buffer_size() > 0
+            || self.get_usage().active_indexing_tasks > 0
+        {
+            if start.elapsed().as_millis() > 3000 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
         for s in &self.shards {
             s.create_snapshot()?;
         }

@@ -654,6 +654,20 @@ impl<M: Metric> CollectionImpl<M> {
                             wal_pending_count.fetch_add(1, Ordering::Relaxed);
                         }
                     }
+                    hyperspace_store::wal::WalEntry::UpdatePayload {
+                        id,
+                        metadata,
+                        logical_clock,
+                    } => {
+                        let id = id as u32;
+                        if logical_clock > loaded_clock {
+                            if let Some(&internal_id) = id_map_data.get(&id) {
+                                let _ = index_ref.update_payload_metadata(internal_id, metadata);
+                                last_clock.fetch_max(logical_clock, Ordering::Relaxed);
+                                wal_pending_count.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
+                    }
                 }
             })?;
         }
@@ -735,7 +749,10 @@ impl<M: Metric> CollectionImpl<M> {
                     let idx = idx_link_worker.load().clone();
 
                     for (id, meta) in batch.drain(..) {
-                        match idx.index_node(id, meta) {
+                        let effective_meta = write_buffer_for_indexer
+                            .get_metadata_by_internal_id(id)
+                            .unwrap_or(meta);
+                        match idx.index_node(id, effective_meta) {
                             Ok(()) => {
                                 write_buffer_for_indexer.remove(id);
                             }
@@ -782,9 +799,12 @@ impl<M: Metric> CollectionImpl<M> {
 
                     tokio::spawn(async move {
                         let _permit = permit;
+                        let effective_meta = write_buf
+                            .get_metadata_by_internal_id(id)
+                            .unwrap_or(meta);
                         let result = tokio::task::spawn_blocking(move || {
                             let idx = idx_link.load().clone();
-                            let result = idx.index_node(id, meta);
+                            let result = idx.index_node(id, effective_meta);
                             (result, id)
                         })
                         .await;
@@ -1270,7 +1290,8 @@ impl<M: Metric> CollectionImpl<M> {
                             | hyperspace_store::wal::WalEntry::Insert64 { vector, metadata, .. } => {
                                 (vector, metadata)
                             }
-                            hyperspace_store::wal::WalEntry::Delete { .. } => return,
+                            hyperspace_store::wal::WalEntry::Delete { .. }
+                            | hyperspace_store::wal::WalEntry::UpdatePayload { .. } => return,
                         };
                         if vector.len() == dimension {
                             centroid_acc.add(&vector);
@@ -1490,6 +1511,17 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     }
 
     fn create_snapshot(&self) -> Result<(), String> {
+        let start = std::time::Instant::now();
+        while self.config.get_queue_size() > 0
+            || self.config.active_indexing.load(Ordering::Relaxed) > 0
+            || !self.write_buffer.is_empty()
+        {
+            if start.elapsed().as_millis() > 3000 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
         let snap_path = self.data_dir.join("index.snap");
         let idx = self.index_link.load().clone();
         idx.save_snapshot(&snap_path)?;
@@ -2694,19 +2726,20 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     }
 
     fn metadata_by_id(&self, id: u32) -> HashMap<String, String> {
+        if let Some((_, wb_meta)) = self.write_buffer.get_by_user_id(id) {
+            return wb_meta;
+        }
         let internal_id = self.to_internal_id(id);
         self.index_link.load().metadata_by_id(internal_id)
     }
 
-    fn update_payload(
+    async fn update_payload(
         &self,
         id: u32,
         patch: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
-        let internal_id = self.to_internal_id(id);
-        self.index_link
-            .load()
-            .update_payload_metadata(internal_id, patch)
+        let clock = self.last_clock.fetch_add(1, Ordering::SeqCst) + 1;
+        self.update_payload_internal(id, patch, clock, true).await
     }
 
     /// Write a heavy payload blob to the disk-only Payload Layer.
@@ -2803,6 +2836,56 @@ impl<M: Metric> CollectionImpl<M> {
         self.last_clock.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    pub async fn update_payload_internal(
+        &self,
+        id: u32,
+        patch: HashMap<String, String>,
+        clock: u64,
+        write_wal: bool,
+    ) -> Result<(), String> {
+        self.last_clock.fetch_max(clock, Ordering::Relaxed);
+
+        // 1. Update in-memory write buffer if entry is buffered
+        let in_wb = self.write_buffer.update_payload(id, &patch);
+
+        // 2. Update active HNSW index
+        let internal_id = self.to_internal_id(id);
+        let mut res = self
+            .index_link
+            .load()
+            .update_payload_metadata(internal_id, patch.clone());
+
+        if in_wb && res.is_err() {
+            // Point is actively being indexed right now by worker thread.
+            // Spin briefly until index_node completes so HNSW index gets patched.
+            for _ in 0..50 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
+                res = self
+                    .index_link
+                    .load()
+                    .update_payload_metadata(internal_id, patch.clone());
+                if res.is_ok() {
+                    break;
+                }
+            }
+        }
+
+        if !in_wb && res.is_err() {
+            return Err(format!("Node {internal_id} not found"));
+        }
+
+        // 3. Write to WAL
+        if write_wal {
+            let wal_guard = self.wal_link.load();
+            let mut wal = wal_guard.lock().await;
+            wal.append_update_payload(id as u64, &patch, clock)
+                .map_err(|e| format!("WAL Error: {e}"))?;
+            self.wal_pending_count.fetch_add(1, Ordering::SeqCst);
+        }
+
+        Ok(())
+    }
+
     pub async fn insert_internal(
         &self,
         vector: &[f64],
@@ -2891,6 +2974,7 @@ impl<M: Metric> CollectionImpl<M> {
             new_id
         };
 
+        self.last_clock.fetch_max(clock, Ordering::Relaxed);
         let mut frozen_paths_opt = None;
         if write_wal {
             let wal_guard = self.wal_link.load();
@@ -2898,8 +2982,6 @@ impl<M: Metric> CollectionImpl<M> {
 
             wal.append(id, processed_vector, &metadata, clock)
                 .map_err(|e| format!("WAL Error: {e}"))?;
-
-            self.last_clock.fetch_max(clock, Ordering::Relaxed);
 
             if durability == hyperspace_core::Durability::Strict {
                 wal.sync().map_err(|e| format!("WAL Sync Error: {e}"))?;
@@ -3100,6 +3182,7 @@ impl<M: Metric> CollectionImpl<M> {
             });
         }
 
+        self.last_clock.fetch_max(clock, Ordering::Relaxed);
         let mut frozen_paths_opt = None;
         if write_wal {
             let wal_data: Vec<_> = entries
@@ -3111,8 +3194,6 @@ impl<M: Metric> CollectionImpl<M> {
             let mut wal = wal_guard.lock().await;
             wal.append_batch_borrowed(&wal_data, clock)
                 .map_err(|e| e.to_string())?;
-
-            self.last_clock.fetch_max(clock, Ordering::Relaxed);
 
             if durability == hyperspace_core::Durability::Strict {
                 wal.sync().map_err(|e| e.to_string())?;

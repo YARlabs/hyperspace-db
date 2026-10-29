@@ -765,3 +765,36 @@ impl HsPlugin for HsGitAstPlugin {
 
 // Export C-ABI entrypoints (`hs_pdk_api_version` & `hs_plugin_create`) for dynamic loading from `./plugins/`
 hs_export_plugin!(HsGitAstPlugin::new);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_git_ast_manifest_and_detection() {
+        let plugin = HsGitAstPlugin::new();
+        let manifest = plugin.manifest();
+        assert_eq!(manifest.name, "git_ast");
+        assert_eq!(HsGitAstPlugin::detect_language("src/lib.rs"), "rust");
+        assert_eq!(HsGitAstPlugin::detect_language("api/main.py"), "python");
+        assert_eq!(HsGitAstPlugin::detect_language("web/app.tsx"), "typescript");
+        assert_eq!(HsGitAstPlugin::detect_language("pkg/server.go"), "go");
+    }
+
+    #[tokio::test]
+    async fn test_git_ast_parse_source_procedure() {
+        let plugin = HsGitAstPlugin::new();
+        let ctx = EngineContext::new("admin", None, None, 1);
+        let args = json!({
+            "files": [
+                {
+                    "path": "test.rs",
+                    "content": "pub struct Engine {}\nimpl Engine {\n    pub fn run() {}\n}"
+                }
+            ]
+        });
+        let res = plugin.call_procedure("parse_source", args, &ctx).await.unwrap();
+        let symbols = res.get("symbols").unwrap().as_array().unwrap();
+        assert!(!symbols.is_empty(), "Should extract at least one symbol");
+    }
+}

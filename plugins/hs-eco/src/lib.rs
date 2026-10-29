@@ -57,71 +57,64 @@ pub async fn get_carbon_metrics(
     db_path: PathBuf,
     time_range: &str,
 ) -> Result<CarbonMetrics, String> {
-    let db_path_clone = db_path.clone();
-    let time_range_str = time_range.to_string();
+    let storage = storage::EcoStorage::new(db_path).map_err(|e| e.to_string())?;
+    let records = storage.read_all().map_err(|e| e.to_string())?;
 
-    tokio::task::spawn_blocking(move || {
-        let storage = storage::EcoStorage::new(db_path_clone).map_err(|e| e.to_string())?;
-        let records = storage.read_all().map_err(|e| e.to_string())?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+    let start_time = match time_range {
+        "24h" | "1d" => now.saturating_sub(24 * 3600),
+        "30d" | "1m" => now.saturating_sub(30 * 24 * 3600),
+        "365d" | "1y" => now.saturating_sub(365 * 24 * 3600),
+        _ => 0,
+    };
 
-        let start_time = match time_range_str.as_str() {
-            "24h" | "1d" => now.saturating_sub(24 * 3600),
-            "30d" | "1m" => now.saturating_sub(30 * 24 * 3600),
-            "365d" | "1y" => now.saturating_sub(365 * 24 * 3600),
-            _ => 0,
-        };
+    let mut total_co2_emitted = 0.0;
+    let mut total_co2_saved = 0.0;
 
-        let mut total_co2_emitted = 0.0;
-        let mut total_co2_saved = 0.0;
-
-        for record in &records {
-            if record.timestamp >= start_time {
-                total_co2_emitted += record.co2_emitted_kg;
-                total_co2_saved += record.co2_saved_kg;
-            }
+    for record in &records {
+        if record.timestamp >= start_time {
+            total_co2_emitted += record.co2_emitted_kg;
+            total_co2_saved += record.co2_saved_kg;
         }
+    }
 
-        let last_rec = records.last();
-        let (current_vectors, baseline_bytes, actual_bytes) = match last_rec {
-            Some(r) => (r.vector_count, r.baseline_ram_bytes, r.actual_ram_bytes),
-            None => (0, 0, 0),
-        };
+    let last_rec = records.last();
+    let (current_vectors, baseline_bytes, actual_bytes) = match last_rec {
+        Some(r) => (r.vector_count, r.baseline_ram_bytes, r.actual_ram_bytes),
+        None => (0, 0, 0),
+    };
 
-        let current_baseline_ram_gb = math::bytes_to_gb(baseline_bytes);
-        let current_actual_ram_gb = math::bytes_to_gb(actual_bytes);
+    let current_baseline_ram_gb = math::bytes_to_gb(baseline_bytes);
+    let current_actual_ram_gb = math::bytes_to_gb(actual_bytes);
 
-        let power_saved_kwh = if math::CO2_KG_PER_KWH > 0.0 {
-            total_co2_saved / math::CO2_KG_PER_KWH
-        } else {
-            0.0
-        };
+    let power_saved_kwh = if math::CO2_KG_PER_KWH > 0.0 {
+        total_co2_saved / math::CO2_KG_PER_KWH
+    } else {
+        0.0
+    };
 
-        let equivalents = math::EcoEquivalents::calculate(total_co2_saved);
+    let equivalents = math::EcoEquivalents::calculate(total_co2_saved);
 
-        let saved_bytes = baseline_bytes.saturating_sub(actual_bytes);
-        let eco_tier = math::EcoTier::calculate(saved_bytes, baseline_bytes);
-        let is_eco_certified = eco_tier.is_eco_certified();
+    let saved_bytes = baseline_bytes.saturating_sub(actual_bytes);
+    let eco_tier = math::EcoTier::calculate(saved_bytes, baseline_bytes);
+    let is_eco_certified = eco_tier.is_eco_certified();
 
-        Ok(CarbonMetrics {
-            time_range: time_range_str,
-            total_co2_emitted_kg: total_co2_emitted,
-            total_co2_saved_kg: total_co2_saved,
-            power_saved_kwh,
-            current_vector_count: current_vectors,
-            current_baseline_ram_gb,
-            current_actual_ram_gb,
-            equivalents,
-            eco_tier,
-            is_eco_certified,
-        })
+    Ok(CarbonMetrics {
+        time_range: time_range.to_string(),
+        total_co2_emitted_kg: total_co2_emitted,
+        total_co2_saved_kg: total_co2_saved,
+        power_saved_kwh,
+        current_vector_count: current_vectors,
+        current_baseline_ram_gb,
+        current_actual_ram_gb,
+        equivalents,
+        eco_tier,
+        is_eco_certified,
     })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 /// Official `hs-eco` (`eco`) external plugin for Carbon & ESG Telemetry.

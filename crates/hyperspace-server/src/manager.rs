@@ -154,6 +154,7 @@ impl CollectionManager {
 
         let collections = Arc::new(DashMap::<String, CollectionEntry>::new());
         let mgr_weak = Arc::downgrade(&collections);
+        let base_clone = base_path.clone();
 
         // Background coarse clock ticker: updates atomic timestamp every second to avoid syscalls in hot path.
         tokio::spawn(async {
@@ -200,8 +201,13 @@ impl CollectionManager {
                 }
 
                 for key in to_remove {
-                    if mgr_map.remove(&key).is_some() {
-                        println!("💤 Idling collection '{key}' unloaded from memory");
+                    if let Some((_, entry)) = mgr_map.remove(&key) {
+                        // Persist vector_count to meta.json before dropping from memory
+                        let mut meta = entry.meta.clone();
+                        meta.vector_count = entry.collection.count();
+                        let col_dir = base_clone.join(&key);
+                        let _ = meta.save(&col_dir);
+                        println!("💤 Idling collection '{key}' ({} vectors) unloaded from memory", meta.vector_count);
                     }
                 }
             }
@@ -234,7 +240,22 @@ impl CollectionManager {
             cluster_state: Arc::new(RwLock::new(state)),
             cluster_clock,
             system,
-            plugins: Arc::new(hyperspace_pdk::PluginRegistry::with_standard_plugins()),
+            plugins: {
+                let registry = hyperspace_pdk::PluginRegistry::new();
+                // 1. Built-in plugins compiled directly with host jemalloc allocator
+                registry.register_with_source(std::sync::Arc::new(hyperspace_pdk::HsEmbedPlugin::new()), "builtin", true);
+                registry.register_with_source(std::sync::Arc::new(hyperspace_pdk::HsShieldPlugin::new()), "builtin", true);
+                registry.register_with_source(std::sync::Arc::new(hs_eco::HsEcoPlugin::new()), "builtin", true);
+                registry.register_with_source(std::sync::Arc::new(hs_git_ast::HsGitAstPlugin::new()), "builtin", true);
+
+                // 2. Discover any additional 3rd-party plugins from ./plugins (skipping builtins)
+                let dir = registry.get_plugins_dir();
+                let _ = registry.load_plugins_from_dir(&dir);
+
+                // 3. Apply .env activation rules
+                registry.apply_env_config();
+                Arc::new(registry)
+            },
         }
     }
 
@@ -540,6 +561,7 @@ impl CollectionManager {
             quantization,
             sharded,
             encrypted,
+            vector_count: 0,
         };
 
         meta.save(&col_dir).map_err(|e| e.to_string())?;
@@ -708,10 +730,32 @@ impl CollectionManager {
     }
 
     pub fn total_vector_count(&self) -> usize {
-        self.collections
-            .iter()
-            .map(|entry| entry.value().collection.count())
-            .sum()
+        let mut total = 0;
+        let mut counted = std::collections::HashSet::new();
+
+        // 1. Active collections in memory
+        for entry in self.collections.iter() {
+            counted.insert(entry.key().clone());
+            total += entry.value().collection.count();
+        }
+
+        // 2. Idle collections on disk (from meta.json without waking up)
+        if let Ok(entries) = std::fs::read_dir(&self.base_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() && path.join("meta.json").exists() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if !counted.contains(name) {
+                            if let Ok(meta) = CollectionMetadata::load(&path) {
+                                total += meta.vector_count;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        total
     }
 
     pub fn total_graph_stats(&self) -> (usize, usize) {
@@ -852,6 +896,9 @@ impl CollectionManager {
                             // it means it's an idle collection on disk.
                             if !self.collections.contains_key(name) {
                                 usage.collection_count += 1;
+                                if let Ok(meta) = CollectionMetadata::load(&path) {
+                                    usage.vector_count += meta.vector_count;
+                                }
                             }
                         }
                     }
@@ -930,6 +977,8 @@ pub struct CollectionMetadata {
     pub sharded: bool,
     #[serde(default)]
     pub encrypted: bool,
+    #[serde(default)]
+    pub vector_count: usize,
 }
 
 impl CollectionMetadata {

@@ -671,7 +671,7 @@ async fn list_collections(
 
             summaries.push(CollectionSummary {
                 name: name.clone(),
-                count: 0,
+                count: meta.vector_count,
                 dimension: meta.dimension(),
                 metric: meta.metric_name(),
                 indexing_queue: 0,
@@ -743,7 +743,7 @@ async fn list_collections(
 
             summaries.push(CollectionSummary {
                 name: format!("{owner}:{name}"),
-                count: 0,
+                count: meta.vector_count,
                 dimension: meta.dimension(),
                 metric: meta.metric_name(),
                 indexing_queue: 0,
@@ -2127,7 +2127,7 @@ async fn update_payload_http(
     Json(payload): Json<UpdatePayloadReq>,
 ) -> impl IntoResponse {
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
-        match col.update_payload(payload.id, payload.metadata) {
+        match col.update_payload(payload.id, payload.metadata).await {
             Ok(()) => StatusCode::OK.into_response(),
             Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
         }
@@ -3262,7 +3262,8 @@ async fn get_cache_stats_http(
             Err(status) => return status.into_response(),
         };
 
-    if let Some(col) = manager.get(&owner, &col_name).await {
+    // Do NOT wake up idle collections just to report cache stats.
+    if let Some(col) = manager.get_active_no_lru(&owner, &col_name) {
         match col.cache_stats() {
             Ok(stats_json) => {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&stats_json) {
@@ -3277,6 +3278,19 @@ async fn get_cache_stats_http(
             }
             Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
         }
+    } else if manager.get_metadata_no_wake(&owner, &col_name).is_some() {
+        // Idle collection: cache is cold/empty, return zeros without waking up
+        Json(serde_json::json!({
+            "l1_size": 0,
+            "l1_hit_rate": 0.0,
+            "l2_index_size": 0,
+            "l2_hit_rate": 0.0,
+            "estimated_memory_bytes": 0,
+            "tombstone_count": 0,
+            "pending_rebuild": 0,
+            "status": "idle"
+        }))
+        .into_response()
     } else {
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
     }

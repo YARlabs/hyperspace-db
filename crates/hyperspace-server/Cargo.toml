@@ -5,6 +5,8 @@ default-run = "hyperspace-server"
 edition = "2021"
 
 [dependencies]
+hs-git-ast = { path = "../../plugins/hs-git-ast", features = ["builtin"] }
+hs-eco = { path = "../../plugins/hs-eco", features = ["builtin"] }
 tokio = { workspace = true }
 tonic = { workspace = true, features = ["tls"] }
 tracing = { workspace = true }

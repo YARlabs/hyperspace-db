@@ -612,7 +612,7 @@ pub trait Collection: Send + Sync + 'static {
     }
 
     /// Patch-update a point's metadata without touching the vector.
-    fn update_payload(
+    async fn update_payload(
         &self,
         id: u32,
         patch: std::collections::HashMap<String, String>,
