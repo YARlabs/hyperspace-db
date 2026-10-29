@@ -776,5 +776,115 @@ When an incoming memory assertion conflicts with or updates an existing fact (e.
 
 ---
 
+## 🔌 Hyperspace Plugin Development Kit (`hyperspace-pdk` v4.2.0)
+
+HyperspaceDB v4.2.0 introduces a modular, `pgrx`-inspired extension runtime (`hyperspace-pdk` / `hs-pdk`). Rather than hardcoding specialized domain features into the core engine, developers can extend ingestion, AST extraction, cryptographic security, and metrics via built-in plugins or external dynamically loaded shared libraries (`cdylib`).
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        HyperspaceDB Core Engine                        │
+│                                                                        │
+│  ┌──────────────────────┐   REST & gRPC    ┌─────────────────────────┐ │
+│  │   Sharded Engine     │ ◄──────────────► │  PDK Plugin Registry    │ │
+│  │ (HNSW, CSR, Storage) │                  │  (Runtime Dispatcher)   │ │
+│  └──────────┬───────────┘                  └───────────┬─────────────┘ │
+└─────────────┼──────────────────────────────────────────┼───────────────┘
+              │                                          │
+              │ Hook Pipeline: BeforeInsert, AfterSearch │ Procedure RPC:
+              │ Custom Metrics                           │ call_procedure()
+              ▼                                          ▼
+┌───────────────────────────────┐          ┌─────────────────────────────┐
+│    Built-in Native Plugins    │          │  External Dynamic Plugins   │
+│   (Static Linking, in-proc)   │          │ (cdylib in ./plugins/*.so)  │
+├───────────────────────────────┤          ├─────────────────────────────┤
+│ • hs-embed (Unified Chunker,  │          │ • hs-git-ast (Codebase AST  │
+│   ONNX/HF/Remote & Manifold)  │          │   Topology & KAG Linker)    │
+│ • hs-shield (Server-side ZK   │          │ • hs-eco (Carbon footprint, │
+│   Orthogonal Projection FWHT) │          │   ESG compliance & metrics) │
+└───────────────────────────────┘          └─────────────────────────────┘
+```
+
+### 1. Two-Tier Architecture: Built-in vs External Plugins
+1. **Built-in Plugins (`crates/hyperspace-pdk`)**:
+   * **`hs-embed` (`embed`)**: Unified semantic Markdown chunker preserving heading breadcrumbs, multi-metric vectorizer, and KAG sequential/containment graph linker (`REL_NEXT_CHUNK`, `REL_CONTAINS_CHUNK`). Features optional ONNX Runtime (`ort`) and HuggingFace Hub support via `hyperspace-pdk/onnx`, plus zero-dependency deterministic multi-manifold projection (`embed_for_manifold`).
+   * **`hs-shield` (`shield`)**: Server-side Zero-Knowledge Orthogonal Projection ($O(D \log D)$ Fast Walsh-Hadamard Transform + SHA-256 Rademacher sign flipping) defending embeddings in the index against `Vec2Text` neural inversion attacks with 100% Top-K distance and recall preservation.
+2. **External Dynamic Plugins (`./plugins/` directory)**:
+   * Standalone Rust `cdylib` shared libraries (`.so` on Linux, `.dylib` on macOS, `.dll` on Windows) dynamically loaded via `libloading`.
+   * **`hs-git-ast` (`git_ast`)**: Instant AST Codebase Topology & KAG Builder for Rust, Python, TypeScript/JavaScript, and Go. Parses function/class/struct symbols, dependencies, and imports into property CSR graph edges.
+   * **`hs-eco` (`eco`)**: Carbon footprint, ESG compliance tracking, and RAM compression efficiency telemetry plugin.
+
+### 2. Plugin Contract & Dynamic Export (`hs_export_plugin!`)
+Plugins implement the `HsPlugin` trait and declare their export using `hs_export_plugin!`:
+
+```rust
+use hyperspace_pdk::prelude::*;
+
+#[derive(Default)]
+pub struct MyPlugin;
+
+#[async_trait]
+impl HsPlugin for MyPlugin {
+    fn manifest(&self) -> PluginManifest {
+        hs_plugin_manifest!(
+            name: "my_plugin",
+            version: "0.1.0",
+            author: "Engineering Team",
+            description: "Custom domain processor",
+            hooks: [HookStage::BeforeInsert],
+            procedures: [
+                ProcedureSchema {
+                    name: "process".to_string(),
+                    description: "Enrich incoming points".to_string(),
+                    requires_collection: true,
+                    input_schema: json!({ "type": "object" }),
+                    output_schema: json!({ "type": "object" })
+                }
+            ]
+        )
+    }
+
+    async fn before_insert(
+        &self,
+        collection: &str,
+        metric: &str,
+        dimension: usize,
+        points: &mut Vec<InsertPoint>,
+    ) -> Result<(), String> {
+        // Intercept and mutate or enrich points in-flight
+        Ok(())
+    }
+
+    async fn call_procedure(
+        &self,
+        method: &str,
+        args: serde_json::Value,
+        ctx: &EngineContext,
+    ) -> Result<serde_json::Value, String> {
+        // Execute arbitrary domain RPCs with engine context access
+        Ok(serde_json::json!({ "status": "ok" }))
+    }
+}
+
+// Generates C ABI symbols hs_plugin_create, hs_plugin_api_version, hs_plugin_name
+hs_export_plugin!(MyPlugin);
+```
+
+### 3. Dynamic Management REST API
+The server exposes dynamic lifecycle endpoints allowing operational control without restarts:
+* `GET /v1/extensions`: Catalog of all registered plugins with health, version, runtime mode, hooks, and procedure schemas.
+* `POST /v1/extensions/{name}/enable`: Activates a plugin at runtime.
+* `POST /v1/extensions/{name}/disable`: Deactivates a plugin at runtime.
+* `POST /v1/extensions/reload`: Rescans `./plugins/`, loads newly compiled shared libraries, and validates ABI version compatibility (`40200`).
+* `POST /v1/extensions/{name}/call/{procedure}`: Dispatches JSON-RPC payloads directly to any registered procedure.
+
+### 4. Web Dashboard Plugins Workbench (`/plugins`)
+HyperspaceDB includes a web-based Plugins Workbench embedded directly into the binary via `rust-embed`:
+* Real-time grid of all installed extensions with version, author, and enabled/disabled state pills.
+* Instant toggle buttons to enable or disable plugins without service interruption.
+* Hot-reload trigger button.
+* Interactive Procedure Runner with JSON schema input validation and real-time output inspector.
+
+---
+
 *Copyright © 2026 YARlabs - Confidential & Proprietary*
 

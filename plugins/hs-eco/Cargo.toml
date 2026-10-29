@@ -1,0 +1,24 @@
+[package]
+name = "hs-eco"
+version = "4.2.0"
+edition = "2021"
+description = "External HyperspaceDB PDK plugin: Carbon Footprint Telemetry & Audited ESG Compliance Reporter"
+
+[lib]
+name = "hs_eco"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hyperspace-pdk = { path = "../../crates/hyperspace-pdk" }
+hyperspace-core = { path = "../../crates/hyperspace-core" }
+async-trait = "0.1"
+memmap2 = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10.9"
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"

@@ -193,3 +193,73 @@ export const listCollectionGrants = async (name: string) => {
     return res.data
 }
 
+// Hyperspace PDK Extensions & Plugins Management (v4.2.0)
+export interface ExtensionProcedureSchema {
+    name: string
+    description: string
+    requires_collection: boolean
+    input_schema: Record<string, any>
+    output_schema: Record<string, any>
+}
+
+export interface ExtensionManifest {
+    name: string
+    version: string
+    author: string
+    description: string
+    runtime: string
+    enabled: boolean
+    source: string
+    hooks: string[]
+    procedures: ExtensionProcedureSchema[]
+    custom_metrics: Array<{
+        name: string
+        description: string
+        is_symmetric: boolean
+        preserves_unit_norm: boolean
+    }>
+}
+
+export interface ExtensionsCatalogResponse {
+    pdk_version: string
+    pdk_api_version: number
+    plugins_dir: string
+    supported_metrics: string[]
+    extensions: ExtensionManifest[]
+}
+
+export const fetchExtensionsCatalog = async (): Promise<ExtensionsCatalogResponse> => {
+    const res = await api.get("/extensions")
+    return res.data
+}
+
+export const enableExtension = async (plugin: string) => {
+    const res = await api.post(`/extensions/${plugin}/enable`)
+    return res.data
+}
+
+export const disableExtension = async (plugin: string) => {
+    const res = await api.post(`/extensions/${plugin}/disable`)
+    return res.data
+}
+
+export const reloadExtensions = async () => {
+    const res = await api.post("/extensions/reload")
+    return res.data
+}
+
+export const callExtensionProcedure = async (
+    plugin: string,
+    method: string,
+    args: Record<string, any>,
+    collection?: string
+) => {
+    if (collection && collection.trim() !== "") {
+        const res = await api.post(`/collections/${collection.trim()}/ext/${plugin}/${method}`, args)
+        return res.data
+    }
+    const res = await api.post(`/ext/${plugin}/${method}`, args)
+    return res.data
+}
+
+

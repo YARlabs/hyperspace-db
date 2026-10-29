@@ -6,7 +6,7 @@ RUN npm install
 COPY dashboard/ .
 RUN npm run build
 
-# === Stage 2: Rust Builder (With Embedding Pipeline) ===
+# === Stage 2: Rust Builder (With Unified hs-embed ONNX Pipeline & External PDK Plugins) ===
 FROM ubuntu:24.04 AS builder
 
 # Install build dependencies
@@ -34,15 +34,22 @@ RUN rm -f rust-toolchain.toml .cargo/config.toml
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Build Release with local embedding pipeline and ONNX Runtime
+# Build Release with unified hs-embed pipeline, ONNX Runtime, and external PDK plugins
 ENV CC=clang
 ENV CXX=clang++
 ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
-RUN cargo build --release -p hyperspace-server -p hyperspace-cli --features "embed nightly-simd eco-monitor s3-tiering"
+RUN cargo build --release \
+    -p hyperspace-server \
+    -p hyperspace-cli \
+    -p hs-git-ast \
+    -p hs-eco \
+    --features "embed nightly-simd s3-tiering"
 
-# Strip binaries to reduce size
-RUN strip target/release/hyperspace-server
-RUN strip target/release/hyperspace-cli
+# Strip binaries and external cdylib plugins to reduce size
+RUN strip target/release/hyperspace-server \
+    target/release/hyperspace-cli \
+    target/release/libhs_git_ast.so \
+    target/release/libhs_eco.so
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
@@ -64,13 +71,24 @@ WORKDIR /app
 COPY --from=builder /app/target/release/hyperspace-server /usr/local/bin/
 COPY --from=builder /app/target/release/hyperspace-cli /usr/local/bin/
 
-# Prepare data directory
-RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
+# Copy external PDK dynamic plugins (.so) and catalog configuration
+RUN mkdir -p /app/data /app/plugins
+COPY --from=builder /app/plugins/plugins.toml /app/plugins/plugins.toml
+COPY --from=builder /app/target/release/libhs_git_ast.so /app/plugins/
+COPY --from=builder /app/target/release/libhs_eco.so /app/plugins/
+RUN chown -R hyperspace:hyperspace /app
 
 USER hyperspace
 
 ENV RUST_LOG=info
 ENV HS_DATA_DIR=/app/data
+ENV HYPERSPACE_PLUGINS_DIR=/app/plugins
+ENV HYPERSPACE_ENABLED_PLUGINS=embed,shield,git_ast,eco
+ENV HYPERSPACE_EMBED=true
+
+LABEL org.opencontainers.image.source=https://github.com/YARlabs/hyperspace-db
+LABEL org.opencontainers.image.version="4.2.0"
+LABEL profile=embed
 
 EXPOSE 50051 50050
 

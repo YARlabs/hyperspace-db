@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: hyperspacedb
-Version: 4.1.0
+Version: 4.2.0
 Summary: Fastest Hyperbolic Vector DB Client with Domain-Specific Cognitive SDKs
 Author: YARlabs
 Keywords: vector-database,ann,grpc,embeddings,hyperspace,hyperbolic,cheminformatics,genomics,threat-intelligence,legaltech,knowledge-graphs,quantitative-finance
@@ -33,8 +33,8 @@ Requires-Dist: rdkit-pypi>=2022.9.5; extra == "all"
 Requires-Dist: biopython>=1.80; extra == "all"
 
 # HyperspaceDB Python SDK
-
-Official Python client for HyperspaceDB gRPC API v3.1.1
+ 
+Official Python client for HyperspaceDB gRPC API v4.1.0
 
 The SDK is designed for production services and benchmark tooling:
 - collection management

@@ -8,7 +8,7 @@ try:
 except ImportError:
     import hyperspace_pb2 as hyperspace__pb2
 
-GRPC_GENERATED_VERSION = '1.80.0'
+GRPC_GENERATED_VERSION = '1.63.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -16,7 +16,7 @@ try:
     from grpc._utilities import first_version_is_lower
     _version_not_supported = first_version_is_lower(GRPC_VERSION, GRPC_GENERATED_VERSION)
 except ImportError:
-    _version_not_supported = True
+    _version_not_supported = False
 
 if _version_not_supported:
     raise RuntimeError(

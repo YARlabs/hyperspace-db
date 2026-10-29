@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-10-29
+
+### Added
+* **Hyperspace Plugin Development Kit (`hyperspace-pdk` / `hs-pdk`)**:
+  * **`pgrx`-Inspired Extension Architecture**: Transform HyperspaceDB into an extensible Spatial & Graph Runtime. Developers can extend ingestion pipelines, AST/graph topologies, cryptographic shields, and custom non-Euclidean metrics without engine bloat.
+  * **Unified Plugin Trait & Export Macro**:
+    * Core `HsPlugin` trait (`manifest`, `before_insert`, `after_search`, `custom_metrics`, `call_procedure`).
+    * `hs_export_plugin!(PluginType)` macro generating ABI-stable C-linkage entrypoints (`hs_plugin_create`, `hs_plugin_api_version`, `hs_plugin_name`).
+  * **Built-in Flagship Plugins (`crates/hyperspace-pdk`)**:
+    * **`hs-embed` (`embed`)**: Zero-Python in-engine Markdown/text structural chunker (preserving section headings), ONNX Runtime (`ort`) inference, HuggingFace Hub auto-downloader, Remote API drivers (`OpenAI`, `Cohere`, `Voyage`, `Mistral`, `Gemini`, `OpenRouter`, `YarInk`, `Generic`), deterministic multi-manifold projection (`embed_for_manifold`), and automatic KAG graph edge linker (`REL_NEXT_CHUNK`, `REL_CONTAINS_CHUNK`).
+    * **`hs-shield` (`shield`)**: Server-side Zero-Knowledge Orthogonal Projection (`O(D \log D)` Fast Walsh-Hadamard Transform + keyed Rademacher sign flipping) defending embeddings at rest/in-index against `Vec2Text` neural inversion attacks with 100% Top-K distance and recall preservation.
+  * **External Dynamic Shared Library Plugins (`./plugins/` directory)**:
+    * Compiled as standalone Rust `cdylib` crates (`.dylib` on macOS, `.so` on Linux, `.dll` on Windows) and placed in `HYPERSPACE_PLUGINS_DIR` (default `./plugins`).
+    * **`hs-git-ast` (`plugins/hs-git-ast`)**: Instant AST Codebase Topology & KAG Builder for Rust, Python, TypeScript/JavaScript, and Go. Parses function/class/struct symbols, dependencies, and imports into property CSR graph edges.
+    * **`hs-eco` (`plugins/hs-eco`)**: Carbon footprint, ESG compliance tracking, and RAM compression efficiency telemetry plugin extracted from core engine into a dynamic PDK extension.
+  * **Dynamic Discovery, Validation & Hot Reload**:
+    * Safe runtime loading via `libloading` with strict API version handshake (`api_version == 40200`).
+    * Global catalog manifest `plugins/plugins.toml` defining plugin configurations and default activation flags.
+  * **Runtime Plugin Management REST APIs**:
+    * `GET /v1/extensions` — Lists all registered plugins, runtime modes (`native-rust` / `cdylib`), versioning, active status, hooks, and procedure schemas.
+    * `POST /v1/extensions/{name}/enable` — Activates an installed plugin dynamically at runtime without restarting the server.
+    * `POST /v1/extensions/{name}/disable` — Deactivates a plugin dynamically without server restart.
+    * `POST /v1/extensions/reload` — Scans `HYPERSPACE_PLUGINS_DIR`, reloads external `.so`/`.dylib` binaries, and refreshes the plugin registry.
+    * `POST /v1/extensions/{name}/call/{procedure}` — Dispatches structured RPC calls directly to any plugin procedure (e.g. `embed.ingest_text`, `git_ast.index_repository`, `shield.project_vector`).
+  * **Web Dashboard Plugins Workbench (`/plugins` page)**:
+    * Complete interactive UI built with React + Vite + Tailwind: monitors active/installed plugins, procedures, and hook points.
+    * One-click live toggling (Enable / Disable) and Hot Reload button communicating with the management API.
+    * Built-in interactive Procedure Runner with JSON argument editor and live response display.
+* **Universal 12-Metric SIMD Vector Engine**:
+  * Unified support across all 12 metric spaces: `l2`, `cosine`, `dot`, `l1`, `linf`, `angular`, `jaccard`, `hamming`, `poincare`, `lorentz`, `hybrid`, `wasserstein`.
+  * Hardware-accelerated zero-copy byte-slice kernels (AVX-512F, AVX2+FMA, ARM NEON) and zero-allocation HNSW search hot paths across all metrics.
+* **Modular Feature Gating & Lightweight Multi-Tenant Builds**:
+  * Made ONNX Runtime (`ort`), `tokenizers`, `hf-hub`, and `ndarray` optional dependencies behind the `hyperspace-pdk/onnx` feature flag.
+  * Container images built with `--no-default-features` (e.g. `glukhota/hyperspace-db:latest-saas` and `Dockerfile`) completely omit ONNX Runtime binaries, reducing base image size by over 120 MB and trimming idle RAM consumption for multi-tenant Kubernetes deployments.
+  * Full-featured All-in-One image `glukhota/hyperspace-db:latest-embed` (`Dockerfile.embed`) retains the complete local ONNX inference stack.
+
 ## [4.1.1] - 2026-10-25
 
 ### Added

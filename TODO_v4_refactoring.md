@@ -1,4 +1,4 @@
-# HyperspaceDB v4.0.0 — Refactoring Roadmap & Progress Tracker
+# HyperspaceDB v4.2.0 — Refactoring Roadmap & Progress Tracker
 
 ## 🎯 High-Level Goals
 1. **Thread-per-Core (Shared-Nothing Architecture)**: Transition from shared global `DashMap`/`RwLock` state to core-isolated shards (`ShardedCollection`) with core affinity and lock-free scatter-gather execution.
@@ -115,6 +115,21 @@
     - [x] Python, TypeScript, Go, C++, Dart, ROS2 SDKs.
     - [x] `hyperspace-memory-py`, `hyperspace-memory-ts`, `mcp-hyperspace-memory`, `mcp-hyperspacedb`.
     - [x] LangChain (Python/JS), LlamaIndex (Python/JS), and n8n community node.
+
+- [x] **Phase 9: v4.2.0 `pgrx`-Style Extension Architecture (`hyperspace-pdk`), 12 Native SIMD Metrics & Modular External Plugins (100% COMPLETE)**
+  - [x] **Hyperspace Plugin Development Kit (`crates/hyperspace-pdk`)**:
+    - [x] `HsPlugin` trait with pipeline hooks (`BeforeInsert`, `AfterInsert`, `BeforeSearch`, `AfterSearch`, `OnLink`) and JSON-Schema self-describing procedures (`PluginManifest`, `ProcedureSchema`).
+    - [x] `hs_export_plugin!` C-ABI export macro (`hs_pdk_api_version` + `hs_plugin_create`) and `libloading` dynamic shared library loader (`.dylib` / `.so` / `.dll`) scanning `HYPERSPACE_PLUGINS_DIR` (`./plugins`).
+    - [x] Zero-downtime runtime activation/deactivation (`POST /v1/extensions/{plugin}/enable|disable`) and hot-reload (`POST /v1/extensions/reload`).
+    - [x] Interactive Dashboard Workbench (`/plugins` in `PluginsPage.tsx`) for managing plugins, testing procedures live, and inspecting SDK snippets.
+  - [x] **Built-in & External Flagship Extensions**:
+    - [x] **Built-in `hs-embed` (`embed`)**: Full unification of `crates/hyperspace-embed` (ONNX Runtime, HuggingFace Hub, OpenAI/Cohere/Voyage/Mistral/YarInk remote APIs, `.env` per-metric routing, Markdown chunker, Sidecar Payload storage, and KAG sequential/hierarchical graph linking) into `crates/hyperspace-pdk/src/embed.rs`; duplicate `crates/hyperspace-embed` removed.
+    - [x] **Built-in `hs-shield` (`shield`)**: Server-side Zero-Knowledge Orthogonal Projection ($O(D \log D)$ keyed Fast Walsh-Hadamard Transform + SHA-256 Rademacher sign flips + Fisher-Yates permutation) complementing DePIN client-side encryption.
+    - [x] **External `hs-git-ast` (`plugins/hs-git-ast`)**: Standalone `cdylib` plugin extracting AST symbols and KAG topology (`CONTAINS`, `CALLS`, `IMPORTS`, `IMPLEMENTS`) across Rust, Python, TypeScript/JavaScript, and Go with zero LLM cost.
+    - [x] **External `hs-eco` (`plugins/hs-eco`)**: Standalone `cdylib` plugin for Carbon & ESG Telemetry (`metrics`, `esg_report`, `collection_tier`), replacing `crates/hyperspace-eco` and removing `#![cfg(feature = "eco-monitor")]` from the core server.
+  - [x] **12 Universal Hardware-SIMD Vector Metrics & Engine Bottleneck Fixes**:
+    - [x] Added native hardware-SIMD metrics: `Manhattan` ($L_1$), `Chebyshev` ($L_\infty$), `Hamming`, `Jaccard` (Tanimoto), `Angular` (Geodesic Arccos), `JensenShannon` (JSD), and `Hellinger` alongside `Euclidean`, `Cosine`, `DotProduct`, `Poincare`, `Lorentz`, and `Hybrid`.
+    - [x] Fixed unbounded memory growth in `ShardedCollection::raw_vector_cache` via bounded 64-shard clock-hand eviction, eliminated redundant vector clones in HNSW insertion, and removed blocking `std::sync::Mutex` in `DirectFile::write_all_at`.
 
 ---
 

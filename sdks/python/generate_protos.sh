@@ -17,11 +17,13 @@ python3 -m grpc_tools.protoc \
     --grpc_python_out=hyperspace/proto \
     ../../crates/hyperspace-proto/proto/hyperspace.proto
 
-# Fix import in generated grpc file
+# Fix import and minimum grpcio version in generated grpc file
 if [[ "$OSTYPE" == "darwin"* ]]; then
   sed -i '' 's/import hyperspace_pb2 as hyperspace__pb2/from . import hyperspace_pb2 as hyperspace__pb2/' hyperspace/proto/hyperspace_pb2_grpc.py
+  sed -i '' "s/GRPC_GENERATED_VERSION = '.*'/GRPC_GENERATED_VERSION = '1.63.0'/" hyperspace/proto/hyperspace_pb2_grpc.py
 else
   sed -i 's/import hyperspace_pb2 as hyperspace__pb2/from . import hyperspace_pb2 as hyperspace__pb2/' hyperspace/proto/hyperspace_pb2_grpc.py
+  sed -i "s/GRPC_GENERATED_VERSION = '.*'/GRPC_GENERATED_VERSION = '1.63.0'/" hyperspace/proto/hyperspace_pb2_grpc.py
 fi
 
 echo "Python protos generated and patched."

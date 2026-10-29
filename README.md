@@ -932,41 +932,43 @@ The results highlight HyperspaceDB's **Lock-Free ArcSwap Architecture** and opti
 
 HyperspaceDB publishes three specialized Docker distribution tags to match different deployment architectures:
 
-| Image Tag | Embedder | Architecture | Size | Ideal Use Case |
-| :--- | :---: | :---: | :---: | :--- |
-| 🚀 **`glukhota/hyperspace-db:latest`** | ❌ None (Client / API provides vectors) | Multi-Arch (`amd64`, `arm64`) | **~45 MB** | **Default / Recommended**: Ultra-fast, lightweight vector database for production, local dev, edge, and microservices. |
-| 🧠 **`glukhota/hyperspace-db:latest-embed`** | ✅ Built-in (ONNX Runtime / Local Models) | Multi-Arch (`amd64`, `arm64`) | **~650 MB** | **All-in-One**: Self-contained server that vectorizes raw text directly in-database without external APIs or client-side embedding libraries. |
-| ⚡ **`glukhota/hyperspace-db:latest-saas`** | ❌ None (Client / API provides vectors) | `linux/amd64` | **~43 MB** | **Managed Cloud SaaS**: Engineered specifically for high-throughput cloud clusters with S3/Cloudflare R2 chunk tiering, AVX-512 SIMD, and EcoMonitor telemetry. |
+| Image Tag | Extensions / PDK | Embedder | Architecture | Size | Ideal Use Case |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| 🚀 **`glukhota/hyperspace-db:latest`** | ✅ Built-in & External PDK (`/app/plugins`) | Deterministic Manifold & Remote APIs (`ort` disabled) | Multi-Arch (`amd64`, `arm64`) | **~50 MB** | **Default / Recommended**: Ultra-fast, lightweight vector database for production, local dev, edge, and microservices. |
+| 🧠 **`glukhota/hyperspace-db:latest-embed`** | ✅ Full PDK + Active ONNX Runtime | ✅ Built-in Local ONNX / HF Hub / Remote APIs | Multi-Arch (`amd64`, `arm64`) | **~650 MB** | **All-in-One**: Self-contained server that vectorizes raw text directly in-database without external APIs or client-side embedding libraries. |
+| ⚡ **`glukhota/hyperspace-db:latest-saas`** | ✅ Core SaaS PDK (`shield,eco`) | ❌ Offloaded to microservices (`cde-service`) | `linux/amd64` | **~48 MB** | **Managed Cloud SaaS & Kubernetes**: Engineered specifically for high-throughput cloud clusters with S3/Cloudflare R2 chunk tiering, AVX-512 SIMD, and EcoMonitor telemetry. |
 
 ---
 
 ### Quick Start
 
-#### 1. Run Standard Engine (Lightweight, Default)
+#### 1. Run Standard Engine with PDK Plugins
 ```bash
 docker run -d \
   --name hyperspace \
   -p 50051:50051 \
   -p 50050:50050 \
   -v $(pwd)/hs_data:/app/data \
+  -v $(pwd)/plugins:/app/plugins \
   glukhota/hyperspace-db:latest
 ```
 
-#### 2. Run All-in-One Engine (With Built-In Embedding Model)
+#### 2. Run All-in-One Engine (With Built-In ONNX Embedding Model)
 ```bash
 docker run -d \
   --name hyperspace-embed \
   -p 50051:50051 \
   -p 50050:50050 \
   -v $(pwd)/hs_data:/app/data \
+  -v $(pwd)/plugins:/app/plugins \
   glukhota/hyperspace-db:latest-embed
 ```
 
-Access the HTTP Dashboard at `http://localhost:50050` and gRPC at `localhost:50051`.
+Access the Web Dashboard and Plugins Workbench at `http://localhost:50050` and gRPC at `localhost:50051`.
 
 ### Docker Compose
 
-Run the full stack:
+Run the full stack with mounted data and plugins directories:
 
 ```bash
 docker-compose up -d

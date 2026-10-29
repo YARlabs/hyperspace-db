@@ -25,7 +25,9 @@ use crate::{EngineContext, HookStage, HsPlugin, InsertPoint, PluginManifest, Pro
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use hyperspace_core::Durability;
+#[cfg(feature = "onnx")]
 use ndarray::{Array, Array2, ArrayD, ArrayViewD};
+#[cfg(feature = "onnx")]
 use ort::{
     session::{builder::GraphOptimizationLevel, Session},
     value::Value as OrtValue,
@@ -36,7 +38,10 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(feature = "onnx")]
+use std::sync::Mutex;
+#[cfg(feature = "onnx")]
 use tokenizers::Tokenizer;
 
 /// Relation ID for sequential chunk progression (`chunk_i -> chunk_{i+1}`).
@@ -306,16 +311,20 @@ impl Default for MultiVectorizer {
 
 /// Local ONNX Runtime vectorizer (`ort` + HuggingFace `tokenizers`).
 pub struct OnnxVectorizer {
+    #[cfg(feature = "onnx")]
     tokenizer: Tokenizer,
+    #[cfg(feature = "onnx")]
     session: Mutex<Session>,
     dimension: usize,
     metric: Metric,
+    #[allow(dead_code)]
     chunking_config: Option<ChunkingConfig>,
     #[allow(dead_code)]
     model_id: String,
 }
 
 impl OnnxVectorizer {
+    #[cfg(feature = "onnx")]
     pub fn new(
         model_path: &str,
         tokenizer_path: &str,
@@ -347,6 +356,20 @@ impl OnnxVectorizer {
         })
     }
 
+    #[cfg(not(feature = "onnx"))]
+    pub fn new(
+        _model_path: &str,
+        _tokenizer_path: &str,
+        _dimension: usize,
+        _metric: Metric,
+        _metric_name: &str,
+    ) -> Result<Self> {
+        Err(anyhow!(
+            "Local ONNX Runtime is disabled in this build profile (compile with `--features embed`)"
+        ))
+    }
+
+    #[cfg(feature = "onnx")]
     pub fn new_from_hf(
         model_id: &str,
         hf_token: Option<&str>,
@@ -465,6 +488,20 @@ impl OnnxVectorizer {
             chunking_config,
             model_id: model_id.to_string(),
         })
+    }
+
+    #[cfg(not(feature = "onnx"))]
+    pub fn new_from_hf(
+        _model_id: &str,
+        _hf_token: Option<&str>,
+        _dimension: usize,
+        _metric: Metric,
+        _metric_name: &str,
+        _model_file: Option<String>,
+    ) -> Result<Self> {
+        Err(anyhow!(
+            "Local ONNX / HuggingFace Hub runtime is disabled in this build profile (compile with `--features embed`)"
+        ))
     }
 
     pub fn normalize(&self, vec: &mut Vec<f64>) {
@@ -606,6 +643,7 @@ impl OnnxVectorizer {
         aggregated
     }
 
+    #[cfg(feature = "onnx")]
     #[allow(clippy::unused_self)]
     fn mean_pooling(
         &self,
@@ -639,6 +677,15 @@ impl OnnxVectorizer {
         output
     }
 
+    #[cfg(not(feature = "onnx"))]
+    #[allow(clippy::unused_self)]
+    fn vectorize_direct(&self, _texts: &[String]) -> Result<Vec<Vec<f64>>> {
+        Err(anyhow!(
+            "Local ONNX Runtime is disabled in this build profile (compile with `--features embed`)"
+        ))
+    }
+
+    #[cfg(feature = "onnx")]
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn vectorize_direct(&self, texts: &[String]) -> Result<Vec<Vec<f64>>> {
         if texts.is_empty() {
@@ -735,6 +782,7 @@ impl OnnxVectorizer {
         self.process_outputs(batch_size, shape, data, &attention_mask_clone)
     }
 
+    #[cfg(feature = "onnx")]
     fn process_outputs(
         &self,
         batch_size: usize,
@@ -1231,11 +1279,7 @@ impl HsEmbedPlugin {
 
     /// Splits raw text or Markdown into semantic chunks, preserving Markdown headings.
     #[must_use]
-    pub fn chunk_markdown(
-        text: &str,
-        max_chars: usize,
-        overlap_chars: usize,
-    ) -> Vec<TextChunk> {
+    pub fn chunk_markdown(text: &str, max_chars: usize, overlap_chars: usize) -> Vec<TextChunk> {
         let max_chars = max_chars.max(64);
         let overlap_chars = overlap_chars.min(max_chars / 2);
 
@@ -1448,10 +1492,8 @@ impl HsEmbedPlugin {
                 }
                 out[0] = (1.0 + actual_head_sq).sqrt();
 
-                let tail_norm_sq: f64 = raw[33..]
-                    .iter()
-                    .map(|&x| f64::from(x) * f64::from(x))
-                    .sum();
+                let tail_norm_sq: f64 =
+                    raw[33..].iter().map(|&x| f64::from(x) * f64::from(x)).sum();
                 let tail_norm = tail_norm_sq.sqrt().max(1e-9);
                 for i in 33..dim {
                     out[i] = f64::from(raw[i]) / tail_norm;
@@ -1504,6 +1546,8 @@ impl HsPlugin for HsEmbedPlugin {
             author: "HyperspaceDB Core Team".to_string(),
             description: "Unified in-engine Markdown/text chunker, ONNX/HF/Remote model driver, multi-manifold vectorizer, and automatic KAG chunk graph linker.".to_string(),
             runtime: "native-rust".to_string(),
+            enabled: true,
+            source: "builtin".to_string(),
             hooks: vec![HookStage::BeforeInsert],
             procedures: vec![
                 ProcedureSchema {
@@ -1635,11 +1679,9 @@ impl HsPlugin for HsEmbedPlugin {
                     }));
                 }
 
-                let base_id = parsed.base_id.unwrap_or_else(|| {
-                    (col.count() as u32)
-                        .saturating_add(1)
-                        .saturating_mul(100)
-                });
+                let base_id = parsed
+                    .base_id
+                    .unwrap_or_else(|| (col.count() as u32).saturating_add(1).saturating_mul(100));
 
                 let mut points = Vec::with_capacity(chunks.len());
                 let mut chunk_ids = Vec::with_capacity(chunks.len());

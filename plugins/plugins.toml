@@ -1,0 +1,26 @@
+# HyperspaceDB External Plugins Catalog (`plugins/plugins.toml`)
+#
+# Place compiled external plugins (.dylib / .so / .dll) directly in this `./plugins`
+# directory, or place standalone plugin crates in subdirectories (e.g., `./plugins/hs-git-ast/`).
+#
+# Plugins can be enabled or disabled at startup via `.env`:
+#   HYPERSPACE_PLUGINS_DIR=./plugins
+#   HYPERSPACE_ENABLED_PLUGINS=embed,shield,git_ast
+#   HYPERSPACE_DISABLED_PLUGINS=
+# Or toggled dynamically at runtime via REST API:
+#   POST /v1/extensions/{plugin}/enable
+#   POST /v1/extensions/{plugin}/disable
+#   POST /v1/extensions/reload
+
+[plugins.git_ast]
+enabled = true
+library = "hs_git_ast"
+crate_dir = "hs-git-ast"
+description = "Instant Codebase AST Topology & Zero-Cost KAG Builder (Rust, Python, TypeScript, Go)"
+
+[plugins.eco]
+enabled = true
+library = "hs_eco"
+crate_dir = "hs-eco"
+description = "Carbon Footprint Telemetry, RAM Quantization Efficiency Calculator & Audited SHA-256 ESG Compliance Reporter"
+

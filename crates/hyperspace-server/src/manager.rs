@@ -128,7 +128,6 @@ impl CollectionManager {
         format!("{user_id}_{collection_name}")
     }
 
-    #[cfg(feature = "eco-monitor")]
     pub fn base_path(&self) -> &Path {
         &self.base_path
     }
@@ -258,7 +257,9 @@ impl CollectionManager {
             col,
             clock,
         );
-        self.plugins.call_procedure(plugin, method, args, &ctx).await
+        self.plugins
+            .call_procedure(plugin, method, args, &ctx)
+            .await
     }
 
     pub async fn load_existing(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

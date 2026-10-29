@@ -1,0 +1,8 @@
+# HyperspaceDB External Plugin Manifest (`pgrx`-style control file)
+name = "eco"
+version = "4.2.0"
+api_version = 40200
+library = "hs_eco"
+author = "HyperspaceDB Core Team"
+description = "Carbon Footprint Telemetry, RAM Quantization Efficiency Calculator & Audited SHA-256 ESG Compliance Reporter."
+default_enabled = true

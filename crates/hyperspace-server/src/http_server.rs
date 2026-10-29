@@ -385,6 +385,24 @@ pub async fn start_http_server(
         // Hyperspace PDK Extension System (v4.2.0)
         .route("/api/extensions", get(list_extensions_http))
         .route("/v1/extensions/schema", get(list_extensions_http))
+        .route("/api/extensions/reload", post(reload_extensions_http))
+        .route("/v1/extensions/reload", post(reload_extensions_http))
+        .route(
+            "/api/extensions/{plugin}/enable",
+            post(enable_extension_http),
+        )
+        .route(
+            "/v1/extensions/{plugin}/enable",
+            post(enable_extension_http),
+        )
+        .route(
+            "/api/extensions/{plugin}/disable",
+            post(disable_extension_http),
+        )
+        .route(
+            "/v1/extensions/{plugin}/disable",
+            post(disable_extension_http),
+        )
         .route(
             "/api/ext/{plugin}/{method}",
             post(call_extension_global_http),
@@ -613,23 +631,11 @@ async fn list_collections(
 
         if manager.is_active(&ctx.user_id, &name) {
             if let Some(col) = manager.get_active_no_lru(&ctx.user_id, &name) {
-                #[cfg(feature = "eco-monitor")]
-                let (eco_tier, is_eco_certified) = {
-                    let full_dim = meta_opt
-                        .as_ref()
-                        .map_or_else(|| col.dimension(), |meta| meta.dimension());
-                    let eco_schema = hyperspace_eco::CollectionEcoSchema {
-                        collection_name: name.clone(),
-                        vector_count: col.count() as u64,
-                        full_dimension: full_dim as u32,
-                        mrl_dimension: mrl_cutoff_dimension.unwrap_or(col.dimension() as u32),
-                        quantization: col.quantization_mode(),
-                    };
-                    let tier = eco_schema.calculate_eco_tier();
-                    (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+                let (eco_tier, is_eco_certified) = if manager.plugins.is_plugin_enabled("eco") {
+                    compute_collection_eco_badge(col.quantization_mode())
+                } else {
+                    (None, None)
                 };
-                #[cfg(not(feature = "eco-monitor"))]
-                let (eco_tier, is_eco_certified) = (None, None);
 
                 let (nodes, edges, _) = col.graph_stats();
                 summaries.push(CollectionSummary {
@@ -657,20 +663,11 @@ async fn list_collections(
                 });
             }
         } else if let Some(meta) = meta_opt {
-            #[cfg(feature = "eco-monitor")]
-            let (eco_tier, is_eco_certified) = {
-                let eco_schema = hyperspace_eco::CollectionEcoSchema {
-                    collection_name: name.clone(),
-                    vector_count: 0,
-                    full_dimension: meta.dimension() as u32,
-                    mrl_dimension: mrl_cutoff_dimension.unwrap_or(meta.dimension() as u32),
-                    quantization: meta.quantization_mode(),
-                };
-                let tier = eco_schema.calculate_eco_tier();
-                (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+            let (eco_tier, is_eco_certified) = if manager.plugins.is_plugin_enabled("eco") {
+                compute_collection_eco_badge(meta.quantization_mode())
+            } else {
+                (None, None)
             };
-            #[cfg(not(feature = "eco-monitor"))]
-            let (eco_tier, is_eco_certified) = (None, None);
 
             summaries.push(CollectionSummary {
                 name: name.clone(),
@@ -706,23 +703,11 @@ async fn list_collections(
 
         if manager.is_active(&owner, &name) {
             if let Some(col) = manager.get_active_no_lru(&owner, &name) {
-                #[cfg(feature = "eco-monitor")]
-                let (eco_tier, is_eco_certified) = {
-                    let full_dim = meta_opt
-                        .as_ref()
-                        .map_or_else(|| col.dimension(), |meta| meta.dimension());
-                    let eco_schema = hyperspace_eco::CollectionEcoSchema {
-                        collection_name: name.clone(),
-                        vector_count: col.count() as u64,
-                        full_dimension: full_dim as u32,
-                        mrl_dimension: mrl_cutoff_dimension.unwrap_or(col.dimension() as u32),
-                        quantization: col.quantization_mode(),
-                    };
-                    let tier = eco_schema.calculate_eco_tier();
-                    (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+                let (eco_tier, is_eco_certified) = if manager.plugins.is_plugin_enabled("eco") {
+                    compute_collection_eco_badge(col.quantization_mode())
+                } else {
+                    (None, None)
                 };
-                #[cfg(not(feature = "eco-monitor"))]
-                let (eco_tier, is_eco_certified) = (None, None);
 
                 let (nodes, edges, _) = col.graph_stats();
                 summaries.push(CollectionSummary {
@@ -750,20 +735,11 @@ async fn list_collections(
                 });
             }
         } else if let Some(meta) = meta_opt {
-            #[cfg(feature = "eco-monitor")]
-            let (eco_tier, is_eco_certified) = {
-                let eco_schema = hyperspace_eco::CollectionEcoSchema {
-                    collection_name: name.clone(),
-                    vector_count: 0,
-                    full_dimension: meta.dimension() as u32,
-                    mrl_dimension: mrl_cutoff_dimension.unwrap_or(meta.dimension() as u32),
-                    quantization: meta.quantization_mode(),
-                };
-                let tier = eco_schema.calculate_eco_tier();
-                (Some(format!("{:?}", tier)), Some(tier.is_eco_certified()))
+            let (eco_tier, is_eco_certified) = if manager.plugins.is_plugin_enabled("eco") {
+                compute_collection_eco_badge(meta.quantization_mode())
+            } else {
+                (None, None)
             };
-            #[cfg(not(feature = "eco-monitor"))]
-            let (eco_tier, is_eco_certified) = (None, None);
 
             summaries.push(CollectionSummary {
                 name: format!("{owner}:{name}"),
@@ -1413,6 +1389,24 @@ struct EcoParams {
     range: Option<String>,
 }
 
+fn compute_collection_eco_badge(
+    quantization: hyperspace_core::QuantizationMode,
+) -> (Option<String>, Option<bool>) {
+    use hyperspace_core::QuantizationMode;
+    match quantization {
+        QuantizationMode::Binary
+        | QuantizationMode::AsymmetricHybridExtreme
+        | QuantizationMode::ProductQuantization
+        | QuantizationMode::OPQ => (Some("Platinum".to_string()), Some(true)),
+        QuantizationMode::ScalarI4
+        | QuantizationMode::Turbo
+        | QuantizationMode::AsymmetricHybridLowBit
+        | QuantizationMode::ScalarI8
+        | QuantizationMode::AsymmetricHybrid801 => (Some("Gold".to_string()), Some(true)),
+        QuantizationMode::None => (Some("None".to_string()), Some(false)),
+    }
+}
+
 async fn get_eco_metrics(
     State((manager, _, _)): State<(
         Arc<CollectionManager>,
@@ -1421,35 +1415,32 @@ async fn get_eco_metrics(
     )>,
     Query(params): Query<EcoParams>,
 ) -> impl IntoResponse {
-    #[cfg(feature = "eco-monitor")]
-    {
-        let range = params.range.as_deref().unwrap_or("all");
-        let db_path = manager.base_path().join("eco_telemetry.bin");
-        match hyperspace_eco::get_carbon_metrics(db_path, range).await {
-            Ok(metrics) => Json(serde_json::json!({
-                "status": "success",
-                "metrics": metrics
-            }))
-            .into_response(),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "status": "error", "message": e })),
-            )
-                .into_response(),
-        }
-    }
-    #[cfg(not(feature = "eco-monitor"))]
-    {
-        let _ = manager;
-        let _ = params;
-        (
-            StatusCode::NOT_IMPLEMENTED,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "EcoMonitor feature is not enabled in this build"
-            })),
+    let range = params.range.as_deref().unwrap_or("all");
+    let db_path = manager
+        .base_path()
+        .join("eco_telemetry.bin")
+        .to_string_lossy()
+        .to_string();
+    match manager
+        .call_extension(
+            "default_admin",
+            None,
+            "eco",
+            "metrics",
+            serde_json::json!({ "range": range, "db_path": db_path }),
         )
-            .into_response()
+        .await
+    {
+        Ok(metrics) => Json(serde_json::json!({
+            "status": "success",
+            "metrics": metrics
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "status": "error", "message": e })),
+        )
+            .into_response(),
     }
 }
 
@@ -1468,43 +1459,51 @@ async fn get_esg_report(
     )>,
     Query(params): Query<EsgParams>,
 ) -> impl IntoResponse {
-    #[cfg(feature = "eco-monitor")]
+    let range = params.range.as_deref().unwrap_or("all");
+    let format = params.format.as_deref().unwrap_or("json");
+    let db_path = manager
+        .base_path()
+        .join("eco_telemetry.bin")
+        .to_string_lossy()
+        .to_string();
+    match manager
+        .call_extension(
+            "default_admin",
+            None,
+            "eco",
+            "esg_report",
+            serde_json::json!({ "range": range, "format": format, "db_path": db_path }),
+        )
+        .await
     {
-        let range = params.range.as_deref().unwrap_or("all");
-        let format = params.format.as_deref().unwrap_or("json");
-        let db_path = manager.base_path().join("eco_telemetry.bin");
-        match hyperspace_eco::generate_esg_report(db_path, range, format).await {
-            Ok(report_data) => {
-                let content_type = if format == "csv" {
-                    "text/csv"
-                } else {
-                    "application/json"
-                };
+        Ok(res) => {
+            if format.eq_ignore_ascii_case("csv") {
+                let csv_str = res
+                    .get("report")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                ([(axum::http::header::CONTENT_TYPE, "text/csv")], csv_str).into_response()
+            } else {
+                let raw = res
+                    .get("raw")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| {
+                        serde_json::to_string_pretty(&res["report"]).unwrap_or_default()
+                    });
                 (
-                    [(axum::http::header::CONTENT_TYPE, content_type)],
-                    report_data,
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    raw,
                 )
                     .into_response()
             }
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "status": "error", "message": e })),
-            )
-                .into_response(),
         }
-    }
-    #[cfg(not(feature = "eco-monitor"))]
-    {
-        let _ = manager;
-        let _ = params;
-        (
-            StatusCode::NOT_IMPLEMENTED,
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "EcoMonitor feature is not enabled in this build"
-            })),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "status": "error", "message": e })),
         )
-            .into_response()
+            .into_response(),
     }
 }
 
@@ -3641,6 +3640,81 @@ async fn list_extensions_http(
     )>,
 ) -> impl IntoResponse {
     Json(manager.plugins.schema_catalog_json()).into_response()
+}
+
+async fn enable_extension_http(
+    Path(plugin): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+) -> impl IntoResponse {
+    match manager.plugins.set_plugin_enabled(&plugin, true) {
+        Ok(manifest) => Json(serde_json::json!({
+            "success": true,
+            "plugin": manifest
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "success": false,
+                "error": err
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn disable_extension_http(
+    Path(plugin): Path<String>,
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+) -> impl IntoResponse {
+    match manager.plugins.set_plugin_enabled(&plugin, false) {
+        Ok(manifest) => Json(serde_json::json!({
+            "success": true,
+            "plugin": manifest
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "success": false,
+                "error": err
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn reload_extensions_http(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+) -> impl IntoResponse {
+    match manager.plugins.reload_external_plugins() {
+        Ok(loaded) => Json(serde_json::json!({
+            "success": true,
+            "loaded": loaded,
+            "catalog": manager.plugins.schema_catalog_json()
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "success": false,
+                "error": err
+            })),
+        )
+            .into_response(),
+    }
 }
 
 async fn call_extension_global_http(

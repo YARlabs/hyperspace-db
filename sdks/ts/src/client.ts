@@ -49,6 +49,7 @@ import * as CognitiveMath from './math';
 
 export * as CognitiveMathExport from './math';
 export { TribunalContext } from './agents';
+export * from './query_planner';
 export { DurabilityLevel };
 export type TypedMetadataValue = string | number | boolean;
 
@@ -2122,8 +2123,11 @@ export class HyperspaceClient {
 
     private resolveHttpBaseUrl(httpUrl?: string): string {
         if (httpUrl) return httpUrl.replace(/\/+$/, '');
+        if (process.env.HYPERSPACE_HTTP_URL) {
+            return process.env.HYPERSPACE_HTTP_URL.replace(/\/+$/, '');
+        }
         const hostPart = this.host.includes(':') ? this.host.split(':')[0] : this.host;
-        return `http://${hostPart}:8080`;
+        return `http://${hostPart}:50050`;
     }
 
     /**

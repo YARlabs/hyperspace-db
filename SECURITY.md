@@ -40,6 +40,10 @@ We will acknowledge your report within 48 hours and provide an estimated timefra
     *   **Per-Collection Encryption Granularity**: Encryption is strictly optional and configurable per collection. The database engine enforces an explicit `encrypted` status badge surfaced across Protobuf, REST APIs, and the Admin Dashboard.
 *   **Compliance and SOC 2 / HIPAA / GDPR Recommendation**:
     *   For healthcare (HIPAA) and financial (GDPR) workloads, tenant-controlled client encryption ensures Zero-Knowledge storage: cloud providers and database administrators cannot read user prompts or invert vector representations even if server disks or RAM snapshots are compromised.
+*   **Plugin Sandbox & Dynamic Library Isolation (`hyperspace-pdk` v4.2.0)**:
+    *   **ABI Version Handshake**: Every external plugin binary (`.so`, `.dylib`, `.dll`) compiled with `hs_export_plugin!` exports an immutable `hs_plugin_api_version()` symbol. The host loader validates that the plugin was built against the exact ABI version (`40200`), rejecting mismatched or corrupted libraries prior to execution.
+    *   **Server-Side Zero-Knowledge Orthogonal Shield (`hs-shield`)**: Provides transparent in-index protection against `Vec2Text` neural reconstruction attacks. Vectors undergo Fast Walsh-Hadamard transformation with keyed pseudo-random sign permutations directly on the server before graph linkage. Top-K search accuracy is preserved with 100.0% mathematical isometry.
+    *   **Safe Dynamic Dispatch**: Procedure execution and hook invocations (`before_insert`, `after_search`) are mediated by safe Rust trait boundaries, catching internal procedure errors gracefully without crashing worker threads or poisoning shared collections.
 *   **Structured Audit Logs**: Structured JSON-formatted audit logging (`HS_AUDIT_LOG_LEVEL`) with tenant-isolated logs streamed securely to authenticated users.
 *   **Multi-Tenancy**: Native namespace isolation between users ensuring data privacy in shared environments.
 *   **Graph Perimeter**: Graph and Traversal endpoints enforce API Key and User-ID isolation. Recursive traversal is depth-limited to prevent DoS.

@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom"
-import { LayoutDashboard, Database, Search, Settings, Network, ArrowUpRight, Waves, Activity, Bot } from "lucide-react"
+import { LayoutDashboard, Database, Search, Settings, Network, ArrowUpRight, Waves, Activity, Bot, Blocks } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { fetchStatus, api } from "@/lib/api"
@@ -29,9 +29,10 @@ export function DashboardLayout() {
                     <NavItem to="/nodes" icon={Network} label="Cluster Nodes" />
                     <NavItem to="/explorer" icon={Search} label="Data Explorer" />
                     <NavItem to="/graph" icon={Network} label="Graph Explorer" />
+                    <NavItem to="/plugins" icon={Blocks} label="PDK Plugins" badge="v4.2" />
                     <NavItem to="/migration" icon={ArrowUpRight} label="Migration" />
                     <NavItem to="/trajectory" icon={Waves} label="Trajectories" />
-                    <NavItem to="/agent-skills" icon={Bot} label="Agent Skills" badge="NEW" />
+                    <NavItem to="/agent-skills" icon={Bot} label="Agent Skills" />
                     <NavItem to="/settings" icon={Settings} label="Settings" />
                 </nav>
 

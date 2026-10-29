@@ -17,6 +17,7 @@ hyperspace/math.py
 hyperspace/onto.py
 hyperspace/patent.py
 hyperspace/quant.py
+hyperspace/query_planner.py
 hyperspace/sec.py
 hyperspace/proto/__init__.py
 hyperspace/proto/hyperspace_pb2.py

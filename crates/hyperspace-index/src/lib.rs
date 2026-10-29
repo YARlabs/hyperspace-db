@@ -1,3 +1,4 @@
+#![allow(unused_features)]
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
@@ -13,6 +14,7 @@
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::ref_as_ptr)]
 #![allow(unknown_lints)]
+#![allow(clippy::chunks_exact_to_as_chunks)]
 #![allow(clippy::assert_is_empty)]
 #![allow(clippy::needless_bool)]
 

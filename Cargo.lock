@@ -2169,6 +2169,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec9d92d097f4749b64e8cc33d924d9f40a2d4eb91402b458014b781f5733d60f"
 
 [[package]]
+name = "hs-eco"
+version = "4.2.0"
+dependencies = [
+ "async-trait",
+ "hyperspace-core",
+ "hyperspace-pdk",
+ "memmap2",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "hs-git-ast"
+version = "4.2.0"
+dependencies = [
+ "async-trait",
+ "hyperspace-core",
+ "hyperspace-pdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "http"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2475,21 +2503,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyperspace-eco"
-version = "4.2.0"
-dependencies = [
- "hyperspace-core",
- "memmap2",
- "parking_lot",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "hyperspace-index"
 version = "4.2.0"
 dependencies = [
@@ -2550,6 +2563,7 @@ dependencies = [
  "hex",
  "hf-hub",
  "hyperspace-core",
+ "libloading",
  "ndarray",
  "ort",
  "parking_lot",
@@ -2617,7 +2631,6 @@ dependencies = [
  "hyperspace-cache",
  "hyperspace-clustering",
  "hyperspace-core",
- "hyperspace-eco",
  "hyperspace-index",
  "hyperspace-p2p",
  "hyperspace-pdk",

@@ -1,0 +1,8 @@
+# HyperspaceDB External Plugin Manifest (`pgrx`-style control file)
+name = "git_ast"
+version = "4.2.0"
+api_version = 40200
+library = "hs_git_ast"
+author = "HyperspaceDB Core Team"
+description = "Zero-cost AST codebase analyzer and KAG graph builder for Rust, Python, TypeScript, and Go."
+default_enabled = true

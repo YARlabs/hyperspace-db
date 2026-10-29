@@ -1,0 +1,16 @@
+[package]
+name = "hs-git-ast"
+version = "4.2.0"
+edition = "2021"
+description = "External HyperspaceDB PDK plugin: Instant Codebase AST Topology & Zero-Cost KAG Builder"
+
+[lib]
+name = "hs_git_ast"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hyperspace-pdk = { path = "../../crates/hyperspace-pdk" }
+hyperspace-core = { path = "../../crates/hyperspace-core" }
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

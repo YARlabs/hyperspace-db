@@ -990,8 +990,12 @@ mod tests {
     #[test]
     fn multi_metric_bytes_kernels_match_reference() {
         for n in [1usize, 7, 16, 33, 64, 128, 384, 768] {
-            let a: Vec<f32> = (0..n).map(|i| ((i as f32 * 0.13 + 0.2).sin()) * 0.05).collect();
-            let b: Vec<f32> = (0..n).map(|i| ((i as f32 * 0.29 + 0.7).cos()) * 0.05).collect();
+            let a: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 * 0.13 + 0.2).sin()) * 0.05)
+                .collect();
+            let b: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 * 0.29 + 0.7).cos()) * 0.05)
+                .collect();
             let bytes = to_bytes(&a);
 
             // Dot product
@@ -1035,8 +1039,8 @@ mod tests {
                 .sum();
             let want_poincare = (1.0
                 + 2.0 * diff_sq / ((1.0 - u_norm_sq).max(1e-6) * (1.0 - v_norm_sq).max(1e-6)))
-                .max(1.0)
-                .acosh();
+            .max(1.0)
+            .acosh();
             let got_poincare = poincare_f32_bytes(&bytes, &b);
             assert!(
                 (got_poincare - want_poincare).abs() <= 1e-4,

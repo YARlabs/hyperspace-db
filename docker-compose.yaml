@@ -1,14 +1,16 @@
 services:
   hyperspace:
-    # Build from source using new optimized Dockerfile
+    # Build from source using optimized v4.2.0 Dockerfile (includes PDK & external plugins)
     build: .
     container_name: hyperspace-node-1
     ports:
       - "50051:50051" # gRPC
-      - "50050:50050" # HTTP Dashboard + Metrics
+      - "50050:50050" # HTTP Dashboard + Metrics + PDK Extensions API
     environment:
       - RUST_LOG=info
       - HS_DATA_DIR=/app/data
+      - HYPERSPACE_PLUGINS_DIR=/app/plugins
+      - HYPERSPACE_ENABLED_PLUGINS=embed,shield,git_ast,eco
       - HYPERSPACE_API_KEY=I_LOVE_HYPERSPACEDB
       - MALLOC_CONF=background_thread:true,dirty_decay_ms:60000,muzzy_decay_ms:60000
       - HS_IDLE_TIMEOUT_SEC=3600

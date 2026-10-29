@@ -1,49 +1,197 @@
 # Hyperspace Plugin Development Kit (`hyperspace-pdk` / `hs-pdk`)
 
-`hyperspace-pdk` is the official `pgrx`-inspired extension framework for **HyperspaceDB v4.2.0**. It turns HyperspaceDB into an extensible **Spatial & Graph Runtime**, allowing first-party and community plugins to add ingestion pipelines, AST/KAG graph extractors, cryptographic transformations, and custom non-Euclidean metrics without bloating the core engine.
-
-## Architectural Design
-
-1. **Zero-Overhead Native Trait Interface (`HsPlugin`)**:
-   - **Lifecycle Pipeline Hooks**: Intercept and mutate operations at `BeforeInsert`, `AfterInsert`, `BeforeSearch`, `AfterSearch`, and `OnLink`.
-   - **Custom Engine Procedures (`call_procedure`)**: Expose RPC/REST procedures with full JSON Schema introspection (`PluginManifest`, `ProcedureSchema`).
-   - **Direct `EngineContext` Access**: High-throughput access to `ShardedCollection`, Sidecar Payloads, and the CSR `GraphEngine` (`link_batch`).
-2. **Adaptive Client SDKs (`client.ext.<plugin>.<method>`)**:
-   - The server exposes `GET /v1/extensions/schema` (and gRPC `ListExtensions` / `CallExtension`).
-   - Python, TypeScript, and Rust SDKs dynamically route calls to any registered plugin without requiring client regeneration.
+`hyperspace-pdk` is the official `pgrx`-inspired extension framework for **HyperspaceDB v4.2.0**. It turns HyperspaceDB into an extensible **Spatial & Graph Runtime**, allowing both **built-in core plugins** and **external dynamically loaded plugins (`cdylib`: `.dylib` / `.so` / `.dll` in `./plugins/`)** to add ingestion pipelines, AST/KAG graph extractors, cryptographic transformations, and custom non-Euclidean metrics without bloating the core engine.
 
 ---
 
-## Official Built-in Flagship Plugins (v4.2.0)
+## 1. Architecture: Built-in vs External Plugins
 
-### 1. `hs-embed` (`embed`) — Zero-Python In-Engine Embedder
-Eliminates the "Python Tax" (external FastAPI/PyTorch/LangChain microservices).
-- **Procedures**:
-  - `ingest_text`: Markdown-aware semantic chunker (`chunk_markdown`) + deterministic multi-manifold vectorizer (`embed_for_manifold` supporting all 12 metrics including `poincare`, `lorentz`, and `hybrid`) + Sidecar Payload storage + automatic `NEXT_CHUNK` sequential graph edges in `GraphEngine`.
-  - `chunk_text`: Standalone Markdown-aware text chunker with header breadcrumb propagation.
-  - `embed_text`: Standalone manifold-aligned text vectorizer.
-- **Hook (`BeforeInsert`)**: Automatically chunks and embeds points that arrive with an empty vector and `metadata["__hs_raw_text"]` (or `metadata["text"]` when `metadata["__hs_auto_embed"] == "true"`).
+HyperspaceDB supports a two-tier plugin architecture:
 
-### 2. `hs-git-ast` (`git_ast`) — Instant Codebase Topology & Zero-Cost KAG
-Builds a complete Knowledge Augmented Generation (KAG) graph from source code in milliseconds with zero LLM token cost.
-- **Supported Languages**: Rust (`.rs`), Python (`.py`), TypeScript/JavaScript (`.ts`, `.tsx`, `.js`, `.jsx`), and Go (`.go`).
-- **Procedures**:
-  - `ingest_files`: Parses an array of `{ path, content }` files into AST symbol nodes (`module`, `function`, `struct`, `class`, `trait`, `interface`, `impl`), embeds their signatures and bodies, stores source snippets in Sidecar Payloads, and links `CONTAINS`, `CALLS`, `IMPORTS`, and `IMPLEMENTS` edges in `GraphEngine`.
-  - `ingest_directory`: Recursively scans a local repository directory and ingests all supported source files and topological edges in a single pass.
-  - `parse_source`: Dry-run AST symbol and relation extractor returning JSON.
+1. **Built-in Core Plugins (`crates/hyperspace-pdk`)**:
+   - **`hs-embed` (`embed`)**: Unified in-engine Markdown/text chunker, ONNX Runtime (`ort`), HuggingFace Hub auto-downloader, Remote API driver (`OpenAI`, `Cohere`, `Voyage`, `Mistral`, `Gemini`, `OpenRouter`, `YarInk`, `Generic`), deterministic manifold vectorizer, and KAG sequential/hierarchical chunk linker.
+   - **`hs-shield` (`shield`)**: Server-side Zero-Knowledge Orthogonal Projection (`O(D log D)` keyed Fast Walsh-Hadamard Transform + SHA-256 Rademacher sign flipping + Fisher-Yates permutation) defending embeddings at rest/in-index against `Vec2Text` inversion attacks with zero accuracy loss. *(Complements client-side DePIN `ZK-Privacy` encryption in the SDKs, which protects vectors in transit and on untrusted DePIN nodes).*
 
-### 3. `hs-shield` (`shield`) — Zero-Knowledge Orthogonal Projection
-Defends vector embeddings against `Vec2Text` inversion attacks while preserving **100% of exact inner products, cosine similarities, and Euclidean distances**.
-- **Algorithm**: Keyed `O(D log D)` Fast Walsh-Hadamard Transform (FWHT) combined with SHA-256 Rademacher sign flipping (`±1`) and Fisher-Yates coordinate permutation.
-- **Procedures**:
-  - `configure`: Enables/disables `hs-shield` per collection or globally with a secret key.
-  - `status`: Reports active shield status and key fingerprints.
-  - `transform`: Applies forward (`rotate`) or inverse (`unrotate`) isometric orthogonal projection.
-- **Hooks (`BeforeInsert` & `BeforeSearch`)**: Automatically rotates vectors on insert and query vectors on search for shielded collections.
+2. **External Dynamic Plugins (`./plugins/` directory)**:
+   - Compiled as standalone Rust `cdylib` crates (`.dylib` on macOS, `.so` on Linux, `.dll` on Windows) using the `hs_export_plugin!` macro (equivalent to `pgrx::pg_module_magic!()`).
+   - Automatically discovered and loaded at server startup from `HYPERSPACE_PLUGINS_DIR` (defaults to `./plugins`).
+   - **Reference External Plugin**: **`hs-git-ast` (`git_ast`)** located in [`plugins/hs-git-ast`](../../plugins/hs-git-ast) — Instant Codebase AST Topology & Zero-Cost KAG Builder for Rust, Python, TypeScript/JavaScript, and Go.
 
 ---
 
-## Usage Examples
+## 2. How to Create an External Plugin (Step-by-Step Developer Guide)
+
+Let's walk through how `hs-git-ast` (or any custom plugin) is structured as an external plugin inside `./plugins/`.
+
+### Step 1: Create the Plugin Crate in `./plugins/<your-plugin>/`
+
+```text
+plugins/
+├── plugins.toml                # Catalog & default activation config
+├── libhs_git_ast.dylib         # Compiled shared library (auto-discovered)
+└── hs-git-ast/                 # Standalone external plugin crate
+    ├── Cargo.toml
+    ├── plugin.toml             # pgrx-style control manifest
+    └── src/
+        └── lib.rs
+```
+
+### Step 2: Configure `Cargo.toml` with `crate-type = ["cdylib"]`
+
+```toml
+[package]
+name = "hs-my-plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hs_my_plugin"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hyperspace-pdk = { path = "../../crates/hyperspace-pdk" }
+hyperspace-core = { path = "../../crates/hyperspace-core" }
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+```
+
+### Step 3: Add `plugin.toml` Control File
+
+```toml
+name = "my_plugin"
+version = "0.1.0"
+api_version = 40200
+library = "hs_my_plugin"
+author = "Your Team"
+description = "Custom HyperspaceDB extension"
+default_enabled = true
+```
+
+### Step 4: Implement `HsPlugin` and Export with `hs_export_plugin!` in `src/lib.rs`
+
+```rust
+use hyperspace_pdk::prelude::*;
+
+#[derive(Default)]
+pub struct MyCustomPlugin;
+
+impl MyCustomPlugin {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl HsPlugin for MyCustomPlugin {
+    fn manifest(&self) -> PluginManifest {
+        hs_plugin_manifest!(
+            name: "my_plugin",
+            version: "0.1.0",
+            author: "Your Team",
+            description: "Custom vector enrichment and KAG linker",
+            hooks: [HookStage::BeforeInsert],
+            procedures: [
+                ProcedureSchema {
+                    name: "hello".to_string(),
+                    description: "Sample custom procedure".to_string(),
+                    requires_collection: false,
+                    input_schema: json!({
+                        "type": "object",
+                        "properties": { "name": { "type": "string" } }
+                    }),
+                    output_schema: json!({
+                        "type": "object",
+                        "properties": { "greeting": { "type": "string" } }
+                    }),
+                }
+            ]
+        )
+    }
+
+    async fn before_insert(
+        &self,
+        _collection: &str,
+        _metric: &str,
+        _dimension: usize,
+        points: &mut Vec<InsertPoint>,
+    ) -> Result<(), String> {
+        for pt in points.iter_mut() {
+            pt.metadata.insert("processed_by".to_string(), "my_plugin".to_string());
+        }
+        Ok(())
+    }
+
+    async fn call_procedure(
+        &self,
+        method: &str,
+        args: Value,
+        _ctx: &EngineContext,
+    ) -> Result<Value, String> {
+        match method {
+            "hello" => {
+                let who = args.get("name").and_then(|v| v.as_str()).unwrap_or("Hyperspace");
+                Ok(json!({ "greeting": format!("Hello, {who}!") }))
+            }
+            other => Err(format!("Unknown procedure 'my_plugin.{other}'")),
+        }
+    }
+}
+
+// Exports `hs_pdk_api_version` and `hs_plugin_create` C-ABI symbols for dynamic loading:
+hs_export_plugin!(MyCustomPlugin::new);
+```
+
+### Step 5: Build and Place in `./plugins/`
+
+```bash
+cargo build -p hs-my-plugin --release
+cp target/release/libhs_my_plugin.dylib ./plugins/   # macOS (.so on Linux, .dll on Windows)
+```
+*(Note: If your plugin directory inside `./plugins/<name>/` contains `plugin.toml`, `PluginRegistry` also automatically locates its compiled library in `target/release` or `target/debug` during development!)*
+
+---
+
+## 3. Activating, Deactivating, and Hot-Reloading Plugins
+
+### Option A: Via `.env` at Server Startup
+
+```env
+# Directory containing external plugins (.dylib / .so / .dll)
+HYPERSPACE_PLUGINS_DIR=./plugins
+
+# Comma-separated list of enabled plugins (or * for all)
+HYPERSPACE_ENABLED_PLUGINS=embed,shield,git_ast
+
+# Explicitly disable specific plugins at boot
+HYPERSPACE_DISABLED_PLUGINS=
+```
+
+### Option B: At Runtime via HTTP REST API (Zero Downtime)
+
+1. **Inspect all plugins, their schemas, `source` (`builtin` vs `external:...`), and `enabled` status:**
+   ```bash
+   curl http://localhost:8080/v1/extensions/schema
+   ```
+2. **Disable a plugin on the fly (skips its hooks and blocks procedure calls):**
+   ```bash
+   curl -X POST http://localhost:8080/v1/extensions/git_ast/disable \
+     -H "Authorization: Bearer I_LOVE_HYPERSPACEDB"
+   ```
+3. **Enable a plugin on the fly:**
+   ```bash
+   curl -X POST http://localhost:8080/v1/extensions/git_ast/enable \
+     -H "Authorization: Bearer I_LOVE_HYPERSPACEDB"
+   ```
+4. **Hot-reload newly added `.dylib` / `.so` plugins from `./plugins/` without restarting the server:**
+   ```bash
+   curl -X POST http://localhost:8080/v1/extensions/reload \
+     -H "Authorization: Bearer I_LOVE_HYPERSPACEDB"
+   ```
+
+---
+
+## 4. SDK Usage Examples (`client.ext.<plugin>.<method>`)
 
 ### Python SDK
 ```python
@@ -51,7 +199,7 @@ from hyperspace import HyperspaceClient
 
 client = HyperspaceClient("localhost:50051")
 
-# 1. Zero-Python Markdown Ingestion (hs-embed)
+# 1. Built-in hs-embed: Zero-Python Markdown Ingestion
 client.ext.embed.ingest_text(
     collection="docs",
     text="# Contract 402\nSigned with Acme Corp...\n\n## SLA\n99.99% uptime.",
@@ -59,13 +207,13 @@ client.ext.embed.ingest_text(
     link_sequential=True,
 )
 
-# 2. Instant Codebase KAG Topology (hs-git-ast)
+# 2. External hs-git-ast (loaded from ./plugins/): Instant Codebase KAG Topology
 client.ext.git_ast.ingest_directory(
     collection="repo_kag",
     root_path="/path/to/repository",
 )
 
-# 3. Zero-Knowledge Vec2Text Defense (hs-shield)
+# 3. Built-in hs-shield: Server-Side Zero-Knowledge Vec2Text Defense
 client.ext.shield.configure(
     collection="confidential_docs",
     secret_key="kms-derived-tenant-secret",
@@ -89,11 +237,9 @@ await client.ext.git_ast.ingest_files({
 use serde_json::json;
 
 let res = client
-    .ext("embed")
-    .call("ingest_text", Some("docs"), &json!({
-        "text": "# Architecture\nSpatial-vector runtime.",
-        "link_sequential": true
+    .ext("git_ast")
+    .call("parse_source", None, &json!({
+        "files": [{ "path": "src/lib.rs", "content": "pub fn init() {}" }]
     }))
     .await?;
 ```
-

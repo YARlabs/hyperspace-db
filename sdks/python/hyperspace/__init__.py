@@ -34,6 +34,17 @@ from .math import (
     inject_anisotropic_noise
 )
 from .agents import TribunalContext
+from . import query_planner
+from .query_planner import (
+    plan_query,
+    QueryPlannerResult,
+    ProofObligation,
+    ProofObligationPlan,
+    ClarificationPayload,
+    ExecutionStrategy,
+    QUERY_PLANNER_TOOL_SCHEMA,
+    LOCAL_LLM_PLANNER_PROMPT,
+)
 
 # Specialized Domain SDK modules
 from . import chem

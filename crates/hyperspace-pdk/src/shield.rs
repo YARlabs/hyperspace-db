@@ -94,12 +94,7 @@ impl HsShieldPlugin {
     ///
     /// When `metric` is `"lorentz"` or `"hybrid"`, coordinate `0` (the timelike axis $t$) is
     /// kept invariant so that $-t^2 + \|x\|^2 = -1$ remains strictly satisfied.
-    pub fn transform_in_place(
-        vector: &mut [f64],
-        seed: &[u8; 32],
-        metric: &str,
-        inverse: bool,
-    ) {
+    pub fn transform_in_place(vector: &mut [f64], seed: &[u8; 32], metric: &str, inverse: bool) {
         let metric_lower = metric.trim().to_ascii_lowercase();
         let start_idx = if metric_lower == "lorentz" || metric_lower == "hybrid" {
             1.min(vector.len())
@@ -227,6 +222,8 @@ impl HsPlugin for HsShieldPlugin {
             author: "HyperspaceDB Core Team".to_string(),
             description: "Zero-Knowledge Orthogonal Projection (O(D log D) keyed FWHT) defending vectors against Vec2Text inversion attacks with zero accuracy loss.".to_string(),
             runtime: "native-rust".to_string(),
+            enabled: true,
+            source: "builtin".to_string(),
             hooks: vec![HookStage::BeforeInsert, HookStage::BeforeSearch],
             procedures: vec![
                 ProcedureSchema {
@@ -343,7 +340,8 @@ impl HsPlugin for HsShieldPlugin {
                         .unwrap_or_else(|_| "hs_default_shield_key_v4_2".to_string())
                 });
                 let key_source = parsed.key_source.unwrap_or_else(|| "inline".to_string());
-                let cfg = self.configure_collection(&col_name, parsed.enabled, &secret, &key_source);
+                let cfg =
+                    self.configure_collection(&col_name, parsed.enabled, &secret, &key_source);
                 Ok(serde_json::to_value(cfg).unwrap())
             }
             "status" => {
@@ -381,7 +379,9 @@ impl HsPlugin for HsShieldPlugin {
                 let inverse = if method == "unrotate_vector" {
                     true
                 } else {
-                    args.get("inverse").and_then(Value::as_bool).unwrap_or(false)
+                    args.get("inverse")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
                 };
                 let seed = Self::derive_seed(col_name, secret);
                 Self::transform_in_place(&mut vec, &seed, metric, inverse);
@@ -391,4 +391,3 @@ impl HsPlugin for HsShieldPlugin {
         }
     }
 }
-

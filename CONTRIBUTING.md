@@ -112,13 +112,140 @@ To implement a new quantization mode:
 4. Wire the new variant in `CollectionMetadata::quantization_mode()` in `crates/hyperspace-server/src/manager.rs`.
 5. Update `HS_QUANTIZATION_LEVEL` docs in `docs/book/src/quantization.md`.
 
-## 🤖 Adding Embedding Providers
+## 🔌 Creating and Contributing PDK Plugins (`hyperspace-pdk` v4.2.0)
 
-To add a new embedding provider to the built-in service:
-1. Implement the `Embedder` trait in `crates/hyperspace-embed/src/lib.rs`.
-2. Add a new variant to `EmbedProvider` enum and wire it in `EmbedRouter::from_env()`.
-3. Add corresponding `HS_EMBED_<METRIC>_PROVIDER=<name>` documentation to `docs/book/src/embeddings.md`.
-4. If the provider requires a new Cargo dependency, gate it behind a feature flag.
+HyperspaceDB extensions follow a `pgrx`-inspired development lifecycle using the Plugin Development Kit (`hyperspace-pdk`).
+
+### 1. Project Layout
+External plugins live in standalone crates under `plugins/<plugin-name>/`:
+```text
+plugins/
+├── plugins.toml                # Global catalog and default enable list
+├── libhs_git_ast.so            # Compiled shared object (auto-loaded)
+└── hs-my-plugin/
+    ├── Cargo.toml
+    ├── plugin.toml             # Manifest declaration
+    └── src/
+        └── lib.rs
+```
+
+### 2. Configuring `Cargo.toml`
+External plugins must compile as `cdylib` and depend on `hyperspace-pdk`:
+```toml
+[package]
+name = "hs-my-plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hs_my_plugin"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hyperspace-pdk = { path = "../../crates/hyperspace-pdk" }
+hyperspace-core = { path = "../../crates/hyperspace-core" }
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+```
+
+### 3. Declaring `plugin.toml`
+Create `plugins/hs-my-plugin/plugin.toml`:
+```toml
+name = "my_plugin"
+version = "0.1.0"
+api_version = 40200
+library = "hs_my_plugin"
+author = "Your Name <you@example.com>"
+description = "Custom vector enrichment and domain procedures"
+default_enabled = true
+```
+
+### 4. Implementing the Plugin
+In `plugins/hs-my-plugin/src/lib.rs`:
+```rust
+use hyperspace_pdk::prelude::*;
+
+#[derive(Default)]
+pub struct MyPlugin;
+
+#[async_trait]
+impl HsPlugin for MyPlugin {
+    fn manifest(&self) -> PluginManifest {
+        hs_plugin_manifest!(
+            name: "my_plugin",
+            version: "0.1.0",
+            author: "Your Name",
+            description: "Custom vector enrichment and domain procedures",
+            hooks: [HookStage::BeforeInsert],
+            procedures: [
+                ProcedureSchema {
+                    name: "enrich".to_string(),
+                    description: "Enrich text and metadata".to_string(),
+                    requires_collection: false,
+                    input_schema: serde_json::json!({
+                        "type": "object",
+                        "required": ["input"],
+                        "properties": { "input": { "type": "string" } }
+                    }),
+                    output_schema: serde_json::json!({
+                        "type": "object",
+                        "properties": { "output": { "type": "string" } }
+                    }),
+                }
+            ]
+        )
+    }
+
+    async fn before_insert(
+        &self,
+        _collection: &str,
+        _metric: &str,
+        _dimension: usize,
+        points: &mut Vec<InsertPoint>,
+    ) -> Result<(), String> {
+        for pt in points.iter_mut() {
+            pt.metadata.insert("enriched_by".to_string(), "my_plugin".to_string());
+        }
+        Ok(())
+    }
+
+    async fn call_procedure(
+        &self,
+        method: &str,
+        args: serde_json::Value,
+        _ctx: &EngineContext,
+    ) -> Result<serde_json::Value, String> {
+        match method {
+            "enrich" => {
+                let input = args.get("input").and_then(|v| v.as_str()).unwrap_or_default();
+                Ok(serde_json::json!({ "output": format!("Enriched: {}", input) }))
+            }
+            other => Err(format!("Unknown procedure: {other}")),
+        }
+    }
+}
+
+// Export dynamic C-ABI symbols
+hs_export_plugin!(MyPlugin);
+```
+
+### 5. Compiling and Installing
+Compile the plugin in release mode:
+```bash
+cargo build --release -p hs-my-plugin
+cp target/release/libhs_my_plugin.* plugins/
+```
+Start the server with `HYPERSPACE_PLUGINS_DIR=./plugins` or trigger a hot reload via `POST /v1/extensions/reload` without restarting!
+
+## 🤖 Adding Embedding Providers & Built-in PDK Extensions
+
+In HyperspaceDB v4.2.0, the embedding engine is unified inside the **`hs-embed`** PDK plugin (`crates/hyperspace-pdk/src/embed.rs`).
+* To add new remote embedding APIs or model architectures, extend `crates/hyperspace-pdk/src/embed.rs`:
+  1. Add a variant to `ApiProvider` and `RemoteVectorizer::vectorize` for remote APIs.
+  2. Implement any custom manifold normalization logic in `OnnxVectorizer::normalize` or `embed_for_manifold`.
+  3. Gate heavy ONNX runtime dependencies behind the `hyperspace-pdk/onnx` cargo feature.
+  4. Run `cargo test -p hyperspace-pdk` to verify unit and regression suites.
 
 ## 🔐 Zero-Knowledge Encryption & Client SDK Guidelines
 

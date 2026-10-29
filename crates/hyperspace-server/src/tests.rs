@@ -1018,9 +1018,16 @@ async fn test_v4_2_0_plugins_and_multi_metric_engine() {
     let (evt_tx, _) = broadcast::channel(64);
     let manager = CollectionManager::new(tmp_dir.clone(), rep_tx, evt_tx);
 
-    // 1. Verify all 3 standard plugins are registered in CollectionManager
+    // 1. Verify standard built-in (embed, shield) and external (git_ast, eco) plugins are registered
     let manifests = manager.plugins.list_manifests();
-    assert_eq!(manifests.len(), 3);
+    assert!(
+        manifests.len() >= 3,
+        "Expected at least 3 plugins, got {}",
+        manifests.len()
+    );
+    assert!(manifests.iter().any(|m| m.name == "embed"));
+    assert!(manifests.iter().any(|m| m.name == "shield"));
+    assert!(manifests.iter().any(|m| m.name == "git_ast"));
 
     let simple_schema = |dim: u32, metric: &str| hyperspace_proto::hyperspace::CollectionSchema {
         components: vec![hyperspace_proto::hyperspace::VectorComponent {
@@ -1110,15 +1117,15 @@ async fn test_v4_2_0_plugins_and_multi_metric_engine() {
             .await
             .unwrap_or_else(|e| panic!("Failed to create collection for metric {metric}: {e}"));
         let c = manager.get("test_user", &cname).await.unwrap();
-        c.insert(&vec![0.5; 16], 1, HashMap::new(), 1, Durability::Default)
+        c.insert(&[0.5; 16], 1, HashMap::new(), 1, Durability::Default)
             .await
             .unwrap();
-        c.insert(&vec![0.25; 16], 2, HashMap::new(), 2, Durability::Default)
+        c.insert(&[0.25; 16], 2, HashMap::new(), 2, Durability::Default)
             .await
             .unwrap();
         let hits = c
             .search(
-                &vec![0.5; 16],
+                &[0.5; 16],
                 &HashMap::new(),
                 &[],
                 &hyperspace_core::SearchParams {
@@ -1129,7 +1136,10 @@ async fn test_v4_2_0_plugins_and_multi_metric_engine() {
             )
             .await
             .unwrap();
-        assert!(!hits.is_empty(), "Metric {metric} search must return results");
+        assert!(
+            !hits.is_empty(),
+            "Metric {metric} search must return results"
+        );
     }
 
     let _ = fs::remove_dir_all(&tmp_dir);

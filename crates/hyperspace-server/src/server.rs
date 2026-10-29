@@ -3079,52 +3079,6 @@ pub async fn start_server(
     println!("Loading collections...");
     manager.load_existing().await?;
 
-    #[cfg(feature = "eco-monitor")]
-    {
-        let data_dir_clone = manager.base_path().to_path_buf();
-        let manager_clone = manager.clone();
-        let db_path = data_dir_clone.join("eco_telemetry.bin");
-        let interval_secs = std::env::var("HS_ECO_TICK_INTERVAL_SEC")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(300);
-
-        println!(
-            "🌿 [EcoMonitor] Starting carbon footprint tracking. DB: {}, interval: {}s",
-            db_path.display(),
-            interval_secs
-        );
-        hyperspace_eco::start_eco_monitor(
-            move || {
-                let active = manager_clone.list_active_collections();
-                let mut schemas = Vec::with_capacity(active.len());
-                for (name, col) in active {
-                    let full_dim = if let Some(meta) =
-                        manager_clone.get_metadata_no_wake("default_admin", &name)
-                    {
-                        meta.dimension()
-                    } else {
-                        col.dimension()
-                    };
-
-                    let q_mode = col.quantization_mode();
-                    let quantization = q_mode;
-
-                    schemas.push(hyperspace_eco::CollectionEcoSchema {
-                        collection_name: name,
-                        vector_count: col.count() as u64,
-                        full_dimension: full_dim as u32,
-                        mrl_dimension: col.dimension() as u32,
-                        quantization,
-                    });
-                }
-                schemas
-            },
-            db_path,
-            interval_secs,
-        );
-    }
-
     // Use env vars for default
     let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
     let dim: u32 = dim_str.parse().unwrap_or(1024);

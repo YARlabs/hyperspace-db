@@ -35,16 +35,23 @@ RUN rm -f rust-toolchain.toml .cargo/config.toml
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Build Release
+# Build Release (Core Server, CLI, and External PDK Plugins: hs-git-ast & hs-eco)
 # We use clang++ as linker for better C++ compatibility with 'ort'
 ENV CC=clang
 ENV CXX=clang++
 ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
-RUN cargo build --release -p hyperspace-server -p hyperspace-cli --no-default-features --features "nightly-simd eco-monitor s3-tiering"
+RUN cargo build --release \
+    -p hyperspace-server \
+    -p hyperspace-cli \
+    -p hs-git-ast \
+    -p hs-eco \
+    --no-default-features --features "nightly-simd s3-tiering"
 
-# Strip binaries to reduce size
-RUN strip target/release/hyperspace-server
-RUN strip target/release/hyperspace-cli
+# Strip binaries and external cdylib plugins to reduce size
+RUN strip target/release/hyperspace-server \
+    target/release/hyperspace-cli \
+    target/release/libhs_git_ast.so \
+    target/release/libhs_eco.so
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
@@ -60,24 +67,30 @@ RUN apt-get update && apt-get install -y \
 # Create a non-root user
 RUN useradd -m -u 1001 -U -s /bin/sh -d /app hyperspace
 
-
 WORKDIR /app
 
-# Copy binaries
+# Copy core binaries
 COPY --from=builder /app/target/release/hyperspace-server /usr/local/bin/
 COPY --from=builder /app/target/release/hyperspace-cli /usr/local/bin/
 
-# Create data dir
-RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
+# Copy external PDK dynamic plugins (.so) and catalog configuration
+RUN mkdir -p /app/data /app/plugins
+COPY --from=builder /app/plugins/plugins.toml /app/plugins/plugins.toml
+COPY --from=builder /app/target/release/libhs_git_ast.so /app/plugins/
+COPY --from=builder /app/target/release/libhs_eco.so /app/plugins/
+RUN chown -R hyperspace:hyperspace /app
 
 # Switch to non-root user
 USER hyperspace
 
 ENV RUST_LOG=info
 ENV HS_DATA_DIR=/app/data
+ENV HYPERSPACE_PLUGINS_DIR=/app/plugins
+ENV HYPERSPACE_ENABLED_PLUGINS=embed,shield,git_ast,eco
 
 # Label the image
 LABEL org.opencontainers.image.source=https://github.com/YARlabs/hyperspace-db
+LABEL org.opencontainers.image.version="4.2.0"
 
 # Expose ports
 EXPOSE 50051
@@ -85,4 +98,3 @@ EXPOSE 50050
 
 # Default command
 CMD ["hyperspace-server"]
-

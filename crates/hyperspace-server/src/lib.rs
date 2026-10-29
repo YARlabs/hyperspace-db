@@ -81,7 +81,9 @@ pub use hyperspace_pdk;
 use manager::CollectionManager;
 
 #[cfg(feature = "embed")]
-use hyperspace_pdk::embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
+use hyperspace_pdk::embed::{
+    ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer,
+};
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
     metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
@@ -1226,77 +1228,74 @@ impl Database for HyperspaceService {
         let (owner, col_name) =
             resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
 
-        let result: Result<Response<InsertResponse>, Status> =
-            async {
-                let col = self.manager.get(&owner, &col_name).await.ok_or_else(|| {
+        let result: Result<Response<InsertResponse>, Status> = async {
+            let col =
+                self.manager.get(&owner, &col_name).await.ok_or_else(|| {
                     Status::not_found(format!("Collection '{}' not found", col_name))
                 })?;
 
-                // Convert protos to internal plugin points and run BeforeInsert hooks
-                let mut points: Vec<hyperspace_pdk::InsertPoint> = req
-                    .vectors
-                    .into_iter()
-                    .map(|v| hyperspace_pdk::InsertPoint {
-                        id: v.id,
-                        vector: v.vector,
-                        metadata: merge_metadata(
-                            v.metadata.into_iter().collect(),
-                            v.typed_metadata,
-                        ),
-                        payload: None,
-                    })
-                    .collect();
-                self.manager
-                    .plugins
-                    .run_before_insert(&col_name, col.metric_name(), col.dimension(), &mut points)
-                    .await
-                    .map_err(Status::internal)?;
+            // Convert protos to internal plugin points and run BeforeInsert hooks
+            let mut points: Vec<hyperspace_pdk::InsertPoint> = req
+                .vectors
+                .into_iter()
+                .map(|v| hyperspace_pdk::InsertPoint {
+                    id: v.id,
+                    vector: v.vector,
+                    metadata: merge_metadata(v.metadata.into_iter().collect(), v.typed_metadata),
+                    payload: None,
+                })
+                .collect();
+            self.manager
+                .plugins
+                .run_before_insert(&col_name, col.metric_name(), col.dimension(), &mut points)
+                .await
+                .map_err(Status::internal)?;
 
-                let mut payloads_to_store = Vec::new();
-                let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> =
-                    points
-                        .into_iter()
-                        .map(|p| {
-                            if let Some(bytes) = p.payload {
-                                if !bytes.is_empty() {
-                                    payloads_to_store.push((p.id, bytes));
-                                }
-                            }
-                            (p.vector, p.id, p.metadata)
-                        })
-                        .collect();
-
-                // Tick clock
-                let clock = self.manager.tick_cluster_clock().await;
-
-                // Durability mapping
-                let durability =
-                    match hyperspace_proto::hyperspace::DurabilityLevel::try_from(req.durability)
-                        .ok()
-                    {
-                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
-                            hyperspace_core::Durability::Strict
+            let mut payloads_to_store = Vec::new();
+            let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = points
+                .into_iter()
+                .map(|p| {
+                    if let Some(bytes) = p.payload {
+                        if !bytes.is_empty() {
+                            payloads_to_store.push((p.id, bytes));
                         }
-                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
-                            hyperspace_core::Durability::Async
-                        }
-                        Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
-                            hyperspace_core::Durability::Batch
-                        }
-                        _ => hyperspace_core::Durability::Default,
-                    };
+                    }
+                    (p.vector, p.id, p.metadata)
+                })
+                .collect();
 
-                col.insert_batch(vectors, clock, durability)
-                    .await
-                    .map_err(Status::internal)?;
+            // Tick clock
+            let clock = self.manager.tick_cluster_clock().await;
 
-                for (id, bytes) in payloads_to_store {
-                    let _ = col.insert_payload(id, bytes).await;
+            // Durability mapping
+            let durability = match hyperspace_proto::hyperspace::DurabilityLevel::try_from(
+                req.durability,
+            )
+            .ok()
+            {
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Strict) => {
+                    hyperspace_core::Durability::Strict
                 }
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Async) => {
+                    hyperspace_core::Durability::Async
+                }
+                Some(hyperspace_proto::hyperspace::DurabilityLevel::Batch) => {
+                    hyperspace_core::Durability::Batch
+                }
+                _ => hyperspace_core::Durability::Default,
+            };
 
-                Ok(Response::new(InsertResponse { success: true }))
+            col.insert_batch(vectors, clock, durability)
+                .await
+                .map_err(Status::internal)?;
+
+            for (id, bytes) in payloads_to_store {
+                let _ = col.insert_payload(id, bytes).await;
             }
-            .await;
+
+            Ok(Response::new(InsertResponse { success: true }))
+        }
+        .await;
 
         let audit_status = match &result {
             Ok(_) => Ok(()),
@@ -3372,52 +3371,6 @@ pub async fn start_server(
     // Load existing
     println!("Loading collections...");
     manager.load_existing().await?;
-
-    #[cfg(feature = "eco-monitor")]
-    {
-        let data_dir_clone = manager.base_path().to_path_buf();
-        let manager_clone = manager.clone();
-        let db_path = data_dir_clone.join("eco_telemetry.bin");
-        let interval_secs = std::env::var("HS_ECO_TICK_INTERVAL_SEC")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(300);
-
-        println!(
-            "🌿 [EcoMonitor] Starting carbon footprint tracking. DB: {}, interval: {}s",
-            db_path.display(),
-            interval_secs
-        );
-        hyperspace_eco::start_eco_monitor(
-            move || {
-                let active = manager_clone.list_active_collections();
-                let mut schemas = Vec::with_capacity(active.len());
-                for (name, col) in active {
-                    let full_dim = if let Some(meta) =
-                        manager_clone.get_metadata_no_wake("default_admin", &name)
-                    {
-                        meta.dimension()
-                    } else {
-                        col.dimension()
-                    };
-
-                    let q_mode = col.quantization_mode();
-                    let quantization = q_mode;
-
-                    schemas.push(hyperspace_eco::CollectionEcoSchema {
-                        collection_name: name,
-                        vector_count: col.count() as u64,
-                        full_dimension: full_dim as u32,
-                        mrl_dimension: col.dimension() as u32,
-                        quantization,
-                    });
-                }
-                schemas
-            },
-            db_path,
-            interval_secs,
-        );
-    }
 
     // Use env vars for default
     let dim_str = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());

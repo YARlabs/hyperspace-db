@@ -10,21 +10,23 @@ anyhow = "1.0"
 async-trait = "0.1"
 dashmap = "6.1"
 hex = "0.4"
-hf-hub = "0.3"
-ndarray = "0.17"
-ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+hf-hub = { version = "0.3", optional = true }
+libloading = "0.8"
+ndarray = { version = "0.17", optional = true }
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"], optional = true }
 parking_lot = "0.12"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 tokio = { version = "1.0", features = ["full"] }
-tokenizers = { version = "0.22.2", features = ["onig"] }
+tokenizers = { version = "0.22.2", features = ["onig"], optional = true }
 
 [features]
 default = []
-cuda = ["ort/cuda"]
-coreml = ["ort/coreml"]
+onnx = ["dep:ort", "dep:tokenizers", "dep:hf-hub", "dep:ndarray"]
+cuda = ["onnx", "ort/cuda"]
+coreml = ["onnx", "ort/coreml"]
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }

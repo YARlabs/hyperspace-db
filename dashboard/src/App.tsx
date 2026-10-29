@@ -11,6 +11,7 @@ import { SettingsPage } from "./pages/SettingsPage"
 import { MigrationPage } from "./pages/MigrationPage"
 import { TrajectoryPage } from "./pages/TrajectoryPage"
 import { AgentSkillsPage } from "./pages/AgentSkillsPage"
+import { PluginsPage } from "./pages/PluginsPage"
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
           <Route path="/nodes" element={<NodesPage />} />
           <Route path="/explorer" element={<DataExplorerPage />} />
           <Route path="/graph" element={<GraphExplorerPage />} />
+          <Route path="/plugins" element={<PluginsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/migration" element={<MigrationPage />} />
           <Route path="/trajectory" element={<TrajectoryPage />} />

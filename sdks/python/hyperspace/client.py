@@ -1886,8 +1886,11 @@ class HyperspaceClient:
     def _resolve_http_base_url(self, http_url: Optional[str] = None) -> str:
         if http_url:
             return http_url.rstrip("/")
+        env_url = os.environ.get("HYPERSPACE_HTTP_URL")
+        if env_url:
+            return env_url.rstrip("/")
         host_part = self.host.split(":")[0] if ":" in self.host else self.host
-        return f"http://{host_part}:8080"
+        return f"http://{host_part}:50050"
 
     def list_extensions(self, http_url: Optional[str] = None) -> Dict:
         """
