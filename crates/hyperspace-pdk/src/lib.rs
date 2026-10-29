@@ -346,6 +346,9 @@ struct RegisteredPluginEntry {
     source: String,
 }
 
+static LOADED_LIBS_CACHE: parking_lot::RwLock<Option<HashMap<PathBuf, Arc<libloading::Library>>>> =
+    parking_lot::RwLock::new(None);
+
 /// Thread-safe registry managing built-in and dynamically loaded external HyperspaceDB plugins,
 /// activation states (`enabled` / `disabled`), lifecycle pipeline hooks, and RPC procedures.
 pub struct PluginRegistry {
@@ -479,17 +482,41 @@ impl PluginRegistry {
             ));
         }
 
-        // SAFETY: External plugins compiled with `hs_export_plugin!` expose C-ABI `hs_pdk_api_version`
-        // and `hs_plugin_create` functions. We keep the `Library` handle alive inside `self.loaded_libraries`
-        // for the entire lifetime of `PluginRegistry`.
-        unsafe {
-            let lib = libloading::Library::new(path_ref).map_err(|e| {
-                format!(
-                    "Failed to open dynamic plugin library '{}': {e}",
-                    path_ref.display()
-                )
-            })?;
+        let canonical_path = path_ref
+            .canonicalize()
+            .unwrap_or_else(|_| path_ref.to_path_buf());
 
+        // Re-use already loaded shared library instance to prevent repeated dlopen / dyld lock
+        // contention and avoid dropping/dlclosing active plugin symbols across test runs.
+        let lib_arc = {
+            let read_cache = LOADED_LIBS_CACHE.read();
+            read_cache
+                .as_ref()
+                .and_then(|c| c.get(&canonical_path).cloned())
+        };
+
+        let lib = match lib_arc {
+            Some(arc) => arc,
+            None => {
+                let opened = unsafe {
+                    libloading::Library::new(path_ref).map_err(|e| {
+                        format!(
+                            "Failed to open dynamic plugin library '{}': {e}",
+                            path_ref.display()
+                        )
+                    })?
+                };
+                let arc = Arc::new(opened);
+                let mut write_cache = LOADED_LIBS_CACHE.write();
+                let cache = write_cache.get_or_insert_with(HashMap::new);
+                cache.insert(canonical_path, Arc::clone(&arc));
+                arc
+            }
+        };
+
+        // SAFETY: External plugins compiled with `hs_export_plugin!` expose C-ABI `hs_pdk_api_version`
+        // and `hs_plugin_create` functions. We keep the `Library` handle alive permanently in the static cache.
+        unsafe {
             let version_fn: libloading::Symbol<unsafe extern "C" fn() -> u32> =
                 lib.get(b"hs_pdk_api_version\0").map_err(|e| {
                     format!(
@@ -526,7 +553,7 @@ impl PluginRegistry {
             let plugin_arc: Arc<dyn HsPlugin> = Arc::from(*boxed_outer);
             let source_tag = format!("external:{}", path_ref.display());
 
-            self.loaded_libraries.write().push(Arc::new(lib));
+            self.loaded_libraries.write().push(Arc::clone(&lib));
             self.register_with_source(Arc::clone(&plugin_arc), source_tag, true);
 
             let name = Self::normalize_plugin_name(&plugin_arc.manifest().name);
@@ -558,11 +585,19 @@ impl PluginRegistry {
 
             for path in &paths {
                 if path.is_file() && Self::is_shared_library(path) {
-                    if let Ok(manifest) = self.load_dynamic_library(path) {
-                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                            loaded_libs_by_stem.insert(stem.trim_start_matches("lib").to_string());
+                    match self.load_dynamic_library(path) {
+                        Ok(manifest) => {
+                            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                                loaded_libs_by_stem
+                                    .insert(stem.trim_start_matches("lib").to_string());
+                            }
+                            loaded.push(manifest);
                         }
-                        loaded.push(manifest);
+                        Err(e) => {
+                            if std::env::var("HYPERSPACE_DEBUG_PLUGINS").is_ok() {
+                                eprintln!("⚠️ [PluginRegistry] Skipping dynamic library candidate '{}': {e}", path.display());
+                            }
+                        }
                     }
                 }
             }
@@ -579,13 +614,22 @@ impl PluginRegistry {
                                 if let Some(cdylib_path) =
                                     Self::find_compiled_cdylib(dir_path, path, &lib_name)
                                 {
-                                    if let Ok(manifest) = self.load_dynamic_library(&cdylib_path) {
-                                        if !default_enabled {
-                                            let _ = self.set_plugin_enabled(&manifest.name, false);
+                                    match self.load_dynamic_library(&cdylib_path) {
+                                        Ok(manifest) => {
+                                            if !default_enabled {
+                                                let _ =
+                                                    self.set_plugin_enabled(&manifest.name, false);
+                                            }
+                                            loaded_libs_by_stem.insert(lib_name);
+                                            if let Some(updated) = self.get_manifest(&manifest.name)
+                                            {
+                                                loaded.push(updated);
+                                            }
                                         }
-                                        loaded_libs_by_stem.insert(lib_name);
-                                        if let Some(updated) = self.get_manifest(&manifest.name) {
-                                            loaded.push(updated);
+                                        Err(e) => {
+                                            if std::env::var("HYPERSPACE_DEBUG_PLUGINS").is_ok() {
+                                                eprintln!("⚠️ [PluginRegistry] Failed to load compiled cdylib '{}': {e}", cdylib_path.display());
+                                            }
                                         }
                                     }
                                 }

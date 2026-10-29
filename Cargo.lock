@@ -2625,6 +2625,8 @@ dependencies = [
  "dotenv",
  "futures",
  "hex",
+ "hs-eco",
+ "hs-git-ast",
  "hyper 1.8.1",
  "hyper-util",
  "hyperspace-billing",

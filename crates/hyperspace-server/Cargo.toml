@@ -61,6 +61,8 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.10"
+hs-git-ast = { path = "../../plugins/hs-git-ast" }
+hs-eco = { path = "../../plugins/hs-eco" }
 
 [features]
 default = ["embed"]
