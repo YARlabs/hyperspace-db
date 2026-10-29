@@ -23,8 +23,8 @@
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::result_large_err)]
 
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+// #[global_allocator]
+// static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use clap::Parser;
 // Access index via CollectionManager.

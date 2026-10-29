@@ -1,5 +1,5 @@
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+// #[global_allocator]
+// static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cpu_cores = std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);

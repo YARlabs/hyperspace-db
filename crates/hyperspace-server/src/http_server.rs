@@ -2881,21 +2881,18 @@ async fn trigger_vacuum_http(
         return (StatusCode::FORBIDDEN, "Admin access required").into_response();
     }
 
-    // 1. Refresh jemalloc statistics
-    if let Err(e) = epoch::advance() {
-        eprintln!("Failed to advance jemalloc epoch: {e}");
-    }
+    // 1. Refresh jemalloc statistics (if jemalloc active)
+    let _ = epoch::advance();
 
-    // 2. Perform global purge via mallctl
-    // In jemalloc 5.x, "arena.4096.purge" purges all arenas.
-    // SAFETY: Calling jemalloc purge is safe here as it only triggers memory return to OS.
-    if let Err(e) = unsafe { tikv_jemalloc_ctl::raw::update(b"arena.4096.purge\0", ()) } {
-        eprintln!("Failed to purge jemalloc arenas: {e}");
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"status": "Error", "message": format!("Purge failed: {e}")})),
-        )
-            .into_response();
+    // 2. Perform global purge via mallctl if active
+    let _ = unsafe { tikv_jemalloc_ctl::raw::update(b"arena.4096.purge\0", ()) };
+
+    #[cfg(target_os = "linux")]
+    unsafe {
+        extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        malloc_trim(0);
     }
 
     Json(serde_json::json!({
