@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 #[cfg(unix)]
 use std::os::unix::fs::FileExt;
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 
 /// Standard NVMe / Direct I/O hardware alignment boundary (4096 bytes).
@@ -195,7 +195,22 @@ impl DirectFile {
 
     /// Reads aligned bytes from the specified file offset directly into an `AlignedBuffer`.
     pub fn read_aligned_at(&self, offset: u64, buf: &mut AlignedBuffer) -> io::Result<()> {
-        #[cfg(unix)]
+        #[cfg(all(target_os = "linux", not(target_arch = "wasm32")))]
+        {
+            if let Err(e) = self.file.read_exact_at(buf.as_mut_slice(), offset) {
+                if e.raw_os_error() == Some(libc::EINVAL) {
+                    let fd = self.file.as_raw_fd();
+                    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+                    if flags != -1 {
+                        let _ = unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_DIRECT) };
+                    }
+                    return self.file.read_exact_at(buf.as_mut_slice(), offset);
+                }
+                return Err(e);
+            }
+            Ok(())
+        }
+        #[cfg(all(unix, not(target_os = "linux")))]
         {
             self.file.read_exact_at(buf.as_mut_slice(), offset)
         }
@@ -210,7 +225,22 @@ impl DirectFile {
 
     /// Writes an aligned slice to the specified file offset.
     pub fn write_aligned_at(&self, offset: u64, buf: &[u8]) -> io::Result<()> {
-        #[cfg(unix)]
+        #[cfg(all(target_os = "linux", not(target_arch = "wasm32")))]
+        {
+            if let Err(e) = self.file.write_all_at(buf, offset) {
+                if e.raw_os_error() == Some(libc::EINVAL) {
+                    let fd = self.file.as_raw_fd();
+                    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+                    if flags != -1 {
+                        let _ = unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_DIRECT) };
+                    }
+                    return self.file.write_all_at(buf, offset);
+                }
+                return Err(e);
+            }
+            Ok(())
+        }
+        #[cfg(all(unix, not(target_os = "linux")))]
         {
             self.file.write_all_at(buf, offset)
         }
@@ -348,15 +378,31 @@ impl DirectVectorStore {
 
         self.ensure_segment(segment_idx)?;
 
+        let _guard = self.append_lock.lock();
+
         let segs = self.segments.load();
         let segment = &segs[segment_idx];
 
         let offset = (local_idx * self.stride) as u64;
-        // Direct write with block alignment
+
+        // Position of the 4KB block containing this vector
+        let block_offset = offset & !(DIRECT_IO_ALIGNMENT as u64 - 1);
+        let in_block_offset = (offset - block_offset) as usize;
+        let span = in_block_offset + self.element_size;
+        let blocks_len = span.div_ceil(DIRECT_IO_ALIGNMENT) * DIRECT_IO_ALIGNMENT;
+
+        let mut aligned_buf = AlignedBuffer::new(blocks_len);
+        // Pre-read existing block contents if partially populated
+        let _ = segment.file.read_aligned_at(block_offset, &mut aligned_buf);
+
+        aligned_buf[in_block_offset..in_block_offset + self.element_size]
+            .copy_from_slice(vector_bytes);
+
+        // Direct write with hardware 4096-byte block alignment
         segment
             .file
-            .write_aligned_at(offset, vector_bytes)
-            .map_err(|e| format!("Direct I/O write failed at offset {offset}: {e}"))?;
+            .write_aligned_at(block_offset, &aligned_buf)
+            .map_err(|e| format!("Direct I/O write failed at offset {block_offset}: {e}"))?;
 
         Ok(id as u32)
     }
