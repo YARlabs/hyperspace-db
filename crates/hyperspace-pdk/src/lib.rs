@@ -499,7 +499,9 @@ impl PluginRegistry {
         if let Some(entry) = self.plugins.get(&normalized_stem) {
             if entry.source == "builtin" {
                 // Already statically registered as built-in, skip foreign dylib dlopen
-                return self.get_manifest(&normalized_stem).ok_or_else(|| "Already loaded".to_string());
+                return self
+                    .get_manifest(&normalized_stem)
+                    .ok_or_else(|| "Already loaded".to_string());
             }
         }
 

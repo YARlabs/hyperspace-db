@@ -207,7 +207,10 @@ impl CollectionManager {
                         meta.vector_count = entry.collection.count();
                         let col_dir = base_clone.join(&key);
                         let _ = meta.save(&col_dir);
-                        println!("💤 Idling collection '{key}' ({} vectors) unloaded from memory", meta.vector_count);
+                        println!(
+                            "💤 Idling collection '{key}' ({} vectors) unloaded from memory",
+                            meta.vector_count
+                        );
                     }
                 }
             }
@@ -243,10 +246,26 @@ impl CollectionManager {
             plugins: {
                 let registry = hyperspace_pdk::PluginRegistry::new();
                 // 1. Built-in plugins compiled directly with host jemalloc allocator
-                registry.register_with_source(std::sync::Arc::new(hyperspace_pdk::HsEmbedPlugin::new()), "builtin", true);
-                registry.register_with_source(std::sync::Arc::new(hyperspace_pdk::HsShieldPlugin::new()), "builtin", true);
-                registry.register_with_source(std::sync::Arc::new(hs_eco::HsEcoPlugin::new()), "builtin", true);
-                registry.register_with_source(std::sync::Arc::new(hs_git_ast::HsGitAstPlugin::new()), "builtin", true);
+                registry.register_with_source(
+                    std::sync::Arc::new(hyperspace_pdk::HsEmbedPlugin::new()),
+                    "builtin",
+                    true,
+                );
+                registry.register_with_source(
+                    std::sync::Arc::new(hyperspace_pdk::HsShieldPlugin::new()),
+                    "builtin",
+                    true,
+                );
+                registry.register_with_source(
+                    std::sync::Arc::new(hs_eco::HsEcoPlugin::new()),
+                    "builtin",
+                    true,
+                );
+                registry.register_with_source(
+                    std::sync::Arc::new(hs_git_ast::HsGitAstPlugin::new()),
+                    "builtin",
+                    true,
+                );
 
                 // 2. Discover any additional 3rd-party plugins from ./plugins (skipping builtins)
                 let dir = registry.get_plugins_dir();

@@ -382,7 +382,12 @@ impl Wal {
         metadata: &HashMap<String, String>,
         logical_clock: u64,
     ) -> io::Result<()> {
-        Self::serialize_update_payload_entry_into(&mut self.scratch_buf, id, metadata, logical_clock)?;
+        Self::serialize_update_payload_entry_into(
+            &mut self.scratch_buf,
+            id,
+            metadata,
+            logical_clock,
+        )?;
         self.write_scratch_packet()?;
         self.apply_sync_policy()
     }

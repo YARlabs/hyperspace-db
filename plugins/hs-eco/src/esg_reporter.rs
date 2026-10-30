@@ -82,11 +82,7 @@ pub async fn generate_esg_report(
     // Cryptographic audit signature (SHA-256)
     let raw_data_to_sign = format!(
         "ts={};range={};avoided={:.6};conserved={:.6};ratio={:.6}",
-        now,
-        time_range,
-        scope_3_emissions_avoided,
-        energy_conserved_kwh,
-        storage_efficiency_ratio
+        now, time_range, scope_3_emissions_avoided, energy_conserved_kwh, storage_efficiency_ratio
     );
 
     let mut hasher = Sha256::new();

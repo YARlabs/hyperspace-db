@@ -799,9 +799,8 @@ impl<M: Metric> CollectionImpl<M> {
 
                     tokio::spawn(async move {
                         let _permit = permit;
-                        let effective_meta = write_buf
-                            .get_metadata_by_internal_id(id)
-                            .unwrap_or(meta);
+                        let effective_meta =
+                            write_buf.get_metadata_by_internal_id(id).unwrap_or(meta);
                         let result = tokio::task::spawn_blocking(move || {
                             let idx = idx_link.load().clone();
                             let result = idx.index_node(id, effective_meta);

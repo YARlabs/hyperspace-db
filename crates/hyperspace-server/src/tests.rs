@@ -1191,7 +1191,10 @@ async fn test_issue_20_update_payload_persistence_across_restarts() {
             .await
             .expect("Create collection should succeed");
 
-        let col = manager.get(user, col_name).await.expect("Collection must exist");
+        let col = manager
+            .get(user, col_name)
+            .await
+            .expect("Collection must exist");
 
         // 1. Insert point 1 with initial metadata
         let mut meta1 = HashMap::new();
@@ -1234,7 +1237,10 @@ async fn test_issue_20_update_payload_persistence_across_restarts() {
     // --- Phase 2: Restart (simulate restart by creating new CollectionManager pointing to same disk) ---
     {
         let manager2 = CollectionManager::new(tmp_dir.clone(), rep_tx, evt_tx);
-        let col2 = manager2.get(user, col_name).await.expect("Collection must reload on restart");
+        let col2 = manager2
+            .get(user, col_name)
+            .await
+            .expect("Collection must reload on restart");
 
         let reloaded_meta = col2.metadata_by_id(1);
         assert_eq!(
@@ -1273,7 +1279,11 @@ async fn test_issue_20_update_payload_persistence_across_restarts() {
             )
             .await
             .expect("Search with updated filter must succeed");
-        assert_eq!(hits.len(), 1, "Should find point by updated metadata filter");
+        assert_eq!(
+            hits.len(),
+            1,
+            "Should find point by updated metadata filter"
+        );
         assert_eq!(hits[0].0, 1);
 
         let mut filter_old = HashMap::new();
@@ -1290,7 +1300,11 @@ async fn test_issue_20_update_payload_persistence_across_restarts() {
             )
             .await
             .expect("Search with old filter must succeed");
-        assert_eq!(old_hits.len(), 0, "Old overwritten metadata tag must not match in inverted index");
+        assert_eq!(
+            old_hits.len(),
+            0,
+            "Old overwritten metadata tag must not match in inverted index"
+        );
     }
 
     let _ = fs::remove_dir_all(&tmp_dir);

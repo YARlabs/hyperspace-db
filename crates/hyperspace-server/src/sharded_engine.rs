@@ -714,7 +714,11 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         self.shards[shard_idx].delete(local_id)
     }
 
-    async fn update_payload(&self, id: u32, metadata: HashMap<String, String>) -> Result<(), String> {
+    async fn update_payload(
+        &self,
+        id: u32,
+        metadata: HashMap<String, String>,
+    ) -> Result<(), String> {
         if self.num_shards == 1 {
             return self.shards[0].update_payload(id, metadata).await;
         }

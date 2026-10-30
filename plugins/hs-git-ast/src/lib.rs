@@ -793,7 +793,10 @@ mod tests {
                 }
             ]
         });
-        let res = plugin.call_procedure("parse_source", args, &ctx).await.unwrap();
+        let res = plugin
+            .call_procedure("parse_source", args, &ctx)
+            .await
+            .unwrap();
         let symbols = res.get("symbols").unwrap().as_array().unwrap();
         assert!(!symbols.is_empty(), "Should extract at least one symbol");
     }
