@@ -1,5 +1,5 @@
 #![recursion_limit = "512"]
-#![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
+#![cfg_attr(all(feature = "nightly-simd", has_nightly), feature(portable_simd))]
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::module_name_repetitions)]
@@ -45,13 +45,13 @@ pub use bm25::*;
 pub use graph::*;
 use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
 
-#[cfg(feature = "nightly-simd")]
+#[cfg(all(feature = "nightly-simd", has_nightly))]
 pub fn check_simd() {
     println!("🚀 SIMD Acceleration: ENABLED (AVX/Neon)");
     println!("⚡ Runtime f32 kernels: {}", simd::backend().name());
 }
 
-#[cfg(not(feature = "nightly-simd"))]
+#[cfg(not(all(feature = "nightly-simd", has_nightly)))]
 pub fn check_simd() {
     println!("🐢 SIMD Acceleration: DISABLED (Scalar Fallback)");
     println!("⚡ Runtime f32 kernels: {}", simd::backend().name());
@@ -942,7 +942,7 @@ impl Metric for LorentzMetric {
         let mut i = 1;
         let n = a.len().min(b.len());
 
-        #[cfg(feature = "nightly-simd")]
+        #[cfg(all(feature = "nightly-simd", has_nightly))]
         {
             use std::simd::f64x4;
             use std::simd::num::SimdFloat;
@@ -956,7 +956,7 @@ impl Metric for LorentzMetric {
             spatial_dot += sum_vec.reduce_sum();
         }
 
-        #[cfg(not(feature = "nightly-simd"))]
+        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
         if n > 1 {
             let mut acc = [0.0; 4];
             let (chunks_a, rem_a) = a[1..n].as_chunks::<4>();
@@ -1035,7 +1035,7 @@ impl Metric for EuclideanMetric {
         "l2"
     }
 
-    #[cfg(feature = "nightly-simd")]
+    #[cfg(all(feature = "nightly-simd", has_nightly))]
     #[inline(always)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
         use std::simd::f32x4;
@@ -1086,7 +1086,7 @@ impl Metric for EuclideanMetric {
         total
     }
 
-    #[cfg(not(feature = "nightly-simd"))]
+    #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
     #[inline(always)]
     #[allow(clippy::chunks_exact_to_as_chunks)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
@@ -1115,7 +1115,7 @@ impl Metric for EuclideanMetric {
         f64::from(sum)
     }
 
-    #[cfg(feature = "nightly-simd")]
+    #[cfg(all(feature = "nightly-simd", has_nightly))]
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         use std::simd::num::{SimdFloat, SimdInt};
         use std::simd::{f32x4, f64x4, i8x4};
@@ -1169,7 +1169,7 @@ impl Metric for EuclideanMetric {
         total_sum
     }
 
-    #[cfg(not(feature = "nightly-simd"))]
+    #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
     #[allow(clippy::chunks_exact_to_as_chunks)]
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         const SCALE_INV: f64 = 1.0 / 127.0;
@@ -1226,12 +1226,12 @@ impl Metric for CosineMetric {
         <EuclideanMetric as Metric>::distance(a, b)
     }
 
-    #[cfg(feature = "nightly-simd")]
+    #[cfg(all(feature = "nightly-simd", has_nightly))]
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         EuclideanMetric::distance_quantized(a, b)
     }
 
-    #[cfg(not(feature = "nightly-simd"))]
+    #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
         EuclideanMetric::distance_quantized(a, b)
     }

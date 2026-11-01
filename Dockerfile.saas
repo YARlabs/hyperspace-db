@@ -32,20 +32,19 @@ RUN rm -f rust-toolchain.toml .cargo/config.toml
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Build Release: s3-tiering enabled, nightly-simd for AMD64 AVX2/AVX-512, plus external PDK plugins
+# Build Release: s3-tiering enabled, nightly-simd for AMD64 AVX2/AVX-512
 RUN cargo build --release \
     -p hyperspace-server \
     -p hyperspace-cli \
-    -p hs-eco \
     --no-default-features --features "nightly-simd s3-tiering"
 
-# Strip binaries and external cdylib plugins to reduce size
+# Strip binaries to reduce size
 RUN strip target/release/hyperspace-server \
-    target/release/hyperspace-cli \
-    target/release/libhs_eco.so
+    target/release/hyperspace-cli
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
+ARG VERSION=4.2.1
 
 # Install runtime dependencies (lightweight SaaS profile without C++ / OpenMP runtimes)
 RUN apt-get update && apt-get install -y \
@@ -62,10 +61,14 @@ WORKDIR /app
 COPY --from=builder /app/target/release/hyperspace-server /usr/local/bin/
 COPY --from=builder /app/target/release/hyperspace-cli /usr/local/bin/
 
-# Copy external PDK dynamic plugins (.so) and catalog configuration (SaaS profile: shield + eco only, no git_ast / embed)
+# Set up plugins directory and template configuration
 RUN mkdir -p /app/data /app/plugins
-COPY --from=builder /app/plugins/plugins.toml /app/plugins/plugins.toml
-COPY --from=builder /app/target/release/libhs_eco.so /app/plugins/
+COPY --from=builder /app/plugins/plugins.toml.example /app/plugins/plugins.toml.example
+RUN cp /app/plugins/plugins.toml.example /app/plugins/plugins.toml
+
+# Install official ECO plugin directly from Hyperspace Hub during image build
+RUN hyperspace-server plugin install hs-eco --dir /app/plugins
+
 RUN chown -R hyperspace:hyperspace /app
 
 # Switch to non-root user
@@ -78,7 +81,7 @@ ENV HYPERSPACE_PLUGINS_DIR=/app/plugins
 ENV HYPERSPACE_ENABLED_PLUGINS=shield,eco
 
 LABEL org.opencontainers.image.source=https://github.com/YARlabs/hyperspace-db
-LABEL org.opencontainers.image.version="4.2.0"
+LABEL org.opencontainers.image.version="${VERSION}"
 LABEL profile=saas
 
 EXPOSE 50051

@@ -1061,26 +1061,15 @@ async fn test_v4_2_0_plugins_and_multi_metric_engine() {
     let (evt_tx, _) = broadcast::channel(64);
     let manager = CollectionManager::new(tmp_dir.clone(), rep_tx, evt_tx);
 
-    // 1. Verify standard built-in (embed, shield) and external (git_ast, eco) plugins are registered.
-    // If the dynamic shared library was not pre-compiled or cannot be dynamically loaded on this OS,
-    // register the compiled fallback to guarantee hermetic test execution across all platforms.
-    if manager.plugins.get("git_ast").is_none() {
-        manager.plugins.register_with_source(
-            std::sync::Arc::new(hs_git_ast::HsGitAstPlugin::new()),
-            "external:compiled_fallback",
-            true,
-        );
-    }
-
+    // 1. Verify standard built-in (embed, shield) plugins are registered.
     let manifests = manager.plugins.list_manifests();
     assert!(
-        manifests.len() >= 3,
-        "Expected at least 3 plugins, got {}",
+        manifests.len() >= 2,
+        "Expected at least 2 plugins, got {}",
         manifests.len()
     );
     assert!(manifests.iter().any(|m| m.name == "embed"));
     assert!(manifests.iter().any(|m| m.name == "shield"));
-    assert!(manifests.iter().any(|m| m.name == "git_ast"));
 
     let simple_schema = |dim: u32, metric: &str| hyperspace_proto::hyperspace::CollectionSchema {
         components: vec![hyperspace_proto::hyperspace::VectorComponent {
@@ -1120,32 +1109,11 @@ async fn test_v4_2_0_plugins_and_multi_metric_engine() {
     let docs_col = manager.get("test_user", "docs").await.unwrap();
     assert_eq!(docs_col.count() as u64, chunks_inserted);
 
-    // 3. Test hs-git-ast end-to-end on a codebase collection
+    // 3. Prepare collection for hs-shield test
     manager
         .create_collection("test_user", "code_kag", simple_schema(64, "l2"))
         .await
         .expect("create code_kag collection");
-
-    let ast_res = manager
-        .call_extension(
-            "test_user",
-            Some("code_kag"),
-            "git_ast",
-            "ingest_files",
-            serde_json::json!({
-                "base_id": 500,
-                "files": [
-                    {
-                        "path": "src/engine.rs",
-                        "content": "pub trait Plugin {}\npub struct Host;\nimpl Plugin for Host {}\npub fn init() { run(); }\npub fn run() {}"
-                    }
-                ]
-            }),
-        )
-        .await
-        .expect("hs-git-ast ingest_files must succeed");
-    assert!(ast_res["symbols_inserted"].as_u64().unwrap_or(0) >= 4);
-    assert!(ast_res["edges_linked"].as_u64().unwrap_or(0) >= 4);
 
     // 4. Test hs-shield configure + isometric vector rotation
     let _ = manager
@@ -1194,6 +1162,49 @@ async fn test_v4_2_0_plugins_and_multi_metric_engine() {
             "Metric {metric} search must return results"
         );
     }
+
+    // 6. Test HspPackage packing and unpacking (Air-Gap .hsp upload flow)
+    let hsp_out = tmp_dir.join("test_airgap_package.hsp");
+    let test_plugin_toml = tmp_dir.join("plugin.toml");
+    fs::write(
+        &test_plugin_toml,
+        r#"
+[plugin]
+name = "airgap_demo"
+version = "0.1.0"
+abi_version = 40200
+author = "Hyperspace Authors"
+description = "Hermetic air-gap test plugin"
+category = "utility"
+"#,
+    )
+    .unwrap();
+    let ext = match std::env::consts::OS {
+        "macos" => "dylib",
+        "windows" => "dll",
+        _ => "so",
+    };
+    let test_lib_file = tmp_dir.join(format!("libairgap_demo.{ext}"));
+    fs::write(&test_lib_file, b"\x7fELFfakebinarypayloadforunittesting").unwrap();
+
+    let packed_res = hyperspace_pdk::package::HspPackage::pack(
+        &test_plugin_toml,
+        &test_lib_file,
+        None,
+        None,
+        None,
+        &hsp_out,
+    );
+    assert!(packed_res.is_ok(), "HspPackage::pack must succeed");
+    assert!(hsp_out.exists(), "Created .hsp archive must exist");
+
+    let hsp_bytes = fs::read(&hsp_out).unwrap();
+    let target_dir = tmp_dir.join("airgap_installed");
+    let unpack_res = hyperspace_pdk::package::HspPackage::unpack(&hsp_bytes, &target_dir, &[]);
+    assert!(unpack_res.is_ok(), "Air-Gap .hsp unpacking must succeed");
+    let res = unpack_res.unwrap();
+    assert_eq!(res.name, "airgap_demo");
+    assert!(res.library_path.exists());
 
     let _ = fs::remove_dir_all(&tmp_dir);
 }

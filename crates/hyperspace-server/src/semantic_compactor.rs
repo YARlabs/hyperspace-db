@@ -103,6 +103,8 @@ impl SemanticCompactor {
             }
 
             if insert_count > 0 {
+                // Freeze Layer-0 into cache-aligned continuous strided layout for zero-chasing search
+                local_index.freeze_flat_layer0();
                 local_index
                     .save_snapshot(&chunk_dir.join("index.snap"))
                     .map_err(|e| format!("Failed to save index snapshot for {chunk_name}: {e}"))?;

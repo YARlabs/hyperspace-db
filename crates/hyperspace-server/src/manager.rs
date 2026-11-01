@@ -245,7 +245,7 @@ impl CollectionManager {
             system,
             plugins: {
                 let registry = hyperspace_pdk::PluginRegistry::new();
-                // 1. Built-in plugins compiled directly with host jemalloc allocator
+                // 1. Built-in core plugins compiled directly with host allocator
                 registry.register_with_source(
                     std::sync::Arc::new(hyperspace_pdk::HsEmbedPlugin::new()),
                     "builtin",
@@ -256,18 +256,8 @@ impl CollectionManager {
                     "builtin",
                     true,
                 );
-                registry.register_with_source(
-                    std::sync::Arc::new(hs_eco::HsEcoPlugin::new()),
-                    "builtin",
-                    true,
-                );
-                registry.register_with_source(
-                    std::sync::Arc::new(hs_git_ast::HsGitAstPlugin::new()),
-                    "builtin",
-                    true,
-                );
 
-                // 2. Discover any additional 3rd-party plugins from ./plugins (skipping builtins)
+                // 2. Discover external Hub plugins from ./plugins (skipping builtins)
                 let dir = registry.get_plugins_dir();
                 let _ = registry.load_plugins_from_dir(&dir);
 

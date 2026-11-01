@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
     fetchExtensionsCatalog,
@@ -7,12 +7,17 @@ import {
     reloadExtensions,
     callExtensionProcedure,
     fetchCollections,
+    uploadExtensionHsp,
+    installFromHub,
+    fetchHubCatalog,
     type ExtensionManifest,
     type ExtensionProcedureSchema,
 } from "@/lib/api"
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
 import {
     Blocks,
     RefreshCw,
@@ -31,6 +36,10 @@ import {
     Cpu,
     Layers,
     AlertCircle,
+    Upload,
+    Download,
+    Globe,
+    Search,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -167,6 +176,9 @@ function getPluginAccent(name: string) {
 
 export function PluginsPage() {
     const queryClient = useQueryClient()
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [activeMainTab, setActiveMainTab] = useState<"installed" | "marketplace">("installed")
+    const [marketplaceSearch, setMarketplaceSearch] = useState<string>("")
     const [selectedPluginName, setSelectedPluginName] = useState<string>("embed")
     const [selectedProcedureName, setSelectedProcedureName] = useState<string>("")
     const [selectedCollection, setSelectedCollection] = useState<string>("")
@@ -182,10 +194,48 @@ export function PluginsPage() {
         queryFn: fetchExtensionsCatalog,
     })
 
+    const { data: hubCatalog = [] } = useQuery({
+        queryKey: ["hub-catalog"],
+        queryFn: fetchHubCatalog,
+    })
+
     const { data: collectionsData } = useQuery({
         queryKey: ["collections"],
         queryFn: fetchCollections,
     })
+
+    const uploadMutation = useMutation({
+        mutationFn: async (file: File) => uploadExtensionHsp(file),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["extensions-catalog"] })
+            setReloadBanner(data?.message || "Successfully installed .hsp package in Air-Gap mode!")
+            setTimeout(() => setReloadBanner(null), 5000)
+        },
+        onError: (err: any) => {
+            alert(`Air-Gap upload error: ${err?.response?.data?.error || err.message}`)
+        },
+    })
+
+    const installMutation = useMutation({
+        mutationFn: async (name: string) => installFromHub(name),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["extensions-catalog"] })
+            setReloadBanner(data?.message || "Plugin successfully installed from Hyperspace Hub!")
+            setTimeout(() => setReloadBanner(null), 5000)
+        },
+        onError: (err: any) => {
+            alert(`Hub installation error: ${err?.response?.data?.error || err.message}`)
+        },
+    })
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file) {
+            uploadMutation.mutate(file)
+            e.target.value = ""
+        }
+    }
+
 
     const collections: string[] = Array.isArray(collectionsData)
         ? collectionsData.map((c: any) => (typeof c === "string" ? c : c.name))
@@ -303,6 +353,23 @@ export function PluginsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <input
+                        type="file"
+                        accept=".hsp,.tar.gz"
+                        className="hidden"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                    />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadMutation.isPending}
+                        className="gap-2 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                    >
+                        <Upload className={cn("h-4 w-4", uploadMutation.isPending && "animate-bounce")} />
+                        {uploadMutation.isPending ? "Installing .hsp..." : "Air-Gap Install (.hsp)"}
+                    </Button>
                     <Button
                         variant="outline"
                         size="sm"
@@ -414,8 +481,146 @@ export function PluginsPage() {
                 </Card>
             )}
 
-            {/* Main Grid: Left = Installed Plugins List, Right = Inspector & Live Runner */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Main Tabs: Installed vs Marketplace */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/40 pb-3">
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant={activeMainTab === "installed" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setActiveMainTab("installed")}
+                        className="gap-2"
+                    >
+                        <Blocks className="h-4 w-4" />
+                        Installed Plugins ({extensions.length})
+                    </Button>
+                    <Button
+                        variant={activeMainTab === "marketplace" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setActiveMainTab("marketplace")}
+                        className="gap-2"
+                    >
+                        <Globe className="h-4 w-4" />
+                        Hub Marketplace ({hubCatalog.length})
+                    </Button>
+                </div>
+
+                {activeMainTab === "marketplace" && (
+                    <div className="flex items-center gap-2 w-full sm:w-80">
+                        <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <Input
+                            placeholder="Search plugins by name, tag, category..."
+                            value={marketplaceSearch}
+                            onChange={(e) => setMarketplaceSearch(e.target.value)}
+                            className="h-8 text-xs"
+                        />
+                    </div>
+                )}
+            </div>
+
+            {activeMainTab === "marketplace" ? (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">
+                            Browse prebuilt verified plugins hosted on Cloudflare R2 / Hyperspace Hub. One-click hot installation into <code className="bg-muted px-1 rounded">{catalog?.plugins_dir || "./plugins"}</code>.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {hubCatalog
+                            .filter((pkg) => {
+                                if (!marketplaceSearch) return true
+                                const q = marketplaceSearch.toLowerCase()
+                                return (
+                                    pkg.name.toLowerCase().includes(q) ||
+                                    pkg.description.toLowerCase().includes(q) ||
+                                    pkg.category.toLowerCase().includes(q) ||
+                                    pkg.tags.some((t) => t.toLowerCase().includes(q))
+                                )
+                            })
+                            .map((pkg) => {
+                                const isInstalled = extensions.some(
+                                    (e) =>
+                                        e.name === pkg.name ||
+                                        e.name === pkg.name.replace(/^hs-/, "").replace(/-/g, "_")
+                                )
+
+                                return (
+                                    <Card
+                                        key={pkg.name}
+                                        className="border-border/60 bg-card/60 flex flex-col justify-between hover:border-primary/50 transition-all shadow-sm"
+                                    >
+                                        <CardHeader className="pb-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div>
+                                                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                                                        <span>{pkg.name}</span>
+                                                        <span className="text-xs font-mono font-normal text-muted-foreground">
+                                                            v{pkg.version}
+                                                        </span>
+                                                    </CardTitle>
+                                                    <CardDescription className="text-xs mt-1">
+                                                        {pkg.category} • by {pkg.author}
+                                                    </CardDescription>
+                                                </div>
+                                                {pkg.is_official ? (
+                                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                        Official
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                        Verified
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
+                                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                                {pkg.description}
+                                            </p>
+                                            <div className="space-y-3 pt-2">
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {pkg.tags.map((t) => (
+                                                        <span
+                                                            key={t}
+                                                            className="text-[10px] font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground"
+                                                        >
+                                                            #{t}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                                <div className="flex items-center justify-between pt-3 border-t border-border/40">
+                                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                                        <Download className="h-3.5 w-3.5" />
+                                                        {pkg.downloads.toLocaleString()} installs
+                                                    </span>
+                                                    {isInstalled ? (
+                                                        <span className="text-xs font-medium text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
+                                                            <Check className="h-3.5 w-3.5" />
+                                                            Installed
+                                                        </span>
+                                                    ) : (
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => installMutation.mutate(pkg.name)}
+                                                            disabled={installMutation.isPending}
+                                                            className="gap-1.5 h-8 text-xs"
+                                                        >
+                                                            <Download className="h-3.5 w-3.5" />
+                                                            {installMutation.isPending ? "Installing..." : "Install"}
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )
+                            })}
+                    </div>
+                </div>
+            ) : (
+                /* Main Grid: Left = Installed Plugins List, Right = Inspector & Live Runner */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
                 {/* Left Column: Installed Plugins */}
                 <div className="lg:col-span-5 space-y-4">
                     <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">
@@ -914,6 +1119,7 @@ cp target/release/libhs_my_plugin.dylib ./plugins/
                     ) : null}
                 </div>
             </div>
+            )}
         </div>
     )
 }

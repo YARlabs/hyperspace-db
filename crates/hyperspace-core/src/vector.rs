@@ -4,7 +4,7 @@
 // `n` is used in nightly-simd cfg blocks but appears unused in the scalar fallback path.
 #![allow(unused_variables)]
 
-#[cfg(feature = "nightly-simd")]
+#[cfg(all(feature = "nightly-simd", has_nightly))]
 use std::simd::prelude::*;
 
 /// `VectorLayout` tracks the sizes of different components and how they are sliced from RAM/Disk.
@@ -86,7 +86,7 @@ impl HyperVector {
     #[inline(always)]
     pub fn poincare_distance_sq(&self, other: &Self) -> f64 {
         let n = self.coords.len();
-        #[cfg(feature = "nightly-simd")]
+        #[cfg(all(feature = "nightly-simd", has_nightly))]
         {
             const LANES: usize = 8;
             let mut sum_sq_diff = f64x8::splat(0.0);
@@ -117,7 +117,7 @@ impl HyperVector {
             1.0 + 2.0 * delta
         }
 
-        #[cfg(not(feature = "nightly-simd"))]
+        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
         {
             let n = self.coords.len().min(other.coords.len());
             let (chunks_a, rem_a) = self.coords[..n].as_chunks::<4>();
@@ -171,7 +171,7 @@ impl HyperVector {
     #[inline(always)]
     pub fn klein_chord_distance_sq(&self, other: &Self) -> f64 {
         let n = self.coords.len();
-        #[cfg(feature = "nightly-simd")]
+        #[cfg(all(feature = "nightly-simd", has_nightly))]
         {
             const LANES: usize = 8;
             let mut sum_sq_diff = f64x8::splat(0.0);
@@ -198,7 +198,7 @@ impl HyperVector {
             eucl_sq
         }
 
-        #[cfg(not(feature = "nightly-simd"))]
+        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
         {
             let n = self.coords.len().min(other.coords.len());
             let (chunks_a, rem_a) = self.coords[..n].as_chunks::<4>();
@@ -394,7 +394,7 @@ impl QuantizedHyperVector {
     #[inline(always)]
     pub fn poincare_distance_sq_to_float(&self, query: &HyperVector) -> f64 {
         let n = self.coords.len();
-        #[cfg(feature = "nightly-simd")]
+        #[cfg(all(feature = "nightly-simd", has_nightly))]
         {
             const LANES: usize = 8;
             const SCALE_INV: f32 = 1.0 / 127.0;
@@ -432,7 +432,7 @@ impl QuantizedHyperVector {
             1.0 + 2.0 * delta
         }
 
-        #[cfg(not(feature = "nightly-simd"))]
+        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
         {
             const SCALE_INV: f64 = 1.0 / 127.0;
             let n = self.coords.len().min(query.coords.len());
@@ -483,7 +483,7 @@ impl QuantizedHyperVector {
     pub fn lorentz_distance_to_float(&self, query: &HyperVector) -> f64 {
         let n = self.coords.len();
         let scale = f64::from(self.alpha);
-        #[cfg(feature = "nightly-simd")]
+        #[cfg(all(feature = "nightly-simd", has_nightly))]
         {
             const LANES: usize = 8;
             let inv_127 = 1.0 / 127.0;
@@ -519,7 +519,7 @@ impl QuantizedHyperVector {
             arg.acosh()
         }
 
-        #[cfg(not(feature = "nightly-simd"))]
+        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
         {
             let inv_127 = 1.0 / 127.0;
             let mut spatial_dot = 0.0;
@@ -688,7 +688,7 @@ impl BinaryHyperVector {
         let n = query.coords.len();
         let mut i = 0;
 
-        #[cfg(feature = "nightly-simd")]
+        #[cfg(all(feature = "nightly-simd", has_nightly))]
         let mut sum_sq_diff = {
             use std::simd::f64x4;
             use std::simd::num::SimdFloat;
@@ -711,7 +711,7 @@ impl BinaryHyperVector {
             sum_vec.reduce_sum()
         };
 
-        #[cfg(not(feature = "nightly-simd"))]
+        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
         let mut sum_sq_diff = 0.0;
 
         while i < n {
@@ -736,7 +736,7 @@ impl BinaryHyperVector {
         let mut i = 0;
         let n_full = (n / 8) * 8;
 
-        #[cfg(feature = "nightly-simd")]
+        #[cfg(all(feature = "nightly-simd", has_nightly))]
         let mut dot = {
             use std::simd::f64x4;
             use std::simd::num::SimdFloat;
@@ -756,7 +756,7 @@ impl BinaryHyperVector {
             sum_vec.reduce_sum()
         };
 
-        #[cfg(not(feature = "nightly-simd"))]
+        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
         let mut dot = {
             let mut d = 0.0;
             while i < n_full {

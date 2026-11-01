@@ -3,7 +3,7 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
     let mut sum = 0.0;
     let mut i = 0;
 
-    #[cfg(feature = "nightly-simd")]
+    #[cfg(all(feature = "nightly-simd", has_nightly))]
     {
         use std::simd::prelude::*;
         let mut sum_vec = f64x4::splat(0.0);
@@ -66,7 +66,7 @@ pub fn mobius_add(x: &[f64], y: &[f64], c: f64) -> Result<Vec<f64>, String> {
     let mut result = vec![0.0; n];
     let mut i = 0;
 
-    #[cfg(feature = "nightly-simd")]
+    #[cfg(all(feature = "nightly-simd", has_nightly))]
     {
         use std::simd::prelude::*;
         let num_left_v = f64x4::splat(num_left);
@@ -130,7 +130,7 @@ pub fn exp_map(x: &[f64], v: &[f64], c: f64) -> Result<Vec<f64>, String> {
     let mut result = vec![0.0; n];
     let mut i = 0;
 
-    #[cfg(feature = "nightly-simd")]
+    #[cfg(all(feature = "nightly-simd", has_nightly))]
     {
         use std::simd::prelude::*;
         let num_left_v = f64x4::splat(num_left);

@@ -387,6 +387,10 @@ pub async fn start_http_server(
         .route("/v1/extensions/schema", get(list_extensions_http))
         .route("/api/extensions/reload", post(reload_extensions_http))
         .route("/v1/extensions/reload", post(reload_extensions_http))
+        .route("/api/extensions/upload", post(upload_extension_hsp_http))
+        .route("/v1/extensions/upload", post(upload_extension_hsp_http))
+        .route("/api/hub/install", post(install_from_hub_http))
+        .route("/v1/hub/install", post(install_from_hub_http))
         .route(
             "/api/extensions/{plugin}/enable",
             post(enable_extension_http),
@@ -3802,6 +3806,234 @@ async fn call_extension_collection_http(
             Json(serde_json::json!({
                 "success": false,
                 "error": err
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Air-Gap offline installation: unpacks a `.hsp` package into `./plugins/` and hot-loads it.
+async fn upload_extension_hsp_http(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    multipart_or_body: axum::extract::Request,
+) -> impl IntoResponse {
+    let plugins_dir = manager.plugins.get_plugins_dir();
+
+    let content_type = multipart_or_body
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let hsp_bytes: Vec<u8> = if content_type.starts_with("multipart/form-data") {
+        use axum::extract::FromRequest;
+        match axum::extract::Multipart::from_request(multipart_or_body, &()).await {
+            Ok(mut mp) => {
+                let mut data = Vec::new();
+                while let Ok(Some(field)) = mp.next_field().await {
+                    if field.name() == Some("file") || field.name() == Some("package") {
+                        if let Ok(bytes) = field.bytes().await {
+                            data = bytes.to_vec();
+                            break;
+                        }
+                    }
+                }
+                data
+            }
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "success": false, "error": format!("Multipart error: {e}") })),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        let body_bytes = match axum::body::to_bytes(
+            multipart_or_body.into_body(),
+            100 * 1024 * 1024,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "success": false, "error": format!("Failed reading body: {e}") })),
+                )
+                    .into_response();
+            }
+        };
+
+        if let Ok(json_val) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+            if let Some(b64) = json_val.get("package_base64").and_then(|v| v.as_str()) {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD
+                    .decode(b64)
+                    .unwrap_or_default()
+            } else if let Some(path_str) = json_val.get("package_path").and_then(|v| v.as_str()) {
+                std::fs::read(path_str).unwrap_or_default()
+            } else {
+                body_bytes.to_vec()
+            }
+        } else {
+            body_bytes.to_vec()
+        }
+    };
+
+    if hsp_bytes.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "success": false, "error": "Empty or missing .hsp file payload" })),
+        )
+            .into_response();
+    }
+
+    let trusted_keys = vec![];
+    let install_res = match hyperspace_pdk::package::HspPackage::unpack(
+        &hsp_bytes,
+        &plugins_dir,
+        &trusted_keys,
+    ) {
+        Ok(res) => res,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "success": false, "error": err })),
+            )
+                .into_response();
+        }
+    };
+
+    match manager.plugins.load_dynamic_library(&install_res.library_path) {
+        Ok(manifest) => Json(serde_json::json!({
+            "success": true,
+            "message": format!("Successfully installed plugin '{}' v{}", install_res.name, install_res.version),
+            "install": install_res,
+            "manifest": manifest,
+            "catalog": manager.plugins.schema_catalog_json()
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "success": false,
+                "error": format!("Unpacked successfully but failed to dynamic-link: {err}")
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Online installation from Hyperspace Hub (`the.yar.ink`): downloads `.hsp` from Cloudflare R2 and hot-loads it.
+async fn install_from_hub_http(
+    State((manager, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+    )>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let Some(plugin_name) = payload.get("plugin_name").and_then(|v| v.as_str()) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "success": false, "error": "Missing 'plugin_name' field" })),
+        )
+            .into_response();
+    };
+
+    let version = payload
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("latest");
+    let hub_url = payload
+        .get("hub_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://the.yar.ink")
+        .trim_end_matches('/');
+
+    let target_os = std::env::consts::OS;
+    let target_arch = std::env::consts::ARCH;
+
+    let download_url =
+        format!("{hub_url}/v1/hub/download/{plugin_name}/{version}/{target_os}-{target_arch}");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_mins(1))
+        .build()
+        .unwrap_or_default();
+
+    let resp = match client.get(&download_url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "success": false,
+                    "error": format!("Hub server returned HTTP {}: {}", r.status(), download_url)
+                })),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed connecting to Hyperspace Hub at {}: {e}", hub_url)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let hsp_bytes = match resp.bytes().await {
+        Ok(b) => b.to_vec(),
+        Err(e) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({ "success": false, "error": format!("Failed reading .hsp stream: {e}") })),
+            )
+                .into_response();
+        }
+    };
+
+    let plugins_dir = manager.plugins.get_plugins_dir();
+    let trusted_keys = vec![];
+    let install_res = match hyperspace_pdk::package::HspPackage::unpack(
+        &hsp_bytes,
+        &plugins_dir,
+        &trusted_keys,
+    ) {
+        Ok(res) => res,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "success": false, "error": err })),
+            )
+                .into_response();
+        }
+    };
+
+    match manager.plugins.load_dynamic_library(&install_res.library_path) {
+        Ok(manifest) => Json(serde_json::json!({
+            "success": true,
+            "message": format!("Successfully installed from Hub: '{}' v{}", install_res.name, install_res.version),
+            "install": install_res,
+            "manifest": manifest,
+            "catalog": manager.plugins.schema_catalog_json()
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "success": false,
+                "error": format!("Package unpacked but failed to dynamic-link: {err}")
             })),
         )
             .into_response(),

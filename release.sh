@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="4.2.0"
+VERSION="${1:-4.2.1}"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
@@ -10,20 +10,21 @@ ARCHIVE_NAME="hyperspace-db-v$VERSION-$OS-$ARCH.tar.gz"
 echo "🚀 Publishing HyperspaceDB v$VERSION..."
 echo "ℹ️  Host: $OS-$ARCH"
 
+# Sync VERSION in Dockerfiles
+echo "🔄 Synchronizing version v$VERSION in Dockerfiles..."
+for df in Dockerfile Dockerfile.amd64 Dockerfile.arm64 Dockerfile.embed Dockerfile.saas; do
+    if [ -f "$df" ]; then
+        sed -i.bak -E "s/ARG VERSION=[0-9.]+/ARG VERSION=$VERSION/g" "$df" 2>/dev/null || true
+        rm -f "${df}.bak"
+    fi
+done
+
 # 0. Build Dashboard UI (embedded via rust-embed into hyperspace-server)
 echo "🎨 Building Dashboard UI (including PDK Plugins Workbench)..."
 (cd dashboard && npm run build)
 
-# 1. Build External PDK Plugins first so workspace tests can dynamically load them
-echo "🔌 Building External PDK Plugins (hs-git-ast, hs-eco)..."
-cargo build --release -p hs-git-ast -p hs-eco
-for ext in dylib so dll; do
-    for lib in libhs_git_ast libhs_eco hs_git_ast hs_eco; do
-        if [ -f "target/release/${lib}.${ext}" ]; then
-            cp "target/release/${lib}.${ext}" plugins/
-        fi
-    done
-done
+# 1. External PDK Plugins are decoupled and distributed via Hyperspace Hub
+# (Installed dynamically via 'hyperspace plugin install <plugin-id>')
 
 # 2. Run Quality Checks (Sync with CI)
 echo "🧪 Running Quality Checks..."
@@ -32,9 +33,9 @@ cargo clippy --all-targets --all-features -- -D warnings || { echo "❌ Clippy w
 cargo clippy --tests --workspace -- -W clippy::pedantic || { echo "❌ Clippy pedantic warnings found!"; exit 1; }
 cargo test --workspace --release || { echo "❌ Tests failed!"; exit 1; }
 
-# 3. Build Release Binaries & External Plugins
-echo "🔨 Building Release Binaries & PDK Extensions..."
-cargo build --release -p hyperspace-server -p hyperspace-cli -p hs-git-ast -p hs-eco
+# 3. Build Release Binaries
+echo "🔨 Building Release Binaries (hyperspace-server, hyperspace-cli)..."
+cargo build --release -p hyperspace-server -p hyperspace-cli
 
 # Use target directory for staging (cleaner)
 STAGING_DIR="target/release_pkg"
@@ -43,16 +44,12 @@ mkdir -p "$STAGING_DIR/plugins"
 
 cp target/release/hyperspace-server "$STAGING_DIR/"
 cp target/release/hyperspace-cli "$STAGING_DIR/"
-cp plugins/plugins.toml "$STAGING_DIR/plugins/"
-
-for ext in dylib so dll; do
-    for lib in libhs_git_ast libhs_eco hs_git_ast hs_eco; do
-        if [ -f "target/release/${lib}.${ext}" ]; then
-            cp "target/release/${lib}.${ext}" "$STAGING_DIR/plugins/"
-            cp "target/release/${lib}.${ext}" plugins/
-        fi
-    done
-done
+if [ -f "plugins/plugins.toml" ]; then
+    cp plugins/plugins.toml "$STAGING_DIR/plugins/"
+fi
+if [ -f "plugins/plugins.toml.example" ]; then
+    cp plugins/plugins.toml.example "$STAGING_DIR/plugins/"
+fi
 
 # 4. Create Archive
 echo "📦 Creating Release Archive: $ARCHIVE_NAME"
@@ -70,6 +67,7 @@ fi
 if docker buildx version >/dev/null 2>&1; then
     echo "🐳 Building & Pushing Standard Base Image (amd64 & arm64, with PDK & external plugins)..."
     docker buildx build --platform linux/amd64,linux/arm64 \
+        --build-arg VERSION="$VERSION" \
         -f Dockerfile \
         -t glukhota/hyperspace-db:latest \
         -t glukhota/hyperspace-db:$VERSION \
@@ -79,6 +77,7 @@ if docker buildx version >/dev/null 2>&1; then
 
     echo "⚡ Building & Pushing SaaS Image (AMD64 optimized, s3-tiering, PDK & external plugins)..."
     docker buildx build --platform linux/amd64 \
+        --build-arg VERSION="$VERSION" \
         -f Dockerfile.saas \
         -t glukhota/hyperspace-db:latest-saas \
         -t glukhota/hyperspace-db:${VERSION}-saas \
@@ -88,6 +87,7 @@ if docker buildx version >/dev/null 2>&1; then
 
     echo "🧠 Building & Pushing All-in-One Image with Unified hs-embed ONNX Pipeline (amd64 & arm64)..."
     docker buildx build --platform linux/amd64,linux/arm64 \
+        --build-arg VERSION="$VERSION" \
         -f Dockerfile.embed \
         -t glukhota/hyperspace-db:latest-embed \
         -t glukhota/hyperspace-db:${VERSION}-embed \

@@ -262,4 +262,127 @@ export const callExtensionProcedure = async (
     return res.data
 }
 
+export const uploadExtensionHsp = async (file: File) => {
+    const formData = new FormData()
+    formData.append("file", file)
+    const res = await api.post("/extensions/upload", formData, {
+        headers: {
+            "Content-Type": "multipart/form-data",
+        },
+    })
+    return res.data
+}
+
+export const installFromHub = async (pluginName: string, version?: string) => {
+    const res = await api.post("/hub/install", {
+        plugin_name: pluginName,
+        version: version || "latest",
+        hub_url: "https://the.yar.ink",
+    })
+    return res.data
+}
+
+export interface HubPluginCard {
+    name: string
+    version: string
+    author: string
+    description: string
+    category: string
+    downloads: number
+    license: string
+    is_official: boolean
+    tags: string[]
+}
+
+export const fetchHubCatalog = async (): Promise<HubPluginCard[]> => {
+    try {
+        const res = await fetch("https://the.yar.ink/v1/hub/catalog", { signal: AbortSignal.timeout(3000) })
+        if (res.ok) {
+            return await res.json()
+        }
+    } catch {
+        // Fallback catalog if offline / air-gap
+    }
+    return [
+        {
+            name: "hs-science",
+            version: "4.2.0",
+            author: "Hyperspace Authors",
+            description: "Cheminformatics (SMILES/ECFP), Reaction Möbius Algebra, Poincaré Phylogenetics, and Waddington Stability",
+            category: "Science & Bio",
+            downloads: 1420,
+            license: "Apache-2.0",
+            is_official: true,
+            tags: ["bio", "chem", "genomics", "poincare"],
+        },
+        {
+            name: "hs-graph-onto",
+            version: "4.2.0",
+            author: "Hyperspace Authors",
+            description: "Hyperbolic Knowledge Graph Completion (TransE) and Lorentz Ontological Subsumption",
+            category: "Knowledge Graphs",
+            downloads: 980,
+            license: "Apache-2.0",
+            is_official: true,
+            tags: ["kg", "ontology", "transe", "lorentz"],
+        },
+        {
+            name: "hs-risk-threat",
+            version: "4.2.0",
+            author: "Hyperspace Authors",
+            description: "Spacetime Causal Incident Forensics, MITRE ATT&CK Light Cones, and Interbank Contagion Cascades",
+            category: "Cybersecurity & Risk",
+            downloads: 2150,
+            license: "Apache-2.0",
+            is_official: true,
+            tags: ["sec", "cyber", "fin", "minkowski", "lyapunov"],
+        },
+        {
+            name: "hs-governance-ip",
+            version: "4.2.0",
+            author: "Hyperspace Authors",
+            description: "Legal Normative Hierarchies (Kelsen Pyramids), Patent Claim Scope, and Stare Decisis Precedent Consensus",
+            category: "Legal & IP",
+            downloads: 730,
+            license: "Apache-2.0",
+            is_official: true,
+            tags: ["legal", "patent", "kelsen", "stare-decisis"],
+        },
+        {
+            name: "hs-robotics-telemetry",
+            version: "4.2.0",
+            author: "Hyperspace Authors",
+            description: "High-throughput Telemetry Ingestion: Foxglove MCAP, PX4 SITL (ULog), and Isaac Sim Trajectories",
+            category: "Robotics & Sim",
+            downloads: 3100,
+            license: "Apache-2.0",
+            is_official: true,
+            tags: ["mcap", "px4", "ulog", "isaac-sim", "telemetry"],
+        },
+        {
+            name: "hs-cdc",
+            version: "4.2.0",
+            author: "Hyperspace Authors",
+            description: "Real-time CDC Connectors: PostgreSQL Logical Replication (pgoutput/wal2json) & MySQL Binlog",
+            category: "Databases & CDC",
+            downloads: 4890,
+            license: "Apache-2.0",
+            is_official: true,
+            tags: ["postgres", "mysql", "cdc", "wal2json"],
+        },
+        {
+            name: "hs-multimodal",
+            version: "4.2.0",
+            author: "Hyperspace Authors",
+            description: "On-the-fly Sensor Audio & Video Processing: CLIP Vision Embeddings, Whisper Acoustic STT, and Fusion",
+            category: "Sensors & AI",
+            downloads: 5410,
+            license: "Apache-2.0",
+            is_official: true,
+            tags: ["clip", "whisper", "vision", "audio", "sensor-fusion"],
+        },
+    ]
+}
+
+
 

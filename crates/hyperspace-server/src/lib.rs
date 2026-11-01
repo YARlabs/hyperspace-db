@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![allow(unknown_lints)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::must_use_candidate)]
@@ -23,7 +24,6 @@
 #![allow(clippy::trivially_copy_pass_by_ref)]
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::result_large_err)]
-#![allow(unknown_lints)]
 #![allow(clippy::assert_is_empty)]
 #![allow(clippy::needless_bool)]
 #![allow(clippy::redundant_closure_for_method_calls)]
@@ -59,6 +59,7 @@ pub mod meta_router;
 pub mod migration;
 #[path = "numa.rs"]
 pub mod numa;
+pub mod plugin_cli;
 #[path = "security.rs"]
 pub mod security;
 #[path = "semantic_compactor.rs"]
@@ -3955,7 +3956,7 @@ pub async fn start_server(
         .tcp_nodelay(true)
         .initial_connection_window_size(Some(8 * 1024 * 1024))
         .initial_stream_window_size(Some(4 * 1024 * 1024))
-        .tcp_keepalive(Some(std::time::Duration::from_secs(60)));
+        .tcp_keepalive(Some(std::time::Duration::from_mins(1)));
 
     if let (Some(cert_path), Some(key_path)) = (&tls_cert, &tls_key) {
         println!("🔒 TLS/mTLS gRPC Server Configured");
@@ -4049,6 +4050,14 @@ pub async fn main_entry() -> Result<(), Box<dyn std::error::Error + Send + Sync>
     dotenv::dotenv().ok();
     audit_log::init();
     let args = Args::parse();
+    if let Some(cmd) = &args.command {
+        match cmd {
+            server_args::Commands::Plugin { action } => {
+                plugin_cli::handle_plugin_cli(action).await?;
+                return Ok(());
+            }
+        }
+    }
     start_server(
         args,
         #[cfg(feature = "depin")]

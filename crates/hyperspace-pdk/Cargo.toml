@@ -19,7 +19,12 @@ reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
+tar = "0.4"
+flate2 = "1.0"
+toml = "0.8"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 tokio = { version = "1.0", features = ["full"] }
+
 tokenizers = { version = "0.22.2", features = ["onig"], optional = true }
 
 [features]
@@ -30,4 +35,6 @@ coreml = ["onnx", "ort/coreml"]
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+tempfile = "3.10"
+rand = "0.8"
 

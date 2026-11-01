@@ -34,12 +34,14 @@
 #![allow(clippy::explicit_iter_loop)]
 
 pub mod embed;
+pub mod package;
 pub mod shield;
 
 pub use embed::{
     ApiProvider, ChunkingConfig, HsEmbedPlugin, Metric, MultiVectorizer, OnnxVectorizer,
     RemoteVectorizer, Vectorizer,
 };
+pub use package::{HspInstallResult, HspManifest, HspPackage, HspTarget};
 pub use shield::HsShieldPlugin;
 
 /// Version string of the Hyperspace Plugin Development Kit (`hyperspace-pdk`).
@@ -518,23 +520,22 @@ impl PluginRegistry {
                 .and_then(|c| c.get(&canonical_path).cloned())
         };
 
-        let lib = match lib_arc {
-            Some(arc) => arc,
-            None => {
-                let opened = unsafe {
-                    libloading::Library::new(path_ref).map_err(|e| {
-                        format!(
-                            "Failed to open dynamic plugin library '{}': {e}",
-                            path_ref.display()
-                        )
-                    })?
-                };
-                let arc = Arc::new(opened);
-                let mut write_cache = LOADED_LIBS_CACHE.write();
-                let cache = write_cache.get_or_insert_with(HashMap::new);
-                cache.insert(canonical_path, Arc::clone(&arc));
-                arc
-            }
+        let lib = if let Some(arc) = lib_arc {
+            arc
+        } else {
+            let opened = unsafe {
+                libloading::Library::new(path_ref).map_err(|e| {
+                    format!(
+                        "Failed to open dynamic plugin library '{}': {e}",
+                        path_ref.display()
+                    )
+                })?
+            };
+            let arc = Arc::new(opened);
+            let mut write_cache = LOADED_LIBS_CACHE.write();
+            let cache = write_cache.get_or_insert_with(HashMap::new);
+            cache.insert(canonical_path, Arc::clone(&arc));
+            arc
         };
 
         // SAFETY: External plugins compiled with `hs_export_plugin!` expose C-ABI `hs_pdk_api_version`
@@ -1154,5 +1155,129 @@ mod tests {
             recovery_err < 1e-12,
             "Inverse projection must recover original vector"
         );
+    }
+
+    #[tokio::test]
+    async fn test_all_domain_and_telemetry_plugins_loading_and_execution() {
+        let registry = PluginRegistry::with_standard_plugins();
+        let ctx = EngineContext::new("admin", None, None, 1);
+
+        // 1. Science plugin
+        if registry.get("science").is_some() {
+            let res = registry
+                .call_procedure(
+                    "science",
+                    "chem_smiles_to_ecfp",
+                    json!({ "smiles": "CC(=O)Oc1ccccc1C(=O)O", "n_bits": 64 }),
+                    &ctx,
+                )
+                .await
+                .unwrap();
+            assert_eq!(res["bits"], 64);
+            assert_eq!(res["fingerprint"].as_array().unwrap().len(), 64);
+        }
+
+        // 2. Graph / Onto plugin
+        if registry.get("graph_onto").is_some() {
+            let res = registry
+                .call_procedure(
+                    "graph_onto",
+                    "kg_hyperbolic_transe",
+                    json!({ "head": [0.1, 0.2], "relation": [0.0, 0.1] }),
+                    &ctx,
+                )
+                .await
+                .unwrap();
+            assert_eq!(res["predicted_tail"].as_array().unwrap().len(), 2);
+        }
+
+        // 3. Risk / Threat plugin
+        if registry.get("risk_threat").is_some() {
+            let res = registry
+                .call_procedure(
+                    "risk_threat",
+                    "sec_spacetime_causal_cone",
+                    json!({
+                        "source_event": [0.0, 0.0, 0.0],
+                        "target_event": [5.0, 1.0, 2.0]
+                    }),
+                    &ctx,
+                )
+                .await
+                .unwrap();
+            assert_eq!(res["is_causally_linked"], true);
+        }
+
+        // 4. Governance / IP plugin
+        if registry.get("governance_ip").is_some() {
+            let res = registry
+                .call_procedure(
+                    "governance_ip",
+                    "legal_kelsen_hierarchy_check",
+                    json!({
+                        "superior_norm_cone": [2.0, 0.0, 0.0],
+                        "subordinate_norm_cone": [4.0, 0.5, 0.5]
+                    }),
+                    &ctx,
+                )
+                .await
+                .unwrap();
+            assert_eq!(res["is_authorized"], true);
+        }
+
+        // 5. Robotics / Telemetry plugin
+        if registry.get("robotics_telemetry").is_some() {
+            let res = registry
+                .call_procedure(
+                    "robotics_telemetry",
+                    "telemetry_stream_to_trajectory",
+                    json!({
+                        "samples": [
+                            { "timestamp_sec": 0.0, "x": 0.0, "y": 0.0, "z": 0.0, "vx": 1.0, "vy": 0.0, "vz": 0.0 },
+                            { "timestamp_sec": 1.0, "x": 1.0, "y": 0.0, "z": 0.0, "vx": 1.0, "vy": 0.0, "vz": 0.0 }
+                        ]
+                    }),
+                    &ctx,
+                )
+                .await
+                .unwrap();
+            assert_eq!(res["duration_sec"], 1.0);
+            assert_eq!(res["path_length"], 1.0);
+        }
+
+        // 6. CDC plugin
+        if registry.get("cdc").is_some() {
+            let res = registry
+                .call_procedure(
+                    "cdc",
+                    "cdc_sync_row",
+                    json!({
+                        "row": { "id": "tx_999", "amount": 100.5 },
+                        "id_field": "id"
+                    }),
+                    &ctx,
+                )
+                .await
+                .unwrap();
+            assert_eq!(res["id"], "tx_999");
+        }
+
+        // 7. Multimodal plugin
+        if registry.get("multimodal").is_some() {
+            let res = registry
+                .call_procedure(
+                    "multimodal",
+                    "multimodal_clip_image",
+                    json!({
+                        "image_hex": "0102030405060708090a0b0c0d0e0f10",
+                        "dimension": 32
+                    }),
+                    &ctx,
+                )
+                .await
+                .unwrap();
+            assert_eq!(res["dimension"], 32);
+            assert_eq!(res["embedding"].as_array().unwrap().len(), 32);
+        }
     }
 }

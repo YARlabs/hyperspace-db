@@ -7,6 +7,11 @@ __pycache__
 .DS_Store
 .dart_tool/
 Cargo.lock
+# Compiled binaries and libraries
+*.dylib
+*.so
+*.dll
+*.hsp
 # Data files (Exclude everywhere)
 **/*.hyp
 **/*.snap

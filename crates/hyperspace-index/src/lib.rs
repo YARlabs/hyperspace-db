@@ -1,5 +1,4 @@
 #![allow(unused_features)]
-#![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::module_name_repetitions)]
@@ -18,9 +17,12 @@
 #![allow(clippy::assert_is_empty)]
 #![allow(clippy::needless_bool)]
 
+pub mod flat_layer0;
 pub mod spatial_aabb;
 pub mod stopwords;
 pub mod tokenizer;
+
+pub use flat_layer0::FlatLayer0Segment;
 
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
@@ -144,6 +146,42 @@ impl<M: Metric> HnswIndex<M> {
         Self::metadata_numeric_value_fast(meta, key, &typed_key)
     }
 
+    /// Freezes Layer-0 into a cache-aligned, continuous strided FlatLayer0Segment.
+    /// This eliminates pointer chasing and heap allocations for Layer-0 lookups.
+    pub fn freeze_flat_layer0(&self) -> Arc<FlatLayer0Segment> {
+        let node_count = self.nodes.count();
+        let max_m = self.config.get_m() * 2;
+        let vector_len = if node_count > 0 {
+            self.storage.get(0).len()
+        } else {
+            0
+        };
+        let mut segment = FlatLayer0Segment::new(node_count, max_m, vector_len);
+        for id in 0..node_count {
+            if let Some(node) = self.nodes.get(id) {
+                if !node.layers.is_empty() {
+                    let neighbors = node.layers[0].load();
+                    let vec_bytes = self.storage.get(id as u32);
+                    segment.set_node(id as u32, &neighbors, vec_bytes);
+                }
+            }
+        }
+        let seg_arc = Arc::new(segment);
+        self.flat_l0.store(Some(seg_arc.clone()));
+        seg_arc
+    }
+
+    /// Sets an already prepared FlatLayer0Segment into this index.
+    pub fn set_flat_layer0(&self, segment: Arc<FlatLayer0Segment>) {
+        self.flat_l0.store(Some(segment));
+    }
+
+    /// Checks if a FlatLayer0Segment is currently active.
+    #[must_use]
+    pub fn has_flat_layer0(&self) -> bool {
+        self.flat_l0.load().is_some()
+    }
+
     #[cfg(feature = "persistence")]
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
@@ -244,6 +282,14 @@ impl<M: Metric> HnswIndex<M> {
         if let Some(parent) = path.parent() {
             if let Ok(dir) = std::fs::File::open(parent) {
                 let _ = dir.sync_all();
+            }
+        }
+
+        if let Some(parent) = path.parent() {
+            let flat_guard = self.flat_l0.load();
+            if let Some(ref seg) = *flat_guard {
+                let flat_path = parent.join("flat_l0.bin");
+                let _ = seg.save_to_file(&flat_path);
             }
         }
 
@@ -492,10 +538,20 @@ impl<M: Metric> HnswIndex<M> {
             node_counter: AtomicU32::new(node_count as u32),
             spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
             pq,
+            flat_l0: arc_swap::ArcSwapOption::empty(),
             _marker: PhantomData,
             dimension,
         };
         index.rebuild_lexical_stats();
+        let flat_path = path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("flat_l0.bin");
+        if flat_path.exists() {
+            if let Ok(seg) = FlatLayer0Segment::load_from_file(&flat_path) {
+                index.flat_l0.store(Some(Arc::new(seg)));
+            }
+        }
         Ok(index)
     }
     pub fn save_to_bytes(&self) -> Result<Vec<u8>, String> {
@@ -694,6 +750,7 @@ impl<M: Metric> HnswIndex<M> {
             node_counter: AtomicU32::new(node_count as u32),
             spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
             pq,
+            flat_l0: arc_swap::ArcSwapOption::empty(),
             _marker: PhantomData,
             dimension,
         };
@@ -757,6 +814,7 @@ pub struct HnswIndex<M: Metric> {
     pub node_counter: AtomicU32,
     pub spatial_index: Arc<spatial_aabb::SpatialAabbIndex>,
     pub pq: Option<Arc<hyperspace_core::pq::ProductQuantizer>>,
+    pub flat_l0: arc_swap::ArcSwapOption<FlatLayer0Segment>,
 
     _marker: PhantomData<M>,
 }
@@ -787,8 +845,7 @@ struct Node {
 
 #[derive(Default)]
 struct VisitedScratch {
-    marks: Vec<u64>,
-    generation: u64,
+    words: Vec<u64>,
     candidates_l0: BinaryHeap<Candidate>,
     results_l0: BinaryHeap<std::cmp::Reverse<Candidate>>,
     candidates_layer: BinaryHeap<Candidate>,
@@ -797,30 +854,29 @@ struct VisitedScratch {
 }
 
 impl VisitedScratch {
-    fn prepare(&mut self, len: usize) -> u64 {
-        if self.marks.len() < len {
-            self.marks.resize(len, 0);
+    #[inline]
+    fn prepare(&mut self, len: usize) {
+        let num_words = len.div_ceil(64);
+        if self.words.len() < num_words {
+            self.words.resize(num_words, 0);
         }
-        self.generation = self.generation.wrapping_add(1);
-        if self.generation == 0 {
-            self.marks.fill(0);
-            self.generation = 1;
-        }
-        self.generation
+        self.words[..num_words].fill(0);
     }
 }
 
-#[inline]
-fn mark_visited(marks: &mut [u64], generation: u64, id: u32) -> bool {
+#[inline(always)]
+fn mark_visited(words: &mut [u64], id: u32) -> bool {
     let idx = id as usize;
-    if idx >= marks.len() {
+    let word_idx = idx / 64;
+    let bit_mask = 1u64 << (idx % 64);
+    if word_idx >= words.len() {
         return false;
     }
-    let slot = &mut marks[idx];
-    if *slot == generation {
+    let slot = &mut words[word_idx];
+    if (*slot & bit_mask) != 0 {
         false
     } else {
-        *slot = generation;
+        *slot |= bit_mask;
         true
     }
 }
@@ -936,6 +992,7 @@ impl<M: Metric> HnswIndex<M> {
             node_counter: AtomicU32::new(0),
             spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
             pq,
+            flat_l0: arc_swap::ArcSwapOption::empty(),
             _marker: PhantomData,
         }
     }
@@ -1555,6 +1612,7 @@ impl<M: Metric> HnswIndex<M> {
         self.dist_mrl(node_id, query, None)
     }
 
+    #[inline(always)]
     #[allow(clippy::many_single_char_names)]
     fn dist_mrl_opt(
         &self,
@@ -1571,6 +1629,19 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         let bytes = self.storage.get(node_id);
+        self.dist_bytes_opt(bytes, query, query_f32, pq_lut, mrl_dim, threshold)
+    }
+
+    #[allow(clippy::many_single_char_names)]
+    pub fn dist_bytes_opt(
+        &self,
+        bytes: &[u8],
+        query: &HyperVector,
+        query_f32: Option<&[f32]>,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
+        mrl_dim: Option<usize>,
+        threshold: Option<f64>,
+    ) -> f64 {
         match self.mode {
             QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
                 if let Some(lut) = pq_lut {
@@ -1942,6 +2013,125 @@ impl<M: Metric> HnswIndex<M> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    fn search_layer0_flat<F>(
+        &self,
+        flat_l0: &FlatLayer0Segment,
+        start_node: NodeId,
+        query: &HyperVector,
+        q_f32_ref: Option<&[f32]>,
+        k: usize,
+        ef: usize,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
+        mrl_dim: Option<usize>,
+        is_valid: &F,
+        scratch: &mut VisitedScratch,
+    ) -> Vec<(NodeId, f64)>
+    where
+        F: Fn(u32) -> bool,
+    {
+        let nodes_count = flat_l0.node_count();
+        scratch.prepare(nodes_count);
+
+        let ef_capacity = ef.max(k).max(16);
+        let mut candidates = std::mem::take(&mut scratch.candidates_l0);
+        let mut results = std::mem::take(&mut scratch.results_l0);
+
+        candidates.clear();
+        results.clear();
+        if candidates.capacity() < ef_capacity {
+            candidates.reserve(ef_capacity - candidates.capacity());
+        }
+        if results.capacity() < ef_capacity {
+            results.reserve(ef_capacity - results.capacity());
+        }
+
+        let start_vec = flat_l0.get_vector(start_node);
+        let d = self.dist_bytes_opt(start_vec, query, q_f32_ref, pq_lut, mrl_dim, None);
+        let first = Candidate {
+            id: start_node,
+            distance: d,
+        };
+
+        candidates.push(first);
+        if is_valid(start_node) {
+            results.push(std::cmp::Reverse(first));
+        }
+        let _ = mark_visited(&mut scratch.words, start_node);
+
+        while let Some(cand) = candidates.pop() {
+            if let Some(std::cmp::Reverse(worst)) = results.peek() {
+                if results.len() >= ef && cand.distance > worst.distance {
+                    break;
+                }
+            }
+
+            if (cand.id as usize) >= nodes_count {
+                continue;
+            }
+
+            let neighbors = flat_l0.get_neighbors(cand.id);
+            let n_len = neighbors.len();
+            for (idx, &neighbor) in neighbors.iter().enumerate() {
+                if idx + 2 < n_len {
+                    prefetch_l1(flat_l0.get_node_ptr(neighbors[idx + 2]));
+                } else if idx + 1 < n_len {
+                    prefetch_l1(flat_l0.get_node_ptr(neighbors[idx + 1]));
+                }
+
+                if !mark_visited(&mut scratch.words, neighbor) {
+                    continue;
+                }
+
+                let thresh = if results.len() >= ef {
+                    results.peek().map(|worst| worst.0.distance)
+                } else {
+                    None
+                };
+
+                let neighbor_vec = flat_l0.get_vector(neighbor);
+                let dist =
+                    self.dist_bytes_opt(neighbor_vec, query, q_f32_ref, pq_lut, mrl_dim, thresh);
+
+                let mut add_to_candidates = true;
+                if let Some(worst_dist) = thresh {
+                    if dist > worst_dist {
+                        add_to_candidates = false;
+                    }
+                }
+
+                if add_to_candidates {
+                    let c = Candidate {
+                        id: neighbor,
+                        distance: dist,
+                    };
+                    candidates.push(c);
+
+                    if is_valid(neighbor) {
+                        results.push(std::cmp::Reverse(c));
+                        if results.len() > ef {
+                            results.pop();
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut output = Vec::with_capacity(k.min(results.len()));
+        while let Some(std::cmp::Reverse(c)) = results.pop() {
+            output.push((c.id, c.distance));
+        }
+        output.reverse();
+        output.truncate(k);
+
+        candidates.clear();
+        results.clear();
+        scratch.candidates_l0 = candidates;
+        scratch.results_l0 = results;
+        output
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn search_layer0(
         &self,
         start_node: NodeId,
@@ -1985,7 +2175,6 @@ impl<M: Metric> HnswIndex<M> {
 
         VISITED_SCRATCH.with(|scratch_cell| {
             let mut scratch = scratch_cell.borrow_mut();
-            let generation = scratch.prepare(nodes_count);
 
             let ef_capacity = ef.max(k).max(16);
             let mut candidates = std::mem::take(&mut scratch.candidates_l0);
@@ -2011,6 +2200,29 @@ impl<M: Metric> HnswIndex<M> {
                 None
             };
 
+            let flat_guard = self.flat_l0.load();
+            if let Some(ref flat_l0) = *flat_guard {
+                if (start_node as usize) < flat_l0.node_count() {
+                    scratch.candidates_l0 = candidates;
+                    scratch.results_l0 = results;
+                    let out = self.search_layer0_flat(
+                        flat_l0,
+                        start_node,
+                        query,
+                        q_f32_ref,
+                        k,
+                        ef,
+                        pq_lut,
+                        mrl_dim,
+                        &is_valid,
+                        &mut scratch,
+                    );
+                    scratch.query_f32 = query_f32;
+                    return out;
+                }
+            }
+
+            scratch.prepare(nodes_count);
             let d = self.dist_mrl_opt(start_node, query, q_f32_ref, pq_lut, mrl_dim, None);
             let first = Candidate {
                 id: start_node,
@@ -2021,7 +2233,7 @@ impl<M: Metric> HnswIndex<M> {
             if is_valid(start_node) {
                 results.push(std::cmp::Reverse(first));
             }
-            let _ = mark_visited(&mut scratch.marks, generation, start_node);
+            let _ = mark_visited(&mut scratch.words, start_node);
 
             while let Some(cand) = candidates.pop() {
                 // Lower Bound Pruning:
@@ -2046,7 +2258,14 @@ impl<M: Metric> HnswIndex<M> {
                 let neighbors = node.layers[0].load();
                 let n_len = neighbors.len();
                 for (idx, &neighbor) in neighbors.iter().enumerate() {
-                    if idx + 1 < n_len {
+                    if idx + 2 < n_len {
+                        let lookahead_n = neighbors[idx + 2];
+                        if let Some(next_node) = self.nodes.get(lookahead_n as usize) {
+                            prefetch_l1(next_node as *const Node);
+                        }
+                        let bytes = self.storage.get(lookahead_n);
+                        prefetch_l1(bytes.as_ptr());
+                    } else if idx + 1 < n_len {
                         let next_n = neighbors[idx + 1];
                         if let Some(next_node) = self.nodes.get(next_n as usize) {
                             prefetch_l1(next_node as *const Node);
@@ -2055,7 +2274,7 @@ impl<M: Metric> HnswIndex<M> {
                         prefetch_l1(bytes.as_ptr());
                     }
 
-                    if !mark_visited(&mut scratch.marks, generation, neighbor) {
+                    if !mark_visited(&mut scratch.words, neighbor) {
                         continue;
                     }
 
@@ -2133,7 +2352,7 @@ impl<M: Metric> HnswIndex<M> {
 
         VISITED_SCRATCH.with(|scratch_cell| {
             let mut scratch = scratch_cell.borrow_mut();
-            let generation = scratch.prepare(nodes_count);
+            scratch.prepare(nodes_count);
 
             let ef_capacity = ef.max(16);
             let mut candidates = std::mem::take(&mut scratch.candidates_layer);
@@ -2156,7 +2375,7 @@ impl<M: Metric> HnswIndex<M> {
 
             candidates.push(first);
             results.push(std::cmp::Reverse(first));
-            let _ = mark_visited(&mut scratch.marks, generation, start_node);
+            let _ = mark_visited(&mut scratch.words, start_node);
 
             while let Some(cand) = candidates.pop() {
                 let curr_worst = results.peek().unwrap().0.distance;
@@ -2179,7 +2398,14 @@ impl<M: Metric> HnswIndex<M> {
                 let neighbors = node.layers[level].load();
                 let n_len = neighbors.len();
                 for (idx, &neighbor) in neighbors.iter().enumerate() {
-                    if idx + 1 < n_len {
+                    if idx + 2 < n_len {
+                        let lookahead_n = neighbors[idx + 2];
+                        if let Some(next_node) = self.nodes.get(lookahead_n as usize) {
+                            prefetch_l1(next_node as *const Node);
+                        }
+                        let bytes = self.storage.get(lookahead_n);
+                        prefetch_l1(bytes.as_ptr());
+                    } else if idx + 1 < n_len {
                         let next_n = neighbors[idx + 1];
                         if let Some(next_node) = self.nodes.get(next_n as usize) {
                             prefetch_l1(next_node as *const Node);
@@ -2188,7 +2414,7 @@ impl<M: Metric> HnswIndex<M> {
                         prefetch_l1(bytes.as_ptr());
                     }
 
-                    if !mark_visited(&mut scratch.marks, generation, neighbor) {
+                    if !mark_visited(&mut scratch.words, neighbor) {
                         continue;
                     }
 

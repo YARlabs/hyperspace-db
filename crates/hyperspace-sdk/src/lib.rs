@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
+#![cfg_attr(all(feature = "nightly-simd", has_nightly), feature(portable_simd))]
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::pedantic)]
 #![allow(clippy::result_large_err)]

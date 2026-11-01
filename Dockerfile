@@ -35,7 +35,7 @@ RUN rm -f rust-toolchain.toml .cargo/config.toml
 # Copy built UI assets to correct location
 COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
-# Build Release (Core Server, CLI, and External PDK Plugins: hs-git-ast & hs-eco)
+# Build Release (Core Server & CLI)
 # We use clang++ as linker for better C++ compatibility with 'ort'
 ENV CC=clang
 ENV CXX=clang++
@@ -43,18 +43,15 @@ ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
 RUN cargo build --release \
     -p hyperspace-server \
     -p hyperspace-cli \
-    -p hs-git-ast \
-    -p hs-eco \
     --no-default-features --features "nightly-simd s3-tiering"
 
-# Strip binaries and external cdylib plugins to reduce size
+# Strip binaries to reduce size
 RUN strip target/release/hyperspace-server \
-    target/release/hyperspace-cli \
-    target/release/libhs_git_ast.so \
-    target/release/libhs_eco.so
+    target/release/hyperspace-cli
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
+ARG VERSION=4.2.1
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -73,11 +70,10 @@ WORKDIR /app
 COPY --from=builder /app/target/release/hyperspace-server /usr/local/bin/
 COPY --from=builder /app/target/release/hyperspace-cli /usr/local/bin/
 
-# Copy external PDK dynamic plugins (.so) and catalog configuration
+# Set up plugins directory and template configuration (plugins installed via Hyperspace Hub)
 RUN mkdir -p /app/data /app/plugins
-COPY --from=builder /app/plugins/plugins.toml /app/plugins/plugins.toml
-COPY --from=builder /app/target/release/libhs_git_ast.so /app/plugins/
-COPY --from=builder /app/target/release/libhs_eco.so /app/plugins/
+COPY --from=builder /app/plugins/plugins.toml.example /app/plugins/plugins.toml.example
+RUN cp /app/plugins/plugins.toml.example /app/plugins/plugins.toml
 RUN chown -R hyperspace:hyperspace /app
 
 # Switch to non-root user
@@ -90,7 +86,7 @@ ENV HYPERSPACE_ENABLED_PLUGINS=embed,shield,git_ast,eco
 
 # Label the image
 LABEL org.opencontainers.image.source=https://github.com/YARlabs/hyperspace-db
-LABEL org.opencontainers.image.version="4.2.0"
+LABEL org.opencontainers.image.version="${VERSION}"
 
 # Expose ports
 EXPOSE 50051

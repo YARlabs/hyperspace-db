@@ -187,6 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Build the ServerArgs that start_server expects, forwarding our miner config
     let server_args = ServerArgs {
+        command: None,
         port: args.grpc_port,
         http_port: args.http_port,
         role: "leader".to_string(),
