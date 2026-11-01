@@ -760,7 +760,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             .shards
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.count() > 0)
+            .filter(|(_, s)| s.count() > 0 || s.write_buffer_size() > 0 || s.queue_size() > 0)
             .collect();
 
         if active_shards.is_empty() {
@@ -901,7 +901,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             .shards
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.count() > 0)
+            .filter(|(_, s)| s.count() > 0 || s.write_buffer_size() > 0 || s.queue_size() > 0)
             .collect();
 
         if active_shards.is_empty() {

@@ -33,7 +33,12 @@ async fn test_rebuild_and_queue() {
         encrypted: Some(false),
     };
     manager
-        .create_collection("default_admin", col_name, schema)
+        .create_collection_with_quantization(
+            "default_admin",
+            col_name,
+            schema,
+            Some("none".to_string()),
+        )
         .await
         .expect("Create failed");
 
@@ -736,7 +741,12 @@ async fn test_superkmeans_hierarchical_memory_clustering_efficiency() {
         encrypted: Some(false),
     };
     manager
-        .create_collection("default_admin", col_name, schema)
+        .create_collection_with_quantization(
+            "default_admin",
+            col_name,
+            schema,
+            Some("none".to_string()),
+        )
         .await
         .expect("Create failed");
 
@@ -818,7 +828,12 @@ async fn test_superkmeans_semantic_compactor_and_meta_router() {
         encrypted: Some(false),
     };
     manager
-        .create_collection("default_admin", col_name, schema)
+        .create_collection_with_quantization(
+            "default_admin",
+            col_name,
+            schema,
+            Some("none".to_string()),
+        )
         .await
         .expect("Create failed");
 
@@ -899,7 +914,12 @@ async fn test_billion_scale_64bit_id_addressing_and_routing() {
         encrypted: Some(false),
     };
     manager
-        .create_collection("default_admin", col_name, schema)
+        .create_collection_with_quantization(
+            "default_admin",
+            col_name,
+            schema,
+            Some("none".to_string()),
+        )
         .await
         .expect("Create failed");
 
@@ -936,6 +956,17 @@ async fn test_billion_scale_64bit_id_addressing_and_routing() {
         .expect("Insert 21.2B must succeed");
 
     // 2. Test get_points_u64 retrieval
+    let start = std::time::Instant::now();
+    loop {
+        if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(10) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
     let points = col.get_points_u64(&[id_5b, id_12b, id_21b]);
     assert_eq!(
         points.len(),
@@ -993,6 +1024,17 @@ async fn test_billion_scale_64bit_id_addressing_and_routing() {
     col.insert_batch_u64(batch, 0, Durability::Default)
         .await
         .expect("Batch insert 64-bit must succeed");
+
+    let start = std::time::Instant::now();
+    loop {
+        if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(10) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 
     let batch_retrieved = col.get_points_u64(&[21_200_000_001u64, 21_200_000_002u64]);
     assert_eq!(

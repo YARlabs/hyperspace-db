@@ -2475,10 +2475,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             }
             if self.id_map.contains_key(&id) {
                 let internal_id = self.to_internal_id(id);
-                let vec = idx.get_vector(internal_id);
-                if !vec.coords.is_empty() {
+                let coords = if let Some(v_f32) = self.raw_vector_cache.get(&internal_id) {
+                    v_f32.iter().map(|&x| x as f64).collect()
+                } else {
+                    let vec = idx.get_vector(internal_id);
+                    vec.coords
+                };
+                if !coords.is_empty() {
                     let meta = self.metadata_by_id(id);
-                    results.push((id, vec.coords, meta));
+                    results.push((id, coords, meta));
                 }
             }
         }

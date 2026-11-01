@@ -196,10 +196,13 @@ impl WriteBuffer {
         // into_sorted_vec() returns elements in ascending order (closest first)
         heap.into_sorted_vec()
             .into_iter()
-            .filter_map(|cand| {
-                self.entries
+            .map(|cand| {
+                let meta = self
+                    .entries
                     .get(&cand.internal_id)
-                    .map(|entry| (cand.user_id, cand.dist, entry.metadata.clone(), None))
+                    .map(|entry| entry.metadata.clone())
+                    .unwrap_or_default();
+                (cand.user_id, cand.dist, meta, None)
             })
             .collect()
     }
