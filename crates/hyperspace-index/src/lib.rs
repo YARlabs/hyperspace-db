@@ -3322,13 +3322,13 @@ impl<M: Metric> HnswIndex<M> {
     pub fn update_payload_metadata(
         &self,
         id: NodeId,
-        patch: std::collections::HashMap<String, String>,
+        patch: &std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
         if !patch.is_empty() {
             self.has_nonempty_metadata.store(true, Ordering::Relaxed);
         }
         if let Some(mut entry) = self.metadata.forward.get_mut(&id) {
-            for (key, new_val) in &patch {
+            for (key, new_val) in patch {
                 // If key existed with a different value, clean up old inverted/numeric entries
                 if let Some(old_val) = entry.get(key) {
                     if old_val != new_val {

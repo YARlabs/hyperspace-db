@@ -662,7 +662,7 @@ impl<M: Metric> CollectionImpl<M> {
                         let id = id as u32;
                         if logical_clock > loaded_clock {
                             if let Some(&internal_id) = id_map_data.get(&id) {
-                                let _ = index_ref.update_payload_metadata(internal_id, metadata);
+                                let _ = index_ref.update_payload_metadata(internal_id, &metadata);
                                 last_clock.fetch_max(logical_clock, Ordering::Relaxed);
                                 wal_pending_count.fetch_add(1, Ordering::Relaxed);
                             }
@@ -2852,7 +2852,7 @@ impl<M: Metric> CollectionImpl<M> {
         let mut res = self
             .index_link
             .load()
-            .update_payload_metadata(internal_id, patch.clone());
+            .update_payload_metadata(internal_id, &patch);
 
         if in_wb && res.is_err() {
             // Point is actively being indexed right now by worker thread.
@@ -2862,7 +2862,7 @@ impl<M: Metric> CollectionImpl<M> {
                 res = self
                     .index_link
                     .load()
-                    .update_payload_metadata(internal_id, patch.clone());
+                    .update_payload_metadata(internal_id, &patch);
                 if res.is_ok() {
                     break;
                 }
