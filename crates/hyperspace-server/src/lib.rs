@@ -3897,12 +3897,10 @@ pub async fn start_server(
                 }
                 let disk_used_bytes = get_dir_size(std::path::Path::new(&data_dir));
 
-                let is_now_full = if disk_capacity_bytes > 0 && ram_capacity_bytes > 0 {
-                    (disk_used_bytes as f64 / disk_capacity_bytes as f64 >= 0.90)
-                        || (ram_used_bytes as f64 / ram_capacity_bytes as f64 >= 0.90)
-                } else {
-                    false
-                };
+                let is_now_full = disk_capacity_bytes > 0
+                    && ram_capacity_bytes > 0
+                    && ((disk_used_bytes as f64 / disk_capacity_bytes as f64 >= 0.90)
+                        || (ram_used_bytes as f64 / ram_capacity_bytes as f64 >= 0.90));
 
                 is_full_clone.store(is_now_full, std::sync::atomic::Ordering::Relaxed);
 

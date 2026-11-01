@@ -42,6 +42,9 @@ compile_error!(
      `accelerate` (macOS) or `openblas` (Linux/Windows/macOS)"
 );
 
+#[cfg(feature = "blas")]
+use matrixmultiply as _;
+
 pub mod adsampling;
 pub mod batch;
 pub mod common;
