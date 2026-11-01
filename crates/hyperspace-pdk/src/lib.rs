@@ -350,6 +350,62 @@ struct RegisteredPluginEntry {
     source: String,
 }
 
+/// Safe proxy wrapper holding a raw pointer to a dynamic plugin instantiated by `hs_plugin_create()`.
+/// Prevents cross-allocator boundary deallocations when the host uses `tikv-jemallocator`.
+struct ExternalPluginWrapper {
+    raw: *mut Box<dyn HsPlugin>,
+    _lib: Arc<libloading::Library>,
+}
+
+unsafe impl Send for ExternalPluginWrapper {}
+unsafe impl Sync for ExternalPluginWrapper {}
+
+#[async_trait::async_trait]
+impl HsPlugin for ExternalPluginWrapper {
+    fn manifest(&self) -> PluginManifest {
+        unsafe { (**self.raw).manifest() }
+    }
+
+    async fn before_insert(
+        &self,
+        collection: &str,
+        metric: &str,
+        dimension: usize,
+        points: &mut Vec<InsertPoint>,
+    ) -> Result<(), String> {
+        unsafe {
+            (**self.raw)
+                .before_insert(collection, metric, dimension, points)
+                .await
+        }
+    }
+
+    async fn before_search(&self, ctx: &mut SearchContext) -> Result<(), String> {
+        unsafe { (**self.raw).before_search(ctx).await }
+    }
+
+    async fn after_search(
+        &self,
+        collection: &str,
+        results: &mut Vec<SearchResult>,
+    ) -> Result<(), String> {
+        unsafe { (**self.raw).after_search(collection, results).await }
+    }
+
+    async fn call_procedure(
+        &self,
+        method: &str,
+        args: Value,
+        ctx: &EngineContext,
+    ) -> Result<Value, String> {
+        unsafe { (**self.raw).call_procedure(method, args, ctx).await }
+    }
+
+    fn evaluate_custom_metric(&self, name: &str, a: &[f64], b: &[f64]) -> Option<f64> {
+        unsafe { (**self.raw).evaluate_custom_metric(name, a, b) }
+    }
+}
+
 static LOADED_LIBS_CACHE: parking_lot::RwLock<Option<HashMap<PathBuf, Arc<libloading::Library>>>> =
     parking_lot::RwLock::new(None);
 
@@ -573,8 +629,10 @@ impl PluginRegistry {
                 ));
             }
 
-            let boxed_outer: Box<Box<dyn HsPlugin>> = Box::from_raw(raw_ptr);
-            let plugin_arc: Arc<dyn HsPlugin> = Arc::from(*boxed_outer);
+            let plugin_arc: Arc<dyn HsPlugin> = Arc::new(ExternalPluginWrapper {
+                raw: raw_ptr,
+                _lib: Arc::clone(&lib),
+            });
             let source_tag = format!("external:{}", path_ref.display());
 
             self.loaded_libraries.write().push(Arc::clone(&lib));
