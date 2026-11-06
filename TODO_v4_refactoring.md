@@ -1,15 +1,20 @@
-# HyperspaceDB v4.2.1 — Refactoring Roadmap & Progress Tracker
+# HyperspaceDB v4.2.2 — Refactoring Roadmap & Progress Tracker
 
 ## 🎯 High-Level Goals
 1. **Thread-per-Core (Shared-Nothing Architecture)**: Transition from shared global `DashMap`/`RwLock` state to core-isolated shards (`ShardedCollection`) with core affinity and lock-free scatter-gather execution.
 2. **Direct I/O Storage Engine**: Aligned block storage (4096-byte Direct I/O) bypassing OS page cache pollution and memory contention during heavy disk MRL cascade reads.
-3. **Hardware-Level Bottleneck Elimination & Flat Navigation (v4.2.1)**:
+3. **Hardware SIMD SQ8 f32 Vector Kernels & Epoch Visited Lifecycle (v4.2.2)**:
+   - Dynamic CPU SIMD dispatch (AVX-512, AVX2+FMA, ARM NEON, scalar) for `sq8_l2_sq` and `sq8_dot`, quantizing query vectors to f32 once per search and accelerating distance calculations up to 3.4×.
+   - Epoch-based (`u16`) visited lifecycle eliminating per-query memory clearing overhead on multi-million node indexes.
+   - Automatic snapshot freezing and zero-copy restoration of `FlatLayer0Segment` sidecars (`flat_l0.bin`).
+   - Query vector validation zero-alloc fast paths and exact rerank buffer pipelining.
+4. **Hardware-Level Bottleneck Elimination & Flat Navigation (v4.2.1)**:
    - Contiguous strided 64-byte cache-aligned Layer-0 graph layout (`FlatLayer0Segment`, `FlatNodeHeader`, `AlignedBuffer`) eliminating pointer chasing and triple-cache-miss lookups.
    - 64x memory-compact 1-bit Visited flat bitset (`words: Vec<u64>`), dropping scratch buffer footprint from 8 MB to 125 KB per thread for 1M nodes.
    - Lookahead $K=2$ software pipelining prefetch in Layer-0 and dynamic layer candidate traversal.
    - O(N) geometric scan → Axis-Aligned Bounding Box (AABB) spatial indexing.
-4. **Zero-Downtime Automatic Migration (v3.x → v4.x)**: Automatic detection of legacy v3.x `.hyp` collections in `data/legacy_v3/` or `data/`, instant conversion to v4 sharded Direct I/O layout under `data/v4/`, and safe archiving to `data/legacy_v3_migrated/`.
-5. **Documentation & Benchmarks**: Complete synchronization of `ARCHITECTURE.md`, `CHANGELOG.md`, `README.md`, `SECURITY.md`.
+5. **Zero-Downtime Automatic Migration (v3.x → v4.x)**: Automatic detection of legacy v3.x `.hyp` collections in `data/legacy_v3/` or `data/`, instant conversion to v4 sharded Direct I/O layout under `data/v4/`, and safe archiving to `data/legacy_v3_migrated/`. All v4.x collections maintain 100% forward and backward compatibility without manual migrations.
+6. **Documentation & Benchmarks**: Complete synchronization of `ARCHITECTURE.md`, `CHANGELOG.md`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`.
 
 ---
 
@@ -149,6 +154,28 @@
     - [x] +14.3% QPS boost for 8-bit Turbo quantization (3,030 → 3,463 QPS on 150k nodes).
     - [x] 100% search result equivalence between dynamic pointer graph and flat strided graph.
     - [x] Zero compilation warnings (`cargo clippy --all-targets --all-features -- -D warnings`), 100% passing tests.
+
+- [x] **Phase 10: Hardware SIMD SQ8 f32 Vector Kernels, Epoch Visited-Set Lifecycle & Zero-Cost Persistence (v4.2.2 - 100% COMPLETE)**
+  - [x] **Runtime SIMD SQ8 f32 Vector Distance Kernels**:
+    - [x] `sq8_l2_sq` and `sq8_dot` implemented with dynamic runtime CPU detection (AVX-512, AVX2+FMA, ARM NEON, scalar fallback).
+    - [x] Quantize query vector to `f32` once per search query in `search_layer0` and upper layers.
+    - [x] Integrated into `distance_bytes_euclidean_sq_f32`, `distance_bytes_poincare_sq_f32`, and `distance_bytes_lorentz_f32`, providing up to 3.4× kernel speedup.
+  - [x] **Epoch-Based Visited-Set Lifecycle**:
+    - [x] Replaced per-query `fill(0)` on `VisitedScratch` with monotonic `u16` generation epochs (`epoch += 1`).
+    - [x] Added zero-cost wraparound clearing with epoch reset when `epoch == 0`.
+    - [x] Completely removed query latency scaling on large indices (up to 70× faster visited reset on 50M+ node graphs).
+  - [x] **Auto-Freezing Flat Layer 0 & Snapshot Persistence**:
+    - [x] Automatic freezing of `FlatLayer0Segment` during snapshot creation without manual compaction triggers.
+    - [x] Safe zero-copy loading on index restart; transparent fallback to dynamic graph for pending insertions.
+  - [x] **Filter Pruning & Exact Rerank Optimization**:
+    - [x] Direct bypass of `build_allowed_bitmap` on empty filter expressions.
+    - [x] Fast short-circuiting on tombstones when `metadata.has_deletions()` is false.
+    - [x] Single-pass query validation before allocating query structures.
+    - [x] Direct slice buffer reuse in `collection.rs` exact rerank pipeline, eliminating intermediate allocations and memcpy overhead.
+  - [x] **Docker BuildKit Acceleration & CI Hardening**:
+    - [x] `--mount=type=cache` added for Cargo registry and git directories across Dockerfiles.
+    - [x] Default compilation target set to `x86-64-v3` for stable multi-CPU Linux deployments.
+    - [x] 100% backward and forward compatibility with existing v4 collections (zero manual migrations required).
 
 ---
 

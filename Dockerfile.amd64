@@ -32,7 +32,7 @@ RUN rm -f rust-toolchain.toml .cargo/config.toml
 ENV CC=clang
 ENV CXX=clang++
 ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
-RUN cargo build --release -p hyperspace-server -p hyperspace-cli --features nightly-simd
+RUN --mount=type=cache,target=/root/.cargo/registry --mount=type=cache,target=/root/.cargo/git cargo build --release -p hyperspace-server -p hyperspace-cli --features nightly-simd
 
 # Strip binaries to reduce size
 RUN strip target/release/hyperspace-server \
@@ -40,7 +40,7 @@ RUN strip target/release/hyperspace-server \
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
-ARG VERSION=4.2.1
+ARG VERSION=4.2.2
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \

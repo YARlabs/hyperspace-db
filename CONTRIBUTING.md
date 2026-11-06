@@ -36,23 +36,38 @@ By submitting contributions to HyperspaceDB, you agree that your contributions w
 
 ## 🧪 Testing
 
-We value stability. Please ensure all tests pass before submitting a PR:
+We value stability and reproducibility. Please ensure all tests and benchmarks compile and pass across the full workspace before submitting a PR:
 ```bash
+# Verify workspace compilation
 cargo check --workspace
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --lib
-# Test native clustering and graph benchmarks
-cargo test -p hyperspace-clustering
+
+# Run all workspace unit and integration tests
+cargo test --workspace
+
+# Run tests in release profile (matches production release pipeline)
+cargo test --workspace --release
+
+# Validate that performance benchmarks compile cleanly
 cargo bench --bench graph_vs_dual --no-run
 ```
 
-## 📜 Code Style
+## 📜 Code Style & Lints
 
-We follow standard Rust formatting:
+We adhere strictly to zero-warning standards across the entire workspace:
+```bash
+# Check formatting
+cargo fmt --all -- --check
+
+# Strict Clippy validation for all crates, targets, and features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Pedantic Clippy validation on test suites
+cargo clippy --tests --workspace -- -W clippy::pedantic
+```
+
+To auto-format changes:
 ```bash
 cargo fmt --all
-cargo clippy --all-features -- -D warnings
-cargo clippy --tests --workspace -- -W clippy::pedantic
 ```
 
 ## 📐 Adding New Metrics

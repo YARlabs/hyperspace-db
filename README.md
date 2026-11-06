@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.2.1** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
+**v4.2.2** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,19 +33,23 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v4.2.1)
+## 🚀 Core Pillars (v4.2.2)
 
 <table>
   <tr>
-    <td>🚀 <b>Flat Navigation &amp; Cache-Aligned Layer-0 (v4.2.1)</b></td>
-    <td>Contiguous, strided 64-byte cache-aligned Layer-0 memory layout (<code>FlatLayer0Segment</code>, <code>FlatNodeHeader</code>, <code>AlignedBuffer</code>) eliminating pointer chasing and DRAM latency bottlenecks. Co-locates quantized vector coordinates and graph edges in single cache lines with zero-pointer offset addressing (\(\text{offset} = i \times \text{STRIDE}\)). Delivers <b>+26.5% QPS boost</b> and drops P99 tail latency by <b>2.3×</b> (169.6 µs → 72.9 µs). Includes <b>64× memory reduction</b> in per-query Visited tracking via 1-bit flat bitset (125 KB vs 8.0 MB per thread for 1M nodes) and software-pipelined \(K=2\) lookahead prefetch.</td>
+    <td>🚀 <b>Hardware Runtime SIMD &amp; f32 SQ8 Kernels (v4.2.2)</b></td>
+    <td>High-throughput SIMD vector distance kernels (<code>sq8_l2_sq</code> and <code>sq8_dot</code>) with dynamic CPU detection (AVX-512, AVX2+FMA, ARM NEON, scalar fallback). Query vectors are quantized to <code>f32</code> once per search, accelerating SQ8 Poincaré, Lorentz, and Euclidean calculations by <b>up to 3.4×</b>. Combined with an <b>Epoch-Based Visited Set Lifecycle</b> (<code>u16</code> generation tokens) that eliminates per-query <code>fill(0)</code> cache flushing overhead on multi-million node indexes.</td>
   </tr>
   <tr>
-    <td>🔌 <b>Hyperspace PDK (<code>hyperspace-pdk</code> v4.2.1)</b></td>
+    <td>💾 <b>Auto-Freezing Flat Layer-0 Navigation (v4.2.2)</b></td>
+    <td>Contiguous, strided 64-byte cache-aligned Layer-0 memory layout (<code>FlatLayer0Segment</code>, <code>FlatNodeHeader</code>, <code>AlignedBuffer</code>) automatically frozen during snapshot persistence and reloaded zero-copy. Eliminates pointer chasing and DRAM latency bottlenecks, delivering <b>+26.5% QPS boost</b> and <b>2.3× lower P99 tail latency</b> with <b>100% backward compatibility</b> across existing v4 collections without manual migration.</td>
+  </tr>
+  <tr>
+    <td>🔌 <b>Hyperspace PDK (<code>hyperspace-pdk</code> v4.2.2)</b></td>
     <td><code>pgrx</code>-inspired extension architecture turning HyperspaceDB into an extensible Spatial Runtime. Includes 3 built-in flagship plugins out of the box: <b><code>hs-embed</code></b> (Zero-Python in-engine Markdown chunker, multi-manifold vectorizer &amp; sequential KAG graph linker), <b><code>hs-git-ast</code></b> (instant AST codebase symbol &amp; KAG topology builder for Rust, Python, TypeScript/JS, and Go), and <b><code>hs-shield</code></b> (Zero-Knowledge <code>O(D log D)</code> FWHT orthogonal projection defending against <code>Vec2Text</code> inversion with 100% distance preservation). Exposed dynamically in Python, TypeScript, and Rust SDKs via <code>client.ext.&lt;plugin&gt;.&lt;method&gt;(...)</code>.</td>
   </tr>
   <tr>
-    <td>📐 <b>Universal 12-Metric SIMD Vector Engine (v4.2.0)</b></td>
+    <td>📐 <b>Universal 12-Metric SIMD Vector Engine</b></td>
     <td>First-class support for <b>12 distance metrics</b> (<code>l2</code>, <code>cosine</code>, <code>dot</code>, <code>l1</code>, <code>linf</code>, <code>angular</code>, <code>jaccard</code>, <code>hamming</code>, <code>poincare</code>, <code>lorentz</code>, <code>hybrid</code>, <code>wasserstein</code>) backed by hardware-dispatched (AVX-512F, AVX2+FMA, ARM NEON) zero-copy byte-slice kernels and zero-allocation HNSW search hot paths.</td>
   </tr>
   <tr>

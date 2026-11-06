@@ -1878,51 +1878,44 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
-                    let with_exact_coords = |id: u32, scratch: &mut Vec<f64>, f: &mut dyn FnMut(&[f64]) -> f64| -> f64 {
+                    let with_exact_coords = |id: u32, dst: &mut [f64], f: &mut dyn FnMut(&[f64]) -> f64| -> f64 {
                         if let Some(v_f32) = raw_vector_cache_owned.get(&id) {
-                            if scratch.len() != v_f32.len() {
-                                scratch.resize(v_f32.len(), 0.0);
+                            let len = dst.len().min(v_f32.len());
+                            for (d, &src) in dst[..len].iter_mut().zip(v_f32[..len].iter()) {
+                                *d = f64::from(src);
                             }
-                            for (dst, &src) in scratch.iter_mut().zip(v_f32.iter()) {
-                                *dst = src as f64;
-                            }
-                            return f(scratch);
+                            return f(&dst[..len]);
                         }
                         if let Ok(Some(bytes)) = payload_store_owned.fetch_blocking(id) {
                             if bytes.len() == processed_query.len() * 4 {
-                                if scratch.len() != processed_query.len() {
-                                    scratch.resize(processed_query.len(), 0.0);
-                                }
                                 for (i, chunk) in bytes.as_chunks::<4>().0.iter().enumerate() {
-                                    if i < scratch.len() {
-                                        scratch[i] = f64::from(f32::from_le_bytes(*chunk));
+                                    if i < dst.len() {
+                                        dst[i] = f64::from(f32::from_le_bytes(*chunk));
                                     }
                                 }
-                                return f(scratch);
+                                return f(dst);
                             } else if bytes.len() == processed_query.len() * 8 {
-                                if scratch.len() != processed_query.len() {
-                                    scratch.resize(processed_query.len(), 0.0);
-                                }
                                 for (i, chunk) in bytes.as_chunks::<8>().0.iter().enumerate() {
-                                    if i < scratch.len() {
-                                        scratch[i] = f64::from_le_bytes(*chunk);
+                                    if i < dst.len() {
+                                        dst[i] = f64::from_le_bytes(*chunk);
                                     }
                                 }
-                                return f(scratch);
+                                return f(dst);
                             }
                         }
                         let orig = index.get_vector_original(id);
-                        f(&orig.coords)
+                        let len = dst.len().min(orig.coords.len());
+                        dst[..len].copy_from_slice(&orig.coords[..len]);
+                        f(&dst[..len])
                     };
 
                     if layout_owned.components.len() > 1 {
                         let candidate_ids: Vec<u32> = results.iter().map(|(id, _)| *id).collect();
                         let q_len = processed_query.len();
                         let mut flat_vectors = vec![0.0; candidate_ids.len() * q_len];
-                        let mut scratch = vec![0.0; q_len];
                         for (idx, id) in candidate_ids.iter().enumerate() {
-                            with_exact_coords(*id, &mut scratch, &mut |_| 0.0);
-                            flat_vectors[idx * q_len..(idx + 1) * q_len].copy_from_slice(&scratch);
+                            let slot = &mut flat_vectors[idx * q_len..(idx + 1) * q_len];
+                            with_exact_coords(*id, slot, &mut |_| 0.0);
                         }
                         let candidate_refs: Vec<&[f64]> =
                             flat_vectors.chunks_exact(q_len).collect();

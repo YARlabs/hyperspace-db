@@ -182,6 +182,14 @@ impl<M: Metric> HnswIndex<M> {
         self.flat_l0.load().is_some()
     }
 
+    /// Freezes Layer-0 into a cache-aligned, continuous strided FlatLayer0Segment
+    /// if not already active and the index contains nodes.
+    pub fn ensure_flat_layer0(&self) {
+        if self.flat_l0.load().is_none() && self.nodes.count() > 0 {
+            self.freeze_flat_layer0();
+        }
+    }
+
     #[cfg(feature = "persistence")]
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
@@ -286,6 +294,9 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         if let Some(parent) = path.parent() {
+            if self.flat_l0.load().is_none() && self.nodes.count() > 0 {
+                self.freeze_flat_layer0();
+            }
             let flat_guard = self.flat_l0.load();
             if let Some(ref seg) = *flat_guard {
                 let flat_path = parent.join("flat_l0.bin");
@@ -551,6 +562,8 @@ impl<M: Metric> HnswIndex<M> {
             if let Ok(seg) = FlatLayer0Segment::load_from_file(&flat_path) {
                 index.flat_l0.store(Some(Arc::new(seg)));
             }
+        } else if node_count > 0 {
+            index.freeze_flat_layer0();
         }
         Ok(index)
     }
@@ -845,7 +858,8 @@ struct Node {
 
 #[derive(Default)]
 struct VisitedScratch {
-    words: Vec<u64>,
+    epochs: Vec<u16>,
+    epoch: u16,
     candidates_l0: BinaryHeap<Candidate>,
     results_l0: BinaryHeap<std::cmp::Reverse<Candidate>>,
     candidates_layer: BinaryHeap<Candidate>,
@@ -856,28 +870,30 @@ struct VisitedScratch {
 impl VisitedScratch {
     #[inline]
     fn prepare(&mut self, len: usize) {
-        let num_words = len.div_ceil(64);
-        if self.words.len() < num_words {
-            self.words.resize(num_words, 0);
+        if self.epochs.len() < len {
+            self.epochs.resize(len, 0);
         }
-        self.words[..num_words].fill(0);
+        self.epoch = self.epoch.wrapping_add(1);
+        if self.epoch == 0 {
+            self.epochs.fill(0);
+            self.epoch = 1;
+        }
     }
-}
 
-#[inline(always)]
-fn mark_visited(words: &mut [u64], id: u32) -> bool {
-    let idx = id as usize;
-    let word_idx = idx / 64;
-    let bit_mask = 1u64 << (idx % 64);
-    if word_idx >= words.len() {
-        return false;
-    }
-    let slot = &mut words[word_idx];
-    if (*slot & bit_mask) != 0 {
-        false
-    } else {
-        *slot |= bit_mask;
-        true
+    #[inline(always)]
+    fn mark_visited(&mut self, id: u32) -> bool {
+        let idx = id as usize;
+        if idx < self.epochs.len() {
+            let slot = &mut self.epochs[idx];
+            if *slot == self.epoch {
+                false
+            } else {
+                *slot = self.epoch;
+                true
+            }
+        } else {
+            false
+        }
     }
 }
 
@@ -1361,13 +1377,15 @@ impl<M: Metric> HnswIndex<M> {
             return self.search_hybrid(query, filter, complex_filters, text, params);
         }
 
-        let allowed_bitmap = self.build_allowed_bitmap(filter, complex_filters);
-        if allowed_bitmap
-            .as_ref()
-            .is_some_and(roaring::RoaringBitmap::is_empty)
-        {
-            return Vec::new();
-        }
+        let allowed_bitmap = if filter.is_empty() && complex_filters.is_empty() {
+            None
+        } else {
+            let bm = self.build_allowed_bitmap(filter, complex_filters);
+            if bm.as_ref().is_some_and(roaring::RoaringBitmap::is_empty) {
+                return Vec::new();
+            }
+            bm
+        };
 
         self.search_with_allowed(query, allowed_bitmap.as_ref(), params)
     }
@@ -1383,16 +1401,10 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         // 1. Create HyperVector from query.
-        if query.len() != self.dimension {
+        if query.len() != self.dimension || M::validate(query).is_err() {
             return Vec::new();
         }
-        let mut aligned_query = vec![0.0; self.dimension];
-        aligned_query.copy_from_slice(query);
-
-        if M::validate(&aligned_query).is_err() {
-            return Vec::new();
-        }
-        let mut q_vec = HyperVector::new_unchecked(aligned_query);
+        let mut q_vec = HyperVector::new_unchecked(query.to_vec());
         if self.mode == QuantizationMode::Turbo {
             let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
                 33
@@ -1662,11 +1674,27 @@ impl<M: Metric> HnswIndex<M> {
             QuantizationMode::ScalarI8 => {
                 let name = M::name();
                 if name == "l2" || name == "cosine" {
-                    QuantizedHyperVector::distance_bytes_euclidean_sq(bytes, query)
+                    if let Some(q_f32) = query_f32 {
+                        QuantizedHyperVector::distance_bytes_euclidean_sq_f32(bytes, q_f32)
+                    } else {
+                        QuantizedHyperVector::distance_bytes_euclidean_sq(bytes, query)
+                    }
                 } else if name == "poincare" {
-                    QuantizedHyperVector::distance_bytes_poincare_sq(bytes, query)
+                    if let Some(q_f32) = query_f32 {
+                        QuantizedHyperVector::distance_bytes_poincare_sq_f32(
+                            bytes,
+                            q_f32,
+                            query.alpha,
+                        )
+                    } else {
+                        QuantizedHyperVector::distance_bytes_poincare_sq(bytes, query)
+                    }
                 } else if name == "lorentz" {
-                    QuantizedHyperVector::distance_bytes_lorentz(bytes, query)
+                    if let Some(q_f32) = query_f32 {
+                        QuantizedHyperVector::distance_bytes_lorentz_f32(bytes, q_f32)
+                    } else {
+                        QuantizedHyperVector::distance_bytes_lorentz(bytes, query)
+                    }
                 } else {
                     let q = QuantizedHyperVector::from_bytes(bytes);
                     M::distance_quantized(&q, query)
@@ -2057,7 +2085,7 @@ impl<M: Metric> HnswIndex<M> {
         if is_valid(start_node) {
             results.push(std::cmp::Reverse(first));
         }
-        let _ = mark_visited(&mut scratch.words, start_node);
+        let _ = scratch.mark_visited(start_node);
 
         while let Some(cand) = candidates.pop() {
             if let Some(std::cmp::Reverse(worst)) = results.peek() {
@@ -2079,7 +2107,7 @@ impl<M: Metric> HnswIndex<M> {
                     prefetch_l1(flat_l0.get_node_ptr(neighbors[idx + 1]));
                 }
 
-                if !mark_visited(&mut scratch.words, neighbor) {
+                if !scratch.mark_visited(neighbor) {
                     continue;
                 }
 
@@ -2153,12 +2181,15 @@ impl<M: Metric> HnswIndex<M> {
         } else {
             None
         };
+        let has_deletions = deleted_guard.as_ref().is_some_and(|g| !g.is_empty());
 
         let is_valid = |id: u32| -> bool {
             if let Some(bm) = allowed {
                 bm.contains(id)
-            } else {
+            } else if has_deletions {
                 !deleted_guard.as_ref().unwrap().contains(id)
+            } else {
+                true
             }
         };
 
@@ -2189,12 +2220,13 @@ impl<M: Metric> HnswIndex<M> {
                 results.reserve(ef_capacity - results.capacity());
             }
 
+            let needs_f32 = self.storage_f32 || self.mode == QuantizationMode::ScalarI8;
             let mut query_f32 = std::mem::take(&mut scratch.query_f32);
-            if self.storage_f32 {
+            if needs_f32 {
                 query_f32.clear();
                 query_f32.extend(query.coords.iter().map(|&x| x as f32));
             }
-            let q_f32_ref = if self.storage_f32 {
+            let q_f32_ref = if needs_f32 {
                 Some(query_f32.as_slice())
             } else {
                 None
@@ -2233,7 +2265,7 @@ impl<M: Metric> HnswIndex<M> {
             if is_valid(start_node) {
                 results.push(std::cmp::Reverse(first));
             }
-            let _ = mark_visited(&mut scratch.words, start_node);
+            let _ = scratch.mark_visited(start_node);
 
             while let Some(cand) = candidates.pop() {
                 // Lower Bound Pruning:
@@ -2274,7 +2306,7 @@ impl<M: Metric> HnswIndex<M> {
                         prefetch_l1(bytes.as_ptr());
                     }
 
-                    if !mark_visited(&mut scratch.words, neighbor) {
+                    if !scratch.mark_visited(neighbor) {
                         continue;
                     }
 
@@ -2375,7 +2407,7 @@ impl<M: Metric> HnswIndex<M> {
 
             candidates.push(first);
             results.push(std::cmp::Reverse(first));
-            let _ = mark_visited(&mut scratch.words, start_node);
+            let _ = scratch.mark_visited(start_node);
 
             while let Some(cand) = candidates.pop() {
                 let curr_worst = results.peek().unwrap().0.distance;
@@ -2414,7 +2446,7 @@ impl<M: Metric> HnswIndex<M> {
                         prefetch_l1(bytes.as_ptr());
                     }
 
-                    if !mark_visited(&mut scratch.words, neighbor) {
+                    if !scratch.mark_visited(neighbor) {
                         continue;
                     }
 
@@ -3198,8 +3230,14 @@ impl<M: Metric> HnswIndex<M> {
                 let selected_neighbors = self.select_neighbors(&q_vec, candidates_heap, m_max);
 
                 // c) Bidirectional connect
+                // Fast-path: 'id' is the newly created node, set its links directly in one operation
+                // rather than M incremental RCU re-allocations copying growing vectors.
+                if let Some(node) = self.nodes.get(id as usize) {
+                    if node.layers.len() > level {
+                        node.layers[level].store(Arc::new(selected_neighbors.clone()));
+                    }
+                }
                 for &neighbor_id in &selected_neighbors {
-                    self.add_link(id, neighbor_id, level);
                     self.add_link(neighbor_id, id, level);
 
                     // d) Pruning
@@ -4027,5 +4065,45 @@ impl<M: Metric> HnswIndex<M> {
             .take(params.top_k)
             .map(|(id, score)| (id, f64::from(10.0 - score)))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_visited_scratch_epoch_lifecycle_and_wraparound() {
+        let mut scratch = VisitedScratch::default();
+        let nodes = 1000;
+
+        // Query 1
+        scratch.prepare(nodes);
+        assert_eq!(scratch.epoch, 1);
+        assert!(scratch.mark_visited(10));
+        assert!(scratch.mark_visited(42));
+        assert!(!scratch.mark_visited(10));
+        assert!(!scratch.mark_visited(42));
+        assert!(scratch.mark_visited(999));
+
+        // Query 2 (no wrap, different epoch)
+        scratch.prepare(nodes);
+        assert_eq!(scratch.epoch, 2);
+        assert!(scratch.mark_visited(10)); // unvisited in new epoch!
+        assert!(!scratch.mark_visited(10));
+
+        // Simulate reaching near-overflow
+        scratch.epoch = u16::MAX - 1;
+        scratch.prepare(nodes);
+        assert_eq!(scratch.epoch, u16::MAX);
+        assert!(scratch.mark_visited(50));
+        assert!(!scratch.mark_visited(50));
+
+        // Wrap around to 0 -> resets to 1
+        scratch.prepare(nodes);
+        assert_eq!(scratch.epoch, 1);
+        assert!(scratch.mark_visited(50));
+        assert!(!scratch.mark_visited(50));
+        assert!(scratch.mark_visited(100));
     }
 }

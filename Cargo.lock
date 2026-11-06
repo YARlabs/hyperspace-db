@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-billing"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2414,7 +2414,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cache"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -2433,7 +2433,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "chrono",
  "crossterm",
@@ -2447,7 +2447,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-clustering"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "criterion",
  "matrixmultiply",
@@ -2460,7 +2460,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2477,7 +2477,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "4.2.1"
+version = "4.2.2"
 dependencies = [
  "arc-swap",
  "boxcar",
@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-pdk"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2556,7 +2556,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "prost 0.12.6",
  "serde",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -2591,7 +2591,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "4.2.1"
+version = "4.2.2"
 dependencies = [
  "arc-swap",
  "async-stream",
@@ -2648,7 +2648,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "arc-swap",
  "byteorder",
@@ -2665,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-tiering"
-version = "4.1.0"
+version = "4.2.2"
 dependencies = [
  "bytes",
  "futures",
@@ -2680,7 +2680,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-wasm"
-version = "4.2.0"
+version = "4.2.2"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",

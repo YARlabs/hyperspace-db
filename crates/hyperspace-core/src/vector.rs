@@ -607,11 +607,61 @@ impl QuantizedHyperVector {
         let inv_127 = 1.0 / 127.0;
         let mut spatial_dot = 0.0;
         for i in 1..n {
-            let a_val = (f64::from(bytes[i].cast_signed()) * inv_127) * scale;
-            spatial_dot += a_val * query.coords[i];
+            spatial_dot += f64::from(bytes[i].cast_signed()) * query.coords[i];
         }
+        spatial_dot *= inv_127 * scale;
         let a_time = (f64::from(bytes[0].cast_signed()) * inv_127) * scale;
         let b_time = query.coords[0];
+        let minkowski_dot = a_time * b_time - spatial_dot;
+        minkowski_dot.max(1.0).acosh()
+    }
+
+    #[inline]
+    pub fn distance_bytes_euclidean_sq_f32(bytes: &[u8], query_f32: &[f32]) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        let n = alpha_offset.min(query_f32.len());
+        f64::from(crate::simd::sq8_l2_sq(&bytes[..n], &query_f32[..n]))
+    }
+
+    #[inline]
+    pub fn distance_bytes_poincare_sq_f32(
+        bytes: &[u8],
+        query_f32: &[f32],
+        query_alpha: f64,
+    ) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        let alpha = f32::from_le_bytes(bytes[alpha_offset..].try_into().unwrap_or([0; 4]));
+        let n = alpha_offset.min(query_f32.len());
+        let sum_sq_diff = f64::from(crate::simd::sq8_l2_sq(&bytes[..n], &query_f32[..n]));
+        let delta = sum_sq_diff * f64::from(alpha) * query_alpha;
+        1.0 + 2.0 * delta
+    }
+
+    #[inline]
+    pub fn distance_bytes_lorentz_f32(bytes: &[u8], query_f32: &[f32]) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let alpha_offset = bytes.len() - 4;
+        let alpha = f32::from_le_bytes(bytes[alpha_offset..].try_into().unwrap_or([0; 4]));
+        let n = alpha_offset.min(query_f32.len());
+        if n == 0 {
+            return 0.0;
+        }
+        let scale = f64::from(alpha);
+        let spatial_dot = if n > 1 {
+            f64::from(crate::simd::sq8_dot(&bytes[1..n], &query_f32[1..n])) * (scale / 127.0)
+        } else {
+            0.0
+        };
+        let a_time = (f64::from(bytes[0].cast_signed()) / 127.0) * scale;
+        let b_time = f64::from(query_f32[0]);
         let minkowski_dot = a_time * b_time - spatial_dot;
         minkowski_dot.max(1.0).acosh()
     }

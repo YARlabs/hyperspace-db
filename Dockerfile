@@ -40,7 +40,9 @@ COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 ENV CC=clang
 ENV CXX=clang++
 ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
-RUN cargo build --release \
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    cargo build --release \
     -p hyperspace-server \
     -p hyperspace-cli \
     --no-default-features --features "nightly-simd s3-tiering"
@@ -51,7 +53,7 @@ RUN strip target/release/hyperspace-server \
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
-ARG VERSION=4.2.1
+ARG VERSION=4.2.2
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
