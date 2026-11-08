@@ -613,7 +613,7 @@ impl QuantizedHyperVector {
         let a_time = (f64::from(bytes[0].cast_signed()) * inv_127) * scale;
         let b_time = query.coords[0];
         let minkowski_dot = a_time * b_time - spatial_dot;
-        minkowski_dot.max(1.0).acosh()
+        minkowski_dot.max(1.0)
     }
 
     #[inline]
@@ -663,7 +663,7 @@ impl QuantizedHyperVector {
         let a_time = (f64::from(bytes[0].cast_signed()) / 127.0) * scale;
         let b_time = f64::from(query_f32[0]);
         let minkowski_dot = a_time * b_time - spatial_dot;
-        minkowski_dot.max(1.0).acosh()
+        minkowski_dot.max(1.0)
     }
 }
 

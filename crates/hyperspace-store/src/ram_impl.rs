@@ -10,6 +10,35 @@ const CHUNK_SIZE: usize = 65536;
 struct AlignedZeroBuf([u8; 131_072]);
 static ZERO_BUF: AlignedZeroBuf = AlignedZeroBuf([0u8; 131_072]);
 
+/// A scoped view into the vector store that holds a single `ArcSwap` guard.
+pub struct StorageView<'a> {
+    store: &'a VectorStore,
+    segs: arc_swap::Guard<Arc<Vec<Arc<RamSegment>>>>,
+}
+
+impl StorageView<'_> {
+    /// Retrieves a vector by ID using the pre-loaded segments guard.
+    #[inline]
+    pub fn get(&self, id: u32) -> &[u8] {
+        let id_val = id as usize;
+        let segment_idx = id_val / CHUNK_SIZE;
+        let local_idx = id_val % CHUNK_SIZE;
+
+        if segment_idx >= self.segs.len() {
+            let safe_len = self.store.element_size.min(ZERO_BUF.0.len());
+            return &ZERO_BUF.0[..safe_len];
+        }
+        let segment = &self.segs[segment_idx];
+
+        let start = local_idx * self.store.element_size;
+
+        unsafe {
+            let ptr = segment.raw_ptr.add(start);
+            std::slice::from_raw_parts(ptr, self.store.element_size)
+        }
+    }
+}
+
 #[derive(Debug)]
 struct RamSegment {
     data: RwLock<Vec<u8>>,
@@ -90,7 +119,16 @@ impl VectorStore {
         Ok(id as u32)
     }
 
-    #[inline(always)]
+    /// Creates a scoped view into the vector store that holds a single `ArcSwap` guard.
+    #[inline]
+    pub fn view(&self) -> StorageView<'_> {
+        StorageView {
+            store: self,
+            segs: self.segments.load(),
+        }
+    }
+
+    #[inline]
     pub fn get(&self, id: u32) -> &[u8] {
         let id_val = id as usize;
         let segment_idx = id_val / CHUNK_SIZE;

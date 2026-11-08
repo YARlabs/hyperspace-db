@@ -697,6 +697,91 @@ pub fn linf_f32_bytes(bytes: &[u8], b: &[f32], threshold: Option<f32>) -> f32 {
 // Fused Single-Pass Norms + Distance Kernels (Poincaré, Lorentz, Cosine, Tanimoto)
 // ============================================================================
 
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx512f")]
+unsafe fn norms_and_l2_avx512(bytes: &[u8], b: &[f32]) -> (f32, f32, f32) {
+    use std::arch::x86_64::{
+        _mm512_fmadd_ps, _mm512_loadu_ps, _mm512_reduce_add_ps, _mm512_setzero_ps, _mm512_sub_ps,
+    };
+    let n = b.len();
+    let ap = bytes.as_ptr().cast::<f32>();
+    let bp = b.as_ptr();
+    let mut acc_d = _mm512_setzero_ps();
+    let mut acc_a = _mm512_setzero_ps();
+    let mut acc_b = _mm512_setzero_ps();
+    let mut i = 0usize;
+    while i + 16 <= n {
+        let va = _mm512_loadu_ps(ap.byte_add(i * 4));
+        let vb = _mm512_loadu_ps(bp.add(i));
+        let vd = _mm512_sub_ps(va, vb);
+        acc_d = _mm512_fmadd_ps(vd, vd, acc_d);
+        acc_a = _mm512_fmadd_ps(va, va, acc_a);
+        acc_b = _mm512_fmadd_ps(vb, vb, acc_b);
+        i += 16;
+    }
+    let mut d_sq = _mm512_reduce_add_ps(acc_d);
+    let mut na_sq = _mm512_reduce_add_ps(acc_a);
+    let mut nb_sq = _mm512_reduce_add_ps(acc_b);
+    while i < n {
+        let a = read_f32(bytes, i);
+        let bv = b[i];
+        let d = a - bv;
+        d_sq += d * d;
+        na_sq += a * a;
+        nb_sq += bv * bv;
+        i += 1;
+    }
+    (d_sq, na_sq, nb_sq)
+}
+
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn norms_and_l2_avx2(bytes: &[u8], b: &[f32]) -> (f32, f32, f32) {
+    use std::arch::x86_64::{
+        __m256, _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_fmadd_ps, _mm256_loadu_ps,
+        _mm256_setzero_ps, _mm256_sub_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32, _mm_movehl_ps,
+        _mm_shuffle_ps,
+    };
+    let n = b.len();
+    let ap = bytes.as_ptr().cast::<f32>();
+    let bp = b.as_ptr();
+    let mut acc_d = _mm256_setzero_ps();
+    let mut acc_a = _mm256_setzero_ps();
+    let mut acc_b = _mm256_setzero_ps();
+    let mut i = 0usize;
+    while i + 8 <= n {
+        let va = _mm256_loadu_ps(ap.byte_add(i * 4));
+        let vb = _mm256_loadu_ps(bp.add(i));
+        let vd = _mm256_sub_ps(va, vb);
+        acc_d = _mm256_fmadd_ps(vd, vd, acc_d);
+        acc_a = _mm256_fmadd_ps(va, va, acc_a);
+        acc_b = _mm256_fmadd_ps(vb, vb, acc_b);
+        i += 8;
+    }
+    let hsum = |v: __m256| -> f32 {
+        let low = _mm256_castps256_ps128(v);
+        let high = _mm256_extractf128_ps(v, 1);
+        let sum128 = _mm_add_ps(low, high);
+        let shuf = _mm_movehl_ps(sum128, sum128);
+        let sums = _mm_add_ps(sum128, shuf);
+        let shuf2 = _mm_shuffle_ps(sums, sums, 1);
+        _mm_cvtss_f32(_mm_add_ss(sums, shuf2))
+    };
+    let mut d_sq = hsum(acc_d);
+    let mut na_sq = hsum(acc_a);
+    let mut nb_sq = hsum(acc_b);
+    while i < n {
+        let a = read_f32(bytes, i);
+        let bv = b[i];
+        let d = a - bv;
+        d_sq += d * d;
+        na_sq += a * a;
+        nb_sq += bv * bv;
+        i += 1;
+    }
+    (d_sq, na_sq, nb_sq)
+}
+
 /// Computes `(l2_sq(a, b), norm_a_sq, norm_b_sq)` in a single fused memory pass over `bytes` and `b`.
 #[inline]
 pub fn norms_and_l2_f32_bytes(bytes: &[u8], b: &[f32]) -> (f32, f32, f32) {
@@ -740,6 +825,13 @@ pub fn norms_and_l2_f32_bytes(bytes: &[u8], b: &[f32]) -> (f32, f32, f32) {
             }
             return (d_sq, na_sq, nb_sq);
         }
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+    match backend() {
+        SimdBackend::Avx512 => unsafe { return norms_and_l2_avx512(bytes, b) },
+        SimdBackend::Avx2 => unsafe { return norms_and_l2_avx2(bytes, b) },
+        _ => {}
     }
 
     let (chunks, rem) = bytes.as_chunks::<16>();
@@ -786,13 +878,14 @@ pub fn poincare_f32_bytes(bytes: &[u8], b: &[f32]) -> f64 {
     arg.max(1.0).acosh()
 }
 
-/// Zero-copy Lorentz hyperboloid (Minkowski) distance directly on little-endian `f32` bytes.
-/// Eliminates all heap allocations (`Vec<f32>` / `Vec<f64>`) on the HNSW traversal hot path.
+/// Zero-copy Lorentz hyperboloid (Minkowski) distance proxy directly on little-endian `f32` bytes.
+/// Returns `-<u, v>_L` (clamped >= 1.0) which is strictly monotonic to the geodesic distance `acosh(-<u, v>_L)`.
+/// Eliminates `acosh` on the HNSW traversal hot path.
 #[inline]
 pub fn lorentz_f32_bytes(bytes: &[u8], b: &[f32]) -> f64 {
     let n = (bytes.len() / 4).min(b.len());
     if n == 0 {
-        return 0.0;
+        return 1.0;
     }
     let u0 = f64::from(read_f32(bytes, 0));
     let v0 = f64::from(b[0]);
@@ -802,7 +895,7 @@ pub fn lorentz_f32_bytes(bytes: &[u8], b: &[f32]) -> f64 {
         0.0
     };
     let minkowski_ip = u0 * v0 - spatial_dot;
-    minkowski_ip.max(1.0).acosh()
+    minkowski_ip.max(1.0)
 }
 
 /// Zero-copy Cosine distance (`1.0 - cos_sim`) directly on little-endian `f32` bytes.
@@ -895,8 +988,8 @@ unsafe fn sq8_l2_sq_avx512(bytes: &[u8], b: &[f32]) -> f32 {
     let mut acc1 = _mm512_setzero_ps();
     let mut i = 0usize;
     while i + 32 <= n {
-        let raw0 = _mm_loadu_si128(ap.add(i) as *const __m128i);
-        let raw1 = _mm_loadu_si128(ap.add(i + 16) as *const __m128i);
+        let raw0 = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
+        let raw1 = _mm_loadu_si128(ap.add(i + 16).cast::<__m128i>());
         let a0 = _mm512_mul_ps(_mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw0)), v_scale);
         let a1 = _mm512_mul_ps(_mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw1)), v_scale);
         let d0 = _mm512_sub_ps(a0, _mm512_loadu_ps(bp.add(i)));
@@ -906,7 +999,7 @@ unsafe fn sq8_l2_sq_avx512(bytes: &[u8], b: &[f32]) -> f32 {
         i += 32;
     }
     if i + 16 <= n {
-        let raw = _mm_loadu_si128(ap.add(i) as *const __m128i);
+        let raw = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
         let a = _mm512_mul_ps(_mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw)), v_scale);
         let d = _mm512_sub_ps(a, _mm512_loadu_ps(bp.add(i)));
         acc0 = _mm512_fmadd_ps(d, d, acc0);
@@ -914,7 +1007,7 @@ unsafe fn sq8_l2_sq_avx512(bytes: &[u8], b: &[f32]) -> f32 {
     }
     let mut sum = _mm512_reduce_add_ps(acc0) + _mm512_reduce_add_ps(acc1);
     while i < n {
-        let a = (bytes[i] as i8 as f32) * SQ8_SCALE_INV;
+        let a = (f32::from(bytes[i].cast_signed())) * SQ8_SCALE_INV;
         let d = a - b[i];
         sum += d * d;
         i += 1;
@@ -940,7 +1033,7 @@ unsafe fn sq8_l2_sq_avx2(bytes: &[u8], b: &[f32]) -> f32 {
     let mut acc1: __m256 = _mm256_setzero_ps();
     let mut i = 0usize;
     while i + 16 <= n {
-        let raw = _mm_loadu_si128(ap.add(i) as *const __m128i);
+        let raw = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
         let a0 = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw)), v_scale);
         let a1 = _mm256_mul_ps(
             _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(raw, 8))),
@@ -953,7 +1046,7 @@ unsafe fn sq8_l2_sq_avx2(bytes: &[u8], b: &[f32]) -> f32 {
         i += 16;
     }
     if i + 8 <= n {
-        let raw = _mm_loadl_epi64(ap.add(i) as *const __m128i);
+        let raw = _mm_loadl_epi64(ap.add(i).cast::<__m128i>());
         let a0 = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw)), v_scale);
         let d0 = _mm256_sub_ps(a0, _mm256_loadu_ps(bp.add(i)));
         acc0 = _mm256_fmadd_ps(d0, d0, acc0);
@@ -1060,8 +1153,8 @@ unsafe fn sq8_dot_avx512(bytes: &[u8], b: &[f32]) -> f32 {
     let mut acc1 = _mm512_setzero_ps();
     let mut i = 0usize;
     while i + 32 <= n {
-        let raw0 = _mm_loadu_si128(ap.add(i) as *const __m128i);
-        let raw1 = _mm_loadu_si128(ap.add(i + 16) as *const __m128i);
+        let raw0 = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
+        let raw1 = _mm_loadu_si128(ap.add(i + 16).cast::<__m128i>());
         let a0 = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw0));
         let a1 = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw1));
         acc0 = _mm512_fmadd_ps(a0, _mm512_loadu_ps(bp.add(i)), acc0);
@@ -1069,14 +1162,14 @@ unsafe fn sq8_dot_avx512(bytes: &[u8], b: &[f32]) -> f32 {
         i += 32;
     }
     if i + 16 <= n {
-        let raw = _mm_loadu_si128(ap.add(i) as *const __m128i);
+        let raw = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
         let a = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw));
         acc0 = _mm512_fmadd_ps(a, _mm512_loadu_ps(bp.add(i)), acc0);
         i += 16;
     }
     let mut sum = _mm512_reduce_add_ps(acc0) + _mm512_reduce_add_ps(acc1);
     while i < n {
-        sum += (bytes[i] as i8 as f32) * b[i];
+        sum += (f32::from(bytes[i].cast_signed())) * b[i];
         i += 1;
     }
     sum
@@ -1098,7 +1191,7 @@ unsafe fn sq8_dot_avx2(bytes: &[u8], b: &[f32]) -> f32 {
     let mut acc1: __m256 = _mm256_setzero_ps();
     let mut i = 0usize;
     while i + 16 <= n {
-        let raw = _mm_loadu_si128(ap.add(i) as *const __m128i);
+        let raw = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
         let a0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw));
         let a1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(raw, 8)));
         acc0 = _mm256_fmadd_ps(a0, _mm256_loadu_ps(bp.add(i)), acc0);
@@ -1106,7 +1199,7 @@ unsafe fn sq8_dot_avx2(bytes: &[u8], b: &[f32]) -> f32 {
         i += 16;
     }
     if i + 8 <= n {
-        let raw = _mm_loadl_epi64(ap.add(i) as *const __m128i);
+        let raw = _mm_loadl_epi64(ap.add(i).cast::<__m128i>());
         let a0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw));
         acc0 = _mm256_fmadd_ps(a0, _mm256_loadu_ps(bp.add(i)), acc0);
         i += 8;

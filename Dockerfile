@@ -39,7 +39,7 @@ COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 # We use clang++ as linker for better C++ compatibility with 'ort'
 ENV CC=clang
 ENV CXX=clang++
-ENV RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
+ENV RUSTFLAGS="-C target-cpu=x86-64-v3 -C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     cargo build --release \

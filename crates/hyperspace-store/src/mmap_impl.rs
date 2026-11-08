@@ -34,6 +34,32 @@ pub struct VectorStore {
 struct AlignedZero([u8; 131_072]);
 static ZERO_BUF: AlignedZero = AlignedZero([0u8; 131_072]);
 
+/// A scoped view into the vector store that holds a single `ArcSwap` guard.
+pub struct StorageView<'a> {
+    store: &'a VectorStore,
+    segs: arc_swap::Guard<Arc<Vec<Arc<Segment>>>>,
+}
+
+impl StorageView<'_> {
+    /// Retrieves a vector by ID using the pre-loaded segments guard.
+    #[inline]
+    pub fn get(&self, id: u32) -> &[u8] {
+        let id_val = id as usize;
+        let segment_idx = id_val >> CHUNK_SHIFT;
+        let local_idx = id_val & CHUNK_MASK;
+
+        if segment_idx >= self.segs.len() {
+            let safe_len = self.store.element_size.min(ZERO_BUF.0.len());
+            return &ZERO_BUF.0[..safe_len];
+        }
+        let segment = &self.segs[segment_idx];
+
+        let start = local_idx * self.store.element_size;
+        let ptr = unsafe { segment.read_mmap.as_ptr().add(start) };
+        unsafe { std::slice::from_raw_parts(ptr, self.store.element_size) }
+    }
+}
+
 impl VectorStore {
     /// Creates or opens a `VectorStore` at the given path.
     pub fn new(base_path: &Path, element_size: usize) -> Self {
@@ -80,6 +106,9 @@ impl VectorStore {
 
         let mmap = unsafe { MmapOptions::new().map_mut(&file)? };
         let read_mmap = unsafe { MmapOptions::new().map(&file)? };
+
+        #[cfg(unix)]
+        let _ = read_mmap.advise(memmap2::Advice::Random);
 
         let addr = read_mmap.as_ptr();
         let offset = addr.align_offset(64);
@@ -133,7 +162,18 @@ impl VectorStore {
         Ok(id as u32)
     }
 
+    /// Creates a scoped view into the vector store that holds a single `ArcSwap` guard.
+    /// This avoids repeatedly loading segments during inner search traversal loops.
+    #[inline]
+    pub fn view(&self) -> StorageView<'_> {
+        StorageView {
+            store: self,
+            segs: self.segments.load(),
+        }
+    }
+
     /// Retrieves a vector by ID. Returns a view into the memory map.
+    #[inline]
     pub fn get(&self, id: u32) -> &[u8] {
         let id_val = id as usize;
         let segment_idx = id_val >> CHUNK_SHIFT;
@@ -149,9 +189,7 @@ impl VectorStore {
         let segment = &segs[segment_idx];
 
         let start = local_idx * self.element_size;
-
         let ptr = unsafe { segment.read_mmap.as_ptr().add(start) };
-
         unsafe { std::slice::from_raw_parts(ptr, self.element_size) }
     }
 

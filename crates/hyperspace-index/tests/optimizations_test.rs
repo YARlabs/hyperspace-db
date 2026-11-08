@@ -203,3 +203,64 @@ fn test_auto_freezing_flat_layer0_and_search_equivalence() {
         }
     }
 }
+
+#[test]
+fn test_poincare_search_throughput_and_recall() {
+    use hyperspace_core::PoincareMetric;
+
+    let dir = tempdir().unwrap();
+    let dim = 32;
+    let n_vectors = 1000;
+    let n_queries = 200;
+
+    let storage = Arc::new(VectorStore::new(&dir.path().join("vectors"), dim * 8 + 8));
+    let config = Arc::new(GlobalConfig::default());
+    config.set_m(16);
+    config.set_ef_construction(64);
+
+    let index = HnswIndex::<PoincareMetric>::new(
+        storage.clone(),
+        QuantizationMode::None,
+        config.clone(),
+        dim,
+    );
+
+    let mut vectors = Vec::with_capacity(n_vectors);
+    let scale = 0.5 / (dim as f64).sqrt();
+    for i in 0..n_vectors {
+        let mut coords = Vec::with_capacity(dim);
+        for d in 0..dim {
+            coords.push(((i * 7 + d * 13) as f64 * 0.05).sin() * scale);
+        }
+        let _ = index.insert(&coords, HashMap::new()).expect("insert");
+        if i < n_queries {
+            vectors.push(coords);
+        }
+    }
+
+    let empty_map = HashMap::new();
+    let params = SearchParams {
+        top_k: 10,
+        ef_search: 32,
+        ..Default::default()
+    };
+
+    let start = std::time::Instant::now();
+    let mut total_hits = 0;
+    for (q_idx, q) in vectors.iter().enumerate() {
+        let res = index.search(q, &empty_map, &[], &params);
+        if !res.is_empty() {
+            total_hits += 1;
+            // The query itself must be the top result (distance ~0.0)
+            assert_eq!(res[0].0, q_idx as u32);
+            assert!(res[0].1 < 1e-4, "Top-1 distance must be ~0, got {}", res[0].1);
+        }
+    }
+    let elapsed = start.elapsed();
+    let qps = (n_queries as f64) / elapsed.as_secs_f64();
+    println!(
+        "🚀 Poincare HNSW Search: {} queries in {:?} => {:.0} QPS (top-1 accuracy 100%)",
+        n_queries, elapsed, qps
+    );
+    assert_eq!(total_hits, n_queries);
+}

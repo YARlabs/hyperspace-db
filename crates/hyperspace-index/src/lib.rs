@@ -105,6 +105,7 @@ pub struct MetadataIndex {
     pub doc_token_len: boxcar::Vec<AtomicU32>,
     pub term_doc_freq: DashMap<String, Vec<(u32, u16)>>,
     pub total_token_len: AtomicU64,
+    pub has_lexical_index: AtomicBool,
 }
 
 impl Default for MetadataIndex {
@@ -119,6 +120,7 @@ impl Default for MetadataIndex {
             doc_token_len: boxcar::Vec::new(),
             term_doc_freq: DashMap::new(),
             total_token_len: AtomicU64::new(0),
+            has_lexical_index: AtomicBool::new(false),
         }
     }
 }
@@ -534,6 +536,7 @@ impl<M: Metric> HnswIndex<M> {
                 doc_token_len: boxcar::Vec::new(),
                 term_doc_freq: DashMap::new(),
                 total_token_len: AtomicU64::new(0),
+                has_lexical_index: AtomicBool::new(false),
             },
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
@@ -748,6 +751,7 @@ impl<M: Metric> HnswIndex<M> {
                 doc_token_len: boxcar::Vec::new(),
                 term_doc_freq: DashMap::new(),
                 total_token_len: AtomicU64::new(0),
+                has_lexical_index: AtomicBool::new(false),
             },
             entry_point: AtomicU32::new(deserialized.entry_point),
             max_layer: AtomicU32::new(deserialized.max_layer),
@@ -1550,6 +1554,10 @@ impl<M: Metric> HnswIndex<M> {
             candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             // Ensure we keep only top k
             candidates.truncate(params.top_k);
+        } else if M::name() == "poincare" || M::name() == "lorentz" {
+            for cand in &mut candidates {
+                cand.1 = cand.1.max(1.0).acosh();
+            }
         }
 
         candidates
@@ -1794,36 +1802,53 @@ impl<M: Metric> HnswIndex<M> {
                 let name = M::name();
                 if self.storage_f32 {
                     let coord_bytes = &bytes[..bytes.len().saturating_sub(4)];
-                    let eval_f32 = |b: &[f32]| -> Option<f64> {
-                        let n = (coord_bytes.len() / 4).min(b.len());
-                        let cb = &coord_bytes[..n * 4];
-                        let qb = &b[..n];
-                        let thresh_f32 = threshold.map(|t| t as f32);
-                        match name {
-                            "l2" | "cosine" => Some(f64::from(
-                                hyperspace_core::simd::l2_sq_f32_bytes(cb, qb, thresh_f32),
-                            )),
-                            "dot" => {
-                                Some(1.0 - f64::from(hyperspace_core::simd::dot_f32_bytes(cb, qb)))
+                    let eval_f32 =
+                        |b: &[f32]| -> Option<f64> {
+                            let n = (coord_bytes.len() / 4).min(b.len());
+                            let cb = &coord_bytes[..n * 4];
+                            let qb = &b[..n];
+                            let thresh_f32 = threshold.map(|t| t as f32);
+                            match name {
+                                "l2" | "cosine" => Some(f64::from(
+                                    hyperspace_core::simd::l2_sq_f32_bytes(cb, qb, thresh_f32),
+                                )),
+                                "dot" => Some(
+                                    1.0 - f64::from(hyperspace_core::simd::dot_f32_bytes(cb, qb)),
+                                ),
+                                "l1" => Some(f64::from(hyperspace_core::simd::l1_f32_bytes(
+                                    cb, qb, thresh_f32,
+                                ))),
+                                "linf" => Some(f64::from(hyperspace_core::simd::linf_f32_bytes(
+                                    cb, qb, thresh_f32,
+                                ))),
+                                "poincare" => {
+                                    let alpha_offset = bytes.len().saturating_sub(4);
+                                    let alpha_u = if bytes.len() >= 4 {
+                                        let ab: [u8; 4] =
+                                            bytes[alpha_offset..].try_into().unwrap_or([0; 4]);
+                                        f64::from(f32::from_le_bytes(ab))
+                                    } else {
+                                        1.0
+                                    };
+                                    let alpha_prod = (alpha_u * query.alpha).max(1e-9);
+                                    let diff_thresh = thresh_f32
+                                        .map(|t| ((t - 1.0) / (2.0 * alpha_prod as f32)).max(0.0));
+                                    let diff_sq = f64::from(
+                                        hyperspace_core::simd::l2_sq_f32_bytes(cb, qb, diff_thresh),
+                                    );
+                                    Some(1.0 + 2.0 * diff_sq * alpha_prod)
+                                }
+                                "lorentz" => Some(hyperspace_core::simd::lorentz_f32_bytes(cb, qb)),
+                                "angular" => {
+                                    let cos_dist = hyperspace_core::simd::cosine_f32_bytes(cb, qb);
+                                    let cos = (1.0 - cos_dist).clamp(-1.0, 1.0);
+                                    Some(cos.acos() / std::f64::consts::PI)
+                                }
+                                "jaccard" => Some(hyperspace_core::simd::jaccard_f32_bytes(cb, qb)),
+                                "hamming" => Some(hyperspace_core::simd::hamming_f32_bytes(cb, qb)),
+                                _ => None,
                             }
-                            "l1" => Some(f64::from(hyperspace_core::simd::l1_f32_bytes(
-                                cb, qb, thresh_f32,
-                            ))),
-                            "linf" => Some(f64::from(hyperspace_core::simd::linf_f32_bytes(
-                                cb, qb, thresh_f32,
-                            ))),
-                            "poincare" => Some(hyperspace_core::simd::poincare_f32_bytes(cb, qb)),
-                            "lorentz" => Some(hyperspace_core::simd::lorentz_f32_bytes(cb, qb)),
-                            "angular" => {
-                                let cos_dist = hyperspace_core::simd::cosine_f32_bytes(cb, qb);
-                                let cos = (1.0 - cos_dist).clamp(-1.0, 1.0);
-                                Some(cos.acos() / std::f64::consts::PI)
-                            }
-                            "jaccard" => Some(hyperspace_core::simd::jaccard_f32_bytes(cb, qb)),
-                            "hamming" => Some(hyperspace_core::simd::hamming_f32_bytes(cb, qb)),
-                            _ => None,
-                        }
-                    };
+                        };
 
                     if let Some(b) = query_f32 {
                         if let Some(d) = eval_f32(b) {
@@ -1888,12 +1913,22 @@ impl<M: Metric> HnswIndex<M> {
         pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
         mrl_dim: Option<usize>,
     ) -> f64 {
+        if node_id as usize >= self.storage.count() {
+            return f64::MAX;
+        }
+        let bytes = self.storage.get(node_id);
+        self.dist_upper_bytes(bytes, query, query_klein, pq_lut, mrl_dim)
+    }
+
+    fn dist_upper_bytes(
+        &self,
+        bytes: &[u8],
+        query: &HyperVector,
+        query_klein: Option<&HyperVector>,
+        pq_lut: Option<&hyperspace_core::pq::PQLookupTable>,
+        mrl_dim: Option<usize>,
+    ) -> f64 {
         if let Some(qk) = query_klein {
-            // Defensive: Check bounds
-            if node_id as usize >= self.storage.count() {
-                return f64::MAX;
-            }
-            let bytes = self.storage.get(node_id);
             if self.storage_f32 {
                 let n = (bytes.len().saturating_sub(4) / 4).min(qk.coords.len());
                 let alpha_bytes: [u8; 4] = match bytes
@@ -1953,7 +1988,7 @@ impl<M: Metric> HnswIndex<M> {
             }
             return sum;
         }
-        self.dist_mrl_opt(node_id, query, None, pq_lut, mrl_dim, None)
+        self.dist_bytes_opt(bytes, query, None, pq_lut, mrl_dim, None)
     }
 
     fn filtered_bruteforce_threshold() -> u64 {
@@ -2267,6 +2302,7 @@ impl<M: Metric> HnswIndex<M> {
             }
             let _ = scratch.mark_visited(start_node);
 
+            let storage_view = self.storage.view();
             while let Some(cand) = candidates.pop() {
                 // Lower Bound Pruning:
                 if let Some(std::cmp::Reverse(worst)) = results.peek() {
@@ -2295,14 +2331,14 @@ impl<M: Metric> HnswIndex<M> {
                         if let Some(next_node) = self.nodes.get(lookahead_n as usize) {
                             prefetch_l1(next_node as *const Node);
                         }
-                        let bytes = self.storage.get(lookahead_n);
+                        let bytes = storage_view.get(lookahead_n);
                         prefetch_l1(bytes.as_ptr());
                     } else if idx + 1 < n_len {
                         let next_n = neighbors[idx + 1];
                         if let Some(next_node) = self.nodes.get(next_n as usize) {
                             prefetch_l1(next_node as *const Node);
                         }
-                        let bytes = self.storage.get(next_n);
+                        let bytes = storage_view.get(next_n);
                         prefetch_l1(bytes.as_ptr());
                     }
 
@@ -2316,8 +2352,12 @@ impl<M: Metric> HnswIndex<M> {
                         None
                     };
 
+                    if neighbor as usize >= nodes_count {
+                        continue;
+                    }
+                    let neighbor_bytes = storage_view.get(neighbor);
                     let dist =
-                        self.dist_mrl_opt(neighbor, query, q_f32_ref, pq_lut, mrl_dim, thresh);
+                        self.dist_bytes_opt(neighbor_bytes, query, q_f32_ref, pq_lut, mrl_dim, thresh);
 
                     let mut add_to_candidates = true;
                     if let Some(worst_dist) = thresh {
@@ -2409,6 +2449,7 @@ impl<M: Metric> HnswIndex<M> {
             results.push(std::cmp::Reverse(first));
             let _ = scratch.mark_visited(start_node);
 
+            let storage_view = self.storage.view();
             while let Some(cand) = candidates.pop() {
                 let curr_worst = results.peek().unwrap().0.distance;
                 if cand.distance > curr_worst && results.len() >= ef {
@@ -2435,14 +2476,14 @@ impl<M: Metric> HnswIndex<M> {
                         if let Some(next_node) = self.nodes.get(lookahead_n as usize) {
                             prefetch_l1(next_node as *const Node);
                         }
-                        let bytes = self.storage.get(lookahead_n);
+                        let bytes = storage_view.get(lookahead_n);
                         prefetch_l1(bytes.as_ptr());
                     } else if idx + 1 < n_len {
                         let next_n = neighbors[idx + 1];
                         if let Some(next_node) = self.nodes.get(next_n as usize) {
                             prefetch_l1(next_node as *const Node);
                         }
-                        let bytes = self.storage.get(next_n);
+                        let bytes = storage_view.get(next_n);
                         prefetch_l1(bytes.as_ptr());
                     }
 
@@ -2450,7 +2491,11 @@ impl<M: Metric> HnswIndex<M> {
                         continue;
                     }
 
-                    let dist = self.dist_upper(neighbor, query, query_klein, pq_lut, None);
+                    if neighbor as usize >= nodes_count {
+                        continue;
+                    }
+                    let neighbor_bytes = storage_view.get(neighbor);
+                    let dist = self.dist_upper_bytes(neighbor_bytes, query, query_klein, pq_lut, None);
 
                     if results.len() < ef || dist < curr_worst {
                         let c = Candidate {
@@ -2478,6 +2523,133 @@ impl<M: Metric> HnswIndex<M> {
         })
     }
 
+    fn load_node_coords_f32(&self, id: NodeId, out: &mut Vec<f32>, alpha_out: &mut f64) {
+        if id as usize >= self.storage.count() {
+            out.clear();
+            out.resize(self.dimension, 0.0);
+            *alpha_out = 1.0;
+            return;
+        }
+
+        let bytes = self.storage.get(id);
+        if self.storage_f32 {
+            let n = (bytes.len().saturating_sub(4) / 4).min(self.dimension);
+            out.clear();
+            out.reserve(n);
+            for c in bytes[..n * 4].chunks_exact(4) {
+                out.push(f32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+            }
+            if bytes.len() >= 4 {
+                let ab: [u8; 4] = bytes[bytes.len() - 4..].try_into().unwrap_or([0; 4]);
+                *alpha_out = f64::from(f32::from_le_bytes(ab));
+            } else {
+                *alpha_out = 1.0;
+            }
+            return;
+        }
+
+        if self.mode == QuantizationMode::ScalarI8 {
+            let alpha_offset = bytes.len().saturating_sub(4);
+            let n = alpha_offset.min(self.dimension);
+            let alpha = if bytes.len() >= 4 {
+                let ab: [u8; 4] = bytes[alpha_offset..].try_into().unwrap_or([0; 4]);
+                f32::from_le_bytes(ab)
+            } else {
+                1.0f32
+            };
+            let scale = if M::name() == "lorentz" {
+                alpha / 127.0
+            } else {
+                1.0 / 127.0
+            };
+            out.clear();
+            out.reserve(n);
+            for &b in &bytes[..n] {
+                out.push(f32::from(b.cast_signed()) * scale);
+            }
+            *alpha_out = f64::from(alpha);
+            return;
+        }
+
+        QUERY_F64_SCRATCH.with(|cell| {
+            let mut buf = cell.borrow_mut();
+            self.with_vector_coords(id, &mut buf, |coords| {
+                out.clear();
+                out.reserve(coords.len());
+                for &c in coords {
+                    out.push(c as f32);
+                }
+            });
+        });
+        *alpha_out = 1.0;
+    }
+
+    #[inline]
+    fn dist_f32_slices(
+        a: &[f32],
+        alpha_a: f64,
+        b: &[f32],
+        alpha_b: f64,
+        threshold: Option<f64>,
+    ) -> f64 {
+        let name = M::name();
+        let n = a.len().min(b.len());
+        let a = &a[..n];
+        let b = &b[..n];
+        match name {
+            "l2" | "cosine" => {
+                let thresh_f32 = threshold.map(|t| t as f32);
+                let bytes_a = unsafe { std::slice::from_raw_parts(a.as_ptr().cast::<u8>(), n * 4) };
+                f64::from(hyperspace_core::simd::l2_sq_f32_bytes(
+                    bytes_a, b, thresh_f32,
+                ))
+            }
+            "poincare" => {
+                let alpha_prod = (alpha_a * alpha_b).max(1e-9);
+                let diff_thresh =
+                    threshold.map(|t| ((t - 1.0) / (2.0 * alpha_prod)).max(0.0) as f32);
+                let bytes_a = unsafe { std::slice::from_raw_parts(a.as_ptr().cast::<u8>(), n * 4) };
+                let diff_sq = f64::from(hyperspace_core::simd::l2_sq_f32_bytes(
+                    bytes_a,
+                    b,
+                    diff_thresh,
+                ));
+                1.0 + 2.0 * diff_sq * alpha_prod
+            }
+            "lorentz" => {
+                if n == 0 {
+                    return 1.0;
+                }
+                let bytes_a = unsafe { std::slice::from_raw_parts(a.as_ptr().cast::<u8>(), n * 4) };
+                hyperspace_core::simd::lorentz_f32_bytes(bytes_a, b)
+            }
+            "dot" => {
+                let bytes_a = unsafe { std::slice::from_raw_parts(a.as_ptr().cast::<u8>(), n * 4) };
+                1.0 - f64::from(hyperspace_core::simd::dot_f32_bytes(bytes_a, b))
+            }
+            "l1" => {
+                let thresh_f32 = threshold.map(|t| t as f32);
+                let bytes_a = unsafe { std::slice::from_raw_parts(a.as_ptr().cast::<u8>(), n * 4) };
+                f64::from(hyperspace_core::simd::l1_f32_bytes(bytes_a, b, thresh_f32))
+            }
+            "linf" => {
+                let thresh_f32 = threshold.map(|t| t as f32);
+                let bytes_a = unsafe { std::slice::from_raw_parts(a.as_ptr().cast::<u8>(), n * 4) };
+                f64::from(hyperspace_core::simd::linf_f32_bytes(
+                    bytes_a, b, thresh_f32,
+                ))
+            }
+            _ => {
+                let mut sum = 0.0f64;
+                for (&x, &y) in a.iter().zip(b.iter()) {
+                    let d = f64::from(x) - f64::from(y);
+                    sum += d * d;
+                }
+                sum
+            }
+        }
+    }
+
     /// HNSW Heuristic for neighbor selection
     fn select_neighbors(
         &self,
@@ -2498,45 +2670,54 @@ impl<M: Metric> HnswIndex<M> {
             }
             let avg_dist = sum_dist / (n_samples as f64);
 
-            // RECALL FIX #2: The original threshold of 1.2 was incorrect for L2-normalized
-            // vectors in high-dimensional spaces. In 1024D, average pairwise Euclidean
-            // distance between random unit vectors ≈ sqrt(2) ≈ 1.41, which is ALWAYS
-            // above 1.2. This caused density pruning to fire for virtually every insert,
-            // halving M from 16→8 and crippling graph connectivity.
-            //
-            // Euclidean distance for unit vectors lies in [0, 2]. We only prune M
-            // in the extreme tail (>1.95) — genuinely sparse boundary regions —
-            // leaving the vast majority of inserts with the full M connections.
             if avg_dist > 1.95 {
                 actual_m = (m / 2).max(1);
             }
         }
 
         let mut result = Vec::with_capacity(actual_m);
-        let mut result_vecs: Vec<HyperVector> = Vec::with_capacity(actual_m);
+        let mut result_coords: Vec<f32> = Vec::with_capacity(actual_m * self.dimension);
+        let mut result_alphas: Vec<f64> = Vec::with_capacity(actual_m);
 
-        while let Some(cand) = sorted_candidates.pop() {
-            // Gets closest (sorted vec is ascending, pop from end)
-            if result.len() >= actual_m {
-                break;
-            }
-
-            let mut is_good = true;
-
-            for neighbor_vec in &result_vecs {
-                let dist_to_neighbor = self.dist(cand.id, neighbor_vec);
-
-                if dist_to_neighbor < cand.distance {
-                    is_good = false;
+        QUERY_F32_SCRATCH.with(|cand_cell| {
+            let mut cand_f32 = cand_cell.borrow_mut();
+            while let Some(cand) = sorted_candidates.pop() {
+                // Gets closest (sorted vec is ascending, pop from end)
+                if result.len() >= actual_m {
                     break;
                 }
-            }
 
-            if is_good {
-                result.push(cand.id);
-                result_vecs.push(self.get_vector(cand.id));
+                let mut cand_alpha = 1.0f64;
+                self.load_node_coords_f32(cand.id, &mut cand_f32, &mut cand_alpha);
+
+                let mut is_good = true;
+                let dim = self.dimension;
+
+                for (idx, _neighbor_id) in result.iter().enumerate() {
+                    let neighbor_slice = &result_coords[idx * dim..(idx + 1) * dim];
+                    let neighbor_alpha = result_alphas[idx];
+
+                    let dist_to_neighbor = Self::dist_f32_slices(
+                        &cand_f32,
+                        cand_alpha,
+                        neighbor_slice,
+                        neighbor_alpha,
+                        Some(cand.distance),
+                    );
+
+                    if dist_to_neighbor < cand.distance {
+                        is_good = false;
+                        break;
+                    }
+                }
+
+                if is_good {
+                    result.push(cand.id);
+                    result_coords.extend_from_slice(&cand_f32);
+                    result_alphas.push(cand_alpha);
+                }
             }
-        }
+        });
         result
     }
 
@@ -3113,7 +3294,9 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         // Store full metadata for lookup (Data Explorer)
-        self.upsert_doc_lexical_stats(id, &meta);
+        if self.metadata.has_lexical_index.load(Ordering::Relaxed) {
+            self.upsert_doc_lexical_stats(id, &meta);
+        }
         self.metadata.forward.insert(id, meta);
 
         let q_vec = self.get_vector(id); // Helper reads from storage
@@ -3246,7 +3429,8 @@ impl<M: Metric> HnswIndex<M> {
                         .get(neighbor_id as usize)
                         .and_then(|n| n.layers.get(level))
                         .map_or(0, |l| l.load().len());
-                    if neighbor_layer_len > m_max {
+                    let prune_threshold = (m_max * 5 / 4).max(m_max + 2);
+                    if neighbor_layer_len > prune_threshold {
                         self.prune_connections(neighbor_id, level, m_max);
                     }
                 }
@@ -3644,7 +3828,9 @@ impl<M: Metric> HnswIndex<M> {
             let updated_meta = entry.clone();
             drop(entry);
 
-            self.upsert_doc_lexical_stats(id, &updated_meta);
+            if self.metadata.has_lexical_index.load(Ordering::Relaxed) {
+                self.upsert_doc_lexical_stats(id, &updated_meta);
+            }
             Ok(())
         } else {
             Err(format!("Node {id} not found"))
@@ -3797,6 +3983,9 @@ impl<M: Metric> HnswIndex<M> {
     }
 
     fn rebuild_lexical_stats(&self) {
+        self.metadata
+            .has_lexical_index
+            .store(true, Ordering::SeqCst);
         self.metadata.token_df.clear();
         for i in 0..self.metadata.doc_token_len.count() {
             if let Some(entry) = self.metadata.doc_token_len.get(i) {
@@ -3834,6 +4023,10 @@ impl<M: Metric> HnswIndex<M> {
             fn cmp(&self, other: &Self) -> std::cmp::Ordering {
                 other.score.total_cmp(&self.score)
             }
+        }
+
+        if !self.metadata.has_lexical_index.swap(true, Ordering::SeqCst) {
+            self.rebuild_lexical_stats();
         }
 
         // Precompute allowed_bitmap ONCE for both semantic and lexical passes
