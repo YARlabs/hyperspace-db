@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.2.2** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
+**v4.2.3** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,9 +33,13 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v4.2.2)
+## 🚀 Core Pillars (v4.2.3)
 
 <table>
+  <tr>
+    <td>⚡ <b>1.58-Bit Ternary BitNet Quantization &amp; Adaptive Filter (v4.2.3)</b></td>
+    <td>Native BitNet <code>{-1, 0, +1}</code> ternary quantization using 2 bits per dimension (16x RAM reduction vs f32, 4x vs int8) with dynamic thresholding $\gamma = 0.7 \cdot \mathbb{E}[|x|]$, SIMD popcount dot-product kernels, and two-pass re-scoring. Paired with <b>Cost-Model Adaptive Filtered Search</b> eliminating the 5–10% selectivity HNSW collapse (15–32× faster queries) through chunked Rayon-parallel filtered scanning with <code>prefetch_l1</code>.</td>
+  </tr>
   <tr>
     <td>🚀 <b>Hardware Runtime SIMD &amp; f32 SQ8 Kernels (v4.2.2)</b></td>
     <td>High-throughput SIMD vector distance kernels (<code>sq8_l2_sq</code> and <code>sq8_dot</code>) with dynamic CPU detection (AVX-512, AVX2+FMA, ARM NEON, scalar fallback). Query vectors are quantized to <code>f32</code> once per search, accelerating SQ8 Poincaré, Lorentz, and Euclidean calculations by <b>up to 3.4×</b>. Combined with an <b>Epoch-Based Visited Set Lifecycle</b> (<code>u16</code> generation tokens) that eliminates per-query <code>fill(0)</code> cache flushing overhead on multi-million node indexes.</td>
@@ -325,6 +329,7 @@ HyperspaceDB v4.0.0 supports 7 quantization precision levels verified empiricall
 | **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **88.60%** | 88.60% | 220 QPS | 4.52 ms | Enterprise RAG standard (75% RAM savings) |
 | **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **87.15%** | 87.15% | **287 QPS** | **3.47 ms** | High-throughput microservices (Fastest) |
 | **TurboQuant** | `turbo` | 520 B | **7.9×** | **86.95%** | **99.95%** (k=40) | 218 QPS | 4.57 ms | Spherical Lloyd-Max + Orthogonal Rotation |
+| **Ternary BitNet** | `ternary` | 264 B | **15.5×** | **41.00%** | **92.60%** (k=100) | **1,420 QPS** | **0.70 ms** | SOTA BitNet weights, 25.2× SIMD popcount dot speed |
 | **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **17.00%** (73.4% rk4) | **99.85%** (k=40) | **1,567 QPS** | **0.63 ms** | Ultra-Scale ADC with FWHT rotation |
 | **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **17.20%** (73.1% rk4) | **99.80%** (k=40) | **1,453 QPS** | **0.67 ms** | Standard Product Quantization with ADC |
 | **Extreme 1-Bit ADC**| `extreme` | 132 B | **31.1×** | **35.75%** | **75.45%** (k=80) | 113 QPS | 8.85 ms | Edge, Robotics (ROS 2), IoT (< 132 MB / 1M vecs) |

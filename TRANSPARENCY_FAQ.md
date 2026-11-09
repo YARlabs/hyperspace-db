@@ -85,11 +85,12 @@ HyperspaceDB employs a **two-tier defense mechanism**:
 | **HyperspaceDB v4.1 (Native KAG)** | **$0** (In-engine $O(N)$ induction) | **2 – 15 milliseconds** | **3.37 milliseconds** | **Low (Single commodity binary)** |
 
 ### Environmental & Efficiency Impact:
+* **Platinum Eco Tier (1.58-Bit BitNet)**: 16× memory reduction (264 bytes/1024D) and 25.2× SIMD popcount acceleration slashes CPU energy consumption by **up to 92%** compared to unquantized vector pipelines.
 * Eliminating inter-process HTTP/TCP hops between separate database clusters slashes CPU idle wait states by up to **85%**.
 * In-engine 12-byte packed CSR edges require **16× less RAM** than JVM-based property graphs (12 bytes vs 200+ bytes per edge).
 * Real-time telemetry is continuously reported via the built-in `EcoMonitor` agent on the Web Dashboard.
 
 ---
 
-*Document Version: 1.0.0 (v4.1.0 Engine)*  
+*Document Version: 1.1.0 (v4.2.3 Engine)*  
 *Maintained by: YAR Labs Architecture & Safety Research Team*

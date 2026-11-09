@@ -1399,6 +1399,7 @@ fn compute_collection_eco_badge(
     use hyperspace_core::QuantizationMode;
     match quantization {
         QuantizationMode::Binary
+        | QuantizationMode::Ternary
         | QuantizationMode::AsymmetricHybridExtreme
         | QuantizationMode::ProductQuantization
         | QuantizationMode::OPQ => (Some("Platinum".to_string()), Some(true)),

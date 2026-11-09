@@ -549,6 +549,7 @@ impl CollectionManager {
             "extreme" | "binary" => "extreme".to_string(),
             "medium_plus" => "medium_plus".to_string(),
             "turbo" | "turboquant" => "turbo".to_string(),
+            "ternary" | "bitnet" => "ternary".to_string(),
             "pq" | "product_quantization" => "pq".to_string(),
             "opq" | "optimized_product_quantization" => "opq".to_string(),
             _ => "medium".to_string(), // scalar, medium, asymmetric_hybrid_801, anything else
@@ -1078,6 +1079,7 @@ impl CollectionMetadata {
                 }
             }
             "turbo" | "turboquant" => hyperspace_core::QuantizationMode::Turbo,
+            "ternary" | "bitnet" => hyperspace_core::QuantizationMode::Ternary,
             "pq" | "product_quantization" => hyperspace_core::QuantizationMode::ProductQuantization,
             "opq" | "optimized_product_quantization" => hyperspace_core::QuantizationMode::OPQ,
             "medium_plus" => {

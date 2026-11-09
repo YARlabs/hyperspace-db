@@ -43,7 +43,7 @@ pub use config::GlobalConfig;
 pub mod bm25;
 pub use bm25::*;
 pub use graph::*;
-use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
+pub use vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector, TernaryHyperVector};
 
 #[cfg(all(feature = "nightly-simd", has_nightly))]
 pub fn check_simd() {
@@ -76,6 +76,7 @@ pub enum QuantizationMode {
     Turbo,
     ProductQuantization,
     OPQ,
+    Ternary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

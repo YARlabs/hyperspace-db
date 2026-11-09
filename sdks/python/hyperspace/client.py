@@ -457,8 +457,11 @@ class HyperspaceClient:
             schema = proto_schema
 
         req = hyperspace_pb2.CreateCollectionRequest(name=name, schema=schema)
+        meta = list(self.metadata) if self.metadata else []
+        if quantization:
+            meta.append(('x-quantization-level', str(quantization)))
         try:
-            self.stub.CreateCollection(req, metadata=self.metadata)
+            self.stub.CreateCollection(req, metadata=meta)
             return True
         except grpc.RpcError as e:
             print(f"RPC Error in create_collection: {e}")

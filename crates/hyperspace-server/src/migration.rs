@@ -666,6 +666,11 @@ impl MigrationEngine {
                 let tail_dim = dim.saturating_sub(head_dim);
                 head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
             }
+            hyperspace_core::QuantizationMode::Ternary => {
+                let head_dim = if dim == 801 { 33 } else { 0 };
+                let tail_dim = dim.saturating_sub(head_dim);
+                head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
+            }
             hyperspace_core::QuantizationMode::ProductQuantization
             | hyperspace_core::QuantizationMode::OPQ => {
                 hyperspace_core::pq::default_num_subvectors(dim)
@@ -784,6 +789,13 @@ impl MigrationEngine {
                 }
                 vec.resize(dim, 0.0);
                 vec
+            }
+            hyperspace_core::QuantizationMode::Ternary => {
+                let head_dim = if dim == 801 { 33 } else { 0 };
+                let t = hyperspace_core::vector::TernaryHyperVector::from_bytes(
+                    raw_bytes, dim, head_dim,
+                );
+                t.reconstruct_unrotated(dim)
             }
             hyperspace_core::QuantizationMode::None => {
                 let mut vec = Vec::with_capacity(dim);

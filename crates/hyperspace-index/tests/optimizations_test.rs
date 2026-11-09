@@ -238,7 +238,6 @@ fn test_poincare_search_throughput_and_recall() {
         }
     }
 
-    let empty_map = HashMap::new();
     let params = SearchParams {
         top_k: 10,
         ef_search: 32,
@@ -247,20 +246,104 @@ fn test_poincare_search_throughput_and_recall() {
 
     let start = std::time::Instant::now();
     let mut total_hits = 0;
+    let empty_map: HashMap<String, String> = HashMap::new();
     for (q_idx, q) in vectors.iter().enumerate() {
         let res = index.search(q, &empty_map, &[], &params);
         if !res.is_empty() {
             total_hits += 1;
             // The query itself must be the top result (distance ~0.0)
             assert_eq!(res[0].0, q_idx as u32);
-            assert!(res[0].1 < 1e-4, "Top-1 distance must be ~0, got {}", res[0].1);
+            assert!(
+                res[0].1 < 1e-4,
+                "Top-1 distance must be ~0, got {}",
+                res[0].1
+            );
         }
     }
     let elapsed = start.elapsed();
     let qps = (n_queries as f64) / elapsed.as_secs_f64();
     println!(
-        "🚀 Poincare HNSW Search: {} queries in {:?} => {:.0} QPS (top-1 accuracy 100%)",
-        n_queries, elapsed, qps
+        "🚀 Poincare HNSW Search: {n_queries} queries in {elapsed:?} => {qps:.0} QPS (top-1 accuracy 100%)"
     );
     assert_eq!(total_hits, n_queries);
+}
+
+#[test]
+fn test_filtered_search_selectivity_sweep() {
+    use roaring::RoaringBitmap;
+
+    let dir = tempdir().unwrap();
+    let dim = 32;
+    let n_vectors = 20_000;
+    let n_queries = 50;
+
+    let storage = Arc::new(VectorStore::new(&dir.path().join("vectors"), dim * 8 + 8));
+    let config = Arc::new(GlobalConfig::default());
+    config.set_m(16);
+    config.set_ef_construction(64);
+
+    let index = HnswIndex::<EuclideanMetric>::new(
+        storage.clone(),
+        QuantizationMode::None,
+        config.clone(),
+        dim,
+    );
+
+    let mut queries = Vec::with_capacity(n_queries);
+    for i in 0..n_vectors {
+        let mut coords = Vec::with_capacity(dim);
+        for d in 0..dim {
+            coords.push(((i * 7 + d * 13) as f64 * 0.05).sin());
+        }
+        let _ = index.insert(&coords, HashMap::new()).expect("insert");
+        if i < n_queries {
+            queries.push(coords);
+        }
+    }
+
+    let params = SearchParams {
+        top_k: 10,
+        ef_search: 64,
+        ..Default::default()
+    };
+
+    println!("\n=== FILTERED SEARCH SELECTIVITY SWEEP (N={n_vectors}, M=16, ef=64) ===");
+
+    let selectivities = [0.005, 0.01, 0.05, 0.10, 0.25, 0.50];
+    for &sel in &selectivities {
+        let allowed_count = ((n_vectors as f64) * sel).round() as usize;
+        let mut allowed = RoaringBitmap::new();
+        // Distribute allowed IDs across the entire ID space
+        let step = (n_vectors / allowed_count).max(1);
+        for id in (0..n_vectors).step_by(step).take(allowed_count) {
+            allowed.insert(id as u32);
+        }
+
+        let start = std::time::Instant::now();
+        let mut valid_results = 0;
+        for q in &queries {
+            let res = index.search_with_allowed(q, Some(&allowed), &params);
+            if !res.is_empty() {
+                valid_results += 1;
+                for (id, _) in &res {
+                    assert!(
+                        allowed.contains(*id),
+                        "Result must belong to allowed filter set"
+                    );
+                }
+            }
+        }
+        let elapsed = start.elapsed();
+        let qps = (n_queries as f64) / elapsed.as_secs_f64();
+        let avg_us = elapsed.as_micros() as f64 / (n_queries as f64);
+        println!(
+            "  Selectivity: {:>5.1}% ({:>5} docs) => QPS: {:>7.0} | Latency: {:>6.1} µs (hits: {}/{})",
+            sel * 100.0,
+            allowed.len(),
+            qps,
+            avg_us,
+            valid_results,
+            n_queries
+        );
+    }
 }

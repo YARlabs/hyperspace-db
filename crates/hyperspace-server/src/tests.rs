@@ -436,6 +436,16 @@ async fn test_opq_collection_lifecycle_and_search() {
     );
     assert_eq!(reloaded_col.count(), 50);
 
+    // Wait for indexing of replayed WAL entries to complete
+    let start = std::time::Instant::now();
+    loop {
+        if reloaded_col.queue_size() == 0 && reloaded_col.write_buffer_size() == 0 {
+            break;
+        }
+        assert!(start.elapsed() <= Duration::from_secs(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
     let res_reloaded = reloaded_col
         .search(&query, &HashMap::new(), &[], &params)
         .await
@@ -558,6 +568,16 @@ async fn test_pq_collection_lifecycle_and_search() {
         hyperspace_core::QuantizationMode::ProductQuantization
     );
     assert_eq!(reloaded_col.count(), 50);
+
+    // Wait for indexing of replayed WAL entries to complete
+    let start = std::time::Instant::now();
+    loop {
+        if reloaded_col.queue_size() == 0 && reloaded_col.write_buffer_size() == 0 {
+            break;
+        }
+        assert!(start.elapsed() <= Duration::from_secs(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
     let res_reloaded = reloaded_col
         .search(&query, &HashMap::new(), &[], &params)

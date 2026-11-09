@@ -5,6 +5,10 @@
 # Build artifacts
 target/
 **/target/
+*.tar.gz
+
+# SDKs & Examples
+sdks/
 
 # IDE
 .vscode/

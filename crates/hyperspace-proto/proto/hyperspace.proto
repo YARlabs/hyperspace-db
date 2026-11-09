@@ -126,6 +126,8 @@ message QuantizationConfig {
 enum QuantizationMode {
   NONE = 0;       // f64 (Default)
   SCALAR_I8 = 1;  // 8-bit
+  BINARY = 2;     // 1-bit
+  TERNARY = 3;    // 1.58-bit BitNet {-1, 0, +1}
 }
 
 message CreateCollectionRequest {

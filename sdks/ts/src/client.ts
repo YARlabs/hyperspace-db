@@ -156,7 +156,7 @@ export interface SystemMetrics {
 }
 
 export interface CollectionConfig {
-    quantizationMode?: 'NONE' | 'SCALAR_I8';
+    quantizationMode?: 'NONE' | 'SCALAR_I8' | 'BINARY' | 'TERNARY' | string;
     efSearch?: number;
     efConstruction?: number;
     m?: number;
@@ -737,14 +737,14 @@ export class HyperspaceClient {
                 if (r.ok) {
                     return true;
                 }
-                return this.createCollectionGrpc(name, schema);
+                return this.createCollectionGrpc(name, schema, quantization);
             })
-            .catch(() => this.createCollectionGrpc(name, schema));
+            .catch(() => this.createCollectionGrpc(name, schema, quantization));
         }
-        return this.createCollectionGrpc(name, schema);
+        return this.createCollectionGrpc(name, schema, quantization);
     }
 
-    private createCollectionGrpc(name: string, schema: CollectionSchema): Promise<boolean> {
+    private createCollectionGrpc(name: string, schema: CollectionSchema, quantization?: string): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new CreateCollectionRequest();
             req.setName(name);
@@ -776,7 +776,12 @@ export class HyperspaceClient {
             
             req.setSchema(protoSchema);
 
-            this.client.createCollection(req, this.metadata, (err, resp) => {
+            const meta = this.metadata ? this.metadata.clone() : new (require('@grpc/grpc-js').Metadata)();
+            if (quantization) {
+                meta.set('x-quantization-level', quantization);
+            }
+
+            this.client.createCollection(req, meta, (err, resp) => {
                 if (err) return reject(err);
                 resolve(true);
             });

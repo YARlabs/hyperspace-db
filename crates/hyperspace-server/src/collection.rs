@@ -373,6 +373,15 @@ impl<M: Metric> CollectionImpl<M> {
                 let tail_dim = dimension.saturating_sub(head_dim);
                 head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
             }
+            hyperspace_core::QuantizationMode::Ternary => {
+                let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = dimension.saturating_sub(head_dim);
+                head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
+            }
             hyperspace_core::QuantizationMode::ProductQuantization
             | hyperspace_core::QuantizationMode::OPQ => {
                 hyperspace_core::pq::default_num_subvectors(dimension)
@@ -1230,6 +1239,15 @@ impl<M: Metric> CollectionImpl<M> {
                 let tail_dim = dimension.saturating_sub(head_dim);
                 head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
             }
+            hyperspace_core::QuantizationMode::Ternary => {
+                let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = dimension.saturating_sub(head_dim);
+                head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
+            }
             hyperspace_core::QuantizationMode::ProductQuantization
             | hyperspace_core::QuantizationMode::OPQ => {
                 hyperspace_core::pq::default_num_subvectors(dimension)
@@ -1458,6 +1476,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
                 let tail_dim = (dim as u64).saturating_sub(head_dim as u64);
                 head_dim as u64 * 4 + tail_dim.div_ceil(2) + 4
+            }
+            hyperspace_core::QuantizationMode::Ternary => {
+                let head_dim = if dim == 801 && self.metric_name() == "hybrid" {
+                    33
+                } else {
+                    0
+                };
+                let tail_dim = (dim as u64).saturating_sub(head_dim as u64);
+                head_dim as u64 * 4 + 2 * tail_dim.div_ceil(8) + 8
             }
             hyperspace_core::QuantizationMode::ProductQuantization
             | hyperspace_core::QuantizationMode::OPQ => {
@@ -2255,6 +2282,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     };
                     let tail_dim = dimension.saturating_sub(head_dim);
                     head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
+                }
+                hyperspace_core::QuantizationMode::Ternary => {
+                    let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                        33
+                    } else {
+                        0
+                    };
+                    let tail_dim = dimension.saturating_sub(head_dim);
+                    head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
                 }
                 hyperspace_core::QuantizationMode::ProductQuantization
                 | hyperspace_core::QuantizationMode::OPQ => {

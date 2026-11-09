@@ -1,6 +1,6 @@
 [package]
 name = "hyperspace-server"
-version = "4.2.2"
+version = "4.2.3"
 default-run = "hyperspace-server"
 edition = "2021"
 

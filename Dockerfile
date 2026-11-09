@@ -37,11 +37,17 @@ COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
 
 # Build Release (Core Server & CLI)
 # We use clang++ as linker for better C++ compatibility with 'ort'
+ARG TARGETARCH
 ENV CC=clang
 ENV CXX=clang++
-ENV RUSTFLAGS="-C target-cpu=x86-64-v3 -C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
+    ARCH="${TARGETARCH:-$(uname -m)}" && \
+    if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "x86_64" ]; then \
+        export RUSTFLAGS="-C target-cpu=x86-64-v3 -C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"; \
+    else \
+        export RUSTFLAGS="-C linker=clang++ -C link-arg=-fuse-ld=lld -C link-arg=-lstdc++"; \
+    fi && \
     cargo build --release \
     -p hyperspace-server \
     -p hyperspace-cli \
@@ -53,7 +59,7 @@ RUN strip target/release/hyperspace-server \
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
-ARG VERSION=4.2.2
+ARG VERSION=4.2.3
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

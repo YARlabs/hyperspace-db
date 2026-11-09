@@ -135,7 +135,10 @@ class HyperspaceClient {
       schema.encrypted = true;
     }
     final req = CreateCollectionRequest(name: name, schema: schema);
-    final resp = await _stub.createCollection(req);
+    final options = quantization != null && quantization.isNotEmpty
+        ? CallOptions(metadata: {'x-quantization-level': quantization})
+        : null;
+    final resp = await _stub.createCollection(req, options: options);
     return resp.status.isNotEmpty;
   }
 

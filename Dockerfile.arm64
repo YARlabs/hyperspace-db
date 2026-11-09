@@ -40,7 +40,7 @@ RUN strip target/release/hyperspace-server \
 
 # === Stage 3: Runtime ===
 FROM ubuntu:24.04
-ARG VERSION=4.2.2
+ARG VERSION=4.2.3
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \

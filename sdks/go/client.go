@@ -95,7 +95,12 @@ func (c *HyperspaceClient) CreateCollectionWithQuantization(ctx context.Context,
 		Schema: schema,
 	}
 
-	_, err := c.client.CreateCollection(c.withContext(ctx), req)
+	ctxToUse := c.withContext(ctx)
+	if quantization != "" {
+		ctxToUse = metadata.AppendToOutgoingContext(ctxToUse, "x-quantization-level", quantization)
+	}
+
+	_, err := c.client.CreateCollection(ctxToUse, req)
 	return err
 }
 

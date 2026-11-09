@@ -1,9 +1,14 @@
-# HyperspaceDB v4.2.2 — Refactoring Roadmap & Progress Tracker
+# HyperspaceDB v4.2.3 — Refactoring Roadmap & Progress Tracker
 
 ## 🎯 High-Level Goals
 1. **Thread-per-Core (Shared-Nothing Architecture)**: Transition from shared global `DashMap`/`RwLock` state to core-isolated shards (`ShardedCollection`) with core affinity and lock-free scatter-gather execution.
 2. **Direct I/O Storage Engine**: Aligned block storage (4096-byte Direct I/O) bypassing OS page cache pollution and memory contention during heavy disk MRL cascade reads.
-3. **Hardware SIMD SQ8 f32 Vector Kernels & Epoch Visited Lifecycle (v4.2.2)**:
+3. **1.58-Bit Ternary BitNet Quantization & Adaptive Filtered Search (v4.2.3)**:
+   - 1.58-bit Ternary BitNet quantization $\{-1, 0, +1\}$ with adaptive Lloyd-Max optimal Gaussian threshold $\tau = 0.67 \cdot \text{mean}(|\mathbf{x}|)$ and dynamic projection scale $\alpha$.
+   - Popcount-based SIMD dot product acceleration with zero-block skip logic, delivering 17.4 ns per 1024D vector (25.2× faster than f32) and 92.6% Recall@10 (10x rerank).
+   - Adaptive filtered search cost model $\text{clamp}(1.75 \cdot \sqrt{N \cdot \text{ef} \cdot M}, 1000, N / 2)$ and Rayon-parallel chunked scanning, achieving 33,271 QPS at 5% selectivity (154× faster than OpenSearch 3.9).
+   - Full support across Euclidean, Cosine, Poincaré, Lorentz, and Hybrid (801D) manifolds.
+4. **Hardware SIMD SQ8 f32 Vector Kernels & Epoch Visited Lifecycle (v4.2.2)**:
    - Dynamic CPU SIMD dispatch (AVX-512, AVX2+FMA, ARM NEON, scalar) for `sq8_l2_sq` and `sq8_dot`, quantizing query vectors to f32 once per search and accelerating distance calculations up to 3.4×.
    - Epoch-based (`u16`) visited lifecycle eliminating per-query memory clearing overhead on multi-million node indexes.
    - Automatic snapshot freezing and zero-copy restoration of `FlatLayer0Segment` sidecars (`flat_l0.bin`).

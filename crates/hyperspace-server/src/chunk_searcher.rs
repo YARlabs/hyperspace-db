@@ -98,6 +98,15 @@ pub fn search_chunk<M: Metric>(
             4 + num_blocks * 12
         }
         QuantizationMode::Turbo => dimension.div_ceil(2) + 8,
+        QuantizationMode::Ternary => {
+            let head_dim = if dimension == 801 && M::name() == "hybrid" {
+                33
+            } else {
+                0
+            };
+            let tail_dim = dimension.saturating_sub(head_dim);
+            head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
+        }
         QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
             hyperspace_core::pq::default_num_subvectors(dimension)
         }

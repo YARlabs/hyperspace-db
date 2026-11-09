@@ -109,5 +109,31 @@
 | `trading_risk_playbook` | 164 | 1,318 | **18.8%** | **100.0%** | 2,284.5 µs | 3.12 ms | **13 lost steps** (CFTC Statutory) |
 | **CLUSTER SUMMARY / MEDIAN** | **16,001** | **18,402** | **22.1%** | **100.0%** | **2,363.9 µs** | **3.37 ms** | **Zero lost prerequisites with KAG** |
 
+### 8. Filtered Search Selectivity Sweep (HyperspaceDB v4.2.3 vs OpenSearch 3.9 / Lucene HNSW)
+
+In OpenSearch 3.9, filtered search suffers a severe performance collapse at 5–10% selectivity (dropping from 686 QPS down to 216 QPS) due to HNSW graph neighbor filter rejection. HyperspaceDB v4.2.3 implements an adaptive cost model $\text{clamp}(1.75 \cdot \sqrt{N \cdot \text{ef} \cdot M}, 1000, N / 2)$ combined with Rayon-parallel chunked scanning (`prefetch_l1`, per-chunk `BinaryHeap` early-abort):
+
+| Selectivity | Docs Matched | HyperspaceDB Latency (p50) | HyperspaceDB QPS | OpenSearch 3.9 QPS | HyperspaceDB Speedup |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **0.5%** | 100 | **6.1 µs** | **163,132 QPS** | ~850 QPS | **191.9× faster** |
+| **1.0%** | 200 | **8.0 µs** | **125,339 QPS** | 686 QPS | **182.7× faster** |
+| **5.0%** | 1,000 | **30.0 µs** | **33,271 QPS** | 216 QPS | **154.0× faster** |
+| **10.0%** | 2,000 | **54.9 µs** | **18,219 QPS** | ~280 QPS | **65.1× faster** |
+| **50.0%** | 10,000 | **17.7 µs** | **56,349 QPS** | ~450 QPS | **125.2× faster** |
+
+*All runs verified with 100% Top-10 precision matches against exact ground truth.*
+
+### 9. 1.58-Bit Ternary BitNet Quantization vs Binary (1-Bit) & Full Precision (f32)
+
+Empirical evaluation on 5,000 normalized 1024-dimensional embeddings (50 queries, Lloyd-Max $\tau = 0.67 \cdot \text{mean}(|\mathbf{x}|)$):
+
+| Quantization Mode | Dot Product Speed | Throughput (vec/s) | Storage / Vec (1024D) | Pure Recall@10 | 10× Rerank Recall@10 | RAM Compression |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **f32 (Baseline)** | 439.1 ns | 2.28 M vec/s | 4,096 bytes | 100.0% | 100.0% | 1.0× (Baseline) |
+| **Binary (1-bit)** | 23.4 ns | 42.74 M vec/s | 132 bytes | 22.6% | 67.0% | 31.0× |
+| **Ternary BitNet (1.58-bit)** | **17.4 ns** | **57.51 M vec/s** | **264 bytes** | **41.0%** | **92.6%** | **15.5×** |
+
+*Ternary BitNet outperforms 1-bit binary by +25.6 percentage points on 10× rerank recall while achieving higher throughput due to early zero-block branching (`if nz_byte == 0 { continue; }`).*
+
 *(For full methodology, reproduction scripts, and latency distribution charts, see `KAG_VS_PURE_VECTOR_BENCHMARK_REPORT.md`)*
 

@@ -555,6 +555,7 @@ function CreateCollectionDialog() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="default">Default (System HS_QUANTIZATION_LEVEL)</SelectItem>
+                                <SelectItem value="ternary">Ternary (1.58-Bit BitNet [-1, 0, +1] — 16× / 25× speed)</SelectItem>
                                 <SelectItem value="medium_plus">Medium Plus (4-Bit Universal Block Quantization)</SelectItem>
                                 <SelectItem value="turbo">Turbo (4-Bit Lloyd-Max Spherical)</SelectItem>
                                 <SelectItem value="opq">Optimized PQ (64-byte FWHT Rotated Subspace Quantization — 60×)</SelectItem>
@@ -1103,6 +1104,7 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                                 if (q === 'None') return 'None — Full f64 precision'
                                                 if (q === 'ScalarI8') return 'Medium — ScalarI8 (8-bit)'
                                                 if (q === 'ScalarI4') return 'Medium Plus — 4-bit Universal'
+                                                if (q === 'Ternary' || q === 'ternary') return 'Ternary — 1.58-bit BitNet {-1, 0, +1} (16× / 25× speed)'
                                                 if (q === 'Turbo') return 'Turbo — 4-bit Spherical'
                                                 if (q === 'OPQ' || q === 'opq') return 'Optimized PQ — 64 B/vec (60.3×)'
                                                 if (q === 'ProductQuantization' || q === 'pq' || q === 'PQ') return 'Product Quantization — 64 B/vec (60.3×)'

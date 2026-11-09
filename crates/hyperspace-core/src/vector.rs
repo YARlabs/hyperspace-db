@@ -884,6 +884,496 @@ impl BinaryHyperVector {
     }
 }
 
+/// Ternary 1.58-bit quantized vector {-1, 0, +1}.
+/// Optimal BitNet / Lloyd-Max quantization with adaptive threshold tau.
+/// Memory layout:
+///   - Pure vector (head_dim == 0):
+///     [nz_bytes (D/8 ceil)] [sign_bytes (D/8 ceil)] [scale: f32 (4B)] [alpha: f32 (4B)]
+///     Total bytes = 2 * D.div_ceil(8) + 8
+///   - Hybrid vector (e.g. head_dim == 33 Lorentz, tail_dim == 768 Ternary):
+///     [head_f32 (head_dim * 4B)] [nz_bytes (tail_dim/8 ceil)] [sign_bytes (tail_dim/8 ceil)] [scale: f32 (4B)] [alpha: f32 (4B)]
+///     Total bytes = head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
+#[derive(Debug, Clone, PartialEq)]
+pub struct TernaryHyperVector {
+    pub head: Vec<f32>,
+    pub nz: Vec<u8>,
+    pub sign: Vec<u8>,
+    pub scale: f32,
+    pub alpha: f32,
+}
+
+impl TernaryHyperVector {
+    pub const DEFAULT_TAU_FACTOR: f32 = 0.67;
+
+    pub fn from_float(v: &HyperVector, head_dim: usize) -> Self {
+        Self::from_float_with_tau(v, head_dim, Self::DEFAULT_TAU_FACTOR)
+    }
+
+    pub fn from_float_with_tau(v: &HyperVector, head_dim: usize, tau_factor: f32) -> Self {
+        let n = v.coords.len();
+        let head_dim = head_dim.min(n);
+        let mut head = Vec::with_capacity(head_dim);
+        for i in 0..head_dim {
+            head.push(v.coords[i] as f32);
+        }
+
+        let tail_dim = n - head_dim;
+        let num_bytes = tail_dim.div_ceil(8);
+        let mut nz = vec![0u8; num_bytes];
+        let mut sign = vec![0u8; num_bytes];
+
+        if tail_dim == 0 {
+            return Self {
+                head,
+                nz,
+                sign,
+                scale: 1.0,
+                alpha: v.alpha as f32,
+            };
+        }
+
+        let mut tail_f32: Vec<f32> = v.coords[head_dim..].iter().map(|&x| x as f32).collect();
+        crate::turbo_rot::rotate_vector_in_place(&mut tail_f32);
+
+        let mean_abs: f32 = tail_f32.iter().map(|x| x.abs()).sum::<f32>() / (tail_dim as f32);
+        let tau = mean_abs * tau_factor;
+
+        let mut dot_orig_ternary = 0.0f32;
+        let mut ternary_norm_sq = 0.0f32;
+
+        for (i, &x) in tail_f32.iter().enumerate() {
+            let byte_idx = i / 8;
+            let bit_idx = i % 8;
+            if x > tau {
+                nz[byte_idx] |= 1 << bit_idx;
+                sign[byte_idx] |= 1 << bit_idx;
+                dot_orig_ternary += x;
+                ternary_norm_sq += 1.0;
+            } else if x < -tau {
+                nz[byte_idx] |= 1 << bit_idx;
+                dot_orig_ternary -= x;
+                ternary_norm_sq += 1.0;
+            }
+        }
+
+        let scale = if ternary_norm_sq > 0.0 {
+            dot_orig_ternary / ternary_norm_sq
+        } else {
+            1.0
+        };
+
+        Self {
+            head,
+            nz,
+            sign,
+            scale,
+            alpha: v.alpha as f32,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let total_size = self.head.len() * 4 + self.nz.len() + self.sign.len() + 8;
+        let mut bytes = Vec::with_capacity(total_size);
+        for &h in &self.head {
+            bytes.extend_from_slice(&h.to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.nz);
+        bytes.extend_from_slice(&self.sign);
+        bytes.extend_from_slice(&self.scale.to_le_bytes());
+        bytes.extend_from_slice(&self.alpha.to_le_bytes());
+        bytes
+    }
+
+    pub fn from_bytes(bytes: &[u8], dim: usize, head_dim: usize) -> Self {
+        let head_bytes_len = head_dim * 4;
+        let mut head = Vec::with_capacity(head_dim);
+        for i in 0..head_dim {
+            let offset = i * 4;
+            if offset + 4 <= bytes.len() {
+                let val =
+                    f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+                head.push(val);
+            } else {
+                head.push(0.0);
+            }
+        }
+
+        let tail_dim = dim.saturating_sub(head_dim);
+        let num_bytes = tail_dim.div_ceil(8);
+        let nz_start = head_bytes_len;
+        let nz_end = (nz_start + num_bytes).min(bytes.len());
+        let sign_start = nz_end;
+        let sign_end = (sign_start + num_bytes).min(bytes.len());
+
+        let nz = if nz_start < bytes.len() {
+            bytes[nz_start..nz_end].to_vec()
+        } else {
+            vec![0u8; num_bytes]
+        };
+        let sign = if sign_start < bytes.len() {
+            bytes[sign_start..sign_end].to_vec()
+        } else {
+            vec![0u8; num_bytes]
+        };
+
+        let scale_offset = head_bytes_len + 2 * num_bytes;
+        let scale = if scale_offset + 4 <= bytes.len() {
+            f32::from_le_bytes(
+                bytes[scale_offset..scale_offset + 4]
+                    .try_into()
+                    .unwrap_or([0; 4]),
+            )
+        } else {
+            1.0
+        };
+        let alpha = if scale_offset + 8 <= bytes.len() {
+            f32::from_le_bytes(
+                bytes[scale_offset + 4..scale_offset + 8]
+                    .try_into()
+                    .unwrap_or([0; 4]),
+            )
+        } else {
+            0.0
+        };
+
+        Self {
+            head,
+            nz,
+            sign,
+            scale,
+            alpha,
+        }
+    }
+
+    pub fn reconstruct(&self, dim: usize) -> Vec<f64> {
+        let mut coords = vec![0.0; dim];
+        let head_len = self.head.len().min(dim);
+        for i in 0..head_len {
+            coords[i] = f64::from(self.head[i]);
+        }
+        let tail_len = dim.saturating_sub(head_len);
+        let scale = f64::from(self.scale);
+        for i in 0..tail_len {
+            let byte_idx = i / 8;
+            let bit_idx = i % 8;
+            if byte_idx < self.nz.len() && (self.nz[byte_idx] & (1 << bit_idx)) != 0 {
+                let is_pos =
+                    byte_idx < self.sign.len() && (self.sign[byte_idx] & (1 << bit_idx)) != 0;
+                coords[head_len + i] = if is_pos { scale } else { -scale };
+            }
+        }
+        coords
+    }
+
+    pub fn reconstruct_unrotated(&self, dim: usize) -> Vec<f64> {
+        let mut coords = self.reconstruct(dim);
+        let head_len = self.head.len().min(dim);
+        let tail_len = dim.saturating_sub(head_len);
+        if tail_len > 0 {
+            let mut tail_f32: Vec<f32> = coords[head_len..].iter().map(|&x| x as f32).collect();
+            crate::turbo_rot::unrotate_vector_in_place(&mut tail_f32);
+            for i in 0..tail_len {
+                coords[head_len + i] = f64::from(tail_f32[i]);
+            }
+        }
+        coords
+    }
+
+    #[inline(always)]
+    pub fn asymmetric_dot_bytes(
+        bytes: &[u8],
+        query_coords: &[f64],
+        dim: usize,
+        head_dim: usize,
+    ) -> f64 {
+        let head_bytes_len = head_dim * 4;
+        let tail_dim = dim.saturating_sub(head_dim);
+        let num_bytes = tail_dim.div_ceil(8);
+        let sign_start = head_bytes_len + num_bytes;
+        let scale_offset = head_bytes_len + 2 * num_bytes;
+
+        if scale_offset + 4 > bytes.len() {
+            return 0.0;
+        }
+
+        let scale = f32::from_le_bytes(
+            bytes[scale_offset..scale_offset + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        );
+        let nz_bytes = &bytes[head_bytes_len..head_bytes_len + num_bytes];
+        let sign_bytes = &bytes[sign_start..sign_start + num_bytes];
+        let q_tail = &query_coords[head_dim..query_coords.len().min(dim)];
+
+        let mut dot = 0.0;
+        let n = q_tail.len();
+        for b_idx in 0..num_bytes {
+            let nz = nz_bytes[b_idx];
+            if nz == 0 {
+                continue;
+            }
+            let sign = sign_bytes[b_idx];
+            let base = b_idx * 8;
+            let limit = (n.saturating_sub(base)).min(8);
+            for bit in 0..limit {
+                if (nz & (1 << bit)) != 0 {
+                    let q = q_tail[base + bit];
+                    if (sign & (1 << bit)) != 0 {
+                        dot += q;
+                    } else {
+                        dot -= q;
+                    }
+                }
+            }
+        }
+        dot * f64::from(scale)
+    }
+
+    #[inline(always)]
+    pub fn distance_bytes_l2_sq(
+        bytes: &[u8],
+        query: &HyperVector,
+        dim: usize,
+        head_dim: usize,
+    ) -> f64 {
+        let head_bytes_len = head_dim * 4;
+        let tail_dim = dim.saturating_sub(head_dim);
+        let num_bytes = tail_dim.div_ceil(8);
+        let scale_offset = head_bytes_len + 2 * num_bytes;
+
+        if scale_offset + 4 > bytes.len() {
+            return f64::MAX;
+        }
+
+        let mut head_dist_sq = 0.0;
+        for i in 0..head_dim {
+            let offset = i * 4;
+            let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+            let diff = f64::from(h) - query.coords[i];
+            head_dist_sq += diff * diff;
+        }
+
+        let scale = f32::from_le_bytes(
+            bytes[scale_offset..scale_offset + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        );
+        let nz_bytes = &bytes[head_bytes_len..head_bytes_len + num_bytes];
+        let sign_bytes = &bytes[head_bytes_len + num_bytes..scale_offset];
+        let q_tail = &query.coords[head_dim..query.coords.len().min(dim)];
+
+        let mut dot = 0.0;
+        let mut nz_count = 0u32;
+        let mut q_norm_sq = 0.0;
+        let n = q_tail.len();
+
+        for b_idx in 0..num_bytes {
+            let nz = nz_bytes[b_idx];
+            nz_count += nz.count_ones();
+            if nz == 0 {
+                let base = b_idx * 8;
+                let limit = (n.saturating_sub(base)).min(8);
+                for bit in 0..limit {
+                    let q = q_tail[base + bit];
+                    q_norm_sq += q * q;
+                }
+                continue;
+            }
+            let sign = sign_bytes[b_idx];
+            let base = b_idx * 8;
+            let limit = (n.saturating_sub(base)).min(8);
+            for bit in 0..limit {
+                let q = q_tail[base + bit];
+                q_norm_sq += q * q;
+                if (nz & (1 << bit)) != 0 {
+                    if (sign & (1 << bit)) != 0 {
+                        dot += q;
+                    } else {
+                        dot -= q;
+                    }
+                }
+            }
+        }
+
+        let scale_f64 = f64::from(scale);
+        let v_norm_sq = f64::from(nz_count) * scale_f64 * scale_f64;
+        let tail_l2_sq = (v_norm_sq + q_norm_sq - 2.0 * dot * scale_f64).max(0.0);
+
+        head_dist_sq + tail_l2_sq
+    }
+
+    #[inline(always)]
+    pub fn distance_bytes_cosine(
+        bytes: &[u8],
+        query: &HyperVector,
+        dim: usize,
+        head_dim: usize,
+    ) -> f64 {
+        let head_bytes_len = head_dim * 4;
+        let tail_dim = dim.saturating_sub(head_dim);
+        let num_bytes = tail_dim.div_ceil(8);
+        let scale_offset = head_bytes_len + 2 * num_bytes;
+
+        if scale_offset + 4 > bytes.len() {
+            return 2.0;
+        }
+
+        let mut dot = 0.0;
+        for i in 0..head_dim {
+            let offset = i * 4;
+            let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+            dot += f64::from(h) * query.coords[i];
+        }
+
+        let scale = f32::from_le_bytes(
+            bytes[scale_offset..scale_offset + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        );
+        let nz_bytes = &bytes[head_bytes_len..head_bytes_len + num_bytes];
+        let sign_bytes = &bytes[head_bytes_len + num_bytes..scale_offset];
+        let q_tail = &query.coords[head_dim..query.coords.len().min(dim)];
+
+        let mut tail_dot = 0.0;
+        let mut nz_count = 0u32;
+        let n = q_tail.len();
+
+        for b_idx in 0..num_bytes {
+            let nz = nz_bytes[b_idx];
+            nz_count += nz.count_ones();
+            if nz == 0 {
+                continue;
+            }
+            let sign = sign_bytes[b_idx];
+            let base = b_idx * 8;
+            let limit = (n.saturating_sub(base)).min(8);
+            for bit in 0..limit {
+                if (nz & (1 << bit)) != 0 {
+                    let q = q_tail[base + bit];
+                    if (sign & (1 << bit)) != 0 {
+                        tail_dot += q;
+                    } else {
+                        tail_dot -= q;
+                    }
+                }
+            }
+        }
+
+        let scale_f64 = f64::from(scale);
+        dot += tail_dot * scale_f64;
+
+        let v_norm_sq = f64::from(nz_count) * scale_f64 * scale_f64;
+        let mut q_norm_sq = 0.0;
+        for &q in &query.coords[..dim.min(query.coords.len())] {
+            q_norm_sq += q * q;
+        }
+
+        let denom = (v_norm_sq * q_norm_sq).sqrt();
+        if denom < 1e-9 {
+            return 2.0;
+        }
+
+        let cos_sim = (dot / denom).clamp(-1.0, 1.0);
+        (1.0 - cos_sim).max(0.0)
+    }
+
+    #[inline(always)]
+    pub fn poincare_distance_sq_bytes(bytes: &[u8], query: &HyperVector, dim: usize) -> f64 {
+        let num_bytes = dim.div_ceil(8);
+        let scale_offset = 2 * num_bytes;
+        if scale_offset + 8 > bytes.len() {
+            return f64::MAX;
+        }
+        let alpha = f32::from_le_bytes(
+            bytes[scale_offset + 4..scale_offset + 8]
+                .try_into()
+                .unwrap_or([0; 4]),
+        );
+        let l2_sq = Self::distance_bytes_l2_sq(bytes, query, dim, 0);
+        let delta = l2_sq * f64::from(alpha) * query.alpha;
+        1.0 + 2.0 * delta
+    }
+
+    #[inline(always)]
+    pub fn lorentz_distance_bytes(
+        bytes: &[u8],
+        query: &HyperVector,
+        dim: usize,
+        head_dim: usize,
+    ) -> f64 {
+        if head_dim > 0 {
+            // Lorentz head is stored in f32
+            let mut h_dot = 0.0;
+            let h0 = f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4]));
+            let time_term = f64::from(h0) * query.coords[0];
+            for i in 1..head_dim {
+                let offset = i * 4;
+                let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+                h_dot += f64::from(h) * query.coords[i];
+            }
+            let tail_dot = Self::asymmetric_dot_bytes(bytes, &query.coords, dim, head_dim);
+            let minkowski_dot = -time_term + h_dot + tail_dot;
+            (-minkowski_dot).max(1.0)
+        } else {
+            let tail_dim = dim;
+            let num_bytes = tail_dim.div_ceil(8);
+            let scale_offset = 2 * num_bytes;
+            if scale_offset + 4 > bytes.len() {
+                return f64::MAX;
+            }
+            let scale = f64::from(f32::from_le_bytes(
+                bytes[scale_offset..scale_offset + 4]
+                    .try_into()
+                    .unwrap_or([0; 4]),
+            ));
+            let nz_bytes = &bytes[..num_bytes];
+            let sign_bytes = &bytes[num_bytes..2 * num_bytes];
+
+            let mut minkowski_dot = 0.0;
+            let n = query.coords.len().min(dim);
+            for b_idx in 0..num_bytes {
+                let nz = nz_bytes[b_idx];
+                if nz == 0 {
+                    continue;
+                }
+                let sign = sign_bytes[b_idx];
+                let base = b_idx * 8;
+                let limit = (n.saturating_sub(base)).min(8);
+                for bit in 0..limit {
+                    let idx = base + bit;
+                    if (nz & (1 << bit)) != 0 {
+                        let is_pos = (sign & (1 << bit)) != 0;
+                        let val = if is_pos { scale } else { -scale };
+                        if idx == 0 {
+                            minkowski_dot -= val * query.coords[0];
+                        } else {
+                            minkowski_dot += val * query.coords[idx];
+                        }
+                    }
+                }
+            }
+            (-minkowski_dot).max(1.0)
+        }
+    }
+
+    #[inline(always)]
+    pub fn hybrid_distance_bytes(bytes: &[u8], query: &HyperVector, active_dim: usize) -> f64 {
+        let d_lor = {
+            let h0 = f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4]));
+            let mut minkowski = -f64::from(h0) * query.coords[0];
+            for i in 1..33 {
+                let offset = i * 4;
+                let h = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap_or([0; 4]));
+                minkowski += f64::from(h) * query.coords[i];
+            }
+            (-minkowski).max(1.0).acosh()
+        };
+
+        let d_euc = Self::distance_bytes_l2_sq(bytes, query, active_dim, 33);
+        d_lor + d_euc
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ZonalVector {
     Core(Vec<i8>),

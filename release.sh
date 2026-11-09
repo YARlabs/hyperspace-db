@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="${1:-4.2.2}"
+VERSION="${1:-4.2.3}"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
