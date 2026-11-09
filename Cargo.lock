@@ -2556,7 +2556,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "prost 0.12.6",
  "serde",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "aes-gcm",
  "async-trait",

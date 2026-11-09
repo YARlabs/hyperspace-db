@@ -76,10 +76,13 @@ func (c *HyperspaceClient) withContext(ctx context.Context) context.Context {
 	return ctx
 }
 
+// CreateCollection creates a new collection with optional client-side encryption.
 func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, schema *pb.CollectionSchema, encryptionKey string, noiseSigma float64) error {
 	return c.CreateCollectionWithQuantization(ctx, name, schema, encryptionKey, noiseSigma, "")
 }
 
+// CreateCollectionWithQuantization creates a collection specifying custom quantization
+// Supported quantization levels: "ternary" (BitNet 1.58-bit {-1, 0, +1}), "turbo", "extreme", "medium_plus", "medium", "none".
 func (c *HyperspaceClient) CreateCollectionWithQuantization(ctx context.Context, name string, schema *pb.CollectionSchema, encryptionKey string, noiseSigma float64, quantization string) error {
 	metric := "l2"
 	if len(schema.Components) > 0 {

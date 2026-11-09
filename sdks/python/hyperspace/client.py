@@ -370,7 +370,18 @@ class HyperspaceClient:
         if not derived_metric:
             derived_metric = "l2"
 
-        is_encrypted = bool(encryption_key or encrypted or (isinstance(schema, dict) and schema.get("encrypted")) or (isinstance(schema, hyperspace_pb2.CollectionSchema) and schema.HasField("encrypted") and schema.encrypted))
+        is_encrypted = bool(encryption_key or encrypted)
+        if not is_encrypted:
+            if isinstance(schema, dict):
+                is_encrypted = bool(schema.get("encrypted"))
+            elif schema is not None:
+                try:
+                    if hasattr(schema, "HasField") and schema.HasField("encrypted"):
+                        is_encrypted = bool(schema.encrypted)
+                    else:
+                        is_encrypted = bool(getattr(schema, "encrypted", False))
+                except (ValueError, AttributeError):
+                    is_encrypted = bool(getattr(schema, "encrypted", False))
 
         if encryption_key:
             self.register_collection_key(name, encryption_key, derived_metric, noise_sigma)
@@ -497,15 +508,35 @@ class HyperspaceClient:
         req = hyperspace_pb2.Empty()
         try:
             resp = self.stub.ListCollections(req, metadata=self.metadata)
-            return [
-                {
+            res = []
+            for c in resp.collections:
+                has_schema = False
+                try:
+                    has_schema = c.HasField("schema")
+                except (ValueError, AttributeError):
+                    has_schema = hasattr(c, "schema") and bool(c.schema)
+
+                has_encrypted = False
+                c_encrypted = False
+                try:
+                    if hasattr(c, "HasField") and c.HasField("encrypted"):
+                        has_encrypted = True
+                        c_encrypted = c.encrypted
+                    elif hasattr(c, "encrypted"):
+                        c_encrypted = bool(c.encrypted)
+                except (ValueError, AttributeError):
+                    c_encrypted = bool(getattr(c, "encrypted", False))
+
+                schema_dict = self._schema_to_dict(c.schema) if has_schema else None
+                schema_encrypted = schema_dict.get("encrypted", False) if schema_dict else False
+
+                res.append({
                     "name": c.name,
                     "count": c.count,
-                    "schema": self._schema_to_dict(c.schema) if c.HasField("schema") else None,
-                    "encrypted": c.encrypted if c.HasField("encrypted") else (c.schema.encrypted if c.HasField("schema") and c.schema.HasField("encrypted") else False)
-                }
-                for c in resp.collections
-            ]
+                    "schema": schema_dict,
+                    "encrypted": c_encrypted or schema_encrypted
+                })
+            return res
         except grpc.RpcError as e:
             print(f"RPC Error in list_collections: {e}")
             return []
@@ -531,14 +562,26 @@ class HyperspaceClient:
                 for p in schema.cascade_pipeline
             ]
         }
-        if schema.HasField("encrypted"):
-            res["encrypted"] = schema.encrypted
+        try:
+            if schema.HasField("encrypted"):
+                res["encrypted"] = schema.encrypted
+        except (ValueError, AttributeError):
+            if hasattr(schema, "encrypted"):
+                res["encrypted"] = bool(schema.encrypted)
         return res
 
     def get_collection_stats(self, name: str) -> Dict:
         req = hyperspace_pb2.CollectionStatsRequest(name=name)
         try:
             resp = self.stub.GetCollectionStats(req, metadata=self.metadata)
+            encrypted_val = False
+            try:
+                if resp.HasField("encrypted"):
+                    encrypted_val = resp.encrypted
+                elif resp.HasField("schema") and resp.schema.HasField("encrypted"):
+                    encrypted_val = resp.schema.encrypted
+            except (ValueError, AttributeError):
+                encrypted_val = bool(getattr(resp, "encrypted", False))
             return {
                 "count": resp.count,
                 "indexing_queue": resp.indexing_queue,
@@ -546,7 +589,7 @@ class HyperspaceClient:
                 "ram_usage_bytes": resp.ram_usage_bytes,
                 "active_tasks": resp.active_tasks,
                 "schema": self._schema_to_dict(resp.schema) if resp.HasField("schema") else None,
-                "encrypted": resp.encrypted if resp.HasField("encrypted") else (resp.schema.encrypted if resp.HasField("schema") and resp.schema.HasField("encrypted") else False)
+                "encrypted": encrypted_val
             }
         except grpc.RpcError as e:
             print(f"RPC Error in get_collection_stats: {e}")

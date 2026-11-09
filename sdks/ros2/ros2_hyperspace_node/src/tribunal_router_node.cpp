@@ -27,12 +27,18 @@
 #include <hyperspace_interfaces/msg/search_result.hpp>
 #include <hyperspace_interfaces/msg/system_stats.hpp>
 
+#if __has_include(<hyperspace/client.hpp>)
 #include <hyperspace/client.hpp>
 #include <hyperspace/math.hpp>
+#elif __has_include("../../../cpp/include/hyperspace/client.hpp")
+#include "../../../cpp/include/hyperspace/client.hpp"
+#include "../../../cpp/include/hyperspace/math.hpp"
+#endif
 
 #include <vector>
 #include <cmath>
 #include <memory>
+#include <regex>
 
 class TribunalRouterNode : public rclcpp::Node {
 public:
@@ -399,14 +405,31 @@ private:
         std::shared_ptr<hyperspace_interfaces::srv::CreateCollection::Response> response)
     {
         RCLCPP_INFO(this->get_logger(), "Creating Collection [%s] with Schema JSON", request->name.c_str());
+
+        std::string quantization = "";
+        std::regex q_regex(R"("quantization"\s*:\s*"([^"]+)")");
+        std::smatch q_match;
+        if (std::regex_search(request->schema_json, q_match, q_regex) && q_match.size() > 1) {
+            quantization = q_match.str(1);
+        }
+
+        bool encrypted = false;
+        std::regex enc_regex(R"("encrypted"\s*:\s*(true|false))");
+        std::smatch enc_match;
+        if (std::regex_search(request->schema_json, enc_match, enc_regex) && enc_match.size() > 1) {
+            encrypted = (enc_match.str(1) == "true");
+        }
+
         ::hyperspace::CollectionSchema schema;
-        auto status = google::protobuf::util::JsonStringToMessage(request->schema_json, &schema);
+        google::protobuf::util::JsonParseOptions parse_options;
+        parse_options.ignore_unknown_fields = true;
+        auto status = google::protobuf::util::JsonStringToMessage(request->schema_json, &schema, parse_options);
         if (!status.ok()) {
             response->success = false;
             response->message = "Invalid Schema JSON: " + status.ToString();
             return;
         }
-        bool ok = client_->CreateCollection(request->name, schema);
+        bool ok = client_->CreateCollection(request->name, schema, quantization, encrypted);
         response->success = ok;
         response->message = ok ? "Successfully created." : "Failed to create collection.";
     }

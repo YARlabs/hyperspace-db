@@ -13,12 +13,15 @@ find_package(OpenSSL REQUIRED)
 
 set(PROTO_SRC_DIR "../../cpp/src")
 set(PROTO_INC_DIR "../../cpp/include")
+set(PROTO_GEN_DIR "../../cpp/proto")
 
-include_directories(include ${PROTO_INC_DIR})
+include_directories(include ${PROTO_INC_DIR} ${PROTO_GEN_DIR})
 
 add_executable(tribunal_router_node 
   src/tribunal_router_node.cpp
   ../../cpp/src/client.cpp
+  ../../cpp/proto/hyperspace.pb.cc
+  ../../cpp/proto/hyperspace.grpc.pb.cc
 )
 
 # Link against gRPC and interfaces

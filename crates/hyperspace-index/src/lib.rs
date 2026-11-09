@@ -2269,7 +2269,6 @@ impl<M: Metric> HnswIndex<M> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     fn search_layer0_flat<F>(
         &self,
         flat_l0: &FlatLayer0Segment,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <cstdint>
 #include <cmath>
 #include <unordered_map>
@@ -7,7 +8,13 @@
 #include <memory>
 #include <optional>
 #include <grpcpp/grpcpp.h>
+#if __has_include(<hyperspace.grpc.pb.h>)
+#include <hyperspace.grpc.pb.h>
+#elif __has_include("../../proto/hyperspace.grpc.pb.h")
+#include "../../proto/hyperspace.grpc.pb.h"
+#else
 #include "hyperspace.grpc.pb.h"
+#endif
 #include <google/protobuf/arena.h>
 
 namespace hyperspace {
@@ -65,7 +72,7 @@ public:
     HyperspaceClient(const std::string& endpoint, const std::string& app_id = "");
     ~HyperspaceClient() = default;
 
-    // Arena Allocation is used internally in Search and BatchSearch to improve deserialization speed
+    // Create collection with optional quantization: "ternary" (BitNet 1.58-bit {-1, 0, +1}), "turbo", "extreme", "medium_plus", "medium", "none"
     bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "", bool encrypted = false);
     std::vector<CollectionSummaryRec> ListCollections();
     std::string FreezeCollection(const std::string& name);
@@ -130,6 +137,7 @@ public:
 
     // Zero-Knowledge Client-Side Encryption
     void RegisterCollectionKey(const std::string& collection_name, const std::string& key, const std::string& metric = "l2", double noise_sigma = 0.02, const ::hyperspace::CollectionSchema* schema = nullptr);
+    // Create collection securely with client-side encryption and optional quantization ("ternary", "turbo", etc.)
     bool CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key = "", double noise_sigma = 0.02, const std::string& quantization = "");
     bool InsertSecure(uint32_t id, const std::vector<double>& vector, const std::unordered_map<std::string, std::string>& metadata = {}, const std::string& collection = "", const std::vector<uint8_t>& payload = {});
 

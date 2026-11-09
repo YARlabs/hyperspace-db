@@ -214,7 +214,8 @@ void main() async {
   // 2. Register key to enable client-side encryption
   client.registerCollectionKey(collection, secretKey, metric: 'cosine', noiseSigma: 0.02, schema: schema);
 
-  await client.createCollection(collection, schema, encryptionKey: secretKey, noiseSigma: 0.02, quantization: 'turbo');
+  // 3. Create collection with custom quantization ('ternary', 'turbo', 'extreme', 'medium_plus', 'medium', 'none')
+  await client.createCollection(collection, schema, encryptionKey: secretKey, noiseSigma: 0.02, quantization: 'ternary');
 
   // 3. Insert point (auto-projected, noise injected, payload encrypted)
   await client.insert(

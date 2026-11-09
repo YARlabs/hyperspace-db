@@ -42,12 +42,13 @@ async function main() {
   const collection = "docs_ts";
 
   await client.deleteCollection(collection).catch(() => {});
+  // Quantization: 'ternary' (BitNet 1.58-bit), 'turbo', 'extreme', 'medium_plus', 'medium', 'none'
   await client.createCollection(collection, {
     components: [
       { name: "primary", metric: "cosine", fullDimension: 3, weight: 1.0 }
     ],
     cascadePipeline: []
-  }, '', 0.02, 'medium_plus');
+  }, '', 0.02, 'ternary');
 
   await client.insert(1, [0.1, 0.2, 0.3], { source: "demo" }, collection);
   await client.insert(2, [0.2, 0.1, 0.4], { source: "demo" }, collection);

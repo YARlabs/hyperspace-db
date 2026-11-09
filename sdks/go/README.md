@@ -47,12 +47,12 @@ func main() {
 	ctx := context.Background()
 	collection := "docs_go"
 
-	// Create collection with Schema (Multi-Vector & MRL support)
-	_ = client.CreateCollection(ctx, collection, &pb.CollectionSchema{
+	// Create collection with Schema and Quantization ("ternary", "turbo", "extreme", "medium_plus", "medium", "none")
+	_ = client.CreateCollectionWithQuantization(ctx, collection, &pb.CollectionSchema{
 		Components: []*pb.VectorComponent{
 			{Name: "primary", Metric: "cosine", FullDimension: 1024, Weight: 1.0},
 		},
-	})
+	}, "", 0.02, "ternary")
 
 	// Insert text (server-side vectorization)
 	err = client.InsertText(ctx, 1, "HyperspaceDB is awesome!", collection)

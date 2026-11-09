@@ -58,7 +58,7 @@ client.create_collection(
         ],
         "cascade_pipeline": []
     },
-    quantization="medium_plus" # 'none', 'medium', 'medium_plus', 'turbo', or 'extreme'
+    quantization="medium_plus" # 'none', 'medium', 'medium_plus', 'turbo', 'extreme', or 'ternary'
 )
 
 # id is now the first argument

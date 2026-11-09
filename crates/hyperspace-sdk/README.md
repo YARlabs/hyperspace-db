@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cascade_pipeline: vec![],
     };
 
-    // Create collection with custom quantization level ("turbo", "medium_plus", "medium", "none", "extreme")
+    // Create collection with custom quantization level ("ternary", "turbo", "medium_plus", "medium", "none", "extreme")
     client.create_collection_with_quantization(collection.clone(), schema, "medium_plus".to_string()).await?;
 
     client.insert(

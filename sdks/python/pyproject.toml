@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hyperspacedb"
-version = "4.2.3"
+version = "4.2.4"
 description = "Fastest Hyperbolic Vector DB Client with Domain-Specific Cognitive SDKs"
 readme = "README.md"
 authors = [

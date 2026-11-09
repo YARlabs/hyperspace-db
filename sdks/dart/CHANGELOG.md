@@ -1,3 +1,7 @@
+## 4.2.4
+
+- Release version 4.2.4
+
 ## 4.2.3
 
 - Release version 4.2.3
