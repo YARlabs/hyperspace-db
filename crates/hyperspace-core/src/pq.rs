@@ -61,8 +61,20 @@ impl PQLookupTable {
     #[must_use]
     #[inline(always)]
     pub fn distance_bytes(&self, codes: &[u8]) -> f32 {
+        self.distance_bytes_thresh(codes, None)
+    }
+
+    /// Compute ADC distance directly from raw code bytes with optional early-abandon threshold.
+    /// Uses bounds-free indexing after a single slice length check and checks `threshold`
+    /// at the halfway mark when `m >= 32`.
+    #[must_use]
+    #[inline(always)]
+    pub fn distance_bytes_thresh(&self, codes: &[u8], threshold: Option<f32>) -> f32 {
         let m = self.num_subvectors.min(codes.len());
         let table = self.table.as_slice();
+        if table.len() < m * 256 {
+            return f32::MAX;
+        }
 
         let chunks = m / 8;
         let mut acc0 = 0.0f32;
@@ -70,30 +82,72 @@ impl PQLookupTable {
         let mut acc2 = 0.0f32;
         let mut acc3 = 0.0f32;
 
-        for ch in 0..chunks {
-            let base_m = ch * 8;
-            let c0 = codes[base_m] as usize;
-            let c1 = codes[base_m + 1] as usize;
-            let c2 = codes[base_m + 2] as usize;
-            let c3 = codes[base_m + 3] as usize;
-            let c4 = codes[base_m + 4] as usize;
-            let c5 = codes[base_m + 5] as usize;
-            let c6 = codes[base_m + 6] as usize;
-            let c7 = codes[base_m + 7] as usize;
+        let half_chunks = if threshold.is_some() && chunks >= 4 {
+            chunks / 2
+        } else {
+            chunks
+        };
 
-            acc0 += table[base_m * 256 + c0] + table[(base_m + 1) * 256 + c1];
-            acc1 += table[(base_m + 2) * 256 + c2] + table[(base_m + 3) * 256 + c3];
-            acc2 += table[(base_m + 4) * 256 + c4] + table[(base_m + 5) * 256 + c5];
-            acc3 += table[(base_m + 6) * 256 + c6] + table[(base_m + 7) * 256 + c7];
+        // SAFETY: `m <= codes.len()` and `table.len() >= m * 256`, and each `c_i < 256`,
+        // so `base_m + 7 < m` and `(base_m + 7) * 256 + c7 < m * 256 <= table.len()`.
+        unsafe {
+            for ch in 0..half_chunks {
+                let base_m = ch * 8;
+                let c0 = *codes.get_unchecked(base_m) as usize;
+                let c1 = *codes.get_unchecked(base_m + 1) as usize;
+                let c2 = *codes.get_unchecked(base_m + 2) as usize;
+                let c3 = *codes.get_unchecked(base_m + 3) as usize;
+                let c4 = *codes.get_unchecked(base_m + 4) as usize;
+                let c5 = *codes.get_unchecked(base_m + 5) as usize;
+                let c6 = *codes.get_unchecked(base_m + 6) as usize;
+                let c7 = *codes.get_unchecked(base_m + 7) as usize;
+
+                acc0 += *table.get_unchecked(base_m * 256 + c0)
+                    + *table.get_unchecked((base_m + 1) * 256 + c1);
+                acc1 += *table.get_unchecked((base_m + 2) * 256 + c2)
+                    + *table.get_unchecked((base_m + 3) * 256 + c3);
+                acc2 += *table.get_unchecked((base_m + 4) * 256 + c4)
+                    + *table.get_unchecked((base_m + 5) * 256 + c5);
+                acc3 += *table.get_unchecked((base_m + 6) * 256 + c6)
+                    + *table.get_unchecked((base_m + 7) * 256 + c7);
+            }
+
+            if half_chunks < chunks {
+                if let Some(t) = threshold {
+                    let partial = (acc0 + acc1) + (acc2 + acc3);
+                    if partial > t {
+                        return partial;
+                    }
+                }
+                for ch in half_chunks..chunks {
+                    let base_m = ch * 8;
+                    let c0 = *codes.get_unchecked(base_m) as usize;
+                    let c1 = *codes.get_unchecked(base_m + 1) as usize;
+                    let c2 = *codes.get_unchecked(base_m + 2) as usize;
+                    let c3 = *codes.get_unchecked(base_m + 3) as usize;
+                    let c4 = *codes.get_unchecked(base_m + 4) as usize;
+                    let c5 = *codes.get_unchecked(base_m + 5) as usize;
+                    let c6 = *codes.get_unchecked(base_m + 6) as usize;
+                    let c7 = *codes.get_unchecked(base_m + 7) as usize;
+
+                    acc0 += *table.get_unchecked(base_m * 256 + c0)
+                        + *table.get_unchecked((base_m + 1) * 256 + c1);
+                    acc1 += *table.get_unchecked((base_m + 2) * 256 + c2)
+                        + *table.get_unchecked((base_m + 3) * 256 + c3);
+                    acc2 += *table.get_unchecked((base_m + 4) * 256 + c4)
+                        + *table.get_unchecked((base_m + 5) * 256 + c5);
+                    acc3 += *table.get_unchecked((base_m + 6) * 256 + c6)
+                        + *table.get_unchecked((base_m + 7) * 256 + c7);
+                }
+            }
+
+            let mut sum = (acc0 + acc1) + (acc2 + acc3);
+            for sub_idx in (chunks * 8)..m {
+                let code = *codes.get_unchecked(sub_idx) as usize;
+                sum += *table.get_unchecked(sub_idx * 256 + code);
+            }
+            sum
         }
-
-        let mut sum = (acc0 + acc1) + (acc2 + acc3);
-        for sub_idx in (chunks * 8)..m {
-            let code = codes[sub_idx] as usize;
-            sum += table[sub_idx * 256 + code];
-        }
-
-        sum
     }
 }
 

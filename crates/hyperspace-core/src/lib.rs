@@ -731,14 +731,29 @@ pub trait Metric: Send + Sync + 'static {
     }
 }
 
-impl Metric for PoincareMetric {
-    fn name() -> &'static str {
-        "poincare"
+/// Numerically stable `acosh(cosh_d)` using a fast 4-term Puiseux polynomial for small `x = cosh_d - 1`
+/// and `ln_1p(x + sqrt(x * (x + 2)))` for larger `x`.
+/// Avoids catastrophic precision loss when `cosh_d` is close to `1.0` and skips transcendental `ln_1p`
+/// for short hyperbolic distances.
+#[inline(always)]
+pub fn acosh_from_cosh(cosh_d: f64) -> f64 {
+    let x = (cosh_d - 1.0).max(0.0);
+    if x < 0.0625 {
+        let s = (2.0 * x).sqrt();
+        s * x.mul_add(
+            x.mul_add(x.mul_add(-5.0 / 896.0, 3.0 / 160.0), -1.0 / 12.0),
+            1.0,
+        )
+    } else {
+        (x + (x * (x + 2.0)).sqrt()).ln_1p()
     }
+}
 
+impl PoincareMetric {
+    /// Monotonic `cosh(d)` proxy (`>= 1.0`) for Poincaré ball distance.
     #[inline(always)]
     #[allow(clippy::chunks_exact_to_as_chunks)]
-    fn distance(a: &[f64], b: &[f64]) -> f64 {
+    pub fn cosh_distance(a: &[f64], b: &[f64]) -> f64 {
         const LANES: usize = 4;
         let n = a.len().min(b.len());
         let mut acc_u = [0.0; LANES];
@@ -770,8 +785,18 @@ impl Metric for PoincareMetric {
         }
 
         let denom = (1.0 - norm_u_sq) * (1.0 - norm_v_sq);
-        let arg = 1.0 + 2.0 * diff_sq / denom.max(1e-9);
-        arg.acosh()
+        1.0 + 2.0 * diff_sq / denom.max(1e-9)
+    }
+}
+
+impl Metric for PoincareMetric {
+    fn name() -> &'static str {
+        "poincare"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64], b: &[f64]) -> f64 {
+        acosh_from_cosh(Self::cosh_distance(a, b))
     }
 
     fn validate(vector: &[f64]) -> Result<(), String> {
@@ -926,6 +951,39 @@ impl LorentzMetric {
         }
         Ok(())
     }
+    /// Monotonic `cosh(d)` proxy (`>= 1.0`) for Lorentz hyperboloid distance using
+    /// the difference identity `1 + 0.5 * (||dx||^2 - dt^2)`.
+    #[inline(always)]
+    pub fn cosh_distance(a: &[f64], b: &[f64]) -> f64 {
+        debug_assert!(
+            a.len() >= 2,
+            "Lorentz metric requires at least 2 dimensions"
+        );
+        let n = a.len().min(b.len());
+        if n == 0 {
+            return 1.0;
+        }
+        let dt = a[0] - b[0];
+        let mut sp = 0.0;
+        if n > 1 {
+            let mut acc = [0.0; 4];
+            let (chunks_a, rem_a) = a[1..n].as_chunks::<4>();
+            let (chunks_b, rem_b) = b[1..n].as_chunks::<4>();
+
+            for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+                for l in 0..4 {
+                    let d = ca[l] - cb[l];
+                    acc[l] += d * d;
+                }
+            }
+            sp += (acc[0] + acc[1]) + (acc[2] + acc[3]);
+            for (&va, &vb) in rem_a.iter().zip(rem_b.iter()) {
+                let d = va - vb;
+                sp += d * d;
+            }
+        }
+        1.0 + ((sp - dt * dt) * 0.5).max(0.0)
+    }
 }
 
 impl Metric for LorentzMetric {
@@ -935,54 +993,7 @@ impl Metric for LorentzMetric {
 
     #[inline(always)]
     fn distance(a: &[f64], b: &[f64]) -> f64 {
-        debug_assert!(
-            a.len() >= 2,
-            "Lorentz metric requires at least 2 dimensions"
-        );
-        let mut spatial_dot = 0.0;
-        let mut i = 1;
-        let n = a.len().min(b.len());
-
-        #[cfg(all(feature = "nightly-simd", has_nightly))]
-        {
-            use std::simd::f64x4;
-            use std::simd::num::SimdFloat;
-            let mut sum_vec = f64x4::splat(0.0);
-            while i + 4 <= n {
-                let va = f64x4::from_slice(&a[i..i + 4]);
-                let vb = f64x4::from_slice(&b[i..i + 4]);
-                sum_vec += va * vb;
-                i += 4;
-            }
-            spatial_dot += sum_vec.reduce_sum();
-        }
-
-        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
-        if n > 1 {
-            let mut acc = [0.0; 4];
-            let (chunks_a, rem_a) = a[1..n].as_chunks::<4>();
-            let (chunks_b, rem_b) = b[1..n].as_chunks::<4>();
-
-            for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
-                for l in 0..4 {
-                    acc[l] += ca[l] * cb[l];
-                }
-            }
-            spatial_dot += acc[0] + acc[1] + acc[2] + acc[3];
-            for (&va, &vb) in rem_a.iter().zip(rem_b.iter()) {
-                spatial_dot += va * vb;
-            }
-            i = n;
-        }
-
-        while i < n {
-            spatial_dot += a[i] * b[i];
-            i += 1;
-        }
-
-        let inner_prod = -a[0] * b[0] + spatial_dot;
-        let arg = (-inner_prod).max(1.0 + 1e-12);
-        arg.acosh()
+        acosh_from_cosh(Self::cosh_distance(a, b))
     }
 
     fn validate(vector: &[f64]) -> Result<(), String> {

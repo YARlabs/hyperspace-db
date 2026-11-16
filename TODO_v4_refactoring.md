@@ -1,25 +1,34 @@
-# HyperspaceDB v4.2.3 — Refactoring Roadmap & Progress Tracker
+# HyperspaceDB v4.2.5 — Refactoring Roadmap & Progress Tracker
 
 ## 🎯 High-Level Goals
 1. **Thread-per-Core (Shared-Nothing Architecture)**: Transition from shared global `DashMap`/`RwLock` state to core-isolated shards (`ShardedCollection`) with core affinity and lock-free scatter-gather execution.
 2. **Direct I/O Storage Engine**: Aligned block storage (4096-byte Direct I/O) bypassing OS page cache pollution and memory contention during heavy disk MRL cascade reads.
-3. **1.58-Bit Ternary BitNet Quantization & Adaptive Filtered Search (v4.2.3)**:
+3. **Zero-Copy Byte SIMD & 8-Byte Packed Candidate Queues (v4.2.4)**:
+   - 8-Byte packed candidate layout (`#[repr(C, align(8))] Candidate { id: u32, distance: f32 }`) turning priority queue comparisons into single 1-cycle integer `u64` instructions and cutting heap memory in half.
+   - Zero-copy byte-to-byte SIMD distance kernels (`l2_sq_pair_dispatch`, `lorentz_f32_bytes_pair_thresh`, `hybrid_f32_bytes_pair`, `sq8_lorentz_bytes_pair`) directly comparing vectors in `VectorStore` during `select_neighbors` and `prune_connections`, eliminating up to 256 KB memory copies per node.
+   - Fused SQ8 Lorentz dot-product and norm-square accumulation (`sq8_dot_and_qsq`), boosting deep radius ($t \approx 25$) Recall@10 from 31.5% to 93.5% with a 2.14× faster build.
+   - KAG-Guided HNSW Traversal expanding CSR graph edges inside `search_layer0` to bridge semantic gaps in a single traversal pass.
+4. **Hardware SIMD 801D Hybrid Engine & Numerically Stable Hyperbolic Kernels (v4.2.4)**:
+   - Dedicated runtime SIMD dispatch for 801D Hybrid embeddings ($\mathbb{H}^{33} \times \mathbb{R}^{768}$) and `AsymmetricHybrid801` with cross-manifold early-abandon.
+   - Numerically stable Lorentz difference identity $\cosh(d) = 1 + \frac{1}{2}(\|\Delta \mathbf{x}\|^2 - \Delta t^2)$ and fast Puiseux series expansion for `acosh`, eliminating cancellation and transcendental CPU overhead.
+   - Zero-allocation candidate coordinate decoding and scoped `StorageView` graph traversals.
+5. **1.58-Bit Ternary BitNet Quantization & Adaptive Filtered Search (v4.2.3)**:
    - 1.58-bit Ternary BitNet quantization $\{-1, 0, +1\}$ with adaptive Lloyd-Max optimal Gaussian threshold $\tau = 0.67 \cdot \text{mean}(|\mathbf{x}|)$ and dynamic projection scale $\alpha$.
    - Popcount-based SIMD dot product acceleration with zero-block skip logic, delivering 17.4 ns per 1024D vector (25.2× faster than f32) and 92.6% Recall@10 (10x rerank).
    - Adaptive filtered search cost model $\text{clamp}(1.75 \cdot \sqrt{N \cdot \text{ef} \cdot M}, 1000, N / 2)$ and Rayon-parallel chunked scanning, achieving 33,271 QPS at 5% selectivity (154× faster than OpenSearch 3.9).
    - Full support across Euclidean, Cosine, Poincaré, Lorentz, and Hybrid (801D) manifolds.
-4. **Hardware SIMD SQ8 f32 Vector Kernels & Epoch Visited Lifecycle (v4.2.2)**:
+5. **Hardware SIMD SQ8 f32 Vector Kernels & Epoch Visited Lifecycle (v4.2.2)**:
    - Dynamic CPU SIMD dispatch (AVX-512, AVX2+FMA, ARM NEON, scalar) for `sq8_l2_sq` and `sq8_dot`, quantizing query vectors to f32 once per search and accelerating distance calculations up to 3.4×.
    - Epoch-based (`u16`) visited lifecycle eliminating per-query memory clearing overhead on multi-million node indexes.
    - Automatic snapshot freezing and zero-copy restoration of `FlatLayer0Segment` sidecars (`flat_l0.bin`).
    - Query vector validation zero-alloc fast paths and exact rerank buffer pipelining.
-4. **Hardware-Level Bottleneck Elimination & Flat Navigation (v4.2.1)**:
+6. **Hardware-Level Bottleneck Elimination & Flat Navigation (v4.2.1)**:
    - Contiguous strided 64-byte cache-aligned Layer-0 graph layout (`FlatLayer0Segment`, `FlatNodeHeader`, `AlignedBuffer`) eliminating pointer chasing and triple-cache-miss lookups.
    - 64x memory-compact 1-bit Visited flat bitset (`words: Vec<u64>`), dropping scratch buffer footprint from 8 MB to 125 KB per thread for 1M nodes.
    - Lookahead $K=2$ software pipelining prefetch in Layer-0 and dynamic layer candidate traversal.
    - O(N) geometric scan → Axis-Aligned Bounding Box (AABB) spatial indexing.
-5. **Zero-Downtime Automatic Migration (v3.x → v4.x)**: Automatic detection of legacy v3.x `.hyp` collections in `data/legacy_v3/` or `data/`, instant conversion to v4 sharded Direct I/O layout under `data/v4/`, and safe archiving to `data/legacy_v3_migrated/`. All v4.x collections maintain 100% forward and backward compatibility without manual migrations.
-6. **Documentation & Benchmarks**: Complete synchronization of `ARCHITECTURE.md`, `CHANGELOG.md`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`.
+7. **Zero-Downtime Automatic Migration (v3.x → v4.x)**: Automatic detection of legacy v3.x `.hyp` collections in `data/legacy_v3/` or `data/`, instant conversion to v4 sharded Direct I/O layout under `data/v4/`, and safe archiving to `data/legacy_v3_migrated/`. All v4.x collections maintain 100% forward and backward compatibility without manual migrations.
+8. **Documentation & Benchmarks**: Complete synchronization of `ARCHITECTURE.md`, `CHANGELOG.md`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`.
 
 ---
 
@@ -182,6 +191,48 @@
     - [x] Default compilation target set to `x86-64-v3` for stable multi-CPU Linux deployments.
     - [x] 100% backward and forward compatibility with existing v4 collections (zero manual migrations required).
 
+- [x] **Phase 11: 1.58-Bit Ternary BitNet Quantization & Adaptive Filtered Scanning (v4.2.3 - 100% COMPLETE)**
+  - [x] Ternary vector quantization $\{-1, 0, +1\}$ with adaptive Lloyd-Max optimal Gaussian threshold $\tau = 0.67 \cdot \text{mean}(|\mathbf{x}|)$ and dynamic projection scale $\alpha$.
+  - [x] Bit-packed storage ($2 \cdot \lceil D/8 \rceil + 8$ bytes) delivering 15.5× compression vs FP32 and 17.4 ns distance evaluation (25.2× faster).
+  - [x] Cost-model adaptive filtered search $\text{clamp}(1.75 \cdot \sqrt{N \cdot \text{ef} \cdot M}, 1000, N / 2)$ with Rayon parallel chunked scanner (33,271 QPS at 5% selectivity, 154× faster than OpenSearch 3.9).
+
+- [x] **Phase 12: Hardware SIMD 801D Hybrid Engine, Stable Lorentz Difference & Zero-Alloc Traversals (v4.2.4 - 100% COMPLETE)**
+  - [x] **801D Hybrid SIMD Vectorization & Cross-Manifold Early Abandon**:
+    - [x] Added `hybrid_f32_bytes` with 32-lane spatial SIMD and cross-manifold early-abandon after evaluating the 33D hyperbolic head.
+    - [x] Added `HybridQuantizedVector::distance_bytes_mrl_f32` with vectorized `simd::sq8_l2_sq` for 768D tail.
+    - [x] Connected `"hybrid"` and `AsymmetricHybrid801` to `dist_bytes_opt` and `dist_f32_slices`.
+    - [x] 801D Hybrid build accelerated 8.54× (1379.9 ms → 161.6 ms), search QPS boosted 17.41× (1,910 → 33,249 QPS, 100% Top-1 recall).
+    - [x] `AsymmetricHybrid801` build accelerated 8.47× (1500.0 ms → 177.0 ms), search QPS boosted 14.20× (2,069 → 29,382 QPS).
+  - [x] **Numerically Stable Lorentz Difference & Puiseux `acosh`**:
+    - [x] Stable difference identity $\cosh(d) = 1 + \frac{1}{2}(\|\Delta \mathbf{x}\|^2 - \Delta t^2)$ in `lorentz_f32_bytes_thresh`.
+    - [x] 4-term Puiseux polynomial for small hyperbolic distances $x < 0.0625$ in `acosh_from_cosh`.
+    - [x] 33D Lorentz build time reduced 1.50× (75.28 ms → 50.16 ms), search QPS reaches 98,585 with 100% recall (200/200).
+  - [x] **Zero-Allocation Node Decoding & Scoped StorageView**:
+    - [x] Zero-allocation decoders in `load_node_coords_f32` for `AsymmetricHybrid801` and `ProductQuantization`/`OPQ`.
+    - [x] Scoped `StorageView` across `select_neighbors`, `prune_connections`, and greedy upper-layer zoom-in loops.
+    - [x] Bounds-free Product Quantization ADC `distance_bytes_thresh` with 50% early-abandon.
+    - [x] WriteBuffer bypass in `collection.rs` on empty buffers.
+
+- [x] **Phase 13: Zero-Copy Byte SIMD, 8B Packed Candidates & KAG Beam Routing (v4.2.5 - 100% COMPLETE)**
+  - [x] **8-Byte Packed Candidates (`Candidate` / `MaxCandidate`)**:
+    - [x] Packed structure `#[repr(C, align(8))]` with `as_u64()` transmutation enabling 1-cycle integer `u64` comparisons.
+    - [x] 50% memory reduction in `BinaryHeap` queues (8B vs 16B) with 2x cacheline density.
+  - [x] **Zero-Copy Byte-to-Byte SIMD Kernels**:
+    - [x] Added `l2_sq_pair_neon`, `l2_sq_pair_avx2`, `l2_sq_pair_dispatch`, `l2_sq_f32_bytes_pair_adsampling`, `lorentz_f32_bytes_pair_thresh`, `hybrid_f32_bytes_pair`, and `sq8_lorentz_bytes_pair`.
+    - [x] Direct vector comparisons in `select_neighbors` and `prune_connections` without `load_node_coords_f32` unpacking or intermediate `memcpy` (saving up to 256 KB memory copy per node in 1024D).
+    - [x] Inner loop candidate pruning with tight `curr_worst` updating.
+  - [x] **Optimized 2-Point ADSampling**:
+    - [x] Checkpoints at 50% and 75% dimensions with constant slack bounds (`0.65 * t` and `0.92 * t`) without runtime `sqrt` overhead.
+  - [x] **Fused SQ8 Lorentz Kernel & Integer Dot Accumulation (`sq8_dot_and_qsq`)**:
+    - [x] Direct integer accumulation (`vmull_s8` + `vmlal_s8` + `vpadalq_s16`) cutting FP FMA ops in half.
+    - [x] Boosted 128D Lorentz ScalarI8 deep radius ($t \approx 25$) Recall@10 from 31.5% to 93.5% with 2.14× faster build.
+  - [x] **KAG-Guided HNSW Traversal**:
+    - [x] Integrated `HnswIndex::set_graph_engine` / `with_graph_engine` to expand active KAG CSR edges inside `search_layer0`.
+    - [x] Verified semantic gap bridging (Node 10 -> KAG -> Node 450 in Top-5).
+  - [x] **Lazy `SpatialAabbIndex` & Zero-Heap Scratch**:
+    - [x] `indexed_count: AtomicU32` and `ensure_spatial_index()` bypassing spatial index lock overhead on pure vector inserts.
+    - [x] Thread-local `BYTES_SCRATCH` and `build_hyper_vector` eliminating heap allocations on ingestion/search paths.
+
 ---
 
 ## 📈 Metric Goals & Tracking
@@ -189,7 +240,17 @@
 |---|---|---|---|
 | **Raw Vector Ingestion (1024D)** | 10,932.9 vec/s | > 10,000 vec/s | **15,319.4 vec/s** (1 shard) / **67,500 vec/s** (Server core rate) :white_check_mark: |
 | **Total Index Build Time (25k 1024D)** | 121.98 s | < 80 s | **78.54 s** (1.55× faster) :white_check_mark: |
-| **Total Index Build Time (10k 801D)** | 51.22 s | < 20 s | **15.70 s** (3.26× faster) :white_check_mark: |
+| **1024D L2 Build Time (1500 vec)** | 436.29 ms | < 350 ms | **304.75–323.46 ms** (26–30% faster) :white_check_mark: |
+| **1024D L2 Frozen Search QPS** | 7,964.4 QPS | > 8,000 QPS | **8,355–8,712 QPS** (flat L0 active) :white_check_mark: |
+| **801D Hybrid f32 Build Time (1500 vec)** | 406.14 ms | < 350 ms | **290.98 ms** (28.4% faster) :white_check_mark: |
+| **801D Hybrid f32 Search QPS (ef=48)** | 1,910 QPS | > 20,000 QPS | **33,249 QPS** (17.41× higher QPS, 100% Recall) :white_check_mark: |
+| **801D AsymmetricHybrid801 Search QPS** | 2,069 QPS | > 20,000 QPS | **29,382 QPS** (14.20× higher QPS, 100% Recall) :white_check_mark: |
+| **128D Lorentz f32 Build Time (2000 vec)** | 183.38 ms | < 160 ms | **146.10–151.63 ms** (17–20% faster) :white_check_mark: |
+| **128D Lorentz f32 Search QPS** | 21,139 QPS | > 20,000 QPS | **21,743–22,608 QPS** (0.980 Recall@10) :white_check_mark: |
+| **128D Lorentz SQ8 Deep Radius Build** | 48.0 ms | < 30 ms | **22.11 ms** (2.14× faster build) :white_check_mark: |
+| **128D Lorentz SQ8 Deep Radius Recall** | 31.5% | > 90.0% | **93.5%** (~80,000 QPS, +62.0% Recall gain) :white_check_mark: |
+| **KAG Semantic-Gap Traversal** | Structural gap | Bridge in Top-5 | **100% Connected** (Node 10 -> Node 450 in Top-5) :white_check_mark: |
+| **33D Lorentz f32 Search QPS (ef=48)** | 40,127 QPS | > 75,000 QPS | **98,585 QPS** (200/200 Top-1 Recall) :white_check_mark: |
 | **Geometric Filter Latency (1M)** | ~120 - 450 ms (O(N) full scan) | < 10 ms (AABB pruning) | **0.51 ms** (1,774 QPS, 22.3× faster) :white_check_mark: |
 | **Dense 1024D Search QPS (C=1)** | 31.5 QPS (P50 30.2 ms) | > 100 QPS | **142.5 QPS** (P50 6.98 ms, 4.52× higher QPS, 99.90% Recall) :white_check_mark: |
 | **MRL Cascade Disk Rerank QPS** | 64.5 QPS (P50 15.0 ms) | > 200 QPS | **397.1 QPS** (P50 2.50 ms, 6.16× higher QPS, 99.87% Recall) :white_check_mark: |

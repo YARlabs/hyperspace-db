@@ -88,9 +88,8 @@ fn test_lorentz_quantization_roundtrip_origin() {
     };
     let q = QuantizedHyperVector::from_float_lorentz(&origin);
 
-    // alpha stores the scale factor (max |coord| = 1.0)
-    assert!((f64::from(q.alpha) - 1.0).abs() < 1e-5);
-    // coords[0] should map to 127 (1.0 / 1.0 * 127 = 127)
+    // Spatial coordinates are all zero -> alpha is 0.0, time is reconstructed as sqrt(1 + 0) = 1.0
+    assert!(f64::from(q.alpha).abs() < 1e-5);
     assert_eq!(q.coords[0], 127);
     assert_eq!(q.coords[1], 0);
     assert_eq!(q.coords[2], 0);
@@ -108,15 +107,15 @@ fn test_lorentz_quantization_known_point() {
     };
     let q = QuantizedHyperVector::from_float_lorentz(&v);
 
-    // Scale should be cosh(1) ~ 1.5431 (the largest absolute coordinate)
-    let expected_scale = r.cosh();
+    // Spatial scale should be sinh(1) ~ 1.1752 (the largest absolute spatial coordinate)
+    let expected_scale = r.sinh();
     assert!((f64::from(q.alpha) - expected_scale).abs() < 1e-3);
 
-    // coords[0] should be 127 (cosh(1)/cosh(1) * 127 = 127)
+    // coords[0] is sentinel (127) since t is reconstructed on the hyperboloid as sqrt(1 + ||x||^2)
     assert_eq!(q.coords[0], 127);
-    // coords[1] should be round(sinh(1)/cosh(1) * 127) = round(tanh(1) * 127) ~ round(96.5) = 97
-    let expected_q1 = (r.tanh() * 127.0).round() as i8;
-    assert_eq!(q.coords[1], expected_q1);
+    // coords[1] uses the full [-127, 127] dynamic range: round(sinh(1)/sinh(1) * 127) = 127
+    assert_eq!(q.coords[1], 127);
+    assert_eq!(q.coords[2], 0);
 }
 
 #[test]

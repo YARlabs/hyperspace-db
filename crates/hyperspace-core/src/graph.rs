@@ -530,6 +530,7 @@ impl CsrGraph {
 /// Dynamic, thread-safe Adjacency List graph with atomic edge invalidation.
 ///
 /// Guaranteed $0 \ \mu\text{s}$ stale-edge invalidation lag.
+#[derive(Debug)]
 pub struct DynamicGraph {
     pub adj: RwLock<Vec<RwLock<Vec<CompactEdge>>>>,
     pub edge_count: AtomicUsize,
@@ -716,6 +717,7 @@ impl DynamicGraph {
 }
 
 /// Unified, production-ready Graph Engine managing dynamic updates and CSR compaction.
+#[derive(Debug)]
 pub struct GraphEngine {
     pub config: GraphConfig,
     pub dynamic: Arc<DynamicGraph>,

@@ -41,6 +41,12 @@ pub struct StorageView<'a> {
 }
 
 impl StorageView<'_> {
+    /// Returns the total number of stored vectors.
+    #[inline]
+    pub fn count(&self) -> usize {
+        self.store.count()
+    }
+
     /// Retrieves a vector by ID using the pre-loaded segments guard.
     #[inline]
     pub fn get(&self, id: u32) -> &[u8] {

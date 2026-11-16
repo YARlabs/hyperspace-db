@@ -168,6 +168,52 @@ impl HyperVector {
         (factor, spatial)
     }
 
+    /// Projects a Lorentz hyperboloid vector `(t, x_1, ..., x_d)` to the Beltrami-Klein disk
+    /// `(1.0, x_1 / t, ..., x_d / t)` via the exact central projection `k_i = x_i / t`.
+    #[must_use]
+    pub fn lorentz_to_klein(&self) -> Self {
+        let n = self.coords.len();
+        if n == 0 {
+            return Self {
+                coords: Vec::new(),
+                alpha: 1.0,
+            };
+        }
+        let t = self.coords[0].max(1.0);
+        let inv_t = 1.0 / t;
+        let mut coords_k = Vec::with_capacity(n);
+        coords_k.push(1.0);
+        for &x in &self.coords[1..] {
+            coords_k.push(x * inv_t);
+        }
+        Self {
+            coords: coords_k,
+            alpha: t,
+        }
+    }
+
+    /// Projects the 33D Lorentz head of a Hybrid vector to the Beltrami-Klein disk while
+    /// keeping the Euclidean tail unchanged.
+    #[must_use]
+    pub fn hybrid_to_klein(&self) -> Self {
+        let n = self.coords.len();
+        if n < 33 {
+            return self.clone();
+        }
+        let t = self.coords[0].max(1.0);
+        let inv_t = 1.0 / t;
+        let mut coords_k = Vec::with_capacity(n);
+        coords_k.push(1.0);
+        for &x in &self.coords[1..33] {
+            coords_k.push(x * inv_t);
+        }
+        coords_k.extend_from_slice(&self.coords[33..]);
+        Self {
+            coords: coords_k,
+            alpha: t,
+        }
+    }
+
     #[inline(always)]
     pub fn klein_chord_distance_sq(&self, other: &Self) -> f64 {
         let n = self.coords.len();
@@ -460,17 +506,23 @@ impl QuantizedHyperVector {
 
     pub fn from_float_lorentz(v: &HyperVector) -> Self {
         let n = v.coords.len();
+        // Quantize spatial coordinates using the spatial max-abs so they utilize the full
+        // [-127, 127] i8 dynamic range without being crushed by the time coordinate t_u >= 1.
         let scale = v
             .coords
             .iter()
+            .skip(1)
             .map(|&x| x.abs())
             .fold(0.0_f64, f64::max)
             .max(1e-12);
 
         let inv_scale = 127.0 / scale;
         let mut coords = vec![0i8; n];
-        for (dst, &src) in coords.iter_mut().zip(v.coords.iter()) {
-            *dst = (src * inv_scale).round().clamp(-127.0, 127.0) as i8;
+        if n > 0 {
+            coords[0] = 127;
+            for (dst, &src) in coords[1..].iter_mut().zip(v.coords[1..].iter()) {
+                *dst = (src * inv_scale).round().clamp(-127.0, 127.0) as i8;
+            }
         }
 
         Self {
@@ -481,59 +533,24 @@ impl QuantizedHyperVector {
 
     #[inline(always)]
     pub fn lorentz_distance_to_float(&self, query: &HyperVector) -> f64 {
-        let n = self.coords.len();
-        let scale = f64::from(self.alpha);
-        #[cfg(all(feature = "nightly-simd", has_nightly))]
-        {
-            const LANES: usize = 8;
-            let inv_127 = 1.0 / 127.0;
-            let scale_simd = Simd::<f64, LANES>::splat(scale * inv_127);
-            let mut sum_spatial = Simd::<f64, LANES>::splat(0.0);
-
-            for i in (1..n).step_by(LANES) {
-                if i + LANES <= n {
-                    let a_i8 = Simd::<i8, LANES>::from_slice(&self.coords[i..i + LANES]);
-                    let a_f64: Simd<f64, LANES> = a_i8.cast();
-                    let a_scaled = a_f64 * scale_simd;
-                    let b = Simd::<f64, LANES>::from_slice(&query.coords[i..i + LANES]);
-                    sum_spatial += a_scaled * b;
-                }
-            }
-
-            let mut spatial_dot = sum_spatial.reduce_sum();
-
-            let remainder = (n - 1) % LANES;
-            if remainder != 0 {
-                let start = n - remainder;
-                for i in start..n {
-                    let a_val = (f64::from(self.coords[i]) * inv_127) * scale;
-                    spatial_dot += a_val * query.coords[i];
-                }
-            }
-
-            let a_time = (f64::from(self.coords[0]) * inv_127) * scale;
-            let b_time = query.coords[0];
-            let minkowski_dot = a_time * b_time - spatial_dot;
-
-            let arg = minkowski_dot.max(1.0);
-            arg.acosh()
+        let n = self.coords.len().min(query.coords.len());
+        if n == 0 {
+            return 0.0;
         }
-
-        #[cfg(not(all(feature = "nightly-simd", has_nightly)))]
-        {
-            let inv_127 = 1.0 / 127.0;
-            let mut spatial_dot = 0.0;
-            for i in 1..n {
-                let a_val = (f64::from(self.coords[i]) * inv_127) * scale;
-                spatial_dot += a_val * query.coords[i];
-            }
-
-            let a_time = (f64::from(self.coords[0]) * inv_127) * scale;
-            let b_time = query.coords[0];
-
-            let minkowski_dot = a_time * b_time - spatial_dot;
-            minkowski_dot.max(1.0).acosh()
+        let scale = f64::from(self.alpha) * (1.0 / 127.0);
+        let mut sp_diff_sq = 0.0;
+        let mut norm_a_sq = 0.0;
+        for i in 1..n {
+            let a_val = f64::from(self.coords[i]) * scale;
+            let diff = a_val - query.coords[i];
+            sp_diff_sq += diff * diff;
+            norm_a_sq += a_val * a_val;
         }
+        let a_time = (1.0 + norm_a_sq).sqrt();
+        let b_time = query.coords[0];
+        let dt = a_time - b_time;
+        let x = ((sp_diff_sq - dt * dt) * 0.5).max(0.0);
+        (x + (x * (x + 2.0)).sqrt()).ln_1p()
     }
 
     #[inline]
@@ -601,19 +618,21 @@ impl QuantizedHyperVector {
         let alpha = f32::from_le_bytes(bytes[alpha_offset..].try_into().unwrap_or([0; 4]));
         let n = alpha_offset.min(query.coords.len());
         if n == 0 {
-            return 0.0;
+            return 1.0;
         }
-        let scale = f64::from(alpha);
-        let inv_127 = 1.0 / 127.0;
-        let mut spatial_dot = 0.0;
+        let scale = f64::from(alpha) * (1.0 / 127.0);
+        let mut sp_diff_sq = 0.0;
+        let mut norm_a_sq = 0.0;
         for i in 1..n {
-            spatial_dot += f64::from(bytes[i].cast_signed()) * query.coords[i];
+            let a_val = f64::from(bytes[i].cast_signed()) * scale;
+            let diff = a_val - query.coords[i];
+            sp_diff_sq += diff * diff;
+            norm_a_sq += a_val * a_val;
         }
-        spatial_dot *= inv_127 * scale;
-        let a_time = (f64::from(bytes[0].cast_signed()) * inv_127) * scale;
+        let a_time = (1.0 + norm_a_sq).sqrt();
         let b_time = query.coords[0];
-        let minkowski_dot = a_time * b_time - spatial_dot;
-        minkowski_dot.max(1.0)
+        let dt = a_time - b_time;
+        1.0 + ((sp_diff_sq - dt * dt) * 0.5).max(0.0)
     }
 
     #[inline]
@@ -651,19 +670,16 @@ impl QuantizedHyperVector {
         let alpha_offset = bytes.len() - 4;
         let alpha = f32::from_le_bytes(bytes[alpha_offset..].try_into().unwrap_or([0; 4]));
         let n = alpha_offset.min(query_f32.len());
-        if n == 0 {
-            return 0.0;
+        if n <= 1 {
+            return 1.0;
         }
-        let scale = f64::from(alpha);
-        let spatial_dot = if n > 1 {
-            f64::from(crate::simd::sq8_dot(&bytes[1..n], &query_f32[1..n])) * (scale / 127.0)
-        } else {
-            0.0
-        };
-        let a_time = (f64::from(bytes[0].cast_signed()) / 127.0) * scale;
+        let (dot_qb, q_sq) = crate::simd::sq8_dot_and_qsq(&bytes[1..n], &query_f32[1..n]);
+        let scale = f64::from(alpha) * (1.0 / 127.0);
+        let norm_a_sq = f64::from(q_sq) * (scale * scale);
+        let a_time = (1.0 + norm_a_sq).sqrt();
         let b_time = f64::from(query_f32[0]);
-        let minkowski_dot = a_time * b_time - spatial_dot;
-        minkowski_dot.max(1.0)
+        let sp_dot = f64::from(dot_qb) * scale;
+        (a_time * b_time - sp_dot).max(1.0)
     }
 }
 
@@ -1370,7 +1386,7 @@ impl TernaryHyperVector {
         };
 
         let d_euc = Self::distance_bytes_l2_sq(bytes, query, active_dim, 33);
-        d_lor + d_euc
+        crate::hybrid::combine_hybrid_distance(d_lor, d_euc)
     }
 }
 

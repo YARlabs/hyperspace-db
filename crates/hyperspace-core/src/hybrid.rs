@@ -182,7 +182,7 @@ impl HybridQuantizedVector {
     pub fn distance_mrl(&self, other: &HyperVector, euc_dim: usize) -> f64 {
         let d_lor = self.lorentz_distance_to_float(other);
         let d_euc = self.euclidean_distance_sq_mrl(other, euc_dim);
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
 
     #[inline(always)]
@@ -190,16 +190,19 @@ impl HybridQuantizedVector {
         if bytes.len() < 132 || query.coords.len() < 33 {
             return f64::MAX;
         }
-        let t0 = f64::from(f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4])));
-        let mut inner = -t0 * query.coords[0];
+        let u0 = f64::from(f32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0; 4])));
+        let dt = u0 - query.coords[0];
+        let mut sp = 0.0f64;
         for i in 1..33 {
             let offset = i * 4;
             let val = f64::from(f32::from_le_bytes(
                 bytes[offset..offset + 4].try_into().unwrap_or([0; 4]),
             ));
-            inner += val * query.coords[i];
+            let diff = val - query.coords[i];
+            sp += diff * diff;
         }
-        let d_lor = (-inner).max(1.0 + 1e-12).acosh();
+        let cosh_lor = 1.0 + ((sp - dt * dt) * 0.5).max(0.0);
+        let d_lor = crate::acosh_from_cosh(cosh_lor);
 
         let euc_bytes = &bytes[132..bytes.len().saturating_sub(4)];
         let limit = match euc_dim {
@@ -215,8 +218,54 @@ impl HybridQuantizedVector {
             let diff = a - query.coords[q_offset + i];
             d_euc += diff * diff;
         }
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
+
+    /// Hardware-SIMD accelerated asymmetric distance on `AsymmetricHybrid801` raw bytes using a pre-converted `f32` query slice.
+    ///
+    /// - 33D Lorentz head (`bytes[0..132]`): evaluated with `simd::lorentz_f32_bytes_thresh` (32 spatial floats = 2x16 SIMD vectors with zero remainder) + `acosh_from_cosh`.
+    /// - Cross-manifold early abandon: if `d_lor > threshold`, returns immediately without touching the 768D Euclidean tail.
+    /// - 768D `i8` Euclidean tail (`bytes[132..900]`): evaluated with `simd::sq8_l2_sq` (NEON/AVX2/AVX-512 `i8 -> f32` FMA kernel).
+    #[inline(always)]
+    pub fn distance_bytes_mrl_f32(
+        bytes: &[u8],
+        query_f32: &[f32],
+        euc_dim: Option<usize>,
+        threshold: Option<f64>,
+    ) -> f64 {
+        if bytes.len() < 132 || query_f32.len() < 33 {
+            return f64::MAX;
+        }
+        let cosh_lor = crate::simd::lorentz_f32_bytes_thresh(&bytes[..132], &query_f32[..33], None);
+        let d_lor = crate::acosh_from_cosh(cosh_lor);
+        if let Some(t) = threshold {
+            if d_lor > t {
+                return d_lor;
+            }
+        }
+        let euc_bytes = &bytes[132..bytes.len().saturating_sub(4)];
+        let limit = match euc_dim {
+            Some(dim) => dim.min(euc_bytes.len()),
+            None => euc_bytes.len(),
+        };
+        let n = limit.min(query_f32.len().saturating_sub(33));
+        let d_euc = if n > 0 {
+            f64::from(crate::simd::sq8_l2_sq(
+                &euc_bytes[..n],
+                &query_f32[33..33 + n],
+            ))
+        } else {
+            0.0
+        };
+        combine_hybrid_distance(d_lor, d_euc)
+    }
+}
+
+/// Canonical Riemannian product metric on M^801 = H^33 x S^768:
+/// D(u, v) = sqrt(d_H(u_lor, v_lor)^2 + ||u_euc - v_euc||_2^2)
+#[inline(always)]
+pub fn combine_hybrid_distance(d_lor: f64, d_euc_sq: f64) -> f64 {
+    (d_lor * d_lor + d_euc_sq.max(0.0)).sqrt()
 }
 
 pub struct HybridMetric;
@@ -232,7 +281,7 @@ impl Metric for HybridMetric {
         }
         let d_lor = <crate::LorentzMetric as crate::Metric>::distance(&a[..33], &b[..33]);
         let d_euc = <crate::EuclideanMetric as crate::Metric>::distance(&a[33..], &b[33..]);
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
 
     fn distance_quantized(a: &QuantizedHyperVector, b: &HyperVector) -> f64 {
@@ -260,7 +309,7 @@ impl Metric for HybridMetric {
             d_euc += diff * diff;
         }
 
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
 
     fn distance_binary(_a: &BinaryHyperVector, _b: &HyperVector) -> f64 {
@@ -455,7 +504,7 @@ impl HybridLowBitQuantizedVector {
     pub fn distance_mrl(&self, other: &HyperVector, euc_dim: usize) -> f64 {
         let d_lor = self.lorentz_distance_to_float(other);
         let d_euc = self.euclidean_distance_sq_mrl(other, euc_dim);
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
 
     #[inline(always)]
@@ -524,7 +573,7 @@ impl HybridLowBitQuantizedVector {
                 d_euc += d * d;
             }
         }
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
 }
 
@@ -632,7 +681,7 @@ impl HybridExtremeQuantizedVector {
     pub fn distance_mrl(&self, other: &HyperVector, euc_dim: usize) -> f64 {
         let d_lor = self.lorentz_distance_to_float(other);
         let d_euc = self.euclidean_distance_sq_mrl(other, euc_dim);
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
 
     #[inline(always)]
@@ -665,7 +714,7 @@ impl HybridExtremeQuantizedVector {
             let diff = val - query.coords[offset + i];
             d_euc += diff * diff;
         }
-        d_lor + d_euc
+        combine_hybrid_distance(d_lor, d_euc)
     }
 }
 

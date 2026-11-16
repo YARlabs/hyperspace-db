@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.2.3** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
+**v4.2.4** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -33,9 +33,17 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 ---
 
-## 🚀 Core Pillars (v4.2.3)
+## 🚀 Core Pillars (v4.2.5)
 
 <table>
+  <tr>
+    <td>⚡ <b>Zero-Copy Byte SIMD, 8B Packed Heaps &amp; Deep Hyperbolic Precision (v4.2.5)</b></td>
+    <td>High-throughput HNSW acceleration featuring <b>8-byte packed candidates</b> (<code>#[repr(C, align(8))]</code>) enabling 1-cycle integer comparisons and 50% smaller Priority Queues; <b>Zero-copy byte-to-byte SIMD distance kernels</b> (<code>&amp;[u8]</code> vs <code>&amp;[u8]</code>) in <code>select_neighbors</code> and <code>prune_connections</code> eliminating up to 256 KB memory copies per node and 3 heap allocations per prune; <b>2-checkpoint ADSampling</b> statistical early-abandon (50% and 75% dims); <b>Fused SQ8 Lorentz integer dot accumulation</b> (<code>sq8_dot_and_qsq</code>) cutting FP FMAs in half and boosting deep hyperbolic radius ($t \approx 25$) Recall@10 from <b>31.5% to 93.5%</b> with <b>2.14× faster build speed</b>; and <b>KAG-Guided HNSW Traversal</b> expanding active CSR knowledge graph edges inside <code>search_layer0</code> to bridge semantic gaps in a single traversal pass.</td>
+  </tr>
+  <tr>
+    <td>🌌 <b>801D Hybrid Hardware SIMD &amp; Stable Hyperbolic Kernels (v4.2.4)</b></td>
+    <td>Hardware-accelerated SIMD execution for 801D Hybrid embeddings ($\mathbb{H}^{33} \times \mathbb{R}^{768}$) and <code>AsymmetricHybrid801</code> with <b>Cross-Manifold Early-Abandon</b> (skips 768 Euclidean tail dims if hyperbolic distance exceeds threshold). Delivers <b>8.5× faster index building</b> (161.6 ms) and <b>17.4× higher search QPS</b> (33,249 QPS). Supported by numerically stable Lorentz difference identity $\cosh(d) = 1 + \frac{1}{2}(\|\Delta\mathbf{x}\|^2 - \Delta t^2)$, 4-term Puiseux polynomial $\text{acosh}$, zero-alloc node decoding, and scoped <code>StorageView</code> graph traversals.</td>
+  </tr>
   <tr>
     <td>⚡ <b>1.58-Bit Ternary BitNet Quantization &amp; Adaptive Filter (v4.2.3)</b></td>
     <td>Native BitNet <code>{-1, 0, +1}</code> ternary quantization using 2 bits per dimension (16x RAM reduction vs f32, 4x vs int8) with dynamic thresholding $\gamma = 0.7 \cdot \mathbb{E}[|x|]$, SIMD popcount dot-product kernels, and two-pass re-scoring. Paired with <b>Cost-Model Adaptive Filtered Search</b> eliminating the 5–10% selectivity HNSW collapse (15–32× faster queries) through chunked Rayon-parallel filtered scanning with <code>prefetch_l1</code>.</td>

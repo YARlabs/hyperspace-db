@@ -2414,7 +2414,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cache"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -2433,7 +2433,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "chrono",
  "crossterm",
@@ -2447,7 +2447,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-clustering"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "criterion",
  "matrixmultiply",
@@ -2460,7 +2460,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2477,7 +2477,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-index"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "arc-swap",
  "boxcar",
@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-pdk"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2591,7 +2591,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "arc-swap",
  "async-stream",
@@ -2648,7 +2648,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "4.2.3"
+version = "4.2.4"
 dependencies = [
  "arc-swap",
  "byteorder",

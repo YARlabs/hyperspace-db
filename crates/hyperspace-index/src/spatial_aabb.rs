@@ -59,6 +59,7 @@ impl AabbSegment {
 pub struct SpatialAabbIndex {
     dimension: usize,
     segments: RwLock<Vec<AabbSegment>>,
+    indexed_count: std::sync::atomic::AtomicU32,
 }
 
 impl SpatialAabbIndex {
@@ -66,7 +67,20 @@ impl SpatialAabbIndex {
         Self {
             dimension,
             segments: RwLock::new(Vec::new()),
+            indexed_count: std::sync::atomic::AtomicU32::new(0),
         }
+    }
+
+    #[inline]
+    pub fn indexed_count(&self) -> u32 {
+        self.indexed_count
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[inline]
+    pub fn set_indexed_count(&self, count: u32) {
+        self.indexed_count
+            .store(count, std::sync::atomic::Ordering::Release);
     }
 
     /// Registers a newly inserted vector into the spatial bounding index.
@@ -81,6 +95,9 @@ impl SpatialAabbIndex {
         }
 
         segments[target_seg].extend(coords);
+        let next = id.saturating_add(1);
+        self.indexed_count
+            .fetch_max(next, std::sync::atomic::Ordering::Release);
     }
 
     /// Prunes segments and returns candidate vector IDs matching the query bounding box.

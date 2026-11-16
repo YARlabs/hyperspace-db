@@ -775,9 +775,26 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         }
 
         // ── Scatter-Gather Oversampling ──────────────────────────────────────
+        // Sublinear ef scaling across S active shards: since vectors are hash-partitioned
+        // uniformly across shards, each shard holds N/S nodes and requires ~ef / sqrt(S)
+        // beam width (floored at top_k) rather than repeating the full global ef on every shard.
+        let s = active_shards.len();
         let top_k = params.top_k.max(1);
-        let shard_top_k = (top_k + 6).max(top_k * 2);
-        let shard_ef = params.ef_search.max(shard_top_k);
+        let shard_top_k = if top_k <= 16 {
+            (top_k + 4).min(top_k * 2)
+        } else {
+            top_k + (top_k / 2).max(6)
+        };
+        let scaled_ef = if params.ef_search > 0 {
+            ((params.ef_search as f64) / (s as f64).sqrt()).ceil() as usize
+        } else {
+            0
+        };
+        let shard_ef = if scaled_ef > 0 {
+            scaled_ef.max(shard_top_k)
+        } else {
+            0
+        };
 
         let shard_params = Arc::new(SearchParams {
             top_k: shard_top_k,

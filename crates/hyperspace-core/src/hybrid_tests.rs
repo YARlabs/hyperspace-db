@@ -38,10 +38,10 @@ mod tests {
             let euc_b = &b[LORENTZ_DIM..];
             crate::EuclideanMetric::distance(euc_a, euc_b)
         };
-        let d = d_lor + d_euc;
+        let d = crate::hybrid::combine_hybrid_distance(d_lor, d_euc);
         // d_lor = acosh(-(-1*1 + 0*0)) = acosh(1) = 0
         // d_euc = (1-2)^2 = 1
-        // d_total = 0 + 1 = 1
+        // d_total = sqrt(0^2 + 1) = 1
         assert!((d - 1.0).abs() < 1e-5, "Expected ~1.0, got {d}");
     }
 
@@ -86,8 +86,12 @@ mod tests {
         let d_768 = q.distance_mrl(&v, 768);
 
         assert!(d_96 < d_768, "d_96={d_96} should be < d_768={d_768}");
-        // Should be small because we compare q with its own source v
-        assert!(d_768 < 0.1, "d_768={d_768} should be < 0.1");
+        // Should be small because we compare q with its own source v (squared error < 0.1 under product metric)
+        assert!(
+            d_768 * d_768 < 0.1,
+            "d_768^2={} should be < 0.1",
+            d_768 * d_768
+        );
     }
 
     #[test]

@@ -286,7 +286,8 @@ impl FlatLayer0Segment {
         Some((header, neighbors, vector))
     }
 
-    /// Returns Layer-0 neighbors slice for the given node ID with zero allocations.
+    /// Returns Layer-0 neighbors slice for the given node ID with zero allocations,
+    /// synchronizing with any concurrent in-place seqlock writer.
     #[inline(always)]
     #[must_use]
     pub fn get_neighbors(&self, id: u32) -> &[u32] {
@@ -295,15 +296,89 @@ impl FlatLayer0Segment {
         }
         let offset = id as usize * self.stride;
         let slice = self.buffer.as_ref();
-        let ptr = unsafe { slice.as_ptr().add(offset) };
-        let header = unsafe { &*(ptr as *const FlatNodeHeader) };
-        let count = (header.neighbor_count as usize).min(self.max_m);
-
         unsafe {
+            let ptr = slice.as_ptr().add(offset);
+            let seq = &*(ptr.add(8) as *const std::sync::atomic::AtomicU32);
+            while (seq.load(std::sync::atomic::Ordering::Acquire) & 1) != 0 {
+                std::hint::spin_loop();
+            }
+            let count_atom = &*(ptr as *const std::sync::atomic::AtomicU16);
+            let count =
+                (count_atom.load(std::sync::atomic::Ordering::Acquire) as usize).min(self.max_m);
             std::slice::from_raw_parts(
                 ptr.add(std::mem::size_of::<FlatNodeHeader>()) as *const u32,
                 count,
             )
+        }
+    }
+
+    /// Updates a node's Layer-0 neighbor list in-place inside an active heap segment using
+    /// a per-node seqlock stored in `FlatNodeHeader::reserved[0..4]`.
+    /// Must be called while holding the node's per-layer write lock (`single-writer`).
+    #[inline]
+    pub fn update_neighbors_in_place(&self, id: u32, neighbors: &[u32]) -> bool {
+        if id as usize >= self.node_count {
+            return false;
+        }
+        let slice = match &self.buffer {
+            FlatBuffer::Heap(buf) => buf.as_slice(),
+            #[cfg(feature = "persistence")]
+            FlatBuffer::Mmap(_) => return false,
+        };
+        let offset = id as usize * self.stride;
+        let count = neighbors.len().min(self.max_m);
+        unsafe {
+            let ptr = slice.as_ptr().add(offset).cast_mut();
+            let seq = &*(ptr.add(8) as *const std::sync::atomic::AtomicU32);
+            let count_atom = &*(ptr as *const std::sync::atomic::AtomicU16);
+            let neighbors_ptr = ptr.add(std::mem::size_of::<FlatNodeHeader>())
+                as *const std::sync::atomic::AtomicU32;
+
+            // Enter write section (odd sequence number)
+            seq.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+            for (i, &nbr) in neighbors.iter().take(count).enumerate() {
+                (*neighbors_ptr.add(i)).store(nbr, std::sync::atomic::Ordering::Relaxed);
+            }
+            count_atom.store(count as u16, std::sync::atomic::Ordering::Release);
+            // Exit write section (even sequence number)
+            seq.fetch_add(1, std::sync::atomic::Ordering::Release);
+        }
+        true
+    }
+
+    /// Lock-free optimistic seqlock read of a node's Layer-0 neighbors into `out`.
+    #[inline(always)]
+    pub fn read_neighbors_into(&self, id: u32, out: &mut smallvec::SmallVec<[u32; 64]>) {
+        out.clear();
+        if id as usize >= self.node_count {
+            return;
+        }
+        let offset = id as usize * self.stride;
+        let slice = self.buffer.as_ref();
+        unsafe {
+            let ptr = slice.as_ptr().add(offset);
+            let seq = &*(ptr.add(8) as *const std::sync::atomic::AtomicU32);
+            let count_atom = &*(ptr as *const std::sync::atomic::AtomicU16);
+            let neighbors_ptr = ptr.add(std::mem::size_of::<FlatNodeHeader>())
+                as *const std::sync::atomic::AtomicU32;
+
+            loop {
+                let s1 = seq.load(std::sync::atomic::Ordering::Acquire);
+                if (s1 & 1) != 0 {
+                    std::hint::spin_loop();
+                    continue;
+                }
+                let count = (count_atom.load(std::sync::atomic::Ordering::Acquire) as usize)
+                    .min(self.max_m);
+                out.clear();
+                for i in 0..count {
+                    out.push((*neighbors_ptr.add(i)).load(std::sync::atomic::Ordering::Relaxed));
+                }
+                let s2 = seq.load(std::sync::atomic::Ordering::Acquire);
+                if s1 == s2 {
+                    break;
+                }
+            }
         }
     }
 

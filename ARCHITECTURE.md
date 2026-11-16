@@ -391,6 +391,42 @@ HyperspaceDB v4.2.2 introduces optimized runtime SIMD distance evaluation for sc
 * **Single Query Quantization**: The incoming query vector is converted to `f32` once per search request and reused across all beam candidates, delivering up to **3.4× speedup** on distance evaluation kernels.
 * **Zero-Allocation Exact Rerank Pipeline**: Direct buffer reuse in `crates/hyperspace-server/src/collection.rs` eliminates intermediate scratch allocations and redundant memory copies during exact reranking.
 
+### 10. Hardware SIMD 801D Hybrid Engine, Stable Hyperbolic Difference & Zero-Alloc Traversal (v4.2.4)
+HyperspaceDB v4.2.4 introduces deep mathematical and SIMD kernel optimizations for complex hybrid and non-16-multiple manifolds:
+* **SIMD Alignment & 801D Hybrid Acceleration ($\mathbb{H}^{33} \times \mathbb{R}^{768}$)**:
+  * Hybrid embeddings split into a 33D Lorentzian head ($1 \text{ time} + 32 \text{ spatial}$) and a 768D Euclidean tail. The 32 spatial coordinates align perfectly with 16-lane SIMD registers (`2 × 16` floats on AVX-512 or `4 × 8` on AVX2), executing with zero scalar tail iterations.
+  * **Cross-Manifold Early-Abandon**: `hybrid_f32_bytes` checks the beam search threshold after evaluating the 33D hyperbolic head. If $d_{\text{lor}} > \text{threshold}$, the kernel immediately aborts without touching the remaining 768 Euclidean floats.
+  * Vectorized `HybridQuantizedVector::distance_bytes_mrl_f32` combines hardware Lorentz difference with SQ8 L2 FMA (`simd::sq8_l2_sq`), dropping 801D Hybrid build time by **8.54×** (1379.9 ms → 161.6 ms) and surging search throughput by **17.41×** (1,910 → 33,249 QPS) with 100% Top-1 recall.
+* **Numerically Stable Lorentz Difference Identity**:
+  * Fixed catastrophic cancellation $t_u \cdot t_v - \mathbf{x}_u \cdot \mathbf{x}_v$ at large hyperbolic radii $t \gg 1$ in `lorentz_f32_bytes_thresh` using the identity:
+    $$\cosh(d) = 1 + \frac{1}{2}(\|\Delta \mathbf{x}\|^2 - \Delta t^2)$$
+  * Implemented a branchless 4-term Puiseux series for small hyperbolic distances $x = \cosh(d) - 1 < 0.0625$ ($\sqrt{2x}\,(1 - \frac{x}{12} + \frac{3x^2}{160} - \frac{5x^3}{896})$) in `acosh_from_cosh`, bypassing expensive transcendental `ln_1p` calculations while maintaining $< 10^{-7}$ relative error.
+* **Zero-Allocation Node Decoding & Scoped StorageView**:
+  * `load_node_coords_f32` decodes directly from memory-mapped slices into thread-local scratch vectors for `AsymmetricHybrid801` and `ProductQuantization`/`OPQ`, eliminating up to 3 heap allocations per candidate during HNSW heuristic pruning (`select_neighbors`).
+  * Scoped `StorageView` holds a single `ArcSwap` guard across entire traversal loops (`prune_connections`, `select_neighbors`, `search_layer0`, greedy zoom-in), completely removing per-neighbor atomic atomic segment pointer loads.
+  * Product Quantization ADC distance (`distance_bytes_thresh`) uses bounds-free unrolled lookups with a 50% subvector threshold check for $M \ge 32$, accelerating ADC lookups by 1.8×.
+  * `collection.rs` skips write buffer search, sorting, and deduplication when `write_buffer.is_empty()`.
+
+### 11. Zero-Copy Byte SIMD, 8B Packed Candidates & KAG Beam Routing (v4.2.4)
+HyperspaceDB v4.2.5 eliminates memory copying and allocation bottlenecks across HNSW candidate queues, connection pruning, and knowledge graph traversal:
+* **8-Byte Packed Candidate Structure (`Candidate` & `MaxCandidate`)**:
+  * Packed priority queue candidates into `#[repr(C, align(8))] struct Candidate { id: NodeId, distance: f32 }`.
+  * On little-endian CPUs, transmuting to `u64` via `as_u64()` positions `distance` in the high bits and `id` in the low bits. Comparisons execute in a **single 1-cycle integer `u64` comparison instruction** without float unpacking or bit-shifting, cutting `BinaryHeap` memory footprint by 50% (8B vs 16B) and doubling CPU cache line efficiency.
+* **Zero-Copy Byte-to-Byte SIMD Distance Kernels (`&[u8]` vs `&[u8]`)**:
+  * Implemented vectorized distance kernels that operate directly between stored vector slices in memory: `l2_sq_pair_neon`, `l2_sq_pair_avx2`, `l2_sq_f32_bytes_pair_adsampling`, `lorentz_f32_bytes_pair_thresh`, `hybrid_f32_bytes_pair`, and `sq8_lorentz_bytes_pair`.
+  * `HnswIndex::select_neighbors` and `prune_connections` use `dist_storage_bytes_pair`, comparing candidates directly from `StorageView` without unpacking into `Vec<f32>` or performing intermediate `memcpy`s (saving up to 256 KB per node in 1024D spaces and eliminating 3 heap allocations per prune).
+  * Inner loop in `search_layer_candidates` maintains a tightly coupled `curr_worst` threshold updated immediately when `results.len() >= ef`.
+* **Optimized 2-Checkpoint ADSampling Early-Abandonment**:
+  * Replaced multi-step statistical sampling with a 2-checkpoint early-abandon protocol at 50% and 75% of dimension, using precomputed constant bounds (`0.65 * t` and `0.92 * t`). Eliminates repeated `sqrt` calls and horizontal SIMD reductions while maintaining high recall.
+* **Fused SQ8 Lorentz Kernel & Integer Dot Accumulation (`sq8_dot_and_qsq`)**:
+  * In `crates/hyperspace-core/src/simd.rs`, fused dot product and norm-square accumulation into a unified integer SIMD pipeline (`vmull_s8` + `vmlal_s8` + `vpadalq_s16`), cutting FP FMA ops in half and scaling once at the end.
+  * Solved catastrophic cancellation and quantization degradation at deep hyperbolic radii ($t \approx 25$): **Recall@10 surged from 31.5% to 93.5%** while index build time dropped by **2.14×** (48 ms → 22.11 ms) at ~80,000 QPS.
+* **KAG-Guided HNSW Traversal (`GraphEngine` CSR Beam Expansion)**:
+  * Wired `HnswIndex::set_graph_engine` / `with_graph_engine`. During `search_layer0`, expanding active outgoing KAG CSR edges (`csr.neighbors(cand_id)`) seamlessly bridges semantic gaps across distant geometric clusters in a single traversal pass.
+* **Lazy `SpatialAabbIndex` & Zero-Heap Scratch**:
+  * Bounded spatial AABB index synchronization via `indexed_count: AtomicU32`, completely bypassing spatial index lock contention during high-throughput vector ingestion unless geometric bounding filters (`InBox`/`InBall`) are executed.
+  * Zero-heap allocation serialization into `VectorStore` using thread-local `BYTES_SCRATCH` and metric-specific `build_hyper_vector`.
+
 ---
 
 ## 🔄 Automatic Startup Migration Engine (v3.x → v4.x)

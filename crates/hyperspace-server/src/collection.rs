@@ -1696,9 +1696,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         // Move only the required fields to avoid cloning whole params struct.
         let top_k = params.top_k;
         // RECALL FIX #3: Per HNSW spec, ef_search MUST be >= top_k.
-        // If the client requests top_k=100 but ef=64 (default), the beam
-        // terminates before collecting enough candidates, silently dropping recall.
-        let ef_search = self.config.get_ef_search().max(top_k);
+        // Respect caller's explicit ef_search when > 0; otherwise fall back to collection default.
+        let ef_search = if params.ef_search > 0 {
+            params.ef_search.max(top_k)
+        } else {
+            self.config.get_ef_search().max(top_k)
+        };
         let include_payload = params.include_payload;
 
         if let Some(ref cache) = self.cache {
@@ -1796,8 +1799,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let layout_owned = self.layout.clone();
         let component_weights_owned = params.component_weights.clone();
 
-        // Quick Win: For small top_k with no cold chunks, run search inline to avoid spawn_blocking overhead
-        let use_blocking = top_k > 50 || rerank_enabled || self.meta_router.chunk_count() > 0;
+        // Quick Win: Only offload to spawn_blocking when cold disk chunks or exact rerank are active;
+        // pure in-RAM HNSW searches run inline without thread-hop overhead even when top_k > 50.
+        let use_blocking = rerank_enabled || self.meta_router.chunk_count() > 0;
 
         let index_link_for_cache = index_link.clone();
         if use_blocking {
@@ -1830,10 +1834,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 search_params_owned.top_k = search_k;
-                search_params_owned.ef_search = search_params_owned
-                    .ef_search
-                    .max(search_k.saturating_mul(2))
-                    .max(128);
+                search_params_owned.ef_search = ef_search.max(search_k);
                 let mem_results = index.search(
                     &processed_query,
                     filters_ref,
@@ -1998,23 +1999,26 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     })
                     .collect::<Vec<(u32, f64, HashMap<String, String>)>>();
 
-                let buffer_results = write_buffer_for_search.search::<M>(
-                    &processed_query,
-                    search_k,
-                    filters_ref,
-                    complex_filters_ref,
-                );
+                if !write_buffer_for_search.is_empty() {
+                    let buffer_results = write_buffer_for_search.search::<M>(
+                        &processed_query,
+                        search_k,
+                        filters_ref,
+                        complex_filters_ref,
+                    );
 
-                let buffer_mapped: Vec<(u32, f64, HashMap<String, String>)> = buffer_results
-                    .into_iter()
-                    .map(|(id, dist, meta, _)| (id, dist, meta))
-                    .collect();
+                    hnsw_mapped.extend(
+                        buffer_results
+                            .into_iter()
+                            .map(|(id, dist, meta, _)| (id, dist, meta)),
+                    );
+                    hnsw_mapped.sort_by(|a, b| a.1.total_cmp(&b.1));
+                }
 
-                hnsw_mapped.extend(buffer_mapped);
-                hnsw_mapped.sort_by(|a, b| a.1.total_cmp(&b.1));
-
-                let mut seen = std::collections::HashSet::new();
-                hnsw_mapped.retain(|(user_id, _, _)| seen.insert(*user_id));
+                if !ids_are_identity || !write_buffer_for_search.is_empty() {
+                    let mut seen = std::collections::HashSet::with_capacity(hnsw_mapped.len());
+                    hnsw_mapped.retain(|(user_id, _, _)| seen.insert(*user_id));
+                }
                 hnsw_mapped.truncate(top_k);
 
                 hnsw_mapped
@@ -2070,9 +2074,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     .collect())
             }
         } else {
-            // Quick Win: Inline search for small top_k - avoid spawn_blocking overhead
-            // Still need to convert Cow to owned for HNSW search
-            let processed_query = processed_query_cow.into_owned();
+            // Inline search for in-RAM HNSW - avoid spawn_blocking and query Vec cloning overhead
+            let processed_query: &[f64] = &processed_query_cow;
             let _permit = permit;
             let index = index_link.load();
             let include_metadata = index.has_nonempty_metadata();
@@ -2083,12 +2086,11 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
             // === 1. Search the hot MemTable (in-RAM HNSW) ===
             let mem_results =
-                index.search(&processed_query, filters_ref, complex_filters_ref, params);
+                index.search(processed_query, filters_ref, complex_filters_ref, params);
 
-            // === 2. Search cold chunks (skip for small queries - assume hot data) ===
-            // Skip chunk search for small top_k to reduce latency
+            // === 2. Search cold chunks (none when use_blocking is false) ===
 
-            // === 3. Convert results ===
+            // === 3. Convert results & merge write buffer (if non-empty) ===
             let mut raw_results: Vec<(u32, f64, HashMap<String, String>)> = mem_results
                 .into_iter()
                 .map(|(internal_id, dist)| {
@@ -2113,24 +2115,26 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 })
                 .collect();
 
-            // === 4. Search and merge write buffer ===
-            let buffer_results = self.write_buffer.search::<M>(
-                &processed_query,
-                top_k,
-                filters_ref,
-                complex_filters_ref,
-            );
+            if !self.write_buffer.is_empty() {
+                let buffer_results = self.write_buffer.search::<M>(
+                    processed_query,
+                    top_k,
+                    filters_ref,
+                    complex_filters_ref,
+                );
 
-            let buffer_mapped: Vec<(u32, f64, HashMap<String, String>)> = buffer_results
-                .into_iter()
-                .map(|(id, dist, meta, _)| (id, dist, meta))
-                .collect();
+                raw_results.extend(
+                    buffer_results
+                        .into_iter()
+                        .map(|(id, dist, meta, _)| (id, dist, meta)),
+                );
+                raw_results.sort_by(|a, b| a.1.total_cmp(&b.1));
+            }
 
-            raw_results.extend(buffer_mapped);
-            raw_results.sort_by(|a, b| a.1.total_cmp(&b.1));
-
-            let mut seen = std::collections::HashSet::new();
-            raw_results.retain(|(user_id, _, _)| seen.insert(*user_id));
+            if !ids_are_identity || !self.write_buffer.is_empty() {
+                let mut seen = std::collections::HashSet::with_capacity(raw_results.len());
+                raw_results.retain(|(user_id, _, _)| seen.insert(*user_id));
+            }
             raw_results.truncate(top_k);
 
             // === Step 3: Lazy Payload Fetch (v3.2) — inline path ================

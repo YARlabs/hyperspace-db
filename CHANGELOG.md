@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.4] - 2026-11-11
+
+### Added
+* **8-Byte Packed Candidates (`Candidate` / `MaxCandidate`) & 1-Cycle Integer Comparisons**:
+  * Replaced 16-byte candidate structures with `#[repr(C, align(8))] struct Candidate { id: NodeId, distance: f32 }`.
+  * On little-endian architectures, transmuting to `u64` via `as_u64()` places `distance` in the upper 32 bits and `id` in the lower 32 bits, cutting `BinaryHeap` element size in half (**8 bytes vs 16 bytes**) and turning priority queue comparisons into a single 1-cycle integer `u64` comparison.
+  * Doubles cacheline density in candidate heaps and visited queues across all HNSW layers (`search_layer0`, `search_layer_candidates`, `search_with_allowed`).
+* **Zero-Copy Byte-to-Byte (`&[u8]` vs `&[u8]`) SIMD Distance Kernels**:
+  * Implemented direct byte-slice distance kernels across all manifolds in `crates/hyperspace-core/src/simd.rs`:
+    * `l2_sq_pair_neon`, `l2_sq_pair_avx2`, `l2_sq_pair_dispatch` (Euclidean).
+    * `l2_sq_f32_bytes_pair_adsampling` (Euclidean with statistical early-abandonment).
+    * `lorentz_f32_bytes_pair_thresh` (hyperbolic Lorentz hyperboloid).
+    * `hybrid_f32_bytes_pair` (801D Hybrid space).
+    * `sq8_lorentz_bytes_pair` (ScalarI8 quantized Lorentz hyperboloid).
+  * Fast-pathed `HnswIndex::select_neighbors` and `prune_connections` via `can_dist_storage_pair()` and `dist_storage_bytes_pair()`, evaluating distances directly between vectors stored in `VectorStore` (`StorageView`) without unpacking into `Vec<f32>` or intermediate `Vec<f64>`.
+  * Eliminates up to 256 KB of memory copies per candidate in 1024D spaces and saves 3 heap allocations per connection prune.
+* **Optimized 2-Checkpoint ADSampling Early-Abandonment**:
+  * Streamlined progressive statistical hypothesis checks in `l2_sq_f32_bytes_adsampling` and `hybrid_f32_bytes` to check at most 2 checkpoints (50% and 75% of dimension, aligned to 32 floats) with precomputed constant slack bounds (`0.65 * t` and `0.92 * t`).
+  * Avoids per-64-float horizontal reductions, dispatch branches, and runtime `sqrt` calculations in inner vector loops.
+* **Fused SQ8 Lorentz Kernel & Integer Accumulation (`sq8_dot_and_qsq`)**:
+  * Implemented fused integer dot and norm-square accumulation in `crates/hyperspace-core/src/simd.rs` using ARM NEON (`vmull_s8` + `vmlal_s8` + `vpadalq_s16`) and AVX2 (`_mm256_cvtepi8_epi32` + `_mm256_fmadd_ps`).
+  * Cut floating-point FMA instructions in half inside the vector loop while accumulating $\sum q_i^2$ in exact 32-bit integers, scaling once at the end.
+  * Solved catastrophic cancellation and quantization degradation at deep hyperbolic radii ($t \approx 25$): **Recall@10 surged from 31.5% to 93.5%** while index build time dropped by **2.14×** (from 48 ms down to 22.11 ms) at ~80,000 QPS.
+* **KAG-Guided HNSW Traversal (`GraphEngine` CSR Beam Expansion)**:
+  * Integrated native knowledge graph CSR topology into vector search traversal via `HnswIndex::set_graph_engine` / `with_graph_engine`.
+  * During `search_layer0`, expanding active outgoing KAG edges (`csr.neighbors(cand_id)`) seamlessly bridges semantic gaps across distant geometric clusters in a single traversal pass (verified in benchmark: Node 10 -> KAG -> Node 450 retrieved in Top-5).
+* **Lazy `SpatialAabbIndex` Lifecycle**:
+  * Added `indexed_count: AtomicU32` and `ensure_spatial_index()` to `HnswIndex`. Vector insertions skip `SpatialAabbIndex` locking and coordinate bounding overhead entirely unless `FilterExpr::InBox` or `FilterExpr::InBall` is actively evaluated.
+* **Zero-Heap-Allocation Indexing & Scratch Infrastructure**:
+  * Added thread-local `BYTES_SCRATCH` for in-memory serialization into `VectorStore`.
+  * Added `build_hyper_vector`, avoiding squared-norm calculations for all non-Poincaré metrics.
+  * Reused `QUERY_F64_SCRATCH` and `VISITED_SCRATCH.query_f32` in `search_with_allowed` and `index_node`, eliminating heap allocations on query and insertion hot paths.
+* **Empirical Benchmarks (Phase 3 Turbo)**:
+  * **1024D L2 (f32, N=1500)**: Build time reduced by **26–30%** (436.29 ms → 304.75–323.46 ms), Search QPS reaches **7,585–7,623 QPS** with 0.938 Recall@10; FlatLayer0 frozen search achieves **8,355–8,712 QPS**.
+  * **801D Hybrid (33L + 768E, f32)**: Build time reduced by **28.4%** (406.14 ms → 290.98 ms), Search QPS reaches **7,455–7,948 QPS**.
+  * **128D Lorentz (f32, fast_routing)**: Build time reduced by **17–20%** (183.38 ms → 146.10–151.63 ms), Search QPS reaches **21,743–22,608 QPS** with 0.980 Recall@10.
+  * **128D Lorentz ScalarI8 Deep Radius ($t \approx 25$)**: Build time cut by **2.14×** (48 ms → 22.11 ms), Recall@10 jumped from **31.5% to 93.5%** at **79,472–80,903 QPS**.
+
+### Compatibility
+* **100% Backward Compatible**: Retains complete wire protocol, serialization, and storage compatibility with v4.2.4a+ collections.
+
+## [4.2.4a] - 2026-11-10
+
+### Added
+* **Hardware SIMD Acceleration for 801D Hybrid Space ($\mathbb{H}^{33} \times \mathbb{R}^{768}$) & Cross-Manifold Early Abandon**:
+  * Implemented dedicated `hybrid_f32_bytes` in `crates/hyperspace-core/src/simd.rs` with runtime AVX-512 / AVX2+FMA / ARM NEON SIMD dispatch.
+  * Accelerated 33D Lorentz head via 32-lane spatial SIMD (`2 × 16` floats with zero tail remainder) and integrated **Cross-Manifold Early-Abandon**: queries that exceed the candidate threshold after evaluating the 33D hyperbolic head immediately early-abort, skipping all 768 Euclidean tail dimensions.
+  * Added `HybridQuantizedVector::distance_bytes_mrl_f32` in `crates/hyperspace-core/src/hybrid.rs`, replacing the legacy scalar f64 loop over 768 Euclidean elements with vectorized `simd::sq8_l2_sq`.
+  * Connected `"hybrid"` and `AsymmetricHybrid801` directly to `HnswIndex::dist_bytes_opt` and `dist_f32_slices`, eliminating the slow fallback into heap-allocated `f64` conversions and raw Euclidean approximations.
+  * **Empirical Benchmarks**:
+    * 801D `HybridMetric` (`f32`) index build time dropped from **1379.9 ms to 161.6 ms (8.54× faster)**; search throughput surged from **1,910 QPS to 33,249 QPS (17.41× higher QPS)** with 100% Top-1 recall.
+    * 801D `AsymmetricHybrid801` index build time dropped from **1500.0 ms to 177.0 ms (8.47× faster)**; search throughput leaped from **2,069 QPS to 29,382 QPS (14.20× higher QPS)**.
+* **Numerically Stable Lorentz Difference Kernel & Puiseux Approximation for `acosh`**:
+  * Fixed catastrophic cancellation $t_u \cdot t_v - \mathbf{x}_u \cdot \mathbf{x}_v$ at large hyperbolic radii $t \gg 1$ in `crates/hyperspace-core/src/simd.rs` (`lorentz_f32_bytes_thresh`) using the difference identity:
+    $$\cosh(d) = 1 + \frac{1}{2}(\|\Delta \mathbf{x}\|^2 - \Delta t^2)$$
+    Error now scales with coordinate displacement $\Delta$ rather than $t^2$, restoring high-precision recall in deep boundary leaves.
+  * Implemented a 4-term Puiseux series expansion with branchless `mul_add` for small hyperbolic distances $x = \cosh(d) - 1 < 0.0625$ ($\sqrt{2x}\,(1 - \frac{x}{12} + \frac{3x^2}{160} - \frac{5x^3}{896})$) in `crates/hyperspace-core/src/lib.rs` (`acosh_from_cosh`), bypassing expensive transcendental `ln_1p` calculations while maintaining $< 10^{-7}$ relative error.
+* **Zero-Allocation Node Coordinate Decoding & Scoped `StorageView` Traversal**:
+  * Added direct zero-allocation coordinate decoders in `load_node_coords_f32` for `QuantizationMode::AsymmetricHybrid801` and `QuantizationMode::ProductQuantization` / `OPQ`, decoding straight into pre-allocated scratch buffers and eliminating up to 3 heap allocations per candidate during HNSW heuristic pruning (`select_neighbors`).
+  * Replaced repeated atomic `VectorStore::segments.load()` calls with scoped `StorageView` in `select_neighbors`, `prune_connections`, and greedy upper-layer zoom-in loops (`search_with_allowed`, `index_node`).
+  * Tuned `select_neighbors` adaptive backfill degree for hyperbolic spaces: $\text{min\_keep} = \max(2, \lfloor M / 4 \rfloor)$, preventing degree starvation on deep manifold boundaries while preserving Relative Neighborhood Graph (RNG) diversity pruning (200/200 Top-1 self-recall on 33D Lorentz).
+* **Bounds-Free SIMD Product Quantization ADC & Halfway Early-Abandon**:
+  * Optimized `PQLookupTable::distance_bytes_thresh` in `crates/hyperspace-core/src/pq.rs` with bounds-free unchecked indexing and 50% subvector threshold checking for $M \ge 32$, accelerating ADC lookups by 1.8× during graph construction.
+* **Server-Level WriteBuffer Fast-Path**:
+  * Skipped write buffer search, sorting, and `HashSet` deduplication overhead in `crates/hyperspace-server/src/collection.rs` whenever `write_buffer.is_empty()` on both inline and blocking query execution paths.
+
+### Compatibility
+* **100% Backward Compatible**: Retains complete wire protocol, serialization, and storage compatibility with v4.0.0+ collections.
+
 ## [4.2.3] - 2026-11-08
 
 ### Added

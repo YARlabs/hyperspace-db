@@ -112,9 +112,6 @@ pub fn backend() -> SimdBackend {
     b
 }
 
-/// Number of floats processed per early-abandon check.
-const THRESHOLD_BLOCK: usize = 64;
-
 #[inline(always)]
 fn read_f32(bytes: &[u8], i: usize) -> f32 {
     let o = i * 4;
@@ -146,15 +143,18 @@ fn l2_sq_scalar(bytes: &[u8], b: &[f32]) -> f32 {
 #[target_feature(enable = "avx512f")]
 unsafe fn l2_sq_avx512(bytes: &[u8], b: &[f32]) -> f32 {
     use std::arch::x86_64::{
-        _mm512_fmadd_ps, _mm512_loadu_ps, _mm512_reduce_add_ps, _mm512_setzero_ps, _mm512_sub_ps,
+        _mm512_add_ps, _mm512_fmadd_ps, _mm512_loadu_ps, _mm512_reduce_add_ps, _mm512_setzero_ps,
+        _mm512_sub_ps,
     };
     let n = b.len();
     let ap = bytes.as_ptr().cast::<f32>();
     let bp = b.as_ptr();
     let mut acc0 = _mm512_setzero_ps();
     let mut acc1 = _mm512_setzero_ps();
+    let mut acc2 = _mm512_setzero_ps();
+    let mut acc3 = _mm512_setzero_ps();
     let mut i = 0usize;
-    while i + 32 <= n {
+    while i + 64 <= n {
         let d0 = _mm512_sub_ps(
             _mm512_loadu_ps(ap.byte_add(i * 4)),
             _mm512_loadu_ps(bp.add(i)),
@@ -163,11 +163,21 @@ unsafe fn l2_sq_avx512(bytes: &[u8], b: &[f32]) -> f32 {
             _mm512_loadu_ps(ap.byte_add((i + 16) * 4)),
             _mm512_loadu_ps(bp.add(i + 16)),
         );
+        let d2 = _mm512_sub_ps(
+            _mm512_loadu_ps(ap.byte_add((i + 32) * 4)),
+            _mm512_loadu_ps(bp.add(i + 32)),
+        );
+        let d3 = _mm512_sub_ps(
+            _mm512_loadu_ps(ap.byte_add((i + 48) * 4)),
+            _mm512_loadu_ps(bp.add(i + 48)),
+        );
         acc0 = _mm512_fmadd_ps(d0, d0, acc0);
         acc1 = _mm512_fmadd_ps(d1, d1, acc1);
-        i += 32;
+        acc2 = _mm512_fmadd_ps(d2, d2, acc2);
+        acc3 = _mm512_fmadd_ps(d3, d3, acc3);
+        i += 64;
     }
-    if i + 16 <= n {
+    while i + 16 <= n {
         let d = _mm512_sub_ps(
             _mm512_loadu_ps(ap.byte_add(i * 4)),
             _mm512_loadu_ps(bp.add(i)),
@@ -175,7 +185,9 @@ unsafe fn l2_sq_avx512(bytes: &[u8], b: &[f32]) -> f32 {
         acc0 = _mm512_fmadd_ps(d, d, acc0);
         i += 16;
     }
-    let mut sum = _mm512_reduce_add_ps(acc0) + _mm512_reduce_add_ps(acc1);
+    let sum01 = _mm512_add_ps(acc0, acc1);
+    let sum23 = _mm512_add_ps(acc2, acc3);
+    let mut sum = _mm512_reduce_add_ps(_mm512_add_ps(sum01, sum23));
     while i < n {
         let d = read_f32(bytes, i) - b[i];
         sum += d * d;
@@ -188,17 +200,19 @@ unsafe fn l2_sq_avx512(bytes: &[u8], b: &[f32]) -> f32 {
 #[target_feature(enable = "avx2,fma")]
 unsafe fn l2_sq_avx2(bytes: &[u8], b: &[f32]) -> f32 {
     use std::arch::x86_64::{
-        __m256, _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_fmadd_ps, _mm256_loadu_ps,
-        _mm256_setzero_ps, _mm256_sub_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32, _mm_movehl_ps,
-        _mm_shuffle_ps,
+        __m256, _mm256_add_ps, _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_fmadd_ps,
+        _mm256_loadu_ps, _mm256_setzero_ps, _mm256_sub_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32,
+        _mm_movehl_ps, _mm_shuffle_ps,
     };
     let n = b.len();
     let ap = bytes.as_ptr().cast::<f32>();
     let bp = b.as_ptr();
     let mut acc0: __m256 = _mm256_setzero_ps();
     let mut acc1: __m256 = _mm256_setzero_ps();
+    let mut acc2: __m256 = _mm256_setzero_ps();
+    let mut acc3: __m256 = _mm256_setzero_ps();
     let mut i = 0usize;
-    while i + 16 <= n {
+    while i + 32 <= n {
         let d0 = _mm256_sub_ps(
             _mm256_loadu_ps(ap.byte_add(i * 4)),
             _mm256_loadu_ps(bp.add(i)),
@@ -207,11 +221,21 @@ unsafe fn l2_sq_avx2(bytes: &[u8], b: &[f32]) -> f32 {
             _mm256_loadu_ps(ap.byte_add((i + 8) * 4)),
             _mm256_loadu_ps(bp.add(i + 8)),
         );
+        let d2 = _mm256_sub_ps(
+            _mm256_loadu_ps(ap.byte_add((i + 16) * 4)),
+            _mm256_loadu_ps(bp.add(i + 16)),
+        );
+        let d3 = _mm256_sub_ps(
+            _mm256_loadu_ps(ap.byte_add((i + 24) * 4)),
+            _mm256_loadu_ps(bp.add(i + 24)),
+        );
         acc0 = _mm256_fmadd_ps(d0, d0, acc0);
         acc1 = _mm256_fmadd_ps(d1, d1, acc1);
-        i += 16;
+        acc2 = _mm256_fmadd_ps(d2, d2, acc2);
+        acc3 = _mm256_fmadd_ps(d3, d3, acc3);
+        i += 32;
     }
-    if i + 8 <= n {
+    while i + 8 <= n {
         let d = _mm256_sub_ps(
             _mm256_loadu_ps(ap.byte_add(i * 4)),
             _mm256_loadu_ps(bp.add(i)),
@@ -219,7 +243,7 @@ unsafe fn l2_sq_avx2(bytes: &[u8], b: &[f32]) -> f32 {
         acc0 = _mm256_fmadd_ps(d, d, acc0);
         i += 8;
     }
-    let acc = std::arch::x86_64::_mm256_add_ps(acc0, acc1);
+    let acc = _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3));
     let lo = _mm256_castps256_ps128(acc);
     let hi = _mm256_extractf128_ps(acc, 1);
     let s4 = _mm_add_ps(lo, hi);
@@ -243,23 +267,35 @@ unsafe fn l2_sq_neon(bytes: &[u8], b: &[f32]) -> f32 {
     let bp = b.as_ptr();
     let mut acc0 = vdupq_n_f32(0.0);
     let mut acc1 = vdupq_n_f32(0.0);
+    let mut acc2 = vdupq_n_f32(0.0);
+    let mut acc3 = vdupq_n_f32(0.0);
     let mut i = 0usize;
-    while i + 8 <= n {
+    while i + 16 <= n {
         let d0 = vsubq_f32(vld1q_f32(ap.byte_add(i * 4)), vld1q_f32(bp.add(i)));
         let d1 = vsubq_f32(
             vld1q_f32(ap.byte_add((i + 4) * 4)),
             vld1q_f32(bp.add(i + 4)),
         );
+        let d2 = vsubq_f32(
+            vld1q_f32(ap.byte_add((i + 8) * 4)),
+            vld1q_f32(bp.add(i + 8)),
+        );
+        let d3 = vsubq_f32(
+            vld1q_f32(ap.byte_add((i + 12) * 4)),
+            vld1q_f32(bp.add(i + 12)),
+        );
         acc0 = vfmaq_f32(acc0, d0, d0);
         acc1 = vfmaq_f32(acc1, d1, d1);
-        i += 8;
+        acc2 = vfmaq_f32(acc2, d2, d2);
+        acc3 = vfmaq_f32(acc3, d3, d3);
+        i += 16;
     }
-    if i + 4 <= n {
+    while i + 4 <= n {
         let d = vsubq_f32(vld1q_f32(ap.byte_add(i * 4)), vld1q_f32(bp.add(i)));
         acc0 = vfmaq_f32(acc0, d, d);
         i += 4;
     }
-    let mut sum = vaddvq_f32(vaddq_f32(acc0, acc1));
+    let mut sum = vaddvq_f32(vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3)));
     while i < n {
         let d = read_f32(bytes, i) - b[i];
         sum += d * d;
@@ -285,11 +321,327 @@ fn l2_sq_dispatch(backend: SimdBackend, bytes: &[u8], b: &[f32]) -> f32 {
     }
 }
 
+/// Computes the ADSampling statistical hypothesis threshold at prefix length `visited` out of `total`:
+/// `threshold * (visited / total) * (1 + eps0 / sqrt(visited))^2`.
+#[inline(always)]
+pub fn adsampling_threshold(threshold: f32, visited: usize, total: usize, eps0: f32) -> f32 {
+    if visited >= total || total == 0 {
+        return threshold;
+    }
+    let ratio = (visited as f32) / (total as f32);
+    let slack = 1.0 + eps0 / (visited as f32).sqrt();
+    threshold * ratio * slack * slack
+}
+
+/// Squared L2 distance with explicit ADSampling progressive statistical early-abandon.
+/// Uses at most 2 checkpoints (50% and 75% of dimension, aligned to 32 floats) with
+/// precomputed constant bounds (`0.65 * t` at 50%, `0.92 * t` at 75% when `eps0 > 0.0`)
+/// to eliminate per-64-float dispatch, horizontal reduction, and `sqrt` overhead.
+#[inline]
+pub fn l2_sq_f32_bytes_adsampling(
+    bytes: &[u8],
+    b: &[f32],
+    threshold: Option<f32>,
+    eps0: f32,
+) -> f32 {
+    let n = (bytes.len() / 4).min(b.len());
+    let (bytes, b) = (&bytes[..n * 4], &b[..n]);
+    let backend = backend();
+    let Some(t) = threshold else {
+        return l2_sq_dispatch(backend, bytes, b);
+    };
+    if n < 128 || !t.is_finite() {
+        return l2_sq_dispatch(backend, bytes, b);
+    }
+    let c1 = (n / 2) & !31;
+    let mut sum = l2_sq_dispatch(backend, &bytes[..c1 * 4], &b[..c1]);
+    if n >= 256 {
+        let bound1 = if eps0 > 0.0 { t * 0.65 } else { t };
+        if sum > bound1 {
+            return sum.max(t + 1e-4);
+        }
+        let c2 = ((n * 3) / 4) & !31;
+        if c2 > c1 {
+            sum += l2_sq_dispatch(backend, &bytes[c1 * 4..c2 * 4], &b[c1..c2]);
+            let bound2 = if eps0 > 0.0 { t * 0.92 } else { t };
+            if sum > bound2 {
+                return sum.max(t + 1e-4);
+            }
+            sum += l2_sq_dispatch(backend, &bytes[c2 * 4..], &b[c2..]);
+            return sum;
+        }
+    } else if sum > t {
+        return sum;
+    }
+    sum += l2_sq_dispatch(backend, &bytes[c1 * 4..], &b[c1..]);
+    sum
+}
+
+#[inline]
+fn l2_sq_pair_scalar(bytes_a: &[u8], bytes_b: &[u8]) -> f32 {
+    let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
+    let (ca, _) = bytes_a[..n * 4].as_chunks::<16>();
+    let (cb, _) = bytes_b[..n * 4].as_chunks::<16>();
+    let mut acc = [0.0f32; 4];
+    for (a, b) in ca.iter().zip(cb.iter()) {
+        for l in 0..4 {
+            let va = f32::from_le_bytes([a[l * 4], a[l * 4 + 1], a[l * 4 + 2], a[l * 4 + 3]]);
+            let vb = f32::from_le_bytes([b[l * 4], b[l * 4 + 1], b[l * 4 + 2], b[l * 4 + 3]]);
+            let d = va - vb;
+            acc[l] += d * d;
+        }
+    }
+    let mut sum = (acc[0] + acc[1]) + (acc[2] + acc[3]);
+    let done = ca.len() * 4;
+    for i in done..n {
+        let d = read_f32(bytes_a, i) - read_f32(bytes_b, i);
+        sum += d * d;
+    }
+    sum
+}
+
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+#[target_feature(enable = "neon")]
+unsafe fn l2_sq_pair_neon(bytes_a: &[u8], bytes_b: &[u8]) -> f32 {
+    use std::arch::aarch64::{vaddq_f32, vaddvq_f32, vdupq_n_f32, vfmaq_f32, vld1q_f32, vsubq_f32};
+    let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
+    let ap = bytes_a.as_ptr().cast::<f32>();
+    let bp = bytes_b.as_ptr().cast::<f32>();
+    let mut acc0 = vdupq_n_f32(0.0);
+    let mut acc1 = vdupq_n_f32(0.0);
+    let mut acc2 = vdupq_n_f32(0.0);
+    let mut acc3 = vdupq_n_f32(0.0);
+    let mut i = 0usize;
+    while i + 16 <= n {
+        let d0 = vsubq_f32(vld1q_f32(ap.byte_add(i * 4)), vld1q_f32(bp.byte_add(i * 4)));
+        let d1 = vsubq_f32(
+            vld1q_f32(ap.byte_add((i + 4) * 4)),
+            vld1q_f32(bp.byte_add((i + 4) * 4)),
+        );
+        let d2 = vsubq_f32(
+            vld1q_f32(ap.byte_add((i + 8) * 4)),
+            vld1q_f32(bp.byte_add((i + 8) * 4)),
+        );
+        let d3 = vsubq_f32(
+            vld1q_f32(ap.byte_add((i + 12) * 4)),
+            vld1q_f32(bp.byte_add((i + 12) * 4)),
+        );
+        acc0 = vfmaq_f32(acc0, d0, d0);
+        acc1 = vfmaq_f32(acc1, d1, d1);
+        acc2 = vfmaq_f32(acc2, d2, d2);
+        acc3 = vfmaq_f32(acc3, d3, d3);
+        i += 16;
+    }
+    while i + 4 <= n {
+        let d = vsubq_f32(vld1q_f32(ap.byte_add(i * 4)), vld1q_f32(bp.byte_add(i * 4)));
+        acc0 = vfmaq_f32(acc0, d, d);
+        i += 4;
+    }
+    let mut sum = vaddvq_f32(vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3)));
+    while i < n {
+        let d = read_f32(bytes_a, i) - read_f32(bytes_b, i);
+        sum += d * d;
+        i += 1;
+    }
+    sum
+}
+
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn l2_sq_pair_avx2(bytes_a: &[u8], bytes_b: &[u8]) -> f32 {
+    use std::arch::x86_64::{
+        __m256, _mm256_add_ps, _mm256_castps256_ps128, _mm256_extractf128_ps, _mm256_fmadd_ps,
+        _mm256_loadu_ps, _mm256_setzero_ps, _mm256_sub_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32,
+        _mm_movehl_ps, _mm_shuffle_ps,
+    };
+    let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
+    let ap = bytes_a.as_ptr().cast::<f32>();
+    let bp = bytes_b.as_ptr().cast::<f32>();
+    let mut acc0: __m256 = _mm256_setzero_ps();
+    let mut acc1: __m256 = _mm256_setzero_ps();
+    let mut acc2: __m256 = _mm256_setzero_ps();
+    let mut acc3: __m256 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    while i + 32 <= n {
+        let d0 = _mm256_sub_ps(
+            _mm256_loadu_ps(ap.byte_add(i * 4)),
+            _mm256_loadu_ps(bp.byte_add(i * 4)),
+        );
+        let d1 = _mm256_sub_ps(
+            _mm256_loadu_ps(ap.byte_add((i + 8) * 4)),
+            _mm256_loadu_ps(bp.byte_add((i + 8) * 4)),
+        );
+        let d2 = _mm256_sub_ps(
+            _mm256_loadu_ps(ap.byte_add((i + 16) * 4)),
+            _mm256_loadu_ps(bp.byte_add((i + 16) * 4)),
+        );
+        let d3 = _mm256_sub_ps(
+            _mm256_loadu_ps(ap.byte_add((i + 24) * 4)),
+            _mm256_loadu_ps(bp.byte_add((i + 24) * 4)),
+        );
+        acc0 = _mm256_fmadd_ps(d0, d0, acc0);
+        acc1 = _mm256_fmadd_ps(d1, d1, acc1);
+        acc2 = _mm256_fmadd_ps(d2, d2, acc2);
+        acc3 = _mm256_fmadd_ps(d3, d3, acc3);
+        i += 32;
+    }
+    while i + 8 <= n {
+        let d = _mm256_sub_ps(
+            _mm256_loadu_ps(ap.byte_add(i * 4)),
+            _mm256_loadu_ps(bp.byte_add(i * 4)),
+        );
+        acc0 = _mm256_fmadd_ps(d, d, acc0);
+        i += 8;
+    }
+    let acc = _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3));
+    let lo = _mm256_castps256_ps128(acc);
+    let hi = _mm256_extractf128_ps(acc, 1);
+    let s4 = _mm_add_ps(lo, hi);
+    let s2 = _mm_add_ps(s4, _mm_movehl_ps(s4, s4));
+    let s1 = _mm_add_ss(s2, _mm_shuffle_ps(s2, s2, 0b01));
+    let mut sum = _mm_cvtss_f32(s1);
+    while i < n {
+        let d = read_f32(bytes_a, i) - read_f32(bytes_b, i);
+        sum += d * d;
+        i += 1;
+    }
+    sum
+}
+
+#[inline]
+fn l2_sq_pair_dispatch(backend: SimdBackend, bytes_a: &[u8], bytes_b: &[u8]) -> f32 {
+    match backend {
+        #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+        SimdBackend::Avx512 | SimdBackend::Avx2 => unsafe { l2_sq_pair_avx2(bytes_a, bytes_b) },
+        #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+        SimdBackend::Neon => unsafe { l2_sq_pair_neon(bytes_a, bytes_b) },
+        _ => l2_sq_pair_scalar(bytes_a, bytes_b),
+    }
+}
+
+/// Zero-copy squared L2 distance directly between two little-endian `f32` byte slices (`&[u8]`)
+/// with 2-checkpoint ADSampling progressive early-abandon (`50%` and `75%` of dimension).
+/// Eliminates all intermediate `Vec<f32>` unpacking and `memcpy` in `select_neighbors` and `prune_connections`.
+#[inline]
+pub fn l2_sq_f32_bytes_pair_adsampling(
+    bytes_a: &[u8],
+    bytes_b: &[u8],
+    threshold: Option<f32>,
+    eps0: f32,
+) -> f32 {
+    let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
+    let (bytes_a, bytes_b) = (&bytes_a[..n * 4], &bytes_b[..n * 4]);
+    let backend = backend();
+    let Some(t) = threshold else {
+        return l2_sq_pair_dispatch(backend, bytes_a, bytes_b);
+    };
+    if n < 128 || !t.is_finite() {
+        return l2_sq_pair_dispatch(backend, bytes_a, bytes_b);
+    }
+    let c1 = (n / 2) & !31;
+    let mut sum = l2_sq_pair_dispatch(backend, &bytes_a[..c1 * 4], &bytes_b[..c1 * 4]);
+    if n >= 256 {
+        let bound1 = if eps0 > 0.0 { t * 0.65 } else { t };
+        if sum > bound1 {
+            return sum.max(t + 1e-4);
+        }
+        let c2 = ((n * 3) / 4) & !31;
+        if c2 > c1 {
+            sum += l2_sq_pair_dispatch(backend, &bytes_a[c1 * 4..c2 * 4], &bytes_b[c1 * 4..c2 * 4]);
+            let bound2 = if eps0 > 0.0 { t * 0.92 } else { t };
+            if sum > bound2 {
+                return sum.max(t + 1e-4);
+            }
+            sum += l2_sq_pair_dispatch(backend, &bytes_a[c2 * 4..], &bytes_b[c2 * 4..]);
+            return sum;
+        }
+    } else if sum > t {
+        return sum;
+    }
+    sum += l2_sq_pair_dispatch(backend, &bytes_a[c1 * 4..], &bytes_b[c1 * 4..]);
+    sum
+}
+
+/// Zero-copy Lorentz hyperboloid distance proxy directly between two little-endian `f32` byte slices.
+#[inline]
+pub fn lorentz_f32_bytes_pair_thresh(
+    bytes_a: &[u8],
+    bytes_b: &[u8],
+    threshold: Option<f64>,
+) -> f64 {
+    let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
+    if n == 0 {
+        return 1.0;
+    }
+    let u0 = f64::from(read_f32(bytes_a, 0));
+    let v0 = f64::from(read_f32(bytes_b, 0));
+    let dt = u0 - v0;
+    let dt_sq = dt * dt;
+    let sp_thresh = threshold.and_then(|thr| {
+        if thr.is_finite() && thr > 1.0 {
+            let max_sp = (thr - 1.0) * 2.0 + dt_sq;
+            if max_sp < f64::from(f32::MAX) {
+                Some(max_sp as f32)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+    let sp = if n > 1 {
+        f64::from(l2_sq_f32_bytes_pair_adsampling(
+            &bytes_a[4..n * 4],
+            &bytes_b[4..n * 4],
+            sp_thresh,
+            0.0,
+        ))
+    } else {
+        0.0
+    };
+    1.0 + ((sp - dt_sq) * 0.5).max(0.0)
+}
+
+/// Zero-copy 801D Hybrid (`H^33 x R^768`) distance directly between two little-endian `f32` byte slices.
+#[inline]
+pub fn hybrid_f32_bytes_pair(bytes_a: &[u8], bytes_b: &[u8], threshold: Option<f64>) -> f64 {
+    let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
+    if n < 33 {
+        return 0.0;
+    }
+    let cosh_lor = lorentz_f32_bytes_pair_thresh(&bytes_a[..132], &bytes_b[..132], None);
+    let d_lor = crate::acosh_from_cosh(cosh_lor);
+    if let Some(t) = threshold {
+        if d_lor > t {
+            return d_lor;
+        }
+    }
+    let euc_thresh = threshold.and_then(|t| {
+        let rem = t * t - d_lor * d_lor;
+        if rem.is_finite() && rem >= 0.0 && rem < f64::from(f32::MAX) {
+            Some(rem as f32)
+        } else {
+            None
+        }
+    });
+    let d_euc = if n > 33 {
+        f64::from(l2_sq_f32_bytes_pair_adsampling(
+            &bytes_a[132..n * 4],
+            &bytes_b[132..n * 4],
+            euc_thresh,
+            3.2,
+        ))
+    } else {
+        0.0
+    };
+    crate::hybrid::combine_hybrid_distance(d_lor, d_euc)
+}
+
 /// Squared L2 distance between little-endian `f32` bytes and a float query.
 ///
-/// Processes `min(bytes.len() / 4, b.len())` elements. When `threshold` is given the kernel
-/// abandons early (returning the partial sum, which is already `> threshold`) as soon as the
-/// accumulated distance exceeds it; the check runs once per 64-float block.
+/// Processes `min(bytes.len() / 4, b.len())` elements. When `threshold` is given, checks at
+/// at most 2 checkpoints (50% and 75% of dimension, aligned to 32 floats) to avoid per-64-float
+/// horizontal reduction and dispatch overhead.
 #[inline]
 pub fn l2_sq_f32_bytes(bytes: &[u8], b: &[f32], threshold: Option<f32>) -> f32 {
     let n = (bytes.len() / 4).min(b.len());
@@ -298,19 +650,26 @@ pub fn l2_sq_f32_bytes(bytes: &[u8], b: &[f32], threshold: Option<f32>) -> f32 {
     let Some(t) = threshold else {
         return l2_sq_dispatch(backend, bytes, b);
     };
-    if n <= THRESHOLD_BLOCK {
+    if n < 128 {
         return l2_sq_dispatch(backend, bytes, b);
     }
-    let mut sum = 0.0f32;
-    let mut i = 0usize;
-    while i < n {
-        let end = (i + THRESHOLD_BLOCK).min(n);
-        sum += l2_sq_dispatch(backend, &bytes[i * 4..end * 4], &b[i..end]);
-        if sum > t {
+    let c1 = (n / 2) & !31;
+    let mut sum = l2_sq_dispatch(backend, &bytes[..c1 * 4], &b[..c1]);
+    if sum > t {
+        return sum;
+    }
+    if n >= 256 {
+        let c2 = ((n * 3) / 4) & !31;
+        if c2 > c1 {
+            sum += l2_sq_dispatch(backend, &bytes[c1 * 4..c2 * 4], &b[c1..c2]);
+            if sum > t {
+                return sum;
+            }
+            sum += l2_sq_dispatch(backend, &bytes[c2 * 4..], &b[c2..]);
             return sum;
         }
-        i = end;
     }
+    sum += l2_sq_dispatch(backend, &bytes[c1 * 4..], &b[c1..]);
     sum
 }
 
@@ -361,15 +720,17 @@ fn dot_scalar(bytes: &[u8], b: &[f32]) -> f32 {
 #[target_feature(enable = "avx512f")]
 unsafe fn dot_avx512(bytes: &[u8], b: &[f32]) -> f32 {
     use std::arch::x86_64::{
-        _mm512_fmadd_ps, _mm512_loadu_ps, _mm512_reduce_add_ps, _mm512_setzero_ps,
+        _mm512_add_ps, _mm512_fmadd_ps, _mm512_loadu_ps, _mm512_reduce_add_ps, _mm512_setzero_ps,
     };
     let n = b.len();
     let ap = bytes.as_ptr().cast::<f32>();
     let bp = b.as_ptr();
     let mut acc0 = _mm512_setzero_ps();
     let mut acc1 = _mm512_setzero_ps();
+    let mut acc2 = _mm512_setzero_ps();
+    let mut acc3 = _mm512_setzero_ps();
     let mut i = 0usize;
-    while i + 32 <= n {
+    while i + 64 <= n {
         acc0 = _mm512_fmadd_ps(
             _mm512_loadu_ps(ap.byte_add(i * 4)),
             _mm512_loadu_ps(bp.add(i)),
@@ -380,9 +741,19 @@ unsafe fn dot_avx512(bytes: &[u8], b: &[f32]) -> f32 {
             _mm512_loadu_ps(bp.add(i + 16)),
             acc1,
         );
-        i += 32;
+        acc2 = _mm512_fmadd_ps(
+            _mm512_loadu_ps(ap.byte_add((i + 32) * 4)),
+            _mm512_loadu_ps(bp.add(i + 32)),
+            acc2,
+        );
+        acc3 = _mm512_fmadd_ps(
+            _mm512_loadu_ps(ap.byte_add((i + 48) * 4)),
+            _mm512_loadu_ps(bp.add(i + 48)),
+            acc3,
+        );
+        i += 64;
     }
-    if i + 16 <= n {
+    while i + 16 <= n {
         acc0 = _mm512_fmadd_ps(
             _mm512_loadu_ps(ap.byte_add(i * 4)),
             _mm512_loadu_ps(bp.add(i)),
@@ -390,7 +761,9 @@ unsafe fn dot_avx512(bytes: &[u8], b: &[f32]) -> f32 {
         );
         i += 16;
     }
-    let mut sum = _mm512_reduce_add_ps(acc0) + _mm512_reduce_add_ps(acc1);
+    let sum01 = _mm512_add_ps(acc0, acc1);
+    let sum23 = _mm512_add_ps(acc2, acc3);
+    let mut sum = _mm512_reduce_add_ps(_mm512_add_ps(sum01, sum23));
     while i < n {
         sum += read_f32(bytes, i) * b[i];
         i += 1;
@@ -411,8 +784,10 @@ unsafe fn dot_avx2(bytes: &[u8], b: &[f32]) -> f32 {
     let bp = b.as_ptr();
     let mut acc0: __m256 = _mm256_setzero_ps();
     let mut acc1: __m256 = _mm256_setzero_ps();
+    let mut acc2: __m256 = _mm256_setzero_ps();
+    let mut acc3: __m256 = _mm256_setzero_ps();
     let mut i = 0usize;
-    while i + 16 <= n {
+    while i + 32 <= n {
         acc0 = _mm256_fmadd_ps(
             _mm256_loadu_ps(ap.byte_add(i * 4)),
             _mm256_loadu_ps(bp.add(i)),
@@ -423,9 +798,19 @@ unsafe fn dot_avx2(bytes: &[u8], b: &[f32]) -> f32 {
             _mm256_loadu_ps(bp.add(i + 8)),
             acc1,
         );
-        i += 16;
+        acc2 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(ap.byte_add((i + 16) * 4)),
+            _mm256_loadu_ps(bp.add(i + 16)),
+            acc2,
+        );
+        acc3 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(ap.byte_add((i + 24) * 4)),
+            _mm256_loadu_ps(bp.add(i + 24)),
+            acc3,
+        );
+        i += 32;
     }
-    if i + 8 <= n {
+    while i + 8 <= n {
         acc0 = _mm256_fmadd_ps(
             _mm256_loadu_ps(ap.byte_add(i * 4)),
             _mm256_loadu_ps(bp.add(i)),
@@ -433,7 +818,7 @@ unsafe fn dot_avx2(bytes: &[u8], b: &[f32]) -> f32 {
         );
         i += 8;
     }
-    let acc = _mm256_add_ps(acc0, acc1);
+    let acc = _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3));
     let lo = _mm256_castps256_ps128(acc);
     let hi = _mm256_extractf128_ps(acc, 1);
     let s4 = _mm_add_ps(lo, hi);
@@ -456,21 +841,33 @@ unsafe fn dot_neon(bytes: &[u8], b: &[f32]) -> f32 {
     let bp = b.as_ptr();
     let mut acc0 = vdupq_n_f32(0.0);
     let mut acc1 = vdupq_n_f32(0.0);
+    let mut acc2 = vdupq_n_f32(0.0);
+    let mut acc3 = vdupq_n_f32(0.0);
     let mut i = 0usize;
-    while i + 8 <= n {
+    while i + 16 <= n {
         acc0 = vfmaq_f32(acc0, vld1q_f32(ap.byte_add(i * 4)), vld1q_f32(bp.add(i)));
         acc1 = vfmaq_f32(
             acc1,
             vld1q_f32(ap.byte_add((i + 4) * 4)),
             vld1q_f32(bp.add(i + 4)),
         );
-        i += 8;
+        acc2 = vfmaq_f32(
+            acc2,
+            vld1q_f32(ap.byte_add((i + 8) * 4)),
+            vld1q_f32(bp.add(i + 8)),
+        );
+        acc3 = vfmaq_f32(
+            acc3,
+            vld1q_f32(ap.byte_add((i + 12) * 4)),
+            vld1q_f32(bp.add(i + 12)),
+        );
+        i += 16;
     }
-    if i + 4 <= n {
+    while i + 4 <= n {
         acc0 = vfmaq_f32(acc0, vld1q_f32(ap.byte_add(i * 4)), vld1q_f32(bp.add(i)));
         i += 4;
     }
-    let mut sum = vaddvq_f32(vaddq_f32(acc0, acc1));
+    let mut sum = vaddvq_f32(vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3)));
     while i < n {
         sum += read_f32(bytes, i) * b[i];
         i += 1;
@@ -650,19 +1047,26 @@ pub fn l1_f32_bytes(bytes: &[u8], b: &[f32], threshold: Option<f32>) -> f32 {
     let Some(t) = threshold else {
         return l1_dispatch(backend, bytes, b);
     };
-    if n <= THRESHOLD_BLOCK {
+    if n < 128 {
         return l1_dispatch(backend, bytes, b);
     }
-    let mut sum = 0.0f32;
-    let mut i = 0usize;
-    while i < n {
-        let end = (i + THRESHOLD_BLOCK).min(n);
-        sum += l1_dispatch(backend, &bytes[i * 4..end * 4], &b[i..end]);
-        if sum > t {
+    let c1 = (n / 2) & !31;
+    let mut sum = l1_dispatch(backend, &bytes[..c1 * 4], &b[..c1]);
+    if sum > t {
+        return sum;
+    }
+    if n >= 256 {
+        let c2 = ((n * 3) / 4) & !31;
+        if c2 > c1 {
+            sum += l1_dispatch(backend, &bytes[c1 * 4..c2 * 4], &b[c1..c2]);
+            if sum > t {
+                return sum;
+            }
+            sum += l1_dispatch(backend, &bytes[c2 * 4..], &b[c2..]);
             return sum;
         }
-        i = end;
     }
+    sum += l1_dispatch(backend, &bytes[c1 * 4..], &b[c1..]);
     sum
 }
 
@@ -879,23 +1283,194 @@ pub fn poincare_f32_bytes(bytes: &[u8], b: &[f32]) -> f64 {
 }
 
 /// Zero-copy Lorentz hyperboloid (Minkowski) distance proxy directly on little-endian `f32` bytes.
-/// Returns `-<u, v>_L` (clamped >= 1.0) which is strictly monotonic to the geodesic distance `acosh(-<u, v>_L)`.
-/// Eliminates `acosh` on the HNSW traversal hot path.
+///
+/// Uses the numerically stable difference identity:
+/// `cosh(d) = 1 + 0.5 * (||u_spatial - v_spatial||^2 - (u0 - v0)^2)`
+/// which avoids catastrophic cancellation `u0 * v0 - <u_spatial, v_spatial>` at large radii `t`,
+/// and reuses the hardware-accelerated `l2_sq_f32_bytes` kernel.
 #[inline]
 pub fn lorentz_f32_bytes(bytes: &[u8], b: &[f32]) -> f64 {
+    lorentz_f32_bytes_thresh(bytes, b, None)
+}
+
+/// Zero-copy Lorentz hyperboloid distance proxy with optional early-abandon threshold on `cosh(d)`.
+#[inline]
+pub fn lorentz_f32_bytes_thresh(bytes: &[u8], b: &[f32], threshold: Option<f64>) -> f64 {
     let n = (bytes.len() / 4).min(b.len());
     if n == 0 {
         return 1.0;
     }
     let u0 = f64::from(read_f32(bytes, 0));
     let v0 = f64::from(b[0]);
-    let spatial_dot = if n > 1 {
-        f64::from(dot_f32_bytes(&bytes[4..n * 4], &b[1..n]))
+    let dt = u0 - v0;
+    let dt_sq = dt * dt;
+    let sp_thresh = threshold.and_then(|thr| {
+        if thr.is_finite() && thr > 1.0 {
+            let max_sp = (thr - 1.0) * 2.0 + dt_sq;
+            if max_sp < f64::from(f32::MAX) {
+                Some(max_sp as f32)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+    let sp = if n > 1 {
+        f64::from(l2_sq_f32_bytes(&bytes[4..n * 4], &b[1..n], sp_thresh))
     } else {
         0.0
     };
-    let minkowski_ip = u0 * v0 - spatial_dot;
-    minkowski_ip.max(1.0)
+    1.0 + ((sp - dt_sq) * 0.5).max(0.0)
+}
+
+/// Zero-copy 801D Hybrid (`H^33 x R^768`) distance on little-endian `f32` bytes and query slice `b`.
+///
+/// Computes the 33D Lorentz distance (`d_lor`) using the SIMD spatial L2 difference identity,
+/// checks the cross-manifold early-abandon `threshold` after the 33D head, and adds the
+/// SIMD-accelerated squared Euclidean distance (`d_euc`) on the remaining coordinates `33..n`.
+#[inline]
+pub fn hybrid_f32_bytes(bytes: &[u8], b: &[f32], threshold: Option<f64>) -> f64 {
+    let n = (bytes.len() / 4).min(b.len());
+    if n < 33 {
+        return 0.0;
+    }
+    let cosh_lor = lorentz_f32_bytes_thresh(&bytes[..132], &b[..33], None);
+    let d_lor = crate::acosh_from_cosh(cosh_lor);
+    if let Some(t) = threshold {
+        if d_lor > t {
+            return d_lor;
+        }
+    }
+    let euc_thresh = threshold.and_then(|t| {
+        let rem = t * t - d_lor * d_lor;
+        if rem.is_finite() && rem >= 0.0 && rem < f64::from(f32::MAX) {
+            Some(rem as f32)
+        } else {
+            None
+        }
+    });
+    let d_euc = if n > 33 {
+        f64::from(l2_sq_f32_bytes_adsampling(
+            &bytes[132..n * 4],
+            &b[33..n],
+            euc_thresh,
+            3.2,
+        ))
+    } else {
+        0.0
+    };
+    crate::hybrid::combine_hybrid_distance(d_lor, d_euc)
+}
+
+/// Computes `sum_i (a_i * scale - b_i)^2` over little-endian `f32` bytes `a` and slice `b`.
+/// Used for SIMD-accelerated Klein chord distance on upper HNSW layers.
+#[inline]
+pub fn scaled_l2_sq_f32_bytes(bytes: &[u8], scale: f32, b: &[f32]) -> f32 {
+    let n = (bytes.len() / 4).min(b.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let bytes = &bytes[..n * 4];
+    let b = &b[..n];
+
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    if backend() == SimdBackend::Neon {
+        unsafe {
+            use std::arch::aarch64::{
+                vaddq_f32, vaddvq_f32, vdupq_n_f32, vfmaq_f32, vfmsq_f32, vld1q_f32, vnegq_f32,
+            };
+            let ap = bytes.as_ptr().cast::<f32>();
+            let bp = b.as_ptr();
+            let vscale = vdupq_n_f32(scale);
+            let mut acc0 = vdupq_n_f32(0.0);
+            let mut acc1 = vdupq_n_f32(0.0);
+            let mut i = 0usize;
+            while i + 8 <= n {
+                // vfmsq_f32(b, a, scale) = b - a * scale; squared is identical to (a * scale - b)^2
+                let d0 = vfmsq_f32(vld1q_f32(bp.add(i)), vld1q_f32(ap.byte_add(i * 4)), vscale);
+                let d1 = vfmsq_f32(
+                    vld1q_f32(bp.add(i + 4)),
+                    vld1q_f32(ap.byte_add((i + 4) * 4)),
+                    vscale,
+                );
+                let _ = vnegq_f32;
+                acc0 = vfmaq_f32(acc0, d0, d0);
+                acc1 = vfmaq_f32(acc1, d1, d1);
+                i += 8;
+            }
+            let mut sum = vaddvq_f32(vaddq_f32(acc0, acc1));
+            while i < n {
+                let d = read_f32(bytes, i) * scale - b[i];
+                sum += d * d;
+                i += 1;
+            }
+            return sum;
+        }
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+    if matches!(backend(), SimdBackend::Avx2 | SimdBackend::Avx512) {
+        unsafe {
+            use std::arch::x86_64::{
+                __m256, _mm256_add_ps, _mm256_castps256_ps128, _mm256_extractf128_ps,
+                _mm256_fmadd_ps, _mm256_fmsub_ps, _mm256_loadu_ps, _mm256_set1_ps,
+                _mm256_setzero_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32, _mm_movehl_ps,
+                _mm_shuffle_ps,
+            };
+            let ap = bytes.as_ptr().cast::<f32>();
+            let bp = b.as_ptr();
+            let vscale = _mm256_set1_ps(scale);
+            let mut acc0: __m256 = _mm256_setzero_ps();
+            let mut acc1: __m256 = _mm256_setzero_ps();
+            let mut i = 0usize;
+            while i + 16 <= n {
+                let d0 = _mm256_fmsub_ps(
+                    _mm256_loadu_ps(ap.byte_add(i * 4)),
+                    vscale,
+                    _mm256_loadu_ps(bp.add(i)),
+                );
+                let d1 = _mm256_fmsub_ps(
+                    _mm256_loadu_ps(ap.byte_add((i + 8) * 4)),
+                    vscale,
+                    _mm256_loadu_ps(bp.add(i + 8)),
+                );
+                acc0 = _mm256_fmadd_ps(d0, d0, acc0);
+                acc1 = _mm256_fmadd_ps(d1, d1, acc1);
+                i += 16;
+            }
+            let acc = _mm256_add_ps(acc0, acc1);
+            let lo = _mm256_castps256_ps128(acc);
+            let hi = _mm256_extractf128_ps(acc, 1);
+            let s4 = _mm_add_ps(lo, hi);
+            let s2 = _mm_add_ps(s4, _mm_movehl_ps(s4, s4));
+            let s1 = _mm_add_ss(s2, _mm_shuffle_ps(s2, s2, 0b01));
+            let mut sum = _mm_cvtss_f32(s1);
+            while i < n {
+                let d = read_f32(bytes, i) * scale - b[i];
+                sum += d * d;
+                i += 1;
+            }
+            return sum;
+        }
+    }
+
+    let (chunks, rem) = bytes.as_chunks::<16>();
+    let mut acc = [0.0f32; 4];
+    for (c, bc) in chunks.iter().zip(b.as_chunks::<4>().0) {
+        for l in 0..4 {
+            let a = f32::from_le_bytes([c[l * 4], c[l * 4 + 1], c[l * 4 + 2], c[l * 4 + 3]]);
+            let d = a * scale - bc[l];
+            acc[l] += d * d;
+        }
+    }
+    let mut sum = (acc[0] + acc[1]) + (acc[2] + acc[3]);
+    let done = chunks.len() * 4;
+    for i in 0..(rem.len() / 4) {
+        let d = read_f32(&bytes[done * 4..], i) * scale - b[done + i];
+        sum += d * d;
+    }
+    sum
 }
 
 /// Zero-copy Cosine distance (`1.0 - cos_sim`) directly on little-endian `f32` bytes.
@@ -1072,30 +1647,48 @@ unsafe fn sq8_l2_sq_avx2(bytes: &[u8], b: &[f32]) -> f32 {
 #[target_feature(enable = "neon")]
 unsafe fn sq8_l2_sq_neon(bytes: &[u8], b: &[f32]) -> f32 {
     use std::arch::aarch64::{
-        vaddq_f32, vaddvq_f32, vcvtq_f32_s32, vdupq_n_f32, vfmaq_f32, vget_high_s16, vget_low_s16,
-        vld1_s8, vld1q_f32, vmovl_s16, vmovl_s8, vmulq_f32, vsubq_f32,
+        vaddq_f32, vaddvq_f32, vcvtq_f32_s32, vdupq_n_f32, vfmaq_f32, vfmsq_f32, vget_high_s16,
+        vget_high_s8, vget_low_s16, vget_low_s8, vld1_s8, vld1q_f32, vld1q_s8, vmovl_s16, vmovl_s8,
     };
     let n = bytes.len().min(b.len());
-    let ap = bytes.as_ptr();
+    let ap = bytes.as_ptr().cast::<i8>();
     let bp = b.as_ptr();
     let v_scale = vdupq_n_f32(SQ8_SCALE_INV);
     let mut acc0 = vdupq_n_f32(0.0);
     let mut acc1 = vdupq_n_f32(0.0);
+    let mut acc2 = vdupq_n_f32(0.0);
+    let mut acc3 = vdupq_n_f32(0.0);
     let mut i = 0usize;
-    while i + 8 <= n {
-        let raw = vld1_s8(ap.add(i).cast::<i8>());
+    while i + 16 <= n {
+        let raw = vld1q_s8(ap.add(i));
+        let s16_lo = vmovl_s8(vget_low_s8(raw));
+        let s16_hi = vmovl_s8(vget_high_s8(raw));
+        let q0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16_lo)));
+        let q1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16_lo)));
+        let q2 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16_hi)));
+        let q3 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16_hi)));
+        let d0 = vfmsq_f32(vld1q_f32(bp.add(i)), q0, v_scale);
+        let d1 = vfmsq_f32(vld1q_f32(bp.add(i + 4)), q1, v_scale);
+        let d2 = vfmsq_f32(vld1q_f32(bp.add(i + 8)), q2, v_scale);
+        let d3 = vfmsq_f32(vld1q_f32(bp.add(i + 12)), q3, v_scale);
+        acc0 = vfmaq_f32(acc0, d0, d0);
+        acc1 = vfmaq_f32(acc1, d1, d1);
+        acc2 = vfmaq_f32(acc2, d2, d2);
+        acc3 = vfmaq_f32(acc3, d3, d3);
+        i += 16;
+    }
+    if i + 8 <= n {
+        let raw = vld1_s8(ap.add(i));
         let s16 = vmovl_s8(raw);
-        let s32_lo = vmovl_s16(vget_low_s16(s16));
-        let s32_hi = vmovl_s16(vget_high_s16(s16));
-        let a0 = vmulq_f32(vcvtq_f32_s32(s32_lo), v_scale);
-        let a1 = vmulq_f32(vcvtq_f32_s32(s32_hi), v_scale);
-        let d0 = vsubq_f32(a0, vld1q_f32(bp.add(i)));
-        let d1 = vsubq_f32(a1, vld1q_f32(bp.add(i + 4)));
+        let q0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16)));
+        let q1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16)));
+        let d0 = vfmsq_f32(vld1q_f32(bp.add(i)), q0, v_scale);
+        let d1 = vfmsq_f32(vld1q_f32(bp.add(i + 4)), q1, v_scale);
         acc0 = vfmaq_f32(acc0, d0, d0);
         acc1 = vfmaq_f32(acc1, d1, d1);
         i += 8;
     }
-    let mut sum = vaddvq_f32(vaddq_f32(acc0, acc1));
+    let mut sum = vaddvq_f32(vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3)));
     while i < n {
         let a = f32::from(bytes[i].cast_signed()) * SQ8_SCALE_INV;
         let d = a - b[i];
@@ -1118,6 +1711,364 @@ pub fn sq8_l2_sq(bytes: &[u8], b: &[f32]) -> f32 {
         SimdBackend::Neon => unsafe { sq8_l2_sq_neon(bytes, b) },
         _ => sq8_l2_sq_scalar(bytes, b),
     }
+}
+
+fn sq8_scaled_l2_and_norm_sq_scalar(bytes: &[u8], scale: f32, b: &[f32]) -> (f32, f32) {
+    let n = bytes.len().min(b.len());
+    let (chunks_a, rem_a) = bytes[..n].as_chunks::<4>();
+    let (chunks_b, rem_b) = b[..n].as_chunks::<4>();
+    let mut d_acc = [0.0f32; 4];
+    let mut q_sq_sum: u32 = 0;
+    for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+        for l in 0..4 {
+            let qi = i32::from(ca[l].cast_signed());
+            q_sq_sum += (qi * qi).cast_unsigned();
+            let a = (qi as f32) * scale;
+            let d = a - cb[l];
+            d_acc[l] += d * d;
+        }
+    }
+    let mut d_sum = (d_acc[0] + d_acc[1]) + (d_acc[2] + d_acc[3]);
+    for (&a_u8, &b_f32) in rem_a.iter().zip(rem_b.iter()) {
+        let qi = i32::from(a_u8.cast_signed());
+        q_sq_sum += (qi * qi).cast_unsigned();
+        let a = (qi as f32) * scale;
+        let d = a - b_f32;
+        d_sum += d * d;
+    }
+    let n_sum = (q_sq_sum as f32) * (scale * scale);
+    (d_sum, n_sum)
+}
+
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+#[target_feature(enable = "neon")]
+unsafe fn sq8_scaled_l2_and_norm_sq_neon(bytes: &[u8], scale: f32, b: &[f32]) -> (f32, f32) {
+    use std::arch::aarch64::{
+        vaddq_f32, vaddvq_f32, vaddvq_s32, vcvtq_f32_s32, vdupq_n_f32, vdupq_n_s32, vfmaq_f32,
+        vfmsq_f32, vget_high_s16, vget_high_s8, vget_low_s16, vget_low_s8, vld1_s8, vld1q_f32,
+        vld1q_s8, vmlal_s8, vmovl_s16, vmovl_s8, vmull_s8, vpadalq_s16,
+    };
+    let n = bytes.len().min(b.len());
+    let ap = bytes.as_ptr().cast::<i8>();
+    let bp = b.as_ptr();
+    let v_scale = vdupq_n_f32(scale);
+    let mut acc_d0 = vdupq_n_f32(0.0);
+    let mut acc_d1 = vdupq_n_f32(0.0);
+    let mut acc_d2 = vdupq_n_f32(0.0);
+    let mut acc_d3 = vdupq_n_f32(0.0);
+    let mut acc_qsq = vdupq_n_s32(0);
+    let mut i = 0usize;
+    while i + 16 <= n {
+        let raw = vld1q_s8(ap.add(i));
+        let lo8 = vget_low_s8(raw);
+        let hi8 = vget_high_s8(raw);
+        // Integer pipeline: accumulate sum of squares of 16 i8 elements in 2 instructions
+        let sq16 = vmlal_s8(vmull_s8(lo8, lo8), hi8, hi8);
+        acc_qsq = vpadalq_s16(acc_qsq, sq16);
+
+        let s16_lo = vmovl_s8(lo8);
+        let s16_hi = vmovl_s8(hi8);
+        let q0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16_lo)));
+        let q1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16_lo)));
+        let q2 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16_hi)));
+        let q3 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16_hi)));
+
+        // Fused multiply-subtract: d = b - q * scale; d^2 == (q * scale - b)^2
+        let d0 = vfmsq_f32(vld1q_f32(bp.add(i)), q0, v_scale);
+        let d1 = vfmsq_f32(vld1q_f32(bp.add(i + 4)), q1, v_scale);
+        let d2 = vfmsq_f32(vld1q_f32(bp.add(i + 8)), q2, v_scale);
+        let d3 = vfmsq_f32(vld1q_f32(bp.add(i + 12)), q3, v_scale);
+        acc_d0 = vfmaq_f32(acc_d0, d0, d0);
+        acc_d1 = vfmaq_f32(acc_d1, d1, d1);
+        acc_d2 = vfmaq_f32(acc_d2, d2, d2);
+        acc_d3 = vfmaq_f32(acc_d3, d3, d3);
+        i += 16;
+    }
+    if i + 8 <= n {
+        let raw = vld1_s8(ap.add(i));
+        acc_qsq = vpadalq_s16(acc_qsq, vmull_s8(raw, raw));
+        let s16 = vmovl_s8(raw);
+        let q0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16)));
+        let q1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16)));
+        let d0 = vfmsq_f32(vld1q_f32(bp.add(i)), q0, v_scale);
+        let d1 = vfmsq_f32(vld1q_f32(bp.add(i + 4)), q1, v_scale);
+        acc_d0 = vfmaq_f32(acc_d0, d0, d0);
+        acc_d1 = vfmaq_f32(acc_d1, d1, d1);
+        i += 8;
+    }
+    let mut d_sum = vaddvq_f32(vaddq_f32(
+        vaddq_f32(acc_d0, acc_d1),
+        vaddq_f32(acc_d2, acc_d3),
+    ));
+    let mut q_sq_sum = vaddvq_s32(acc_qsq);
+    while i < n {
+        let qi = i32::from(bytes[i].cast_signed());
+        q_sq_sum += qi * qi;
+        let a = (qi as f32) * scale;
+        let d = a - b[i];
+        d_sum += d * d;
+        i += 1;
+    }
+    let n_sum = (q_sq_sum as f32) * (scale * scale);
+    (d_sum, n_sum)
+}
+
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn sq8_scaled_l2_and_norm_sq_avx2(bytes: &[u8], scale: f32, b: &[f32]) -> (f32, f32) {
+    use std::arch::x86_64::{
+        __m128i, __m256, _mm256_add_ps, _mm256_castps256_ps128, _mm256_cvtepi32_ps,
+        _mm256_cvtepi8_epi32, _mm256_extractf128_ps, _mm256_fmadd_ps, _mm256_fmsub_ps,
+        _mm256_loadu_ps, _mm256_set1_ps, _mm256_setzero_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32,
+        _mm_loadl_epi64, _mm_loadu_si128, _mm_movehl_ps, _mm_shuffle_ps, _mm_srli_si128,
+    };
+    let n = bytes.len().min(b.len());
+    let ap = bytes.as_ptr();
+    let bp = b.as_ptr();
+    let v_scale = _mm256_set1_ps(scale);
+    let mut acc_d0: __m256 = _mm256_setzero_ps();
+    let mut acc_d1: __m256 = _mm256_setzero_ps();
+    let mut acc_n0: __m256 = _mm256_setzero_ps();
+    let mut acc_n1: __m256 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    while i + 16 <= n {
+        let raw = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
+        let q0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw));
+        let q1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(raw, 8)));
+        let d0 = _mm256_fmsub_ps(q0, v_scale, _mm256_loadu_ps(bp.add(i)));
+        let d1 = _mm256_fmsub_ps(q1, v_scale, _mm256_loadu_ps(bp.add(i + 8)));
+        acc_d0 = _mm256_fmadd_ps(d0, d0, acc_d0);
+        acc_d1 = _mm256_fmadd_ps(d1, d1, acc_d1);
+        acc_n0 = _mm256_fmadd_ps(q0, q0, acc_n0);
+        acc_n1 = _mm256_fmadd_ps(q1, q1, acc_n1);
+        i += 16;
+    }
+    if i + 8 <= n {
+        let raw = _mm_loadl_epi64(ap.add(i).cast::<__m128i>());
+        let q0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw));
+        let d0 = _mm256_fmsub_ps(q0, v_scale, _mm256_loadu_ps(bp.add(i)));
+        acc_d0 = _mm256_fmadd_ps(d0, d0, acc_d0);
+        acc_n0 = _mm256_fmadd_ps(q0, q0, acc_n0);
+        i += 8;
+    }
+    let hsum = |v: __m256| -> f32 {
+        let lo = _mm256_castps256_ps128(v);
+        let hi = _mm256_extractf128_ps(v, 1);
+        let s4 = _mm_add_ps(lo, hi);
+        let s2 = _mm_add_ps(s4, _mm_movehl_ps(s4, s4));
+        let s1 = _mm_add_ss(s2, _mm_shuffle_ps(s2, s2, 0b01));
+        _mm_cvtss_f32(s1)
+    };
+    let mut d_sum = hsum(_mm256_add_ps(acc_d0, acc_d1));
+    let mut q_sq_sum = hsum(_mm256_add_ps(acc_n0, acc_n1));
+    while i < n {
+        let q = f32::from(bytes[i].cast_signed());
+        q_sq_sum += q * q;
+        let d = q * scale - b[i];
+        d_sum += d * d;
+        i += 1;
+    }
+    (d_sum, q_sq_sum * (scale * scale))
+}
+
+/// Simultaneously computes `(sum (a_i * scale - b_i)^2, sum (a_i * scale)^2)` for SQ8 `i8` bytes.
+/// Used for exact hyperboloid-constrained Lorentz distance on `ScalarI8` vectors without
+/// catastrophic cancellation or time-coordinate quantization drift.
+#[inline]
+pub fn sq8_scaled_l2_and_norm_sq(bytes: &[u8], scale: f32, b: &[f32]) -> (f32, f32) {
+    match backend() {
+        #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+        SimdBackend::Avx512 | SimdBackend::Avx2 => unsafe {
+            sq8_scaled_l2_and_norm_sq_avx2(bytes, scale, b)
+        },
+        #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+        SimdBackend::Neon => unsafe { sq8_scaled_l2_and_norm_sq_neon(bytes, scale, b) },
+        _ => sq8_scaled_l2_and_norm_sq_scalar(bytes, scale, b),
+    }
+}
+
+/// Simultaneously computes `(sum (q_i * b_i), sum (q_i^2))` for SQ8 `i8` bytes and `f32` query.
+/// Eliminates the per-lane `vfmsq_f32` scale multiplication inside the loop (cutting FP FMA
+/// instructions in half) while accumulating exact integer `sum(q_i^2)` in `u32`.
+#[inline]
+pub fn sq8_dot_and_qsq(bytes: &[u8], b: &[f32]) -> (f32, u32) {
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    {
+        if matches!(backend(), SimdBackend::Neon) {
+            // SAFETY: aarch64 baseline guarantees NEON.
+            return unsafe { sq8_dot_and_qsq_neon(bytes, b) };
+        }
+    }
+    #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+    {
+        if matches!(backend(), SimdBackend::Avx512 | SimdBackend::Avx2) {
+            // SAFETY: checked runtime feature detection.
+            return unsafe { sq8_dot_and_qsq_avx2(bytes, b) };
+        }
+    }
+    let n = bytes.len().min(b.len());
+    let (chunks_a, rem_a) = bytes[..n].as_chunks::<4>();
+    let (chunks_b, rem_b) = b[..n].as_chunks::<4>();
+    let mut dot_acc = [0.0f32; 4];
+    let mut q_sq_sum: u32 = 0;
+    for (ca, cb) in chunks_a.iter().zip(chunks_b.iter()) {
+        for l in 0..4 {
+            let qi = i32::from(ca[l].cast_signed());
+            q_sq_sum += (qi * qi).cast_unsigned();
+            dot_acc[l] += (qi as f32) * cb[l];
+        }
+    }
+    let mut dot_sum = (dot_acc[0] + dot_acc[1]) + (dot_acc[2] + dot_acc[3]);
+    for (&a_u8, &b_f32) in rem_a.iter().zip(rem_b.iter()) {
+        let qi = i32::from(a_u8.cast_signed());
+        q_sq_sum += (qi * qi).cast_unsigned();
+        dot_sum += (qi as f32) * b_f32;
+    }
+    (dot_sum, q_sq_sum)
+}
+
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+#[target_feature(enable = "neon")]
+unsafe fn sq8_dot_and_qsq_neon(bytes: &[u8], b: &[f32]) -> (f32, u32) {
+    use std::arch::aarch64::{
+        vaddq_f32, vaddvq_f32, vaddvq_s32, vcvtq_f32_s32, vdupq_n_f32, vdupq_n_s32, vfmaq_f32,
+        vget_high_s16, vget_high_s8, vget_low_s16, vget_low_s8, vld1_s8, vld1q_f32, vld1q_s8,
+        vmlal_s8, vmovl_s16, vmovl_s8, vmull_s8, vpadalq_s16,
+    };
+    let n = bytes.len().min(b.len());
+    let ap = bytes.as_ptr().cast::<i8>();
+    let bp = b.as_ptr();
+    let mut acc0 = vdupq_n_f32(0.0);
+    let mut acc1 = vdupq_n_f32(0.0);
+    let mut acc2 = vdupq_n_f32(0.0);
+    let mut acc3 = vdupq_n_f32(0.0);
+    let mut acc_qsq = vdupq_n_s32(0);
+    let mut i = 0usize;
+    while i + 16 <= n {
+        let raw = vld1q_s8(ap.add(i));
+        let lo8 = vget_low_s8(raw);
+        let hi8 = vget_high_s8(raw);
+        let sq16 = vmlal_s8(vmull_s8(lo8, lo8), hi8, hi8);
+        acc_qsq = vpadalq_s16(acc_qsq, sq16);
+
+        let s16_lo = vmovl_s8(lo8);
+        let s16_hi = vmovl_s8(hi8);
+        let q0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16_lo)));
+        let q1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16_lo)));
+        let q2 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16_hi)));
+        let q3 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16_hi)));
+
+        acc0 = vfmaq_f32(acc0, q0, vld1q_f32(bp.add(i)));
+        acc1 = vfmaq_f32(acc1, q1, vld1q_f32(bp.add(i + 4)));
+        acc2 = vfmaq_f32(acc2, q2, vld1q_f32(bp.add(i + 8)));
+        acc3 = vfmaq_f32(acc3, q3, vld1q_f32(bp.add(i + 12)));
+        i += 16;
+    }
+    if i + 8 <= n {
+        let raw = vld1_s8(ap.add(i));
+        acc_qsq = vpadalq_s16(acc_qsq, vmull_s8(raw, raw));
+        let s16 = vmovl_s8(raw);
+        let q0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(s16)));
+        let q1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(s16)));
+        acc0 = vfmaq_f32(acc0, q0, vld1q_f32(bp.add(i)));
+        acc1 = vfmaq_f32(acc1, q1, vld1q_f32(bp.add(i + 4)));
+        i += 8;
+    }
+    let mut dot_sum = vaddvq_f32(vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3)));
+    let mut q_sq_sum = vaddvq_s32(acc_qsq).cast_unsigned();
+    while i < n {
+        let qi = i32::from(bytes[i].cast_signed());
+        q_sq_sum += (qi * qi).cast_unsigned();
+        dot_sum += (qi as f32) * b[i];
+        i += 1;
+    }
+    (dot_sum, q_sq_sum)
+}
+
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn sq8_dot_and_qsq_avx2(bytes: &[u8], b: &[f32]) -> (f32, u32) {
+    use std::arch::x86_64::{
+        __m128i, __m256, _mm256_add_ps, _mm256_castps256_ps128, _mm256_cvtepi32_ps,
+        _mm256_cvtepi8_epi32, _mm256_extractf128_ps, _mm256_fmadd_ps, _mm256_loadu_ps,
+        _mm256_setzero_ps, _mm_add_ps, _mm_add_ss, _mm_cvtss_f32, _mm_loadl_epi64, _mm_loadu_si128,
+        _mm_movehl_ps, _mm_shuffle_ps, _mm_srli_si128,
+    };
+    let n = bytes.len().min(b.len());
+    let ap = bytes.as_ptr();
+    let bp = b.as_ptr();
+    let mut acc_dot0: __m256 = _mm256_setzero_ps();
+    let mut acc_dot1: __m256 = _mm256_setzero_ps();
+    let mut acc_n0: __m256 = _mm256_setzero_ps();
+    let mut acc_n1: __m256 = _mm256_setzero_ps();
+    let mut i = 0usize;
+    while i + 16 <= n {
+        let raw = _mm_loadu_si128(ap.add(i).cast::<__m128i>());
+        let q0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw));
+        let q1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(raw, 8)));
+        acc_dot0 = _mm256_fmadd_ps(q0, _mm256_loadu_ps(bp.add(i)), acc_dot0);
+        acc_dot1 = _mm256_fmadd_ps(q1, _mm256_loadu_ps(bp.add(i + 8)), acc_dot1);
+        acc_n0 = _mm256_fmadd_ps(q0, q0, acc_n0);
+        acc_n1 = _mm256_fmadd_ps(q1, q1, acc_n1);
+        i += 16;
+    }
+    if i + 8 <= n {
+        let raw = _mm_loadl_epi64(ap.add(i).cast::<__m128i>());
+        let q0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw));
+        acc_dot0 = _mm256_fmadd_ps(q0, _mm256_loadu_ps(bp.add(i)), acc_dot0);
+        acc_n0 = _mm256_fmadd_ps(q0, q0, acc_n0);
+        i += 8;
+    }
+    let hsum = |v: __m256| -> f32 {
+        let lo = _mm256_castps256_ps128(v);
+        let hi = _mm256_extractf128_ps(v, 1);
+        let s4 = _mm_add_ps(lo, hi);
+        let s2 = _mm_add_ps(s4, _mm_movehl_ps(s4, s4));
+        let s1 = _mm_add_ss(s2, _mm_shuffle_ps(s2, s2, 0b01));
+        _mm_cvtss_f32(s1)
+    };
+    let mut dot_sum = hsum(_mm256_add_ps(acc_dot0, acc_dot1));
+    let mut q_sq_sum = hsum(_mm256_add_ps(acc_n0, acc_n1)) as u32;
+    while i < n {
+        let qi = i32::from(bytes[i].cast_signed());
+        q_sq_sum += (qi * qi).cast_unsigned();
+        dot_sum += (qi as f32) * b[i];
+        i += 1;
+    }
+    (dot_sum, q_sq_sum)
+}
+
+/// Zero-copy Lorentz hyperboloid distance proxy between two `ScalarI8` byte slices in storage.
+/// Uses pure integer `i8 -> i32` dot/norm accumulation inside the loop and a single `f64` evaluation at the end.
+#[inline]
+pub fn sq8_lorentz_bytes_pair(bytes_a: &[u8], bytes_b: &[u8]) -> f64 {
+    if bytes_a.len() < 4 || bytes_b.len() < 4 {
+        return f64::MAX;
+    }
+    let off_a = bytes_a.len() - 4;
+    let off_b = bytes_b.len() - 4;
+    let n = off_a.min(off_b);
+    if n <= 1 {
+        return 1.0;
+    }
+    let alpha_a = f32::from_le_bytes(bytes_a[off_a..].try_into().unwrap_or([0; 4]));
+    let alpha_b = f32::from_le_bytes(bytes_b[off_b..].try_into().unwrap_or([0; 4]));
+    let scale_a = f64::from(alpha_a) * (1.0 / 127.0);
+    let scale_b = f64::from(alpha_b) * (1.0 / 127.0);
+    let mut dot_ab: i32 = 0;
+    let mut qa_sq: u32 = 0;
+    let mut qb_sq: u32 = 0;
+    for (&ba, &bb) in bytes_a[1..n].iter().zip(bytes_b[1..n].iter()) {
+        let qa = i32::from(ba.cast_signed());
+        let qb = i32::from(bb.cast_signed());
+        dot_ab += qa * qb;
+        qa_sq += (qa * qa).cast_unsigned();
+        qb_sq += (qb * qb).cast_unsigned();
+    }
+    let ta = (1.0 + f64::from(qa_sq) * (scale_a * scale_a)).sqrt();
+    let tb = (1.0 + f64::from(qb_sq) * (scale_b * scale_b)).sqrt();
+    let sp_dot = f64::from(dot_ab) * (scale_a * scale_b);
+    (ta * tb - sp_dot).max(1.0)
 }
 
 fn sq8_dot_scalar(bytes: &[u8], b: &[f32]) -> f32 {

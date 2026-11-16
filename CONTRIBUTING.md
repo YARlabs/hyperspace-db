@@ -110,8 +110,19 @@ If you are contributing to low-level mathematical kernels or storage acceleratio
    - Explicit target features: Use `#[target_feature(enable = "avx512f")]`, `#[target_feature(enable = "avx2,fma")]`, and `#[target_feature(enable = "neon")]`.
    - Never assume pointer alignment: always use unaligned vector loads (`_mm512_loadu_ps`, `_mm256_loadu_ps`, `vld1q_f32`) so distance kernels can run directly over unaligned slices of memory-mapped or RAM storage.
    - Dual/Quad accumulators: Unroll loops by at least 2 to 4 vector registers to break latency chains and maximize instruction-level parallelism (FMA pipelining).
+   - Zero-padded 16-element alignment: For dimensions that are not naturally multiples of 16 (such as 33D Lorentz or 801D Hybrid), treat spatial blocks as 16-aligned segments (e.g. 32 spatial coordinates = $2 \times 16$ floats) to achieve zero scalar loop remainder.
+   - Cross-manifold early abandon: For hybrid manifolds, test threshold bounds immediately after the primary subspace (e.g. hyperbolic head) before computing secondary coordinate spaces (e.g. Euclidean tail).
+   - Numerically stable hyperbolic forms: Always use displacement-scaled difference forms ($\cosh(d) = 1 + \frac{1}{2}(\|\Delta\mathbf{x}\|^2 - \Delta t^2)$) instead of naive Minkowski subtraction ($t_u t_v - \mathbf{x}_u \cdot \mathbf{x}_v$) to eliminate catastrophic floating-point cancellation when $t \gg 1$.
+   - Series approximations: Use branchless polynomial or Puiseux expansions (e.g. `acosh_from_cosh`) for small arguments $x < 0.0625$ to eliminate transcendental function calls (`ln_1p`, `acosh`) from hot traversal paths.
+   - Zero-copy byte-to-byte SIMD kernels: Implement direct `(&[u8], &[u8])` distance functions (`l2_sq_pair_dispatch`, `lorentz_f32_bytes_pair_thresh`, `hybrid_f32_bytes_pair`, `sq8_lorentz_bytes_pair`) so HNSW heuristic pruning (`select_neighbors`, `prune_connections`) can evaluate vector candidates directly from `StorageView` without unpacking into `Vec<f32>` or intermediate `memcpy`s.
+   - 2-checkpoint ADSampling: For high-dimensional spaces, use at most 2 checkpoints (50% and 75% of dimension) with precomputed constant slack bounds (`0.65 * t` and `0.92 * t`), avoiding per-64-float reductions and runtime `sqrt` calls.
+   - Fused SQ8 integer dot accumulation: Use fused integer pipelines (`vmull_s8` + `vmlal_s8` + `vpadalq_s16`) for combined dot product and squared-norm calculations (`sq8_dot_and_qsq`), cutting FP FMA ops in half and scaling once at the end.
+   - 8-byte packed candidates: Always pack priority queue elements as `#[repr(C, align(8))] Candidate { id: u32, distance: f32 }`, leveraging `as_u64()` transmutation on little-endian CPUs to turn heap comparisons into single 1-cycle integer instructions while halving queue memory.
    - Support `HS_SIMD` override: All dispatch logic must respect `detect()` and runtime override for A/B testing (`HS_SIMD=scalar|avx2|avx512|neon`).
-2. **Batched Positional I/O (`crates/hyperspace-store/src/uring_io.rs`)**:
+2. **Zero-Allocation Scoped Storage Views (`crates/hyperspace-store/src/mmap_impl.rs`)**:
+   - Hold a single `StorageView` across inner traversal loops (`select_neighbors`, `prune_connections`, zoom-in) rather than calling atomic `segments.load()` per candidate.
+   - Provide zero-alloc direct decoding in `load_node_coords_f32` into caller-provided scratch buffers (`out: &mut Vec<f32>`).
+3. **Batched Positional I/O (`crates/hyperspace-store/src/uring_io.rs`)**:
    - The `io-uring` feature is Linux-only. All callers must use `read_batch_at` or `read_raw_batch_at` with zero-cost fallback to `pread` on other platforms.
    - Buffer lifetimes: Memory passed to submission rings must remain valid until completions are reaped (`submit_and_wait`).
 3. **Multi-Socket NUMA Placement (`crates/hyperspace-server/src/numa.rs`)**:
