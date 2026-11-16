@@ -56,6 +56,7 @@ use hyperspace_core::{GlobalConfig, LorentzMetric, Metric, PoincareMetric};
 use hyperspace_store::VectorStore;
 use std::marker::PhantomData;
 
+#[cfg(not(target_arch = "wasm32"))]
 static TMP_SNAP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Archive, Deserialize, Serialize)]

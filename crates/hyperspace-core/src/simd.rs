@@ -2028,7 +2028,7 @@ unsafe fn sq8_dot_and_qsq_avx2(bytes: &[u8], b: &[f32]) -> (f32, u32) {
         _mm_cvtss_f32(s1)
     };
     let mut dot_sum = hsum(_mm256_add_ps(acc_dot0, acc_dot1));
-    let mut q_sq_sum = hsum(_mm256_add_ps(acc_n0, acc_n1)) as u32;
+    let mut q_sq_sum = (hsum(_mm256_add_ps(acc_n0, acc_n1)) as i32).cast_unsigned();
     while i < n {
         let qi = i32::from(bytes[i].cast_signed());
         q_sq_sum += (qi * qi).cast_unsigned();

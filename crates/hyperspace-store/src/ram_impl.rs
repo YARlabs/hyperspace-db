@@ -17,6 +17,12 @@ pub struct StorageView<'a> {
 }
 
 impl StorageView<'_> {
+    /// Returns the number of vectors in the store.
+    #[inline]
+    pub fn count(&self) -> usize {
+        self.store.count()
+    }
+
     /// Retrieves a vector by ID using the pre-loaded segments guard.
     #[inline]
     pub fn get(&self, id: u32) -> &[u8] {
@@ -213,11 +219,7 @@ impl VectorStore {
 
     /// Reconstructs the store from bytes.
     pub fn from_bytes(_path: &Path, element_size: usize, data: &[u8]) -> Self {
-        let count = if element_size > 0 {
-            data.len() / element_size
-        } else {
-            0
-        };
+        let count = data.len().checked_div(element_size).unwrap_or(0);
         let seg_size = element_size * CHUNK_SIZE;
         let num_segs = if seg_size > 0 {
             data.len().div_ceil(seg_size).max(1)
