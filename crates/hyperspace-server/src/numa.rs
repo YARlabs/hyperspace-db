@@ -141,8 +141,9 @@ mod linux {
             if libc::sched_getaffinity(0, size, &raw mut set) != 0 {
                 return None;
             }
+            let max_cpus = usize::try_from(libc::CPU_SETSIZE).unwrap_or(0);
             Some(
-                (0..libc::CPU_SETSIZE as usize)
+                (0..max_cpus)
                     .filter(|&c| libc::CPU_ISSET(c, &set))
                     .collect(),
             )
@@ -175,8 +176,9 @@ mod linux {
         unsafe {
             let mut set: libc::cpu_set_t = std::mem::zeroed();
             let mut any = false;
+            let max_cpus = usize::try_from(libc::CPU_SETSIZE).unwrap_or(0);
             for &c in cpus {
-                if c < libc::CPU_SETSIZE as usize {
+                if c < max_cpus {
                     libc::CPU_SET(c, &mut set);
                     any = true;
                 }
