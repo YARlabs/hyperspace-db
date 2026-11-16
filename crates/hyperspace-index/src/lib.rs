@@ -3327,10 +3327,8 @@ impl<M: Metric> HnswIndex<M> {
                 M::name(),
                 "l2" | "cosine" | "poincare" | "lorentz" | "hybrid"
             )
-        } else if self.mode == QuantizationMode::ScalarI8 {
-            M::name() == "lorentz"
         } else {
-            false
+            self.mode == QuantizationMode::ScalarI8 && M::name() == "lorentz"
         }
     }
 

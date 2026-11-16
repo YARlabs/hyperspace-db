@@ -277,11 +277,11 @@ mod tests {
         // "the" is a stopword, "running" should be stemmed to "run"
         let tokens = tok.tokenize("the running fox");
         assert!(
-            !tokens.contains(&"the".to_string()),
+            !tokens.iter().any(|t| t == "the"),
             "stopword 'the' should be removed"
         );
         assert!(
-            tokens.contains(&"run".to_string()),
+            tokens.iter().any(|t| t == "run"),
             "running should be stemmed to run"
         );
     }
@@ -291,7 +291,7 @@ mod tests {
         let tok = Tokenizer::builder().language("german").build().unwrap();
         let tokens = tok.tokenize("der schnelle Hund");
         assert!(
-            !tokens.contains(&"der".to_string()),
+            !tokens.iter().any(|t| t == "der"),
             "German stopword 'der' should be removed"
         );
     }
@@ -301,7 +301,7 @@ mod tests {
         let tok = Tokenizer::builder().language("french").build().unwrap();
         let tokens = tok.tokenize("le chat rapide");
         assert!(
-            !tokens.contains(&"le".to_string()),
+            !tokens.iter().any(|t| t == "le"),
             "French stopword 'le' should be removed"
         );
     }
@@ -345,9 +345,9 @@ mod tests {
             .build()
             .unwrap();
         let tokens = tok.tokenize("running jumps easily");
-        assert!(tokens.contains(&"run".to_string()));
-        assert!(tokens.contains(&"jump".to_string()));
-        assert!(tokens.contains(&"easili".to_string()));
+        assert!(tokens.iter().any(|t| t == "run"));
+        assert!(tokens.iter().any(|t| t == "jump"));
+        assert!(tokens.iter().any(|t| t == "easili"));
     }
 
     #[test]
@@ -358,7 +358,7 @@ mod tests {
             .unwrap();
         // "maisons" -> "maison"
         let tokens = tok.tokenize("maisons");
-        assert!(tokens.contains(&"maison".to_string()));
+        assert!(tokens.iter().any(|t| t == "maison"));
     }
 
     #[test]
@@ -422,7 +422,7 @@ mod tests {
         // "gatti" (cats) -> "gatt"
         let tokens = tok.tokenize("gatti");
         assert!(
-            tokens.contains(&"gatt".to_string()),
+            tokens.iter().any(|t| t == "gatt"),
             "Italian: 'gatti' should stem to 'gatt', got {tokens:?}"
         );
     }
@@ -609,7 +609,7 @@ mod tests {
         let tok = Tokenizer::builder().language("spanish").build().unwrap();
         let tokens = tok.tokenize("el gato rapido");
         assert!(
-            !tokens.contains(&"el".to_string()),
+            !tokens.iter().any(|t| t == "el"),
             "Spanish stopword 'el' should be removed"
         );
     }
@@ -619,7 +619,7 @@ mod tests {
         let tok = Tokenizer::builder().language("italian").build().unwrap();
         let tokens = tok.tokenize("il gatto veloce");
         assert!(
-            !tokens.contains(&"il".to_string()),
+            !tokens.iter().any(|t| t == "il"),
             "Italian stopword 'il' should be removed"
         );
     }
@@ -637,7 +637,7 @@ mod tests {
         let tok = Tokenizer::builder().language("en").build().unwrap();
         let tokens = tok.tokenize("the running fox");
         assert!(
-            !tokens.contains(&"the".to_string()),
+            !tokens.iter().any(|t| t == "the"),
             "ISO code 'en' should set English stopwords"
         );
     }

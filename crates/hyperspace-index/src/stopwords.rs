@@ -1392,7 +1392,7 @@ mod tests {
             let words =
                 for_language(lang).unwrap_or_else(|| panic!("missing stopwords for {lang}"));
             assert!(
-                words.contains(&word.to_string()),
+                words.iter().any(|w| w == word),
                 "{lang}: expected canonical word '{word}' not found in stopword list"
             );
         }
