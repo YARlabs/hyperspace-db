@@ -62,8 +62,9 @@ FROM ubuntu:24.04
 ARG VERSION=4.2.4
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     openssl \
     libstdc++6 \
     libgomp1 \
