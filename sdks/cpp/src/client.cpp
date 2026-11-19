@@ -151,7 +151,7 @@ bool HyperspaceClient::InsertSecure(uint32_t id, const std::vector<double>& vect
     ::hyperspace::InsertRequest request;
     request.set_id(id);
     request.set_collection(collection);
-    for (double v : final_vector) request.add_vector(v);
+    AddWireVector(&request, final_vector);
     if (!final_payload.empty()) {
         request.set_payload(final_payload.data(), final_payload.size());
     }
@@ -206,7 +206,7 @@ bool HyperspaceClient::BatchInsert(const std::vector<uint32_t>& ids, const std::
     for (size_t i = 0; i < ids.size(); ++i) {
         auto* v = request.add_vectors();
         v->set_id(ids[i]);
-        for (double val : vectors[i]) v->add_vector(val);
+        AddWireVector(v, vectors[i]);
     }
 
     ::hyperspace::InsertResponse response;
@@ -275,7 +275,7 @@ std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>&
     ::hyperspace::SearchRequest request;
     request.set_collection(collection);
     request.set_top_k(top_k);
-    for (double v : final_vector) request.add_vector(v);
+    AddWireVector(&request, final_vector);
     if (!hybrid_query.empty()) request.set_hybrid_query(hybrid_query);
     if (hybrid_alpha != 0.0f) request.set_hybrid_alpha(hybrid_alpha);
     if (bm25) {
@@ -336,7 +336,7 @@ std::vector<std::vector<SearchResultRec>> HyperspaceClient::SearchBatch(const st
         auto* s = request.add_searches();
         s->set_top_k(top_k);
         s->set_collection(collection);
-        for (double val : v) s->add_vector(val);
+        AddWireVector(s, v);
     }
 
     ::hyperspace::BatchSearchResponse response;
@@ -401,7 +401,7 @@ std::vector<SearchResultRec> HyperspaceClient::SearchText(const std::string& tex
 std::unordered_map<std::string, std::vector<SearchResultRec>> HyperspaceClient::SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k) {
     ::hyperspace::SearchMultiCollectionRequest request;
     for (const auto& c : collections) request.add_collections(c);
-    for (double v : query) request.add_vector(v);
+    AddWireVector(&request, query);
     request.set_top_k(top_k);
 
     ::hyperspace::SearchMultiCollectionResponse response;

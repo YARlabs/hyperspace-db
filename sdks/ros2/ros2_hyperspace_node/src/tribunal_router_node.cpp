@@ -46,12 +46,15 @@ public:
         // Declare parameters
         this->declare_parameter<std::string>("hyperspace_endpoint", "localhost:50051");
         this->declare_parameter<std::string>("api_key", "I_LOVE_HYPERSPACEDB");
+        // Send vectors as compact `repeated float` (half the wire size; server >= 4.2.5).
+        this->declare_parameter<bool>("compact_vectors", false);
         
         std::string endpoint = this->get_parameter("hyperspace_endpoint").as_string();
         std::string api_key = this->get_parameter("api_key").as_string();
 
         // Initialize Real Hyperspace Client
         client_ = std::make_unique<hyperspace::HyperspaceClient>(endpoint, api_key);
+        client_->SetCompactVectors(this->get_parameter("compact_vectors").as_bool());
 
         // Core AI Navigation Service (Math-driven)
         navigate_service_ = this->create_service<hyperspace_interfaces::srv::NavigateToAttractor>(

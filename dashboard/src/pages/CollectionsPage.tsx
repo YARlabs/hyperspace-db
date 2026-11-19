@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useNavigate } from "react-router-dom"
 import { useEffect } from "react"
 import { getStatusColor, cn } from "@/lib/utils"
+import { FALLBACK_QUANTIZATION_MODES, bytesPerVector, quantizationModeLabel, needsCalibration, type QuantizationMode } from "@/lib/quantization"
 
 export function CollectionsPage() {
     const queryClient = useQueryClient()
@@ -480,6 +481,10 @@ function CreateCollectionDialog() {
 
     const handleMetricChange = (v: string) => {
         setMetric(v)
+        // Drop a quantization the new metric does not support.
+        const mode = ((status?.quantization_modes as QuantizationMode[] | undefined) ?? FALLBACK_QUANTIZATION_MODES)
+            .find(q => q.value === quantization)
+        if (mode && !mode.metrics.includes(v)) setQuantization("default")
         setIsCustomDimension(false)
         setIsCustomMrlCutoff(false)
         if (v === "hybrid") {
@@ -496,6 +501,10 @@ function CreateCollectionDialog() {
             setMrlCutoff("128")
         }
     }
+
+    const quantModes: QuantizationMode[] = (status?.quantization_modes as QuantizationMode[] | undefined) ?? FALLBACK_QUANTIZATION_MODES
+    const effectiveDim = metric === "hybrid" ? 801 : (parseInt(dimension) || 1024)
+    const selectedMode = quantModes.find(m => m.value === quantization)
 
     const isValid = () => {
         if (!name) return false;
@@ -554,20 +563,35 @@ function CreateCollectionDialog() {
                                 <SelectValue placeholder="Select Quantization Level" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="default">Default (System HS_QUANTIZATION_LEVEL)</SelectItem>
-                                <SelectItem value="ternary">Ternary (1.58-Bit BitNet [-1, 0, +1] — 16× / 25× speed)</SelectItem>
-                                <SelectItem value="medium_plus">Medium Plus (4-Bit Universal Block Quantization)</SelectItem>
-                                <SelectItem value="turbo">Turbo (4-Bit Lloyd-Max Spherical)</SelectItem>
-                                <SelectItem value="opq">Optimized PQ (64-byte FWHT Rotated Subspace Quantization — 60×)</SelectItem>
-                                <SelectItem value="pq">Product Quantization (64-byte Subspace ADC — 60×)</SelectItem>
-                                <SelectItem value="medium">Medium (8-Bit Scalar / Hybrid 801)</SelectItem>
-                                <SelectItem value="none">None (Full f64 Precision)</SelectItem>
-                                <SelectItem value="extreme">Extreme (1-Bit Binary ADC)</SelectItem>
+                                <SelectItem value="default">Default (System HS_QUANTIZATION_LEVEL = {status?.config?.quantization ?? "scalar"})</SelectItem>
+                                {quantModes.map(m => {
+                                    const supported = m.metrics.includes(metric)
+                                    return (
+                                        <SelectItem key={m.value} value={m.value} disabled={!supported}>
+                                            {m.label} — {bytesPerVector(m.value, effectiveDim).toLocaleString()} B/vec
+                                            {!supported ? " (not for this metric)" : ""}
+                                        </SelectItem>
+                                    )
+                                })}
                             </SelectContent>
                         </Select>
-                        <p className="text-[10px] text-zinc-500">
-                            Per-collection quantization level overrides system environment defaults.
-                        </p>
+                        {selectedMode ? (
+                            <div className="text-[10px] text-zinc-400 space-y-1">
+                                <p>
+                                    {selectedMode.description} · {bytesPerVector(selectedMode.value, effectiveDim).toLocaleString()} B/vec
+                                    {" "}({(bytesPerVector("none", effectiveDim) / Math.max(bytesPerVector(selectedMode.value, effectiveDim), 1)).toFixed(1)}× vs f32)
+                                </p>
+                                {selectedMode.calibration && (
+                                    <p className="text-amber-400">
+                                        Requires calibration: run “Rebuild Index” after the initial ingest to train the codebook / centroid on real data.
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            <p className="text-[10px] text-zinc-500">
+                                Per-collection quantization level overrides system environment defaults.
+                            </p>
+                        )}
                     </div>
 
                     {metric === "hybrid" ? (
@@ -1099,24 +1123,17 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                     <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 mb-1">Quantization Mode</div>
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm font-mono font-bold text-amber-400">
-                                            {(() => {
-                                                const q = stats.quantization ?? ''
-                                                if (q === 'None') return 'None — Full f64 precision'
-                                                if (q === 'ScalarI8') return 'Medium — ScalarI8 (8-bit)'
-                                                if (q === 'ScalarI4') return 'Medium Plus — 4-bit Universal'
-                                                if (q === 'Ternary' || q === 'ternary') return 'Ternary — 1.58-bit BitNet {-1, 0, +1} (16× / 25× speed)'
-                                                if (q === 'Turbo') return 'Turbo — 4-bit Spherical'
-                                                if (q === 'OPQ' || q === 'opq') return 'Optimized PQ — 64 B/vec (60.3×)'
-                                                if (q === 'ProductQuantization' || q === 'pq' || q === 'PQ') return 'Product Quantization — 64 B/vec (60.3×)'
-                                                if (q === 'AsymmetricHybrid801') return 'Medium — Hybrid 801 (Lorentz-aware)'
-                                                if (q === 'Binary') return 'Extreme — Binary (1-bit)'
-                                                return q || '—'
-                                            })()}
+                                            {quantizationModeLabel(stats.quantization)}
                                         </span>
                                     </div>
                                     <div className="text-[10px] text-zinc-500">
                                         {stats.dimension}d · {stats.metric}
                                     </div>
+                                    {needsCalibration(stats.quantization) && (
+                                        <div className="text-[10px] text-amber-400">
+                                            Trained quantizer — rebuild the index after bulk ingest to calibrate.
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
                                     <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 mb-1">MRL Cascade Status</div>

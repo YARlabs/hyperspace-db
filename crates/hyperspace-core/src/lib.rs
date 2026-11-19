@@ -31,6 +31,8 @@ pub mod gromov;
 pub mod hybrid;
 pub mod optim;
 pub mod pq;
+pub mod pq4;
+pub mod rabitq;
 pub mod region;
 pub mod simd;
 pub mod turbo_rot;
@@ -77,6 +79,10 @@ pub enum QuantizationMode {
     ProductQuantization,
     OPQ,
     Ternary,
+    /// RaBitQ: 1-bit code + norm + unbiased estimator correction (L2 / cosine).
+    RaBitQ,
+    /// 4-bit Product Quantization with an L1-resident fast-scan LUT.
+    PQ4,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -746,6 +752,32 @@ pub fn acosh_from_cosh(cosh_d: f64) -> f64 {
         )
     } else {
         (x + (x * (x + 2.0)).sqrt()).ln_1p()
+    }
+}
+
+/// Squared hyperbolic distance `acosh(cosh_d)²` without `sqrt` or `ln` in the near field.
+///
+/// For `x = cosh_d − 1 < 0.1` uses the Taylor series
+/// `acosh²(1 + x) = 2x − x²/3 + 4x³/45 − x⁴/35 + 16x⁵/1575 − 8x⁶/2079` (rel. error < 1e-9);
+/// otherwise falls back to `ln_1p(x + sqrt(x(x + 2)))²`. Used by product-space (hybrid)
+/// metrics that only need `d_lor²` for ranking.
+#[inline(always)]
+pub fn acosh_sq_from_cosh(cosh_d: f64) -> f64 {
+    let x = (cosh_d - 1.0).max(0.0);
+    if x < 0.1 {
+        x * x.mul_add(
+            x.mul_add(
+                x.mul_add(
+                    x.mul_add(x.mul_add(-8.0 / 2079.0, 16.0 / 1575.0), -1.0 / 35.0),
+                    4.0 / 45.0,
+                ),
+                -1.0 / 3.0,
+            ),
+            2.0,
+        )
+    } else {
+        let d = (x + (x * (x + 2.0)).sqrt()).ln_1p();
+        d * d
     }
 }
 

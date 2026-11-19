@@ -1,3 +1,11 @@
+## 4.2.5
+
+- `compactVectors` client option: send vectors as `repeated float` (`vector_f32`), half the
+  wire size of `repeated double` (requires server >= 4.2.5).
+- Protobuf messages regenerated with `vector_f32` on `SearchRequest`, `InsertRequest`,
+  `VectorData`, `SearchMultiCollectionRequest`.
+- New quantization levels accepted by `createCollection(quantization: ...)`: `rabitq`, `pq4`.
+
 ## 4.2.4
 
 - Release version 4.2.4

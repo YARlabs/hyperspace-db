@@ -247,6 +247,9 @@ message InsertRequest {
   // The payload is zstd-compressed and written to the chunk file's Payload Layer.
   // It is NEVER loaded into memory during HNSW traversal.
   optional bytes payload = 9;
+  // Compact f32 vector (half the wire size / decode cost of `vector`).
+  // Used when `vector` is empty; the server stores f32 internally anyway.
+  repeated float vector_f32 = 10;
 }
 
 message VectorData {
@@ -254,6 +257,8 @@ message VectorData {
   uint32 id = 2;
   map<string, string> metadata = 3;
   map<string, MetadataValue> typed_metadata = 4;
+  // Compact f32 alternative to `vector` (used when `vector` is empty).
+  repeated float vector_f32 = 5;
 }
 
 message BatchInsertRequest {
@@ -374,6 +379,8 @@ message SearchRequest {
   bool include_payload = 11;
   map<string, float> component_weights = 12;
   bool use_wave = 13;
+  // Compact f32 query (used when `vector` is empty): half the bytes of `repeated double`.
+  repeated float vector_f32 = 14;
 }
 
 message Filter {
@@ -452,6 +459,8 @@ message SearchMultiCollectionRequest {
   repeated string collections = 1;
   repeated double vector = 2;
   uint32 top_k = 3;
+  // Compact f32 query (used when `vector` is empty).
+  repeated float vector_f32 = 4;
 }
 
 message SearchMultiCollectionResponse {

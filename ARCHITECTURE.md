@@ -249,12 +249,14 @@ New vectors are first appended to the **Write-Ahead Log (WAL)** and simultaneous
 * **Flushing**: A background **Flush Worker** converts the frozen segment into a highly optimized, immutable **HNSW Chunk** (`.hyp`).
 * **RAM Reclamation**: After the flush completes, the old MemTable is atomically swapped for a fresh one, freeing up significant memory.
 * **Durability Modes**:
-    1. **Strict**: Calls `fsync` after every write. Max safety.
-    2. **Batch**: Calls `fsync` in a background thread every N ms. Good compromise.
+    1. **Strict** (group commit, v4.2.5): every acknowledged write is covered by an `fdatasync`. Writers append under the WAL lock but wait for durability *after* releasing it (`CommitTicket::wait`): the first waiter becomes the leader and one `fdatasync` releases every concurrent writer, so N strict writers cost ~1 fsync instead of N serialized ones.
+    2. **Batch**: records are handed to the OS on the batch interval; the background `hs-wal-sync` thread fsyncs them (`HYPERSPACE_WAL_BATCH_INTERVAL`, default 100 ms). No writer pays an fsync under the WAL lock.
     3. **Async**: Relies on OS page cache. Max speed.
 
 ### 3. Immutable Chunks (SSTables) & Direct Access
 Data is stored in segmented `.hyp` files, each containing a subset of the collection.
+* **Chunk Manifest (v4.2.5)**: every chunk directory carries `chunk.manifest` — storage layout (`element_size`, `storage_f32`, `dimension`) and the chunk-local → global user-ID table. Readers decode chunks with the exact layout they were written with, and chunk hits are merged with MemTable hits under their real user IDs.
+* **Chunk Index Cache (v4.2.5)**: loaded chunk indexes live in a process-wide LRU (`HS_CHUNK_CACHE_SIZE`, default 64), invalidated on compaction or collection deletion; routed chunks are searched in parallel on Rayon.
 * **Quantization**: Vectors are optionally quantized (e.g., `ScalarI8`), reducing size by 8x or more.
 * **Direct Read Path**: MRL cascade tail vectors (e.g. dimensions 65..1536) are fetched directly via `DirectVectorStore` without inflating kernel memory.
 
@@ -411,13 +413,14 @@ HyperspaceDB v4.2.4 introduces deep mathematical and SIMD kernel optimizations f
 HyperspaceDB v4.2.5 eliminates memory copying and allocation bottlenecks across HNSW candidate queues, connection pruning, and knowledge graph traversal:
 * **8-Byte Packed Candidate Structure (`Candidate` & `MaxCandidate`)**:
   * Packed priority queue candidates into `#[repr(C, align(8))] struct Candidate { id: NodeId, distance: f32 }`.
-  * On little-endian CPUs, transmuting to `u64` via `as_u64()` positions `distance` in the high bits and `id` in the low bits. Comparisons execute in a **single 1-cycle integer `u64` comparison instruction** without float unpacking or bit-shifting, cutting `BinaryHeap` memory footprint by 50% (8B vs 16B) and doubling CPU cache line efficiency.
+  * The heap key places the (order-preserving) distance bits in the high half and `id` in the low half of a `u64` (v4.2.5: built arithmetically instead of by `transmute`, see section 12). Comparisons execute in a **single 1-cycle integer `u64` comparison instruction** without float unpacking or bit-shifting, cutting `BinaryHeap` memory footprint by 50% (8B vs 16B) and doubling CPU cache line efficiency.
 * **Zero-Copy Byte-to-Byte SIMD Distance Kernels (`&[u8]` vs `&[u8]`)**:
   * Implemented vectorized distance kernels that operate directly between stored vector slices in memory: `l2_sq_pair_neon`, `l2_sq_pair_avx2`, `l2_sq_f32_bytes_pair_adsampling`, `lorentz_f32_bytes_pair_thresh`, `hybrid_f32_bytes_pair`, and `sq8_lorentz_bytes_pair`.
   * `HnswIndex::select_neighbors` and `prune_connections` use `dist_storage_bytes_pair`, comparing candidates directly from `StorageView` without unpacking into `Vec<f32>` or performing intermediate `memcpy`s (saving up to 256 KB per node in 1024D spaces and eliminating 3 heap allocations per prune).
   * Inner loop in `search_layer_candidates` maintains a tightly coupled `curr_worst` threshold updated immediately when `results.len() >= ef`.
 * **Optimized 2-Checkpoint ADSampling Early-Abandonment**:
-  * Replaced multi-step statistical sampling with a 2-checkpoint early-abandon protocol at 50% and 75% of dimension, using precomputed constant bounds (`0.65 * t` and `0.92 * t`). Eliminates repeated `sqrt` calls and horizontal SIMD reductions while maintaining high recall.
+  * Replaced multi-step statistical sampling with a 2-checkpoint early-abandon protocol at 50% and 75% of dimension, using precomputed constant bounds (`0.65 * t` and `0.92 * t`). Eliminates repeated `sqrt` calls and horizontal SIMD reductions.
+  * v4.2.5: the statistical bounds are reserved for rotated data; unrotated storage checks the exact bound at the same checkpoints (section 12).
 * **Fused SQ8 Lorentz Kernel & Integer Dot Accumulation (`sq8_dot_and_qsq`)**:
   * In `crates/hyperspace-core/src/simd.rs`, fused dot product and norm-square accumulation into a unified integer SIMD pipeline (`vmull_s8` + `vmlal_s8` + `vpadalq_s16`), cutting FP FMA ops in half and scaling once at the end.
   * Solved catastrophic cancellation and quantization degradation at deep hyperbolic radii ($t \approx 25$): **Recall@10 surged from 31.5% to 93.5%** while index build time dropped by **2.14×** (48 ms → 22.11 ms) at ~80,000 QPS.
@@ -585,6 +588,16 @@ graph LR
 
 > 📌 *Empirically verified in [BENCHMARK_V3_VS_V4_REPORT.md](file:///Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/BENCHMARK_V3_VS_V4_REPORT.md) and [BENCHMARK_GRAND_REPORT.md](file:///Users/sergeyglukhota/Downloads/cursor-tutor/YAR_INK/hyperspace-db/BENCHMARK_GRAND_REPORT.md) on Apple Silicon / target-cpu=native.*
 
+### 12. Performance & Recall Audit (v4.2.5)
+* **Flat Layer-0 Arena (`hyperspace-index::layer0`)**: all layer-0 neighbor lists of the *live* graph sit in fixed-stride `[seq | count | n_0 … n_cap]` slots of geometrically growing `AtomicU32` segments. Readers take a lock-free seqlock snapshot; writers serialize per slot by CAS on `seq`. Upper levels use `Box<[RwLock<SmallVec<[NodeId; 16]>>]>`, which is empty for the `1 − 1/M` of nodes that only live on layer 0. The beam prefetches the next candidate's slot while scoring the current neighbors.
+* **Per-Query Distance Kernels (`DistKernel`)**: `(quantization mode, metric, storage precision)` is resolved once per query into a small enum (`F32L2`, `F32Poincare`, `F32Lorentz`, `F32HybridSq`, `F32Dot`, `Sq8L2`, `F64L2`, `F64Lorentz`, `RaBitQ`, `Pq4`, `Generic`), so the hot loops dispatch on a loop-invariant value instead of the full decision tree.
+* **Candidate Keys**: `(ordered_f32_key(d) << 32) | id` keeps 8-byte candidates correct for negative distances; hyperbolic metrics store `cosh(d) − 1` (`dist_bias`) so near neighbors keep full `f32` precision.
+* **Hybrid Metric**: the index ranks by `d_lor² + ‖Δe‖²` and applies `sqrt` only to returned results (`finalize_distance`); the Lorentz head uses `acosh_sq_from_cosh` (6-term series, no `ln` / `sqrt` for `cosh − 1 < 0.1`).
+* **Exact Early Abandon**: ADSampling's statistical slack requires randomly rotated vectors, so unrotated storage uses the exact lower bound `partial_sum > threshold` (`simd::EXACT_EARLY_ABANDON`).
+* **Graph Maintenance**: standard HNSW level distribution (promotion probability `1/M`); pruning to `m_max` as soon as a list overflows when a SIMD pair kernel is available (25% slack for decode-heavy quantized modes); optional Vamana α (`HS_HNSW_ALPHA`); **`repair_deleted`** relinks live nodes around tombstones from their 2-hop neighborhoods (α = 1.2), restores reverse edges and moves a deleted entry point. It runs automatically once deletes exceed `max(256, 5%)`.
+* **Filtered Search**: an order-preserving `f64` numeric index (`ordered_f64_key`) answers `Range` filters in `O(log N + matches)`; `Not` uses `insert_range` + bitmap difference. For selective filters, **ACORN-style traversal** never scores filtered-out neighbors and explores their neighbors (2-hop) instead; **adaptive ef** (`HS_SEARCH_PATIENCE`) stops a beam that has stopped improving.
+* **Frozen Flat L0 Safety**: the immutable `FlatLayer0Segment` is used only while it covers every live node (fresh inserts are never hidden), neighbor reads are seqlock-validated, and `flat_l0.bin` is written to a temporary file and renamed: rewriting a file from its own memory map deadlocks in the macOS kernel.
+
 ---
 
 ## 🗜️ Multi-Tier Vector Quantization & Rerank Engine (v4.0.0)
@@ -606,10 +619,12 @@ HyperspaceDB v4.0.0 integrates five distinct quantization precision tiers, verif
 * **Ternary BitNet (`ternary`)**: Encodes coordinates into 1.58-bit ternary states $\{-1, 0, +1\}$ using an adaptive Lloyd-Max Gaussian threshold $\tau = 0.67 \cdot \text{mean}(|\mathbf{x}|)$ and dynamic projection scale $\alpha$. Stored as bit-packed `nz` and `sign` bitmasks ($2 \cdot \lceil D/8 \rceil + 8$ bytes). Distance kernels evaluate asymmetric popcount dot products directly with branchless early block skipping (`if nz_byte == 0 { continue; }`), evaluating at **17.4 ns per 1024D vector** and reaching **92.6% Recall@10** with 10× rerank.
 * **TurboQuant (`turbo`)**: Uses precomputed non-linear centroid tables (`[-2.401, ..., 2.401]`), a Lloyd-Max bias-correction factor (`TURBOQUANT_BIAS_CORRECTION`) and a randomized Walsh-Hadamard (FWHT) rotation. `TurboVector::distance_bytes_cosine` computes dot products directly on packed nibbles (8-byte unrolled) without heap-allocating intermediate float vectors. Cosine uses the squared-Euclidean scale `2(1-cos)` so graph heuristics see a consistent metric.
 * **Extreme ADC (`extreme`)**: A 1-bit sign mask per dimension after FWHT rotation (RaBitQ-style). The HNSW graph navigates with branchless SIMD Asymmetric Distance Computation (`BinaryHyperVector::adc_distance_to_float`, sign-LUT nibbles) against the full-precision rotated query.
+* **RaBitQ (`rabitq`, `hyperspace_core::rabitq`, v4.2.5)**: residuals `v − c` (centroid fitted during index rebuild) are FWHT-rotated and stored as 1 bit per dimension plus `‖x‖` and the correction factor `⟨o', x̄⟩` (`⌈D/64⌉·8 + 8` bytes). The query is quantized to 4 bit-planes, so `Σ_{b=1} q'` costs one `popcount` per plane and word; `⟨o, q⟩ ≈ ⟨x̄, q'⟩ / ⟨o', x̄⟩` is unbiased (Gao & Long, SIGMOD 2024).
+* **PQ4 Fast-Scan (`pq4`, `hyperspace_core::pq4`, v4.2.5)**: 16 centroids per 4-D sub-space and nibble-packed codes (`D/8` bytes). The per-query table is `m × 16` `u8` entries (768 B for 768-D, L1-resident, vs 48 KB+ for 8-bit PQ); distances accumulate in integers (`bias + scale · Σ lut[s][code_s]`), and `scan_block` evaluates code blocks sub-space-major for sequential scans.
 * **Product Quantization (`hyperspace_core::pq`)**: `ProductQuantizer` / `PQVector` / `PQLookupTable` provide PQ and OPQ (FWHT-rotated) codebooks with LUT-based ADC (Asymmetric Distance Computation). Fully integrated into `hyperspace-index` and selectable via collection quantization modes (`"opq"` and `"pq"` or `HS_QUANTIZATION_LEVEL=opq|pq`), achieving 60.3×–64× memory compression (64 bytes/vector for 1024D).
 
 ### Search Hot-Path Concurrency
-* HNSW neighbour lists are `ArcSwap<Vec<NodeId>>`: readers call `load()` (wait-free, no writes to shared cache lines); writers publish new lists with `rcu`. This removed the `RwLock` reader-count contention that capped scaling at C=10/C=30.
+* Layer-0 neighbour lists live in the seqlocked flat arena (v4.2.5, section 12): readers never take a lock or write to shared cache lines; writers serialize per slot. Upper levels keep small per-node `RwLock<SmallVec>` lists.
 * L2/Cosine f32 distance uses early abandoning against the current worst result, and the query is cast to `f32` once per search.
 * `ShardedCollection::search` oversamples each shard to `max(top_k + 6, 2·top_k)` using the base `ef_search`, instead of multiplying `ef_search` by the shard count.
 
@@ -703,6 +718,7 @@ graph LR
 
 ### 3. Disk-Backed Voronoi Compaction (`SemanticCompactor`)
 * During background index consolidation, `SemanticCompactor` partitions immutable `.hyp` files into Voronoi chunks.
+* **Lossless input (v4.2.5)**: compaction exports every flushed chunk (via its manifest) plus the MemTable — MemTable entries win on ID collisions — writes the new chunks (manifest + snapshot) first, and only then removes the chunks it re-ingested. Legacy chunks without a manifest are kept untouched.
 * Leaves are emitted strictly in **row order**, enabling sequential streaming disk writes without filesystem random-access fragmentation.
 
 ---

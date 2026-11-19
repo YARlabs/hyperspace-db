@@ -16,7 +16,9 @@ This package provides a bridge between HyperspaceDB and the ROS2 environment, al
 
 ## Creating a Collection with Schema
 
-You can now define complex schemas (Multi-Vector, MRL, Hybrid) using JSON via the ROS2 service, specifying `quantization` (`ternary`, `turbo`, `extreme`, `medium_plus`, `medium`, `none`) and `encrypted`:
+You can now define complex schemas (Multi-Vector, MRL, Hybrid) using JSON via the ROS2 service, specifying `quantization` and `encrypted`.
+
+Supported `quantization` values: `none`, `medium` (8-bit), `medium_plus` (4-bit), `turbo`, `ternary` (BitNet 1.58-bit), `extreme` (1-bit), and — for `l2` / `cosine` collections — `rabitq` (1-bit RaBitQ estimator), `pq4` (4-bit PQ fast-scan), `pq`, `opq`. The trained modes (`rabitq`, `pq4`, `pq`, `opq`) must be calibrated after the initial ingest with the `hyperspace/rebuild_index` service:
 
 ```bash
 ros2 service call /hyperspace/create_collection hyperspace_interfaces/srv/CreateCollection "{name: 'robot_memory', schema_json: '{\"components\": [{\"name\": \"main\", \"metric\": \"lorentz\", \"full_dimension\": 1025}], \"quantization\": \"ternary\", \"encrypted\": true}'}"
@@ -61,6 +63,12 @@ Set the gRPC endpoint and API key via ROS2 parameters:
 ```bash
 ros2 run ros2_hyperspace_node tribunal_router_node --ros-args -p hyperspace_endpoint:="192.168.1.50:50051" -p api_key:="YOUR_SECRET"
 ```
+
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `hyperspace_endpoint` | `localhost:50051` | gRPC endpoint of the HyperspaceDB server. |
+| `api_key` | `I_LOVE_HYPERSPACEDB` | API key sent with every request. |
+| `compact_vectors` | `false` | Send vectors as `repeated float` (`vector_f32`): half the wire size of `repeated double`. Requires server >= 4.2.5. |
 
 ## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
 

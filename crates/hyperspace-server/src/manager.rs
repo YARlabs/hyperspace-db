@@ -551,6 +551,8 @@ impl CollectionManager {
             "turbo" | "turboquant" => "turbo".to_string(),
             "ternary" | "bitnet" => "ternary".to_string(),
             "pq" | "product_quantization" => "pq".to_string(),
+            "rabitq" => "rabitq".to_string(),
+            "pq4" | "pq_fastscan" | "fastscan" => "pq4".to_string(),
             "opq" | "optimized_product_quantization" => "opq".to_string(),
             _ => "medium".to_string(), // scalar, medium, asymmetric_hybrid_801, anything else
         };
@@ -858,6 +860,7 @@ impl CollectionManager {
 
         // 2. Cleanup files (handles cold storage too)
         let col_dir = self.base_path.join(name);
+        crate::chunk_searcher::invalidate_chunk_cache(&col_dir);
         if col_dir.exists() {
             fs::remove_dir_all(col_dir).map_err(|e| e.to_string())?;
             found = true;
@@ -1081,6 +1084,13 @@ impl CollectionMetadata {
             "turbo" | "turboquant" => hyperspace_core::QuantizationMode::Turbo,
             "ternary" | "bitnet" => hyperspace_core::QuantizationMode::Ternary,
             "pq" | "product_quantization" => hyperspace_core::QuantizationMode::ProductQuantization,
+            // RaBitQ / PQ4 estimate Euclidean geometry; other metrics fall back to ScalarI8.
+            "rabitq" if matches!(metric.as_str(), "l2" | "cosine") => {
+                hyperspace_core::QuantizationMode::RaBitQ
+            }
+            "pq4" | "pq_fastscan" if matches!(metric.as_str(), "l2" | "cosine") => {
+                hyperspace_core::QuantizationMode::PQ4
+            }
             "opq" | "optimized_product_quantization" => hyperspace_core::QuantizationMode::OPQ,
             "medium_plus" => {
                 if metric == "hybrid" && dim == 801 {

@@ -26,4 +26,18 @@ else
   sed -i "s/GRPC_GENERATED_VERSION = '.*'/GRPC_GENERATED_VERSION = '1.63.0'/" hyperspace/proto/hyperspace_pb2_grpc.py
 fi
 
+# Keep the relative-import fallback and a lenient grpc version probe (older grpc lacks
+# grpc._utilities); these were hand-patched in earlier releases.
+python3 - <<'PY'
+p = "hyperspace/proto/hyperspace_pb2_grpc.py"
+s = open(p).read()
+s = s.replace(
+    "from . import hyperspace_pb2 as hyperspace__pb2\n",
+    "try:\n    from . import hyperspace_pb2 as hyperspace__pb2\nexcept ImportError:\n    import hyperspace_pb2 as hyperspace__pb2\n",
+    1,
+)
+s = s.replace("except ImportError:\n    _version_not_supported = True", "except ImportError:\n    _version_not_supported = False", 1)
+open(p, "w").write(s)
+PY
+
 echo "Python protos generated and patched."

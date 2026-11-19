@@ -191,6 +191,28 @@ function deserialize_hyperspace_EventSubscriptionRequest(buffer_arg) {
   return hyperspace_pb.EventSubscriptionRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_hyperspace_ExtensionRequest(arg) {
+  if (!(arg instanceof hyperspace_pb.ExtensionRequest)) {
+    throw new Error('Expected argument of type hyperspace.ExtensionRequest');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_ExtensionRequest(buffer_arg) {
+  return hyperspace_pb.ExtensionRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_ExtensionResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.ExtensionResponse)) {
+    throw new Error('Expected argument of type hyperspace.ExtensionResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_ExtensionResponse(buffer_arg) {
+  return hyperspace_pb.ExtensionResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_hyperspace_FindSemanticClustersRequest(arg) {
   if (!(arg instanceof hyperspace_pb.FindSemanticClustersRequest)) {
     throw new Error('Expected argument of type hyperspace.FindSemanticClustersRequest');
@@ -442,6 +464,17 @@ function serialize_hyperspace_ListCollectionsResponse(arg) {
 
 function deserialize_hyperspace_ListCollectionsResponse(buffer_arg) {
   return hyperspace_pb.ListCollectionsResponse.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
+function serialize_hyperspace_ListExtensionsResponse(arg) {
+  if (!(arg instanceof hyperspace_pb.ListExtensionsResponse)) {
+    throw new Error('Expected argument of type hyperspace.ListExtensionsResponse');
+  }
+  return Buffer.from(arg.serializeBinary());
+}
+
+function deserialize_hyperspace_ListExtensionsResponse(buffer_arg) {
+  return hyperspace_pb.ListExtensionsResponse.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_hyperspace_MonitorRequest(arg) {
@@ -1246,6 +1279,29 @@ verifyGeneration: {
     requestDeserialize: deserialize_hyperspace_VerifyGenerationRequest,
     responseSerialize: serialize_hyperspace_VerifyGenerationResponse,
     responseDeserialize: deserialize_hyperspace_VerifyGenerationResponse,
+  },
+  // Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+callExtension: {
+    path: '/hyperspace.Database/CallExtension',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.ExtensionRequest,
+    responseType: hyperspace_pb.ExtensionResponse,
+    requestSerialize: serialize_hyperspace_ExtensionRequest,
+    requestDeserialize: deserialize_hyperspace_ExtensionRequest,
+    responseSerialize: serialize_hyperspace_ExtensionResponse,
+    responseDeserialize: deserialize_hyperspace_ExtensionResponse,
+  },
+  listExtensions: {
+    path: '/hyperspace.Database/ListExtensions',
+    requestStream: false,
+    responseStream: false,
+    requestType: hyperspace_pb.Empty,
+    responseType: hyperspace_pb.ListExtensionsResponse,
+    requestSerialize: serialize_hyperspace_Empty,
+    requestDeserialize: deserialize_hyperspace_Empty,
+    responseSerialize: serialize_hyperspace_ListExtensionsResponse,
+    responseDeserialize: deserialize_hyperspace_ListExtensionsResponse,
   },
 };
 

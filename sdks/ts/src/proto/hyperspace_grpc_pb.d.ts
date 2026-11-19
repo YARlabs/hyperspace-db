@@ -51,6 +51,8 @@ interface IDatabaseService extends grpc.ServiceDefinition<grpc.UntypedServiceImp
     syncPush: IDatabaseService_ISyncPush;
     healthCheck: IDatabaseService_IHealthCheck;
     verifyGeneration: IDatabaseService_IVerifyGeneration;
+    callExtension: IDatabaseService_ICallExtension;
+    listExtensions: IDatabaseService_IListExtensions;
 }
 
 interface IDatabaseService_ICreateCollection extends grpc.MethodDefinition<hyperspace_pb.CreateCollectionRequest, hyperspace_pb.StatusResponse> {
@@ -440,6 +442,24 @@ interface IDatabaseService_IVerifyGeneration extends grpc.MethodDefinition<hyper
     responseSerialize: grpc.serialize<hyperspace_pb.VerifyGenerationResponse>;
     responseDeserialize: grpc.deserialize<hyperspace_pb.VerifyGenerationResponse>;
 }
+interface IDatabaseService_ICallExtension extends grpc.MethodDefinition<hyperspace_pb.ExtensionRequest, hyperspace_pb.ExtensionResponse> {
+    path: "/hyperspace.Database/CallExtension";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.ExtensionRequest>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.ExtensionRequest>;
+    responseSerialize: grpc.serialize<hyperspace_pb.ExtensionResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.ExtensionResponse>;
+}
+interface IDatabaseService_IListExtensions extends grpc.MethodDefinition<hyperspace_pb.Empty, hyperspace_pb.ListExtensionsResponse> {
+    path: "/hyperspace.Database/ListExtensions";
+    requestStream: false;
+    responseStream: false;
+    requestSerialize: grpc.serialize<hyperspace_pb.Empty>;
+    requestDeserialize: grpc.deserialize<hyperspace_pb.Empty>;
+    responseSerialize: grpc.serialize<hyperspace_pb.ListExtensionsResponse>;
+    responseDeserialize: grpc.deserialize<hyperspace_pb.ListExtensionsResponse>;
+}
 
 export const DatabaseService: IDatabaseService;
 
@@ -487,6 +507,8 @@ export interface IDatabaseServer extends grpc.UntypedServiceImplementation {
     syncPush: grpc.handleClientStreamingCall<hyperspace_pb.SyncVectorData, hyperspace_pb.SyncPushResponse>;
     healthCheck: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.HealthCheckResponse>;
     verifyGeneration: grpc.handleUnaryCall<hyperspace_pb.VerifyGenerationRequest, hyperspace_pb.VerifyGenerationResponse>;
+    callExtension: grpc.handleUnaryCall<hyperspace_pb.ExtensionRequest, hyperspace_pb.ExtensionResponse>;
+    listExtensions: grpc.handleUnaryCall<hyperspace_pb.Empty, hyperspace_pb.ListExtensionsResponse>;
 }
 
 export interface IDatabaseClient {
@@ -616,6 +638,12 @@ export interface IDatabaseClient {
     verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
     verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
     verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
+    callExtension(request: hyperspace_pb.ExtensionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ExtensionResponse) => void): grpc.ClientUnaryCall;
+    callExtension(request: hyperspace_pb.ExtensionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ExtensionResponse) => void): grpc.ClientUnaryCall;
+    callExtension(request: hyperspace_pb.ExtensionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ExtensionResponse) => void): grpc.ClientUnaryCall;
+    listExtensions(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ListExtensionsResponse) => void): grpc.ClientUnaryCall;
+    listExtensions(request: hyperspace_pb.Empty, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ListExtensionsResponse) => void): grpc.ClientUnaryCall;
+    listExtensions(request: hyperspace_pb.Empty, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ListExtensionsResponse) => void): grpc.ClientUnaryCall;
 }
 
 export class DatabaseClient extends grpc.Client implements IDatabaseClient {
@@ -746,4 +774,10 @@ export class DatabaseClient extends grpc.Client implements IDatabaseClient {
     public verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
     public verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
     public verifyGeneration(request: hyperspace_pb.VerifyGenerationRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.VerifyGenerationResponse) => void): grpc.ClientUnaryCall;
+    public callExtension(request: hyperspace_pb.ExtensionRequest, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ExtensionResponse) => void): grpc.ClientUnaryCall;
+    public callExtension(request: hyperspace_pb.ExtensionRequest, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ExtensionResponse) => void): grpc.ClientUnaryCall;
+    public callExtension(request: hyperspace_pb.ExtensionRequest, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ExtensionResponse) => void): grpc.ClientUnaryCall;
+    public listExtensions(request: hyperspace_pb.Empty, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ListExtensionsResponse) => void): grpc.ClientUnaryCall;
+    public listExtensions(request: hyperspace_pb.Empty, metadata: grpc.Metadata, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ListExtensionsResponse) => void): grpc.ClientUnaryCall;
+    public listExtensions(request: hyperspace_pb.Empty, metadata: grpc.Metadata, options: Partial<grpc.CallOptions>, callback: (error: grpc.ServiceError | null, response: hyperspace_pb.ListExtensionsResponse) => void): grpc.ClientUnaryCall;
 }

@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cascade_pipeline: vec![],
     };
 
-    // Create collection with custom quantization level ("ternary", "turbo", "medium_plus", "medium", "none", "extreme")
+    // Create collection with custom quantization level ("none", "medium", "medium_plus", "turbo", "ternary", "extreme", "rabitq", "pq4", "pq", "opq")
     client.create_collection_with_quantization(collection.clone(), schema, "medium_plus".to_string()).await?;
 
     client.insert(
@@ -70,6 +70,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("results: {}", results.len());
     Ok(())
 }
+```
+
+## Quantization Levels & Compact Vectors (v4.2.5)
+
+Pass one of these values as `quantization` when creating a collection:
+
+| Value | Mode | Bytes / vector (1024-D) | Metrics | Needs calibration |
+| :--- | :--- | ---: | :--- | :---: |
+| `none` | Full precision (f32 storage) | 4,100 | all | — |
+| `medium` | ScalarI8 (8-bit) | 1,028 | all | — |
+| `medium_plus` | ScalarI4 (4-bit block-wise) | 772 | all | — |
+| `turbo` | TurboQuant 4-bit spherical | 520 | l2, cosine, hybrid | — |
+| `ternary` | BitNet 1.58-bit {-1, 0, +1} | 264 | all | — |
+| `extreme` | Binary 1-bit | 132 | all | — |
+| `rabitq` | **RaBitQ** 1-bit + unbiased estimator (new in 4.2.5) | 136 | l2, cosine | ✔ |
+| `pq4` | **PQ4 fast-scan** 4-bit PQ, L1-resident LUT (new in 4.2.5) | 128 | l2, cosine | ✔ |
+| `opq` / `pq` | 8-bit product quantization | 64 | l2, cosine | ✔ |
+
+Trained modes (`rabitq`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from real data: after the initial bulk ingest, call **rebuild index** once (it re-encodes the collection with the trained quantizer). `rabitq` / `pq4` requested on other metrics fall back to `medium`.
+
+**Compact wire vectors.** Since server 4.2.5 requests may carry vectors as `repeated float` (`vector_f32`) instead of `repeated double` — half the bytes on the wire and half the decode cost (the server stores f32 anyway). It is opt-in because older servers ignore the new field:
+
+```rust
+let mut client = Client::connect("http://localhost:50051".into(), Some(api_key), None)
+    .await?
+    .with_compact_vectors(true); // send vector_f32 (server >= 4.2.5)
+client
+    .create_collection_with_quantization("docs".into(), schema, "rabitq".into())
+    .await?;
 ```
 
 ## Batch Search

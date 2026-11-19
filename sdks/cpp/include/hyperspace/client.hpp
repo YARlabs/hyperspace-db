@@ -68,11 +68,29 @@ struct Bm25Params {
 };
 
 class HyperspaceClient {
+    bool compact_vectors_ = false;
+
+    // Writes `vec` into `vector` or, in compact mode, `vector_f32` of any request message.
+    template <typename Msg, typename Vec>
+    void AddWireVector(Msg* msg, const Vec& vec) const {
+        if (compact_vectors_) {
+            for (double x : vec) msg->add_vector_f32(static_cast<float>(x));
+        } else {
+            for (double x : vec) msg->add_vector(x);
+        }
+    }
+
 public:
     HyperspaceClient(const std::string& endpoint, const std::string& app_id = "");
     ~HyperspaceClient() = default;
 
-    // Create collection with optional quantization: "ternary" (BitNet 1.58-bit {-1, 0, +1}), "turbo", "extreme", "medium_plus", "medium", "none"
+    // Send vectors as compact `repeated float` (vector_f32): half the wire size of
+    // `repeated double`. Requires HyperspaceDB server >= 4.2.5.
+    void SetCompactVectors(bool enabled) { compact_vectors_ = enabled; }
+
+    // Create collection with optional quantization: "none", "medium", "medium_plus", "turbo",
+    // "ternary" (BitNet 1.58-bit), "extreme", "rabitq", "pq4", "pq", "opq".
+    // rabitq / pq4 / pq / opq must be calibrated with RebuildIndex() after the initial ingest.
     bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "", bool encrypted = false);
     std::vector<CollectionSummaryRec> ListCollections();
     std::string FreezeCollection(const std::string& name);

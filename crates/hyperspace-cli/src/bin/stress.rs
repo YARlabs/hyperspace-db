@@ -74,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let req = InsertRequest {
+            vector_f32: Vec::new(),
             vector,
             id: u32::try_from(i).unwrap(),
             metadata: std::collections::HashMap::new(),
@@ -129,6 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let req = SearchRequest {
+            vector_f32: Vec::new(),
             vector: query_vec,
             top_k: 10,
             filter: std::collections::HashMap::new(),

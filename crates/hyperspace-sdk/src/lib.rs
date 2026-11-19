@@ -306,7 +306,35 @@ pub struct Client {
         std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, f64>>>,
     collection_schemas:
         std::sync::Arc<parking_lot::RwLock<std::collections::HashMap<String, CollectionSchema>>>,
+    /// Send vectors as `repeated float` (`vector_f32`): half the wire size of
+    /// `repeated double`. Requires HyperspaceDB server >= 4.2.5.
+    compact_vectors: bool,
 }
+
+/// Moves a request's `vector` into the compact `vector_f32` field.
+trait CompactVector: Sized {
+    fn compact(self, enabled: bool) -> Self;
+}
+
+macro_rules! impl_compact_vector {
+    ($($t:ty),*) => {$(
+        impl CompactVector for $t {
+            #[inline]
+            fn compact(mut self, enabled: bool) -> Self {
+                if enabled && !self.vector.is_empty() {
+                    #[allow(clippy::cast_possible_truncation)]
+                    {
+                        self.vector_f32 = self.vector.iter().map(|&x| x as f32).collect();
+                    }
+                    self.vector = Vec::new();
+                }
+                self
+            }
+        }
+    )*};
+}
+
+impl_compact_vector!(InsertRequest, VectorData, SearchRequest);
 
 impl Clone for Client {
     fn clone(&self) -> Self {
@@ -319,6 +347,7 @@ impl Clone for Client {
             collection_metrics: self.collection_metrics.clone(),
             collection_noise_sigmas: self.collection_noise_sigmas.clone(),
             collection_schemas: self.collection_schemas.clone(),
+            compact_vectors: self.compact_vectors,
         }
     }
 }
@@ -390,7 +419,16 @@ impl Client {
             collection_schemas: std::sync::Arc::new(parking_lot::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            compact_vectors: false,
         })
+    }
+
+    /// Sends vectors as compact `repeated float` (`vector_f32`) instead of `repeated double`
+    /// (half the wire size and decode cost). Requires HyperspaceDB server >= 4.2.5.
+    #[must_use]
+    pub fn with_compact_vectors(mut self, enabled: bool) -> Self {
+        self.compact_vectors = enabled;
+        self
     }
 
     #[cfg(feature = "embedders")]
@@ -672,6 +710,7 @@ impl Client {
         }
 
         let req = InsertRequest {
+            vector_f32: Vec::new(),
             id,
             vector: final_vector,
             metadata: final_metadata,
@@ -681,7 +720,8 @@ impl Client {
             logical_clock: 0,
             durability: 0,
             payload: final_payload,
-        };
+        }
+        .compact(self.compact_vectors);
         let resp = self.inner.insert(req).await?;
         Ok(resp.into_inner().success)
     }
@@ -749,11 +789,15 @@ impl Client {
     ) -> Result<bool, tonic::Status> {
         let vectors = items
             .into_iter()
-            .map(|(id, vector, metadata)| VectorData {
-                id,
-                vector,
-                metadata,
-                typed_metadata: std::collections::HashMap::new(),
+            .map(|(id, vector, metadata)| {
+                VectorData {
+                    vector_f32: Vec::new(),
+                    id,
+                    vector,
+                    metadata,
+                    typed_metadata: std::collections::HashMap::new(),
+                }
+                .compact(self.compact_vectors)
             })
             .collect();
         let req = BatchInsertRequest {
@@ -853,6 +897,7 @@ impl Client {
         };
 
         let req = SearchRequest {
+            vector_f32: Vec::new(),
             vector: final_vector,
             top_k,
             filter,
@@ -870,7 +915,8 @@ impl Client {
             include_payload: final_include_payload,
             component_weights: options.component_weights,
             use_wave: options.use_wave,
-        };
+        }
+        .compact(self.compact_vectors);
         let resp = self.inner.search(req).await?;
         let mut results = resp.into_inner().results;
 
@@ -999,6 +1045,7 @@ impl Client {
         collection: Option<String>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         let req = SearchRequest {
+            vector_f32: Vec::new(),
             vector,
             top_k,
             filter: std::collections::HashMap::default(),
@@ -1012,7 +1059,8 @@ impl Client {
             include_payload: false,
             component_weights: std::collections::HashMap::new(),
             use_wave: false,
-        };
+        }
+        .compact(self.compact_vectors);
         let resp = self.inner.search(req).await?;
         Ok(resp.into_inner().results)
     }
@@ -1096,6 +1144,7 @@ impl Client {
                     vec = self.project_collection_vector(&coll, &vec, ctx, &metric);
                 }
                 SearchRequest {
+                    vector_f32: Vec::new(),
                     vector: vec,
                     top_k,
                     filter: filter.clone(),
@@ -1110,6 +1159,7 @@ impl Client {
                     component_weights: options.component_weights.clone(),
                     use_wave: options.use_wave,
                 }
+                .compact(self.compact_vectors)
             })
             .collect();
 
@@ -1251,20 +1301,24 @@ impl Client {
     ) -> Result<std::collections::HashMap<String, Vec<SearchResult>>, tonic::Status> {
         let searches = collections
             .iter()
-            .map(|col_name| SearchRequest {
-                vector: vector.clone(),
-                top_k,
-                filter: std::collections::HashMap::default(),
-                filters: vec![],
-                hybrid_query: None,
-                hybrid_alpha: None,
-                use_wasserstein: false,
-                collection: col_name.clone(),
-                bm25_options: None,
-                mrl_dimension: None,
-                include_payload: false,
-                component_weights: std::collections::HashMap::new(),
-                use_wave: false,
+            .map(|col_name| {
+                SearchRequest {
+                    vector_f32: Vec::new(),
+                    vector: vector.clone(),
+                    top_k,
+                    filter: std::collections::HashMap::default(),
+                    filters: vec![],
+                    hybrid_query: None,
+                    hybrid_alpha: None,
+                    use_wasserstein: false,
+                    collection: col_name.clone(),
+                    bm25_options: None,
+                    mrl_dimension: None,
+                    include_payload: false,
+                    component_weights: std::collections::HashMap::new(),
+                    use_wave: false,
+                }
+                .compact(self.compact_vectors)
             })
             .collect();
 

@@ -367,6 +367,21 @@ class Database final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>> PrepareAsyncVerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>>(PrepareAsyncVerifyGenerationRaw(context, request, cq));
     }
+    // Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+    virtual ::grpc::Status CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::hyperspace::ExtensionResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ExtensionResponse>> AsyncCallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ExtensionResponse>>(AsyncCallExtensionRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ExtensionResponse>> PrepareAsyncCallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ExtensionResponse>>(PrepareAsyncCallExtensionRaw(context, request, cq));
+    }
+    virtual ::grpc::Status ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::hyperspace::ListExtensionsResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ListExtensionsResponse>> AsyncListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ListExtensionsResponse>>(AsyncListExtensionsRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ListExtensionsResponse>> PrepareAsyncListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ListExtensionsResponse>>(PrepareAsyncListExtensionsRaw(context, request, cq));
+    }
     class async_interface {
      public:
       virtual ~async_interface() {}
@@ -471,6 +486,11 @@ class Database final {
       // Tribunal Router (Geometric Hallucination Prevention)
       virtual void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, std::function<void(::grpc::Status)>) = 0;
       virtual void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      // Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+      virtual void CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      virtual void ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
     };
     typedef class async_interface experimental_async_interface;
     virtual class async_interface* async() { return nullptr; }
@@ -567,6 +587,10 @@ class Database final {
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::HealthCheckResponse>* PrepareAsyncHealthCheckRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>* AsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::VerifyGenerationResponse>* PrepareAsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ExtensionResponse>* AsyncCallExtensionRaw(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ExtensionResponse>* PrepareAsyncCallExtensionRaw(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ListExtensionsResponse>* AsyncListExtensionsRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::hyperspace::ListExtensionsResponse>* PrepareAsyncListExtensionsRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) = 0;
   };
   class Stub final : public StubInterface {
    public:
@@ -882,6 +906,20 @@ class Database final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>> PrepareAsyncVerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>>(PrepareAsyncVerifyGenerationRaw(context, request, cq));
     }
+    ::grpc::Status CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::hyperspace::ExtensionResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>> AsyncCallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>>(AsyncCallExtensionRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>> PrepareAsyncCallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>>(PrepareAsyncCallExtensionRaw(context, request, cq));
+    }
+    ::grpc::Status ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::hyperspace::ListExtensionsResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>> AsyncListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>>(AsyncListExtensionsRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>> PrepareAsyncListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>>(PrepareAsyncListExtensionsRaw(context, request, cq));
+    }
     class async final :
       public StubInterface::async_interface {
      public:
@@ -966,6 +1004,10 @@ class Database final {
       void HealthCheck(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
       void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, std::function<void(::grpc::Status)>) override;
       void VerifyGeneration(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response, std::function<void(::grpc::Status)>) override;
+      void CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response, std::function<void(::grpc::Status)>) override;
+      void ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
      private:
       friend class Stub;
       explicit async(Stub* stub): stub_(stub) { }
@@ -1068,6 +1110,10 @@ class Database final {
     ::grpc::ClientAsyncResponseReader< ::hyperspace::HealthCheckResponse>* PrepareAsyncHealthCheckRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>* AsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::hyperspace::VerifyGenerationResponse>* PrepareAsyncVerifyGenerationRaw(::grpc::ClientContext* context, const ::hyperspace::VerifyGenerationRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>* AsyncCallExtensionRaw(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>* PrepareAsyncCallExtensionRaw(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>* AsyncListExtensionsRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>* PrepareAsyncListExtensionsRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) override;
     const ::grpc::internal::RpcMethod rpcmethod_CreateCollection_;
     const ::grpc::internal::RpcMethod rpcmethod_DeleteCollection_;
     const ::grpc::internal::RpcMethod rpcmethod_ListCollections_;
@@ -1111,6 +1157,8 @@ class Database final {
     const ::grpc::internal::RpcMethod rpcmethod_SyncPush_;
     const ::grpc::internal::RpcMethod rpcmethod_HealthCheck_;
     const ::grpc::internal::RpcMethod rpcmethod_VerifyGeneration_;
+    const ::grpc::internal::RpcMethod rpcmethod_CallExtension_;
+    const ::grpc::internal::RpcMethod rpcmethod_ListExtensions_;
   };
   static std::unique_ptr<Stub> NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
 
@@ -1181,6 +1229,9 @@ class Database final {
     virtual ::grpc::Status HealthCheck(::grpc::ServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::HealthCheckResponse* response);
     // Tribunal Router (Geometric Hallucination Prevention)
     virtual ::grpc::Status VerifyGeneration(::grpc::ServerContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response);
+    // Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+    virtual ::grpc::Status CallExtension(::grpc::ServerContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response);
+    virtual ::grpc::Status ListExtensions(::grpc::ServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response);
   };
   template <class BaseClass>
   class WithAsyncMethod_CreateCollection : public BaseClass {
@@ -2042,7 +2093,47 @@ class Database final {
       ::grpc::Service::RequestAsyncUnary(42, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
-  typedef WithAsyncMethod_CreateCollection<WithAsyncMethod_DeleteCollection<WithAsyncMethod_ListCollections<WithAsyncMethod_GetCollectionStats<WithAsyncMethod_FreezeCollection<WithAsyncMethod_UnfreezeCollection<WithAsyncMethod_Insert<WithAsyncMethod_BatchInsert<WithAsyncMethod_InsertText<WithAsyncMethod_Vectorize<WithAsyncMethod_SearchText<WithAsyncMethod_Delete<WithAsyncMethod_GetPoints<WithAsyncMethod_UpdatePayload<WithAsyncMethod_Scroll<WithAsyncMethod_Count<WithAsyncMethod_Search<WithAsyncMethod_SearchBatch<WithAsyncMethod_SearchMultiCollection<WithAsyncMethod_GetNode<WithAsyncMethod_GetNeighbors<WithAsyncMethod_GetConceptParents<WithAsyncMethod_Traverse<WithAsyncMethod_FindSemanticClusters<WithAsyncMethod_GetSubsumptionTree<WithAsyncMethod_Link<WithAsyncMethod_LinkBatch<WithAsyncMethod_Unlink<WithAsyncMethod_InduceEdgesFromMetadata<WithAsyncMethod_Monitor<WithAsyncMethod_TriggerSnapshot<WithAsyncMethod_TriggerVacuum<WithAsyncMethod_TriggerReconsolidation<WithAsyncMethod_Configure<WithAsyncMethod_Replicate<WithAsyncMethod_SubscribeToEvents<WithAsyncMethod_GetDigest<WithAsyncMethod_RebuildIndex<WithAsyncMethod_SyncHandshake<WithAsyncMethod_SyncPull<WithAsyncMethod_SyncPush<WithAsyncMethod_HealthCheck<WithAsyncMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > AsyncService;
+  template <class BaseClass>
+  class WithAsyncMethod_CallExtension : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_CallExtension() {
+      ::grpc::Service::MarkMethodAsync(43);
+    }
+    ~WithAsyncMethod_CallExtension() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CallExtension(::grpc::ServerContext* /*context*/, const ::hyperspace::ExtensionRequest* /*request*/, ::hyperspace::ExtensionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestCallExtension(::grpc::ServerContext* context, ::hyperspace::ExtensionRequest* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::ExtensionResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(43, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_ListExtensions : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_ListExtensions() {
+      ::grpc::Service::MarkMethodAsync(44);
+    }
+    ~WithAsyncMethod_ListExtensions() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status ListExtensions(::grpc::ServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::ListExtensionsResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestListExtensions(::grpc::ServerContext* context, ::hyperspace::Empty* request, ::grpc::ServerAsyncResponseWriter< ::hyperspace::ListExtensionsResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(44, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  typedef WithAsyncMethod_CreateCollection<WithAsyncMethod_DeleteCollection<WithAsyncMethod_ListCollections<WithAsyncMethod_GetCollectionStats<WithAsyncMethod_FreezeCollection<WithAsyncMethod_UnfreezeCollection<WithAsyncMethod_Insert<WithAsyncMethod_BatchInsert<WithAsyncMethod_InsertText<WithAsyncMethod_Vectorize<WithAsyncMethod_SearchText<WithAsyncMethod_Delete<WithAsyncMethod_GetPoints<WithAsyncMethod_UpdatePayload<WithAsyncMethod_Scroll<WithAsyncMethod_Count<WithAsyncMethod_Search<WithAsyncMethod_SearchBatch<WithAsyncMethod_SearchMultiCollection<WithAsyncMethod_GetNode<WithAsyncMethod_GetNeighbors<WithAsyncMethod_GetConceptParents<WithAsyncMethod_Traverse<WithAsyncMethod_FindSemanticClusters<WithAsyncMethod_GetSubsumptionTree<WithAsyncMethod_Link<WithAsyncMethod_LinkBatch<WithAsyncMethod_Unlink<WithAsyncMethod_InduceEdgesFromMetadata<WithAsyncMethod_Monitor<WithAsyncMethod_TriggerSnapshot<WithAsyncMethod_TriggerVacuum<WithAsyncMethod_TriggerReconsolidation<WithAsyncMethod_Configure<WithAsyncMethod_Replicate<WithAsyncMethod_SubscribeToEvents<WithAsyncMethod_GetDigest<WithAsyncMethod_RebuildIndex<WithAsyncMethod_SyncHandshake<WithAsyncMethod_SyncPull<WithAsyncMethod_SyncPush<WithAsyncMethod_HealthCheck<WithAsyncMethod_VerifyGeneration<WithAsyncMethod_CallExtension<WithAsyncMethod_ListExtensions<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > AsyncService;
   template <class BaseClass>
   class WithCallbackMethod_CreateCollection : public BaseClass {
    private:
@@ -3179,7 +3270,61 @@ class Database final {
     virtual ::grpc::ServerUnaryReactor* VerifyGeneration(
       ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/)  { return nullptr; }
   };
-  typedef WithCallbackMethod_CreateCollection<WithCallbackMethod_DeleteCollection<WithCallbackMethod_ListCollections<WithCallbackMethod_GetCollectionStats<WithCallbackMethod_FreezeCollection<WithCallbackMethod_UnfreezeCollection<WithCallbackMethod_Insert<WithCallbackMethod_BatchInsert<WithCallbackMethod_InsertText<WithCallbackMethod_Vectorize<WithCallbackMethod_SearchText<WithCallbackMethod_Delete<WithCallbackMethod_GetPoints<WithCallbackMethod_UpdatePayload<WithCallbackMethod_Scroll<WithCallbackMethod_Count<WithCallbackMethod_Search<WithCallbackMethod_SearchBatch<WithCallbackMethod_SearchMultiCollection<WithCallbackMethod_GetNode<WithCallbackMethod_GetNeighbors<WithCallbackMethod_GetConceptParents<WithCallbackMethod_Traverse<WithCallbackMethod_FindSemanticClusters<WithCallbackMethod_GetSubsumptionTree<WithCallbackMethod_Link<WithCallbackMethod_LinkBatch<WithCallbackMethod_Unlink<WithCallbackMethod_InduceEdgesFromMetadata<WithCallbackMethod_Monitor<WithCallbackMethod_TriggerSnapshot<WithCallbackMethod_TriggerVacuum<WithCallbackMethod_TriggerReconsolidation<WithCallbackMethod_Configure<WithCallbackMethod_Replicate<WithCallbackMethod_SubscribeToEvents<WithCallbackMethod_GetDigest<WithCallbackMethod_RebuildIndex<WithCallbackMethod_SyncHandshake<WithCallbackMethod_SyncPull<WithCallbackMethod_SyncPush<WithCallbackMethod_HealthCheck<WithCallbackMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > CallbackService;
+  template <class BaseClass>
+  class WithCallbackMethod_CallExtension : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_CallExtension() {
+      ::grpc::Service::MarkMethodCallback(43,
+          new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response) { return this->CallExtension(context, request, response); }));}
+    void SetMessageAllocatorFor_CallExtension(
+        ::grpc::MessageAllocator< ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(43);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_CallExtension() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CallExtension(::grpc::ServerContext* /*context*/, const ::hyperspace::ExtensionRequest* /*request*/, ::hyperspace::ExtensionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* CallExtension(
+      ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::ExtensionRequest* /*request*/, ::hyperspace::ExtensionResponse* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithCallbackMethod_ListExtensions : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_ListExtensions() {
+      ::grpc::Service::MarkMethodCallback(44,
+          new ::grpc::internal::CallbackUnaryHandler< ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response) { return this->ListExtensions(context, request, response); }));}
+    void SetMessageAllocatorFor_ListExtensions(
+        ::grpc::MessageAllocator< ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(44);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_ListExtensions() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status ListExtensions(::grpc::ServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::ListExtensionsResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* ListExtensions(
+      ::grpc::CallbackServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::ListExtensionsResponse* /*response*/)  { return nullptr; }
+  };
+  typedef WithCallbackMethod_CreateCollection<WithCallbackMethod_DeleteCollection<WithCallbackMethod_ListCollections<WithCallbackMethod_GetCollectionStats<WithCallbackMethod_FreezeCollection<WithCallbackMethod_UnfreezeCollection<WithCallbackMethod_Insert<WithCallbackMethod_BatchInsert<WithCallbackMethod_InsertText<WithCallbackMethod_Vectorize<WithCallbackMethod_SearchText<WithCallbackMethod_Delete<WithCallbackMethod_GetPoints<WithCallbackMethod_UpdatePayload<WithCallbackMethod_Scroll<WithCallbackMethod_Count<WithCallbackMethod_Search<WithCallbackMethod_SearchBatch<WithCallbackMethod_SearchMultiCollection<WithCallbackMethod_GetNode<WithCallbackMethod_GetNeighbors<WithCallbackMethod_GetConceptParents<WithCallbackMethod_Traverse<WithCallbackMethod_FindSemanticClusters<WithCallbackMethod_GetSubsumptionTree<WithCallbackMethod_Link<WithCallbackMethod_LinkBatch<WithCallbackMethod_Unlink<WithCallbackMethod_InduceEdgesFromMetadata<WithCallbackMethod_Monitor<WithCallbackMethod_TriggerSnapshot<WithCallbackMethod_TriggerVacuum<WithCallbackMethod_TriggerReconsolidation<WithCallbackMethod_Configure<WithCallbackMethod_Replicate<WithCallbackMethod_SubscribeToEvents<WithCallbackMethod_GetDigest<WithCallbackMethod_RebuildIndex<WithCallbackMethod_SyncHandshake<WithCallbackMethod_SyncPull<WithCallbackMethod_SyncPush<WithCallbackMethod_HealthCheck<WithCallbackMethod_VerifyGeneration<WithCallbackMethod_CallExtension<WithCallbackMethod_ListExtensions<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > CallbackService;
   typedef CallbackService ExperimentalCallbackService;
   template <class BaseClass>
   class WithGenericMethod_CreateCollection : public BaseClass {
@@ -3908,6 +4053,40 @@ class Database final {
     }
     // disable synchronous version of this method
     ::grpc::Status VerifyGeneration(::grpc::ServerContext* /*context*/, const ::hyperspace::VerifyGenerationRequest* /*request*/, ::hyperspace::VerifyGenerationResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_CallExtension : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_CallExtension() {
+      ::grpc::Service::MarkMethodGeneric(43);
+    }
+    ~WithGenericMethod_CallExtension() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CallExtension(::grpc::ServerContext* /*context*/, const ::hyperspace::ExtensionRequest* /*request*/, ::hyperspace::ExtensionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_ListExtensions : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_ListExtensions() {
+      ::grpc::Service::MarkMethodGeneric(44);
+    }
+    ~WithGenericMethod_ListExtensions() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status ListExtensions(::grpc::ServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::ListExtensionsResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -4770,6 +4949,46 @@ class Database final {
     }
     void RequestVerifyGeneration(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
       ::grpc::Service::RequestAsyncUnary(42, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_CallExtension : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_CallExtension() {
+      ::grpc::Service::MarkMethodRaw(43);
+    }
+    ~WithRawMethod_CallExtension() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CallExtension(::grpc::ServerContext* /*context*/, const ::hyperspace::ExtensionRequest* /*request*/, ::hyperspace::ExtensionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestCallExtension(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(43, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_ListExtensions : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_ListExtensions() {
+      ::grpc::Service::MarkMethodRaw(44);
+    }
+    ~WithRawMethod_ListExtensions() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status ListExtensions(::grpc::ServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::ListExtensionsResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestListExtensions(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(44, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -5716,6 +5935,50 @@ class Database final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     virtual ::grpc::ServerUnaryReactor* VerifyGeneration(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithRawCallbackMethod_CallExtension : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_CallExtension() {
+      ::grpc::Service::MarkMethodRawCallback(43,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->CallExtension(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_CallExtension() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CallExtension(::grpc::ServerContext* /*context*/, const ::hyperspace::ExtensionRequest* /*request*/, ::hyperspace::ExtensionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* CallExtension(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithRawCallbackMethod_ListExtensions : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_ListExtensions() {
+      ::grpc::Service::MarkMethodRawCallback(44,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->ListExtensions(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_ListExtensions() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status ListExtensions(::grpc::ServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::ListExtensionsResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* ListExtensions(
       ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
   };
   template <class BaseClass>
@@ -6744,7 +7007,61 @@ class Database final {
     // replace default version of method with streamed unary
     virtual ::grpc::Status StreamedVerifyGeneration(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::VerifyGenerationRequest,::hyperspace::VerifyGenerationResponse>* server_unary_streamer) = 0;
   };
-  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithStreamedUnaryMethod_Link<WithStreamedUnaryMethod_LinkBatch<WithStreamedUnaryMethod_Unlink<WithStreamedUnaryMethod_InduceEdgesFromMetadata<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithStreamedUnaryMethod_HealthCheck<WithStreamedUnaryMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedUnaryService;
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_CallExtension : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_CallExtension() {
+      ::grpc::Service::MarkMethodStreamed(43,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse>* streamer) {
+                       return this->StreamedCallExtension(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_CallExtension() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status CallExtension(::grpc::ServerContext* /*context*/, const ::hyperspace::ExtensionRequest* /*request*/, ::hyperspace::ExtensionResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedCallExtension(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::ExtensionRequest,::hyperspace::ExtensionResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_ListExtensions : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_ListExtensions() {
+      ::grpc::Service::MarkMethodStreamed(44,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse>* streamer) {
+                       return this->StreamedListExtensions(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_ListExtensions() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status ListExtensions(::grpc::ServerContext* /*context*/, const ::hyperspace::Empty* /*request*/, ::hyperspace::ListExtensionsResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedListExtensions(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::hyperspace::Empty,::hyperspace::ListExtensionsResponse>* server_unary_streamer) = 0;
+  };
+  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithStreamedUnaryMethod_Link<WithStreamedUnaryMethod_LinkBatch<WithStreamedUnaryMethod_Unlink<WithStreamedUnaryMethod_InduceEdgesFromMetadata<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithStreamedUnaryMethod_HealthCheck<WithStreamedUnaryMethod_VerifyGeneration<WithStreamedUnaryMethod_CallExtension<WithStreamedUnaryMethod_ListExtensions<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedUnaryService;
   template <class BaseClass>
   class WithSplitStreamingMethod_Monitor : public BaseClass {
    private:
@@ -6854,7 +7171,7 @@ class Database final {
     virtual ::grpc::Status StreamedSyncPull(::grpc::ServerContext* context, ::grpc::ServerSplitStreamer< ::hyperspace::SyncPullRequest,::hyperspace::SyncVectorData>* server_split_streamer) = 0;
   };
   typedef WithSplitStreamingMethod_Monitor<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithSplitStreamingMethod_SyncPull<Service > > > > SplitStreamedService;
-  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithStreamedUnaryMethod_Link<WithStreamedUnaryMethod_LinkBatch<WithStreamedUnaryMethod_Unlink<WithStreamedUnaryMethod_InduceEdgesFromMetadata<WithSplitStreamingMethod_Monitor<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithSplitStreamingMethod_SyncPull<WithStreamedUnaryMethod_HealthCheck<WithStreamedUnaryMethod_VerifyGeneration<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedService;
+  typedef WithStreamedUnaryMethod_CreateCollection<WithStreamedUnaryMethod_DeleteCollection<WithStreamedUnaryMethod_ListCollections<WithStreamedUnaryMethod_GetCollectionStats<WithStreamedUnaryMethod_FreezeCollection<WithStreamedUnaryMethod_UnfreezeCollection<WithStreamedUnaryMethod_Insert<WithStreamedUnaryMethod_BatchInsert<WithStreamedUnaryMethod_InsertText<WithStreamedUnaryMethod_Vectorize<WithStreamedUnaryMethod_SearchText<WithStreamedUnaryMethod_Delete<WithStreamedUnaryMethod_GetPoints<WithStreamedUnaryMethod_UpdatePayload<WithStreamedUnaryMethod_Scroll<WithStreamedUnaryMethod_Count<WithStreamedUnaryMethod_Search<WithStreamedUnaryMethod_SearchBatch<WithStreamedUnaryMethod_SearchMultiCollection<WithStreamedUnaryMethod_GetNode<WithStreamedUnaryMethod_GetNeighbors<WithStreamedUnaryMethod_GetConceptParents<WithStreamedUnaryMethod_Traverse<WithStreamedUnaryMethod_FindSemanticClusters<WithStreamedUnaryMethod_GetSubsumptionTree<WithStreamedUnaryMethod_Link<WithStreamedUnaryMethod_LinkBatch<WithStreamedUnaryMethod_Unlink<WithStreamedUnaryMethod_InduceEdgesFromMetadata<WithSplitStreamingMethod_Monitor<WithStreamedUnaryMethod_TriggerSnapshot<WithStreamedUnaryMethod_TriggerVacuum<WithStreamedUnaryMethod_TriggerReconsolidation<WithStreamedUnaryMethod_Configure<WithSplitStreamingMethod_Replicate<WithSplitStreamingMethod_SubscribeToEvents<WithStreamedUnaryMethod_GetDigest<WithStreamedUnaryMethod_RebuildIndex<WithStreamedUnaryMethod_SyncHandshake<WithSplitStreamingMethod_SyncPull<WithStreamedUnaryMethod_HealthCheck<WithStreamedUnaryMethod_VerifyGeneration<WithStreamedUnaryMethod_CallExtension<WithStreamedUnaryMethod_ListExtensions<Service > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > > StreamedService;
 };
 
 }  // namespace hyperspace

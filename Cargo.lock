@@ -2414,7 +2414,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cache"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -2433,7 +2433,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-cli"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "chrono",
  "crossterm",
@@ -2447,7 +2447,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-clustering"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "criterion",
  "matrixmultiply",
@@ -2460,7 +2460,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-core"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "async-trait",
  "bytemuck",
@@ -2472,12 +2472,13 @@ dependencies = [
  "roaring",
  "serde",
  "serde_json",
+ "tempfile",
  "wgpu",
 ]
 
 [[package]]
 name = "hyperspace-index"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "arc-swap",
  "boxcar",
@@ -2528,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-pdk"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2556,7 +2557,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-proto"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "prost 0.12.6",
  "serde",
@@ -2566,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-sdk"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -2591,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-server"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "arc-swap",
  "async-stream",
@@ -2648,7 +2649,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-store"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "arc-swap",
  "byteorder",

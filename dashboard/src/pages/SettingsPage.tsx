@@ -6,6 +6,27 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Copy, Download, Archive, RefreshCw, HardDrive, Settings, Code, Terminal, Cloud } from "lucide-react"
+import { FALLBACK_QUANTIZATION_MODES, bytesPerVector, type QuantizationMode } from "@/lib/quantization"
+
+const ENGINE_TUNABLES: { key: string; env: string; help: string }[] = [
+    { key: "hnsw_m", env: "HS_HNSW_M", help: "Graph degree M (layer 0 holds 2·M links)." },
+    { key: "hnsw_ef_construct", env: "HS_HNSW_EF_CONSTRUCT", help: "Beam width while building the graph." },
+    { key: "hnsw_ef_search", env: "HS_HNSW_EF_SEARCH", help: "Default search beam width (raised to top_k when smaller)." },
+    { key: "hnsw_alpha", env: "HS_HNSW_ALPHA", help: "Vamana α for neighbor selection (>1 keeps longer edges)." },
+    { key: "filter_acorn", env: "HS_FILTER_ACORN", help: "ACORN 2-hop traversal for selective filters." },
+    { key: "filter_bruteforce_threshold", env: "HS_FILTER_BRUTEFORCE_THRESHOLD", help: "Filter size below which a SIMD scan replaces HNSW." },
+    { key: "search_patience", env: "HS_SEARCH_PATIENCE", help: "Adaptive ef: stop after N non-improving expansions (0 = off)." },
+    { key: "repair_delete_threshold", env: "HS_REPAIR_DELETE_THRESHOLD", help: "Deletes before automatic graph repair." },
+    { key: "rerank_enabled", env: "HS_RERANK_ENABLED", help: "Exact re-ranking of quantized candidates." },
+    { key: "rerank_oversample", env: "HS_RERANK_OVERSAMPLE", help: "Candidate oversampling factor for re-ranking." },
+    { key: "storage_float32", env: "HS_STORAGE_FLOAT32", help: "f32 vector storage for unquantized collections." },
+    { key: "chunk_cache_size", env: "HS_CHUNK_CACHE_SIZE", help: "Loaded cold chunks kept in memory (LRU)." },
+    { key: "mmap_willneed", env: "HS_MMAP_WILLNEED", help: "Pre-fault vector stores at open." },
+    { key: "mmap_hugepages", env: "HS_MMAP_HUGEPAGES", help: "Transparent huge pages for stores (Linux)." },
+    { key: "wal_sync_mode", env: "HYPERSPACE_WAL_SYNC_MODE", help: "strict (group commit) · batch (background fsync) · async." },
+    { key: "wal_batch_interval_ms", env: "HYPERSPACE_WAL_BATCH_INTERVAL", help: "Background fsync interval in batch mode." },
+    { key: "simd_backend", env: "HS_SIMD", help: "Active SIMD backend (force with HS_SIMD)." },
+]
 
 export function SettingsPage() {
     const { data: status } = useQuery({ queryKey: ['status'], queryFn: fetchStatus })
@@ -48,24 +69,67 @@ export function SettingsPage() {
 
                 <TabsContent value="config" className="space-y-6">
                     <div className="grid gap-6 md:grid-cols-2">
-                        <Card className="bg-zinc-950/50 border-white/5 shadow-2xl backdrop-blur-sm">
+                        <Card className="bg-zinc-950/50 border-white/5 shadow-2xl backdrop-blur-sm md:col-span-2">
                             <CardHeader>
-                                <CardTitle className="text-white">Index Parameters (HNSW)</CardTitle>
-                                <CardDescription>Tune vector search precision and speed on the fly.</CardDescription>
+                                <CardTitle className="text-white">Engine Tunables</CardTitle>
+                                <CardDescription>
+                                    Process-level settings read from the environment at startup (restart to change).
+                                    Per-collection <code>ef_search</code> / <code>ef_construction</code> / <code>M</code> are edited live on the Collections page.
+                                </CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-zinc-300">Default `ef_search`</label>
-                                    <input type="number" defaultValue="200" className="flex h-10 w-full rounded-md border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-zinc-300">Default `ef_construction`</label>
-                                    <input type="number" defaultValue="200" className="flex h-10 w-full rounded-md border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white" />
+                            <CardContent>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    {ENGINE_TUNABLES.map(t => (
+                                        <div key={t.key} className="rounded border border-white/5 bg-zinc-900/60 p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <code className="text-[11px] text-zinc-400">{t.env}</code>
+                                                <span className="font-mono text-sm font-semibold text-emerald-400">
+                                                    {String(status?.engine?.[t.key] ?? "—")}
+                                                </span>
+                                            </div>
+                                            <p className="mt-1 text-[11px] text-zinc-500">{t.help}</p>
+                                        </div>
+                                    ))}
                                 </div>
                             </CardContent>
-                            <CardFooter>
-                                <Button className="bg-white text-black hover:bg-zinc-200">Apply Changes</Button>
-                            </CardFooter>
+                        </Card>
+
+                        <Card className="bg-zinc-950/50 border-white/5 shadow-2xl backdrop-blur-sm md:col-span-2">
+                            <CardHeader>
+                                <CardTitle className="text-white">Quantization Levels</CardTitle>
+                                <CardDescription>
+                                    Values accepted by <code>quantization</code> on collection create (default: <code>HS_QUANTIZATION_LEVEL</code> = {status?.config?.quantization ?? "scalar"}).
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="text-left text-[11px] uppercase tracking-wider text-zinc-500">
+                                                <th className="py-2 pr-4">Value</th>
+                                                <th className="py-2 pr-4">Mode</th>
+                                                <th className="py-2 pr-4">B/vec @1024D</th>
+                                                <th className="py-2 pr-4">Metrics</th>
+                                                <th className="py-2 pr-4">Calibration</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {((status?.quantization_modes as QuantizationMode[] | undefined) ?? FALLBACK_QUANTIZATION_MODES).map(m => (
+                                                <tr key={m.value} className="border-t border-white/5">
+                                                    <td className="py-2 pr-4 font-mono text-amber-400">{m.value}</td>
+                                                    <td className="py-2 pr-4 text-zinc-200">
+                                                        {m.label}
+                                                        <div className="text-[11px] text-zinc-500">{m.description}</div>
+                                                    </td>
+                                                    <td className="py-2 pr-4 font-mono text-zinc-300">{bytesPerVector(m.value, 1024).toLocaleString()}</td>
+                                                    <td className="py-2 pr-4 text-[11px] text-zinc-400">{m.metrics.join(", ")}</td>
+                                                    <td className="py-2 pr-4 text-[11px]">{m.calibration ? <span className="text-amber-400">rebuild after ingest</span> : <span className="text-zinc-500">—</span>}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </CardContent>
                         </Card>
 
                         <Card className="bg-zinc-950/50 border-white/5 shadow-2xl backdrop-blur-sm">

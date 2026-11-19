@@ -85,13 +85,17 @@ class HyperspaceClient {
   final String apiKey;
   final String? tenantId;
 
+  /// Send vectors as `repeated float` (`vector_f32`) instead of `repeated double`:
+  /// half the wire size and decode cost. Requires HyperspaceDB server >= 4.2.5.
+  final bool compactVectors;
+
   final _collectionKeys = <String, String>{};
   final _encryptionContexts = <String, EncryptionContext>{};
   final _collectionMetrics = <String, String>{};
   final _collectionNoiseSigmas = <String, double>{};
   final _collectionSchemas = <String, pb.CollectionSchema>{};
 
-  HyperspaceClient(String address, int port, {this.apiKey = '', this.tenantId})
+  HyperspaceClient(String address, int port, {this.apiKey = '', this.tenantId, this.compactVectors = false})
       : _channel = ClientChannel(
           address,
           port: port,
@@ -211,7 +215,8 @@ class HyperspaceClient {
 
     final req = InsertRequest(
       id: id,
-      vector: finalVector,
+      vector: compactVectors ? null : finalVector,
+      vectorF32: compactVectors ? finalVector : null,
       collection: collection,
     );
     if (finalMetadata != null) req.metadata.addAll(finalMetadata);
@@ -229,9 +234,11 @@ class HyperspaceClient {
   Future<bool> batchInsert(List<Map<String, dynamic>> points, {String collection = ''}) async {
     final req = BatchInsertRequest(collection: collection);
     for (var p in points) {
+      final vec = p['vector'] as List<double>;
       final vd = VectorData(
         id: p['id'] as int,
-        vector: p['vector'] as List<double>,
+        vector: compactVectors ? null : vec,
+        vectorF32: compactVectors ? vec : null,
       );
       if (p['metadata'] != null) vd.metadata.addAll(Map<String, String>.from(p['metadata']));
       if (p['typedMetadata'] != null) {
@@ -336,7 +343,8 @@ class HyperspaceClient {
     }
 
     final req = SearchRequest(
-      vector: finalVector,
+      vector: compactVectors ? null : finalVector,
+      vectorF32: compactVectors ? finalVector : null,
       topK: topK,
       collection: collection,
     );
@@ -377,7 +385,12 @@ class HyperspaceClient {
   Future<List<List<SearchResult>>> searchBatch(List<List<double>> vectors, int topK, {String collection = ''}) async {
     final req = BatchSearchRequest();
     for (var v in vectors) {
-      req.searches.add(SearchRequest(vector: v, topK: topK, collection: collection));
+      req.searches.add(SearchRequest(
+        vector: compactVectors ? null : v,
+        vectorF32: compactVectors ? v : null,
+        topK: topK,
+        collection: collection,
+      ));
     }
     final resp = await _stub.searchBatch(req);
     return resp.responses.map((r) => r.results).toList();
@@ -493,7 +506,8 @@ class HyperspaceClient {
   Future<SearchMultiCollectionResponse> searchMultiCollection(List<String> collections, List<double> query, {int topK = 10}) {
     final req = SearchMultiCollectionRequest(
       collections: collections,
-      vector: query,
+      vector: compactVectors ? null : query,
+      vectorF32: compactVectors ? query : null,
       topK: topK,
     );
     return _stub.searchMultiCollection(req);

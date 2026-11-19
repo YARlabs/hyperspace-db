@@ -11,6 +11,7 @@ This document provides transparency into the architecture, capabilities, intende
 ### Core Architectural Pillars:
 * **Packed Property Compressed Sparse Row (CSR)**: 12-byte binary edge encoding (`CompactEdge`) stored in contiguous memory arrays (`graph.csr`), delivering **~5 µs** reachability traversal.
 * **KAG-Guided HNSW Vector Traversal (v4.2.4)**: Deeply integrates `GraphEngine` CSR topology directly into the HNSW beam search (`search_layer0`). When evaluating beam candidates, active topological graph edges (`csr.neighbors(cand_id)`) are expanded inline in the same traversal pass, bridging semantic gaps between distant vector clusters (e.g., retrieving prerequisite Node 450 from seed Node 10 in Top-5) without requiring secondary graph queries.
+* **Metric-Consistent KAG Scores (v4.2.5)**: The affinity boost of a KAG edge only changes the order in which beam candidates are expanded. Results, returned distances and the pruning threshold always use the true metric distance, so a KAG-reached node is never reported closer than it is.
 * **Dense Node Translation**: Lock-free bidirectional mapping between 32-bit user hash IDs and dense $0 \dots N$ internal CSR nodes (`DashMap<u32, u32>`), consuming under **1 MB RAM for 20,000+ edges**.
 * **Declarative Metadata Induction**: $O(N)$ automatic relationship generation (`path_hierarchy`, `foreign_key`, `exact_match`) without external LLM entity extraction passes ($0 token expense).
 * **Minkowski Spacetime Subsumption**: 33-dimensional Lorentzian hyperbolic geometry ($\mathbb{R}^{1,32}$) modeling hierarchical parent-child inclusions as causal light cones ($\Delta s^2 \le 0$).
@@ -24,6 +25,7 @@ This document provides transparency into the architecture, capabilities, intende
 | :--- | :--- |
 | **Unified Vector-Graph Traversal** | Seeds retrieval via high-dimensional vector similarity (Cosine, L2, Poincaré, Lorentz, Hybrid) and immediately expands the result through multi-hop topological graph edges in the same CPU cache line. |
 | **KAG-Guided HNSW Beam Routing (v4.2.4)** | Inline expansion of high-affinity CSR edges during HNSW Layer-0 search, enabling cross-cluster semantic bridge discovery (100% recall on topologically connected nodes regardless of vector distance). |
+| **ACORN-Style Filtered Traversal (v4.2.5)** | For selective metadata filters (matching < 50% of the graph but too large for brute force), filtered-out neighbors are never scored. Their neighbors (2-hop) are explored instead, keeping the predicate subgraph connected while distance work goes only to matching nodes (`HS_FILTER_ACORN`, on by default). |
 | **SIMD Bitmask Pre-Filtering** | Generates an in-engine reachability bitmask during graph traversal to evaluate vector candidate distances only on connected nodes, achieving a **110× speedup (1.02 µs vs 111.91 µs)** over naive post-filtering. |
 | **Instant Real-Time Edge Induction** | Materializes thousands of typed, weighted edges per millisecond directly from document metadata without manual Cypher scripting. |
 | **Deterministic Prerequisite Retrieval** | Traverses 100% of explicit policy, compliance, or causal containment dependencies (`DEPENDS_ON`, `SUBORDINATE_TO`, `MANDATORY_PRECONDITION`), eliminating structural omissions in RAG pipelines. |
@@ -63,6 +65,7 @@ Evaluation was conducted across a full cluster of **12 production domain playboo
 | Limitation | Impact | Mitigation / Best Practice |
 | :--- | :--- | :--- |
 | **Idle Collection Sleep (Serverless Unloading)** | Inactive collections are offloaded to disk (`status: "idle"`), causing the first touch to pay a 10–50 ms warm-up penalty. | Keep high-frequency collections active, or configure background keep-alive probes via `/api/collections/{name}/stats`. |
+| **Tombstones After Heavy Deletes** | Deleted nodes used to stay in the HNSW graph as navigation hubs, adding latency over time. | Since v4.2.5 the graph is repaired automatically once deletes exceed `max(256, 5%)` nodes (`HS_REPAIR_DELETE_THRESHOLD`): live nodes are relinked around tombstones with α = 1.2 RNG selection, and the entry point moves off a deleted node. |
 | **Combinatorial Fanout on Dense Graphs** | Traversing highly interconnected clusters (e.g. 100+ edges per node) can cause breadth-first search queues to expand exponentially. | The engine bounds traversal via `HS_GRAPH_MAX_FANOUT_PER_NODE` (default: 64) and limits induction cliques to 16 members. |
 | **Metadata Consistency Requirement** | Declarative induction relies on consistent metadata keys (`lorentz_hierarchy_path`, `category`, `technique_id`). | Enforce schema validation upon ingestion using `CollectionSchema` or use explicit `link_batch` API calls if metadata varies. |
 
@@ -84,10 +87,11 @@ HyperspaceDB employs a **two-tier defense mechanism**:
 | :--- | :---: | :---: | :---: | :---: |
 | **Microsoft GraphRAG** | **$100 – $1,000+** (OpenAI LLM tokens) | Hours to days | 5 – 30+ seconds | High (Compute + API token fees) |
 | **Frankenstein Stack (VectorDB + Neo4j)** | $0 (Manual Cypher ETL) | Minutes to hours | 40 – 120 ms | High (3 independent clusters) |
-| **HyperspaceDB v4.2.4 (Native KAG & SIMD 801D Hybrid)** | **$0** (In-engine $O(N)$ induction) | **0.15 – 3 milliseconds** | **< 1.0 milliseconds** | **Low (Single commodity binary)** |
+| **HyperspaceDB v4.2.5 (Native KAG & SIMD 801D Hybrid)** | **$0** (In-engine $O(N)$ induction) | **0.15 – 3 milliseconds** | **< 1.0 milliseconds** | **Low (Single commodity binary)** |
 
 ### Environmental & Efficiency Impact:
 * **Hardware SIMD 801D Hybrid ($\mathbb{H}^{33} \times \mathbb{R}^{768}$) & Cross-Manifold Early Abandon (v4.2.4)**: 8.5× faster index building (161.6 ms) and 17.4× higher search QPS (33,249 QPS) with 100% top-1 recall, skipping 768 Euclidean dimensions when hyperbolic criteria are met.
+* **Trained 1-Bit / 4-Bit Codes (v4.2.5)**: RaBitQ (136 B per 1024-D vector, unbiased popcount estimator) and PQ4 fast-scan (128 B, L1-resident lookup table) add ~30× compression tiers for L2 / cosine collections; measured recall and QPS are in `BENCHMARK_QUANTIZATION_SWEEP.md`.
 * **Platinum Eco Tier (1.58-Bit BitNet)**: 16× memory reduction (264 bytes/1024D) and 25.2× SIMD popcount acceleration slashes CPU energy consumption by **up to 92%** compared to unquantized vector pipelines.
 * **Numerically Stable Geodesic Invariance**: Displacement-scaled hyperbolic difference identities eliminate catastrophic cancellation at large radii $t \gg 1$, guaranteeing that Lyapunov stability checks never produce false positives or ungrounded warnings due to floating-point truncation.
 * Eliminating inter-process HTTP/TCP hops between separate database clusters slashes CPU idle wait states by up to **85%**.
@@ -96,5 +100,5 @@ HyperspaceDB employs a **two-tier defense mechanism**:
 
 ---
 
-*Document Version: 1.2.0 (v4.2.4 Engine)*  
+*Document Version: 1.3.0 (v4.2.5 Engine)*  
 *Maintained by: YAR Labs Architecture & Safety Research Team*

@@ -1,5 +1,6 @@
 //! SemanticCompactor: Uses SuperKMeans to cluster and partition dataset vectors into Voronoi chunks.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -30,7 +31,7 @@ impl SemanticCompactor {
     /// - `index.snap` (HNSW local snapshot)
     /// - Associated `ChunkMeta` with exact centroid computed by SuperKMeans.
     pub fn compact_vectors<M: Metric>(
-        vectors: &[Vec<f64>],
+        points: &[(u32, Vec<f64>, HashMap<String, String>)],
         target_partitions: usize,
         data_dir: &Path,
         mode: hyperspace_core::QuantizationMode,
@@ -38,15 +39,16 @@ impl SemanticCompactor {
         storage_f32: bool,
     ) -> Result<(CompactionReport, Vec<ChunkMeta>), String> {
         let start = Instant::now();
-        if vectors.is_empty() {
+        if points.is_empty() {
             return Err("No vectors provided for semantic compaction".into());
         }
-        let total_vectors = vectors.len();
-        let dimension = vectors[0].len();
+        let total_vectors = points.len();
+        let dimension = points[0].1.len();
         let k = target_partitions.clamp(1, total_vectors);
 
         let cluster_start = Instant::now();
-        let (centroids, assignments) = hyperspace_clustering::cluster_vectors_f64(vectors, k)
+        let vectors: Vec<Vec<f64>> = points.iter().map(|(_, v, _)| v.clone()).collect();
+        let (centroids, assignments) = hyperspace_clustering::cluster_vectors_f64(&vectors, k)
             .ok_or_else(|| "SuperKMeans clustering failed to produce clusters".to_string())?;
         let clustering_time_ms = cluster_start.elapsed().as_millis() as u64;
 
@@ -58,18 +60,8 @@ impl SemanticCompactor {
             }
         }
 
-        let element_size = match mode {
-            hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-            hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
-            hyperspace_core::QuantizationMode::None => {
-                if storage_f32 {
-                    dimension * 4 + 4
-                } else {
-                    dimension * 8 + 8
-                }
-            }
-            _ => dimension * 4 + 4,
-        };
+        let element_size =
+            crate::chunk_searcher::storage_element_size::<M>(mode, dimension, storage_f32);
 
         let mut output_metas = Vec::new();
 
@@ -94,15 +86,29 @@ impl SemanticCompactor {
             );
 
             let mut insert_count = 0u32;
+            let mut chunk_user_ids: Vec<u32> = Vec::with_capacity(members.len());
             for &member_idx in &members {
-                let vec = &vectors[member_idx];
+                let (user_id, vec, meta) = &points[member_idx];
                 if let Ok(new_id) = local_index.insert_to_storage(vec) {
-                    let _ = local_index.index_node(new_id, std::collections::HashMap::new());
+                    let _ = local_index.index_node(new_id, meta.clone());
+                    let slot = new_id as usize;
+                    if chunk_user_ids.len() <= slot {
+                        chunk_user_ids.resize(slot + 1, u32::MAX);
+                    }
+                    chunk_user_ids[slot] = *user_id;
                     insert_count += 1;
                 }
             }
 
             if insert_count > 0 {
+                crate::chunk_searcher::ChunkManifest {
+                    element_size: u32::try_from(element_size).unwrap_or(u32::MAX),
+                    dimension: u32::try_from(dimension).unwrap_or(u32::MAX),
+                    storage_f32,
+                    ids: chunk_user_ids,
+                }
+                .write(&chunk_dir)
+                .map_err(|e| format!("Failed to write chunk manifest for {chunk_name}: {e}"))?;
                 // Freeze Layer-0 into cache-aligned continuous strided layout for zero-chasing search
                 local_index.freeze_flat_layer0();
                 local_index

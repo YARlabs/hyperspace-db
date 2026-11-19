@@ -3,12 +3,14 @@ use hyperspace_core::{FilterExpr, Metric, SearchResult};
 use std::collections::HashMap;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct WriteBufferEntry {
     pub user_id: u32,
     pub vector: Vec<f64>,
-    pub metadata: HashMap<String, String>,
+    /// Shared with the indexer queue: inserting a vector no longer deep-copies its metadata.
+    pub metadata: Arc<HashMap<String, String>>,
 }
 
 pub struct WriteBuffer {
@@ -38,7 +40,7 @@ impl WriteBuffer {
         internal_id: u32,
         user_id: u32,
         vector: Vec<f64>,
-        metadata: HashMap<String, String>,
+        metadata: Arc<HashMap<String, String>>,
     ) {
         self.user_to_internal.insert(user_id, internal_id);
         if self
@@ -79,15 +81,20 @@ impl WriteBuffer {
     pub fn get_by_user_id(&self, user_id: u32) -> Option<(Vec<f64>, HashMap<String, String>)> {
         if let Some(internal_id) = self.user_to_internal.get(&user_id) {
             if let Some(entry) = self.entries.get(&*internal_id) {
-                return Some((entry.vector.clone(), entry.metadata.clone()));
+                return Some((entry.vector.clone(), (*entry.metadata).clone()));
             }
         }
         None
     }
 
     /// O(1) metadata lookup by internal_id across in-memory write buffer entries.
-    pub fn get_metadata_by_internal_id(&self, internal_id: u32) -> Option<HashMap<String, String>> {
-        self.entries.get(&internal_id).map(|e| e.metadata.clone())
+    pub fn get_metadata_by_internal_id(
+        &self,
+        internal_id: u32,
+    ) -> Option<Arc<HashMap<String, String>>> {
+        self.entries
+            .get(&internal_id)
+            .map(|e| Arc::clone(&e.metadata))
     }
 
     /// Update payload metadata for an entry in the write buffer if present.
@@ -96,7 +103,7 @@ impl WriteBuffer {
         if let Some(internal_id) = self.user_to_internal.get(&user_id) {
             if let Some(mut entry) = self.entries.get_mut(&*internal_id) {
                 for (k, v) in patch {
-                    entry.metadata.insert(k.clone(), v.clone());
+                    Arc::make_mut(&mut entry.metadata).insert(k.clone(), v.clone());
                 }
                 return true;
             }
@@ -200,7 +207,7 @@ impl WriteBuffer {
                 let meta = self
                     .entries
                     .get(&cand.internal_id)
-                    .map(|entry| entry.metadata.clone())
+                    .map(|entry| (*entry.metadata).clone())
                     .unwrap_or_default();
                 (cand.user_id, cand.dist, meta, None)
             })
@@ -221,7 +228,7 @@ mod tests {
 
         let mut meta = HashMap::new();
         meta.insert("tag".to_string(), "v1".to_string());
-        wb.insert(1, 100, vec![1.0, 2.0], meta);
+        wb.insert(1, 100, vec![1.0, 2.0], Arc::new(meta));
 
         assert_eq!(wb.size(), 1);
         assert!(!wb.is_empty());
@@ -236,11 +243,11 @@ mod tests {
         let wb = WriteBuffer::new();
         let mut meta1 = HashMap::new();
         meta1.insert("tag".to_string(), "a".to_string());
-        wb.insert(1, 101, vec![1.0, 0.0], meta1);
+        wb.insert(1, 101, vec![1.0, 0.0], Arc::new(meta1));
 
         let mut meta2 = HashMap::new();
         meta2.insert("tag".to_string(), "b".to_string());
-        wb.insert(2, 102, vec![0.0, 1.0], meta2);
+        wb.insert(2, 102, vec![0.0, 1.0], Arc::new(meta2));
 
         let query = vec![1.0, 0.5];
         let filters = HashMap::new();

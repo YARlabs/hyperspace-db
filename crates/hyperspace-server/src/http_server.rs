@@ -1318,8 +1318,60 @@ async fn get_status(
             "mode": std::env::var("HS_MODE").unwrap_or("performance".to_string()),
             "max_ram_gb": std::env::var("HS_MAX_RAM_GB").unwrap_or("0".to_string()),
         },
+        "engine": engine_tunables(),
+        "quantization_modes": quantization_catalog(),
         "embedding": embedding.as_ref()
     }))
+}
+
+/// Process-level engine tunables (env-driven, read at startup) shown by the dashboard.
+fn engine_tunables() -> serde_json::Value {
+    let env = |k: &str, default: &str| std::env::var(k).unwrap_or_else(|_| default.to_string());
+    serde_json::json!({
+        "hnsw_m": env("HS_HNSW_M", "16"),
+        "hnsw_ef_construct": env("HS_HNSW_EF_CONSTRUCT", "100"),
+        "hnsw_ef_search": env("HS_HNSW_EF_SEARCH", "64"),
+        "hnsw_alpha": env("HS_HNSW_ALPHA", "1.0"),
+        "filter_acorn": env("HS_FILTER_ACORN", "true"),
+        "filter_bruteforce_threshold": env("HS_FILTER_BRUTEFORCE_THRESHOLD", "auto"),
+        "search_patience": env("HS_SEARCH_PATIENCE", "0"),
+        "repair_delete_threshold": env("HS_REPAIR_DELETE_THRESHOLD", "auto (max(256, 5%))"),
+        "rerank_enabled": env("HS_RERANK_ENABLED", "false"),
+        "rerank_oversample": env("HS_RERANK_OVERSAMPLE", "4"),
+        "storage_float32": env("HS_STORAGE_FLOAT32", "true"),
+        "chunk_cache_size": env("HS_CHUNK_CACHE_SIZE", "64"),
+        "mmap_willneed": env("HS_MMAP_WILLNEED", "false"),
+        "mmap_hugepages": env("HS_MMAP_HUGEPAGES", "false"),
+        "wal_sync_mode": env("HYPERSPACE_WAL_SYNC_MODE", "async"),
+        "wal_batch_interval_ms": env("HYPERSPACE_WAL_BATCH_INTERVAL", "100"),
+        "simd_backend": hyperspace_core::simd::backend().name(),
+    })
+}
+
+/// Supported quantization levels (value accepted by `quantization` on collection create).
+fn quantization_catalog() -> serde_json::Value {
+    serde_json::json!([
+        {"value": "none", "label": "None", "bits": 32, "bytes_per_dim": 4.0, "metrics": ["l2", "cosine", "poincare", "lorentz", "hybrid"], "calibration": false,
+         "description": "Full precision (f32 storage, f64 legacy)"},
+        {"value": "medium", "label": "Medium (ScalarI8)", "bits": 8, "bytes_per_dim": 1.0, "metrics": ["l2", "cosine", "poincare", "lorentz", "hybrid"], "calibration": false,
+         "description": "8-bit scalar (AsymmetricHybrid801 for 801-D hybrid)"},
+        {"value": "medium_plus", "label": "Medium Plus (ScalarI4)", "bits": 4, "bytes_per_dim": 0.75, "metrics": ["l2", "cosine", "poincare", "lorentz", "hybrid"], "calibration": false,
+         "description": "4-bit block-wise scalar"},
+        {"value": "turbo", "label": "Turbo", "bits": 4, "bytes_per_dim": 0.5, "metrics": ["l2", "cosine", "hybrid"], "calibration": false,
+         "description": "4-bit Lloyd-Max spherical with FWHT rotation"},
+        {"value": "ternary", "label": "Ternary (BitNet 1.58)", "bits": 2, "bytes_per_dim": 0.25, "metrics": ["l2", "cosine", "poincare", "lorentz", "hybrid"], "calibration": false,
+         "description": "{-1, 0, +1} dual bitmask with SIMD popcount"},
+        {"value": "pq4", "label": "PQ4 Fast-Scan", "bits": 1, "bytes_per_dim": 0.125, "metrics": ["l2", "cosine"], "calibration": true,
+         "description": "4-bit PQ over 4-D sub-spaces, L1-resident u8 LUT"},
+        {"value": "rabitq", "label": "RaBitQ", "bits": 1, "bytes_per_dim": 0.125, "metrics": ["l2", "cosine"], "calibration": true,
+         "description": "1-bit code + unbiased estimator (popcount bit-planes)"},
+        {"value": "extreme", "label": "Extreme (Binary)", "bits": 1, "bytes_per_dim": 0.125, "metrics": ["l2", "cosine", "poincare", "lorentz", "hybrid"], "calibration": false,
+         "description": "1-bit sign code with ADC"},
+        {"value": "opq", "label": "Optimized PQ", "bits": 0, "bytes_per_dim": 0.0625, "metrics": ["l2", "cosine"], "calibration": true,
+         "description": "8-bit PQ (16-D sub-spaces) with FWHT rotation"},
+        {"value": "pq", "label": "Product Quantization", "bits": 0, "bytes_per_dim": 0.0625, "metrics": ["l2", "cosine"], "calibration": true,
+         "description": "8-bit PQ (16-D sub-spaces)"}
+    ])
 }
 
 async fn get_metrics(
@@ -1399,6 +1451,8 @@ fn compute_collection_eco_badge(
     use hyperspace_core::QuantizationMode;
     match quantization {
         QuantizationMode::Binary
+        | QuantizationMode::RaBitQ
+        | QuantizationMode::PQ4
         | QuantizationMode::Ternary
         | QuantizationMode::AsymmetricHybridExtreme
         | QuantizationMode::ProductQuantization

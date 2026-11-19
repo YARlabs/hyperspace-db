@@ -887,14 +887,22 @@ impl BinaryHyperVector {
             return 0.0;
         }
         let scale = 1.0 / (n as f64).sqrt();
-        let mut dot = 0.0;
-        let mut i = 0;
-        while i < n && i / 8 < bits.len() {
-            let bit = (bits[i / 8] >> (i % 8)) & 1;
-            let val = (bit as f64) * 2.0 - 1.0;
-            dot += val * query.coords[i];
-            i += 1;
+        // Sign-mask identity: Σ (2b_i − 1)·q_i = 2·Σ_{b_i=1} q_i − Σ q_i.
+        // Byte-at-a-time, branch-free (no per-bit div/mod or ±1 materialization).
+        let mut pos = 0.0f64;
+        let mut total = 0.0f64;
+        for (byte_idx, &byte) in bits.iter().enumerate() {
+            let base = byte_idx * 8;
+            if base >= n {
+                break;
+            }
+            let end = (base + 8).min(n);
+            for (j, &q) in query.coords[base..end].iter().enumerate() {
+                total += q;
+                pos += q * f64::from((byte >> j) & 1);
+            }
         }
+        let dot = 2.0 * pos - total;
         let cos_dist = 2.0 * (1.0 - (dot * scale).clamp(-1.0, 1.0));
         cos_dist.max(0.0)
     }

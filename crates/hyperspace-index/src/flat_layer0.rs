@@ -405,7 +405,23 @@ impl FlatLayer0Segment {
     }
 
     /// Serializes this flat segment to disk.
+    ///
+    /// Writes to a temporary sibling and atomically renames it over `path`. The segment
+    /// may itself be a memory map of `path` (after `load_from_file`): truncating that file
+    /// and then `write()`-ing from its own mapping deadlocks in the kernel on macOS (the
+    /// write holds the vnode lock while the source page fault needs it), leaving the
+    /// process in an unkillable `U` state. A separate inode avoids the self-reference.
     pub fn save_to_file(&self, path: &Path) -> io::Result<()> {
+        let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+        let res = self.write_to(&tmp_path);
+        if let Err(e) = res {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e);
+        }
+        std::fs::rename(&tmp_path, path)
+    }
+
+    fn write_to(&self, path: &Path) -> io::Result<()> {
         let mut file = File::create(path)?;
 
         // 64-byte metadata header
@@ -420,6 +436,7 @@ impl FlatLayer0Segment {
         file.write_all(&meta)?;
         file.write_all(self.buffer.as_ref())?;
         file.flush()?;
+        file.sync_all()?;
         Ok(())
     }
 

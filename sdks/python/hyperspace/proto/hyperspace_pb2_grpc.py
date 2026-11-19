@@ -252,6 +252,16 @@ class DatabaseStub(object):
                 request_serializer=hyperspace__pb2.VerifyGenerationRequest.SerializeToString,
                 response_deserializer=hyperspace__pb2.VerifyGenerationResponse.FromString,
                 _registered_method=True)
+        self.CallExtension = channel.unary_unary(
+                '/hyperspace.Database/CallExtension',
+                request_serializer=hyperspace__pb2.ExtensionRequest.SerializeToString,
+                response_deserializer=hyperspace__pb2.ExtensionResponse.FromString,
+                _registered_method=True)
+        self.ListExtensions = channel.unary_unary(
+                '/hyperspace.Database/ListExtensions',
+                request_serializer=hyperspace__pb2.Empty.SerializeToString,
+                response_deserializer=hyperspace__pb2.ListExtensionsResponse.FromString,
+                _registered_method=True)
 
 
 class DatabaseServicer(object):
@@ -535,6 +545,19 @@ class DatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CallExtension(self, request, context):
+        """Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListExtensions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -752,6 +775,16 @@ def add_DatabaseServicer_to_server(servicer, server):
                     servicer.VerifyGeneration,
                     request_deserializer=hyperspace__pb2.VerifyGenerationRequest.FromString,
                     response_serializer=hyperspace__pb2.VerifyGenerationResponse.SerializeToString,
+            ),
+            'CallExtension': grpc.unary_unary_rpc_method_handler(
+                    servicer.CallExtension,
+                    request_deserializer=hyperspace__pb2.ExtensionRequest.FromString,
+                    response_serializer=hyperspace__pb2.ExtensionResponse.SerializeToString,
+            ),
+            'ListExtensions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListExtensions,
+                    request_deserializer=hyperspace__pb2.Empty.FromString,
+                    response_serializer=hyperspace__pb2.ListExtensionsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1915,6 +1948,60 @@ class Database(object):
             '/hyperspace.Database/VerifyGeneration',
             hyperspace__pb2.VerifyGenerationRequest.SerializeToString,
             hyperspace__pb2.VerifyGenerationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CallExtension(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/CallExtension',
+            hyperspace__pb2.ExtensionRequest.SerializeToString,
+            hyperspace__pb2.ExtensionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListExtensions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/hyperspace.Database/ListExtensions',
+            hyperspace__pb2.Empty.SerializeToString,
+            hyperspace__pb2.ListExtensionsResponse.FromString,
             options,
             channel_credentials,
             insecure,

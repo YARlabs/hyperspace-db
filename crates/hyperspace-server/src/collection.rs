@@ -76,7 +76,7 @@ pub struct CollectionImpl<M: Metric> {
     node_id: String,
     index_link: Arc<ArcSwap<HnswIndex<M>>>,
     wal_link: Arc<ArcSwap<tokio::sync::Mutex<Wal>>>,
-    index_tx: mpsc::UnboundedSender<(u32, HashMap<String, String>)>,
+    index_tx: mpsc::UnboundedSender<(u32, Arc<HashMap<String, String>>)>,
     replication_tx: broadcast::Sender<ReplicationLog>,
     config: Arc<GlobalConfig>,
     bg_tasks: Vec<JoinHandle<()>>,
@@ -323,77 +323,9 @@ impl<M: Metric> CollectionImpl<M> {
 
         // f32 storage halves memory bandwidth for the hot distance-computation path.
         // It is enabled by default for unquantized collections; opt out with HS_STORAGE_FLOAT32=0.
-        let storage_f32_disabled = std::env::var("HS_STORAGE_FLOAT32")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off"));
-        let storage_f32 = !storage_f32_disabled && mode == hyperspace_core::QuantizationMode::None;
-
-        let mut element_size = match mode {
-            hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-            hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
-            hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                if dimension > 33 {
-                    33 * 4 + (dimension - 33) + 4
-                } else {
-                    dimension * 4 + 4
-                }
-            }
-            hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
-                if dimension > 33 {
-                    let euc_dim = dimension - 33;
-                    let num_blocks = euc_dim.div_ceil(16);
-                    33 * 4 + 4 + num_blocks * 12
-                } else {
-                    dimension * 4 + 4
-                }
-            }
-            hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
-                if dimension > 33 {
-                    let euc_dim = dimension - 33;
-                    33 * 4 + 4 + euc_dim.div_ceil(8)
-                } else {
-                    dimension * 4 + 4
-                }
-            }
-            hyperspace_core::QuantizationMode::ScalarI4 => {
-                let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let tail_dim = dimension.saturating_sub(head_dim);
-                let num_blocks = tail_dim.div_ceil(16);
-                head_dim * 4 + 4 + num_blocks * 12
-            }
-            hyperspace_core::QuantizationMode::Turbo => {
-                let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let tail_dim = dimension.saturating_sub(head_dim);
-                head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
-            }
-            hyperspace_core::QuantizationMode::Ternary => {
-                let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let tail_dim = dimension.saturating_sub(head_dim);
-                head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
-            }
-            hyperspace_core::QuantizationMode::ProductQuantization
-            | hyperspace_core::QuantizationMode::OPQ => {
-                hyperspace_core::pq::default_num_subvectors(dimension)
-            }
-            hyperspace_core::QuantizationMode::None => {
-                if storage_f32 {
-                    dimension * 4 + 4
-                } else {
-                    dimension * 8 + 8
-                }
-            }
-        };
+        let storage_f32 = chunk_searcher::storage_f32_enabled(mode);
+        let mut element_size =
+            chunk_searcher::storage_element_size::<M>(mode, dimension, storage_f32);
 
         if std::env::var("HS_ZONAL_QUANTIZATION").is_ok_and(|v| v.to_lowercase() == "true") {
             element_size = 0;
@@ -761,7 +693,7 @@ impl<M: Metric> CollectionImpl<M> {
                         let effective_meta = write_buffer_for_indexer
                             .get_metadata_by_internal_id(id)
                             .unwrap_or(meta);
-                        match idx.index_node(id, effective_meta) {
+                        match idx.index_node(id, Arc::unwrap_or_clone(effective_meta)) {
                             Ok(()) => {
                                 write_buffer_for_indexer.remove(id);
                             }
@@ -812,7 +744,7 @@ impl<M: Metric> CollectionImpl<M> {
                             write_buf.get_metadata_by_internal_id(id).unwrap_or(meta);
                         let result = tokio::task::spawn_blocking(move || {
                             let idx = idx_link.load().clone();
-                            let result = idx.index_node(id, effective_meta);
+                            let result = idx.index_node(id, Arc::unwrap_or_clone(effective_meta));
                             (result, id)
                         })
                         .await;
@@ -1190,76 +1122,8 @@ impl<M: Metric> CollectionImpl<M> {
         dimension: usize,
         chunk_backend: Arc<dyn ChunkBackend>,
     ) {
-        let storage_f32_disabled = std::env::var("HS_STORAGE_FLOAT32")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off"));
-        let storage_f32 = !storage_f32_disabled && mode == hyperspace_core::QuantizationMode::None;
-        let element_size = match mode {
-            hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-            hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
-            hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                if dimension > 33 {
-                    33 * 4 + (dimension - 33) + 4
-                } else {
-                    dimension * 4 + 4
-                }
-            }
-            hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
-                if dimension > 33 {
-                    let euc_dim = dimension - 33;
-                    let num_blocks = euc_dim.div_ceil(16);
-                    33 * 4 + 4 + num_blocks * 12
-                } else {
-                    dimension * 4 + 4
-                }
-            }
-            hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
-                if dimension > 33 {
-                    let euc_dim = dimension - 33;
-                    33 * 4 + 4 + euc_dim.div_ceil(8)
-                } else {
-                    dimension * 4 + 4
-                }
-            }
-            hyperspace_core::QuantizationMode::ScalarI4 => {
-                let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let tail_dim = dimension.saturating_sub(head_dim);
-                let num_blocks = tail_dim.div_ceil(16);
-                head_dim * 4 + 4 + num_blocks * 12
-            }
-            hyperspace_core::QuantizationMode::Turbo => {
-                let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let tail_dim = dimension.saturating_sub(head_dim);
-                head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
-            }
-            hyperspace_core::QuantizationMode::Ternary => {
-                let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let tail_dim = dimension.saturating_sub(head_dim);
-                head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
-            }
-            hyperspace_core::QuantizationMode::ProductQuantization
-            | hyperspace_core::QuantizationMode::OPQ => {
-                hyperspace_core::pq::default_num_subvectors(dimension)
-            }
-            hyperspace_core::QuantizationMode::None => {
-                if storage_f32 {
-                    dimension * 4 + 4
-                } else {
-                    dimension * 8 + 8
-                }
-            }
-        };
+        let storage_f32 = chunk_searcher::storage_f32_enabled(mode);
+        let element_size = chunk_searcher::storage_element_size::<M>(mode, dimension, storage_f32);
 
         tokio::spawn(async move {
             let permit = flush_limiter.clone().acquire_owned().await;
@@ -1297,15 +1161,20 @@ impl<M: Metric> CollectionImpl<M> {
 
                 let mut insert_count = 0u32;
                 let mut centroid_acc = CentroidAccumulator::new(dimension);
+                // chunk-local id -> global user id (persisted in the chunk manifest)
+                let mut chunk_user_ids: Vec<u32> = Vec::new();
 
                 // Replay ALL accumulated segments into the same chunk
                 for (i, path) in frozen_wal_paths.iter().enumerate() {
                     let replay_start = std::time::Instant::now();
                     let replay_res = Wal::replay(path, |entry| {
-                        let (vector, metadata) = match entry {
-                            hyperspace_store::wal::WalEntry::Insert { vector, metadata, .. }
-                            | hyperspace_store::wal::WalEntry::Insert64 { vector, metadata, .. } => {
-                                (vector, metadata)
+                        let (user_id, vector, metadata) = match entry {
+                            hyperspace_store::wal::WalEntry::Insert { id, vector, metadata, .. } => {
+                                (id, vector, metadata)
+                            }
+                            hyperspace_store::wal::WalEntry::Insert64 { id, vector, metadata, .. } => {
+                                let Ok(id) = u32::try_from(id) else { return };
+                                (id, vector, metadata)
                             }
                             hyperspace_store::wal::WalEntry::Delete { .. }
                             | hyperspace_store::wal::WalEntry::UpdatePayload { .. } => return,
@@ -1314,6 +1183,11 @@ impl<M: Metric> CollectionImpl<M> {
                             centroid_acc.add(&vector);
                             if let Ok(new_id) = local_index.insert_to_storage(&vector) {
                                 let _ = local_index.index_node(new_id, metadata);
+                                let slot = new_id as usize;
+                                if chunk_user_ids.len() <= slot {
+                                    chunk_user_ids.resize(slot + 1, u32::MAX);
+                                }
+                                chunk_user_ids[slot] = user_id;
                                 insert_count += 1;
                             }
                         }
@@ -1336,7 +1210,15 @@ impl<M: Metric> CollectionImpl<M> {
                 }
 
                 let save_start = std::time::Instant::now();
-                if let Err(e) = local_index.save_snapshot(&chunk_dir.join("index.snap")) {
+                let manifest = chunk_searcher::ChunkManifest {
+                    element_size: u32::try_from(element_size).unwrap_or(u32::MAX),
+                    dimension: u32::try_from(dimension).unwrap_or(u32::MAX),
+                    storage_f32,
+                    ids: chunk_user_ids,
+                };
+                if let Err(e) = manifest.write(&chunk_dir) {
+                    eprintln!("Failed to write chunk manifest for {chunk_name}: {e}");
+                } else if let Err(e) = local_index.save_snapshot(&chunk_dir.join("index.snap")) {
                     eprintln!("Failed to save index for {chunk_name}: {e}");
                 } else {
                     let save_elapsed = save_start.elapsed();
@@ -1432,6 +1314,13 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let count = self.index_link.load().count();
         let dim = self.dimension;
         let vector_bytes_per_doc: u64 = match self.mode {
+            hyperspace_core::QuantizationMode::RaBitQ => {
+                hyperspace_core::rabitq::code_size(dim) as u64
+            }
+            hyperspace_core::QuantizationMode::PQ4 => {
+                hyperspace_core::pq4::code_size(hyperspace_core::pq4::default_num_subvectors(dim))
+                    as u64
+            }
             hyperspace_core::QuantizationMode::None => dim as u64 * 8,
             hyperspace_core::QuantizationMode::ScalarI8 => dim as u64,
             hyperspace_core::QuantizationMode::Binary => (dim as u64).div_ceil(8),
@@ -1637,6 +1526,20 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
 
         idx.delete(internal_id);
+        if idx.needs_repair() {
+            // Graph consolidation off the request path (tombstones degrade recall/latency).
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                let idx_for_repair = self.index_link.load_full();
+                handle.spawn_blocking(move || {
+                    let repaired = idx_for_repair.repair_deleted();
+                    if repaired > 0 {
+                        println!(
+                            "🩹 HNSW repair: relinked {repaired} adjacency lists after deletes"
+                        );
+                    }
+                });
+            }
+        }
         if self.raw_vector_cache.remove(&internal_id).is_some() {
             self.raw_vector_cache_len.fetch_sub(1, Ordering::Relaxed);
         }
@@ -1875,28 +1778,30 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 // === 3. Merge MemTable + Chunk results by distance ===
-                // MemTable results carry real internal IDs.
-                // Chunk results carry chunk-local IDs (not usable for metadata).
-                // We merge by distance only, preferring MemTable entries for metadata.
-                let mut merged: Vec<(u32, f64, bool)> =
+                // MemTable results carry internal IDs; chunk results are already resolved to
+                // global user IDs (via the chunk manifest) and carry their own metadata.
+                let mut merged: Vec<(u32, f64, Option<(u32, HashMap<String, String>)>)> =
                     Vec::with_capacity(mem_results.len() + chunk_results.len());
-
                 for (id, dist) in &mem_results {
-                    merged.push((*id, *dist, true)); // true = from MemTable
+                    merged.push((*id, *dist, None));
                 }
-                for (_, dist, _) in &chunk_results {
-                    // Chunk results don't have usable IDs for the collection's id_map.
-                    // We use u32::MAX as a sentinel — they'll be filtered in metadata step.
-                    merged.push((u32::MAX, *dist, false)); // false = from chunk
+                for hit in chunk_results {
+                    merged.push((u32::MAX, hit.distance, Some((hit.user_id, hit.metadata))));
                 }
-
                 merged.sort_by(|a, b| a.1.total_cmp(&b.1));
                 merged.truncate(search_k);
 
-                // Include all results (RAM + Chunks).
-                // Note: Results from chunks will have internal IDs that need a segment mapping.
-                let results: Vec<(u32, f64)> =
-                    merged.into_iter().map(|(id, dist, _)| (id, dist)).collect();
+                // Chunk hits keep their in-chunk distance (their exact vectors live in the
+                // immutable chunk, not in this MemTable's rerank sources).
+                let mut chunk_hits: Vec<(u32, f64, HashMap<String, String>)> = Vec::new();
+                let mut results: Vec<(u32, f64)> = Vec::with_capacity(merged.len());
+                for (internal_id, dist, chunk) in merged {
+                    match chunk {
+                        None => results.push((internal_id, dist)),
+                        Some((user_id, meta)) => chunk_hits.push((user_id, dist, meta)),
+                    }
+                }
+                let had_chunk_hits = !chunk_hits.is_empty();
 
                 let metric_tag = match M::name() {
                     "cosine" => GpuMetric::Cosine,
@@ -1999,6 +1904,11 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     })
                     .collect::<Vec<(u32, f64, HashMap<String, String>)>>();
 
+                if had_chunk_hits {
+                    hnsw_mapped.extend(chunk_hits);
+                    hnsw_mapped.sort_by(|a, b| a.1.total_cmp(&b.1));
+                }
+
                 if !write_buffer_for_search.is_empty() {
                     let buffer_results = write_buffer_for_search.search::<M>(
                         &processed_query,
@@ -2015,7 +1925,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     hnsw_mapped.sort_by(|a, b| a.1.total_cmp(&b.1));
                 }
 
-                if !ids_are_identity || !write_buffer_for_search.is_empty() {
+                if had_chunk_hits || !ids_are_identity || !write_buffer_for_search.is_empty() {
                     let mut seen = std::collections::HashSet::with_capacity(hnsw_mapped.len());
                     hnsw_mapped.retain(|(user_id, _, _)| seen.insert(*user_id));
                 }
@@ -2085,8 +1995,20 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             let complex_filters_ref = complex_filters;
 
             // === 1. Search the hot MemTable (in-RAM HNSW) ===
-            let mem_results =
-                index.search(processed_query, filters_ref, complex_filters_ref, params);
+            // Apply the resolved ef_search (collection default / >= top_k) on the inline path too.
+            let effective_params: Cow<'_, SearchParams> = if params.ef_search == ef_search {
+                Cow::Borrowed(params)
+            } else {
+                let mut p = params.clone();
+                p.ef_search = ef_search;
+                Cow::Owned(p)
+            };
+            let mem_results = index.search(
+                processed_query,
+                filters_ref,
+                complex_filters_ref,
+                &effective_params,
+            );
 
             // === 2. Search cold chunks (none when use_blocking is false) ===
 
@@ -2237,77 +2159,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             }
 
             let dimension = current_index.dimension;
-            let storage_f32_disabled = std::env::var("HS_STORAGE_FLOAT32")
-                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off"));
-            let storage_f32 =
-                !storage_f32_disabled && mode == hyperspace_core::QuantizationMode::None;
-            let element_size = match mode {
-                hyperspace_core::QuantizationMode::ScalarI8 => dimension + 4,
-                hyperspace_core::QuantizationMode::Binary => dimension.div_ceil(8) + 4,
-                hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {
-                    if dimension > 33 {
-                        33 * 4 + (dimension - 33) + 4
-                    } else {
-                        dimension * 4 + 4
-                    }
-                }
-                hyperspace_core::QuantizationMode::AsymmetricHybridLowBit => {
-                    if dimension > 33 {
-                        let euc_dim = dimension - 33;
-                        let num_blocks = euc_dim.div_ceil(16);
-                        33 * 4 + 4 + num_blocks * 12
-                    } else {
-                        dimension * 4 + 4
-                    }
-                }
-                hyperspace_core::QuantizationMode::AsymmetricHybridExtreme => {
-                    if dimension > 33 {
-                        let euc_dim = dimension - 33;
-                        33 * 4 + 4 + euc_dim.div_ceil(8)
-                    } else {
-                        dimension * 4 + 4
-                    }
-                }
-                hyperspace_core::QuantizationMode::ScalarI4 => {
-                    let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                        33
-                    } else {
-                        0
-                    };
-                    let tail_dim = dimension.saturating_sub(head_dim);
-                    let num_blocks = tail_dim.div_ceil(16);
-                    head_dim * 4 + 4 + num_blocks * 12
-                }
-                hyperspace_core::QuantizationMode::Turbo => {
-                    let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                        33
-                    } else {
-                        0
-                    };
-                    let tail_dim = dimension.saturating_sub(head_dim);
-                    head_dim * 4 + 4 + tail_dim.div_ceil(2) + 4
-                }
-                hyperspace_core::QuantizationMode::Ternary => {
-                    let head_dim = if dimension == 801 && M::name() == "hybrid" {
-                        33
-                    } else {
-                        0
-                    };
-                    let tail_dim = dimension.saturating_sub(head_dim);
-                    head_dim * 4 + 2 * tail_dim.div_ceil(8) + 8
-                }
-                hyperspace_core::QuantizationMode::ProductQuantization
-                | hyperspace_core::QuantizationMode::OPQ => {
-                    hyperspace_core::pq::default_num_subvectors(dimension)
-                }
-                hyperspace_core::QuantizationMode::None => {
-                    if storage_f32 {
-                        dimension * 4 + 4
-                    } else {
-                        dimension * 8 + 8
-                    }
-                }
-            };
+            let storage_f32 = chunk_searcher::storage_f32_enabled(mode);
+            let element_size =
+                chunk_searcher::storage_element_size::<M>(mode, dimension, storage_f32);
 
             let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
             let mut new_index = HnswIndex::<M>::new_with_storage_precision(
@@ -2318,15 +2172,18 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 dimension,
             );
 
-            // Calibrate Product Quantization codebooks on actual vectors if in PQ/OPQ mode
+            // Calibrate code-based quantizers on the exact vectors (PQ / OPQ codebooks,
+            // PQ4 fast-scan codebook, RaBitQ centroid).
             if matches!(
                 mode,
                 hyperspace_core::QuantizationMode::ProductQuantization
                     | hyperspace_core::QuantizationMode::OPQ
+                    | hyperspace_core::QuantizationMode::PQ4
+                    | hyperspace_core::QuantizationMode::RaBitQ
             ) && !all_data.is_empty()
             {
                 println!(
-                    "   🎓 Calibrating PQ/OPQ codebooks on {} vectors...",
+                    "   🎓 Calibrating {mode:?} quantizer on {} vectors...",
                     all_data.len()
                 );
                 let sample_limit = 10_000.min(all_data.len());
@@ -2697,19 +2554,61 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     }
 
     fn compact_semantic_chunks(&self, target_partitions: usize) -> Result<String, String> {
+        // Gather the full dataset: every flushed chunk + the hot MemTable.
+        // MemTable entries are newer and win on user-ID collisions. Chunks that cannot be
+        // exported (legacy, no manifest) are kept as-is instead of being deleted.
+        let dimension = self.dimension;
+        let old_chunks = self.meta_router.all_chunks();
+        let mut by_user: HashMap<u32, (Vec<f64>, HashMap<String, String>)> = HashMap::new();
+        let mut rewritten_chunks = Vec::new();
+        let mut retained_chunks = Vec::new();
+        for chunk in old_chunks {
+            match chunk_searcher::export_chunk_points::<M>(
+                &chunk.path,
+                self.mode,
+                &self.config,
+                dimension,
+            ) {
+                Ok(Some(points)) => {
+                    for (user_id, vec, meta) in points {
+                        if vec.len() == dimension {
+                            by_user.insert(user_id, (vec, meta));
+                        }
+                    }
+                    rewritten_chunks.push(chunk);
+                }
+                Ok(None) => retained_chunks.push(chunk),
+                Err(e) => {
+                    return Err(format!(
+                        "Semantic compaction aborted: failed to read chunk {}: {e}",
+                        chunk.chunk_id
+                    ))
+                }
+            }
+        }
+
         let count = self.count().max(1);
-        let points = self.peek(count, 0);
-        if points.len() < 16 {
+        for (user_id, vec, meta) in self.peek(count, 0) {
+            by_user.insert(user_id, (vec, meta));
+        }
+
+        if by_user.len() < 16 {
             return Ok(format!(
                 "Not enough vectors ({}) for semantic compaction (minimum 16 required)",
-                points.len()
+                by_user.len()
             ));
         }
-        let vectors: Vec<Vec<f64>> = points.into_iter().map(|(_, v, _)| v).collect();
+        let mut points: Vec<(u32, Vec<f64>, HashMap<String, String>)> = by_user
+            .into_iter()
+            .map(|(id, (vec, meta))| (id, vec, meta))
+            .collect();
+        points.sort_unstable_by_key(|(id, _, _)| *id);
+
         let k = target_partitions.clamp(2, 64);
-        let (report, new_chunks) =
+        // New chunks are fully written (manifest + snapshot) before anything is removed.
+        let (report, mut new_chunks) =
             crate::semantic_compactor::SemanticCompactor::compact_vectors::<M>(
-                &vectors,
+                &points,
                 k,
                 &self.data_dir,
                 self.mode,
@@ -2717,10 +2616,11 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 self.storage_f32,
             )?;
 
-        let old_chunks = self.meta_router.all_chunks();
+        new_chunks.extend(retained_chunks);
         self.meta_router.replace_all(new_chunks);
 
-        for old_chunk in old_chunks {
+        for old_chunk in rewritten_chunks {
+            chunk_searcher::invalidate_chunk_cache(&old_chunk.path);
             if old_chunk.path.exists() && old_chunk.path.starts_with(&self.data_dir) {
                 let _ = std::fs::remove_dir_all(&old_chunk.path);
             }
@@ -3013,16 +2913,21 @@ impl<M: Metric> CollectionImpl<M> {
 
         self.last_clock.fetch_max(clock, Ordering::Relaxed);
         let mut frozen_paths_opt = None;
+        let mut commit_ticket = None;
         if write_wal {
             let wal_guard = self.wal_link.load();
             let mut wal = wal_guard.lock().await;
 
-            wal.append(id, processed_vector, &metadata, clock)
+            // Group commit: the fsync is awaited after the WAL lock is released.
+            commit_ticket = wal
+                .append_with_ticket(
+                    id,
+                    processed_vector,
+                    &metadata,
+                    clock,
+                    durability == hyperspace_core::Durability::Strict,
+                )
                 .map_err(|e| format!("WAL Error: {e}"))?;
-
-            if durability == hyperspace_core::Durability::Strict {
-                wal.sync().map_err(|e| format!("WAL Sync Error: {e}"))?;
-            }
 
             if wal.is_full() {
                 if let Ok(frozen_path) = wal.rotate() {
@@ -3049,16 +2954,22 @@ impl<M: Metric> CollectionImpl<M> {
             }
         }
 
+        // Durable ack: one group fsync shared with concurrent writers, off the WAL lock.
+        if let Some(ticket) = commit_ticket {
+            tokio::task::spawn_blocking(move || ticket.wait())
+                .await
+                .map_err(|e| format!("WAL Sync Error: {e}"))?
+                .map_err(|e| format!("WAL Sync Error: {e}"))?;
+        }
+
         if self.mode != hyperspace_core::QuantizationMode::None {
+            // One f64 -> f32 conversion feeds both the rerank cache and the payload store.
             let v_f32: Vec<f32> = processed_vector.iter().map(|&x| x as f32).collect();
-            if self.raw_vector_cache_len.load(Ordering::Relaxed) < 200_000 {
-                if self.raw_vector_cache.insert(internal_id, v_f32).is_none() {
-                    self.raw_vector_cache_len.fetch_add(1, Ordering::Relaxed);
-                }
-            }
-            let mut vector_bytes = Vec::with_capacity(processed_vector.len() * 4);
-            for &v in processed_vector.iter() {
-                vector_bytes.extend_from_slice(&(v as f32).to_le_bytes());
+            let vector_bytes: Vec<u8> = v_f32.iter().flat_map(|v| v.to_le_bytes()).collect();
+            if self.raw_vector_cache_len.load(Ordering::Relaxed) < 200_000
+                && self.raw_vector_cache.insert(internal_id, v_f32).is_none()
+            {
+                self.raw_vector_cache_len.fetch_add(1, Ordering::Relaxed);
             }
             if let Err(e) = self.insert_payload(internal_id, vector_bytes).await {
                 eprintln!("Failed to store exact vector for rerank: {}", e);
@@ -3082,6 +2993,8 @@ impl<M: Metric> CollectionImpl<M> {
             );
         }
 
+        // One shared allocation for write buffer + indexer queue (no per-insert deep copies).
+        let metadata = Arc::new(metadata);
         if reindex_needed {
             self.config.inc_queue();
             if self.write_buffer.size() < 100_000 {
@@ -3089,10 +3002,10 @@ impl<M: Metric> CollectionImpl<M> {
                     internal_id,
                     id,
                     processed_vector.to_vec(),
-                    metadata.clone(),
+                    Arc::clone(&metadata),
                 );
             }
-            let _ = self.index_tx.send((internal_id, metadata.clone()));
+            let _ = self.index_tx.send((internal_id, Arc::clone(&metadata)));
         }
 
         let vector_owned = processed_vector_cow.into_owned();
@@ -3105,7 +3018,7 @@ impl<M: Metric> CollectionImpl<M> {
                 operation: Some(replication_log::Operation::Insert(InsertOp {
                     id,
                     vector: vector_owned.clone(),
-                    metadata: metadata.clone(),
+                    metadata: (*metadata).clone(),
                     typed_metadata: HashMap::new(),
                 })),
             };
@@ -3118,7 +3031,7 @@ impl<M: Metric> CollectionImpl<M> {
                 .or_else(|| metadata.get("ttl"))
                 .and_then(|s| s.parse::<u64>().ok())
                 .map(std::time::Duration::from_secs);
-            cache.insert(id, vector_owned, metadata, ttl);
+            cache.insert(id, vector_owned, Arc::unwrap_or_clone(metadata), ttl);
         }
 
         Ok(())
@@ -3221,6 +3134,7 @@ impl<M: Metric> CollectionImpl<M> {
 
         self.last_clock.fetch_max(clock, Ordering::Relaxed);
         let mut frozen_paths_opt = None;
+        let mut commit_ticket = None;
         if write_wal {
             let wal_data: Vec<_> = entries
                 .iter()
@@ -3229,12 +3143,13 @@ impl<M: Metric> CollectionImpl<M> {
 
             let wal_guard = self.wal_link.load();
             let mut wal = wal_guard.lock().await;
-            wal.append_batch_borrowed(&wal_data, clock)
+            commit_ticket = wal
+                .append_batch_with_ticket(
+                    &wal_data,
+                    clock,
+                    durability == hyperspace_core::Durability::Strict,
+                )
                 .map_err(|e| e.to_string())?;
-
-            if durability == hyperspace_core::Durability::Strict {
-                wal.sync().map_err(|e| e.to_string())?;
-            }
 
             if wal.is_full() {
                 if let Ok(frozen_path) = wal.rotate() {
@@ -3260,6 +3175,14 @@ impl<M: Metric> CollectionImpl<M> {
                 self.wal_pending_count
                     .fetch_add(vectors.len() as u64, Ordering::SeqCst);
             }
+        }
+
+        // Durable ack: one group fsync shared with concurrent writers, off the WAL lock.
+        if let Some(ticket) = commit_ticket {
+            tokio::task::spawn_blocking(move || ticket.wait())
+                .await
+                .map_err(|e| format!("WAL Sync Error: {e}"))?
+                .map_err(|e| format!("WAL Sync Error: {e}"))?;
         }
 
         if let Some(frozen_paths) = frozen_paths_opt {
@@ -3301,16 +3224,16 @@ impl<M: Metric> CollectionImpl<M> {
         let wb_has_capacity = self.write_buffer.size() < 100_000;
         for entry in &entries {
             if entry.reindex_needed {
-                let meta_cloned = (*entry.metadata).clone();
+                let meta_shared = Arc::new(entry.metadata.clone());
                 if wb_has_capacity {
                     self.write_buffer.insert(
                         entry.internal_id,
                         entry.id,
                         entry.vector.to_vec(),
-                        meta_cloned.clone(),
+                        Arc::clone(&meta_shared),
                     );
                 }
-                let _ = self.index_tx.send((entry.internal_id, meta_cloned));
+                let _ = self.index_tx.send((entry.internal_id, meta_shared));
             }
         }
 

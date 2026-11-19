@@ -48,6 +48,7 @@ use manager::CollectionManager;
 
 #[cfg(feature = "embed")]
 use hyperspace_pdk::embed::{ApiProvider, Metric, MultiVectorizer, OnnxVectorizer, RemoteVectorizer};
+use hyperspace_proto::F32Vector;
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{
     metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
@@ -166,6 +167,15 @@ impl Interceptor for AuthInterceptor {
 struct ClientAuthInterceptor {
     api_key: String,
     user_id: Option<String>,
+}
+
+/// `HS_SERVER_WAVE_SEARCH_ENABLED`, read once (env access takes a process-wide lock).
+fn server_wave_search_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("HS_SERVER_WAVE_SEARCH_ENABLED")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+    })
 }
 
 fn default_ef_search() -> usize {
@@ -301,7 +311,7 @@ fn parse_complex_filters(filters: &[Filter]) -> Vec<hyperspace_core::FilterExpr>
 }
 
 fn build_filters(
-    req: SearchRequest,
+    mut req: SearchRequest,
 ) -> (
     String,
     Vec<f64>,
@@ -309,6 +319,7 @@ fn build_filters(
     Vec<hyperspace_core::FilterExpr>,
     hyperspace_core::SearchParams,
 ) {
+    req.normalize_vector();
     let col_name = if req.collection.is_empty() {
         "default".to_string()
     } else {
@@ -1053,7 +1064,8 @@ impl Database for HyperspaceService {
             .remote_addr()
             .map(|addr| addr.ip().to_string())
             .unwrap_or_else(|| "unknown".to_string());
-        let req = request.into_inner();
+        let mut req = request.into_inner();
+        req.normalize_vector();
 
         let (owner, col_name) =
             resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
@@ -1174,7 +1186,8 @@ impl Database for HyperspaceService {
                 let vectors: Vec<(Vec<f64>, u32, std::collections::HashMap<String, String>)> = req
                     .vectors
                     .into_iter()
-                    .map(|v| {
+                    .map(|mut v| {
+                        v.normalize_vector();
                         (
                             v.vector,
                             v.id,
@@ -1620,8 +1633,7 @@ impl Database for HyperspaceService {
 
         if let Some(col) = self.manager.get(&owner, &actual_col_name).await {
             let wave_requested = params.use_wave;
-            let wave_enabled = std::env::var("HS_SERVER_WAVE_SEARCH_ENABLED")
-                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+            let wave_enabled = server_wave_search_enabled();
 
             let search_fut = async {
                 if wave_requested {
@@ -1956,7 +1968,8 @@ impl Database for HyperspaceService {
         request: Request<SearchMultiCollectionRequest>,
     ) -> Result<Response<SearchMultiCollectionResponse>, Status> {
         let user_id = get_user_id(&request);
-        let req = request.into_inner();
+        let mut req = request.into_inner();
+        req.normalize_vector();
         let inner_concurrency = search_batch_inner_concurrency();
 
         let mut responses = std::collections::HashMap::new();

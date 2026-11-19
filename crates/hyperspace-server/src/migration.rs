@@ -630,6 +630,10 @@ impl MigrationEngine {
         dim: usize,
     ) -> usize {
         match quant_mode {
+            hyperspace_core::QuantizationMode::RaBitQ => hyperspace_core::rabitq::code_size(dim),
+            hyperspace_core::QuantizationMode::PQ4 => {
+                hyperspace_core::pq4::code_size(hyperspace_core::pq4::default_num_subvectors(dim))
+            }
             hyperspace_core::QuantizationMode::ScalarI8 => dim + 4,
             hyperspace_core::QuantizationMode::Binary => dim.div_ceil(8) + 4,
             hyperspace_core::QuantizationMode::AsymmetricHybrid801 => {

@@ -296,6 +296,11 @@ export class CollectionSchema extends jspb.Message {
     setCascadePipelineList(value: Array<MrlLayer>): CollectionSchema;
     addCascadePipeline(value?: MrlLayer, index?: number): MrlLayer;
 
+    hasEncrypted(): boolean;
+    clearEncrypted(): void;
+    getEncrypted(): boolean | undefined;
+    setEncrypted(value: boolean): CollectionSchema;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CollectionSchema.AsObject;
     static toObject(includeInstance: boolean, msg: CollectionSchema): CollectionSchema.AsObject;
@@ -310,6 +315,7 @@ export namespace CollectionSchema {
     export type AsObject = {
         componentsList: Array<VectorComponent.AsObject>,
         cascadePipelineList: Array<MrlLayer.AsObject>,
+        encrypted?: boolean,
     }
 }
 
@@ -376,6 +382,11 @@ export class CollectionSummary extends jspb.Message {
     getSchema(): CollectionSchema | undefined;
     setSchema(value?: CollectionSchema): CollectionSummary;
 
+    hasEncrypted(): boolean;
+    clearEncrypted(): void;
+    getEncrypted(): boolean | undefined;
+    setEncrypted(value: boolean): CollectionSummary;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CollectionSummary.AsObject;
     static toObject(includeInstance: boolean, msg: CollectionSummary): CollectionSummary.AsObject;
@@ -391,6 +402,7 @@ export namespace CollectionSummary {
         name: string,
         count: number,
         schema?: CollectionSchema.AsObject,
+        encrypted?: boolean,
     }
 }
 
@@ -453,6 +465,11 @@ export class CollectionStatsResponse extends jspb.Message {
     getSchema(): CollectionSchema | undefined;
     setSchema(value?: CollectionSchema): CollectionStatsResponse;
 
+    hasEncrypted(): boolean;
+    clearEncrypted(): void;
+    getEncrypted(): boolean | undefined;
+    setEncrypted(value: boolean): CollectionStatsResponse;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): CollectionStatsResponse.AsObject;
     static toObject(includeInstance: boolean, msg: CollectionStatsResponse): CollectionStatsResponse.AsObject;
@@ -471,6 +488,7 @@ export namespace CollectionStatsResponse {
         ramUsageBytes: number,
         activeTasks: number,
         schema?: CollectionSchema.AsObject,
+        encrypted?: boolean,
     }
 }
 
@@ -620,6 +638,10 @@ export class InsertRequest extends jspb.Message {
     getPayload_asU8(): Uint8Array;
     getPayload_asB64(): string;
     setPayload(value: Uint8Array | string): InsertRequest;
+    clearVectorF32List(): void;
+    getVectorF32List(): Array<number>;
+    setVectorF32List(value: Array<number>): InsertRequest;
+    addVectorF32(value: number, index?: number): number;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): InsertRequest.AsObject;
@@ -644,6 +666,7 @@ export namespace InsertRequest {
 
         typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
         payload: Uint8Array | string,
+        vectorF32List: Array<number>,
     }
 }
 
@@ -660,6 +683,10 @@ export class VectorData extends jspb.Message {
 
     getTypedMetadataMap(): jspb.Map<string, MetadataValue>;
     clearTypedMetadataMap(): void;
+    clearVectorF32List(): void;
+    getVectorF32List(): Array<number>;
+    setVectorF32List(value: Array<number>): VectorData;
+    addVectorF32(value: number, index?: number): number;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): VectorData.AsObject;
@@ -679,6 +706,7 @@ export namespace VectorData {
         metadataMap: Array<[string, string]>,
 
         typedMetadataMap: Array<[string, MetadataValue.AsObject]>,
+        vectorF32List: Array<number>,
     }
 }
 
@@ -1216,6 +1244,10 @@ export class SearchRequest extends jspb.Message {
     clearComponentWeightsMap(): void;
     getUseWave(): boolean;
     setUseWave(value: boolean): SearchRequest;
+    clearVectorF32List(): void;
+    getVectorF32List(): Array<number>;
+    setVectorF32List(value: Array<number>): SearchRequest;
+    addVectorF32(value: number, index?: number): number;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
@@ -1244,6 +1276,7 @@ export namespace SearchRequest {
 
         componentWeightsMap: Array<[string, number]>,
         useWave: boolean,
+        vectorF32List: Array<number>,
     }
 }
 
@@ -1650,6 +1683,10 @@ export class SearchMultiCollectionRequest extends jspb.Message {
     addVector(value: number, index?: number): number;
     getTopK(): number;
     setTopK(value: number): SearchMultiCollectionRequest;
+    clearVectorF32List(): void;
+    getVectorF32List(): Array<number>;
+    setVectorF32List(value: Array<number>): SearchMultiCollectionRequest;
+    addVectorF32(value: number, index?: number): number;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchMultiCollectionRequest.AsObject;
@@ -1666,6 +1703,7 @@ export namespace SearchMultiCollectionRequest {
         collectionsList: Array<string>,
         vectorList: Array<number>,
         topK: number,
+        vectorF32List: Array<number>,
     }
 }
 
@@ -2988,9 +3026,173 @@ export namespace VerifyGenerationResponse {
     }
 }
 
+export class ExtensionRequest extends jspb.Message { 
+    getPlugin(): string;
+    setPlugin(value: string): ExtensionRequest;
+    getMethod(): string;
+    setMethod(value: string): ExtensionRequest;
+
+    hasCollection(): boolean;
+    clearCollection(): void;
+    getCollection(): string | undefined;
+    setCollection(value: string): ExtensionRequest;
+    getJsonPayload(): string;
+    setJsonPayload(value: string): ExtensionRequest;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ExtensionRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: ExtensionRequest): ExtensionRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ExtensionRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ExtensionRequest;
+    static deserializeBinaryFromReader(message: ExtensionRequest, reader: jspb.BinaryReader): ExtensionRequest;
+}
+
+export namespace ExtensionRequest {
+    export type AsObject = {
+        plugin: string,
+        method: string,
+        collection?: string,
+        jsonPayload: string,
+    }
+}
+
+export class ExtensionResponse extends jspb.Message { 
+    getSuccess(): boolean;
+    setSuccess(value: boolean): ExtensionResponse;
+    getJsonResult(): string;
+    setJsonResult(value: string): ExtensionResponse;
+    getError(): string;
+    setError(value: string): ExtensionResponse;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ExtensionResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: ExtensionResponse): ExtensionResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ExtensionResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ExtensionResponse;
+    static deserializeBinaryFromReader(message: ExtensionResponse, reader: jspb.BinaryReader): ExtensionResponse;
+}
+
+export namespace ExtensionResponse {
+    export type AsObject = {
+        success: boolean,
+        jsonResult: string,
+        error: string,
+    }
+}
+
+export class ExtensionProcedureInfo extends jspb.Message { 
+    getName(): string;
+    setName(value: string): ExtensionProcedureInfo;
+    getDescription(): string;
+    setDescription(value: string): ExtensionProcedureInfo;
+    getRequiresCollection(): boolean;
+    setRequiresCollection(value: boolean): ExtensionProcedureInfo;
+    getInputSchemaJson(): string;
+    setInputSchemaJson(value: string): ExtensionProcedureInfo;
+    getOutputSchemaJson(): string;
+    setOutputSchemaJson(value: string): ExtensionProcedureInfo;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ExtensionProcedureInfo.AsObject;
+    static toObject(includeInstance: boolean, msg: ExtensionProcedureInfo): ExtensionProcedureInfo.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ExtensionProcedureInfo, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ExtensionProcedureInfo;
+    static deserializeBinaryFromReader(message: ExtensionProcedureInfo, reader: jspb.BinaryReader): ExtensionProcedureInfo;
+}
+
+export namespace ExtensionProcedureInfo {
+    export type AsObject = {
+        name: string,
+        description: string,
+        requiresCollection: boolean,
+        inputSchemaJson: string,
+        outputSchemaJson: string,
+    }
+}
+
+export class ExtensionInfo extends jspb.Message { 
+    getName(): string;
+    setName(value: string): ExtensionInfo;
+    getVersion(): string;
+    setVersion(value: string): ExtensionInfo;
+    getAuthor(): string;
+    setAuthor(value: string): ExtensionInfo;
+    getDescription(): string;
+    setDescription(value: string): ExtensionInfo;
+    getRuntime(): string;
+    setRuntime(value: string): ExtensionInfo;
+    clearHooksList(): void;
+    getHooksList(): Array<string>;
+    setHooksList(value: Array<string>): ExtensionInfo;
+    addHooks(value: string, index?: number): string;
+    clearProceduresList(): void;
+    getProceduresList(): Array<ExtensionProcedureInfo>;
+    setProceduresList(value: Array<ExtensionProcedureInfo>): ExtensionInfo;
+    addProcedures(value?: ExtensionProcedureInfo, index?: number): ExtensionProcedureInfo;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ExtensionInfo.AsObject;
+    static toObject(includeInstance: boolean, msg: ExtensionInfo): ExtensionInfo.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ExtensionInfo, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ExtensionInfo;
+    static deserializeBinaryFromReader(message: ExtensionInfo, reader: jspb.BinaryReader): ExtensionInfo;
+}
+
+export namespace ExtensionInfo {
+    export type AsObject = {
+        name: string,
+        version: string,
+        author: string,
+        description: string,
+        runtime: string,
+        hooksList: Array<string>,
+        proceduresList: Array<ExtensionProcedureInfo.AsObject>,
+    }
+}
+
+export class ListExtensionsResponse extends jspb.Message { 
+    getPdkVersion(): string;
+    setPdkVersion(value: string): ListExtensionsResponse;
+    clearSupportedMetricsList(): void;
+    getSupportedMetricsList(): Array<string>;
+    setSupportedMetricsList(value: Array<string>): ListExtensionsResponse;
+    addSupportedMetrics(value: string, index?: number): string;
+    clearExtensionsList(): void;
+    getExtensionsList(): Array<ExtensionInfo>;
+    setExtensionsList(value: Array<ExtensionInfo>): ListExtensionsResponse;
+    addExtensions(value?: ExtensionInfo, index?: number): ExtensionInfo;
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): ListExtensionsResponse.AsObject;
+    static toObject(includeInstance: boolean, msg: ListExtensionsResponse): ListExtensionsResponse.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: ListExtensionsResponse, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): ListExtensionsResponse;
+    static deserializeBinaryFromReader(message: ListExtensionsResponse, reader: jspb.BinaryReader): ListExtensionsResponse;
+}
+
+export namespace ListExtensionsResponse {
+    export type AsObject = {
+        pdkVersion: string,
+        supportedMetricsList: Array<string>,
+        extensionsList: Array<ExtensionInfo.AsObject>,
+    }
+}
+
 export enum QuantizationMode {
     NONE = 0,
     SCALAR_I8 = 1,
+    BINARY = 2,
+    TERNARY = 3,
 }
 
 export enum DurabilityLevel {

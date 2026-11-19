@@ -8,6 +8,81 @@ use std::path::Path;
 
 const WAL_V3_MAGIC: u8 = 0xFF;
 
+/// Group commit coordinator shared by a [`Wal`] and its waiters.
+///
+/// Writers append under the WAL lock and only `write(2)` to the OS there; durability is
+/// obtained afterwards, *outside* the lock, via [`CommitTicket::wait`]. The first waiter
+/// becomes the leader and issues one `fdatasync` covering every record written so far;
+/// concurrent waiters are released by that same fsync (classic group commit), so N
+/// concurrent strict writers cost ~1 fsync instead of N serialized ones.
+#[derive(Debug)]
+pub struct GroupCommit {
+    file: parking_lot::Mutex<File>,
+    written: std::sync::atomic::AtomicU64,
+    state: parking_lot::Mutex<GroupState>,
+    cv: parking_lot::Condvar,
+}
+
+#[derive(Debug, Default)]
+struct GroupState {
+    synced: u64,
+    syncing: bool,
+}
+
+impl GroupCommit {
+    fn new(file: File) -> Self {
+        Self {
+            file: parking_lot::Mutex::new(file),
+            written: std::sync::atomic::AtomicU64::new(0),
+            state: parking_lot::Mutex::new(GroupState::default()),
+            cv: parking_lot::Condvar::new(),
+        }
+    }
+
+    /// Blocks until every record with sequence `<= target` is on stable storage.
+    pub fn sync_through(&self, target: u64) -> io::Result<()> {
+        let mut st = self.state.lock();
+        loop {
+            if st.synced >= target {
+                return Ok(());
+            }
+            if st.syncing {
+                self.cv.wait(&mut st);
+                continue;
+            }
+            st.syncing = true;
+            let upto = self.written.load(std::sync::atomic::Ordering::Acquire);
+            drop(st);
+            let res = self.file.lock().sync_data();
+            st = self.state.lock();
+            st.syncing = false;
+            if res.is_ok() {
+                st.synced = st.synced.max(upto);
+            }
+            self.cv.notify_all();
+            res?;
+        }
+    }
+
+    fn pending(&self) -> bool {
+        self.state.lock().synced < self.written.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+/// Proof that a record reached the OS; [`Self::wait`] makes it durable (group fsync).
+#[derive(Debug, Clone)]
+pub struct CommitTicket {
+    group: std::sync::Arc<GroupCommit>,
+    seq: u64,
+}
+
+impl CommitTicket {
+    /// Blocks until the record is durable. Call outside the WAL lock (e.g. `spawn_blocking`).
+    pub fn wait(&self) -> io::Result<()> {
+        self.group.sync_through(self.seq)
+    }
+}
+
 /// Durability mode for Write-Ahead Log.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WalSyncMode {
@@ -35,6 +110,12 @@ pub struct Wal {
     batch_fsync_interval_ms: u64,
     /// Reusable scratch buffer for zero-alloc serialization
     scratch_buf: Vec<u8>,
+    /// Group-commit state (fsync off the WAL lock, coalesced across writers).
+    group: std::sync::Arc<GroupCommit>,
+    /// Monotonic count of records handed to the OS (survives rotation).
+    seq: u64,
+    /// When set, `Strict` appends skip the inline fsync; the caller waits on a ticket.
+    defer_sync: bool,
 }
 
 /// Represents an operation stored in the WAL.
@@ -75,6 +156,10 @@ impl Wal {
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(100);
+        let group = std::sync::Arc::new(GroupCommit::new(file.try_clone()?));
+        if mode == WalSyncMode::Batch {
+            Self::spawn_batch_syncer(&group, batch_fsync_interval_ms);
+        }
         Ok(Self {
             file: BufWriter::with_capacity(128 * 1024, file),
             mode,
@@ -85,7 +170,83 @@ impl Wal {
             last_fsync_time: std::time::Instant::now(),
             batch_fsync_interval_ms,
             scratch_buf: Vec::with_capacity(4096),
+            group,
+            seq: 0,
+            defer_sync: false,
         })
+    }
+
+    /// Batch mode: a background thread fsyncs flushed records every interval, so no
+    /// writer ever pays an fsync while holding the WAL lock. Exits with the WAL.
+    fn spawn_batch_syncer(group: &std::sync::Arc<GroupCommit>, interval_ms: u64) {
+        let weak = std::sync::Arc::downgrade(group);
+        let interval = std::time::Duration::from_millis(interval_ms.max(1));
+        let _ = std::thread::Builder::new()
+            .name("hs-wal-sync".into())
+            .spawn(move || loop {
+                std::thread::sleep(interval);
+                let Some(g) = weak.upgrade() else { break };
+                if g.pending() {
+                    let target = g.written.load(std::sync::atomic::Ordering::Acquire);
+                    let _ = g.sync_through(target);
+                }
+            });
+    }
+
+    /// Hands buffered records to the OS and returns a ticket for their durability.
+    pub fn commit_ticket(&mut self) -> io::Result<CommitTicket> {
+        self.file.flush()?;
+        self.group
+            .written
+            .store(self.seq, std::sync::atomic::Ordering::Release);
+        Ok(CommitTicket {
+            group: std::sync::Arc::clone(&self.group),
+            seq: self.seq,
+        })
+    }
+
+    /// `true` when every append must be durable before acknowledging (`Strict` mode).
+    pub fn is_strict(&self) -> bool {
+        self.mode == WalSyncMode::Strict
+    }
+
+    /// Like [`Self::append`] but never fsyncs under the caller's lock: returns a ticket to
+    /// wait on (outside the lock) when the mode is `Strict` or `durable` is requested.
+    pub fn append_with_ticket(
+        &mut self,
+        id: u32,
+        vector: &[f64],
+        metadata: &HashMap<String, String>,
+        logical_clock: u64,
+        durable: bool,
+    ) -> io::Result<Option<CommitTicket>> {
+        self.defer_sync = true;
+        let res = self.append(id, vector, metadata, logical_clock);
+        self.defer_sync = false;
+        res?;
+        if durable || self.is_strict() {
+            self.commit_ticket().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Batch counterpart of [`Self::append_with_ticket`].
+    pub fn append_batch_with_ticket(
+        &mut self,
+        entries: &[(&[f64], u32, &HashMap<String, String>)],
+        logical_clock: u64,
+        durable: bool,
+    ) -> io::Result<Option<CommitTicket>> {
+        self.defer_sync = true;
+        let res = self.append_batch_borrowed(entries, logical_clock);
+        self.defer_sync = false;
+        res?;
+        if durable || self.is_strict() {
+            self.commit_ticket().map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn set_size_limit(&mut self, limit_bytes: u64) {
@@ -123,6 +284,15 @@ impl Wal {
             .truncate(true)
             .write(true)
             .open(&self.path)?;
+        // The old segment was fully synced above; point the group at the new file.
+        *self.group.file.lock() = file.try_clone()?;
+        {
+            let mut st = self.group.state.lock();
+            st.synced = st.synced.max(self.seq);
+        }
+        self.group
+            .written
+            .store(self.seq, std::sync::atomic::Ordering::Release);
         self.file = BufWriter::with_capacity(128 * 1024, file);
         self.current_size = 0;
         self.pending_entries = 0;
@@ -204,6 +374,7 @@ impl Wal {
         // 9 bytes header + payload length
         self.current_size += 9 + self.scratch_buf.len() as u64;
         self.pending_entries += 1;
+        self.seq += 1;
 
         Ok(())
     }
@@ -226,6 +397,7 @@ impl Wal {
         // 9 bytes header + payload length
         self.current_size += 9 + payload.len() as u64;
         self.pending_entries += 1;
+        self.seq += 1;
 
         Ok(())
     }
@@ -234,16 +406,18 @@ impl Wal {
     fn apply_sync_policy(&mut self) -> io::Result<()> {
         match self.mode {
             WalSyncMode::Strict => {
-                self.file.flush()?;
-                self.file.get_ref().sync_all()?;
+                let ticket = self.commit_ticket()?;
+                if !self.defer_sync {
+                    ticket.wait()?;
+                }
                 self.last_fsync_time = std::time::Instant::now();
             }
             WalSyncMode::Batch => {
+                // Only hand data to the OS here; the background syncer fsyncs it.
                 if self.last_fsync_time.elapsed().as_millis()
                     >= u128::from(self.batch_fsync_interval_ms)
                 {
-                    self.file.flush()?;
-                    self.file.get_ref().sync_all()?;
+                    self.commit_ticket()?;
                     self.last_fsync_time = std::time::Instant::now();
                 }
             }
@@ -478,8 +652,7 @@ impl Wal {
 
     /// Force sync all changes to disk immediately.
     pub fn sync(&mut self) -> io::Result<()> {
-        self.file.flush()?;
-        self.file.get_ref().sync_all()?;
+        self.commit_ticket()?.wait()?;
         self.last_fsync_time = std::time::Instant::now();
         Ok(())
     }
@@ -831,5 +1004,64 @@ impl Wal {
         let mut count = 0;
         let _ = Self::replay(path, |_| count += 1);
         count
+    }
+}
+
+#[cfg(test)]
+mod group_commit_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn concurrent_strict_writers_share_group_fsync() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wal.log");
+        let wal = Arc::new(Mutex::new(Wal::new(&path, WalSyncMode::Strict).unwrap()));
+        let threads: Vec<_> = (0..8u32)
+            .map(|t| {
+                let wal = Arc::clone(&wal);
+                std::thread::spawn(move || {
+                    for i in 0..25u32 {
+                        let ticket = {
+                            let mut w = wal.lock().unwrap();
+                            w.append_with_ticket(
+                                t * 100 + i,
+                                &[1.0, 2.0],
+                                &HashMap::new(),
+                                1,
+                                false,
+                            )
+                            .unwrap()
+                        };
+                        // Strict mode always yields a ticket; wait outside the lock.
+                        ticket.expect("strict ticket").wait().unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let group = Arc::clone(&wal.lock().unwrap().group);
+        assert!(!group.pending(), "all records must be synced");
+        drop(wal);
+        let mut n = 0;
+        Wal::replay(&path, |_| n += 1).unwrap();
+        assert_eq!(n, 200);
+    }
+
+    #[test]
+    fn async_mode_only_tickets_when_durable_requested() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = Wal::new(&dir.path().join("w.log"), WalSyncMode::Async).unwrap();
+        assert!(w
+            .append_with_ticket(1, &[0.5], &HashMap::new(), 1, false)
+            .unwrap()
+            .is_none());
+        let t = w
+            .append_with_ticket(2, &[0.5], &HashMap::new(), 2, true)
+            .unwrap()
+            .expect("durable ticket");
+        t.wait().unwrap();
     }
 }

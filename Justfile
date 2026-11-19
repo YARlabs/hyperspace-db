@@ -6,6 +6,10 @@ default: build
 build:
     cargo build --release
 
+# Profile-guided optimized release build of the server (see scripts/pgo_build.sh)
+build-pgo:
+    ./scripts/pgo_build.sh
+
 # Run server locally
 run:
     cargo run -p hyperspace-server

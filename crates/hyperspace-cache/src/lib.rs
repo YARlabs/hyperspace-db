@@ -152,6 +152,32 @@ impl RateTracker {
     }
 }
 
+/// Pre-resolved per-collection Prometheus handles for the query hot path
+/// (avoids a label hash lookup + registry lock on every `search`).
+struct SearchMetricHandles {
+    l1_hits: prometheus::Counter,
+    l1_misses: prometheus::Counter,
+    l1_latency: prometheus::Histogram,
+    l2_hits: prometheus::Counter,
+    l2_misses: prometheus::Counter,
+    l2_latency: prometheus::Histogram,
+}
+
+impl SearchMetricHandles {
+    fn new(collection_name: &str) -> Self {
+        let m = metrics::metrics();
+        let labels = &[collection_name];
+        Self {
+            l1_hits: m.l1_hits.with_label_values(labels),
+            l1_misses: m.l1_misses.with_label_values(labels),
+            l1_latency: m.l1_latency.with_label_values(labels),
+            l2_hits: m.l2_hits.with_label_values(labels),
+            l2_misses: m.l2_misses.with_label_values(labels),
+            l2_latency: m.l2_latency.with_label_values(labels),
+        }
+    }
+}
+
 pub struct VectorCache {
     l1: Arc<L1ExactStore>,
     l2: Arc<dyn AnyAnnStore>,
@@ -160,6 +186,7 @@ pub struct VectorCache {
     config: parking_lot::RwLock<CacheConfig>,
 
     collection_name: String,
+    search_metrics: SearchMetricHandles,
     ann_enabled: std::sync::atomic::AtomicBool,
     ann_threshold_bits: std::sync::atomic::AtomicU64,
 
@@ -238,7 +265,9 @@ impl VectorCache {
         let config = parking_lot::RwLock::new(config);
         let (shutdown, _) = tokio::sync::watch::channel(false);
 
+        let search_metrics = SearchMetricHandles::new(&collection_name);
         Self {
+            search_metrics,
             l1,
             l2,
             ttl_wheel,
@@ -340,17 +369,11 @@ impl VectorCache {
 
     pub fn search(&self, query: &[f64], known_id: Option<u32>, k: usize) -> Option<Vec<CacheHit>> {
         let start_time = Instant::now();
-        let collection_name = &self.collection_name;
+        let sm = &self.search_metrics;
         if let Some(id) = known_id {
             if let Some((vec, meta)) = self.l1.get_entry(id) {
-                metrics::metrics()
-                    .l1_hits
-                    .with_label_values(&[collection_name])
-                    .inc();
-                metrics::metrics()
-                    .l1_latency
-                    .with_label_values(&[collection_name])
-                    .observe(start_time.elapsed().as_secs_f64());
+                sm.l1_hits.inc();
+                sm.l1_latency.observe(start_time.elapsed().as_secs_f64());
                 self.l1_tracker.record_hit();
 
                 return Some(vec![CacheHit {
@@ -361,10 +384,7 @@ impl VectorCache {
                     tier: CacheTier::L1Exact,
                 }]);
             }
-            metrics::metrics()
-                .l1_misses
-                .with_label_values(&[collection_name])
-                .inc();
+            sm.l1_misses.inc();
             self.l1_tracker.record_miss();
         }
 
@@ -378,24 +398,12 @@ impl VectorCache {
         if let Some(threshold) = ann_threshold {
             let l2_start = Instant::now();
             let ann_results = self.l2.search(query, k, threshold);
-            if ann_results.is_empty() {
-                metrics::metrics()
-                    .l2_misses
-                    .with_label_values(&[collection_name])
-                    .inc();
-                self.l2_tracker.record_miss();
-            } else {
-                metrics::metrics()
-                    .l2_hits
-                    .with_label_values(&[collection_name])
-                    .inc();
-                metrics::metrics()
-                    .l2_latency
-                    .with_label_values(&[collection_name])
-                    .observe(l2_start.elapsed().as_secs_f64());
-                self.l2_tracker.record_hit();
 
-                let mut hits = Vec::with_capacity(ann_results.len());
+            // RECALL: the L2 tier only indexes the cached subset. A partial answer
+            // (< k hits inside the threshold) is not a valid global top-k, so it is
+            // treated as a miss and the caller falls through to the full index.
+            let mut hits = Vec::with_capacity(ann_results.len());
+            if ann_results.len() >= k.max(1) {
                 for (id, dist) in ann_results {
                     if let Some((vector, metadata)) = self.l1.get_entry(id) {
                         hits.push(CacheHit {
@@ -407,11 +415,16 @@ impl VectorCache {
                         });
                     }
                 }
-
-                if !hits.is_empty() {
-                    return Some(hits);
-                }
             }
+
+            if hits.len() >= k.max(1) {
+                sm.l2_hits.inc();
+                sm.l2_latency.observe(l2_start.elapsed().as_secs_f64());
+                self.l2_tracker.record_hit();
+                return Some(hits);
+            }
+            sm.l2_misses.inc();
+            self.l2_tracker.record_miss();
         }
 
         None

@@ -37,7 +37,11 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
 
 <table>
   <tr>
-    <td>⚡ <b>Zero-Copy Byte SIMD, 8B Packed Heaps &amp; Deep Hyperbolic Precision (v4.2.5)</b></td>
+    <td>🎯 <b>Performance &amp; Recall Audit: RaBitQ, PQ4 Fast-Scan, Flat Graph &amp; Group Commit (v4.2.5)</b></td>
+    <td>Two new trained quantizers for L2 / cosine — <b>RaBitQ</b> (1-bit code + unbiased popcount estimator, 136 B per 1024-D vector) and <b>PQ4 fast-scan</b> (4-bit PQ with an L1-resident <code>u8</code> lookup table, 128 B). A <b>flat seqlocked Layer-0 adjacency arena</b>, <b>per-query distance-kernel dispatch</b>, multi-line prefetch and the standard <code>1/M</code> level distribution speed up the hot loop. <b>Graph repair after deletes</b> (FreshDiskANN-style, α = 1.2), <b>ACORN-style filtered traversal</b>, adaptive-ef patience, an <b>order-preserving f64 range index</b> (no query-time parsing) and a <b>cold-chunk index cache</b> with manifests fix recall and latency cliffs. Durability gains <b>WAL group commit</b>; the wire format gains compact <code>vector_f32</code> vectors in every SDK. See the 4.2.5 changelog and <a href="BENCHMARK_QUANTIZATION_SWEEP.md">BENCHMARK_QUANTIZATION_SWEEP.md</a>.</td>
+  </tr>
+  <tr>
+    <td>⚡ <b>Zero-Copy Byte SIMD, 8B Packed Heaps &amp; Deep Hyperbolic Precision (v4.2.4)</b></td>
     <td>High-throughput HNSW acceleration featuring <b>8-byte packed candidates</b> (<code>#[repr(C, align(8))]</code>) enabling 1-cycle integer comparisons and 50% smaller Priority Queues; <b>Zero-copy byte-to-byte SIMD distance kernels</b> (<code>&amp;[u8]</code> vs <code>&amp;[u8]</code>) in <code>select_neighbors</code> and <code>prune_connections</code> eliminating up to 256 KB memory copies per node and 3 heap allocations per prune; <b>2-checkpoint ADSampling</b> statistical early-abandon (50% and 75% dims); <b>Fused SQ8 Lorentz integer dot accumulation</b> (<code>sq8_dot_and_qsq</code>) cutting FP FMAs in half and boosting deep hyperbolic radius ($t \approx 25$) Recall@10 from <b>31.5% to 93.5%</b> with <b>2.14× faster build speed</b>; and <b>KAG-Guided HNSW Traversal</b> expanding active CSR knowledge graph edges inside <code>search_layer0</code> to bridge semantic gaps in a single traversal pass.</td>
   </tr>
   <tr>
@@ -327,20 +331,24 @@ HyperspaceDB **v4.0.0** introduces a high-performance **Thread-per-Core (Shared-
 
 ---
 
-## 🗜️ Multi-Tier Vector Quantization Suite (v4.0.0)
+## 🗜️ Multi-Tier Vector Quantization Suite (v4.2.5)
 
-HyperspaceDB v4.0.0 supports 7 quantization precision levels verified empirically across 20,000 unit-normalized 1024D embeddings (see [BENCHMARK_QUANTIZATION_SWEEP.md](BENCHMARK_QUANTIZATION_SWEEP.md)):
+HyperspaceDB v4.2.5 supports 10 quantization levels, measured on 20,000 unit-normalized 1024D embeddings (cosine, 200 queries, M=64, ef_construction=400, ef_search=100, Apple M4 Pro). Full matrix and the v4.2.4 → v4.2.5 A/B: [BENCHMARK_QUANTIZATION_SWEEP.md](BENCHMARK_QUANTIZATION_SWEEP.md).
 
-| Mode | Key | Bytes / Vec | Compression | Single-Pass Recall@10 | Two-Pass Raw Rerank | Search QPS | Mean Latency | Primary Use Case |
+| Mode | Key | Bytes / Vec | Compression | Single-Pass Recall@10 | With Rerank | Search QPS | Mean Latency | Primary Use Case |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Full Precision** | `none` | 4,100 B | **1.0×** | **100.00%** | Baseline | 203 QPS | 4.91 ms | Legal, Medical, Financial Ground Truth |
-| **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **88.60%** | 88.60% | 220 QPS | 4.52 ms | Enterprise RAG standard (75% RAM savings) |
-| **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **87.15%** | 87.15% | **287 QPS** | **3.47 ms** | High-throughput microservices (Fastest) |
-| **TurboQuant** | `turbo` | 520 B | **7.9×** | **86.95%** | **99.95%** (k=40) | 218 QPS | 4.57 ms | Spherical Lloyd-Max + Orthogonal Rotation |
-| **Ternary BitNet** | `ternary` | 264 B | **15.5×** | **41.00%** | **92.60%** (k=100) | **1,420 QPS** | **0.70 ms** | SOTA BitNet weights, 25.2× SIMD popcount dot speed |
-| **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **17.00%** (73.4% rk4) | **99.85%** (k=40) | **1,567 QPS** | **0.63 ms** | Ultra-Scale ADC with FWHT rotation |
-| **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **17.20%** (73.1% rk4) | **99.80%** (k=40) | **1,453 QPS** | **0.67 ms** | Standard Product Quantization with ADC |
-| **Extreme 1-Bit ADC**| `extreme` | 132 B | **31.1×** | **35.75%** | **75.45%** (k=80) | 113 QPS | 8.85 ms | Edge, Robotics (ROS 2), IoT (< 132 MB / 1M vecs) |
+| **Full Precision** | `none` | 4,100 B | **1.0×** | **92.95%** | **99.65%** (ef=400) | 1,272 | 0.77 ms | Legal, Medical, Financial ground truth |
+| **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **84.80%** | 97.55% (rerank ×4) | 2,075 | 0.47 ms | Enterprise RAG standard (75% RAM savings) |
+| **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **84.45%** | 99.35% (rerank ×8) | 661 | 1.50 ms | Balanced 4-bit storage |
+| **TurboQuant** | `turbo` | 520 B | **7.9×** | **85.60%** | 99.25% (rerank ×4) | 1,414 | 0.69 ms | Spherical Lloyd-Max + orthogonal rotation |
+| **Ternary BitNet** | `ternary` | 268 B | **15.3×** | **53.75%** | 99.80% (rerank ×4) | 120 | 8.29 ms | BitNet 1.58-bit, any metric |
+| **RaBitQ *(v4.2.5)*** | `rabitq` | 140 B | **29.3×** | **35.30%** | 96.85% (rerank ×4) | 2,599 | 0.37 ms | Fastest single pass; L2 / cosine, needs calibration |
+| **PQ4 Fast-Scan *(v4.2.5)*** | `pq4` | 132 B | **31.1×** | **35.90%** | 99.00% (rerank ×8) | 2,048 | 0.47 ms | 4-bit PQ with L1 LUT; L2 / cosine, needs calibration |
+| **Extreme 1-Bit ADC** | `extreme` | 132 B | **31.1×** | **35.25%** | 99.35% (rerank ×16) | 991 | 0.99 ms | Edge, robotics (ROS 2), IoT |
+| **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **23.95%** | 82.80% (rerank ×8) | 2,100 | 0.46 ms | Ultra-scale ADC with FWHT rotation |
+| **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **26.85%** | 82.70% (rerank ×8) | 1,900 | 0.51 ms | Standard product quantization with ADC |
+
+Rerank rows use `rerank_enabled=true` with the given oversampling factor: the server fetches `top_k × factor` candidates and re-scores them before returning `top_k`. Trained modes (`rabitq`, `pq4`, `pq`, `opq`) score with the untrained fallback until `RebuildIndex` / vacuum calibrates them.
 
 ---
 
@@ -499,12 +507,16 @@ All quantization is configured per-collection at creation time via `HS_QUANTIZAT
 | **TurboQuant 4-bit** | `turbo` | 520 B | 7.9× | Cosine, L2 | Spherical embeddings with Lloyd-Max bias correction |
 | **Optimized PQ (OPQ-64)** | `opq` | 68 B | 60.3×–64× | Cosine, L2 (Euclidean tail in Hybrid) | Massive scale with FWHT-rotated ADC table lookups |
 | **Product Quant (PQ-64)** | `pq` | 68 B | 60.3×–64× | Cosine, L2 | Standard Subspace Product Quantization ADC |
+| **Ternary BitNet 1.58-bit** | `ternary` | 264 B | 15.5× | All metrics | SIMD popcount {-1, 0, +1} codes |
+| **RaBitQ (1-bit + estimator)** *(v4.2.5)* | `rabitq` | 136 B | 30× | Cosine, L2 | 1-bit codes with an unbiased distance estimate; needs calibration |
+| **PQ4 Fast-Scan** *(v4.2.5)* | `pq4` / `pq_fastscan` | 128 B | 32× | Cosine, L2 | 4-bit PQ, L1-resident LUT; needs calibration |
 | **Binary ADC (1-bit)** | `extreme` / `binary` | 132 B | 31.1× (vs f32) / 62× (vs f64) | Cosine, L2 | RAM-critical edge/robotics deployment |
 | **Lorentz SQ8** | automatic | 1,028 B | 4× / 8× | Lorentz metric only | Hyperbolic embeddings with Minkowski time sign preservation |
 | **Full Precision** | `none` | 4,100 B | 1× | All metrics | Exact ground truth, medical, legal compliance |
 
 > ⚠️ **Metric Compatibility Notice**:
-> - **Cosine & L2**: Compatible with **ALL** quantization modes (`none`, `medium`, `medium_plus`, `turbo`, `opq`, `pq`, `extreme`).
+> - **Cosine & L2**: Compatible with **ALL** quantization modes (`none`, `medium`, `medium_plus`, `turbo`, `ternary`, `rabitq`, `pq4`, `opq`, `pq`, `extreme`). `rabitq` / `pq4` requested on other metrics fall back to `medium`.
+> - **Calibration**: trained modes (`rabitq`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from data — run **Rebuild Index** (`RebuildIndex` RPC, `POST /api/collections/{name}/rebuild`, dashboard button) once after the initial bulk ingest.
 > - **Poincaré & Lorentz**: Only compatible with `none` and `medium` (Scalar SQ8). Product Quantization (`pq`/`opq`) and 1-bit (`extreme`) assume Euclidean metrics and orthonormal rotations that violate conformal Poincaré boundary conditions ($\|x\| < 1$) and Lorentzian pseudo-Riemannian signature $(-1, +1, \dots, +1)$.
 > - **Hybrid (801D = 33D Lorentz + 768D Euclidean)**: Uses `AsymmetricHybrid`, where the 33D Lorentz head is kept unquantized/FP64 while the 768D Euclidean tail can be compressed with `turbo`, `opq`, or `extreme`.
 
@@ -805,7 +817,18 @@ Configure these via `.env` file or environment variables:
 
 | Variable | Description | Supported Values | Default |
 | :--- | :--- | :--- | :--- |
-| `HS_QUANTIZATION_LEVEL` | Compression | `scalar` (i8), `binary` (1-bit), `turbo` (4-bit), `none` (f64) | `none` |
+| `HS_QUANTIZATION_LEVEL` | Default quantization for new collections | `none`, `medium`/`scalar`, `medium_plus`, `turbo`, `ternary`, `extreme`/`binary`, `rabitq`, `pq4`, `pq`, `opq` | `scalar` |
+| `HS_HNSW_M` / `HS_HNSW_EF_CONSTRUCT` / `HS_HNSW_EF_SEARCH` | HNSW degree / build beam / default search beam | Integers | `16` / `100` / `64` |
+| `HS_HNSW_ALPHA` | Vamana α for neighbor selection (> 1 keeps longer edges) | Float ≥ 1.0 | `1.0` |
+| `HS_FILTER_ACORN` | ACORN 2-hop traversal for selective filters | `true` / `false` | `true` |
+| `HS_FILTER_BRUTEFORCE_THRESHOLD` | Filter size below which a SIMD scan replaces HNSW | Integer | adaptive |
+| `HS_SEARCH_PATIENCE` | Adaptive ef: stop after N non-improving expansions | Integer (`0` = off) | `0` |
+| `HS_REPAIR_DELETE_THRESHOLD` | Deletes that trigger automatic graph repair | Integer | `max(256, 5% of nodes)` |
+| `HS_CHUNK_CACHE_SIZE` | Loaded cold chunks kept in memory (LRU) | Integer | `64` |
+| `HS_STORAGE_FLOAT32` | f32 storage for unquantized collections | `1` / `0` | `1` |
+| `HS_MMAP_WILLNEED` / `HS_MMAP_HUGEPAGES` | Pre-fault stores / transparent huge pages (Linux) | `true` / `false` | `false` |
+| `HYPERSPACE_WAL_SYNC_MODE` | WAL durability (`strict` = group commit, `batch` = background fsync) | `strict`, `batch`, `async` | `async` |
+| `HS_SIMD` | Force SIMD backend | `scalar`, `avx2`, `avx512`, `neon` | auto |
 | `HS_SHARDS` | Number of Thread-per-core CPU shards | Integer (`1` to `num_cpus * 2`) | Logical CPU core count |
 | `HS_DIRECT_IO` | Enable Direct I/O (`O_DIRECT` / `F_NOCACHE`) | `1` (true), `0` (false) | `1` |
 

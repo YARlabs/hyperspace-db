@@ -35,6 +35,22 @@ type HyperspaceClient struct {
 	collectionMetrics     map[string]string
 	collectionNoiseSigmas map[string]float64
 	collectionSchemas     map[string]*pb.CollectionSchema
+	// compactVectors sends vectors as `repeated float` (VectorF32): half the wire size.
+	// Requires HyperspaceDB server >= 4.2.5.
+	compactVectors bool
+}
+
+// SetCompactVectors enables compact f32 wire vectors (server >= 4.2.5).
+func (c *HyperspaceClient) SetCompactVectors(enabled bool) {
+	c.compactVectors = enabled
+}
+
+func toF32(v []float64) []float32 {
+	out := make([]float32, len(v))
+	for i, x := range v {
+		out[i] = float32(x)
+	}
+	return out
 }
 
 // NewClient creates a new gRPC connection pool to HyperspaceDB
@@ -129,7 +145,6 @@ func (c *HyperspaceClient) UnfreezeCollection(ctx context.Context, name string) 
 	return resp.Status, nil
 }
 
-
 // ListCollections retrieves all active collections for the current tenant
 func (c *HyperspaceClient) ListCollections(ctx context.Context) ([]*pb.CollectionSummary, error) {
 	req := &pb.Empty{}
@@ -139,7 +154,6 @@ func (c *HyperspaceClient) ListCollections(ctx context.Context) ([]*pb.Collectio
 	}
 	return resp.Collections, nil
 }
-
 
 type InsertParams struct {
 	Metadata      map[string]string
@@ -238,6 +252,9 @@ func (c *HyperspaceClient) Insert(ctx context.Context, id uint32, vector []float
 		TypedMetadata: finalTypedMetadata,
 		Payload:       finalPayload,
 	}
+	if c.compactVectors {
+		req.VectorF32, req.Vector = toF32(req.Vector), nil
+	}
 	if params != nil {
 		req.Durability = params.Durability
 	}
@@ -256,6 +273,9 @@ func (c *HyperspaceClient) BatchInsert(ctx context.Context, ids []uint32, vector
 		protoVectors[i] = &pb.VectorData{
 			Id:     ids[i],
 			Vector: vectors[i],
+		}
+		if c.compactVectors {
+			protoVectors[i].VectorF32, protoVectors[i].Vector = toF32(protoVectors[i].Vector), nil
 		}
 	}
 	req := &pb.BatchInsertRequest{
@@ -368,6 +388,9 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 		Vector:     finalVector,
 		TopK:       topK,
 		Collection: collection,
+	}
+	if c.compactVectors {
+		req.VectorF32, req.Vector = toF32(req.Vector), nil
 	}
 
 	if params != nil {
@@ -513,6 +536,9 @@ func (c *HyperspaceClient) SearchMultiCollection(ctx context.Context, collection
 		Collections: collections,
 		Vector:      query,
 		TopK:        topK,
+	}
+	if c.compactVectors {
+		req.VectorF32, req.Vector = toF32(req.Vector), nil
 	}
 	return c.client.SearchMultiCollection(c.withContext(ctx), req)
 }
@@ -1127,5 +1153,3 @@ func (c *HyperspaceClient) InduceEdgesFromMetadata(ctx context.Context, collecti
 	}
 	return resp.EdgesCreated, nil
 }
-
-

@@ -62,6 +62,8 @@ const (
 	Database_SyncPush_FullMethodName                = "/hyperspace.Database/SyncPush"
 	Database_HealthCheck_FullMethodName             = "/hyperspace.Database/HealthCheck"
 	Database_VerifyGeneration_FullMethodName        = "/hyperspace.Database/VerifyGeneration"
+	Database_CallExtension_FullMethodName           = "/hyperspace.Database/CallExtension"
+	Database_ListExtensions_FullMethodName          = "/hyperspace.Database/ListExtensions"
 )
 
 // DatabaseClient is the client API for Database service.
@@ -131,6 +133,9 @@ type DatabaseClient interface {
 	HealthCheck(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 	// Tribunal Router (Geometric Hallucination Prevention)
 	VerifyGeneration(ctx context.Context, in *VerifyGenerationRequest, opts ...grpc.CallOption) (*VerifyGenerationResponse, error)
+	// Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+	CallExtension(ctx context.Context, in *ExtensionRequest, opts ...grpc.CallOption) (*ExtensionResponse, error)
+	ListExtensions(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListExtensionsResponse, error)
 }
 
 type databaseClient struct {
@@ -610,6 +615,26 @@ func (c *databaseClient) VerifyGeneration(ctx context.Context, in *VerifyGenerat
 	return out, nil
 }
 
+func (c *databaseClient) CallExtension(ctx context.Context, in *ExtensionRequest, opts ...grpc.CallOption) (*ExtensionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExtensionResponse)
+	err := c.cc.Invoke(ctx, Database_CallExtension_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databaseClient) ListExtensions(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListExtensionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListExtensionsResponse)
+	err := c.cc.Invoke(ctx, Database_ListExtensions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabaseServer is the server API for Database service.
 // All implementations must embed UnimplementedDatabaseServer
 // for forward compatibility.
@@ -677,6 +702,9 @@ type DatabaseServer interface {
 	HealthCheck(context.Context, *Empty) (*HealthCheckResponse, error)
 	// Tribunal Router (Geometric Hallucination Prevention)
 	VerifyGeneration(context.Context, *VerifyGenerationRequest) (*VerifyGenerationResponse, error)
+	// Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+	CallExtension(context.Context, *ExtensionRequest) (*ExtensionResponse, error)
+	ListExtensions(context.Context, *Empty) (*ListExtensionsResponse, error)
 	mustEmbedUnimplementedDatabaseServer()
 }
 
@@ -815,6 +843,12 @@ func (UnimplementedDatabaseServer) HealthCheck(context.Context, *Empty) (*Health
 }
 func (UnimplementedDatabaseServer) VerifyGeneration(context.Context, *VerifyGenerationRequest) (*VerifyGenerationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method VerifyGeneration not implemented")
+}
+func (UnimplementedDatabaseServer) CallExtension(context.Context, *ExtensionRequest) (*ExtensionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CallExtension not implemented")
+}
+func (UnimplementedDatabaseServer) ListExtensions(context.Context, *Empty) (*ListExtensionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListExtensions not implemented")
 }
 func (UnimplementedDatabaseServer) mustEmbedUnimplementedDatabaseServer() {}
 func (UnimplementedDatabaseServer) testEmbeddedByValue()                  {}
@@ -1572,6 +1606,42 @@ func _Database_VerifyGeneration_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Database_CallExtension_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExtensionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).CallExtension(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_CallExtension_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).CallExtension(ctx, req.(*ExtensionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Database_ListExtensions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabaseServer).ListExtensions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Database_ListExtensions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabaseServer).ListExtensions(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Database_ServiceDesc is the grpc.ServiceDesc for Database service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1730,6 +1800,14 @@ var Database_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VerifyGeneration",
 			Handler:    _Database_VerifyGeneration_Handler,
+		},
+		{
+			MethodName: "CallExtension",
+			Handler:    _Database_CallExtension_Handler,
+		},
+		{
+			MethodName: "ListExtensions",
+			Handler:    _Database_ListExtensions_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

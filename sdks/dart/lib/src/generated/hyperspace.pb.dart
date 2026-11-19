@@ -1646,6 +1646,7 @@ class ReconsolidationRequest extends $pb.GeneratedMessage {
 
 class InsertRequest extends $pb.GeneratedMessage {
   factory InsertRequest({
+    $core.Iterable<$core.double>? vectorF32,
     $core.String? collection,
     $core.Iterable<$core.double>? vector,
     $core.int? id,
@@ -1657,6 +1658,7 @@ class InsertRequest extends $pb.GeneratedMessage {
     $core.List<$core.int>? payload,
   }) {
     final result = create();
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (collection != null) result.collection = collection;
     if (vector != null) result.vector.addAll(vector);
     if (id != null) result.id = id;
@@ -1705,6 +1707,7 @@ class InsertRequest extends $pb.GeneratedMessage {
         packageName: const $pb.PackageName('hyperspace'))
     ..a<$core.List<$core.int>>(
         9, _omitFieldNames ? '' : 'payload', $pb.PbFieldType.OY)
+    ..p<$core.double>(10, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1792,16 +1795,22 @@ class InsertRequest extends $pb.GeneratedMessage {
   $core.bool hasPayload() => $_has(8);
   @$pb.TagNumber(9)
   void clearPayload() => $_clearField(9);
+
+  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
+  @$pb.TagNumber(10)
+  $pb.PbList<$core.double> get vectorF32 => $_getList(9);
 }
 
 class VectorData extends $pb.GeneratedMessage {
   factory VectorData({
+    $core.Iterable<$core.double>? vectorF32,
     $core.Iterable<$core.double>? vector,
     $core.int? id,
     $core.Iterable<$core.MapEntry<$core.String, $core.String>>? metadata,
     $core.Iterable<$core.MapEntry<$core.String, MetadataValue>>? typedMetadata,
   }) {
     final result = create();
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (vector != null) result.vector.addAll(vector);
     if (id != null) result.id = id;
     if (metadata != null) result.metadata.addEntries(metadata);
@@ -1836,6 +1845,7 @@ class VectorData extends $pb.GeneratedMessage {
         valueCreator: MetadataValue.create,
         valueDefaultOrMaker: MetadataValue.getDefault,
         packageName: const $pb.PackageName('hyperspace'))
+    ..p<$core.double>(5, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1873,6 +1883,10 @@ class VectorData extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(4)
   $pb.PbMap<$core.String, MetadataValue> get typedMetadata => $_getMap(3);
+
+  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
+  @$pb.TagNumber(5)
+  $pb.PbList<$core.double> get vectorF32 => $_getList(4);
 }
 
 class BatchInsertRequest extends $pb.GeneratedMessage {
@@ -3140,6 +3154,7 @@ class HealthCheckResponse extends $pb.GeneratedMessage {
 
 class SearchRequest extends $pb.GeneratedMessage {
   factory SearchRequest({
+    $core.Iterable<$core.double>? vectorF32,
     $core.String? collection,
     $core.Iterable<$core.double>? vector,
     $core.int? topK,
@@ -3156,6 +3171,7 @@ class SearchRequest extends $pb.GeneratedMessage {
     $core.bool? useWave,
   }) {
     final result = create();
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (collection != null) result.collection = collection;
     if (vector != null) result.vector.addAll(vector);
     if (topK != null) result.topK = topK;
@@ -3211,6 +3227,7 @@ class SearchRequest extends $pb.GeneratedMessage {
         valueFieldType: $pb.PbFieldType.OF,
         packageName: const $pb.PackageName('hyperspace'))
     ..aOB(13, _omitFieldNames ? '' : 'useWave')
+    ..p<$core.double>(14, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -3342,6 +3359,10 @@ enum Filter_Condition {
   notOp,
   prefix,
   notSet
+
+  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
+  @$pb.TagNumber(14)
+  $pb.PbList<$core.double> get vectorF32 => $_getList(13);
 }
 
 class Filter extends $pb.GeneratedMessage {
@@ -4257,11 +4278,13 @@ class BatchSearchResponse extends $pb.GeneratedMessage {
 
 class SearchMultiCollectionRequest extends $pb.GeneratedMessage {
   factory SearchMultiCollectionRequest({
+    $core.Iterable<$core.double>? vectorF32,
     $core.Iterable<$core.String>? collections,
     $core.Iterable<$core.double>? vector,
     $core.int? topK,
   }) {
     final result = create();
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (collections != null) result.collections.addAll(collections);
     if (vector != null) result.vector.addAll(vector);
     if (topK != null) result.topK = topK;
@@ -4284,6 +4307,7 @@ class SearchMultiCollectionRequest extends $pb.GeneratedMessage {
     ..pPS(1, _omitFieldNames ? '' : 'collections')
     ..p<$core.double>(2, _omitFieldNames ? '' : 'vector', $pb.PbFieldType.KD)
     ..aI(3, _omitFieldNames ? '' : 'topK', fieldType: $pb.PbFieldType.OU3)
+    ..p<$core.double>(4, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -4322,6 +4346,10 @@ class SearchMultiCollectionRequest extends $pb.GeneratedMessage {
   $core.bool hasTopK() => $_has(2);
   @$pb.TagNumber(3)
   void clearTopK() => $_clearField(3);
+
+  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
+  @$pb.TagNumber(4)
+  $pb.PbList<$core.double> get vectorF32 => $_getList(3);
 }
 
 class SearchMultiCollectionResponse extends $pb.GeneratedMessage {

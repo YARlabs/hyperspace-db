@@ -215,7 +215,7 @@
 
 - [x] **Phase 13: Zero-Copy Byte SIMD, 8B Packed Candidates & KAG Beam Routing (v4.2.5 - 100% COMPLETE)**
   - [x] **8-Byte Packed Candidates (`Candidate` / `MaxCandidate`)**:
-    - [x] Packed structure `#[repr(C, align(8))]` with `as_u64()` transmutation enabling 1-cycle integer `u64` comparisons.
+    - [x] Packed structure `#[repr(C, align(8))]` with single `u64` key comparisons (v4.2.5 audit: `transmute` replaced by an order-preserving `f32 → u32` key, valid for negative distances).
     - [x] 50% memory reduction in `BinaryHeap` queues (8B vs 16B) with 2x cacheline density.
   - [x] **Zero-Copy Byte-to-Byte SIMD Kernels**:
     - [x] Added `l2_sq_pair_neon`, `l2_sq_pair_avx2`, `l2_sq_pair_dispatch`, `l2_sq_f32_bytes_pair_adsampling`, `lorentz_f32_bytes_pair_thresh`, `hybrid_f32_bytes_pair`, and `sq8_lorentz_bytes_pair`.
@@ -223,6 +223,7 @@
     - [x] Inner loop candidate pruning with tight `curr_worst` updating.
   - [x] **Optimized 2-Point ADSampling**:
     - [x] Checkpoints at 50% and 75% dimensions with constant slack bounds (`0.65 * t` and `0.92 * t`) without runtime `sqrt` overhead.
+    - [x] v4.2.5 audit: the statistical slack is only valid on randomly rotated data; unrotated storage now uses the exact lower bound (`simd::EXACT_EARLY_ABANDON`) to stop discarding true neighbors on MRL embeddings.
   - [x] **Fused SQ8 Lorentz Kernel & Integer Dot Accumulation (`sq8_dot_and_qsq`)**:
     - [x] Direct integer accumulation (`vmull_s8` + `vmlal_s8` + `vpadalq_s16`) cutting FP FMA ops in half.
     - [x] Boosted 128D Lorentz ScalarI8 deep radius ($t \approx 25$) Recall@10 from 31.5% to 93.5% with 2.14× faster build.
@@ -234,6 +235,19 @@
     - [x] Thread-local `BYTES_SCRATCH` and `build_hyper_vector` eliminating heap allocations on ingestion/search paths.
 
 ---
+
+- [x] **Phase 14: Performance & Recall Audit — Quantizers, Flat Graph, Durability (v4.2.5 - 100% COMPLETE)**
+  - [x] **Cold chunks**: process-wide LRU of loaded chunk indexes (`HS_CHUNK_CACHE_SIZE`), `chunk.manifest` (layout + local→global IDs), correct MemTable/chunk merge (no `u32::MAX` sentinels), single `storage_element_size` for writer and reader.
+  - [x] **Semantic compaction without data loss**: re-ingests chunks + MemTable, deletes old chunks only after the new ones are written.
+  - [x] **Filters**: order-preserving `f64` numeric range index (typed values included, no query-time parsing); `Not` via `insert_range`; ACORN-style 2-hop traversal for selective filters (`HS_FILTER_ACORN`).
+  - [x] **Recall fixes**: exact early abandon on unrotated data, signed candidate keys (`dot`), `cosh − 1` bias for hyperbolic candidates, frozen flat L0 used only while it covers every live node, metric-consistent KAG scores, full top-k from the L2-ANN cache, `ef_search` applied on the inline path.
+  - [x] **Hot loop**: per-query `DistKernel` dispatch; flat seqlocked Layer-0 arena (`layer0.rs`) with next-slot prefetch; multi-line vector prefetch; zero-copy `f64` kernels; AVX-512 pair kernel; adaptive pruning (eager with SIMD pair kernels, 25% slack for decode-heavy modes); standard `1/M` level distribution.
+  - [x] **Hybrid metric**: internal squared distance (`hybrid_sq_f32_bytes`), `acosh²` series without `ln` / `sqrt` near the origin, `sqrt` applied only on output.
+  - [x] **New quantizers**: `RaBitQ` (1-bit + unbiased popcount estimator, trained centroid) and `PQ4` fast-scan (4-bit PQ, L1-resident `u8` LUT, batched `scan_block`); calibrated by index rebuild; exposed in the server, dashboard and all SDKs.
+  - [x] **Graph maintenance**: FreshDiskANN-style `repair_deleted` (α = 1.2, reverse edges, entry-point recovery), triggered automatically after deletes; Vamana `HS_HNSW_ALPHA`; adaptive-ef patience (`HS_SEARCH_PATIENCE`).
+  - [x] **Durability & I/O**: WAL group commit (fsync off the WAL lock, background batch syncer); `HS_MMAP_WILLNEED` / `HS_MMAP_HUGEPAGES`; atomic flat-L0 snapshot writes (fixes an unkillable kernel deadlock after rebuild on macOS).
+  - [x] **Wire & build**: `vector_f32` compact vectors in proto + every SDK (`compact_vectors`); PGO build (`scripts/pgo_build.sh`, `just build-pgo`).
+  - [x] **Allocations**: `Arc`-shared metadata between write buffer and indexer queue; single f64→f32 conversion on quantized inserts.
 
 ## 📈 Metric Goals & Tracking
 | Metric | v3.x Baseline | v4.0.0 Target | Current Status |
@@ -262,6 +276,11 @@
 | **Encrypted Vector Recall@10** | N/A | 100.0% | **100.0%** (Exact Isometric Invariance) :white_check_mark: |
 | **Vec2Text Inversion Resistance** | 0.984 (Vulnerable) | < 0.100 (Unrecoverable) | **0.038** (Cosine Similarity to plaintext) :white_check_mark: |
 | **Autonomous Memory Latency (P50)**| > 1,200 ms (LLM-based) | < 10 ms | **2.11 ms ingest / 3.84 ms search** :white_check_mark: |
+| **v4.2.5 Sweep: 1024D search QPS (32 configs)** | v4.2.4 baseline | ≥ v4.2.4, no recall loss | **×1.14 geomean** (×0.94–×1.40), recall@10 +0.2 pp avg :white_check_mark: |
+| **v4.2.5 Sweep: ingest throughput** | v4.2.4 baseline | ≥ v4.2.4 | **×1.38 median** (`none`: 13,205 → 16,476 vec/s) :white_check_mark: |
+| **v4.2.5 Ternary index drain (20k)** | 6.2–10.9 s | < 3 s | **1.4–1.7 s** (adaptive pruning) :white_check_mark: |
+| **v4.2.5 RaBitQ 1024D (rerank ×4)** | N/A | > 95% recall, > 1,500 QPS | **96.85%** @ **1,959 QPS** (29× compression) :white_check_mark: |
+| **v4.2.5 PQ4 fast-scan 1024D (rerank ×8)** | N/A | > 99% recall | **99.00%** @ **1,186 QPS** (31× compression) :white_check_mark: |
 
 > Rows above are measured (Apple Silicon, single node) — see `BENCHMARK_V3_VS_V4_REPORT.md`, `BENCHMARK_QUANTIZATION_SWEEP.md`, and `HONEST_CAPABILITY_AND_BENCHMARK_REPORT.md`.
 

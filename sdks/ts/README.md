@@ -65,6 +65,34 @@ async function main() {
 main().catch(console.error);
 ```
 
+## Quantization Levels & Compact Vectors (v4.2.5)
+
+Pass one of these values as `quantization` when creating a collection:
+
+| Value | Mode | Bytes / vector (1024-D) | Metrics | Needs calibration |
+| :--- | :--- | ---: | :--- | :---: |
+| `none` | Full precision (f32 storage) | 4,100 | all | — |
+| `medium` | ScalarI8 (8-bit) | 1,028 | all | — |
+| `medium_plus` | ScalarI4 (4-bit block-wise) | 772 | all | — |
+| `turbo` | TurboQuant 4-bit spherical | 520 | l2, cosine, hybrid | — |
+| `ternary` | BitNet 1.58-bit {-1, 0, +1} | 264 | all | — |
+| `extreme` | Binary 1-bit | 132 | all | — |
+| `rabitq` | **RaBitQ** 1-bit + unbiased estimator (new in 4.2.5) | 136 | l2, cosine | ✔ |
+| `pq4` | **PQ4 fast-scan** 4-bit PQ, L1-resident LUT (new in 4.2.5) | 128 | l2, cosine | ✔ |
+| `opq` / `pq` | 8-bit product quantization | 64 | l2, cosine | ✔ |
+
+Trained modes (`rabitq`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from real data: after the initial bulk ingest, call **rebuild index** once (it re-encodes the collection with the trained quantizer). `rabitq` / `pq4` requested on other metrics fall back to `medium`.
+
+**Compact wire vectors.** Since server 4.2.5 requests may carry vectors as `repeated float` (`vector_f32`) instead of `repeated double` — half the bytes on the wire and half the decode cost (the server stores f32 anyway). It is opt-in because older servers ignore the new field:
+
+```ts
+const client = new HyperspaceClient('localhost:50051', apiKey, undefined, { compactVectors: true });
+// or later: client.setCompactVectors(true);
+await client.createCollection('docs', schema, '', 0.02, 'pq4');
+await client.batchInsert(items, 'docs');
+await client.rebuildIndex('docs'); // calibrate the PQ4 codebook
+```
+
 ## API Overview
 
 ### `new HyperspaceClient(host?, apiKey?, userId?)`

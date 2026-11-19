@@ -66,6 +66,8 @@ static const char* Database_method_names[] = {
   "/hyperspace.Database/SyncPush",
   "/hyperspace.Database/HealthCheck",
   "/hyperspace.Database/VerifyGeneration",
+  "/hyperspace.Database/CallExtension",
+  "/hyperspace.Database/ListExtensions",
 };
 
 std::unique_ptr< Database::Stub> Database::NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options) {
@@ -118,6 +120,8 @@ Database::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, 
   , rpcmethod_SyncPush_(Database_method_names[40], options.suffix_for_stats(),::grpc::internal::RpcMethod::CLIENT_STREAMING, channel)
   , rpcmethod_HealthCheck_(Database_method_names[41], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_VerifyGeneration_(Database_method_names[42], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_CallExtension_(Database_method_names[43], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_ListExtensions_(Database_method_names[44], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
 
 ::grpc::Status Database::Stub::CreateCollection(::grpc::ClientContext* context, const ::hyperspace::CreateCollectionRequest& request, ::hyperspace::StatusResponse* response) {
@@ -1074,6 +1078,52 @@ void Database::Stub::async::VerifyGeneration(::grpc::ClientContext* context, con
   return result;
 }
 
+::grpc::Status Database::Stub::CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::hyperspace::ExtensionResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_CallExtension_, context, request, response);
+}
+
+void Database::Stub::async::CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_CallExtension_, context, request, response, std::move(f));
+}
+
+void Database::Stub::async::CallExtension(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_CallExtension_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>* Database::Stub::PrepareAsyncCallExtensionRaw(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::hyperspace::ExtensionResponse, ::hyperspace::ExtensionRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_CallExtension_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::ExtensionResponse>* Database::Stub::AsyncCallExtensionRaw(::grpc::ClientContext* context, const ::hyperspace::ExtensionRequest& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncCallExtensionRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
+::grpc::Status Database::Stub::ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::hyperspace::ListExtensionsResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_ListExtensions_, context, request, response);
+}
+
+void Database::Stub::async::ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_ListExtensions_, context, request, response, std::move(f));
+}
+
+void Database::Stub::async::ListExtensions(::grpc::ClientContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_ListExtensions_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>* Database::Stub::PrepareAsyncListExtensionsRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::hyperspace::ListExtensionsResponse, ::hyperspace::Empty, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_ListExtensions_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::hyperspace::ListExtensionsResponse>* Database::Stub::AsyncListExtensionsRaw(::grpc::ClientContext* context, const ::hyperspace::Empty& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncListExtensionsRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
 Database::Service::Service() {
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Database_method_names[0],
@@ -1505,6 +1555,26 @@ Database::Service::Service() {
              ::hyperspace::VerifyGenerationResponse* resp) {
                return service->VerifyGeneration(ctx, req, resp);
              }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Database_method_names[43],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::ExtensionRequest, ::hyperspace::ExtensionResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Database::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::hyperspace::ExtensionRequest* req,
+             ::hyperspace::ExtensionResponse* resp) {
+               return service->CallExtension(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Database_method_names[44],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Database::Service, ::hyperspace::Empty, ::hyperspace::ListExtensionsResponse, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Database::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::hyperspace::Empty* req,
+             ::hyperspace::ListExtensionsResponse* resp) {
+               return service->ListExtensions(ctx, req, resp);
+             }, this)));
 }
 
 Database::Service::~Service() {
@@ -1805,6 +1875,20 @@ Database::Service::~Service() {
 }
 
 ::grpc::Status Database::Service::VerifyGeneration(::grpc::ServerContext* context, const ::hyperspace::VerifyGenerationRequest* request, ::hyperspace::VerifyGenerationResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Database::Service::CallExtension(::grpc::ServerContext* context, const ::hyperspace::ExtensionRequest* request, ::hyperspace::ExtensionResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Database::Service::ListExtensions(::grpc::ServerContext* context, const ::hyperspace::Empty* request, ::hyperspace::ListExtensionsResponse* response) {
   (void) context;
   (void) request;
   (void) response;

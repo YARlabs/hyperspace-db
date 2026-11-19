@@ -5,6 +5,190 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.5] - 2026-11-19
+
+Performance & recall audit release. It removes per-query disk work on cold chunks, fixes
+several silent recall losses, and adds RaBitQ / PQ4 fast-scan quantizers, a flat layer-0
+graph, graph repair after deletes, ACORN-style filtered traversal, WAL group commit, and a
+compact f32 wire format.
+
+### Fixed
+* **Unkillable server after an index rebuild (macOS)**: after a rebuild the flat Layer-0 segment is
+  memory-mapped from `flat_l0.bin`. The next snapshot (for example on shutdown) truncated that
+  same file and `write()`-d from its own mapping, which deadlocks in the kernel: the process hangs
+  in an uninterruptible state, ignores `SIGKILL`, and keeps its ports and memory.
+  `FlatLayer0Segment::save_to_file` now writes a temporary file, fsyncs it and renames it.
+* **Trained quantizers were never calibrated for RaBitQ / PQ4**: index rebuild (vacuum) now trains
+  the RaBitQ centroid and the PQ4 codebook, not only PQ / OPQ.
+* **Python SDK sent HTTP calls to a hard-coded port**: `create_collection(quantization=...)`,
+  cache and admin helpers always used `:50050`, so with a non-default port they reached a different
+  server (or none). The HTTP base is now `http_url=` / `HYPERSPACE_HTTP_URL`, else the gRPC port − 1.
+* **Cold-chunk results were discarded**: MemTable/chunk merge replaced every chunk hit with a
+  `u32::MAX` sentinel that still occupied a top-k slot and was later dropped, so queries
+  returned fewer than `k` results once data was flushed. Chunk hits are now resolved to their
+  global user IDs (and carry their own metadata) and merged correctly.
+* **Chunk storage layout mismatch**: the flush worker wrote chunks with `f32` storage by default
+  (`HS_STORAGE_FLOAT32` opt-out) while `chunk_searcher` read them as `f64` unless the variable was
+  set, and the per-mode element sizes in the searcher/compactor disagreed with the writer
+  (e.g. `None`, `Binary`, `Turbo`, `ScalarI4`). All writers/readers now share
+  `chunk_searcher::storage_element_size` and the layout is persisted per chunk.
+* **ADSampling on unrotated vectors**: the statistical `0.65·t` / `0.92·t` checkpoints assume a
+  random rotation; on raw (notably Matryoshka/MRL) embeddings they pruned true neighbors during
+  both search and graph construction. Unrotated storage now uses the exact lower-bound test
+  (`simd::EXACT_EARLY_ABANDON`).
+* **Negative distances broke candidate ordering**: `Candidate`/`MaxCandidate` clamped distances to
+  `>= 0`, collapsing `1 - dot` scores of unnormalized vectors. Heap keys now use an
+  order-preserving `f32 → u32` mapping that is valid for negative values.
+* **Hyperbolic near-neighbor precision**: Poincaré/Lorentz candidates stored `cosh(d)` in `f32`,
+  which rounds to `1.0` for `d ≲ 5·10⁻⁴` (random ordering, zero distances returned). Candidates
+  now store `cosh(d) − 1` (`HnswIndex::dist_bias`).
+* **Flat Layer-0 hid fresh inserts**: nodes appended after `freeze_flat_layer0()` were unreachable
+  from the frozen segment. The flat path is used only while it covers every live node; neighbor
+  reads go through the seqlock-validated `read_neighbors_into` (no torn reads).
+* **KAG boost leaked into results**: affinity-boosted distances were returned to clients and fed
+  the pruning threshold. The boost now only steers expansion order; results keep true distances.
+* **L2-ANN cache returned partial top-k**: a hit on the cached subset with fewer than `k` matches
+  was served as the answer. Such lookups now count as misses and fall through to the index.
+* **Inline search ignored the resolved `ef_search`** (collection default / `>= top_k`); the in-RAM
+  fast path now applies the same value as the blocking path.
+* **Semantic compaction lost flushed data**: it rebuilt chunks only from the MemTable and then
+  deleted every old chunk. It now exports all flushed chunks (via their manifests) plus the
+  MemTable (MemTable wins on ID collisions). It writes the new chunks first and deletes only the
+  chunks it re-ingested. Legacy chunks without a manifest are kept.
+
+### Added
+* **Dashboard**: the collection-create dialog is driven by the server's quantization catalog and
+  covers every level (`none` … `rabitq`, `pq4`, `pq`, `opq`), with bytes per vector for the chosen
+  dimension, metric compatibility (unsupported levels disabled) and a calibration hint. The
+  Settings → Dynamic Config tab shows all engine tunables and the quantization table; collection
+  details label RaBitQ / PQ4 and flag modes that need a rebuild.
+* **`GET /api/status`**: new `engine` (process-level tunables) and `quantization_modes` (catalog
+  with bytes per dimension, metrics and calibration flag) sections.
+* **SDKs (Python, TypeScript, Go, Rust, Dart, C++, ROS2)**: regenerated protobufs with
+  `vector_f32`, an opt-in compact-vector switch (`compact_vectors` / `compactVectors` /
+  `SetCompactVectors` / `with_compact_vectors` / ROS2 `compact_vectors` parameter), and the
+  quantization catalog with calibration notes in every README. SDK versions bumped to 4.2.5.
+* **Benchmarks** (local harness; `benchmarks/` is not tracked): `run_quantization_sweep.py` covers `rabitq` and `pq4`, calibrates every
+  trained mode (pq, opq, pq4, rabitq) with a rebuild before measuring, and accepts
+  `HS_BENCH_SERVER_BIN` / `HS_BENCH_LABEL` / `HS_BENCH_REPORT` / `HS_BENCH_RESULT` /
+  `HS_BENCH_GRPC_PORT` and `--exclude` for before/after runs.
+* **RaBitQ quantization (`QuantizationMode::RaBitQ`, `quantization: "rabitq"`)** —
+  `hyperspace-core::rabitq`. 1-bit code of the FWHT-rotated residual + norm + correction
+  factor `⟨o', x̄⟩` (Gao & Long, SIGMOD 2024), giving an unbiased inner-product / L2 estimator.
+  Queries are quantized to 4 bit-planes so each distance is `popcount` over `u64` words.
+  Codes are `⌈D/64⌉·8 + 8` bytes (104 B for 768-D). The centroid is fitted by `train_pq`
+  (vacuum / optimize) and persisted as `rabitq_centroid.bin`. L2 / cosine only; other metrics
+  fall back to ScalarI8.
+* **PQ4 fast-scan (`QuantizationMode::PQ4`, `quantization: "pq4" | "pq_fastscan"`)** —
+  `hyperspace-core::pq4`. 4-bit PQ (16 centroids per 4-D sub-space, `D/8`-byte codes) with an
+  `m × 16` `u8` lookup table that stays in L1 (768 B for 768-D vs 48 KB+ for 8-bit PQ);
+  distances accumulate in integers. Includes a batched `scan_block` kernel. The codebook is
+  trained by `train_pq` and persisted as `pq4_codebook.bin`. L2 / cosine only.
+* **Graph repair after deletes** (`HnswIndex::repair_deleted`): FreshDiskANN-style consolidation.
+  Every live node linking to a tombstone re-selects neighbors from its live links ∪ the live
+  links of its deleted neighbors (α = 1.2 RNG), restores reverse edges, and moves a deleted
+  entry point. Runs in parallel and is triggered automatically once deletes exceed
+  `max(256, 5% of nodes)` (`HS_REPAIR_DELETE_THRESHOLD`). In the regression test (2/3 of a
+  600-node graph deleted), self-recall stays at 200/200.
+* **ACORN-style filtered traversal** (`HS_FILTER_ACORN`, on by default): for filters that keep
+  < 50% of the graph and are too large for brute force, filtered-out neighbors are never scored.
+  Their neighbors (2-hop) are explored instead, so distance evaluations go only to matching nodes.
+* **Adaptive ef / early termination** (`HS_SEARCH_PATIENCE`, default off): layer-0 search stops
+  after N consecutive expansions that did not improve the result set.
+* **WAL group commit**: `Wal::append_with_ticket` / `append_batch_with_ticket` return a
+  `CommitTicket`. Strict / `Durability::Strict` inserts release the WAL lock first and then
+  wait on a shared `fdatasync`: one leader syncs for all concurrent writers instead of N
+  serialized fsyncs under the lock. Batch mode is synced by a background `hs-wal-sync` thread,
+  so no writer pays an fsync while holding the WAL lock.
+* **Compact f32 wire vectors**: `vector_f32` (`repeated float`) on `SearchRequest`,
+  `InsertRequest`, `VectorData`, `SearchMultiCollectionRequest`. Used when `vector` is empty;
+  half the bytes and decode cost of `repeated double` (`hyperspace_proto::F32Vector`).
+* **mmap hints**: `HS_MMAP_WILLNEED` (pre-fault stores at open) and `HS_MMAP_HUGEPAGES`
+  (Linux `MADV_HUGEPAGE`, fewer TLB misses on random graph access).
+* **PGO build**: `scripts/pgo_build.sh` / `just build-pgo` (instrument → train on the core +
+  index release test suites or `PGO_TRAIN_CMD` → `llvm-profdata merge` → `-Cprofile-use`).
+* `HS_HNSW_ALPHA` (default `1.0`): Vamana-style α for the RNG neighbor heuristic
+  (`α·d(c, r) < d(c, q)`, α² for squared-type distances). Values `> 1` keep more long-range edges.
+* Regression tests: `hyperspace-index/tests/perf_audit_v4_2_5_test.rs` (f64 range filters,
+  typed values, `Not`, negative dot distances, Poincaré near-neighbor precision), chunk manifest
+  round-trip, and SIMD kernel parity (`f64` byte kernels, pair dispatch).
+
+### Changed (performance)
+* **Chunk index cache**: `search_chunk` previously deserialized `index.snap` and re-opened the
+  mmap store on *every query for every chunk*. Loaded chunks now live in a process-wide LRU
+  (`HS_CHUNK_CACHE_SIZE`, default 64), invalidated on compaction and collection deletion; chunks
+  are searched in parallel on Rayon instead of nested `spawn_blocking` + `block_on`.
+* **Chunk manifest** (`chunk.manifest`): persists `element_size`, `dimension`, `storage_f32` and
+  the chunk-local → user ID table. Legacy chunks without a manifest are skipped with a warning
+  (their IDs were never resolvable).
+* **Numeric range index**: keyed by order-preserving `f64` (`ordered_f64_key`) instead of `i64`,
+  covering fractional and typed (`__hs_typed__`) values. `Range` filters no longer scan every
+  document with `parse::<f64>()` / `serde_json` at query time: O(log N + matches) instead of
+  O(N · parse). Updates and deletes maintain the index; it is rebuilt from `forward` on load.
+* **`Not` filter**: builds the active set with `insert_range` + bitmap difference instead of
+  per-id `contains` over `0..N`.
+* **Zero-copy `f64` storage path**: L2/cosine, Poincaré and Lorentz distances on legacy `f64`
+  storage read bytes in place (`simd::l2_sq_f64_bytes`, `simd::lorentz_cosh_f64_bytes`) instead
+  of copying each vector into a scratch `Vec<f64>` first.
+* **Multi-line prefetch**: neighbor vectors prefetch up to 4 cache lines (was 1 line of a
+  multi-KB vector); the flat path prefetches the vector payload rather than the node header.
+* **Adaptive neighbor pruning**: modes with a SIMD pair kernel (f32 storage; SQ8 Lorentz) prune a
+  list as soon as it exceeds `m_max`, so search never scans more than `m_max` links. Modes that
+  must decode vectors for the RNG heuristic keep the previous 25% slack, because an O(m²)
+  re-selection on every overflow dominated build time at large M (measured: ternary at M = 64
+  could not finish indexing 20k vectors within the 25 s drain window). Re-selected lists return to
+  compact storage instead of keeping a heap spill.
+* **AVX-512 pair kernel**: `l2_sq_pair_avx512` for node-to-node distances in
+  `select_neighbors` / `prune_connections` (previously fell back to AVX2 on AVX-512 hosts).
+* **Binary ADC**: `BinaryHyperVector::adc_distance_bytes` uses the sign-mask identity
+  `2·Σ_{b=1} q − Σ q`, byte-at-a-time and branch-free.
+* **Cache metrics**: per-collection Prometheus handles are resolved once instead of a label hash
+  lookup per query.
+* `HS_SERVER_WAVE_SEARCH_ENABLED` is read once instead of on every gRPC `search`.
+* **Flat layer-0 adjacency** (`hyperspace-index::layer0`): all layer-0 neighbor lists live in
+  fixed-stride, seqlocked `AtomicU32` slots of geometrically growing segments (no per-node
+  `RwLock<SmallVec>`, no heap spills, lock-free reads). Upper levels use a boxed slice that is
+  empty for level-0 nodes (~94% with M = 16). The next beam candidate's slot is prefetched.
+* **Per-query distance kernel** (`DistKernel`): the `mode × metric × precision` dispatch is
+  resolved once per query, not per candidate. Hot loops (live / flat layer-0, layer
+  candidates, filtered brute force) call a small loop-invariant kernel.
+* **Hybrid metric without `sqrt` / `acosh` in the hot path**: the index ranks by
+  `d_lor² + ‖Δe‖²` (`simd::hybrid_sq_f32_bytes`, `hybrid_sq_f32_bytes_pair`), with the final
+  `sqrt` applied only to returned results (`finalize_distance`). The near-field Lorentz head uses
+  `acosh_sq_from_cosh`, a 6-term series with no `ln` / `sqrt` (relative error < 1e-9 for
+  `cosh − 1 < 0.1`).
+* **Standard HNSW level distribution**: `random_level` promoted nodes with a fixed probability
+  of `0.5` instead of `1/M`. With `M = 16`, ~8× more nodes sat on upper layers, inflating
+  memory and insertion work. Nodes are now promoted with probability `1/M` (`mL = 1/ln M`).
+  The index optimization test suite runs ~40% faster.
+* **Fewer copies on insert**: metadata is shared as `Arc<HashMap>` between the write buffer and
+  the indexer queue (no deep copies on the request path). Quantized modes convert the vector to
+  f32 once for both the rerank cache and the payload store.
+
+### Benchmarks
+
+Measured with `benchmarks/run_quantization_sweep.py` (20,000 × 1024D, cosine, 200 queries, M = 64, ef_construction = 400, ef_search = 100, Apple M4 Pro), v4.2.4 and v4.2.5 run back-to-back on the same machine:
+
+- **Search QPS ×1.14** (geometric mean over 32 configurations; range ×0.94 – ×1.40), **ingest ×1.38** (median), recall@10 **+0.2 pp** on average.
+- `none` (ef 100): 1,145 → 1,272 QPS; `medium`: 1,715 → 2,075 QPS; `extreme` + rerank ×4: 500 → 692 QPS at 89.75% → 90.55% recall; `ternary` + rerank ×4: 81 → 113 QPS at 99.15% → 99.80% recall, index drain 7.9 → 1.7 s.
+- New tiers: `rabitq` 2,599 QPS single pass, **96.85% @ 1,959 QPS** with rerank ×4 (29× compression); `pq4` **99.00% @ 1,186 QPS** with rerank ×8 (31× compression, 11.9k vec/s ingest).
+- Full matrix: `BENCHMARK_QUANTIZATION_SWEEP.md`; summary: `BENCHMARK_V3_VS_V4_REPORT.md` §10.
+
+### Compatibility
+* Snapshots stay readable both ways. The legacy `i64` numeric section is ignored on load and
+  written empty (the index is rebuilt from `forward`); older binaries fall back to their
+  document scan for range filters.
+* Chunks flushed by earlier versions have no manifest and are skipped by search (previously
+  their hits were dropped anyway). Their data stays on disk; re-ingest it to make it searchable.
+* New `QuantizationMode` variants (`RaBitQ`, `PQ4`): exhaustive matches in downstream code must
+  handle them.
+* Proto changes are additive. Clients that keep sending `vector` work unchanged; `vector_f32` is
+  only read when `vector` is empty, so do not send `vector_f32` alone to servers older than 4.2.5. The
+  official SDKs still send `vector`.
+* Snapshot format is unchanged (layer 0 is serialized as before and loaded into the arena).
+* Note for packaging: `scripts/*.sh` is matched by `.gitignore` (`**/*.sh`); add
+  `scripts/pgo_build.sh` with `git add -f`.
+
 ## [4.2.4] - 2026-11-11
 
 ### Added

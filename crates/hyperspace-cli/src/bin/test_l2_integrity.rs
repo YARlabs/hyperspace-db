@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vec_a = vec![0.0; 1024];
     client
         .insert(InsertRequest {
+            vector_f32: Vec::new(),
             vector: vec_a.clone(),
             id: 1,
             metadata: std::collections::HashMap::new(),
@@ -66,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     vec_b[0] = 0.5;
     client
         .insert(InsertRequest {
+            vector_f32: Vec::new(),
             vector: vec_b,
             id: 2,
             metadata: std::collections::HashMap::new(),
@@ -83,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     vec_c[0] = 0.8;
     client
         .insert(InsertRequest {
+            vector_f32: Vec::new(),
             vector: vec_c,
             id: 3,
             metadata: std::collections::HashMap::new(),
@@ -101,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Searching for Origin...");
     let response = client
         .search(SearchRequest {
+            vector_f32: Vec::new(),
             vector: vec_a,
             top_k: 3,
             collection: COLLECTION_NAME.to_string(),

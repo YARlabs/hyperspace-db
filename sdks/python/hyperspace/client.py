@@ -51,7 +51,17 @@ class VerificationResult:
 
 
 class HyperspaceClient:
-    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None, pool_size: int = 8, collection_keys: Optional[Dict[str, str]] = None):
+    def __init__(self, host: str = "localhost:50051", api_key: Optional[str] = None, embedder: Optional[BaseEmbedder] = None, user_id: Optional[str] = None, pool_size: int = 8, collection_keys: Optional[Dict[str, str]] = None, compact_vectors: bool = False, http_url: Optional[str] = None):
+        """
+        Args:
+            http_url: Base URL of the HTTP API (e.g. ``http://localhost:50050``). Defaults to
+                ``HYPERSPACE_HTTP_URL`` or the gRPC host with port − 1 (50051 → 50050).
+            compact_vectors: Send vectors as ``repeated float`` (``vector_f32``) instead of
+                ``repeated double``: half the wire size and decode cost. Requires a
+                HyperspaceDB server >= 4.2.5 (older servers ignore ``vector_f32``).
+        """
+        self.compact_vectors = compact_vectors
+        self.http_url = (http_url or os.environ.get("HYPERSPACE_HTTP_URL") or self._derive_http_url(host)).rstrip("/")
         # Optimized gRPC Channel with KeepAlive and Max Message Size
         options = [
             ('grpc.max_send_message_length', 64 * 1024 * 1024), # 64MB
@@ -300,6 +310,23 @@ class HyperspaceClient:
         return list(vector)
 
     @staticmethod
+    def _derive_http_url(host: str) -> str:
+        """HTTP API next to a gRPC endpoint: same host, port − 1 (server defaults 50051 / 50050)."""
+        h = host.replace("http://", "").replace("https://", "").rstrip("/")
+        name, _, port = h.rpartition(":")
+        if not name:
+            return f"http://{h}:50050"
+        try:
+            return f"http://{name}:{int(port) - 1}"
+        except ValueError:
+            return f"http://{h}:50050"
+
+    def _vec_kwargs(self, vector) -> Dict[str, List[float]]:
+        """Proto field for a vector: ``vector_f32`` when ``compact_vectors`` is on, else ``vector``."""
+        v = self._normalize_vector(vector)
+        return {"vector_f32": v} if self.compact_vectors else {"vector": v}
+
+    @staticmethod
     def _to_proto_metadata_value(value):
         mv = hyperspace_pb2.MetadataValue()
         if isinstance(value, bool):
@@ -390,8 +417,7 @@ class HyperspaceClient:
         if quantization:
             import urllib.request
             import json
-            ip = self.host.split(':')[0]
-            url = f"http://{ip}:50050/api/collections"
+            url = f"{self.http_url}/api/collections"
             headers = {'Content-Type': 'application/json'}
             if self.api_key:
                 headers['x-api-key'] = self.api_key
@@ -668,7 +694,7 @@ class HyperspaceClient:
 
         req = hyperspace_pb2.InsertRequest(
             id=id,
-            vector=vector,
+            **self._vec_kwargs(vector),
             collection=collection,
             origin_node_id="",
             logical_clock=0,
@@ -781,7 +807,7 @@ class HyperspaceClient:
         if metadatas is None and typed_metadatas is None:
             for v, i in zip(vectors, ids):
                 proto_vectors.append(hyperspace_pb2.VectorData(
-                    vector=self._normalize_vector(v),
+                    **self._vec_kwargs(v),
                     id=i
                 ))
         else:
@@ -792,13 +818,13 @@ class HyperspaceClient:
             for v, i, m, tm in zip(vectors, ids, metadatas, typed_metadatas):
                 if m:
                     vd = hyperspace_pb2.VectorData(
-                        vector=self._normalize_vector(v),
+                        **self._vec_kwargs(v),
                         id=i,
                         metadata=m
                     )
                 else:
                     vd = hyperspace_pb2.VectorData(
-                        vector=self._normalize_vector(v),
+                        **self._vec_kwargs(v),
                         id=i
                     )
                 if tm:
@@ -867,7 +893,7 @@ class HyperspaceClient:
             filter["wave_restart_factor"] = str(restart_factor)
 
         req = hyperspace_pb2.SearchRequest(
-            vector=vector,
+            **self._vec_kwargs(vector),
             top_k=top_k,
             collection=collection,
             use_wave=use_wave,
@@ -1058,7 +1084,7 @@ class HyperspaceClient:
         for vector in vectors:
             searches.append(
                 hyperspace_pb2.SearchRequest(
-                    vector=self._normalize_vector(vector),
+                    **self._vec_kwargs(vector),
                     top_k=top_k,
                     collection=collection,
                 )
@@ -1373,7 +1399,7 @@ class HyperspaceClient:
     def search_multi_collection(self, query: List[float], collections: List[str], top_k: int = 10) -> Dict[str, List[Dict]]:
         req = hyperspace_pb2.SearchMultiCollectionRequest(
             collections=collections,
-            vector=self._normalize_vector(query),
+            **self._vec_kwargs(query),
             top_k=top_k
         )
         try:
@@ -1746,8 +1772,7 @@ class HyperspaceClient:
     def get_cache_stats(self, name: str) -> dict:
         import urllib.request
         import json
-        ip = self.host.split(':')[0]
-        url = f"http://{ip}:50050/api/collections/{name}/cache/stats"
+        url = f"{self.http_url}/api/collections/{name}/cache/stats"
         headers = {}
         if self.api_key:
             headers['x-api-key'] = self.api_key
@@ -1765,8 +1790,7 @@ class HyperspaceClient:
     def clear_cache(self, name: str) -> bool:
         import urllib.request
         import json
-        ip = self.host.split(':')[0]
-        url = f"http://{ip}:50050/api/collections/{name}/cache/clear"
+        url = f"{self.http_url}/api/collections/{name}/cache/clear"
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['x-api-key'] = self.api_key
@@ -1786,8 +1810,7 @@ class HyperspaceClient:
     def update_cache_config(self, name: str, policy: str, ann_threshold: Optional[float] = None) -> bool:
         import urllib.request
         import json
-        ip = self.host.split(':')[0]
-        url = f"http://{ip}:50050/api/collections/{name}/cache/config"
+        url = f"{self.http_url}/api/collections/{name}/cache/config"
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['x-api-key'] = self.api_key
@@ -1811,8 +1834,7 @@ class HyperspaceClient:
     def start_run(self, session_id: str, task_description: str) -> bool:
         import urllib.request
         import json
-        ip = self.host.split(':')[0]
-        url = f"http://{ip}:50050/api/admin/runs/start"
+        url = f"{self.http_url}/api/admin/runs/start"
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['x-api-key'] = self.api_key
@@ -1832,8 +1854,7 @@ class HyperspaceClient:
     def step_run(self, session_id: str, x: float, y: float, metadata: Optional[dict] = None) -> bool:
         import urllib.request
         import json
-        ip = self.host.split(':')[0]
-        url = f"http://{ip}:50050/api/admin/runs/step"
+        url = f"{self.http_url}/api/admin/runs/step"
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['x-api-key'] = self.api_key
@@ -1855,8 +1876,7 @@ class HyperspaceClient:
     def end_run(self, session_id: str, status: str, final_score: Optional[float] = None, lyapunov_stability: Optional[float] = None) -> bool:
         import urllib.request
         import json
-        ip = self.host.split(':')[0]
-        url = f"http://{ip}:50050/api/admin/runs/end"
+        url = f"{self.http_url}/api/admin/runs/end"
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['x-api-key'] = self.api_key
@@ -1932,11 +1952,7 @@ class HyperspaceClient:
     def _resolve_http_base_url(self, http_url: Optional[str] = None) -> str:
         if http_url:
             return http_url.rstrip("/")
-        env_url = os.environ.get("HYPERSPACE_HTTP_URL")
-        if env_url:
-            return env_url.rstrip("/")
-        host_part = self.host.split(":")[0] if ":" in self.host else self.host
-        return f"http://{host_part}:50050"
+        return self.http_url
 
     def list_extensions(self, http_url: Optional[str] = None) -> Dict:
         """

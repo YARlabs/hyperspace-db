@@ -26,6 +26,8 @@ type QuantizationMode int32
 const (
 	QuantizationMode_NONE      QuantizationMode = 0 // f64 (Default)
 	QuantizationMode_SCALAR_I8 QuantizationMode = 1 // 8-bit
+	QuantizationMode_BINARY    QuantizationMode = 2 // 1-bit
+	QuantizationMode_TERNARY   QuantizationMode = 3 // 1.58-bit BitNet {-1, 0, +1}
 )
 
 // Enum value maps for QuantizationMode.
@@ -33,10 +35,14 @@ var (
 	QuantizationMode_name = map[int32]string{
 		0: "NONE",
 		1: "SCALAR_I8",
+		2: "BINARY",
+		3: "TERNARY",
 	}
 	QuantizationMode_value = map[string]int32{
 		"NONE":      0,
 		"SCALAR_I8": 1,
+		"BINARY":    2,
+		"TERNARY":   3,
 	}
 )
 
@@ -1549,7 +1555,10 @@ type InsertRequest struct {
 	// Sidecar Payload Storage (v3.2): heavy documents stored on disk, NOT in RAM.
 	// The payload is zstd-compressed and written to the chunk file's Payload Layer.
 	// It is NEVER loaded into memory during HNSW traversal.
-	Payload       []byte `protobuf:"bytes,9,opt,name=payload,proto3,oneof" json:"payload,omitempty"`
+	Payload []byte `protobuf:"bytes,9,opt,name=payload,proto3,oneof" json:"payload,omitempty"`
+	// Compact f32 vector (half the wire size / decode cost of `vector`).
+	// Used when `vector` is empty; the server stores f32 internally anyway.
+	VectorF32     []float32 `protobuf:"fixed32,10,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1647,12 +1656,21 @@ func (x *InsertRequest) GetPayload() []byte {
 	return nil
 }
 
+func (x *InsertRequest) GetVectorF32() []float32 {
+	if x != nil {
+		return x.VectorF32
+	}
+	return nil
+}
+
 type VectorData struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
 	Vector        []float64                 `protobuf:"fixed64,1,rep,packed,name=vector,proto3" json:"vector,omitempty"`
 	Id            uint32                    `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
 	Metadata      map[string]string         `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	TypedMetadata map[string]*MetadataValue `protobuf:"bytes,4,rep,name=typed_metadata,json=typedMetadata,proto3" json:"typed_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Compact f32 alternative to `vector` (used when `vector` is empty).
+	VectorF32     []float32 `protobuf:"fixed32,5,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1711,6 +1729,13 @@ func (x *VectorData) GetMetadata() map[string]string {
 func (x *VectorData) GetTypedMetadata() map[string]*MetadataValue {
 	if x != nil {
 		return x.TypedMetadata
+	}
+	return nil
+}
+
+func (x *VectorData) GetVectorF32() []float32 {
+	if x != nil {
+		return x.VectorF32
 	}
 	return nil
 }
@@ -2737,8 +2762,10 @@ type SearchRequest struct {
 	IncludePayload   bool               `protobuf:"varint,11,opt,name=include_payload,json=includePayload,proto3" json:"include_payload,omitempty"`
 	ComponentWeights map[string]float32 `protobuf:"bytes,12,rep,name=component_weights,json=componentWeights,proto3" json:"component_weights,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
 	UseWave          bool               `protobuf:"varint,13,opt,name=use_wave,json=useWave,proto3" json:"use_wave,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Compact f32 query (used when `vector` is empty): half the bytes of `repeated double`.
+	VectorF32     []float32 `protobuf:"fixed32,14,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchRequest) Reset() {
@@ -2860,6 +2887,13 @@ func (x *SearchRequest) GetUseWave() bool {
 		return x.UseWave
 	}
 	return false
+}
+
+func (x *SearchRequest) GetVectorF32() []float32 {
+	if x != nil {
+		return x.VectorF32
+	}
+	return nil
 }
 
 type Filter struct {
@@ -3665,10 +3699,12 @@ func (x *BatchSearchResponse) GetResponses() []*SearchResponse {
 }
 
 type SearchMultiCollectionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Collections   []string               `protobuf:"bytes,1,rep,name=collections,proto3" json:"collections,omitempty"`
-	Vector        []float64              `protobuf:"fixed64,2,rep,packed,name=vector,proto3" json:"vector,omitempty"`
-	TopK          uint32                 `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Collections []string               `protobuf:"bytes,1,rep,name=collections,proto3" json:"collections,omitempty"`
+	Vector      []float64              `protobuf:"fixed64,2,rep,packed,name=vector,proto3" json:"vector,omitempty"`
+	TopK        uint32                 `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`
+	// Compact f32 query (used when `vector` is empty).
+	VectorF32     []float32 `protobuf:"fixed32,4,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3722,6 +3758,13 @@ func (x *SearchMultiCollectionRequest) GetTopK() uint32 {
 		return x.TopK
 	}
 	return 0
+}
+
+func (x *SearchMultiCollectionRequest) GetVectorF32() []float32 {
+	if x != nil {
+		return x.VectorF32
+	}
+	return nil
 }
 
 type SearchMultiCollectionResponse struct {
@@ -6583,6 +6626,362 @@ func (x *VerifyGenerationResponse) GetResolvedContextIds() []uint32 {
 	return nil
 }
 
+type ExtensionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plugin        string                 `protobuf:"bytes,1,opt,name=plugin,proto3" json:"plugin,omitempty"`
+	Method        string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
+	Collection    *string                `protobuf:"bytes,3,opt,name=collection,proto3,oneof" json:"collection,omitempty"`
+	JsonPayload   string                 `protobuf:"bytes,4,opt,name=json_payload,json=jsonPayload,proto3" json:"json_payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExtensionRequest) Reset() {
+	*x = ExtensionRequest{}
+	mi := &file_hyperspace_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExtensionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExtensionRequest) ProtoMessage() {}
+
+func (x *ExtensionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExtensionRequest.ProtoReflect.Descriptor instead.
+func (*ExtensionRequest) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *ExtensionRequest) GetPlugin() string {
+	if x != nil {
+		return x.Plugin
+	}
+	return ""
+}
+
+func (x *ExtensionRequest) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *ExtensionRequest) GetCollection() string {
+	if x != nil && x.Collection != nil {
+		return *x.Collection
+	}
+	return ""
+}
+
+func (x *ExtensionRequest) GetJsonPayload() string {
+	if x != nil {
+		return x.JsonPayload
+	}
+	return ""
+}
+
+type ExtensionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	JsonResult    string                 `protobuf:"bytes,2,opt,name=json_result,json=jsonResult,proto3" json:"json_result,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExtensionResponse) Reset() {
+	*x = ExtensionResponse{}
+	mi := &file_hyperspace_proto_msgTypes[101]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExtensionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExtensionResponse) ProtoMessage() {}
+
+func (x *ExtensionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[101]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExtensionResponse.ProtoReflect.Descriptor instead.
+func (*ExtensionResponse) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{101}
+}
+
+func (x *ExtensionResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ExtensionResponse) GetJsonResult() string {
+	if x != nil {
+		return x.JsonResult
+	}
+	return ""
+}
+
+func (x *ExtensionResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type ExtensionProcedureInfo struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description        string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	RequiresCollection bool                   `protobuf:"varint,3,opt,name=requires_collection,json=requiresCollection,proto3" json:"requires_collection,omitempty"`
+	InputSchemaJson    string                 `protobuf:"bytes,4,opt,name=input_schema_json,json=inputSchemaJson,proto3" json:"input_schema_json,omitempty"`
+	OutputSchemaJson   string                 `protobuf:"bytes,5,opt,name=output_schema_json,json=outputSchemaJson,proto3" json:"output_schema_json,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ExtensionProcedureInfo) Reset() {
+	*x = ExtensionProcedureInfo{}
+	mi := &file_hyperspace_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExtensionProcedureInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExtensionProcedureInfo) ProtoMessage() {}
+
+func (x *ExtensionProcedureInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExtensionProcedureInfo.ProtoReflect.Descriptor instead.
+func (*ExtensionProcedureInfo) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{102}
+}
+
+func (x *ExtensionProcedureInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ExtensionProcedureInfo) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *ExtensionProcedureInfo) GetRequiresCollection() bool {
+	if x != nil {
+		return x.RequiresCollection
+	}
+	return false
+}
+
+func (x *ExtensionProcedureInfo) GetInputSchemaJson() string {
+	if x != nil {
+		return x.InputSchemaJson
+	}
+	return ""
+}
+
+func (x *ExtensionProcedureInfo) GetOutputSchemaJson() string {
+	if x != nil {
+		return x.OutputSchemaJson
+	}
+	return ""
+}
+
+type ExtensionInfo struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Name          string                    `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Version       string                    `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	Author        string                    `protobuf:"bytes,3,opt,name=author,proto3" json:"author,omitempty"`
+	Description   string                    `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	Runtime       string                    `protobuf:"bytes,5,opt,name=runtime,proto3" json:"runtime,omitempty"`
+	Hooks         []string                  `protobuf:"bytes,6,rep,name=hooks,proto3" json:"hooks,omitempty"`
+	Procedures    []*ExtensionProcedureInfo `protobuf:"bytes,7,rep,name=procedures,proto3" json:"procedures,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExtensionInfo) Reset() {
+	*x = ExtensionInfo{}
+	mi := &file_hyperspace_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExtensionInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExtensionInfo) ProtoMessage() {}
+
+func (x *ExtensionInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExtensionInfo.ProtoReflect.Descriptor instead.
+func (*ExtensionInfo) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{103}
+}
+
+func (x *ExtensionInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ExtensionInfo) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *ExtensionInfo) GetAuthor() string {
+	if x != nil {
+		return x.Author
+	}
+	return ""
+}
+
+func (x *ExtensionInfo) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *ExtensionInfo) GetRuntime() string {
+	if x != nil {
+		return x.Runtime
+	}
+	return ""
+}
+
+func (x *ExtensionInfo) GetHooks() []string {
+	if x != nil {
+		return x.Hooks
+	}
+	return nil
+}
+
+func (x *ExtensionInfo) GetProcedures() []*ExtensionProcedureInfo {
+	if x != nil {
+		return x.Procedures
+	}
+	return nil
+}
+
+type ListExtensionsResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	PdkVersion       string                 `protobuf:"bytes,1,opt,name=pdk_version,json=pdkVersion,proto3" json:"pdk_version,omitempty"`
+	SupportedMetrics []string               `protobuf:"bytes,2,rep,name=supported_metrics,json=supportedMetrics,proto3" json:"supported_metrics,omitempty"`
+	Extensions       []*ExtensionInfo       `protobuf:"bytes,3,rep,name=extensions,proto3" json:"extensions,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ListExtensionsResponse) Reset() {
+	*x = ListExtensionsResponse{}
+	mi := &file_hyperspace_proto_msgTypes[104]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListExtensionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListExtensionsResponse) ProtoMessage() {}
+
+func (x *ListExtensionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hyperspace_proto_msgTypes[104]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListExtensionsResponse.ProtoReflect.Descriptor instead.
+func (*ListExtensionsResponse) Descriptor() ([]byte, []int) {
+	return file_hyperspace_proto_rawDescGZIP(), []int{104}
+}
+
+func (x *ListExtensionsResponse) GetPdkVersion() string {
+	if x != nil {
+		return x.PdkVersion
+	}
+	return ""
+}
+
+func (x *ListExtensionsResponse) GetSupportedMetrics() []string {
+	if x != nil {
+		return x.SupportedMetrics
+	}
+	return nil
+}
+
+func (x *ListExtensionsResponse) GetExtensions() []*ExtensionInfo {
+	if x != nil {
+		return x.Extensions
+	}
+	return nil
+}
+
 var File_hyperspace_proto protoreflect.FileDescriptor
 
 const file_hyperspace_proto_rawDesc = "" +
@@ -6700,7 +7099,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"collection\x18\x01 \x01(\tR\n" +
 	"collection\x12#\n" +
 	"\rtarget_vector\x18\x02 \x03(\x01R\ftargetVector\x12#\n" +
-	"\rlearning_rate\x18\x03 \x01(\x01R\flearningRate\"\xbe\x04\n" +
+	"\rlearning_rate\x18\x03 \x01(\x01R\flearningRate\"\xdd\x04\n" +
 	"\rInsertRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -6714,7 +7113,10 @@ const file_hyperspace_proto_rawDesc = "" +
 	"durability\x18\a \x01(\x0e2\x1b.hyperspace.DurabilityLevelR\n" +
 	"durability\x12S\n" +
 	"\x0etyped_metadata\x18\b \x03(\v2,.hyperspace.InsertRequest.TypedMetadataEntryR\rtypedMetadata\x12\x1d\n" +
-	"\apayload\x18\t \x01(\fH\x00R\apayload\x88\x01\x01\x1a;\n" +
+	"\apayload\x18\t \x01(\fH\x00R\apayload\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"vector_f32\x18\n" +
+	" \x03(\x02R\tvectorF32\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
@@ -6722,13 +7124,15 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
 	"\x05value\x18\x02 \x01(\v2\x19.hyperspace.MetadataValueR\x05value:\x028\x01B\n" +
 	"\n" +
-	"\b_payload\"\xe2\x02\n" +
+	"\b_payload\"\x81\x03\n" +
 	"\n" +
 	"VectorData\x12\x16\n" +
 	"\x06vector\x18\x01 \x03(\x01R\x06vector\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\rR\x02id\x12@\n" +
 	"\bmetadata\x18\x03 \x03(\v2$.hyperspace.VectorData.MetadataEntryR\bmetadata\x12P\n" +
-	"\x0etyped_metadata\x18\x04 \x03(\v2).hyperspace.VectorData.TypedMetadataEntryR\rtypedMetadata\x1a;\n" +
+	"\x0etyped_metadata\x18\x04 \x03(\v2).hyperspace.VectorData.TypedMetadataEntryR\rtypedMetadata\x12\x1d\n" +
+	"\n" +
+	"vector_f32\x18\x05 \x03(\x02R\tvectorF32\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
@@ -6844,7 +7248,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rCountResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x04R\x05count\"-\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\"\x94\x06\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"\xb3\x06\n" +
 	"\rSearchRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -6861,7 +7265,9 @@ const file_hyperspace_proto_rawDesc = "" +
 	" \x01(\rH\x03R\fmrlDimension\x88\x01\x01\x12'\n" +
 	"\x0finclude_payload\x18\v \x01(\bR\x0eincludePayload\x12\\\n" +
 	"\x11component_weights\x18\f \x03(\v2/.hyperspace.SearchRequest.ComponentWeightsEntryR\x10componentWeights\x12\x19\n" +
-	"\buse_wave\x18\r \x01(\bR\auseWave\x1a9\n" +
+	"\buse_wave\x18\r \x01(\bR\auseWave\x12\x1d\n" +
+	"\n" +
+	"vector_f32\x18\x0e \x03(\x02R\tvectorF32\x1a9\n" +
 	"\vFilterEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -6928,11 +7334,13 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x12BatchSearchRequest\x125\n" +
 	"\bsearches\x18\x01 \x03(\v2\x19.hyperspace.SearchRequestR\bsearches\"O\n" +
 	"\x13BatchSearchResponse\x128\n" +
-	"\tresponses\x18\x01 \x03(\v2\x1a.hyperspace.SearchResponseR\tresponses\"m\n" +
+	"\tresponses\x18\x01 \x03(\v2\x1a.hyperspace.SearchResponseR\tresponses\"\x8c\x01\n" +
 	"\x1cSearchMultiCollectionRequest\x12 \n" +
 	"\vcollections\x18\x01 \x03(\tR\vcollections\x12\x16\n" +
 	"\x06vector\x18\x02 \x03(\x01R\x06vector\x12\x13\n" +
-	"\x05top_k\x18\x03 \x01(\rR\x04topK\"\xd1\x01\n" +
+	"\x05top_k\x18\x03 \x01(\rR\x04topK\x12\x1d\n" +
+	"\n" +
+	"vector_f32\x18\x04 \x03(\x02R\tvectorF32\"\xd1\x01\n" +
 	"\x1dSearchMultiCollectionResponse\x12V\n" +
 	"\tresponses\x18\x01 \x03(\v28.hyperspace.SearchMultiCollectionResponse.ResponsesEntryR\tresponses\x1aX\n" +
 	"\x0eResponsesEntry\x12\x10\n" +
@@ -7208,10 +7616,49 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rgeodesic_hops\x18\x06 \x01(\rR\fgeodesicHops\x12%\n" +
 	"\x0econe_satisfied\x18\a \x01(\bR\rconeSatisfied\x12\x18\n" +
 	"\adetails\x18\b \x01(\tR\adetails\x120\n" +
-	"\x14resolved_context_ids\x18\t \x03(\rR\x12resolvedContextIds*+\n" +
+	"\x14resolved_context_ids\x18\t \x03(\rR\x12resolvedContextIds\"\x99\x01\n" +
+	"\x10ExtensionRequest\x12\x16\n" +
+	"\x06plugin\x18\x01 \x01(\tR\x06plugin\x12\x16\n" +
+	"\x06method\x18\x02 \x01(\tR\x06method\x12#\n" +
+	"\n" +
+	"collection\x18\x03 \x01(\tH\x00R\n" +
+	"collection\x88\x01\x01\x12!\n" +
+	"\fjson_payload\x18\x04 \x01(\tR\vjsonPayloadB\r\n" +
+	"\v_collection\"d\n" +
+	"\x11ExtensionResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
+	"\vjson_result\x18\x02 \x01(\tR\n" +
+	"jsonResult\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xd9\x01\n" +
+	"\x16ExtensionProcedureInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12/\n" +
+	"\x13requires_collection\x18\x03 \x01(\bR\x12requiresCollection\x12*\n" +
+	"\x11input_schema_json\x18\x04 \x01(\tR\x0finputSchemaJson\x12,\n" +
+	"\x12output_schema_json\x18\x05 \x01(\tR\x10outputSchemaJson\"\xeb\x01\n" +
+	"\rExtensionInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
+	"\x06author\x18\x03 \x01(\tR\x06author\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x18\n" +
+	"\aruntime\x18\x05 \x01(\tR\aruntime\x12\x14\n" +
+	"\x05hooks\x18\x06 \x03(\tR\x05hooks\x12B\n" +
+	"\n" +
+	"procedures\x18\a \x03(\v2\".hyperspace.ExtensionProcedureInfoR\n" +
+	"procedures\"\xa1\x01\n" +
+	"\x16ListExtensionsResponse\x12\x1f\n" +
+	"\vpdk_version\x18\x01 \x01(\tR\n" +
+	"pdkVersion\x12+\n" +
+	"\x11supported_metrics\x18\x02 \x03(\tR\x10supportedMetrics\x129\n" +
+	"\n" +
+	"extensions\x18\x03 \x03(\v2\x19.hyperspace.ExtensionInfoR\n" +
+	"extensions*D\n" +
 	"\x10QuantizationMode\x12\b\n" +
 	"\x04NONE\x10\x00\x12\r\n" +
-	"\tSCALAR_I8\x10\x01*F\n" +
+	"\tSCALAR_I8\x10\x01\x12\n" +
+	"\n" +
+	"\x06BINARY\x10\x02\x12\v\n" +
+	"\aTERNARY\x10\x03*F\n" +
 	"\x0fDurabilityLevel\x12\x11\n" +
 	"\rDEFAULT_LEVEL\x10\x00\x12\t\n" +
 	"\x05ASYNC\x10\x01\x12\t\n" +
@@ -7232,7 +7679,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rEVENT_UNKNOWN\x10\x00\x12\x13\n" +
 	"\x0fVECTOR_INSERTED\x10\x01\x12\x12\n" +
 	"\x0eVECTOR_DELETED\x10\x02\x12\x13\n" +
-	"\x0fTRAJECTORY_STEP\x10\x032\x95\x1a\n" +
+	"\x0fTRAJECTORY_STEP\x10\x032\xac\x1b\n" +
 	"\bDatabase\x12S\n" +
 	"\x10CreateCollection\x12#.hyperspace.CreateCollectionRequest\x1a\x1a.hyperspace.StatusResponse\x12S\n" +
 	"\x10DeleteCollection\x12#.hyperspace.DeleteCollectionRequest\x1a\x1a.hyperspace.StatusResponse\x12I\n" +
@@ -7278,7 +7725,9 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\bSyncPull\x12\x1b.hyperspace.SyncPullRequest\x1a\x1a.hyperspace.SyncVectorData0\x01\x12F\n" +
 	"\bSyncPush\x12\x1a.hyperspace.SyncVectorData\x1a\x1c.hyperspace.SyncPushResponse(\x01\x12A\n" +
 	"\vHealthCheck\x12\x11.hyperspace.Empty\x1a\x1f.hyperspace.HealthCheckResponse\x12]\n" +
-	"\x10VerifyGeneration\x12#.hyperspace.VerifyGenerationRequest\x1a$.hyperspace.VerifyGenerationResponseB,Z*github.com/yarlabs/hyperspace-sdk-go/protob\x06proto3"
+	"\x10VerifyGeneration\x12#.hyperspace.VerifyGenerationRequest\x1a$.hyperspace.VerifyGenerationResponse\x12L\n" +
+	"\rCallExtension\x12\x1c.hyperspace.ExtensionRequest\x1a\x1d.hyperspace.ExtensionResponse\x12G\n" +
+	"\x0eListExtensions\x12\x11.hyperspace.Empty\x1a\".hyperspace.ListExtensionsResponseB,Z*github.com/yarlabs/hyperspace-sdk-go/protob\x06proto3"
 
 var (
 	file_hyperspace_proto_rawDescOnce sync.Once
@@ -7293,7 +7742,7 @@ func file_hyperspace_proto_rawDescGZIP() []byte {
 }
 
 var file_hyperspace_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_hyperspace_proto_msgTypes = make([]protoimpl.MessageInfo, 123)
+var file_hyperspace_proto_msgTypes = make([]protoimpl.MessageInfo, 128)
 var file_hyperspace_proto_goTypes = []any{
 	(QuantizationMode)(0),                 // 0: hyperspace.QuantizationMode
 	(DurabilityLevel)(0),                  // 1: hyperspace.DurabilityLevel
@@ -7400,37 +7849,42 @@ var file_hyperspace_proto_goTypes = []any{
 	(*UnfreezeCollectionRequest)(nil),     // 102: hyperspace.UnfreezeCollectionRequest
 	(*VerifyGenerationRequest)(nil),       // 103: hyperspace.VerifyGenerationRequest
 	(*VerifyGenerationResponse)(nil),      // 104: hyperspace.VerifyGenerationResponse
-	nil,                                   // 105: hyperspace.InsertOp.MetadataEntry
-	nil,                                   // 106: hyperspace.InsertOp.TypedMetadataEntry
-	nil,                                   // 107: hyperspace.InsertRequest.MetadataEntry
-	nil,                                   // 108: hyperspace.InsertRequest.TypedMetadataEntry
-	nil,                                   // 109: hyperspace.VectorData.MetadataEntry
-	nil,                                   // 110: hyperspace.VectorData.TypedMetadataEntry
-	nil,                                   // 111: hyperspace.InsertTextRequest.MetadataEntry
-	nil,                                   // 112: hyperspace.SearchTextRequest.FilterEntry
-	nil,                                   // 113: hyperspace.SearchTextRequest.ComponentWeightsEntry
-	nil,                                   // 114: hyperspace.UpdatePayloadRequest.MetadataEntry
-	nil,                                   // 115: hyperspace.UpdatePayloadRequest.TypedMetadataEntry
-	nil,                                   // 116: hyperspace.SearchRequest.FilterEntry
-	nil,                                   // 117: hyperspace.SearchRequest.ComponentWeightsEntry
-	nil,                                   // 118: hyperspace.SearchMultiCollectionResponse.ResponsesEntry
-	nil,                                   // 119: hyperspace.SearchResult.MetadataEntry
-	nil,                                   // 120: hyperspace.SearchResult.TypedMetadataEntry
-	nil,                                   // 121: hyperspace.GraphNode.MetadataEntry
-	nil,                                   // 122: hyperspace.GraphNode.TypedMetadataEntry
-	nil,                                   // 123: hyperspace.TraverseRequest.FilterEntry
-	nil,                                   // 124: hyperspace.VectorInsertedEvent.MetadataEntry
-	nil,                                   // 125: hyperspace.VectorInsertedEvent.TypedMetadataEntry
-	nil,                                   // 126: hyperspace.TrajectoryStepEvent.MetadataEntry
-	nil,                                   // 127: hyperspace.SyncVectorData.MetadataEntry
+	(*ExtensionRequest)(nil),              // 105: hyperspace.ExtensionRequest
+	(*ExtensionResponse)(nil),             // 106: hyperspace.ExtensionResponse
+	(*ExtensionProcedureInfo)(nil),        // 107: hyperspace.ExtensionProcedureInfo
+	(*ExtensionInfo)(nil),                 // 108: hyperspace.ExtensionInfo
+	(*ListExtensionsResponse)(nil),        // 109: hyperspace.ListExtensionsResponse
+	nil,                                   // 110: hyperspace.InsertOp.MetadataEntry
+	nil,                                   // 111: hyperspace.InsertOp.TypedMetadataEntry
+	nil,                                   // 112: hyperspace.InsertRequest.MetadataEntry
+	nil,                                   // 113: hyperspace.InsertRequest.TypedMetadataEntry
+	nil,                                   // 114: hyperspace.VectorData.MetadataEntry
+	nil,                                   // 115: hyperspace.VectorData.TypedMetadataEntry
+	nil,                                   // 116: hyperspace.InsertTextRequest.MetadataEntry
+	nil,                                   // 117: hyperspace.SearchTextRequest.FilterEntry
+	nil,                                   // 118: hyperspace.SearchTextRequest.ComponentWeightsEntry
+	nil,                                   // 119: hyperspace.UpdatePayloadRequest.MetadataEntry
+	nil,                                   // 120: hyperspace.UpdatePayloadRequest.TypedMetadataEntry
+	nil,                                   // 121: hyperspace.SearchRequest.FilterEntry
+	nil,                                   // 122: hyperspace.SearchRequest.ComponentWeightsEntry
+	nil,                                   // 123: hyperspace.SearchMultiCollectionResponse.ResponsesEntry
+	nil,                                   // 124: hyperspace.SearchResult.MetadataEntry
+	nil,                                   // 125: hyperspace.SearchResult.TypedMetadataEntry
+	nil,                                   // 126: hyperspace.GraphNode.MetadataEntry
+	nil,                                   // 127: hyperspace.GraphNode.TypedMetadataEntry
+	nil,                                   // 128: hyperspace.TraverseRequest.FilterEntry
+	nil,                                   // 129: hyperspace.VectorInsertedEvent.MetadataEntry
+	nil,                                   // 130: hyperspace.VectorInsertedEvent.TypedMetadataEntry
+	nil,                                   // 131: hyperspace.TrajectoryStepEvent.MetadataEntry
+	nil,                                   // 132: hyperspace.SyncVectorData.MetadataEntry
 }
 var file_hyperspace_proto_depIdxs = []int32{
 	7,   // 0: hyperspace.ReplicationLog.insert:type_name -> hyperspace.InsertOp
 	8,   // 1: hyperspace.ReplicationLog.create_collection:type_name -> hyperspace.CreateCollectionOp
 	9,   // 2: hyperspace.ReplicationLog.delete_collection:type_name -> hyperspace.DeleteCollectionOp
 	10,  // 3: hyperspace.ReplicationLog.delete:type_name -> hyperspace.DeleteOp
-	105, // 4: hyperspace.InsertOp.metadata:type_name -> hyperspace.InsertOp.MetadataEntry
-	106, // 5: hyperspace.InsertOp.typed_metadata:type_name -> hyperspace.InsertOp.TypedMetadataEntry
+	110, // 4: hyperspace.InsertOp.metadata:type_name -> hyperspace.InsertOp.MetadataEntry
+	111, // 5: hyperspace.InsertOp.typed_metadata:type_name -> hyperspace.InsertOp.TypedMetadataEntry
 	15,  // 6: hyperspace.CreateCollectionOp.schema:type_name -> hyperspace.CollectionSchema
 	0,   // 7: hyperspace.QuantizationConfig.mode:type_name -> hyperspace.QuantizationMode
 	15,  // 8: hyperspace.CreateCollectionRequest.schema:type_name -> hyperspace.CollectionSchema
@@ -7440,29 +7894,29 @@ var file_hyperspace_proto_depIdxs = []int32{
 	18,  // 12: hyperspace.ListCollectionsResponse.collections:type_name -> hyperspace.CollectionSummary
 	15,  // 13: hyperspace.CollectionStatsResponse.schema:type_name -> hyperspace.CollectionSchema
 	24,  // 14: hyperspace.RebuildIndexRequest.filter_query:type_name -> hyperspace.VacuumFilterQuery
-	107, // 15: hyperspace.InsertRequest.metadata:type_name -> hyperspace.InsertRequest.MetadataEntry
+	112, // 15: hyperspace.InsertRequest.metadata:type_name -> hyperspace.InsertRequest.MetadataEntry
 	1,   // 16: hyperspace.InsertRequest.durability:type_name -> hyperspace.DurabilityLevel
-	108, // 17: hyperspace.InsertRequest.typed_metadata:type_name -> hyperspace.InsertRequest.TypedMetadataEntry
-	109, // 18: hyperspace.VectorData.metadata:type_name -> hyperspace.VectorData.MetadataEntry
-	110, // 19: hyperspace.VectorData.typed_metadata:type_name -> hyperspace.VectorData.TypedMetadataEntry
+	113, // 17: hyperspace.InsertRequest.typed_metadata:type_name -> hyperspace.InsertRequest.TypedMetadataEntry
+	114, // 18: hyperspace.VectorData.metadata:type_name -> hyperspace.VectorData.MetadataEntry
+	115, // 19: hyperspace.VectorData.typed_metadata:type_name -> hyperspace.VectorData.TypedMetadataEntry
 	27,  // 20: hyperspace.BatchInsertRequest.vectors:type_name -> hyperspace.VectorData
 	1,   // 21: hyperspace.BatchInsertRequest.durability:type_name -> hyperspace.DurabilityLevel
-	111, // 22: hyperspace.InsertTextRequest.metadata:type_name -> hyperspace.InsertTextRequest.MetadataEntry
+	116, // 22: hyperspace.InsertTextRequest.metadata:type_name -> hyperspace.InsertTextRequest.MetadataEntry
 	1,   // 23: hyperspace.InsertTextRequest.durability:type_name -> hyperspace.DurabilityLevel
-	112, // 24: hyperspace.SearchTextRequest.filter:type_name -> hyperspace.SearchTextRequest.FilterEntry
+	117, // 24: hyperspace.SearchTextRequest.filter:type_name -> hyperspace.SearchTextRequest.FilterEntry
 	46,  // 25: hyperspace.SearchTextRequest.filters:type_name -> hyperspace.Filter
 	33,  // 26: hyperspace.SearchTextRequest.bm25_options:type_name -> hyperspace.Bm25Options
-	113, // 27: hyperspace.SearchTextRequest.component_weights:type_name -> hyperspace.SearchTextRequest.ComponentWeightsEntry
+	118, // 27: hyperspace.SearchTextRequest.component_weights:type_name -> hyperspace.SearchTextRequest.ComponentWeightsEntry
 	27,  // 28: hyperspace.GetPointsResponse.points:type_name -> hyperspace.VectorData
-	114, // 29: hyperspace.UpdatePayloadRequest.metadata:type_name -> hyperspace.UpdatePayloadRequest.MetadataEntry
-	115, // 30: hyperspace.UpdatePayloadRequest.typed_metadata:type_name -> hyperspace.UpdatePayloadRequest.TypedMetadataEntry
+	119, // 29: hyperspace.UpdatePayloadRequest.metadata:type_name -> hyperspace.UpdatePayloadRequest.MetadataEntry
+	120, // 30: hyperspace.UpdatePayloadRequest.typed_metadata:type_name -> hyperspace.UpdatePayloadRequest.TypedMetadataEntry
 	46,  // 31: hyperspace.ScrollRequest.filters:type_name -> hyperspace.Filter
 	27,  // 32: hyperspace.ScrollResponse.points:type_name -> hyperspace.VectorData
 	46,  // 33: hyperspace.CountRequest.filters:type_name -> hyperspace.Filter
-	116, // 34: hyperspace.SearchRequest.filter:type_name -> hyperspace.SearchRequest.FilterEntry
+	121, // 34: hyperspace.SearchRequest.filter:type_name -> hyperspace.SearchRequest.FilterEntry
 	46,  // 35: hyperspace.SearchRequest.filters:type_name -> hyperspace.Filter
 	33,  // 36: hyperspace.SearchRequest.bm25_options:type_name -> hyperspace.Bm25Options
-	117, // 37: hyperspace.SearchRequest.component_weights:type_name -> hyperspace.SearchRequest.ComponentWeightsEntry
+	122, // 37: hyperspace.SearchRequest.component_weights:type_name -> hyperspace.SearchRequest.ComponentWeightsEntry
 	50,  // 38: hyperspace.Filter.match:type_name -> hyperspace.Match
 	52,  // 39: hyperspace.Filter.range:type_name -> hyperspace.Range
 	53,  // 40: hyperspace.Filter.in_cone:type_name -> hyperspace.InCone
@@ -7478,14 +7932,14 @@ var file_hyperspace_proto_depIdxs = []int32{
 	61,  // 50: hyperspace.SearchResponse.results:type_name -> hyperspace.SearchResult
 	45,  // 51: hyperspace.BatchSearchRequest.searches:type_name -> hyperspace.SearchRequest
 	56,  // 52: hyperspace.BatchSearchResponse.responses:type_name -> hyperspace.SearchResponse
-	118, // 53: hyperspace.SearchMultiCollectionResponse.responses:type_name -> hyperspace.SearchMultiCollectionResponse.ResponsesEntry
-	119, // 54: hyperspace.SearchResult.metadata:type_name -> hyperspace.SearchResult.MetadataEntry
-	120, // 55: hyperspace.SearchResult.typed_metadata:type_name -> hyperspace.SearchResult.TypedMetadataEntry
-	121, // 56: hyperspace.GraphNode.metadata:type_name -> hyperspace.GraphNode.MetadataEntry
-	122, // 57: hyperspace.GraphNode.typed_metadata:type_name -> hyperspace.GraphNode.TypedMetadataEntry
+	123, // 53: hyperspace.SearchMultiCollectionResponse.responses:type_name -> hyperspace.SearchMultiCollectionResponse.ResponsesEntry
+	124, // 54: hyperspace.SearchResult.metadata:type_name -> hyperspace.SearchResult.MetadataEntry
+	125, // 55: hyperspace.SearchResult.typed_metadata:type_name -> hyperspace.SearchResult.TypedMetadataEntry
+	126, // 56: hyperspace.GraphNode.metadata:type_name -> hyperspace.GraphNode.MetadataEntry
+	127, // 57: hyperspace.GraphNode.typed_metadata:type_name -> hyperspace.GraphNode.TypedMetadataEntry
 	2,   // 58: hyperspace.GraphNode.edge_types:type_name -> hyperspace.EdgeType
 	63,  // 59: hyperspace.GetNeighborsResponse.neighbors:type_name -> hyperspace.GraphNode
-	123, // 60: hyperspace.TraverseRequest.filter:type_name -> hyperspace.TraverseRequest.FilterEntry
+	128, // 60: hyperspace.TraverseRequest.filter:type_name -> hyperspace.TraverseRequest.FilterEntry
 	46,  // 61: hyperspace.TraverseRequest.filters:type_name -> hyperspace.Filter
 	3,   // 62: hyperspace.TraverseRequest.traversal_mode:type_name -> hyperspace.TraversalMode
 	63,  // 63: hyperspace.TraverseResponse.nodes:type_name -> hyperspace.GraphNode
@@ -7496,114 +7950,120 @@ var file_hyperspace_proto_depIdxs = []int32{
 	75,  // 68: hyperspace.LinkBatchRequest.edges:type_name -> hyperspace.EdgeItem
 	80,  // 69: hyperspace.InduceEdgesRequest.rules:type_name -> hyperspace.MetadataInductionRuleProto
 	4,   // 70: hyperspace.EventSubscriptionRequest.types:type_name -> hyperspace.EventType
-	124, // 71: hyperspace.VectorInsertedEvent.metadata:type_name -> hyperspace.VectorInsertedEvent.MetadataEntry
-	125, // 72: hyperspace.VectorInsertedEvent.typed_metadata:type_name -> hyperspace.VectorInsertedEvent.TypedMetadataEntry
-	126, // 73: hyperspace.TrajectoryStepEvent.metadata:type_name -> hyperspace.TrajectoryStepEvent.MetadataEntry
+	129, // 71: hyperspace.VectorInsertedEvent.metadata:type_name -> hyperspace.VectorInsertedEvent.MetadataEntry
+	130, // 72: hyperspace.VectorInsertedEvent.typed_metadata:type_name -> hyperspace.VectorInsertedEvent.TypedMetadataEntry
+	131, // 73: hyperspace.TrajectoryStepEvent.metadata:type_name -> hyperspace.TrajectoryStepEvent.MetadataEntry
 	4,   // 74: hyperspace.EventMessage.type:type_name -> hyperspace.EventType
 	85,  // 75: hyperspace.EventMessage.vector_inserted:type_name -> hyperspace.VectorInsertedEvent
 	87,  // 76: hyperspace.EventMessage.vector_deleted:type_name -> hyperspace.VectorDeletedEvent
 	86,  // 77: hyperspace.EventMessage.trajectory_step:type_name -> hyperspace.TrajectoryStepEvent
 	96,  // 78: hyperspace.SyncHandshakeResponse.diff_buckets:type_name -> hyperspace.DiffBucket
-	127, // 79: hyperspace.SyncVectorData.metadata:type_name -> hyperspace.SyncVectorData.MetadataEntry
-	83,  // 80: hyperspace.InsertOp.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	83,  // 81: hyperspace.InsertRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	83,  // 82: hyperspace.VectorData.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	83,  // 83: hyperspace.UpdatePayloadRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	56,  // 84: hyperspace.SearchMultiCollectionResponse.ResponsesEntry.value:type_name -> hyperspace.SearchResponse
-	83,  // 85: hyperspace.SearchResult.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	83,  // 86: hyperspace.GraphNode.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	83,  // 87: hyperspace.VectorInsertedEvent.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
-	12,  // 88: hyperspace.Database.CreateCollection:input_type -> hyperspace.CreateCollectionRequest
-	17,  // 89: hyperspace.Database.DeleteCollection:input_type -> hyperspace.DeleteCollectionRequest
-	89,  // 90: hyperspace.Database.ListCollections:input_type -> hyperspace.Empty
-	20,  // 91: hyperspace.Database.GetCollectionStats:input_type -> hyperspace.CollectionStatsRequest
-	101, // 92: hyperspace.Database.FreezeCollection:input_type -> hyperspace.FreezeCollectionRequest
-	102, // 93: hyperspace.Database.UnfreezeCollection:input_type -> hyperspace.UnfreezeCollectionRequest
-	26,  // 94: hyperspace.Database.Insert:input_type -> hyperspace.InsertRequest
-	28,  // 95: hyperspace.Database.BatchInsert:input_type -> hyperspace.BatchInsertRequest
-	29,  // 96: hyperspace.Database.InsertText:input_type -> hyperspace.InsertTextRequest
-	30,  // 97: hyperspace.Database.Vectorize:input_type -> hyperspace.VectorizeRequest
-	32,  // 98: hyperspace.Database.SearchText:input_type -> hyperspace.SearchTextRequest
-	35,  // 99: hyperspace.Database.Delete:input_type -> hyperspace.DeleteRequest
-	37,  // 100: hyperspace.Database.GetPoints:input_type -> hyperspace.GetPointsRequest
-	39,  // 101: hyperspace.Database.UpdatePayload:input_type -> hyperspace.UpdatePayloadRequest
-	40,  // 102: hyperspace.Database.Scroll:input_type -> hyperspace.ScrollRequest
-	42,  // 103: hyperspace.Database.Count:input_type -> hyperspace.CountRequest
-	45,  // 104: hyperspace.Database.Search:input_type -> hyperspace.SearchRequest
-	57,  // 105: hyperspace.Database.SearchBatch:input_type -> hyperspace.BatchSearchRequest
-	59,  // 106: hyperspace.Database.SearchMultiCollection:input_type -> hyperspace.SearchMultiCollectionRequest
-	62,  // 107: hyperspace.Database.GetNode:input_type -> hyperspace.GetNodeRequest
-	64,  // 108: hyperspace.Database.GetNeighbors:input_type -> hyperspace.GetNeighborsRequest
-	71,  // 109: hyperspace.Database.GetConceptParents:input_type -> hyperspace.GetConceptParentsRequest
-	66,  // 110: hyperspace.Database.Traverse:input_type -> hyperspace.TraverseRequest
-	70,  // 111: hyperspace.Database.FindSemanticClusters:input_type -> hyperspace.FindSemanticClustersRequest
-	68,  // 112: hyperspace.Database.GetSubsumptionTree:input_type -> hyperspace.GetSubsumptionTreeRequest
-	76,  // 113: hyperspace.Database.Link:input_type -> hyperspace.LinkRequest
-	77,  // 114: hyperspace.Database.LinkBatch:input_type -> hyperspace.LinkBatchRequest
-	79,  // 115: hyperspace.Database.Unlink:input_type -> hyperspace.UnlinkRequest
-	81,  // 116: hyperspace.Database.InduceEdgesFromMetadata:input_type -> hyperspace.InduceEdgesRequest
-	91,  // 117: hyperspace.Database.Monitor:input_type -> hyperspace.MonitorRequest
-	89,  // 118: hyperspace.Database.TriggerSnapshot:input_type -> hyperspace.Empty
-	89,  // 119: hyperspace.Database.TriggerVacuum:input_type -> hyperspace.Empty
-	25,  // 120: hyperspace.Database.TriggerReconsolidation:input_type -> hyperspace.ReconsolidationRequest
-	23,  // 121: hyperspace.Database.Configure:input_type -> hyperspace.ConfigUpdate
-	5,   // 122: hyperspace.Database.Replicate:input_type -> hyperspace.ReplicationRequest
-	84,  // 123: hyperspace.Database.SubscribeToEvents:input_type -> hyperspace.EventSubscriptionRequest
-	93,  // 124: hyperspace.Database.GetDigest:input_type -> hyperspace.DigestRequest
-	22,  // 125: hyperspace.Database.RebuildIndex:input_type -> hyperspace.RebuildIndexRequest
-	95,  // 126: hyperspace.Database.SyncHandshake:input_type -> hyperspace.SyncHandshakeRequest
-	98,  // 127: hyperspace.Database.SyncPull:input_type -> hyperspace.SyncPullRequest
-	99,  // 128: hyperspace.Database.SyncPush:input_type -> hyperspace.SyncVectorData
-	89,  // 129: hyperspace.Database.HealthCheck:input_type -> hyperspace.Empty
-	103, // 130: hyperspace.Database.VerifyGeneration:input_type -> hyperspace.VerifyGenerationRequest
-	90,  // 131: hyperspace.Database.CreateCollection:output_type -> hyperspace.StatusResponse
-	90,  // 132: hyperspace.Database.DeleteCollection:output_type -> hyperspace.StatusResponse
-	19,  // 133: hyperspace.Database.ListCollections:output_type -> hyperspace.ListCollectionsResponse
-	21,  // 134: hyperspace.Database.GetCollectionStats:output_type -> hyperspace.CollectionStatsResponse
-	90,  // 135: hyperspace.Database.FreezeCollection:output_type -> hyperspace.StatusResponse
-	90,  // 136: hyperspace.Database.UnfreezeCollection:output_type -> hyperspace.StatusResponse
-	34,  // 137: hyperspace.Database.Insert:output_type -> hyperspace.InsertResponse
-	34,  // 138: hyperspace.Database.BatchInsert:output_type -> hyperspace.InsertResponse
-	34,  // 139: hyperspace.Database.InsertText:output_type -> hyperspace.InsertResponse
-	31,  // 140: hyperspace.Database.Vectorize:output_type -> hyperspace.VectorizeResponse
-	56,  // 141: hyperspace.Database.SearchText:output_type -> hyperspace.SearchResponse
-	36,  // 142: hyperspace.Database.Delete:output_type -> hyperspace.DeleteResponse
-	38,  // 143: hyperspace.Database.GetPoints:output_type -> hyperspace.GetPointsResponse
-	90,  // 144: hyperspace.Database.UpdatePayload:output_type -> hyperspace.StatusResponse
-	41,  // 145: hyperspace.Database.Scroll:output_type -> hyperspace.ScrollResponse
-	43,  // 146: hyperspace.Database.Count:output_type -> hyperspace.CountResponse
-	56,  // 147: hyperspace.Database.Search:output_type -> hyperspace.SearchResponse
-	58,  // 148: hyperspace.Database.SearchBatch:output_type -> hyperspace.BatchSearchResponse
-	60,  // 149: hyperspace.Database.SearchMultiCollection:output_type -> hyperspace.SearchMultiCollectionResponse
-	63,  // 150: hyperspace.Database.GetNode:output_type -> hyperspace.GraphNode
-	65,  // 151: hyperspace.Database.GetNeighbors:output_type -> hyperspace.GetNeighborsResponse
-	72,  // 152: hyperspace.Database.GetConceptParents:output_type -> hyperspace.GetConceptParentsResponse
-	67,  // 153: hyperspace.Database.Traverse:output_type -> hyperspace.TraverseResponse
-	74,  // 154: hyperspace.Database.FindSemanticClusters:output_type -> hyperspace.FindSemanticClustersResponse
-	69,  // 155: hyperspace.Database.GetSubsumptionTree:output_type -> hyperspace.GetSubsumptionTreeResponse
-	90,  // 156: hyperspace.Database.Link:output_type -> hyperspace.StatusResponse
-	78,  // 157: hyperspace.Database.LinkBatch:output_type -> hyperspace.LinkBatchResponse
-	90,  // 158: hyperspace.Database.Unlink:output_type -> hyperspace.StatusResponse
-	82,  // 159: hyperspace.Database.InduceEdgesFromMetadata:output_type -> hyperspace.InduceEdgesResponse
-	92,  // 160: hyperspace.Database.Monitor:output_type -> hyperspace.SystemStats
-	90,  // 161: hyperspace.Database.TriggerSnapshot:output_type -> hyperspace.StatusResponse
-	90,  // 162: hyperspace.Database.TriggerVacuum:output_type -> hyperspace.StatusResponse
-	90,  // 163: hyperspace.Database.TriggerReconsolidation:output_type -> hyperspace.StatusResponse
-	90,  // 164: hyperspace.Database.Configure:output_type -> hyperspace.StatusResponse
-	6,   // 165: hyperspace.Database.Replicate:output_type -> hyperspace.ReplicationLog
-	88,  // 166: hyperspace.Database.SubscribeToEvents:output_type -> hyperspace.EventMessage
-	94,  // 167: hyperspace.Database.GetDigest:output_type -> hyperspace.DigestResponse
-	90,  // 168: hyperspace.Database.RebuildIndex:output_type -> hyperspace.StatusResponse
-	97,  // 169: hyperspace.Database.SyncHandshake:output_type -> hyperspace.SyncHandshakeResponse
-	99,  // 170: hyperspace.Database.SyncPull:output_type -> hyperspace.SyncVectorData
-	100, // 171: hyperspace.Database.SyncPush:output_type -> hyperspace.SyncPushResponse
-	44,  // 172: hyperspace.Database.HealthCheck:output_type -> hyperspace.HealthCheckResponse
-	104, // 173: hyperspace.Database.VerifyGeneration:output_type -> hyperspace.VerifyGenerationResponse
-	131, // [131:174] is the sub-list for method output_type
-	88,  // [88:131] is the sub-list for method input_type
-	88,  // [88:88] is the sub-list for extension type_name
-	88,  // [88:88] is the sub-list for extension extendee
-	0,   // [0:88] is the sub-list for field type_name
+	132, // 79: hyperspace.SyncVectorData.metadata:type_name -> hyperspace.SyncVectorData.MetadataEntry
+	107, // 80: hyperspace.ExtensionInfo.procedures:type_name -> hyperspace.ExtensionProcedureInfo
+	108, // 81: hyperspace.ListExtensionsResponse.extensions:type_name -> hyperspace.ExtensionInfo
+	83,  // 82: hyperspace.InsertOp.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 83: hyperspace.InsertRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 84: hyperspace.VectorData.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 85: hyperspace.UpdatePayloadRequest.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	56,  // 86: hyperspace.SearchMultiCollectionResponse.ResponsesEntry.value:type_name -> hyperspace.SearchResponse
+	83,  // 87: hyperspace.SearchResult.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 88: hyperspace.GraphNode.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	83,  // 89: hyperspace.VectorInsertedEvent.TypedMetadataEntry.value:type_name -> hyperspace.MetadataValue
+	12,  // 90: hyperspace.Database.CreateCollection:input_type -> hyperspace.CreateCollectionRequest
+	17,  // 91: hyperspace.Database.DeleteCollection:input_type -> hyperspace.DeleteCollectionRequest
+	89,  // 92: hyperspace.Database.ListCollections:input_type -> hyperspace.Empty
+	20,  // 93: hyperspace.Database.GetCollectionStats:input_type -> hyperspace.CollectionStatsRequest
+	101, // 94: hyperspace.Database.FreezeCollection:input_type -> hyperspace.FreezeCollectionRequest
+	102, // 95: hyperspace.Database.UnfreezeCollection:input_type -> hyperspace.UnfreezeCollectionRequest
+	26,  // 96: hyperspace.Database.Insert:input_type -> hyperspace.InsertRequest
+	28,  // 97: hyperspace.Database.BatchInsert:input_type -> hyperspace.BatchInsertRequest
+	29,  // 98: hyperspace.Database.InsertText:input_type -> hyperspace.InsertTextRequest
+	30,  // 99: hyperspace.Database.Vectorize:input_type -> hyperspace.VectorizeRequest
+	32,  // 100: hyperspace.Database.SearchText:input_type -> hyperspace.SearchTextRequest
+	35,  // 101: hyperspace.Database.Delete:input_type -> hyperspace.DeleteRequest
+	37,  // 102: hyperspace.Database.GetPoints:input_type -> hyperspace.GetPointsRequest
+	39,  // 103: hyperspace.Database.UpdatePayload:input_type -> hyperspace.UpdatePayloadRequest
+	40,  // 104: hyperspace.Database.Scroll:input_type -> hyperspace.ScrollRequest
+	42,  // 105: hyperspace.Database.Count:input_type -> hyperspace.CountRequest
+	45,  // 106: hyperspace.Database.Search:input_type -> hyperspace.SearchRequest
+	57,  // 107: hyperspace.Database.SearchBatch:input_type -> hyperspace.BatchSearchRequest
+	59,  // 108: hyperspace.Database.SearchMultiCollection:input_type -> hyperspace.SearchMultiCollectionRequest
+	62,  // 109: hyperspace.Database.GetNode:input_type -> hyperspace.GetNodeRequest
+	64,  // 110: hyperspace.Database.GetNeighbors:input_type -> hyperspace.GetNeighborsRequest
+	71,  // 111: hyperspace.Database.GetConceptParents:input_type -> hyperspace.GetConceptParentsRequest
+	66,  // 112: hyperspace.Database.Traverse:input_type -> hyperspace.TraverseRequest
+	70,  // 113: hyperspace.Database.FindSemanticClusters:input_type -> hyperspace.FindSemanticClustersRequest
+	68,  // 114: hyperspace.Database.GetSubsumptionTree:input_type -> hyperspace.GetSubsumptionTreeRequest
+	76,  // 115: hyperspace.Database.Link:input_type -> hyperspace.LinkRequest
+	77,  // 116: hyperspace.Database.LinkBatch:input_type -> hyperspace.LinkBatchRequest
+	79,  // 117: hyperspace.Database.Unlink:input_type -> hyperspace.UnlinkRequest
+	81,  // 118: hyperspace.Database.InduceEdgesFromMetadata:input_type -> hyperspace.InduceEdgesRequest
+	91,  // 119: hyperspace.Database.Monitor:input_type -> hyperspace.MonitorRequest
+	89,  // 120: hyperspace.Database.TriggerSnapshot:input_type -> hyperspace.Empty
+	89,  // 121: hyperspace.Database.TriggerVacuum:input_type -> hyperspace.Empty
+	25,  // 122: hyperspace.Database.TriggerReconsolidation:input_type -> hyperspace.ReconsolidationRequest
+	23,  // 123: hyperspace.Database.Configure:input_type -> hyperspace.ConfigUpdate
+	5,   // 124: hyperspace.Database.Replicate:input_type -> hyperspace.ReplicationRequest
+	84,  // 125: hyperspace.Database.SubscribeToEvents:input_type -> hyperspace.EventSubscriptionRequest
+	93,  // 126: hyperspace.Database.GetDigest:input_type -> hyperspace.DigestRequest
+	22,  // 127: hyperspace.Database.RebuildIndex:input_type -> hyperspace.RebuildIndexRequest
+	95,  // 128: hyperspace.Database.SyncHandshake:input_type -> hyperspace.SyncHandshakeRequest
+	98,  // 129: hyperspace.Database.SyncPull:input_type -> hyperspace.SyncPullRequest
+	99,  // 130: hyperspace.Database.SyncPush:input_type -> hyperspace.SyncVectorData
+	89,  // 131: hyperspace.Database.HealthCheck:input_type -> hyperspace.Empty
+	103, // 132: hyperspace.Database.VerifyGeneration:input_type -> hyperspace.VerifyGenerationRequest
+	105, // 133: hyperspace.Database.CallExtension:input_type -> hyperspace.ExtensionRequest
+	89,  // 134: hyperspace.Database.ListExtensions:input_type -> hyperspace.Empty
+	90,  // 135: hyperspace.Database.CreateCollection:output_type -> hyperspace.StatusResponse
+	90,  // 136: hyperspace.Database.DeleteCollection:output_type -> hyperspace.StatusResponse
+	19,  // 137: hyperspace.Database.ListCollections:output_type -> hyperspace.ListCollectionsResponse
+	21,  // 138: hyperspace.Database.GetCollectionStats:output_type -> hyperspace.CollectionStatsResponse
+	90,  // 139: hyperspace.Database.FreezeCollection:output_type -> hyperspace.StatusResponse
+	90,  // 140: hyperspace.Database.UnfreezeCollection:output_type -> hyperspace.StatusResponse
+	34,  // 141: hyperspace.Database.Insert:output_type -> hyperspace.InsertResponse
+	34,  // 142: hyperspace.Database.BatchInsert:output_type -> hyperspace.InsertResponse
+	34,  // 143: hyperspace.Database.InsertText:output_type -> hyperspace.InsertResponse
+	31,  // 144: hyperspace.Database.Vectorize:output_type -> hyperspace.VectorizeResponse
+	56,  // 145: hyperspace.Database.SearchText:output_type -> hyperspace.SearchResponse
+	36,  // 146: hyperspace.Database.Delete:output_type -> hyperspace.DeleteResponse
+	38,  // 147: hyperspace.Database.GetPoints:output_type -> hyperspace.GetPointsResponse
+	90,  // 148: hyperspace.Database.UpdatePayload:output_type -> hyperspace.StatusResponse
+	41,  // 149: hyperspace.Database.Scroll:output_type -> hyperspace.ScrollResponse
+	43,  // 150: hyperspace.Database.Count:output_type -> hyperspace.CountResponse
+	56,  // 151: hyperspace.Database.Search:output_type -> hyperspace.SearchResponse
+	58,  // 152: hyperspace.Database.SearchBatch:output_type -> hyperspace.BatchSearchResponse
+	60,  // 153: hyperspace.Database.SearchMultiCollection:output_type -> hyperspace.SearchMultiCollectionResponse
+	63,  // 154: hyperspace.Database.GetNode:output_type -> hyperspace.GraphNode
+	65,  // 155: hyperspace.Database.GetNeighbors:output_type -> hyperspace.GetNeighborsResponse
+	72,  // 156: hyperspace.Database.GetConceptParents:output_type -> hyperspace.GetConceptParentsResponse
+	67,  // 157: hyperspace.Database.Traverse:output_type -> hyperspace.TraverseResponse
+	74,  // 158: hyperspace.Database.FindSemanticClusters:output_type -> hyperspace.FindSemanticClustersResponse
+	69,  // 159: hyperspace.Database.GetSubsumptionTree:output_type -> hyperspace.GetSubsumptionTreeResponse
+	90,  // 160: hyperspace.Database.Link:output_type -> hyperspace.StatusResponse
+	78,  // 161: hyperspace.Database.LinkBatch:output_type -> hyperspace.LinkBatchResponse
+	90,  // 162: hyperspace.Database.Unlink:output_type -> hyperspace.StatusResponse
+	82,  // 163: hyperspace.Database.InduceEdgesFromMetadata:output_type -> hyperspace.InduceEdgesResponse
+	92,  // 164: hyperspace.Database.Monitor:output_type -> hyperspace.SystemStats
+	90,  // 165: hyperspace.Database.TriggerSnapshot:output_type -> hyperspace.StatusResponse
+	90,  // 166: hyperspace.Database.TriggerVacuum:output_type -> hyperspace.StatusResponse
+	90,  // 167: hyperspace.Database.TriggerReconsolidation:output_type -> hyperspace.StatusResponse
+	90,  // 168: hyperspace.Database.Configure:output_type -> hyperspace.StatusResponse
+	6,   // 169: hyperspace.Database.Replicate:output_type -> hyperspace.ReplicationLog
+	88,  // 170: hyperspace.Database.SubscribeToEvents:output_type -> hyperspace.EventMessage
+	94,  // 171: hyperspace.Database.GetDigest:output_type -> hyperspace.DigestResponse
+	90,  // 172: hyperspace.Database.RebuildIndex:output_type -> hyperspace.StatusResponse
+	97,  // 173: hyperspace.Database.SyncHandshake:output_type -> hyperspace.SyncHandshakeResponse
+	99,  // 174: hyperspace.Database.SyncPull:output_type -> hyperspace.SyncVectorData
+	100, // 175: hyperspace.Database.SyncPush:output_type -> hyperspace.SyncPushResponse
+	44,  // 176: hyperspace.Database.HealthCheck:output_type -> hyperspace.HealthCheckResponse
+	104, // 177: hyperspace.Database.VerifyGeneration:output_type -> hyperspace.VerifyGenerationResponse
+	106, // 178: hyperspace.Database.CallExtension:output_type -> hyperspace.ExtensionResponse
+	109, // 179: hyperspace.Database.ListExtensions:output_type -> hyperspace.ListExtensionsResponse
+	135, // [135:180] is the sub-list for method output_type
+	90,  // [90:135] is the sub-list for method input_type
+	90,  // [90:90] is the sub-list for extension type_name
+	90,  // [90:90] is the sub-list for extension extendee
+	0,   // [0:90] is the sub-list for field type_name
 }
 
 func init() { file_hyperspace_proto_init() }
@@ -7656,13 +8116,14 @@ func file_hyperspace_proto_init() {
 		(*EventMessage_TrajectoryStep)(nil),
 	}
 	file_hyperspace_proto_msgTypes[98].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[100].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hyperspace_proto_rawDesc), len(file_hyperspace_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   123,
+			NumMessages:   128,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

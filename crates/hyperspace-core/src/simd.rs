@@ -321,6 +321,13 @@ fn l2_sq_dispatch(backend: SimdBackend, bytes: &[u8], b: &[f32]) -> f32 {
     }
 }
 
+/// `eps0` for the ADSampling kernels on **unrotated** storage: only the exact lower-bound
+/// test (`partial_sum > threshold`) is applied. The statistical `0.65·t` / `0.92·t`
+/// checkpoints assume energy is spread uniformly over dimensions, which only holds after
+/// a random orthogonal rotation; on raw (e.g. Matryoshka/MRL) embeddings, where leading
+/// dimensions carry most of the variance, they discard true neighbors.
+pub const EXACT_EARLY_ABANDON: f32 = 0.0;
+
 /// Computes the ADSampling statistical hypothesis threshold at prefix length `visited` out of `total`:
 /// `threshold * (visited / total) * (1 + eps0 / sqrt(visited))^2`.
 #[inline(always)]
@@ -508,11 +515,71 @@ unsafe fn l2_sq_pair_avx2(bytes_a: &[u8], bytes_b: &[u8]) -> f32 {
     sum
 }
 
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx512f")]
+unsafe fn l2_sq_pair_avx512(bytes_a: &[u8], bytes_b: &[u8]) -> f32 {
+    use std::arch::x86_64::{
+        _mm512_add_ps, _mm512_fmadd_ps, _mm512_loadu_ps, _mm512_reduce_add_ps, _mm512_setzero_ps,
+        _mm512_sub_ps,
+    };
+    let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
+    let ap = bytes_a.as_ptr().cast::<f32>();
+    let bp = bytes_b.as_ptr().cast::<f32>();
+    let mut acc0 = _mm512_setzero_ps();
+    let mut acc1 = _mm512_setzero_ps();
+    let mut acc2 = _mm512_setzero_ps();
+    let mut acc3 = _mm512_setzero_ps();
+    let mut i = 0usize;
+    while i + 64 <= n {
+        let d0 = _mm512_sub_ps(
+            _mm512_loadu_ps(ap.byte_add(i * 4)),
+            _mm512_loadu_ps(bp.byte_add(i * 4)),
+        );
+        let d1 = _mm512_sub_ps(
+            _mm512_loadu_ps(ap.byte_add((i + 16) * 4)),
+            _mm512_loadu_ps(bp.byte_add((i + 16) * 4)),
+        );
+        let d2 = _mm512_sub_ps(
+            _mm512_loadu_ps(ap.byte_add((i + 32) * 4)),
+            _mm512_loadu_ps(bp.byte_add((i + 32) * 4)),
+        );
+        let d3 = _mm512_sub_ps(
+            _mm512_loadu_ps(ap.byte_add((i + 48) * 4)),
+            _mm512_loadu_ps(bp.byte_add((i + 48) * 4)),
+        );
+        acc0 = _mm512_fmadd_ps(d0, d0, acc0);
+        acc1 = _mm512_fmadd_ps(d1, d1, acc1);
+        acc2 = _mm512_fmadd_ps(d2, d2, acc2);
+        acc3 = _mm512_fmadd_ps(d3, d3, acc3);
+        i += 64;
+    }
+    while i + 16 <= n {
+        let d = _mm512_sub_ps(
+            _mm512_loadu_ps(ap.byte_add(i * 4)),
+            _mm512_loadu_ps(bp.byte_add(i * 4)),
+        );
+        acc0 = _mm512_fmadd_ps(d, d, acc0);
+        i += 16;
+    }
+    let mut sum = _mm512_reduce_add_ps(_mm512_add_ps(
+        _mm512_add_ps(acc0, acc1),
+        _mm512_add_ps(acc2, acc3),
+    ));
+    while i < n {
+        let d = read_f32(bytes_a, i) - read_f32(bytes_b, i);
+        sum += d * d;
+        i += 1;
+    }
+    sum
+}
+
 #[inline]
 fn l2_sq_pair_dispatch(backend: SimdBackend, bytes_a: &[u8], bytes_b: &[u8]) -> f32 {
     match backend {
         #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
-        SimdBackend::Avx512 | SimdBackend::Avx2 => unsafe { l2_sq_pair_avx2(bytes_a, bytes_b) },
+        SimdBackend::Avx512 => unsafe { l2_sq_pair_avx512(bytes_a, bytes_b) },
+        #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+        SimdBackend::Avx2 => unsafe { l2_sq_pair_avx2(bytes_a, bytes_b) },
         #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
         SimdBackend::Neon => unsafe { l2_sq_pair_neon(bytes_a, bytes_b) },
         _ => l2_sq_pair_scalar(bytes_a, bytes_b),
@@ -602,39 +669,37 @@ pub fn lorentz_f32_bytes_pair_thresh(
     1.0 + ((sp - dt_sq) * 0.5).max(0.0)
 }
 
-/// Zero-copy 801D Hybrid (`H^33 x R^768`) distance directly between two little-endian `f32` byte slices.
+/// Zero-copy **squared** 801D Hybrid (`H^33 x R^768`) distance `d_lor² + ‖Δe‖²` between two
+/// little-endian `f32` byte slices. `threshold_sq` is in squared units. No `sqrt`, and no
+/// `ln`/`sqrt` for near-field Lorentz heads (see [`crate::acosh_sq_from_cosh`]).
 #[inline]
-pub fn hybrid_f32_bytes_pair(bytes_a: &[u8], bytes_b: &[u8], threshold: Option<f64>) -> f64 {
+pub fn hybrid_sq_f32_bytes_pair(bytes_a: &[u8], bytes_b: &[u8], threshold_sq: Option<f64>) -> f64 {
     let n = (bytes_a.len() / 4).min(bytes_b.len() / 4);
     if n < 33 {
         return 0.0;
     }
     let cosh_lor = lorentz_f32_bytes_pair_thresh(&bytes_a[..132], &bytes_b[..132], None);
-    let d_lor = crate::acosh_from_cosh(cosh_lor);
-    if let Some(t) = threshold {
-        if d_lor > t {
-            return d_lor;
+    let d_lor_sq = crate::acosh_sq_from_cosh(cosh_lor);
+    if let Some(t) = threshold_sq {
+        if d_lor_sq > t {
+            return d_lor_sq;
         }
     }
-    let euc_thresh = threshold.and_then(|t| {
-        let rem = t * t - d_lor * d_lor;
-        if rem.is_finite() && rem >= 0.0 && rem < f64::from(f32::MAX) {
-            Some(rem as f32)
-        } else {
-            None
-        }
+    let euc_thresh = threshold_sq.and_then(|t| {
+        let rem = t - d_lor_sq;
+        (rem.is_finite() && rem >= 0.0 && rem < f64::from(f32::MAX)).then_some(rem as f32)
     });
     let d_euc = if n > 33 {
         f64::from(l2_sq_f32_bytes_pair_adsampling(
             &bytes_a[132..n * 4],
             &bytes_b[132..n * 4],
             euc_thresh,
-            3.2,
+            EXACT_EARLY_ABANDON,
         ))
     } else {
         0.0
     };
-    crate::hybrid::combine_hybrid_distance(d_lor, d_euc)
+    d_lor_sq + d_euc.max(0.0)
 }
 
 /// Squared L2 distance between little-endian `f32` bytes and a float query.
@@ -692,6 +757,74 @@ pub fn l2_sq_f32(a: &[f32], b: &[f32]) -> f32 {
             .map(|(x, y)| (x - y) * (x - y))
             .sum()
     }
+}
+
+// ============================================================================
+// Zero-copy f64 kernels (legacy `f64` storage, no intermediate Vec<f64>)
+// ============================================================================
+
+#[inline(always)]
+fn read_f64(bytes: &[u8], i: usize) -> f64 {
+    let o = i * 8;
+    f64::from_le_bytes([
+        bytes[o],
+        bytes[o + 1],
+        bytes[o + 2],
+        bytes[o + 3],
+        bytes[o + 4],
+        bytes[o + 5],
+        bytes[o + 6],
+        bytes[o + 7],
+    ])
+}
+
+/// Squared L2 distance between little-endian `f64` bytes and an `f64` query
+/// (`min(bytes.len() / 8, b.len())` elements), reading the storage in place.
+/// Four independent accumulators let LLVM vectorize the loop on the target ISA.
+#[inline]
+pub fn l2_sq_f64_bytes(bytes: &[u8], b: &[f64]) -> f64 {
+    let n = (bytes.len() / 8).min(b.len());
+    let (chunks, _) = bytes[..n * 8].as_chunks::<32>();
+    let mut acc = [0.0f64; 4];
+    for (c, bc) in chunks.iter().zip(b.as_chunks::<4>().0) {
+        for l in 0..4 {
+            let a = f64::from_le_bytes([
+                c[l * 8],
+                c[l * 8 + 1],
+                c[l * 8 + 2],
+                c[l * 8 + 3],
+                c[l * 8 + 4],
+                c[l * 8 + 5],
+                c[l * 8 + 6],
+                c[l * 8 + 7],
+            ]);
+            let d = a - bc[l];
+            acc[l] += d * d;
+        }
+    }
+    let mut sum = (acc[0] + acc[1]) + (acc[2] + acc[3]);
+    for i in (chunks.len() * 4)..n {
+        let d = read_f64(bytes, i) - b[i];
+        sum += d * d;
+    }
+    sum
+}
+
+/// Lorentz `cosh(d)` between little-endian `f64` bytes and an `f64` query using the
+/// cancellation-free difference identity `1 + (‖Δx‖² − Δt²) / 2`.
+#[inline]
+pub fn lorentz_cosh_f64_bytes(bytes: &[u8], b: &[f64]) -> f64 {
+    let n = (bytes.len() / 8).min(b.len());
+    if n == 0 {
+        return 1.0;
+    }
+    let dt = read_f64(bytes, 0) - b[0];
+    let sp = if n > 1 {
+        l2_sq_f64_bytes(&bytes[8..n * 8], &b[1..n])
+    } else {
+        0.0
+    };
+    1.0 + ((sp - dt * dt) * 0.5).max(0.0)
 }
 
 // ============================================================================
@@ -1324,43 +1457,41 @@ pub fn lorentz_f32_bytes_thresh(bytes: &[u8], b: &[f32], threshold: Option<f64>)
     1.0 + ((sp - dt_sq) * 0.5).max(0.0)
 }
 
-/// Zero-copy 801D Hybrid (`H^33 x R^768`) distance on little-endian `f32` bytes and query slice `b`.
+/// Zero-copy **squared** 801D Hybrid (`H^33 x R^768`) distance `d_lor² + ‖Δe‖²` on
+/// little-endian `f32` bytes and query slice `b`.
 ///
-/// Computes the 33D Lorentz distance (`d_lor`) using the SIMD spatial L2 difference identity,
-/// checks the cross-manifold early-abandon `threshold` after the 33D head, and adds the
-/// SIMD-accelerated squared Euclidean distance (`d_euc`) on the remaining coordinates `33..n`.
+/// Ranking by the squared product-space distance is equivalent to ranking by the distance,
+/// so the final `sqrt` is deferred to result output, and the Lorentz head uses
+/// [`crate::acosh_sq_from_cosh`] (no `sqrt`/`ln` in the near field). `threshold_sq` is in
+/// squared units; the cross-manifold early-abandon checks it right after the 33D head.
 #[inline]
-pub fn hybrid_f32_bytes(bytes: &[u8], b: &[f32], threshold: Option<f64>) -> f64 {
+pub fn hybrid_sq_f32_bytes(bytes: &[u8], b: &[f32], threshold_sq: Option<f64>) -> f64 {
     let n = (bytes.len() / 4).min(b.len());
     if n < 33 {
         return 0.0;
     }
     let cosh_lor = lorentz_f32_bytes_thresh(&bytes[..132], &b[..33], None);
-    let d_lor = crate::acosh_from_cosh(cosh_lor);
-    if let Some(t) = threshold {
-        if d_lor > t {
-            return d_lor;
+    let d_lor_sq = crate::acosh_sq_from_cosh(cosh_lor);
+    if let Some(t) = threshold_sq {
+        if d_lor_sq > t {
+            return d_lor_sq;
         }
     }
-    let euc_thresh = threshold.and_then(|t| {
-        let rem = t * t - d_lor * d_lor;
-        if rem.is_finite() && rem >= 0.0 && rem < f64::from(f32::MAX) {
-            Some(rem as f32)
-        } else {
-            None
-        }
+    let euc_thresh = threshold_sq.and_then(|t| {
+        let rem = t - d_lor_sq;
+        (rem.is_finite() && rem >= 0.0 && rem < f64::from(f32::MAX)).then_some(rem as f32)
     });
     let d_euc = if n > 33 {
         f64::from(l2_sq_f32_bytes_adsampling(
             &bytes[132..n * 4],
             &b[33..n],
             euc_thresh,
-            3.2,
+            EXACT_EARLY_ABANDON,
         ))
     } else {
         0.0
     };
-    crate::hybrid::combine_hybrid_distance(d_lor, d_euc)
+    d_lor_sq + d_euc.max(0.0)
 }
 
 /// Computes `sum_i (a_i * scale - b_i)^2` over little-endian `f32` bytes `a` and slice `b`.
@@ -2430,6 +2561,48 @@ mod tests {
             assert!(
                 (got_dot - want_dot).abs() <= want_dot.abs() * 1e-4 + 1e-5,
                 "sq8_dot mismatch at n={n}: got={got_dot} want={want_dot}"
+            );
+        }
+    }
+
+    #[test]
+    fn f64_byte_kernels_match_reference() {
+        for n in [0usize, 1, 3, 4, 7, 33, 128, 801] {
+            let a: Vec<f64> = (0..n).map(|i| (i as f64 * 0.37).sin()).collect();
+            let b: Vec<f64> = (0..n).map(|i| (i as f64 * 0.11).cos()).collect();
+            let bytes: Vec<u8> = a.iter().flat_map(|x| x.to_le_bytes()).collect();
+            let want: f64 = a.iter().zip(&b).map(|(x, y)| (x - y) * (x - y)).sum();
+            let got = l2_sq_f64_bytes(&bytes, &b);
+            assert!((got - want).abs() <= 1e-9 * want.max(1.0), "n={n}");
+
+            if n >= 2 {
+                let dt = a[0] - b[0];
+                let sp: f64 = a[1..]
+                    .iter()
+                    .zip(&b[1..])
+                    .map(|(x, y)| (x - y) * (x - y))
+                    .sum();
+                let want_cosh = 1.0 + ((sp - dt * dt) * 0.5).max(0.0);
+                let got_cosh = lorentz_cosh_f64_bytes(&bytes, &b);
+                assert!((got_cosh - want_cosh).abs() <= 1e-9 * want_cosh, "n={n}");
+            }
+        }
+    }
+
+    #[test]
+    fn pair_dispatch_matches_scalar() {
+        for n in [1usize, 15, 16, 63, 64, 65, 200, 768] {
+            let a: Vec<u8> = (0..n)
+                .flat_map(|i| ((i as f32) * 0.5).to_le_bytes())
+                .collect();
+            let b: Vec<u8> = (0..n)
+                .flat_map(|i| ((i as f32) * 0.25 - 1.0).to_le_bytes())
+                .collect();
+            let want = l2_sq_pair_scalar(&a, &b);
+            let got = l2_sq_pair_dispatch(backend(), &a, &b);
+            assert!(
+                (got - want).abs() <= 1e-3 * want.max(1.0),
+                "n={n}: {got} vs {want}"
             );
         }
     }

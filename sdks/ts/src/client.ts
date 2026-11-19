@@ -425,7 +425,31 @@ export class HyperspaceClient {
         return pf;
     }
 
-    constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string) {
+    /**
+     * Send vectors as `repeated float` (`vector_f32`) instead of `repeated double`:
+     * half the wire size and decode cost. Requires HyperspaceDB server >= 4.2.5.
+     */
+    public compactVectors = false;
+
+    /** Enables / disables compact f32 wire vectors (see {@link compactVectors}). */
+    public setCompactVectors(enabled: boolean): this {
+        this.compactVectors = enabled;
+        return this;
+    }
+
+    private applyVector(
+        msg: { setVectorList(v: number[]): unknown; setVectorF32List(v: number[]): unknown },
+        vector: number[],
+    ): void {
+        if (this.compactVectors) {
+            msg.setVectorF32List(vector);
+        } else {
+            msg.setVectorList(vector);
+        }
+    }
+
+    constructor(host: string = 'localhost:50051', apiKey?: string, userId?: string, clientOptions?: { compactVectors?: boolean }) {
+        this.compactVectors = clientOptions?.compactVectors ?? false;
         const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/$/, '');
         const isSecure = cleanHost.endsWith(':443') || (!cleanHost.includes('localhost') && !cleanHost.includes('127.0.0.1') && !cleanHost.includes(':50051') && !cleanHost.includes(':50050') && cleanHost.includes('.'));
         const formattedHost = isSecure && !cleanHost.includes(':') ? `${cleanHost}:443` : cleanHost;
@@ -955,7 +979,7 @@ export class HyperspaceClient {
                     }
                 }
                 
-                req.setVectorList(vectorList);
+                this.applyVector(req, vectorList);
                 req.setId(id);
                 req.setCollection(collection);
                 req.setOriginNodeId('');
@@ -1087,7 +1111,7 @@ export class HyperspaceClient {
             const vectors = items.map(item => {
                 const v = new VectorData();
                 v.setId(item.id);
-                v.setVectorList(HyperspaceClient.toVectorList(item.vector));
+                this.applyVector(v, HyperspaceClient.toVectorList(item.vector));
                 if (item.metadata) {
                     const map = v.getMetadataMap();
                     for (const k in item.metadata) map.set(k, item.metadata[k]);
@@ -1162,7 +1186,7 @@ export class HyperspaceClient {
                     includePayload = true;
                 }
                 
-                req.setVectorList(vectorList);
+                this.applyVector(req, vectorList);
                 
                 if (optFilter) {
                     const map = req.getFilterMap();
@@ -1335,7 +1359,7 @@ export class HyperspaceClient {
             req.setSearchesList(
                 vectors.map((vector) => {
                     const s = new SearchRequest();
-                    s.setVectorList(HyperspaceClient.toVectorList(vector));
+                    this.applyVector(s, HyperspaceClient.toVectorList(vector));
                     s.setTopK(topK);
                     s.setCollection(collection);
                     return s;
@@ -1780,7 +1804,7 @@ export class HyperspaceClient {
         return new Promise((resolve, reject) => {
             const req = new SearchMultiCollectionRequest();
             req.setCollectionsList(collections);
-            req.setVectorList(HyperspaceClient.toVectorList(query));
+            this.applyVector(req, HyperspaceClient.toVectorList(query));
             req.setTopK(10);
 
             this.client.searchMultiCollection(req, this.metadata, (err, resp) => {

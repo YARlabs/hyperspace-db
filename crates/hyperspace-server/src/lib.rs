@@ -106,6 +106,7 @@ use hyperspace_proto::hyperspace::{
     VerifyGenerationRequest, VerifyGenerationResponse,
 };
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
+use hyperspace_proto::F32Vector;
 use tonic::Streaming;
 
 use sha2::{Digest, Sha256};
@@ -206,6 +207,15 @@ impl Interceptor for AuthInterceptor {
 struct ClientAuthInterceptor {
     api_key: String,
     user_id: Option<String>,
+}
+
+/// `HS_SERVER_WAVE_SEARCH_ENABLED`, read once (env access takes a process-wide lock).
+fn server_wave_search_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("HS_SERVER_WAVE_SEARCH_ENABLED")
+            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+    })
 }
 
 fn default_ef_search() -> usize {
@@ -341,7 +351,7 @@ fn parse_complex_filters(filters: &[Filter]) -> Vec<hyperspace_core::FilterExpr>
 }
 
 fn build_filters(
-    req: SearchRequest,
+    mut req: SearchRequest,
 ) -> (
     String,
     Vec<f64>,
@@ -349,6 +359,7 @@ fn build_filters(
     Vec<hyperspace_core::FilterExpr>,
     hyperspace_core::SearchParams,
 ) {
+    req.normalize_vector();
     let col_name = if req.collection.is_empty() {
         "default".to_string()
     } else {
@@ -1116,7 +1127,8 @@ impl Database for HyperspaceService {
             .remote_addr()
             .map(|addr| addr.ip().to_string())
             .unwrap_or_else(|| "unknown".to_string());
-        let req = request.into_inner();
+        let mut req = request.into_inner();
+        req.normalize_vector();
 
         let (owner, col_name) =
             resolve_collection(&ctx, &req.collection, security::UserRole::ReadWrite)?;
@@ -1239,6 +1251,10 @@ impl Database for HyperspaceService {
             let mut points: Vec<hyperspace_pdk::InsertPoint> = req
                 .vectors
                 .into_iter()
+                .map(|mut v| {
+                    v.normalize_vector();
+                    v
+                })
                 .map(|v| hyperspace_pdk::InsertPoint {
                     id: v.id,
                     vector: v.vector,
@@ -1717,8 +1733,7 @@ impl Database for HyperspaceService {
             params.top_k = search_ctx.top_k;
 
             let wave_requested = params.use_wave;
-            let wave_enabled = std::env::var("HS_SERVER_WAVE_SEARCH_ENABLED")
-                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+            let wave_enabled = server_wave_search_enabled();
 
             let search_fut = async {
                 if wave_requested {
@@ -2026,7 +2041,8 @@ impl Database for HyperspaceService {
         request: Request<SearchMultiCollectionRequest>,
     ) -> Result<Response<SearchMultiCollectionResponse>, Status> {
         let user_id = get_user_id(&request);
-        let req = request.into_inner();
+        let mut req = request.into_inner();
+        req.normalize_vector();
         let inner_concurrency = search_batch_inner_concurrency();
 
         let mut responses = std::collections::HashMap::new();
@@ -2909,6 +2925,7 @@ impl Database for HyperspaceService {
             let proto_points = points
                 .into_iter()
                 .map(|(id, vector, meta)| VectorData {
+                    vector_f32: Vec::new(),
                     id,
                     vector,
                     metadata: meta,
@@ -3005,6 +3022,7 @@ impl Database for HyperspaceService {
             let proto_points = points
                 .into_iter()
                 .map(|(id, vector, meta)| VectorData {
+                    vector_f32: Vec::new(),
                     id,
                     vector,
                     metadata: meta,

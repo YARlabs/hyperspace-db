@@ -30,6 +30,27 @@ pub struct VectorStore {
     base_path: PathBuf,
 }
 
+/// mmap advice toggles (read once): `HS_MMAP_WILLNEED`, `HS_MMAP_HUGEPAGES`.
+#[derive(Clone, Copy)]
+struct MmapHints {
+    willneed: bool,
+    hugepages: bool,
+}
+
+fn mmap_hints() -> MmapHints {
+    static HINTS: std::sync::OnceLock<MmapHints> = std::sync::OnceLock::new();
+    *HINTS.get_or_init(|| {
+        let on = |k: &str| {
+            std::env::var(k)
+                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        };
+        MmapHints {
+            willneed: on("HS_MMAP_WILLNEED"),
+            hugepages: on("HS_MMAP_HUGEPAGES"),
+        }
+    })
+}
+
 #[repr(align(64))]
 struct AlignedZero([u8; 131_072]);
 static ZERO_BUF: AlignedZero = AlignedZero([0u8; 131_072]);
@@ -114,7 +135,22 @@ impl VectorStore {
         let read_mmap = unsafe { MmapOptions::new().map(&file)? };
 
         #[cfg(unix)]
-        let _ = read_mmap.advise(memmap2::Advice::Random);
+        {
+            let _ = read_mmap.advise(memmap2::Advice::Random);
+            let hints = mmap_hints();
+            // Pre-fault hot collections so the first queries don't pay page faults.
+            if hints.willneed {
+                let _ = read_mmap.advise(memmap2::Advice::WillNeed);
+            }
+            // Transparent huge pages cut TLB misses on random graph access (Linux only;
+            // file-backed THP needs a supporting filesystem, otherwise it is a no-op).
+            #[cfg(target_os = "linux")]
+            if hints.hugepages {
+                let _ = read_mmap.advise(memmap2::Advice::HugePage);
+            }
+            #[cfg(not(target_os = "linux"))]
+            let _ = hints.hugepages;
+        }
 
         let addr = read_mmap.as_ptr();
         let offset = addr.align_offset(64);
