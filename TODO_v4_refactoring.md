@@ -240,7 +240,7 @@
   - [x] **Cold chunks**: process-wide LRU of loaded chunk indexes (`HS_CHUNK_CACHE_SIZE`), `chunk.manifest` (layout + local→global IDs), correct MemTable/chunk merge (no `u32::MAX` sentinels), single `storage_element_size` for writer and reader.
   - [x] **Semantic compaction without data loss**: re-ingests chunks + MemTable, deletes old chunks only after the new ones are written.
   - [x] **Filters**: order-preserving `f64` numeric range index (typed values included, no query-time parsing); `Not` via `insert_range`; ACORN-style 2-hop traversal for selective filters (`HS_FILTER_ACORN`).
-  - [x] **Recall fixes**: exact early abandon on unrotated data, signed candidate keys (`dot`), `cosh − 1` bias for hyperbolic candidates, frozen flat L0 used only while it covers every live node, metric-consistent KAG scores, full top-k from the L2-ANN cache, `ef_search` applied on the inline path.
+  - [x] **Recall fixes**: exact early abandon on unrotated data, signed candidate keys (`dot`), `cosh − 1` bias for hyperbolic candidates, frozen flat L0 used only while it covers every live node, metric-consistent KAG scores, full top-k from the L2-ANN cache, `ef_search` applied on the inline path, full per-shard `ef_search` in scatter-gather search (4.2.4 divided it by √shards: recall@10 92.9% → 99.0%).
   - [x] **Hot loop**: per-query `DistKernel` dispatch; flat seqlocked Layer-0 arena (`layer0.rs`) with next-slot prefetch; multi-line vector prefetch; zero-copy `f64` kernels; AVX-512 pair kernel; adaptive pruning (eager with SIMD pair kernels, 25% slack for decode-heavy modes); standard `1/M` level distribution.
   - [x] **Hybrid metric**: internal squared distance (`hybrid_sq_f32_bytes`), `acosh²` series without `ln` / `sqrt` near the origin, `sqrt` applied only on output.
   - [x] **New quantizers**: `RaBitQ` (1-bit + unbiased popcount estimator, trained centroid) and `PQ4` fast-scan (4-bit PQ, L1-resident `u8` LUT, batched `scan_block`); calibrated by index rebuild; exposed in the server, dashboard and all SDKs.
@@ -276,11 +276,11 @@
 | **Encrypted Vector Recall@10** | N/A | 100.0% | **100.0%** (Exact Isometric Invariance) :white_check_mark: |
 | **Vec2Text Inversion Resistance** | 0.984 (Vulnerable) | < 0.100 (Unrecoverable) | **0.038** (Cosine Similarity to plaintext) :white_check_mark: |
 | **Autonomous Memory Latency (P50)**| > 1,200 ms (LLM-based) | < 10 ms | **2.11 ms ingest / 3.84 ms search** :white_check_mark: |
-| **v4.2.5 Sweep: 1024D search QPS (32 configs)** | v4.2.4 baseline | ≥ v4.2.4, no recall loss | **×1.14 geomean** (×0.94–×1.40), recall@10 +0.2 pp avg :white_check_mark: |
-| **v4.2.5 Sweep: ingest throughput** | v4.2.4 baseline | ≥ v4.2.4 | **×1.38 median** (`none`: 13,205 → 16,476 vec/s) :white_check_mark: |
-| **v4.2.5 Ternary index drain (20k)** | 6.2–10.9 s | < 3 s | **1.4–1.7 s** (adaptive pruning) :white_check_mark: |
-| **v4.2.5 RaBitQ 1024D (rerank ×4)** | N/A | > 95% recall, > 1,500 QPS | **96.85%** @ **1,959 QPS** (29× compression) :white_check_mark: |
-| **v4.2.5 PQ4 fast-scan 1024D (rerank ×8)** | N/A | > 99% recall | **99.00%** @ **1,186 QPS** (31× compression) :white_check_mark: |
+| **v4.2.5 Sweep: 1024D full-precision recall@10 (ef 100)** | 92.90% (v4.2.4) / 99.35% (v4.2.3) | ≥ 99% | **99.00%** @ 796 QPS (full per-shard ef restored); recall +1.5 pp avg over 32 configs :white_check_mark: |
+| **v4.2.5 Sweep: ingest throughput** | v4.2.4 baseline | ≥ v4.2.4 | **×1.15 median** (`none`: 13,205 → 16,351 vec/s) :white_check_mark: |
+| **v4.2.5 Ternary index drain (20k)** | 6.2–10.9 s | < 3 s | **1.7–2.4 s** (adaptive pruning) :white_check_mark: |
+| **v4.2.5 RaBitQ 1024D (rerank ×4)** | N/A | > 95% recall, > 1,000 QPS | **98.50%** @ **1,388 QPS** (29× compression) :white_check_mark: |
+| **v4.2.5 PQ4 fast-scan 1024D (rerank ×8)** | N/A | > 99% recall | **99.65%** @ **1,062 QPS** (31× compression) :white_check_mark: |
 
 > Rows above are measured (Apple Silicon, single node) — see `BENCHMARK_V3_VS_V4_REPORT.md`, `BENCHMARK_QUANTIZATION_SWEEP.md`, and `HONEST_CAPABILITY_AND_BENCHMARK_REPORT.md`.
 

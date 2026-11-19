@@ -53,7 +53,7 @@ spec:
 
       containers:
         - name: hyperspace
-          image: glukhota/hyperspace-db:v3.1.0 # Fixed image version tag (no :latest)
+          image: glukhota/hyperspace-db:v4.2.5 # Fixed image version tag (no :latest)
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50051

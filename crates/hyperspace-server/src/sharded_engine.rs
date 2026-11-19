@@ -775,26 +775,8 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         }
 
         // ── Scatter-Gather Oversampling ──────────────────────────────────────
-        // Sublinear ef scaling across S active shards: since vectors are hash-partitioned
-        // uniformly across shards, each shard holds N/S nodes and requires ~ef / sqrt(S)
-        // beam width (floored at top_k) rather than repeating the full global ef on every shard.
-        let s = active_shards.len();
         let top_k = params.top_k.max(1);
-        let shard_top_k = if top_k <= 16 {
-            (top_k + 4).min(top_k * 2)
-        } else {
-            top_k + (top_k / 2).max(6)
-        };
-        let scaled_ef = if params.ef_search > 0 {
-            ((params.ef_search as f64) / (s as f64).sqrt()).ceil() as usize
-        } else {
-            0
-        };
-        let shard_ef = if scaled_ef > 0 {
-            scaled_ef.max(shard_top_k)
-        } else {
-            0
-        };
+        let (shard_top_k, shard_ef) = shard_fanout(params);
 
         let shard_params = Arc::new(SearchParams {
             top_k: shard_top_k,
@@ -938,8 +920,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         }
 
         let top_k = params.top_k.max(1);
-        let shard_top_k = (top_k + 6).max(top_k * 2);
-        let shard_ef = params.ef_search.max(shard_top_k);
+        let (shard_top_k, shard_ef) = shard_fanout(params);
 
         let shard_params = Arc::new(SearchParams {
             top_k: shard_top_k,
@@ -1611,11 +1592,59 @@ impl<M: Metric> Drop for ShardedCollection<M> {
     }
 }
 
+/// Per-shard `top_k` and `ef_search` for a scatter-gather search.
+///
+/// Every shard runs the caller's full `ef_search`. Shards are hash-partitioned, so each
+/// one holds N/S nodes, but HNSW cost grows only logarithmically with N: the beam a shard
+/// needs for a given recall is close to the one the whole collection needs. Scaling the
+/// beam down by sqrt(S) (v4.2.4) cut recall@10 from ~99.4% to ~93% at ef = 100 with
+/// 12 shards on 20k x 1024-D cosine data.
+///
+/// Each shard returns `max(top_k + 6, 2 * top_k)` candidates so the merge still has the
+/// true top-k when the nearest neighbors cluster in a few shards. `ef_search == 0` keeps
+/// meaning "use the collection default" on the shard.
+fn shard_fanout(params: &SearchParams) -> (usize, usize) {
+    let top_k = params.top_k.max(1);
+    let shard_top_k = (top_k + 6).max(top_k * 2);
+    let shard_ef = if params.ef_search > 0 {
+        params.ef_search.max(shard_top_k)
+    } else {
+        0
+    };
+    (shard_top_k, shard_ef)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use hyperspace_core::EuclideanMetric;
     use tempfile::tempdir;
+
+    #[test]
+    fn shard_fanout_keeps_full_ef_per_shard() {
+        let p = SearchParams {
+            top_k: 10,
+            ef_search: 100,
+            ..Default::default()
+        };
+        assert_eq!(shard_fanout(&p), (20, 100));
+
+        // A beam smaller than the per-shard candidate count is widened to it.
+        let p = SearchParams {
+            top_k: 10,
+            ef_search: 8,
+            ..Default::default()
+        };
+        assert_eq!(shard_fanout(&p), (20, 20));
+
+        // ef_search == 0 still means "collection default" on every shard.
+        let p = SearchParams {
+            top_k: 3,
+            ef_search: 0,
+            ..Default::default()
+        };
+        assert_eq!(shard_fanout(&p), (9, 0));
+    }
 
     #[tokio::test]
     async fn test_sharded_collection_insert_and_scatter_gather_search() {

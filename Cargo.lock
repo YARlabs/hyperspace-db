@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-billing"
-version = "4.2.3"
+version = "4.2.5"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2666,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-tiering"
-version = "4.2.3"
+version = "4.2.5"
 dependencies = [
  "bytes",
  "futures",
@@ -2681,7 +2681,7 @@ dependencies = [
 
 [[package]]
 name = "hyperspace-wasm"
-version = "4.2.3"
+version = "4.2.5"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",

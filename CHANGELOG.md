@@ -13,6 +13,13 @@ graph, graph repair after deletes, ACORN-style filtered traversal, WAL group com
 compact f32 wire format.
 
 ### Fixed
+* **Recall loss in multi-shard search (regression from 4.2.4)**: 4.2.4 divided `ef_search` by
+  √(shard count) on every shard and asked each shard for only `top_k + 4` candidates. With the
+  default one shard per core (12 on an Apple M4 Pro) a search with `ef_search = 100` ran each shard
+  at ef ≈ 29, and recall@10 on 20k × 1024-D cosine data fell from 99.35% (4.2.3) to ~93%. Every
+  shard now runs the caller's full `ef_search` and returns `max(top_k + 6, 2·top_k)` candidates
+  (`shard_fanout`); `ef_search = 0` still selects the collection default on each shard (the ID64
+  search path used to override it with the candidate count).
 * **Unkillable server after an index rebuild (macOS)**: after a rebuild the flat Layer-0 segment is
   memory-mapped from `flat_l0.bin`. The next snapshot (for example on shutdown) truncated that
   same file and `write()`-d from its own mapping, which deadlocks in the kernel: the process hangs
@@ -167,11 +174,12 @@ compact f32 wire format.
 
 ### Benchmarks
 
-Measured with `benchmarks/run_quantization_sweep.py` (20,000 × 1024D, cosine, 200 queries, M = 64, ef_construction = 400, ef_search = 100, Apple M4 Pro), v4.2.4 and v4.2.5 run back-to-back on the same machine:
+Measured with `benchmarks/run_quantization_sweep.py` (20,000 × 1024D, cosine, 200 queries, M = 64, ef_construction = 400, ef_search = 100, 12 shards, Apple M4 Pro), v4.2.4 and v4.2.5 on the same machine:
 
-- **Search QPS ×1.14** (geometric mean over 32 configurations; range ×0.94 – ×1.40), **ingest ×1.38** (median), recall@10 **+0.2 pp** on average.
-- `none` (ef 100): 1,145 → 1,272 QPS; `medium`: 1,715 → 2,075 QPS; `extreme` + rerank ×4: 500 → 692 QPS at 89.75% → 90.55% recall; `ternary` + rerank ×4: 81 → 113 QPS at 99.15% → 99.80% recall, index drain 7.9 → 1.7 s.
-- New tiers: `rabitq` 2,599 QPS single pass, **96.85% @ 1,959 QPS** with rerank ×4 (29× compression); `pq4` **99.00% @ 1,186 QPS** with rerank ×8 (31× compression, 11.9k vec/s ingest).
+- **Recall@10 +1.5 pp on average** over 32 configurations (up to +6.6 pp), mostly from the multi-shard fix above: `none` 92.90% → **99.00%**, `medium` + rerank ×4 97.15% → **99.70%**, `extreme` + rerank ×4 89.75% → **96.35%**.
+- Search QPS at the same `ef_search` is ×0.83 (geometric mean) because each shard again runs the full beam. At matched recall most modes are as fast or faster: `none` 99.0% at 796 QPS vs 99.15% at 743 QPS (ef_search = 400) in v4.2.4; `turbo` + rerank ×4 99.8% at 919 QPS vs 99.15% at 916 QPS. 1-bit `extreme` is ~20% slower at equal recall.
+- Ingest ×1.15 (median); ternary index drain 6–11 s → ~2 s.
+- New tiers: `rabitq` + rerank ×4 **98.5% @ 1,388 QPS** (29× compression); `pq4` + rerank ×8 **99.65% @ 1,062 QPS** (31× compression, ~11k vec/s ingest).
 - Full matrix: `BENCHMARK_QUANTIZATION_SWEEP.md`; summary: `BENCHMARK_V3_VS_V4_REPORT.md` §10.
 
 ### Compatibility

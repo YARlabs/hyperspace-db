@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Nightly-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
-**v4.2.4** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
+**v4.2.5** | **The World's First Schema-Driven Spatial AI Engine & Extensible Vector Runtime (`hyperspace-pdk`).**
 
 [Why Spatial AI?](#-why-a-spatial-ai-engine) • [Use Cases](#-use-cases) • [Architecture](#-architecture) • [Benchmarks](#-performance-benchmarks) • [SDKs](#-sdks)
 
@@ -333,22 +333,22 @@ HyperspaceDB **v4.0.0** introduces a high-performance **Thread-per-Core (Shared-
 
 ## 🗜️ Multi-Tier Vector Quantization Suite (v4.2.5)
 
-HyperspaceDB v4.2.5 supports 10 quantization levels, measured on 20,000 unit-normalized 1024D embeddings (cosine, 200 queries, M=64, ef_construction=400, ef_search=100, Apple M4 Pro). Full matrix and the v4.2.4 → v4.2.5 A/B: [BENCHMARK_QUANTIZATION_SWEEP.md](BENCHMARK_QUANTIZATION_SWEEP.md).
+HyperspaceDB v4.2.5 supports 10 quantization levels, measured on 20,000 unit-normalized 1024D embeddings (cosine, 200 queries, M=64, ef_construction=400, ef_search=100, 12 shards, Apple M4 Pro). Full matrix and the v4.2.4 → v4.2.5 A/B: [BENCHMARK_QUANTIZATION_SWEEP.md](BENCHMARK_QUANTIZATION_SWEEP.md).
 
 | Mode | Key | Bytes / Vec | Compression | Single-Pass Recall@10 | With Rerank | Search QPS | Mean Latency | Primary Use Case |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Full Precision** | `none` | 4,100 B | **1.0×** | **92.95%** | **99.65%** (ef=400) | 1,272 | 0.77 ms | Legal, Medical, Financial ground truth |
-| **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **84.80%** | 97.55% (rerank ×4) | 2,075 | 0.47 ms | Enterprise RAG standard (75% RAM savings) |
-| **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **84.45%** | 99.35% (rerank ×8) | 661 | 1.50 ms | Balanced 4-bit storage |
-| **TurboQuant** | `turbo` | 520 B | **7.9×** | **85.60%** | 99.25% (rerank ×4) | 1,414 | 0.69 ms | Spherical Lloyd-Max + orthogonal rotation |
-| **Ternary BitNet** | `ternary` | 268 B | **15.3×** | **53.75%** | 99.80% (rerank ×4) | 120 | 8.29 ms | BitNet 1.58-bit, any metric |
-| **RaBitQ *(v4.2.5)*** | `rabitq` | 140 B | **29.3×** | **35.30%** | 96.85% (rerank ×4) | 2,599 | 0.37 ms | Fastest single pass; L2 / cosine, needs calibration |
-| **PQ4 Fast-Scan *(v4.2.5)*** | `pq4` | 132 B | **31.1×** | **35.90%** | 99.00% (rerank ×8) | 2,048 | 0.47 ms | 4-bit PQ with L1 LUT; L2 / cosine, needs calibration |
-| **Extreme 1-Bit ADC** | `extreme` | 132 B | **31.1×** | **35.25%** | 99.35% (rerank ×16) | 991 | 0.99 ms | Edge, robotics (ROS 2), IoT |
-| **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **23.95%** | 82.80% (rerank ×8) | 2,100 | 0.46 ms | Ultra-scale ADC with FWHT rotation |
-| **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **26.85%** | 82.70% (rerank ×8) | 1,900 | 0.51 ms | Standard product quantization with ADC |
+| **Full Precision** | `none` | 4,100 B | **1.0×** | **99.00%** | 99.20% (ef=400) | 796 | 1.24 ms | Legal, Medical, Financial ground truth |
+| **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **88.15%** | 99.70% (rerank ×4) | 1,492 | 0.66 ms | Enterprise RAG standard (75% RAM savings) |
+| **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **86.80%** | 99.75% (rerank ×4) | 435 | 2.29 ms | Balanced 4-bit storage, any metric |
+| **TurboQuant** | `turbo` | 520 B | **7.9×** | **87.45%** | 99.80% (rerank ×4) | 1,106 | 0.89 ms | Spherical Lloyd-Max + orthogonal rotation |
+| **Ternary BitNet** | `ternary` | 268 B | **15.3×** | **53.85%** | 99.80% (rerank ×4) | 116 | 8.61 ms | BitNet 1.58-bit, any metric |
+| **RaBitQ *(v4.2.5)*** | `rabitq` | 140 B | **29.3×** | **35.45%** | 98.50% (rerank ×4) | 1,534 | 0.63 ms | Fastest compressed tier; L2 / cosine, needs calibration |
+| **PQ4 Fast-Scan *(v4.2.5)*** | `pq4` | 132 B | **31.1×** | **36.30%** | 99.65% (rerank ×8) | 1,388 | 0.70 ms | 4-bit PQ with L1 LUT; L2 / cosine, needs calibration |
+| **Extreme 1-Bit ADC** | `extreme` | 132 B | **31.1×** | **35.95%** | 99.60% (rerank ×16) | 417 | 2.38 ms | Edge, robotics (ROS 2), IoT |
+| **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **24.20%** | 84.30% (rerank ×8) | 1,244 | 0.78 ms | Ultra-scale ADC with FWHT rotation |
+| **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **26.95%** | 84.80% (rerank ×8) | 1,264 | 0.77 ms | Standard product quantization with ADC |
 
-Rerank rows use `rerank_enabled=true` with the given oversampling factor: the server fetches `top_k × factor` candidates and re-scores them before returning `top_k`. Trained modes (`rabitq`, `pq4`, `pq`, `opq`) score with the untrained fallback until `RebuildIndex` / vacuum calibrates them.
+Rerank rows use `rerank_enabled=true` with the given oversampling factor: the server fetches `top_k × factor` candidates and re-scores them before returning `top_k`. Trained modes (`rabitq`, `pq4`, `pq`, `opq`) must be calibrated once with `RebuildIndex` (or vacuum) after the initial ingest; before that their distances are not meaningful.
 
 ---
 

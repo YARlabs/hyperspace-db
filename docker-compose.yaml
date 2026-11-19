@@ -1,6 +1,6 @@
 services:
   hyperspace:
-    # Build from source using optimized v4.2.0 Dockerfile (includes PDK & external plugins)
+    # Build from source using optimized v4.2.5 Dockerfile (includes PDK & external plugins)
     build: .
     container_name: hyperspace-node-1
     ports:
