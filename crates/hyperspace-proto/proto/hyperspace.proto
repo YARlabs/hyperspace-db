@@ -296,6 +296,8 @@ message SearchTextRequest {
   optional float hybrid_alpha = 7;
   bool include_payload = 8;
   map<string, float> component_weights = 9;
+  // Per-request HNSW beam width (see SearchRequest.ef_search).
+  optional uint32 ef_search = 10;
 }
 
 message Bm25Options {
@@ -381,6 +383,9 @@ message SearchRequest {
   bool use_wave = 13;
   // Compact f32 query (used when `vector` is empty): half the bytes of `repeated double`.
   repeated float vector_f32 = 14;
+  // Per-request HNSW beam width. Unset or 0 = the collection's configured ef_search.
+  // Clamped server-side to HS_MAX_EF_SEARCH (default 4096).
+  optional uint32 ef_search = 15;
 }
 
 message Filter {
@@ -461,6 +466,8 @@ message SearchMultiCollectionRequest {
   uint32 top_k = 3;
   // Compact f32 query (used when `vector` is empty).
   repeated float vector_f32 = 4;
+  // Per-request HNSW beam width (see SearchRequest.ef_search).
+  optional uint32 ef_search = 5;
 }
 
 message SearchMultiCollectionResponse {

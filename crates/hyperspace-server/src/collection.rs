@@ -71,6 +71,86 @@ fn env_cache_read_through() -> bool {
     })
 }
 
+/// Minimum vectors a shard must hold before a trained quantizer (PQ / OPQ / PQ4 /
+/// RaBitQ) is calibrated online. `HS_AUTO_CALIBRATE_MIN=0` disables auto-calibration
+/// (calibrate explicitly with `RebuildIndex` instead).
+fn env_auto_calibrate_min() -> usize {
+    std::env::var("HS_AUTO_CALIBRATE_MIN")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(1024)
+}
+
+/// Smallest shard a mode is calibrated on. PQ / OPQ fit 256 centroids per sub-space:
+/// with fewer than ~16 samples per centroid the learned codebook generalizes worse than
+/// the default one (measured: rerank x8 recall 86% -> 79% when fitted on 1,024 vectors).
+fn auto_calibrate_floor(mode: hyperspace_core::QuantizationMode) -> usize {
+    use hyperspace_core::QuantizationMode as Q;
+    match mode {
+        Q::ProductQuantization | Q::OPQ => 16 * 256,
+        _ => 0,
+    }
+}
+
+/// Upper bound on training samples for online calibration.
+const AUTO_CALIBRATE_MAX_SAMPLES: usize = 10_000;
+
+/// Growth factor between progressive re-calibrations of a shard's quantizer.
+const AUTO_CALIBRATE_GROWTH: usize = 8;
+
+/// Online calibration of a shard's trained quantizer.
+///
+/// The first fit happens once the shard holds `min_vectors` vectors; it is re-fitted each
+/// time the shard grows `AUTO_CALIBRATE_GROWTH`-fold, until the sample cap is reached
+/// (re-encoding cost stays ~1.14 × N in total). Training uses exact vectors from the
+/// raw-vector cache and every stored code is re-encoded (`HnswIndex::refit_online`).
+/// Returns `true` if it (re)calibrated.
+fn maybe_auto_calibrate<M: Metric>(
+    index: &HnswIndex<M>,
+    raw_cache: &DashMap<u32, Vec<f32>>,
+    min_vectors: usize,
+    name: &str,
+) -> bool {
+    if min_vectors == 0 || !index.mode.needs_training() {
+        return false;
+    }
+    let min_vectors = min_vectors.max(auto_calibrate_floor(index.mode));
+    let count = index.count();
+    let last = index.calibrated_at();
+    let due = if index.needs_calibration() {
+        count >= min_vectors
+    } else {
+        // Already calibrated: refit while the training sample can still grow. An index
+        // calibrated by RebuildIndex / a previous run (`last == 0`) is left alone.
+        last > 0
+            && last < AUTO_CALIBRATE_MAX_SAMPLES
+            && count >= last.saturating_mul(AUTO_CALIBRATE_GROWTH)
+    };
+    if !due {
+        return false;
+    }
+    let samples: Vec<Vec<f32>> = raw_cache
+        .iter()
+        .take(AUTO_CALIBRATE_MAX_SAMPLES)
+        .map(|e| e.value().clone())
+        .collect();
+    if samples.len() < min_vectors.min(256) {
+        return false;
+    }
+    let started = std::time::Instant::now();
+    let refs: Vec<&[f32]> = samples.iter().map(Vec::as_slice).collect();
+    let (re_encoded, missing) = index.refit_online(&refs, 10, |id| {
+        raw_cache.get(&id).map(|v| v.value().clone())
+    });
+    println!(
+        "🎓 [{name}] Auto-calibrated {:?} quantizer on {} samples in {:?}: {re_encoded} codes re-encoded, {missing} without an exact copy",
+        index.mode,
+        samples.len(),
+        started.elapsed()
+    );
+    true
+}
+
 pub struct CollectionImpl<M: Metric> {
     name: String,
     node_id: String,
@@ -247,10 +327,12 @@ impl<M: Metric> CollectionImpl<M> {
         // ef=10 is catastrophically low for HNSW on any real dataset.
         // The HNSW beam barely explores the graph at ef=10; recall collapses.
         // 64 is the VectorDBBench baseline (ef_search = max(64, top_k * 4)).
+        // Default 100: the same beam the gRPC / HTTP layers used before per-request
+        // `ef_search` existed, so a request without `ef_search` keeps its recall.
         let ef_search_env = std::env::var("HS_HNSW_EF_SEARCH")
-            .unwrap_or_else(|_| "64".to_string())
+            .unwrap_or_else(|_| "100".to_string())
             .parse()
-            .unwrap_or(64);
+            .unwrap_or(100);
         let m_env = std::env::var("HS_HNSW_M")
             .unwrap_or_else(|_| "16".to_string())
             .parse()
@@ -668,6 +750,11 @@ impl<M: Metric> CollectionImpl<M> {
             .max(0.0);
 
         let write_buffer_for_indexer = write_buffer.clone();
+        let raw_vector_cache: Arc<DashMap<u32, Vec<f32>>> = Arc::new(DashMap::new());
+        let raw_cache_for_indexer = Arc::clone(&raw_vector_cache);
+        let auto_calibrate_min = env_auto_calibrate_min();
+        let calibrating = Arc::new(AtomicBool::new(false));
+        let indexer_name = name.clone();
         let indexer_task = if concurrency <= 1 {
             tokio::task::spawn_blocking(move || {
                 let mut received = 0u64;
@@ -706,6 +793,14 @@ impl<M: Metric> CollectionImpl<M> {
                         received += 1;
                     }
 
+                    // Calibrate before releasing the batch from the queue counters, so a
+                    // caller waiting for the queue to drain also waits for the re-encoding.
+                    maybe_auto_calibrate(
+                        &idx,
+                        &raw_cache_for_indexer,
+                        auto_calibrate_min,
+                        &indexer_name,
+                    );
                     cfg_worker
                         .queue_size
                         .fetch_sub(batch_count, Ordering::Relaxed);
@@ -773,6 +868,34 @@ impl<M: Metric> CollectionImpl<M> {
                     });
 
                     let r = received.fetch_add(1, Ordering::Relaxed) + 1;
+                    let idx_now = idx_link_worker.load().clone();
+                    if idx_now.mode.needs_training()
+                        && auto_calibrate_min > 0
+                        && idx_now.count()
+                            >= auto_calibrate_min.max(auto_calibrate_floor(idx_now.mode))
+                        && (idx_now.needs_calibration()
+                            || (idx_now.calibrated_at() > 0
+                                && idx_now.calibrated_at() < AUTO_CALIBRATE_MAX_SAMPLES
+                                && idx_now.count()
+                                    >= idx_now
+                                        .calibrated_at()
+                                        .saturating_mul(AUTO_CALIBRATE_GROWTH)))
+                        && !calibrating.swap(true, Ordering::AcqRel)
+                    {
+                        let raw = Arc::clone(&raw_cache_for_indexer);
+                        let flag = Arc::clone(&calibrating);
+                        let name_cal = indexer_name.clone();
+                        let cfg_cal = cfg_worker.clone();
+                        // Counted as an indexing task so drain / readiness checks wait for it.
+                        cfg_cal.inc_queue();
+                        cfg_cal.inc_active();
+                        tokio::task::spawn_blocking(move || {
+                            maybe_auto_calibrate(&idx_now, &raw, auto_calibrate_min, &name_cal);
+                            cfg_cal.dec_active();
+                            cfg_cal.dec_queue();
+                            flag.store(false, Ordering::Release);
+                        });
+                    }
                     if r.is_multiple_of(10_000) {
                         let active = cfg_worker.active_indexing.load(Ordering::Relaxed);
                         let queue = cfg_worker.queue_size.load(Ordering::Relaxed);
@@ -1044,7 +1167,7 @@ impl<M: Metric> CollectionImpl<M> {
             write_buffer,
             chunk_backend,
             storage_f32,
-            raw_vector_cache: Arc::new(DashMap::new()),
+            raw_vector_cache,
             raw_vector_cache_len: Arc::new(AtomicUsize::new(0)),
             explicit_graph,
         };
@@ -2380,6 +2503,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         results
     }
 
+    fn needs_calibration(&self) -> bool {
+        self.index_link.load().needs_calibration()
+    }
+
     fn queue_size(&self) -> u64 {
         // Return only the active indexing queue size.
         // WAL pending and flushing counts are internal LSM state and don't
@@ -3271,5 +3398,99 @@ impl<M: Metric> CollectionImpl<M> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod auto_calibration_tests {
+    use super::{maybe_auto_calibrate, AUTO_CALIBRATE_GROWTH};
+    use dashmap::DashMap;
+    use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
+    use hyperspace_index::HnswIndex;
+    use hyperspace_store::VectorStore;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    const DIM: usize = 16;
+
+    fn fill(
+        mode: QuantizationMode,
+        n: u32,
+    ) -> (
+        tempfile::TempDir,
+        HnswIndex<EuclideanMetric>,
+        DashMap<u32, Vec<f32>>,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let element = match mode {
+            QuantizationMode::PQ4 => {
+                hyperspace_core::pq4::code_size(hyperspace_core::pq4::default_num_subvectors(DIM))
+            }
+            _ => hyperspace_core::pq::default_num_subvectors(DIM),
+        };
+        let store = Arc::new(VectorStore::new(dir.path(), element));
+        let index =
+            HnswIndex::<EuclideanMetric>::new(store, mode, Arc::new(GlobalConfig::default()), DIM);
+        let raw = DashMap::new();
+        for i in 0..n {
+            let v: Vec<f64> = (0..DIM)
+                .map(|d| f64::from((i * 7 + d as u32 * 13) % 101) / 101.0)
+                .collect();
+            let id = index.insert_to_storage(&v).unwrap();
+            index.index_node(id, HashMap::new()).unwrap();
+            raw.insert(id, v.iter().map(|&x| x as f32).collect());
+        }
+        (dir, index, raw)
+    }
+
+    #[test]
+    fn calibrates_at_threshold_then_refits_after_growth() {
+        let (_d, index, raw) = fill(QuantizationMode::PQ4, 300);
+        assert!(
+            !maybe_auto_calibrate(&index, &raw, 400, "t"),
+            "below threshold"
+        );
+        assert!(!maybe_auto_calibrate(&index, &raw, 0, "t"), "0 disables");
+        assert!(maybe_auto_calibrate(&index, &raw, 256, "t"));
+        assert!(!index.needs_calibration());
+        assert_eq!(index.calibrated_at(), 300);
+        assert!(
+            !maybe_auto_calibrate(&index, &raw, 256, "t"),
+            "no refit before growth"
+        );
+
+        // Grow the shard past the growth factor: the next call re-fits.
+        for i in 300..300 * AUTO_CALIBRATE_GROWTH as u32 {
+            let v: Vec<f64> = (0..DIM)
+                .map(|d| f64::from((i + d as u32) % 89) / 89.0)
+                .collect();
+            let id = index.insert_to_storage(&v).unwrap();
+            raw.insert(id, v.iter().map(|&x| x as f32).collect());
+        }
+        assert!(maybe_auto_calibrate(&index, &raw, 256, "t"));
+        assert_eq!(index.calibrated_at(), 300 * AUTO_CALIBRATE_GROWTH);
+    }
+
+    #[test]
+    fn pq_waits_for_enough_samples_per_centroid() {
+        let (_d, index, raw) = fill(QuantizationMode::ProductQuantization, 1500);
+        assert!(!maybe_auto_calibrate(&index, &raw, 64, "t"));
+        assert!(
+            index.needs_calibration(),
+            "PQ keeps the default codebook below 4096 vectors"
+        );
+    }
+
+    #[test]
+    fn modes_without_training_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(VectorStore::new(dir.path(), DIM + 4));
+        let index = HnswIndex::<EuclideanMetric>::new(
+            store,
+            QuantizationMode::ScalarI8,
+            Arc::new(GlobalConfig::default()),
+            DIM,
+        );
+        assert!(!maybe_auto_calibrate(&index, &DashMap::new(), 1, "t"));
     }
 }

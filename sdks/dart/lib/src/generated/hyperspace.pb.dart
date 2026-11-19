@@ -1646,7 +1646,6 @@ class ReconsolidationRequest extends $pb.GeneratedMessage {
 
 class InsertRequest extends $pb.GeneratedMessage {
   factory InsertRequest({
-    $core.Iterable<$core.double>? vectorF32,
     $core.String? collection,
     $core.Iterable<$core.double>? vector,
     $core.int? id,
@@ -1656,9 +1655,9 @@ class InsertRequest extends $pb.GeneratedMessage {
     DurabilityLevel? durability,
     $core.Iterable<$core.MapEntry<$core.String, MetadataValue>>? typedMetadata,
     $core.List<$core.int>? payload,
+    $core.Iterable<$core.double>? vectorF32,
   }) {
     final result = create();
-    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (collection != null) result.collection = collection;
     if (vector != null) result.vector.addAll(vector);
     if (id != null) result.id = id;
@@ -1668,6 +1667,7 @@ class InsertRequest extends $pb.GeneratedMessage {
     if (durability != null) result.durability = durability;
     if (typedMetadata != null) result.typedMetadata.addEntries(typedMetadata);
     if (payload != null) result.payload = payload;
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     return result;
   }
 
@@ -1707,7 +1707,8 @@ class InsertRequest extends $pb.GeneratedMessage {
         packageName: const $pb.PackageName('hyperspace'))
     ..a<$core.List<$core.int>>(
         9, _omitFieldNames ? '' : 'payload', $pb.PbFieldType.OY)
-    ..p<$core.double>(10, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
+    ..p<$core.double>(
+        10, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1796,25 +1797,26 @@ class InsertRequest extends $pb.GeneratedMessage {
   @$pb.TagNumber(9)
   void clearPayload() => $_clearField(9);
 
-  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
+  /// Compact f32 vector (half the wire size / decode cost of `vector`).
+  /// Used when `vector` is empty; the server stores f32 internally anyway.
   @$pb.TagNumber(10)
   $pb.PbList<$core.double> get vectorF32 => $_getList(9);
 }
 
 class VectorData extends $pb.GeneratedMessage {
   factory VectorData({
-    $core.Iterable<$core.double>? vectorF32,
     $core.Iterable<$core.double>? vector,
     $core.int? id,
     $core.Iterable<$core.MapEntry<$core.String, $core.String>>? metadata,
     $core.Iterable<$core.MapEntry<$core.String, MetadataValue>>? typedMetadata,
+    $core.Iterable<$core.double>? vectorF32,
   }) {
     final result = create();
-    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (vector != null) result.vector.addAll(vector);
     if (id != null) result.id = id;
     if (metadata != null) result.metadata.addEntries(metadata);
     if (typedMetadata != null) result.typedMetadata.addEntries(typedMetadata);
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     return result;
   }
 
@@ -1884,7 +1886,7 @@ class VectorData extends $pb.GeneratedMessage {
   @$pb.TagNumber(4)
   $pb.PbMap<$core.String, MetadataValue> get typedMetadata => $_getMap(3);
 
-  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
+  /// Compact f32 alternative to `vector` (used when `vector` is empty).
   @$pb.TagNumber(5)
   $pb.PbList<$core.double> get vectorF32 => $_getList(4);
 }
@@ -2216,6 +2218,7 @@ class SearchTextRequest extends $pb.GeneratedMessage {
     $core.bool? includePayload,
     $core.Iterable<$core.MapEntry<$core.String, $core.double>>?
         componentWeights,
+    $core.int? efSearch,
   }) {
     final result = create();
     if (collection != null) result.collection = collection;
@@ -2228,6 +2231,7 @@ class SearchTextRequest extends $pb.GeneratedMessage {
     if (includePayload != null) result.includePayload = includePayload;
     if (componentWeights != null)
       result.componentWeights.addEntries(componentWeights);
+    if (efSearch != null) result.efSearch = efSearch;
     return result;
   }
 
@@ -2264,6 +2268,7 @@ class SearchTextRequest extends $pb.GeneratedMessage {
         keyFieldType: $pb.PbFieldType.OS,
         valueFieldType: $pb.PbFieldType.OF,
         packageName: const $pb.PackageName('hyperspace'))
+    ..aI(10, _omitFieldNames ? '' : 'efSearch', fieldType: $pb.PbFieldType.OU3)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -2349,6 +2354,16 @@ class SearchTextRequest extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(9)
   $pb.PbMap<$core.String, $core.double> get componentWeights => $_getMap(8);
+
+  /// Per-request HNSW beam width (see SearchRequest.ef_search).
+  @$pb.TagNumber(10)
+  $core.int get efSearch => $_getIZ(9);
+  @$pb.TagNumber(10)
+  set efSearch($core.int value) => $_setUnsignedInt32(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasEfSearch() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearEfSearch() => $_clearField(10);
 }
 
 class Bm25Options extends $pb.GeneratedMessage {
@@ -3154,7 +3169,6 @@ class HealthCheckResponse extends $pb.GeneratedMessage {
 
 class SearchRequest extends $pb.GeneratedMessage {
   factory SearchRequest({
-    $core.Iterable<$core.double>? vectorF32,
     $core.String? collection,
     $core.Iterable<$core.double>? vector,
     $core.int? topK,
@@ -3169,9 +3183,10 @@ class SearchRequest extends $pb.GeneratedMessage {
     $core.Iterable<$core.MapEntry<$core.String, $core.double>>?
         componentWeights,
     $core.bool? useWave,
+    $core.Iterable<$core.double>? vectorF32,
+    $core.int? efSearch,
   }) {
     final result = create();
-    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (collection != null) result.collection = collection;
     if (vector != null) result.vector.addAll(vector);
     if (topK != null) result.topK = topK;
@@ -3186,6 +3201,8 @@ class SearchRequest extends $pb.GeneratedMessage {
     if (componentWeights != null)
       result.componentWeights.addEntries(componentWeights);
     if (useWave != null) result.useWave = useWave;
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
+    if (efSearch != null) result.efSearch = efSearch;
     return result;
   }
 
@@ -3227,7 +3244,9 @@ class SearchRequest extends $pb.GeneratedMessage {
         valueFieldType: $pb.PbFieldType.OF,
         packageName: const $pb.PackageName('hyperspace'))
     ..aOB(13, _omitFieldNames ? '' : 'useWave')
-    ..p<$core.double>(14, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
+    ..p<$core.double>(
+        14, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
+    ..aI(15, _omitFieldNames ? '' : 'efSearch', fieldType: $pb.PbFieldType.OU3)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -3346,6 +3365,21 @@ class SearchRequest extends $pb.GeneratedMessage {
   $core.bool hasUseWave() => $_has(12);
   @$pb.TagNumber(13)
   void clearUseWave() => $_clearField(13);
+
+  /// Compact f32 query (used when `vector` is empty): half the bytes of `repeated double`.
+  @$pb.TagNumber(14)
+  $pb.PbList<$core.double> get vectorF32 => $_getList(13);
+
+  /// Per-request HNSW beam width. Unset or 0 = the collection's configured ef_search.
+  /// Clamped server-side to HS_MAX_EF_SEARCH (default 4096).
+  @$pb.TagNumber(15)
+  $core.int get efSearch => $_getIZ(14);
+  @$pb.TagNumber(15)
+  set efSearch($core.int value) => $_setUnsignedInt32(14, value);
+  @$pb.TagNumber(15)
+  $core.bool hasEfSearch() => $_has(14);
+  @$pb.TagNumber(15)
+  void clearEfSearch() => $_clearField(15);
 }
 
 enum Filter_Condition {
@@ -3359,10 +3393,6 @@ enum Filter_Condition {
   notOp,
   prefix,
   notSet
-
-  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
-  @$pb.TagNumber(14)
-  $pb.PbList<$core.double> get vectorF32 => $_getList(13);
 }
 
 class Filter extends $pb.GeneratedMessage {
@@ -4278,16 +4308,18 @@ class BatchSearchResponse extends $pb.GeneratedMessage {
 
 class SearchMultiCollectionRequest extends $pb.GeneratedMessage {
   factory SearchMultiCollectionRequest({
-    $core.Iterable<$core.double>? vectorF32,
     $core.Iterable<$core.String>? collections,
     $core.Iterable<$core.double>? vector,
     $core.int? topK,
+    $core.Iterable<$core.double>? vectorF32,
+    $core.int? efSearch,
   }) {
     final result = create();
-    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
     if (collections != null) result.collections.addAll(collections);
     if (vector != null) result.vector.addAll(vector);
     if (topK != null) result.topK = topK;
+    if (vectorF32 != null) result.vectorF32.addAll(vectorF32);
+    if (efSearch != null) result.efSearch = efSearch;
     return result;
   }
 
@@ -4308,6 +4340,7 @@ class SearchMultiCollectionRequest extends $pb.GeneratedMessage {
     ..p<$core.double>(2, _omitFieldNames ? '' : 'vector', $pb.PbFieldType.KD)
     ..aI(3, _omitFieldNames ? '' : 'topK', fieldType: $pb.PbFieldType.OU3)
     ..p<$core.double>(4, _omitFieldNames ? '' : 'vectorF32', $pb.PbFieldType.KF)
+    ..aI(5, _omitFieldNames ? '' : 'efSearch', fieldType: $pb.PbFieldType.OU3)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -4347,9 +4380,19 @@ class SearchMultiCollectionRequest extends $pb.GeneratedMessage {
   @$pb.TagNumber(3)
   void clearTopK() => $_clearField(3);
 
-  /// Compact f32 vector (used by servers >= 4.2.5 when `vector` is empty).
+  /// Compact f32 query (used when `vector` is empty).
   @$pb.TagNumber(4)
   $pb.PbList<$core.double> get vectorF32 => $_getList(3);
+
+  /// Per-request HNSW beam width (see SearchRequest.ef_search).
+  @$pb.TagNumber(5)
+  $core.int get efSearch => $_getIZ(4);
+  @$pb.TagNumber(5)
+  set efSearch($core.int value) => $_setUnsignedInt32(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasEfSearch() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearEfSearch() => $_clearField(5);
 }
 
 class SearchMultiCollectionResponse extends $pb.GeneratedMessage {
@@ -7971,6 +8014,462 @@ class VerifyGenerationResponse extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(9)
   $pb.PbList<$core.int> get resolvedContextIds => $_getList(8);
+}
+
+class ExtensionRequest extends $pb.GeneratedMessage {
+  factory ExtensionRequest({
+    $core.String? plugin,
+    $core.String? method,
+    $core.String? collection,
+    $core.String? jsonPayload,
+  }) {
+    final result = create();
+    if (plugin != null) result.plugin = plugin;
+    if (method != null) result.method = method;
+    if (collection != null) result.collection = collection;
+    if (jsonPayload != null) result.jsonPayload = jsonPayload;
+    return result;
+  }
+
+  ExtensionRequest._();
+
+  factory ExtensionRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ExtensionRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ExtensionRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'plugin')
+    ..aOS(2, _omitFieldNames ? '' : 'method')
+    ..aOS(3, _omitFieldNames ? '' : 'collection')
+    ..aOS(4, _omitFieldNames ? '' : 'jsonPayload')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionRequest copyWith(void Function(ExtensionRequest) updates) =>
+      super.copyWith((message) => updates(message as ExtensionRequest))
+          as ExtensionRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ExtensionRequest create() => ExtensionRequest._();
+  @$core.override
+  ExtensionRequest createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ExtensionRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ExtensionRequest>(create);
+  static ExtensionRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get plugin => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set plugin($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPlugin() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPlugin() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get method => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set method($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasMethod() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearMethod() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get collection => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set collection($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasCollection() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearCollection() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get jsonPayload => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set jsonPayload($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasJsonPayload() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearJsonPayload() => $_clearField(4);
+}
+
+class ExtensionResponse extends $pb.GeneratedMessage {
+  factory ExtensionResponse({
+    $core.bool? success,
+    $core.String? jsonResult,
+    $core.String? error,
+  }) {
+    final result = create();
+    if (success != null) result.success = success;
+    if (jsonResult != null) result.jsonResult = jsonResult;
+    if (error != null) result.error = error;
+    return result;
+  }
+
+  ExtensionResponse._();
+
+  factory ExtensionResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ExtensionResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ExtensionResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOB(1, _omitFieldNames ? '' : 'success')
+    ..aOS(2, _omitFieldNames ? '' : 'jsonResult')
+    ..aOS(3, _omitFieldNames ? '' : 'error')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionResponse copyWith(void Function(ExtensionResponse) updates) =>
+      super.copyWith((message) => updates(message as ExtensionResponse))
+          as ExtensionResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ExtensionResponse create() => ExtensionResponse._();
+  @$core.override
+  ExtensionResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ExtensionResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ExtensionResponse>(create);
+  static ExtensionResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get success => $_getBF(0);
+  @$pb.TagNumber(1)
+  set success($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSuccess() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSuccess() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get jsonResult => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set jsonResult($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasJsonResult() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearJsonResult() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get error => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set error($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasError() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearError() => $_clearField(3);
+}
+
+class ExtensionProcedureInfo extends $pb.GeneratedMessage {
+  factory ExtensionProcedureInfo({
+    $core.String? name,
+    $core.String? description,
+    $core.bool? requiresCollection,
+    $core.String? inputSchemaJson,
+    $core.String? outputSchemaJson,
+  }) {
+    final result = create();
+    if (name != null) result.name = name;
+    if (description != null) result.description = description;
+    if (requiresCollection != null)
+      result.requiresCollection = requiresCollection;
+    if (inputSchemaJson != null) result.inputSchemaJson = inputSchemaJson;
+    if (outputSchemaJson != null) result.outputSchemaJson = outputSchemaJson;
+    return result;
+  }
+
+  ExtensionProcedureInfo._();
+
+  factory ExtensionProcedureInfo.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ExtensionProcedureInfo.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ExtensionProcedureInfo',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'name')
+    ..aOS(2, _omitFieldNames ? '' : 'description')
+    ..aOB(3, _omitFieldNames ? '' : 'requiresCollection')
+    ..aOS(4, _omitFieldNames ? '' : 'inputSchemaJson')
+    ..aOS(5, _omitFieldNames ? '' : 'outputSchemaJson')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionProcedureInfo clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionProcedureInfo copyWith(
+          void Function(ExtensionProcedureInfo) updates) =>
+      super.copyWith((message) => updates(message as ExtensionProcedureInfo))
+          as ExtensionProcedureInfo;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ExtensionProcedureInfo create() => ExtensionProcedureInfo._();
+  @$core.override
+  ExtensionProcedureInfo createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ExtensionProcedureInfo getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ExtensionProcedureInfo>(create);
+  static ExtensionProcedureInfo? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get name => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set name($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasName() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearName() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get description => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set description($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDescription() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDescription() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.bool get requiresCollection => $_getBF(2);
+  @$pb.TagNumber(3)
+  set requiresCollection($core.bool value) => $_setBool(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasRequiresCollection() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearRequiresCollection() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get inputSchemaJson => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set inputSchemaJson($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasInputSchemaJson() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearInputSchemaJson() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get outputSchemaJson => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set outputSchemaJson($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasOutputSchemaJson() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearOutputSchemaJson() => $_clearField(5);
+}
+
+class ExtensionInfo extends $pb.GeneratedMessage {
+  factory ExtensionInfo({
+    $core.String? name,
+    $core.String? version,
+    $core.String? author,
+    $core.String? description,
+    $core.String? runtime,
+    $core.Iterable<$core.String>? hooks,
+    $core.Iterable<ExtensionProcedureInfo>? procedures,
+  }) {
+    final result = create();
+    if (name != null) result.name = name;
+    if (version != null) result.version = version;
+    if (author != null) result.author = author;
+    if (description != null) result.description = description;
+    if (runtime != null) result.runtime = runtime;
+    if (hooks != null) result.hooks.addAll(hooks);
+    if (procedures != null) result.procedures.addAll(procedures);
+    return result;
+  }
+
+  ExtensionInfo._();
+
+  factory ExtensionInfo.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ExtensionInfo.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ExtensionInfo',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'name')
+    ..aOS(2, _omitFieldNames ? '' : 'version')
+    ..aOS(3, _omitFieldNames ? '' : 'author')
+    ..aOS(4, _omitFieldNames ? '' : 'description')
+    ..aOS(5, _omitFieldNames ? '' : 'runtime')
+    ..pPS(6, _omitFieldNames ? '' : 'hooks')
+    ..pPM<ExtensionProcedureInfo>(7, _omitFieldNames ? '' : 'procedures',
+        subBuilder: ExtensionProcedureInfo.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionInfo clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExtensionInfo copyWith(void Function(ExtensionInfo) updates) =>
+      super.copyWith((message) => updates(message as ExtensionInfo))
+          as ExtensionInfo;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ExtensionInfo create() => ExtensionInfo._();
+  @$core.override
+  ExtensionInfo createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ExtensionInfo getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ExtensionInfo>(create);
+  static ExtensionInfo? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get name => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set name($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasName() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearName() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get version => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set version($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasVersion() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearVersion() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get author => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set author($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAuthor() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAuthor() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get description => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set description($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasDescription() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearDescription() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get runtime => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set runtime($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasRuntime() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearRuntime() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $pb.PbList<$core.String> get hooks => $_getList(5);
+
+  @$pb.TagNumber(7)
+  $pb.PbList<ExtensionProcedureInfo> get procedures => $_getList(6);
+}
+
+class ListExtensionsResponse extends $pb.GeneratedMessage {
+  factory ListExtensionsResponse({
+    $core.String? pdkVersion,
+    $core.Iterable<$core.String>? supportedMetrics,
+    $core.Iterable<ExtensionInfo>? extensions,
+  }) {
+    final result = create();
+    if (pdkVersion != null) result.pdkVersion = pdkVersion;
+    if (supportedMetrics != null)
+      result.supportedMetrics.addAll(supportedMetrics);
+    if (extensions != null) result.extensions.addAll(extensions);
+    return result;
+  }
+
+  ListExtensionsResponse._();
+
+  factory ListExtensionsResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromBuffer(data, registry);
+  factory ListExtensionsResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      create()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ListExtensionsResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'hyperspace'),
+      createEmptyInstance: create)
+    ..aOS(1, _omitFieldNames ? '' : 'pdkVersion')
+    ..pPS(2, _omitFieldNames ? '' : 'supportedMetrics')
+    ..pPM<ExtensionInfo>(3, _omitFieldNames ? '' : 'extensions',
+        subBuilder: ExtensionInfo.create)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListExtensionsResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListExtensionsResponse copyWith(
+          void Function(ListExtensionsResponse) updates) =>
+      super.copyWith((message) => updates(message as ListExtensionsResponse))
+          as ListExtensionsResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  static ListExtensionsResponse create() => ListExtensionsResponse._();
+  @$core.override
+  ListExtensionsResponse createEmptyInstance() => create();
+  @$core.pragma('dart2js:noInline')
+  static ListExtensionsResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ListExtensionsResponse>(create);
+  static ListExtensionsResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pdkVersion => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pdkVersion($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPdkVersion() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPdkVersion() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<$core.String> get supportedMetrics => $_getList(1);
+
+  @$pb.TagNumber(3)
+  $pb.PbList<ExtensionInfo> get extensions => $_getList(2);
 }
 
 const $core.bool _omitFieldNames =

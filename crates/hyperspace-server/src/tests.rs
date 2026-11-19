@@ -1382,3 +1382,115 @@ async fn test_issue_20_update_payload_persistence_across_restarts() {
 
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+/// Trained quantizers calibrate themselves online once a shard holds
+/// `HS_AUTO_CALIBRATE_MIN` vectors, without `RebuildIndex`, and keep serving searches.
+#[tokio::test]
+async fn test_pq4_auto_calibrates_online() {
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    std::env::set_var("HS_AUTO_CALIBRATE_MIN", "64");
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let dim = 32;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+    manager
+        .create_collection_with_quantization(
+            "default_admin",
+            "auto_cal",
+            schema,
+            Some("pq4".into()),
+        )
+        .await
+        .expect("create");
+    let col = manager
+        .get("default_admin", "auto_cal")
+        .await
+        .expect("collection");
+    assert!(
+        col.needs_calibration(),
+        "fresh PQ4 collection starts uncalibrated"
+    );
+
+    // Deterministic pseudo-random points (no duplicates).
+    let point = |i: u32| -> Vec<f64> {
+        (0..dim)
+            .map(|d| {
+                let mut x = (u64::from(i) << 20 | d as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                x ^= x >> 29;
+                x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                x ^= x >> 32;
+                (x % 10_000) as f64 / 10_000.0 + f64::from(i % 5)
+            })
+            .collect()
+    };
+    let n = 4000u32;
+    for i in 0..n {
+        col.insert(&point(i), i, HashMap::new(), 0, Durability::Default)
+            .await
+            .unwrap();
+    }
+    for _ in 0..400 {
+        if col.queue_size() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    // A drained queue implies finished calibration: callers that wait for the indexing
+    // queue (benchmarks, readiness checks) never search while codes are re-encoded.
+    assert!(
+        !col.needs_calibration(),
+        "every shard calibrated by the time the indexing queue drains"
+    );
+
+    let res = col
+        .search(
+            &point(42),
+            &HashMap::new(),
+            &[],
+            &hyperspace_core::SearchParams {
+                top_k: 20,
+                ef_search: 128,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!res.is_empty());
+    assert!(
+        res.iter().any(|r| r.0 == 42),
+        "exact vector within the 20 nearest codes after calibration: {:?}",
+        res.iter().map(|r| (r.0, r.1)).collect::<Vec<_>>()
+    );
+    std::env::remove_var("HS_AUTO_CALIBRATE_MIN");
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[test]
+fn grpc_search_request_ef_search_reaches_search_params() {
+    use hyperspace_proto::hyperspace::SearchRequest;
+    let req = |ef: Option<u32>| SearchRequest {
+        collection: "c".into(),
+        vector: vec![0.0; 4],
+        top_k: 10,
+        ef_search: ef,
+        ..Default::default()
+    };
+    let (_, _, _, _, p) = super::build_filters(req(Some(300)));
+    assert_eq!(p.ef_search, 300);
+    // Unset: 0 lets the collection apply its configured ef_search (ConfigUpdate works).
+    let (_, _, _, _, p) = super::build_filters(req(None));
+    assert_eq!(p.ef_search, 0);
+    let (_, _, _, _, p) = super::build_filters(req(Some(u32::MAX)));
+    assert_eq!(p.ef_search, hyperspace_core::max_request_ef_search());
+}

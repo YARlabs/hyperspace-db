@@ -337,6 +337,75 @@ type SearchParams struct {
 	ComponentWeights map[string]float32
 	UseWave          bool
 	RestartFactor    *float32
+	// EfSearch is the per-request HNSW beam width (server >= 4.2.5); 0 = collection default.
+	EfSearch uint32
+}
+
+// SearchOption tunes a single request of the positional search helpers
+// (SearchText, SearchMultiCollection).
+type SearchOption func(*searchOptions)
+
+type searchOptions struct {
+	efSearch *uint32
+}
+
+// WithEfSearch sets the per-request HNSW beam width (server >= 4.2.5).
+func WithEfSearch(ef uint32) SearchOption {
+	return func(o *searchOptions) { o.efSearch = &ef }
+}
+
+func collectSearchOptions(opts []SearchOption) searchOptions {
+	var o searchOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	return o
+}
+
+// buildSearchRequest assembles the SearchRequest sent by Search (no I/O).
+func (c *HyperspaceClient) buildSearchRequest(vector []float64, topK uint32, collection string, filters []*pb.Filter, params *SearchParams) *pb.SearchRequest {
+	req := &pb.SearchRequest{
+		Vector:     vector,
+		TopK:       topK,
+		Collection: collection,
+	}
+	if c.compactVectors {
+		req.VectorF32, req.Vector = toF32(req.Vector), nil
+	}
+
+	if params != nil {
+		req.Filters = filters
+		if params.HybridQuery != "" {
+			req.HybridQuery = &params.HybridQuery
+		}
+		if params.HybridAlpha != 0 {
+			req.HybridAlpha = &params.HybridAlpha
+		}
+		if params.MrlDimension != 0 {
+			req.MrlDimension = &params.MrlDimension
+		}
+		if params.UseWasserstein {
+			req.UseWasserstein = params.UseWasserstein
+		}
+		req.Bm25Options = params.BM25Options
+		if params.ComponentWeights != nil {
+			req.ComponentWeights = params.ComponentWeights
+		}
+		req.UseWave = params.UseWave
+		if params.RestartFactor != nil {
+			if req.Filter == nil {
+				req.Filter = make(map[string]string)
+			}
+			req.Filter["wave_restart_factor"] = fmt.Sprintf("%g", *params.RestartFactor)
+		}
+		if params.EfSearch > 0 {
+			ef := params.EfSearch
+			req.EfSearch = &ef
+		}
+	}
+	return req
 }
 
 // Search performs ANN lookup with optional geometric filters, BM25 factors, and hybrid ranking
@@ -384,41 +453,7 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 		}
 	}
 
-	req := &pb.SearchRequest{
-		Vector:     finalVector,
-		TopK:       topK,
-		Collection: collection,
-	}
-	if c.compactVectors {
-		req.VectorF32, req.Vector = toF32(req.Vector), nil
-	}
-
-	if params != nil {
-		req.Filters = finalFilters
-		if params.HybridQuery != "" {
-			req.HybridQuery = &params.HybridQuery
-		}
-		if params.HybridAlpha != 0 {
-			req.HybridAlpha = &params.HybridAlpha
-		}
-		if params.MrlDimension != 0 {
-			req.MrlDimension = &params.MrlDimension
-		}
-		if params.UseWasserstein {
-			req.UseWasserstein = params.UseWasserstein
-		}
-		req.Bm25Options = params.BM25Options
-		if params.ComponentWeights != nil {
-			req.ComponentWeights = params.ComponentWeights
-		}
-		req.UseWave = params.UseWave
-		if params.RestartFactor != nil {
-			if req.Filter == nil {
-				req.Filter = make(map[string]string)
-			}
-			req.Filter["wave_restart_factor"] = fmt.Sprintf("%g", *params.RestartFactor)
-		}
-	}
+	req := c.buildSearchRequest(finalVector, topK, collection, finalFilters, params)
 
 	res, err := c.client.Search(c.withContext(ctx), req)
 	if err != nil {
@@ -441,11 +476,12 @@ func (c *HyperspaceClient) Search(ctx context.Context, vector []float64, topK ui
 }
 
 // SearchText performs ANN lookup using text input (vectorized on server) or BM25 lexical ranking
-func (c *HyperspaceClient) SearchText(ctx context.Context, text string, topK uint32, collection string, hybridAlpha float32, bm25 *pb.Bm25Options) ([]*pb.SearchResult, error) {
+func (c *HyperspaceClient) SearchText(ctx context.Context, text string, topK uint32, collection string, hybridAlpha float32, bm25 *pb.Bm25Options, opts ...SearchOption) ([]*pb.SearchResult, error) {
 	req := &pb.SearchTextRequest{
 		Text:       text,
 		TopK:       topK,
 		Collection: collection,
+		EfSearch:   collectSearchOptions(opts).efSearch,
 	}
 	if hybridAlpha != 0 {
 		req.HybridAlpha = &hybridAlpha
@@ -531,16 +567,22 @@ func (c *HyperspaceClient) GetMetrics(ctx context.Context) (pb.Database_MonitorC
 	return c.client.Monitor(c.withContext(ctx), req)
 }
 
-func (c *HyperspaceClient) SearchMultiCollection(ctx context.Context, collections []string, query []float64, topK uint32) (*pb.SearchMultiCollectionResponse, error) {
+func (c *HyperspaceClient) SearchMultiCollection(ctx context.Context, collections []string, query []float64, topK uint32, opts ...SearchOption) (*pb.SearchMultiCollectionResponse, error) {
+	return c.client.SearchMultiCollection(c.withContext(ctx), c.buildMultiCollectionRequest(collections, query, topK, opts...))
+}
+
+// buildMultiCollectionRequest assembles the SearchMultiCollectionRequest (no I/O).
+func (c *HyperspaceClient) buildMultiCollectionRequest(collections []string, query []float64, topK uint32, opts ...SearchOption) *pb.SearchMultiCollectionRequest {
 	req := &pb.SearchMultiCollectionRequest{
 		Collections: collections,
 		Vector:      query,
 		TopK:        topK,
+		EfSearch:    collectSearchOptions(opts).efSearch,
 	}
 	if c.compactVectors {
 		req.VectorF32, req.Vector = toF32(req.Vector), nil
 	}
-	return c.client.SearchMultiCollection(c.withContext(ctx), req)
+	return req
 }
 
 // Graph API

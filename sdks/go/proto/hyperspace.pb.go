@@ -1999,8 +1999,10 @@ type SearchTextRequest struct {
 	HybridAlpha      *float32               `protobuf:"fixed32,7,opt,name=hybrid_alpha,json=hybridAlpha,proto3,oneof" json:"hybrid_alpha,omitempty"`
 	IncludePayload   bool                   `protobuf:"varint,8,opt,name=include_payload,json=includePayload,proto3" json:"include_payload,omitempty"`
 	ComponentWeights map[string]float32     `protobuf:"bytes,9,rep,name=component_weights,json=componentWeights,proto3" json:"component_weights,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Per-request HNSW beam width (see SearchRequest.ef_search).
+	EfSearch      *uint32 `protobuf:"varint,10,opt,name=ef_search,json=efSearch,proto3,oneof" json:"ef_search,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchTextRequest) Reset() {
@@ -2094,6 +2096,13 @@ func (x *SearchTextRequest) GetComponentWeights() map[string]float32 {
 		return x.ComponentWeights
 	}
 	return nil
+}
+
+func (x *SearchTextRequest) GetEfSearch() uint32 {
+	if x != nil && x.EfSearch != nil {
+		return *x.EfSearch
+	}
+	return 0
 }
 
 type Bm25Options struct {
@@ -2763,7 +2772,10 @@ type SearchRequest struct {
 	ComponentWeights map[string]float32 `protobuf:"bytes,12,rep,name=component_weights,json=componentWeights,proto3" json:"component_weights,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
 	UseWave          bool               `protobuf:"varint,13,opt,name=use_wave,json=useWave,proto3" json:"use_wave,omitempty"`
 	// Compact f32 query (used when `vector` is empty): half the bytes of `repeated double`.
-	VectorF32     []float32 `protobuf:"fixed32,14,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
+	VectorF32 []float32 `protobuf:"fixed32,14,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
+	// Per-request HNSW beam width. Unset or 0 = the collection's configured ef_search.
+	// Clamped server-side to HS_MAX_EF_SEARCH (default 4096).
+	EfSearch      *uint32 `protobuf:"varint,15,opt,name=ef_search,json=efSearch,proto3,oneof" json:"ef_search,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2894,6 +2906,13 @@ func (x *SearchRequest) GetVectorF32() []float32 {
 		return x.VectorF32
 	}
 	return nil
+}
+
+func (x *SearchRequest) GetEfSearch() uint32 {
+	if x != nil && x.EfSearch != nil {
+		return *x.EfSearch
+	}
+	return 0
 }
 
 type Filter struct {
@@ -3704,7 +3723,9 @@ type SearchMultiCollectionRequest struct {
 	Vector      []float64              `protobuf:"fixed64,2,rep,packed,name=vector,proto3" json:"vector,omitempty"`
 	TopK        uint32                 `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`
 	// Compact f32 query (used when `vector` is empty).
-	VectorF32     []float32 `protobuf:"fixed32,4,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
+	VectorF32 []float32 `protobuf:"fixed32,4,rep,packed,name=vector_f32,json=vectorF32,proto3" json:"vector_f32,omitempty"`
+	// Per-request HNSW beam width (see SearchRequest.ef_search).
+	EfSearch      *uint32 `protobuf:"varint,5,opt,name=ef_search,json=efSearch,proto3,oneof" json:"ef_search,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3765,6 +3786,13 @@ func (x *SearchMultiCollectionRequest) GetVectorF32() []float32 {
 		return x.VectorF32
 	}
 	return nil
+}
+
+func (x *SearchMultiCollectionRequest) GetEfSearch() uint32 {
+	if x != nil && x.EfSearch != nil {
+		return *x.EfSearch
+	}
+	return 0
 }
 
 type SearchMultiCollectionResponse struct {
@@ -7166,7 +7194,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x16\n" +
 	"\x06metric\x18\x02 \x01(\tR\x06metric\"+\n" +
 	"\x11VectorizeResponse\x12\x16\n" +
-	"\x06vector\x18\x01 \x03(\x01R\x06vector\"\xe3\x04\n" +
+	"\x06vector\x18\x01 \x03(\x01R\x06vector\"\x93\x05\n" +
 	"\x11SearchTextRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -7178,7 +7206,9 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\fbm25_options\x18\x06 \x01(\v2\x17.hyperspace.Bm25OptionsH\x00R\vbm25Options\x88\x01\x01\x12&\n" +
 	"\fhybrid_alpha\x18\a \x01(\x02H\x01R\vhybridAlpha\x88\x01\x01\x12'\n" +
 	"\x0finclude_payload\x18\b \x01(\bR\x0eincludePayload\x12`\n" +
-	"\x11component_weights\x18\t \x03(\v23.hyperspace.SearchTextRequest.ComponentWeightsEntryR\x10componentWeights\x1a9\n" +
+	"\x11component_weights\x18\t \x03(\v23.hyperspace.SearchTextRequest.ComponentWeightsEntryR\x10componentWeights\x12 \n" +
+	"\tef_search\x18\n" +
+	" \x01(\rH\x02R\befSearch\x88\x01\x01\x1a9\n" +
 	"\vFilterEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -7186,7 +7216,9 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x02R\x05value:\x028\x01B\x0f\n" +
 	"\r_bm25_optionsB\x0f\n" +
-	"\r_hybrid_alpha\"\xa1\x02\n" +
+	"\r_hybrid_alphaB\f\n" +
+	"\n" +
+	"_ef_search\"\xa1\x02\n" +
 	"\vBm25Options\x12\x1b\n" +
 	"\x06method\x18\x01 \x01(\tH\x00R\x06method\x88\x01\x01\x12\x13\n" +
 	"\x02k1\x18\x02 \x01(\x02H\x01R\x02k1\x88\x01\x01\x12\x11\n" +
@@ -7248,7 +7280,7 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\rCountResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x04R\x05count\"-\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\"\xb3\x06\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"\xe3\x06\n" +
 	"\rSearchRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -7267,7 +7299,8 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x11component_weights\x18\f \x03(\v2/.hyperspace.SearchRequest.ComponentWeightsEntryR\x10componentWeights\x12\x19\n" +
 	"\buse_wave\x18\r \x01(\bR\auseWave\x12\x1d\n" +
 	"\n" +
-	"vector_f32\x18\x0e \x03(\x02R\tvectorF32\x1a9\n" +
+	"vector_f32\x18\x0e \x03(\x02R\tvectorF32\x12 \n" +
+	"\tef_search\x18\x0f \x01(\rH\x04R\befSearch\x88\x01\x01\x1a9\n" +
 	"\vFilterEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -7277,7 +7310,9 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\r_hybrid_queryB\x0f\n" +
 	"\r_hybrid_alphaB\x0f\n" +
 	"\r_bm25_optionsB\x10\n" +
-	"\x0e_mrl_dimension\"\xb0\x03\n" +
+	"\x0e_mrl_dimensionB\f\n" +
+	"\n" +
+	"_ef_search\"\xb0\x03\n" +
 	"\x06Filter\x12)\n" +
 	"\x05match\x18\x01 \x01(\v2\x11.hyperspace.MatchH\x00R\x05match\x12)\n" +
 	"\x05range\x18\x02 \x01(\v2\x11.hyperspace.RangeH\x00R\x05range\x12-\n" +
@@ -7334,13 +7369,16 @@ const file_hyperspace_proto_rawDesc = "" +
 	"\x12BatchSearchRequest\x125\n" +
 	"\bsearches\x18\x01 \x03(\v2\x19.hyperspace.SearchRequestR\bsearches\"O\n" +
 	"\x13BatchSearchResponse\x128\n" +
-	"\tresponses\x18\x01 \x03(\v2\x1a.hyperspace.SearchResponseR\tresponses\"\x8c\x01\n" +
+	"\tresponses\x18\x01 \x03(\v2\x1a.hyperspace.SearchResponseR\tresponses\"\xbc\x01\n" +
 	"\x1cSearchMultiCollectionRequest\x12 \n" +
 	"\vcollections\x18\x01 \x03(\tR\vcollections\x12\x16\n" +
 	"\x06vector\x18\x02 \x03(\x01R\x06vector\x12\x13\n" +
 	"\x05top_k\x18\x03 \x01(\rR\x04topK\x12\x1d\n" +
 	"\n" +
-	"vector_f32\x18\x04 \x03(\x02R\tvectorF32\"\xd1\x01\n" +
+	"vector_f32\x18\x04 \x03(\x02R\tvectorF32\x12 \n" +
+	"\tef_search\x18\x05 \x01(\rH\x00R\befSearch\x88\x01\x01B\f\n" +
+	"\n" +
+	"_ef_search\"\xd1\x01\n" +
 	"\x1dSearchMultiCollectionResponse\x12V\n" +
 	"\tresponses\x18\x01 \x03(\v28.hyperspace.SearchMultiCollectionResponse.ResponsesEntryR\tresponses\x1aX\n" +
 	"\x0eResponsesEntry\x12\x10\n" +
@@ -8101,6 +8139,7 @@ func file_hyperspace_proto_init() {
 		(*Filter_Prefix)(nil),
 	}
 	file_hyperspace_proto_msgTypes[47].OneofWrappers = []any{}
+	file_hyperspace_proto_msgTypes[54].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[56].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[75].OneofWrappers = []any{}
 	file_hyperspace_proto_msgTypes[78].OneofWrappers = []any{

@@ -248,6 +248,12 @@
   - [x] **Durability & I/O**: WAL group commit (fsync off the WAL lock, background batch syncer); `HS_MMAP_WILLNEED` / `HS_MMAP_HUGEPAGES`; atomic flat-L0 snapshot writes (fixes an unkillable kernel deadlock after rebuild on macOS).
   - [x] **Wire & build**: `vector_f32` compact vectors in proto + every SDK (`compact_vectors`); PGO build (`scripts/pgo_build.sh`, `just build-pgo`).
   - [x] **Allocations**: `Arc`-shared metadata between write buffer and indexer queue; single f64→f32 conversion on quantized inserts.
+  - [x] **Online calibration**: trained quantizers fit on exact vectors at `HS_AUTO_CALIBRATE_MIN` (4,096 for PQ / OPQ), re-fit after 8× growth, codes re-encoded in place under a calibration gate; `quantizer_calibrated` in stats.
+  - [x] **Per-request `ef_search`** in proto, gRPC, HTTP, all SDKs, ROS2 and MCP (`HS_MAX_EF_SEARCH` guard); `ConfigUpdate` ef now honored by searches.
+  - [x] **Kernels**: `extreme` / `ternary` nibble tables (×11–×20), `medium_plus` NEON block kernel (×7).
+  - [x] **CI**: SDK proto drift check, offline SDK request tests, Dart live-server tests, recall gate on the quantization sweep.
+  - [ ] Configurable PQ sub-space count: needs the PQ `M` stored in collection metadata and threaded through every storage-layout site (22) — use `pq4` for higher recall at ~2× the bytes meanwhile.
+  - [x] ~~Cooperative shard pruning~~: evaluated, rejected (a global k-th bound stops HNSW traversal before it reaches near nodes; 46% top-10 agreement).
 
 ## 📈 Metric Goals & Tracking
 | Metric | v3.x Baseline | v4.0.0 Target | Current Status |
@@ -276,11 +282,11 @@
 | **Encrypted Vector Recall@10** | N/A | 100.0% | **100.0%** (Exact Isometric Invariance) :white_check_mark: |
 | **Vec2Text Inversion Resistance** | 0.984 (Vulnerable) | < 0.100 (Unrecoverable) | **0.038** (Cosine Similarity to plaintext) :white_check_mark: |
 | **Autonomous Memory Latency (P50)**| > 1,200 ms (LLM-based) | < 10 ms | **2.11 ms ingest / 3.84 ms search** :white_check_mark: |
-| **v4.2.5 Sweep: 1024D full-precision recall@10 (ef 100)** | 92.90% (v4.2.4) / 99.35% (v4.2.3) | ≥ 99% | **99.00%** @ 796 QPS (full per-shard ef restored); recall +1.5 pp avg over 32 configs :white_check_mark: |
-| **v4.2.5 Sweep: ingest throughput** | v4.2.4 baseline | ≥ v4.2.4 | **×1.15 median** (`none`: 13,205 → 16,351 vec/s) :white_check_mark: |
-| **v4.2.5 Ternary index drain (20k)** | 6.2–10.9 s | < 3 s | **1.7–2.4 s** (adaptive pruning) :white_check_mark: |
-| **v4.2.5 RaBitQ 1024D (rerank ×4)** | N/A | > 95% recall, > 1,000 QPS | **98.50%** @ **1,388 QPS** (29× compression) :white_check_mark: |
-| **v4.2.5 PQ4 fast-scan 1024D (rerank ×8)** | N/A | > 99% recall | **99.65%** @ **1,062 QPS** (31× compression) :white_check_mark: |
+| **v4.2.5 Sweep: 1024D search QPS (32 configs)** | v4.2.4 baseline | ≥ v4.2.4, no recall loss | **×1.95 geomean**, recall@10 +1.5 pp avg (`none` 92.90% → 99.05%) :white_check_mark: |
+| **v4.2.5 Sweep: ingest throughput** | v4.2.4 baseline | ≥ v4.2.4 | **×1.54 median** (`extreme` 5,169 → 11,330 vec/s) :white_check_mark: |
+| **v4.2.5 Low-bit search (ternary / extreme / medium_plus)** | 97 / 811 / 597 QPS | ≥ 2× | **1,344 / 1,967 / 1,408 QPS** (nibble tables, NEON) :white_check_mark: |
+| **v4.2.5 RaBitQ 1024D (rerank ×4)** | N/A | > 95% recall, > 1,000 QPS | **98.50%** @ **1,666 QPS** (29× compression) :white_check_mark: |
+| **v4.2.5 PQ4 fast-scan 1024D (rerank ×8)** | N/A | > 99% recall | **99.65%** @ **1,154 QPS**; auto-calibrated rerank ×4 97.60% :white_check_mark: |
 
 > Rows above are measured (Apple Silicon, single node) — see `BENCHMARK_V3_VS_V4_REPORT.md`, `BENCHMARK_QUANTIZATION_SWEEP.md`, and `HONEST_CAPABILITY_AND_BENCHMARK_REPORT.md`.
 

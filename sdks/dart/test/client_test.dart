@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:test/test.dart';
 import 'package:hyperspacedb/hyperspacedb.dart';
 import 'package:hyperspacedb/src/generated/hyperspace.pbgrpc.dart' as pb;
@@ -9,7 +10,15 @@ void main() {
   final collectionName = 'test_dart_collection';
 
   setUpAll(() async {
-    client = HyperspaceClient('localhost', 50051, apiKey: 'I_LOVE_HYPERSPACEDB');
+    // Point the suite at another server with HS_TEST_HOST / HS_TEST_PORT, and set
+    // HS_TEST_COMPACT=1 to send vectors as `vector_f32` (server >= 4.2.5).
+    final env = Platform.environment;
+    client = HyperspaceClient(
+      env['HS_TEST_HOST'] ?? 'localhost',
+      int.tryParse(env['HS_TEST_PORT'] ?? '') ?? 50051,
+      apiKey: env['HS_TEST_API_KEY'] ?? 'I_LOVE_HYPERSPACEDB',
+      compactVectors: env['HS_TEST_COMPACT'] == '1',
+    );
   });
 
   tearDownAll(() async {
@@ -17,6 +26,12 @@ void main() {
       await client.deleteCollection(collectionName);
     } catch (_) {}
     await client.close();
+  });
+
+  test('checkEfSearch validates the per-request beam width', () {
+    expect(HyperspaceClient.checkEfSearch(0), 0);
+    expect(HyperspaceClient.checkEfSearch(256), 256);
+    expect(() => HyperspaceClient.checkEfSearch(-1), throwsRangeError);
   });
 
   group('HyperspaceDB Integration Tests', () {
@@ -32,16 +47,14 @@ void main() {
       }
 
       // 2. Create
-      final schema = pb.CollectionSchema(
-        components: [
-          pb.VectorComponent(
-            name: 'main',
-            metric: 'poincare',
-            fullDimension: 4,
-            weight: 1.0,
-          )
-        ]
-      );
+      final schema = pb.CollectionSchema(components: [
+        pb.VectorComponent(
+          name: 'main',
+          metric: 'poincare',
+          fullDimension: 4,
+          weight: 1.0,
+        )
+      ]);
       final created = await client.createCollection(collectionName, schema);
       expect(created, isTrue);
 
@@ -118,6 +131,15 @@ void main() {
       expect(searchResults.isNotEmpty, isTrue);
       expect(searchResults.first.id, isNotNull);
 
+      // 1b. Per-request beam width returns the same nearest neighbour.
+      final wide = await client.search(
+        [0.15, 0.15, 0.15, 0.15],
+        2,
+        collection: collectionName,
+        efSearch: 256,
+      );
+      expect(wide.first.id, equals(searchResults.first.id));
+
       // 2. Batch Search
       final batchResults = await client.searchBatch(
         [
@@ -126,6 +148,7 @@ void main() {
         ],
         2,
         collection: collectionName,
+        efSearch: 128,
       );
       expect(batchResults.length, equals(2));
       expect(batchResults[0].isNotEmpty, isTrue);
@@ -133,7 +156,8 @@ void main() {
 
       // 3. Search Text (BM25 or hybrid)
       try {
-        await client.insertText(10, 'spatial query text', collection: collectionName);
+        await client.insertText(10, 'spatial query text',
+            collection: collectionName);
         final textResults = await client.searchText(
           'spatial',
           2,
@@ -220,11 +244,10 @@ void main() {
 
     test('Replication, CDC, & Monitor', () async {
       // 1. Subscribe to Events Stream
-      final stream = client.subscribeToEvents([
-        pb.EventType.VECTOR_INSERTED,
-        pb.EventType.VECTOR_DELETED
-      ], collection: collectionName);
-      
+      final stream = client.subscribeToEvents(
+          [pb.EventType.VECTOR_INSERTED, pb.EventType.VECTOR_DELETED],
+          collection: collectionName);
+
       expect(stream, isNotNull);
 
       // 2. Monitor Metrics Stream
@@ -254,11 +277,13 @@ void main() {
       expect(digest.count, isNotNull);
 
       // 5. Trigger Reconsolidation
-      final recon = await client.triggerReconsolidation(collectionName, [0.1, 0.1, 0.1, 0.1], 0.01);
+      final recon = await client.triggerReconsolidation(
+          collectionName, [0.1, 0.1, 0.1, 0.1], 0.01);
       expect(recon, isTrue);
 
       // 6. Configure (efSearch, efConstruction, m)
-      final configured = await client.updateCollection(collectionName, efSearch: 32, efConstruction: 64, m: 16);
+      final configured = await client.updateCollection(collectionName,
+          efSearch: 32, efConstruction: 64, m: 16);
       expect(configured, isTrue);
     });
 
@@ -278,7 +303,7 @@ void main() {
       // 3. Sync Push
       final pushStreamController = StreamController<pb.SyncVectorData>();
       final pushFuture = client.syncPush(pushStreamController.stream);
-      
+
       pushStreamController.add(pb.SyncVectorData(
         collection: collectionName,
         id: 99,
@@ -286,7 +311,7 @@ void main() {
         bucketIndex: 0,
       ));
       await pushStreamController.close();
-      
+
       final pushRes = await pushFuture;
       expect(pushRes, isNotNull);
     });
@@ -298,7 +323,8 @@ void main() {
 
       // 2. Try insert (should fail or throw exception when frozen)
       try {
-        await client.insert(4, [0.4, 0.4, 0.4, 0.4], collection: collectionName);
+        await client.insert(4, [0.4, 0.4, 0.4, 0.4],
+            collection: collectionName);
       } catch (e) {
         expect(e.toString(), contains('frozen'));
       }
@@ -308,7 +334,8 @@ void main() {
       expect(unfrozen, isTrue);
 
       // 4. Try insert again (should succeed)
-      final insertedAfterUnfreeze = await client.insert(4, [0.4, 0.4, 0.4, 0.4], collection: collectionName);
+      final insertedAfterUnfreeze = await client.insert(4, [0.4, 0.4, 0.4, 0.4],
+          collection: collectionName);
       expect(insertedAfterUnfreeze, isTrue);
     });
 
@@ -328,7 +355,7 @@ void main() {
       final p1 = [0.1, 0.2, 0.3];
       final l1 = poincareToLorentz(p1);
       expect(l1.length, equals(4));
-      
+
       final p1Back = lorentzToPoincare(l1);
       expect(p1Back[0], closeTo(p1[0], 1e-7));
       expect(p1Back[1], closeTo(p1[1], 1e-7));

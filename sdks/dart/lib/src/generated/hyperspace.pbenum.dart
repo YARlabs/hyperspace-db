@@ -19,14 +19,20 @@ class QuantizationMode extends $pb.ProtobufEnum {
       QuantizationMode._(0, _omitEnumNames ? '' : 'NONE');
   static const QuantizationMode SCALAR_I8 =
       QuantizationMode._(1, _omitEnumNames ? '' : 'SCALAR_I8');
+  static const QuantizationMode BINARY =
+      QuantizationMode._(2, _omitEnumNames ? '' : 'BINARY');
+  static const QuantizationMode TERNARY =
+      QuantizationMode._(3, _omitEnumNames ? '' : 'TERNARY');
 
   static const $core.List<QuantizationMode> values = <QuantizationMode>[
     NONE,
     SCALAR_I8,
+    BINARY,
+    TERNARY,
   ];
 
   static final $core.List<QuantizationMode?> _byValue =
-      $pb.ProtobufEnum.$_initByValueList(values, 1);
+      $pb.ProtobufEnum.$_initByValueList(values, 3);
   static QuantizationMode? valueOf($core.int value) =>
       value < 0 || value >= _byValue.length ? null : _byValue[value];
 

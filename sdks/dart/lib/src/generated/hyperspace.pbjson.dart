@@ -21,12 +21,15 @@ const QuantizationMode$json = {
   '2': [
     {'1': 'NONE', '2': 0},
     {'1': 'SCALAR_I8', '2': 1},
+    {'1': 'BINARY', '2': 2},
+    {'1': 'TERNARY', '2': 3},
   ],
 };
 
 /// Descriptor for `QuantizationMode`. Decode as a `google.protobuf.EnumDescriptorProto`.
 final $typed_data.Uint8List quantizationModeDescriptor = $convert.base64Decode(
-    'ChBRdWFudGl6YXRpb25Nb2RlEggKBE5PTkUQABINCglTQ0FMQVJfSTgQAQ==');
+    'ChBRdWFudGl6YXRpb25Nb2RlEggKBE5PTkUQABINCglTQ0FMQVJfSTgQARIKCgZCSU5BUlkQAh'
+    'ILCgdURVJOQVJZEAM=');
 
 @$core.Deprecated('Use durabilityLevelDescriptor instead')
 const DurabilityLevel$json = {
@@ -747,15 +750,17 @@ const InsertRequest_TypedMetadataEntry$json = {
 
 /// Descriptor for `InsertRequest`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List insertRequestDescriptor = $convert.base64Decode(
-    'Cg1JbnNlcnRSZXF1ZXN0EhIKCmNvbGxlY3Rpb24YASABKAkSDgoGdmVjdG9yGAIgAygBEgoK'
-    'AmlkGAMgASgNEjkKCG1ldGFkYXRhGAQgAygLMicuaHlwZXJzcGFjZS5JbnNlcnRSZXF1ZXN0'
-    'Lk1ldGFkYXRhRW50cnkSFgoOb3JpZ2luX25vZGVfaWQYBSABKAkSFQoNbG9naWNhbF9jbG9j'
-    'axgGIAEoBBIvCgpkdXJhYmlsaXR5GAcgASgOMhsuaHlwZXJzcGFjZS5EdXJhYmlsaXR5TGV2'
-    'ZWwSRAoOdHlwZWRfbWV0YWRhdGEYCCADKAsyLC5oeXBlcnNwYWNlLkluc2VydFJlcXVlc3Qu'
-    'VHlwZWRNZXRhZGF0YUVudHJ5EhQKB3BheWxvYWQYCSABKAxIAIgBARISCgp2ZWN0b3JfZjMy'
-    'GAogAygCGi8KDU1ldGFkYXRhRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4'
-    'ARpPChJUeXBlZE1ldGFkYXRhRW50cnkSCwoDa2V5GAEgASgJEigKBXZhbHVlGAIgASgLMhku'
-    'aHlwZXJzcGFjZS5NZXRhZGF0YVZhbHVlOgI4AUIKCghfcGF5bG9hZA==');
+    'Cg1JbnNlcnRSZXF1ZXN0Eh4KCmNvbGxlY3Rpb24YASABKAlSCmNvbGxlY3Rpb24SFgoGdmVjdG'
+    '9yGAIgAygBUgZ2ZWN0b3ISDgoCaWQYAyABKA1SAmlkEkMKCG1ldGFkYXRhGAQgAygLMicuaHlw'
+    'ZXJzcGFjZS5JbnNlcnRSZXF1ZXN0Lk1ldGFkYXRhRW50cnlSCG1ldGFkYXRhEiQKDm9yaWdpbl'
+    '9ub2RlX2lkGAUgASgJUgxvcmlnaW5Ob2RlSWQSIwoNbG9naWNhbF9jbG9jaxgGIAEoBFIMbG9n'
+    'aWNhbENsb2NrEjsKCmR1cmFiaWxpdHkYByABKA4yGy5oeXBlcnNwYWNlLkR1cmFiaWxpdHlMZX'
+    'ZlbFIKZHVyYWJpbGl0eRJTCg50eXBlZF9tZXRhZGF0YRgIIAMoCzIsLmh5cGVyc3BhY2UuSW5z'
+    'ZXJ0UmVxdWVzdC5UeXBlZE1ldGFkYXRhRW50cnlSDXR5cGVkTWV0YWRhdGESHQoHcGF5bG9hZB'
+    'gJIAEoDEgAUgdwYXlsb2FkiAEBEh0KCnZlY3Rvcl9mMzIYCiADKAJSCXZlY3RvckYzMho7Cg1N'
+    'ZXRhZGF0YUVudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJUgV2YWx1ZToCOA'
+    'EaWwoSVHlwZWRNZXRhZGF0YUVudHJ5EhAKA2tleRgBIAEoCVIDa2V5Ei8KBXZhbHVlGAIgASgL'
+    'MhkuaHlwZXJzcGFjZS5NZXRhZGF0YVZhbHVlUgV2YWx1ZToCOAFCCgoIX3BheWxvYWQ=');
 
 @$core.Deprecated('Use vectorDataDescriptor instead')
 const VectorData$json = {
@@ -813,12 +818,13 @@ const VectorData_TypedMetadataEntry$json = {
 
 /// Descriptor for `VectorData`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List vectorDataDescriptor = $convert.base64Decode(
-    'CgpWZWN0b3JEYXRhEg4KBnZlY3RvchgBIAMoARIKCgJpZBgCIAEoDRI2CghtZXRhZGF0YRgD'
-    'IAMoCzIkLmh5cGVyc3BhY2UuVmVjdG9yRGF0YS5NZXRhZGF0YUVudHJ5EkEKDnR5cGVkX21l'
-    'dGFkYXRhGAQgAygLMikuaHlwZXJzcGFjZS5WZWN0b3JEYXRhLlR5cGVkTWV0YWRhdGFFbnRy'
-    'eRISCgp2ZWN0b3JfZjMyGAUgAygCGi8KDU1ldGFkYXRhRW50cnkSCwoDa2V5GAEgASgJEg0K'
-    'BXZhbHVlGAIgASgJOgI4ARpPChJUeXBlZE1ldGFkYXRhRW50cnkSCwoDa2V5GAEgASgJEigK'
-    'BXZhbHVlGAIgASgLMhkuaHlwZXJzcGFjZS5NZXRhZGF0YVZhbHVlOgI4AQ==');
+    'CgpWZWN0b3JEYXRhEhYKBnZlY3RvchgBIAMoAVIGdmVjdG9yEg4KAmlkGAIgASgNUgJpZBJACg'
+    'htZXRhZGF0YRgDIAMoCzIkLmh5cGVyc3BhY2UuVmVjdG9yRGF0YS5NZXRhZGF0YUVudHJ5Ught'
+    'ZXRhZGF0YRJQCg50eXBlZF9tZXRhZGF0YRgEIAMoCzIpLmh5cGVyc3BhY2UuVmVjdG9yRGF0YS'
+    '5UeXBlZE1ldGFkYXRhRW50cnlSDXR5cGVkTWV0YWRhdGESHQoKdmVjdG9yX2YzMhgFIAMoAlIJ'
+    'dmVjdG9yRjMyGjsKDU1ldGFkYXRhRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAi'
+    'ABKAlSBXZhbHVlOgI4ARpbChJUeXBlZE1ldGFkYXRhRW50cnkSEAoDa2V5GAEgASgJUgNrZXkS'
+    'LwoFdmFsdWUYAiABKAsyGS5oeXBlcnNwYWNlLk1ldGFkYXRhVmFsdWVSBXZhbHVlOgI4AQ==');
 
 @$core.Deprecated('Use batchInsertRequestDescriptor instead')
 const BatchInsertRequest$json = {
@@ -977,6 +983,15 @@ const SearchTextRequest$json = {
       '6': '.hyperspace.SearchTextRequest.ComponentWeightsEntry',
       '10': 'componentWeights'
     },
+    {
+      '1': 'ef_search',
+      '3': 10,
+      '4': 1,
+      '5': 13,
+      '9': 2,
+      '10': 'efSearch',
+      '17': true
+    },
   ],
   '3': [
     SearchTextRequest_FilterEntry$json,
@@ -985,6 +1000,7 @@ const SearchTextRequest$json = {
   '8': [
     {'1': '_bm25_options'},
     {'1': '_hybrid_alpha'},
+    {'1': '_ef_search'},
   ],
 };
 
@@ -1018,10 +1034,10 @@ final $typed_data.Uint8List searchTextRequestDescriptor = $convert.base64Decode(
     'JpZF9hbHBoYRgHIAEoAkgBUgtoeWJyaWRBbHBoYYgBARInCg9pbmNsdWRlX3BheWxvYWQYCCAB'
     'KAhSDmluY2x1ZGVQYXlsb2FkEmAKEWNvbXBvbmVudF93ZWlnaHRzGAkgAygLMjMuaHlwZXJzcG'
     'FjZS5TZWFyY2hUZXh0UmVxdWVzdC5Db21wb25lbnRXZWlnaHRzRW50cnlSEGNvbXBvbmVudFdl'
-    'aWdodHMaOQoLRmlsdGVyRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAiABKAlSBX'
-    'ZhbHVlOgI4ARpDChVDb21wb25lbnRXZWlnaHRzRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoF'
-    'dmFsdWUYAiABKAJSBXZhbHVlOgI4AUIPCg1fYm0yNV9vcHRpb25zQg8KDV9oeWJyaWRfYWxwaG'
-    'E=');
+    'aWdodHMSIAoJZWZfc2VhcmNoGAogASgNSAJSCGVmU2VhcmNoiAEBGjkKC0ZpbHRlckVudHJ5Eh'
+    'AKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJUgV2YWx1ZToCOAEaQwoVQ29tcG9uZW50'
+    'V2VpZ2h0c0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgCUgV2YWx1ZToCOA'
+    'FCDwoNX2JtMjVfb3B0aW9uc0IPCg1faHlicmlkX2FscGhhQgwKCl9lZl9zZWFyY2g=');
 
 @$core.Deprecated('Use bm25OptionsDescriptor instead')
 const Bm25Options$json = {
@@ -1380,6 +1396,15 @@ const SearchRequest$json = {
     },
     {'1': 'use_wave', '3': 13, '4': 1, '5': 8, '10': 'useWave'},
     {'1': 'vector_f32', '3': 14, '4': 3, '5': 2, '10': 'vectorF32'},
+    {
+      '1': 'ef_search',
+      '3': 15,
+      '4': 1,
+      '5': 13,
+      '9': 4,
+      '10': 'efSearch',
+      '17': true
+    },
   ],
   '3': [
     SearchRequest_FilterEntry$json,
@@ -1390,6 +1415,7 @@ const SearchRequest$json = {
     {'1': '_hybrid_alpha'},
     {'1': '_bm25_options'},
     {'1': '_mrl_dimension'},
+    {'1': '_ef_search'},
   ],
 };
 
@@ -1415,18 +1441,22 @@ const SearchRequest_ComponentWeightsEntry$json = {
 
 /// Descriptor for `SearchRequest`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List searchRequestDescriptor = $convert.base64Decode(
-    'Cg1TZWFyY2hSZXF1ZXN0EhIKCmNvbGxlY3Rpb24YASABKAkSDgoGdmVjdG9yGAIgAygBEg0K'
-    'BXRvcF9rGAMgASgNEjUKBmZpbHRlchgEIAMoCzIlLmh5cGVyc3BhY2UuU2VhcmNoUmVxdWVz'
-    'dC5GaWx0ZXJFbnRyeRIjCgdmaWx0ZXJzGAUgAygLMhIuaHlwZXJzcGFjZS5GaWx0ZXISGQoM'
-    'aHlicmlkX3F1ZXJ5GAYgASgJSACIAQESGQoMaHlicmlkX2FscGhhGAcgASgCSAGIAQESFwoP'
-    'dXNlX3dhc3NlcnN0ZWluGAggASgIEjIKDGJtMjVfb3B0aW9ucxgJIAEoCzIXLmh5cGVyc3Bh'
-    'Y2UuQm0yNU9wdGlvbnNIAogBARIaCg1tcmxfZGltZW5zaW9uGAogASgNSAOIAQESFwoPaW5j'
-    'bHVkZV9wYXlsb2FkGAsgASgIEkoKEWNvbXBvbmVudF93ZWlnaHRzGAwgAygLMi8uaHlwZXJz'
-    'cGFjZS5TZWFyY2hSZXF1ZXN0LkNvbXBvbmVudFdlaWdodHNFbnRyeRIQCgh1c2Vfd2F2ZRgN'
-    'IAEoCBISCgp2ZWN0b3JfZjMyGA4gAygCGi0KC0ZpbHRlckVudHJ5EgsKA2tleRgBIAEoCRIN'
-    'CgV2YWx1ZRgCIAEoCToCOAEaNwoVQ29tcG9uZW50V2VpZ2h0c0VudHJ5EgsKA2tleRgBIAEo'
-    'CRINCgV2YWx1ZRgCIAEoAjoCOAFCDwoNX2h5YnJpZF9xdWVyeUIPCg1faHlicmlkX2FscGhh'
-    'Qg8KDV9ibTI1X29wdGlvbnNCEAoOX21ybF9kaW1lbnNpb24=');
+    'Cg1TZWFyY2hSZXF1ZXN0Eh4KCmNvbGxlY3Rpb24YASABKAlSCmNvbGxlY3Rpb24SFgoGdmVjdG'
+    '9yGAIgAygBUgZ2ZWN0b3ISEwoFdG9wX2sYAyABKA1SBHRvcEsSPQoGZmlsdGVyGAQgAygLMiUu'
+    'aHlwZXJzcGFjZS5TZWFyY2hSZXF1ZXN0LkZpbHRlckVudHJ5UgZmaWx0ZXISLAoHZmlsdGVycx'
+    'gFIAMoCzISLmh5cGVyc3BhY2UuRmlsdGVyUgdmaWx0ZXJzEiYKDGh5YnJpZF9xdWVyeRgGIAEo'
+    'CUgAUgtoeWJyaWRRdWVyeYgBARImCgxoeWJyaWRfYWxwaGEYByABKAJIAVILaHlicmlkQWxwaG'
+    'GIAQESJwoPdXNlX3dhc3NlcnN0ZWluGAggASgIUg51c2VXYXNzZXJzdGVpbhI/CgxibTI1X29w'
+    'dGlvbnMYCSABKAsyFy5oeXBlcnNwYWNlLkJtMjVPcHRpb25zSAJSC2JtMjVPcHRpb25ziAEBEi'
+    'gKDW1ybF9kaW1lbnNpb24YCiABKA1IA1IMbXJsRGltZW5zaW9uiAEBEicKD2luY2x1ZGVfcGF5'
+    'bG9hZBgLIAEoCFIOaW5jbHVkZVBheWxvYWQSXAoRY29tcG9uZW50X3dlaWdodHMYDCADKAsyLy'
+    '5oeXBlcnNwYWNlLlNlYXJjaFJlcXVlc3QuQ29tcG9uZW50V2VpZ2h0c0VudHJ5UhBjb21wb25l'
+    'bnRXZWlnaHRzEhkKCHVzZV93YXZlGA0gASgIUgd1c2VXYXZlEh0KCnZlY3Rvcl9mMzIYDiADKA'
+    'JSCXZlY3RvckYzMhIgCgllZl9zZWFyY2gYDyABKA1IBFIIZWZTZWFyY2iIAQEaOQoLRmlsdGVy'
+    'RW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAiABKAlSBXZhbHVlOgI4ARpDChVDb2'
+    '1wb25lbnRXZWlnaHRzRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAiABKAJSBXZh'
+    'bHVlOgI4AUIPCg1faHlicmlkX3F1ZXJ5Qg8KDV9oeWJyaWRfYWxwaGFCDwoNX2JtMjVfb3B0aW'
+    '9uc0IQCg5fbXJsX2RpbWVuc2lvbkIMCgpfZWZfc2VhcmNo');
 
 @$core.Deprecated('Use filterDescriptor instead')
 const Filter$json = {
@@ -1768,13 +1798,27 @@ const SearchMultiCollectionRequest$json = {
     {'1': 'vector', '3': 2, '4': 3, '5': 1, '10': 'vector'},
     {'1': 'top_k', '3': 3, '4': 1, '5': 13, '10': 'topK'},
     {'1': 'vector_f32', '3': 4, '4': 3, '5': 2, '10': 'vectorF32'},
+    {
+      '1': 'ef_search',
+      '3': 5,
+      '4': 1,
+      '5': 13,
+      '9': 0,
+      '10': 'efSearch',
+      '17': true
+    },
+  ],
+  '8': [
+    {'1': '_ef_search'},
   ],
 };
 
 /// Descriptor for `SearchMultiCollectionRequest`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List searchMultiCollectionRequestDescriptor = $convert.base64Decode(
-    'ChxTZWFyY2hNdWx0aUNvbGxlY3Rpb25SZXF1ZXN0EhMKC2NvbGxlY3Rpb25zGAEgAygJEg4K'
-    'BnZlY3RvchgCIAMoARINCgV0b3BfaxgDIAEoDRISCgp2ZWN0b3JfZjMyGAQgAygC');
+    'ChxTZWFyY2hNdWx0aUNvbGxlY3Rpb25SZXF1ZXN0EiAKC2NvbGxlY3Rpb25zGAEgAygJUgtjb2'
+    'xsZWN0aW9ucxIWCgZ2ZWN0b3IYAiADKAFSBnZlY3RvchITCgV0b3BfaxgDIAEoDVIEdG9wSxId'
+    'Cgp2ZWN0b3JfZjMyGAQgAygCUgl2ZWN0b3JGMzISIAoJZWZfc2VhcmNoGAUgASgNSABSCGVmU2'
+    'VhcmNoiAEBQgwKCl9lZl9zZWFyY2g=');
 
 @$core.Deprecated('Use searchMultiCollectionResponseDescriptor instead')
 const SearchMultiCollectionResponse$json = {
@@ -2937,3 +2981,135 @@ final $typed_data.Uint8List verifyGenerationResponseDescriptor = $convert.base64
     'KA1SDGdlb2Rlc2ljSG9wcxIlCg5jb25lX3NhdGlzZmllZBgHIAEoCFINY29uZVNhdGlzZmllZB'
     'IYCgdkZXRhaWxzGAggASgJUgdkZXRhaWxzEjAKFHJlc29sdmVkX2NvbnRleHRfaWRzGAkgAygN'
     'UhJyZXNvbHZlZENvbnRleHRJZHM=');
+
+@$core.Deprecated('Use extensionRequestDescriptor instead')
+const ExtensionRequest$json = {
+  '1': 'ExtensionRequest',
+  '2': [
+    {'1': 'plugin', '3': 1, '4': 1, '5': 9, '10': 'plugin'},
+    {'1': 'method', '3': 2, '4': 1, '5': 9, '10': 'method'},
+    {
+      '1': 'collection',
+      '3': 3,
+      '4': 1,
+      '5': 9,
+      '9': 0,
+      '10': 'collection',
+      '17': true
+    },
+    {'1': 'json_payload', '3': 4, '4': 1, '5': 9, '10': 'jsonPayload'},
+  ],
+  '8': [
+    {'1': '_collection'},
+  ],
+};
+
+/// Descriptor for `ExtensionRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List extensionRequestDescriptor = $convert.base64Decode(
+    'ChBFeHRlbnNpb25SZXF1ZXN0EhYKBnBsdWdpbhgBIAEoCVIGcGx1Z2luEhYKBm1ldGhvZBgCIA'
+    'EoCVIGbWV0aG9kEiMKCmNvbGxlY3Rpb24YAyABKAlIAFIKY29sbGVjdGlvbogBARIhCgxqc29u'
+    'X3BheWxvYWQYBCABKAlSC2pzb25QYXlsb2FkQg0KC19jb2xsZWN0aW9u');
+
+@$core.Deprecated('Use extensionResponseDescriptor instead')
+const ExtensionResponse$json = {
+  '1': 'ExtensionResponse',
+  '2': [
+    {'1': 'success', '3': 1, '4': 1, '5': 8, '10': 'success'},
+    {'1': 'json_result', '3': 2, '4': 1, '5': 9, '10': 'jsonResult'},
+    {'1': 'error', '3': 3, '4': 1, '5': 9, '10': 'error'},
+  ],
+};
+
+/// Descriptor for `ExtensionResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List extensionResponseDescriptor = $convert.base64Decode(
+    'ChFFeHRlbnNpb25SZXNwb25zZRIYCgdzdWNjZXNzGAEgASgIUgdzdWNjZXNzEh8KC2pzb25fcm'
+    'VzdWx0GAIgASgJUgpqc29uUmVzdWx0EhQKBWVycm9yGAMgASgJUgVlcnJvcg==');
+
+@$core.Deprecated('Use extensionProcedureInfoDescriptor instead')
+const ExtensionProcedureInfo$json = {
+  '1': 'ExtensionProcedureInfo',
+  '2': [
+    {'1': 'name', '3': 1, '4': 1, '5': 9, '10': 'name'},
+    {'1': 'description', '3': 2, '4': 1, '5': 9, '10': 'description'},
+    {
+      '1': 'requires_collection',
+      '3': 3,
+      '4': 1,
+      '5': 8,
+      '10': 'requiresCollection'
+    },
+    {'1': 'input_schema_json', '3': 4, '4': 1, '5': 9, '10': 'inputSchemaJson'},
+    {
+      '1': 'output_schema_json',
+      '3': 5,
+      '4': 1,
+      '5': 9,
+      '10': 'outputSchemaJson'
+    },
+  ],
+};
+
+/// Descriptor for `ExtensionProcedureInfo`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List extensionProcedureInfoDescriptor = $convert.base64Decode(
+    'ChZFeHRlbnNpb25Qcm9jZWR1cmVJbmZvEhIKBG5hbWUYASABKAlSBG5hbWUSIAoLZGVzY3JpcH'
+    'Rpb24YAiABKAlSC2Rlc2NyaXB0aW9uEi8KE3JlcXVpcmVzX2NvbGxlY3Rpb24YAyABKAhSEnJl'
+    'cXVpcmVzQ29sbGVjdGlvbhIqChFpbnB1dF9zY2hlbWFfanNvbhgEIAEoCVIPaW5wdXRTY2hlbW'
+    'FKc29uEiwKEm91dHB1dF9zY2hlbWFfanNvbhgFIAEoCVIQb3V0cHV0U2NoZW1hSnNvbg==');
+
+@$core.Deprecated('Use extensionInfoDescriptor instead')
+const ExtensionInfo$json = {
+  '1': 'ExtensionInfo',
+  '2': [
+    {'1': 'name', '3': 1, '4': 1, '5': 9, '10': 'name'},
+    {'1': 'version', '3': 2, '4': 1, '5': 9, '10': 'version'},
+    {'1': 'author', '3': 3, '4': 1, '5': 9, '10': 'author'},
+    {'1': 'description', '3': 4, '4': 1, '5': 9, '10': 'description'},
+    {'1': 'runtime', '3': 5, '4': 1, '5': 9, '10': 'runtime'},
+    {'1': 'hooks', '3': 6, '4': 3, '5': 9, '10': 'hooks'},
+    {
+      '1': 'procedures',
+      '3': 7,
+      '4': 3,
+      '5': 11,
+      '6': '.hyperspace.ExtensionProcedureInfo',
+      '10': 'procedures'
+    },
+  ],
+};
+
+/// Descriptor for `ExtensionInfo`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List extensionInfoDescriptor = $convert.base64Decode(
+    'Cg1FeHRlbnNpb25JbmZvEhIKBG5hbWUYASABKAlSBG5hbWUSGAoHdmVyc2lvbhgCIAEoCVIHdm'
+    'Vyc2lvbhIWCgZhdXRob3IYAyABKAlSBmF1dGhvchIgCgtkZXNjcmlwdGlvbhgEIAEoCVILZGVz'
+    'Y3JpcHRpb24SGAoHcnVudGltZRgFIAEoCVIHcnVudGltZRIUCgVob29rcxgGIAMoCVIFaG9va3'
+    'MSQgoKcHJvY2VkdXJlcxgHIAMoCzIiLmh5cGVyc3BhY2UuRXh0ZW5zaW9uUHJvY2VkdXJlSW5m'
+    'b1IKcHJvY2VkdXJlcw==');
+
+@$core.Deprecated('Use listExtensionsResponseDescriptor instead')
+const ListExtensionsResponse$json = {
+  '1': 'ListExtensionsResponse',
+  '2': [
+    {'1': 'pdk_version', '3': 1, '4': 1, '5': 9, '10': 'pdkVersion'},
+    {
+      '1': 'supported_metrics',
+      '3': 2,
+      '4': 3,
+      '5': 9,
+      '10': 'supportedMetrics'
+    },
+    {
+      '1': 'extensions',
+      '3': 3,
+      '4': 3,
+      '5': 11,
+      '6': '.hyperspace.ExtensionInfo',
+      '10': 'extensions'
+    },
+  ],
+};
+
+/// Descriptor for `ListExtensionsResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List listExtensionsResponseDescriptor = $convert.base64Decode(
+    'ChZMaXN0RXh0ZW5zaW9uc1Jlc3BvbnNlEh8KC3Bka192ZXJzaW9uGAEgASgJUgpwZGtWZXJzaW'
+    '9uEisKEXN1cHBvcnRlZF9tZXRyaWNzGAIgAygJUhBzdXBwb3J0ZWRNZXRyaWNzEjkKCmV4dGVu'
+    'c2lvbnMYAyADKAsyGS5oeXBlcnNwYWNlLkV4dGVuc2lvbkluZm9SCmV4dGVuc2lvbnM=');

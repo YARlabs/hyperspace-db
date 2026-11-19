@@ -908,6 +908,128 @@ impl BinaryHyperVector {
     }
 }
 
+/// Per-query nibble lookup table for bit-packed codes (1-bit `extreme`, ternary).
+///
+/// `table[16 * g + v]` = Σ of the query coordinates `4g..4g+4` whose bit is set in the
+/// nibble `v` (bits LSB-first, as the codes store them). A masked sum over `D` bits then
+/// costs `D / 4` table loads and adds instead of `D` per-bit branches / multiplies, and the
+/// query-only terms (Σq, ‖q‖²) are computed once per query instead of once per candidate.
+/// For 1024 dims the table is 16 KB and stays in L1.
+#[derive(Debug, Clone)]
+pub struct BitPlaneLut {
+    table: Vec<f32>,
+    /// Σ q_i over all query coordinates.
+    pub q_sum: f64,
+    /// ‖q‖² over all query coordinates.
+    pub q_norm_sq: f64,
+    /// Number of query coordinates.
+    pub dim: usize,
+}
+
+impl BitPlaneLut {
+    #[must_use]
+    pub fn new(query: &[f64]) -> Self {
+        let dim = query.len();
+        let groups = dim.div_ceil(4);
+        let mut table = vec![0.0f32; groups * 16];
+        for g in 0..groups {
+            let q = |j: usize| query.get(4 * g + j).copied().unwrap_or(0.0);
+            let base = &mut table[16 * g..16 * g + 16];
+            for (v, slot) in base.iter_mut().enumerate() {
+                let mut acc = 0.0f64;
+                for j in 0..4 {
+                    if v & (1 << j) != 0 {
+                        acc += q(j);
+                    }
+                }
+                *slot = acc as f32;
+            }
+        }
+        Self {
+            table,
+            q_sum: query.iter().sum(),
+            q_norm_sq: query.iter().map(|x| x * x).sum(),
+            dim,
+        }
+    }
+
+    /// Σ q_i over the bits set in `mask` (one byte = 8 coordinates, LSB first).
+    #[inline]
+    #[must_use]
+    pub fn masked_sum(&self, mask: &[u8]) -> f64 {
+        let t = &self.table;
+        let bytes = mask.len().min(t.len().div_ceil(32));
+        let full = bytes.min(t.len() / 32);
+        // Four independent accumulators break the add dependency chain.
+        let (mut a0, mut a1, mut a2, mut a3) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+        let mut i = 0;
+        while i + 2 <= full {
+            let (b0, b1) = (mask[i] as usize, mask[i + 1] as usize);
+            let o = 32 * i;
+            a0 += t[o + (b0 & 15)];
+            a1 += t[o + 16 + (b0 >> 4)];
+            a2 += t[o + 32 + (b1 & 15)];
+            a3 += t[o + 48 + (b1 >> 4)];
+            i += 2;
+        }
+        while i < bytes {
+            let b = mask[i] as usize;
+            let o = 32 * i;
+            a0 += t[o + (b & 15)];
+            if o + 16 < t.len() {
+                a1 += t[o + 16 + (b >> 4)];
+            }
+            i += 1;
+        }
+        f64::from((a0 + a1) + (a2 + a3))
+    }
+
+    /// `(Σ_{nz ∧ sign} q, Σ_{nz} q)` for a ternary code (`sign` bit set = +1).
+    #[inline]
+    #[must_use]
+    pub fn ternary_sums(&self, nz: &[u8], sign: &[u8]) -> (f64, f64) {
+        let t = &self.table;
+        let groups = t.len() / 16;
+        let bytes = nz.len().min(sign.len()).min(groups.div_ceil(2));
+        let (mut pos0, mut pos1, mut all0, mut all1) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+        for i in 0..bytes {
+            let z = nz[i] as usize;
+            if z == 0 {
+                continue;
+            }
+            let p = z & sign[i] as usize;
+            let o = 32 * i;
+            pos0 += t[o + (p & 15)];
+            all0 += t[o + (z & 15)];
+            if o + 16 < t.len() {
+                pos1 += t[o + 16 + (p >> 4)];
+                all1 += t[o + 16 + (z >> 4)];
+            }
+        }
+        (f64::from(pos0 + pos1), f64::from(all0 + all1))
+    }
+}
+
+impl BinaryHyperVector {
+    /// [`Self::adc_distance_bytes`] with a precomputed per-query table (same result up to
+    /// `f32` accumulation).
+    #[inline]
+    #[must_use]
+    pub fn adc_distance_lut(bytes: &[u8], lut: &BitPlaneLut) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        if lut.dim == 0 {
+            return 0.0;
+        }
+        let bits = &bytes[..bytes.len() - 4];
+        let pos = lut.masked_sum(bits);
+        let dot = 2.0 * pos - lut.q_sum;
+        let scale = 1.0 / (lut.dim as f64).sqrt();
+        (2.0 * (1.0 - (dot * scale).clamp(-1.0, 1.0))).max(0.0)
+    }
+}
+
 /// Ternary 1.58-bit quantized vector {-1, 0, +1}.
 /// Optimal BitNet / Lloyd-Max quantization with adaptive threshold tau.
 /// Memory layout:
@@ -1299,6 +1421,56 @@ impl TernaryHyperVector {
 
         let cos_sim = (dot / denom).clamp(-1.0, 1.0);
         (1.0 - cos_sim).max(0.0)
+    }
+
+    /// [`Self::distance_bytes_l2_sq`] (no MRL head) with a precomputed per-query table.
+    #[inline]
+    #[must_use]
+    pub fn distance_l2_sq_lut(bytes: &[u8], lut: &BitPlaneLut, dim: usize) -> f64 {
+        let num_bytes = dim.div_ceil(8);
+        let scale_offset = 2 * num_bytes;
+        if scale_offset + 4 > bytes.len() {
+            return f64::MAX;
+        }
+        let scale = f64::from(f32::from_le_bytes(
+            bytes[scale_offset..scale_offset + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        ));
+        let nz = &bytes[..num_bytes];
+        let sign = &bytes[num_bytes..scale_offset];
+        let nz_count: u32 = nz.iter().map(|b| b.count_ones()).sum();
+        let (pos, all) = lut.ternary_sums(nz, sign);
+        let dot = 2.0 * pos - all;
+        let v_norm_sq = f64::from(nz_count) * scale * scale;
+        (v_norm_sq + lut.q_norm_sq - 2.0 * dot * scale).max(0.0)
+    }
+
+    /// [`Self::distance_bytes_cosine`] (no MRL head) with a precomputed per-query table.
+    #[inline]
+    #[must_use]
+    pub fn distance_cosine_lut(bytes: &[u8], lut: &BitPlaneLut, dim: usize) -> f64 {
+        let num_bytes = dim.div_ceil(8);
+        let scale_offset = 2 * num_bytes;
+        if scale_offset + 4 > bytes.len() {
+            return 2.0;
+        }
+        let scale = f64::from(f32::from_le_bytes(
+            bytes[scale_offset..scale_offset + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        ));
+        let nz = &bytes[..num_bytes];
+        let sign = &bytes[num_bytes..scale_offset];
+        let nz_count: u32 = nz.iter().map(|b| b.count_ones()).sum();
+        let (pos, all) = lut.ternary_sums(nz, sign);
+        let dot = (2.0 * pos - all) * scale;
+        let v_norm_sq = f64::from(nz_count) * scale * scale;
+        let denom = (v_norm_sq * lut.q_norm_sq).sqrt();
+        if denom < 1e-9 {
+            return 2.0;
+        }
+        (1.0 - (dot / denom).clamp(-1.0, 1.0)).max(0.0)
     }
 
     #[inline(always)]

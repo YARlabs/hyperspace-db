@@ -853,6 +853,11 @@ export class SearchTextRequest extends jspb.Message {
     getComponentWeightsMap(): jspb.Map<string, number>;
     clearComponentWeightsMap(): void;
 
+    hasEfSearch(): boolean;
+    clearEfSearch(): void;
+    getEfSearch(): number | undefined;
+    setEfSearch(value: number): SearchTextRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchTextRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchTextRequest): SearchTextRequest.AsObject;
@@ -876,6 +881,7 @@ export namespace SearchTextRequest {
         includePayload: boolean,
 
         componentWeightsMap: Array<[string, number]>,
+        efSearch?: number,
     }
 }
 
@@ -1249,6 +1255,11 @@ export class SearchRequest extends jspb.Message {
     setVectorF32List(value: Array<number>): SearchRequest;
     addVectorF32(value: number, index?: number): number;
 
+    hasEfSearch(): boolean;
+    clearEfSearch(): void;
+    getEfSearch(): number | undefined;
+    setEfSearch(value: number): SearchRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchRequest): SearchRequest.AsObject;
@@ -1277,6 +1288,7 @@ export namespace SearchRequest {
         componentWeightsMap: Array<[string, number]>,
         useWave: boolean,
         vectorF32List: Array<number>,
+        efSearch?: number,
     }
 }
 
@@ -1688,6 +1700,11 @@ export class SearchMultiCollectionRequest extends jspb.Message {
     setVectorF32List(value: Array<number>): SearchMultiCollectionRequest;
     addVectorF32(value: number, index?: number): number;
 
+    hasEfSearch(): boolean;
+    clearEfSearch(): void;
+    getEfSearch(): number | undefined;
+    setEfSearch(value: number): SearchMultiCollectionRequest;
+
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): SearchMultiCollectionRequest.AsObject;
     static toObject(includeInstance: boolean, msg: SearchMultiCollectionRequest): SearchMultiCollectionRequest.AsObject;
@@ -1704,6 +1721,7 @@ export namespace SearchMultiCollectionRequest {
         vectorList: Array<number>,
         topK: number,
         vectorF32List: Array<number>,
+        efSearch?: number,
     }
 }
 

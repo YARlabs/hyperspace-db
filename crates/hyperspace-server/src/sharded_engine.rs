@@ -1064,6 +1064,10 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         result
     }
 
+    fn needs_calibration(&self) -> bool {
+        self.shards.iter().any(|s| s.needs_calibration())
+    }
+
     fn queue_size(&self) -> u64 {
         self.shards.iter().map(|s| s.queue_size()).sum()
     }

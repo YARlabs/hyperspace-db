@@ -33,7 +33,8 @@ List<double> mobiusAdd(List<double> x, List<double> y, [double c = 1.0]) {
   double numLeft = 1.0 + 2.0 * c * xy + c * y2;
   double numRight = 1.0 - c * x2;
   double den = 1.0 + 2.0 * c * xy + c * c * x2 * y2;
-  if (den.abs() < 1e-15) throw StateError("Möbius addition denominator too close to zero");
+  if (den.abs() < 1e-15)
+    throw StateError("Möbius addition denominator too close to zero");
   List<double> res = [];
   for (int i = 0; i < x.length; i++) {
     res.add((numLeft * x[i] + numRight * y[i]) / den);
@@ -62,11 +63,13 @@ List<double> logMap(List<double> x, List<double> y, [double c = 1.0]) {
   if (deltaNorm < 1e-15) return List.filled(x.length, 0.0);
   double x2 = normSq(x);
   double lambdaX = 2.0 / max(1.0 - c * x2, 1e-15);
-  double factor = (2.0 / (lambdaX * sqrt(c))) * atanh(min(sqrt(c) * deltaNorm, 1.0 - 1e-15));
+  double factor = (2.0 / (lambdaX * sqrt(c))) *
+      atanh(min(sqrt(c) * deltaNorm, 1.0 - 1e-15));
   return delta.map((di) => factor * di / deltaNorm).toList();
 }
 
-List<double> gyro(List<double> u, List<double> v, List<double> w, [double c = 1.0]) {
+List<double> gyro(List<double> u, List<double> v, List<double> w,
+    [double c = 1.0]) {
   List<double> uv = mobiusAdd(u, v, c);
   List<double> vw = mobiusAdd(v, w, c);
   List<double> left = mobiusAdd(u, vw, c);
@@ -74,8 +77,10 @@ List<double> gyro(List<double> u, List<double> v, List<double> w, [double c = 1.
   return mobiusAdd(negUv, left, c);
 }
 
-List<double> parallelTransport(List<double> x, List<double> y, List<double> v, [double c = 1.0]) {
-  if (x.length != y.length || x.length != v.length) throw ArgumentError("Dimension mismatch");
+List<double> parallelTransport(List<double> x, List<double> y, List<double> v,
+    [double c = 1.0]) {
+  if (x.length != y.length || x.length != v.length)
+    throw ArgumentError("Dimension mismatch");
   if (c <= 0.0) throw ArgumentError("Curvature c must be > 0");
   List<double> negX = x.map((xi) => -xi).toList();
   List<double> gyr = gyro(y, negX, v, c);
@@ -85,7 +90,8 @@ List<double> parallelTransport(List<double> x, List<double> y, List<double> v, [
   return gyr.map((gi) => scale * gi).toList();
 }
 
-List<double> frechetMean(List<List<double>> points, {double c = 1.0, int maxIter = 32, double tol = 1e-6}) {
+List<double> frechetMean(List<List<double>> points,
+    {double c = 1.0, int maxIter = 32, double tol = 1e-6}) {
   if (points.isEmpty) throw ArgumentError("Points set cannot be empty");
   if (c <= 0.0) throw ArgumentError("Curvature c must be > 0");
   int dim = points[0].length;
@@ -176,7 +182,8 @@ double acosh(double x) {
 // Cognitive Math SDK (Spatial AI Engine)
 // ==========================================
 
-double localEntropy(List<double> candidate, List<List<double>> neighbors, {double c = 1.0}) {
+double localEntropy(List<double> candidate, List<List<double>> neighbors,
+    {double c = 1.0}) {
   if (neighbors.isEmpty) return 1.0;
   double totalDeviation = 0.0;
   for (var neighbor in neighbors) {
@@ -189,7 +196,8 @@ double localEntropy(List<double> candidate, List<List<double>> neighbors, {doubl
 
 double lyapunovConvergence(List<List<double>> trajectory, {double c = 1.0}) {
   if (trajectory.length < 3) throw ArgumentError("Need at least 3 points");
-  List<double> attractor = frechetMean(trajectory, c: c, maxIter: 32, tol: 1e-6);
+  List<double> attractor =
+      frechetMean(trajectory, c: c, maxIter: 32, tol: 1e-6);
   double vDiffSum = 0.0;
   for (int i = 0; i < trajectory.length - 1; i++) {
     double vt0 = norm(logMap(attractor, trajectory[i], c));
@@ -199,22 +207,30 @@ double lyapunovConvergence(List<List<double>> trajectory, {double c = 1.0}) {
   return vDiffSum / (trajectory.length - 1);
 }
 
-List<double> koopmanExtrapolate(List<double> past, List<double> current, double steps, {double c = 1.0}) {
+List<double> koopmanExtrapolate(
+    List<double> past, List<double> current, double steps,
+    {double c = 1.0}) {
   List<double> velocityAtPast = logMap(past, current, c);
-  List<double> velocityAtCurrent = parallelTransport(past, current, velocityAtPast, c);
-  List<double> futureVelocity = velocityAtCurrent.map((v) => v * steps).toList();
+  List<double> velocityAtCurrent =
+      parallelTransport(past, current, velocityAtPast, c);
+  List<double> futureVelocity =
+      velocityAtCurrent.map((v) => v * steps).toList();
   return expMap(current, futureVelocity, c);
 }
 
-List<double> contextResonance(List<double> thought, List<double> globalContext, double resonanceFactor, {double c = 1.0}) {
+List<double> contextResonance(
+    List<double> thought, List<double> globalContext, double resonanceFactor,
+    {double c = 1.0}) {
   List<double> pullDir = logMap(thought, globalContext, c);
   double factor = max(0.0, min(1.0, resonanceFactor));
   List<double> appliedPull = pullDir.map((v) => v * factor).toList();
   return expMap(thought, appliedPull, c);
 }
 
-List<List<double>> generateOrthogonalMatrix(int dimension, List<int> seedBytes) {
-  final matrix = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+List<List<double>> generateOrthogonalMatrix(
+    int dimension, List<int> seedBytes) {
+  final matrix =
+      List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
   var currentHash = sha256.convert(seedBytes).bytes;
   var hashOffset = 0;
   final byteData = ByteData(4);
@@ -308,7 +324,8 @@ List<List<double>> generateLorentzMatrix(int dimension, List<int> seedBytes) {
   final betaSq = dot(beta, beta);
   final gamma = 1.0 / sqrt(1.0 - betaSq);
 
-  final Lambda_B = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+  final Lambda_B =
+      List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
   Lambda_B[0][0] = gamma;
   for (int j = 1; j < dimension; j++) {
     Lambda_B[0][j] = -gamma * beta[j - 1];
@@ -323,7 +340,8 @@ List<List<double>> generateLorentzMatrix(int dimension, List<int> seedBytes) {
     }
   }
 
-  final Lambda_R = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+  final Lambda_R =
+      List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
   Lambda_R[0][0] = 1.0;
   for (int i = 1; i < dimension; i++) {
     for (int j = 1; j < dimension; j++) {
@@ -331,7 +349,8 @@ List<List<double>> generateLorentzMatrix(int dimension, List<int> seedBytes) {
     }
   }
 
-  final Lambda = List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
+  final Lambda =
+      List.generate(dimension, (_) => List<double>.filled(dimension, 0.0));
   for (int i = 0; i < dimension; i++) {
     for (int j = 0; j < dimension; j++) {
       double sum = 0.0;
@@ -358,7 +377,8 @@ List<double> projectVector(List<double> v, List<List<double>> matrix) {
   return projected;
 }
 
-List<double> injectAnisotropicNoise(List<double> v, List<int> seedBytes, double sigma) {
+List<double> injectAnisotropicNoise(
+    List<double> v, List<int> seedBytes, double sigma) {
   if (v.isEmpty || sigma <= 0.0) return List.from(v);
   final dim = v.length;
   final noise = List<double>.filled(dim, 0.0);

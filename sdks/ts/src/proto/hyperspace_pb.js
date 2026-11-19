@@ -8370,7 +8370,8 @@ proto.hyperspace.SearchTextRequest.toObject = function(includeInstance, msg) {
     bm25Options: (f = msg.getBm25Options()) && proto.hyperspace.Bm25Options.toObject(includeInstance, f),
     hybridAlpha: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
     includePayload: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    componentWeightsMap: (f = msg.getComponentWeightsMap()) ? f.toObject(includeInstance, undefined) : []
+    componentWeightsMap: (f = msg.getComponentWeightsMap()) ? f.toObject(includeInstance, undefined) : [],
+    efSearch: jspb.Message.getFieldWithDefault(msg, 10, 0)
   };
 
   if (includeInstance) {
@@ -8448,6 +8449,10 @@ proto.hyperspace.SearchTextRequest.deserializeBinaryFromReader = function(msg, r
       reader.readMessage(value, function(message, reader) {
         jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readFloat, null, "", 0.0);
          });
+      break;
+    case 10:
+      var value = /** @type {number} */ (reader.readUint32());
+      msg.setEfSearch(value);
       break;
     default:
       reader.skipField();
@@ -8536,6 +8541,13 @@ proto.hyperspace.SearchTextRequest.serializeBinaryToWriter = function(message, w
   f = message.getComponentWeightsMap(true);
   if (f && f.getLength() > 0) {
     f.serializeBinary(9, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeFloat);
+  }
+  f = /** @type {number} */ (jspb.Message.getField(message, 10));
+  if (f != null) {
+    writer.writeUint32(
+      10,
+      f
+    );
   }
 };
 
@@ -8765,6 +8777,42 @@ proto.hyperspace.SearchTextRequest.prototype.getComponentWeightsMap = function(o
 proto.hyperspace.SearchTextRequest.prototype.clearComponentWeightsMap = function() {
   this.getComponentWeightsMap().clear();
   return this;};
+
+
+/**
+ * optional uint32 ef_search = 10;
+ * @return {number}
+ */
+proto.hyperspace.SearchTextRequest.prototype.getEfSearch = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 10, 0));
+};
+
+
+/**
+ * @param {number} value
+ * @return {!proto.hyperspace.SearchTextRequest} returns this
+ */
+proto.hyperspace.SearchTextRequest.prototype.setEfSearch = function(value) {
+  return jspb.Message.setField(this, 10, value);
+};
+
+
+/**
+ * Clears the field making it undefined.
+ * @return {!proto.hyperspace.SearchTextRequest} returns this
+ */
+proto.hyperspace.SearchTextRequest.prototype.clearEfSearch = function() {
+  return jspb.Message.setField(this, 10, undefined);
+};
+
+
+/**
+ * Returns whether this field is set.
+ * @return {boolean}
+ */
+proto.hyperspace.SearchTextRequest.prototype.hasEfSearch = function() {
+  return jspb.Message.getField(this, 10) != null;
+};
 
 
 
@@ -11110,7 +11158,8 @@ proto.hyperspace.SearchRequest.toObject = function(includeInstance, msg) {
     includePayload: jspb.Message.getBooleanFieldWithDefault(msg, 11, false),
     componentWeightsMap: (f = msg.getComponentWeightsMap()) ? f.toObject(includeInstance, undefined) : [],
     useWave: jspb.Message.getBooleanFieldWithDefault(msg, 13, false),
-    vectorF32List: (f = jspb.Message.getRepeatedFloatingPointField(msg, 14)) == null ? undefined : f
+    vectorF32List: (f = jspb.Message.getRepeatedFloatingPointField(msg, 14)) == null ? undefined : f,
+    efSearch: jspb.Message.getFieldWithDefault(msg, 15, 0)
   };
 
   if (includeInstance) {
@@ -11212,6 +11261,10 @@ proto.hyperspace.SearchRequest.deserializeBinaryFromReader = function(msg, reade
       for (var i = 0; i < values.length; i++) {
         msg.addVectorF32(values[i]);
       }
+      break;
+    case 15:
+      var value = /** @type {number} */ (reader.readUint32());
+      msg.setEfSearch(value);
       break;
     default:
       reader.skipField();
@@ -11333,6 +11386,13 @@ proto.hyperspace.SearchRequest.serializeBinaryToWriter = function(message, write
   if (f.length > 0) {
     writer.writePackedFloat(
       14,
+      f
+    );
+  }
+  f = /** @type {number} */ (jspb.Message.getField(message, 15));
+  if (f != null) {
+    writer.writeUint32(
+      15,
       f
     );
   }
@@ -11727,6 +11787,42 @@ proto.hyperspace.SearchRequest.prototype.addVectorF32 = function(value, opt_inde
  */
 proto.hyperspace.SearchRequest.prototype.clearVectorF32List = function() {
   return this.setVectorF32List([]);
+};
+
+
+/**
+ * optional uint32 ef_search = 15;
+ * @return {number}
+ */
+proto.hyperspace.SearchRequest.prototype.getEfSearch = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 15, 0));
+};
+
+
+/**
+ * @param {number} value
+ * @return {!proto.hyperspace.SearchRequest} returns this
+ */
+proto.hyperspace.SearchRequest.prototype.setEfSearch = function(value) {
+  return jspb.Message.setField(this, 15, value);
+};
+
+
+/**
+ * Clears the field making it undefined.
+ * @return {!proto.hyperspace.SearchRequest} returns this
+ */
+proto.hyperspace.SearchRequest.prototype.clearEfSearch = function() {
+  return jspb.Message.setField(this, 15, undefined);
+};
+
+
+/**
+ * Returns whether this field is set.
+ * @return {boolean}
+ */
+proto.hyperspace.SearchRequest.prototype.hasEfSearch = function() {
+  return jspb.Message.getField(this, 15) != null;
 };
 
 
@@ -14593,7 +14689,8 @@ proto.hyperspace.SearchMultiCollectionRequest.toObject = function(includeInstanc
     collectionsList: (f = jspb.Message.getRepeatedField(msg, 1)) == null ? undefined : f,
     vectorList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 2)) == null ? undefined : f,
     topK: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    vectorF32List: (f = jspb.Message.getRepeatedFloatingPointField(msg, 4)) == null ? undefined : f
+    vectorF32List: (f = jspb.Message.getRepeatedFloatingPointField(msg, 4)) == null ? undefined : f,
+    efSearch: jspb.Message.getFieldWithDefault(msg, 5, 0)
   };
 
   if (includeInstance) {
@@ -14650,6 +14747,10 @@ proto.hyperspace.SearchMultiCollectionRequest.deserializeBinaryFromReader = func
         msg.addVectorF32(values[i]);
       }
       break;
+    case 5:
+      var value = /** @type {number} */ (reader.readUint32());
+      msg.setEfSearch(value);
+      break;
     default:
       reader.skipField();
       break;
@@ -14704,6 +14805,13 @@ proto.hyperspace.SearchMultiCollectionRequest.serializeBinaryToWriter = function
   if (f.length > 0) {
     writer.writePackedFloat(
       4,
+      f
+    );
+  }
+  f = /** @type {number} */ (jspb.Message.getField(message, 5));
+  if (f != null) {
+    writer.writeUint32(
+      5,
       f
     );
   }
@@ -14836,6 +14944,42 @@ proto.hyperspace.SearchMultiCollectionRequest.prototype.addVectorF32 = function(
  */
 proto.hyperspace.SearchMultiCollectionRequest.prototype.clearVectorF32List = function() {
   return this.setVectorF32List([]);
+};
+
+
+/**
+ * optional uint32 ef_search = 5;
+ * @return {number}
+ */
+proto.hyperspace.SearchMultiCollectionRequest.prototype.getEfSearch = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 5, 0));
+};
+
+
+/**
+ * @param {number} value
+ * @return {!proto.hyperspace.SearchMultiCollectionRequest} returns this
+ */
+proto.hyperspace.SearchMultiCollectionRequest.prototype.setEfSearch = function(value) {
+  return jspb.Message.setField(this, 5, value);
+};
+
+
+/**
+ * Clears the field making it undefined.
+ * @return {!proto.hyperspace.SearchMultiCollectionRequest} returns this
+ */
+proto.hyperspace.SearchMultiCollectionRequest.prototype.clearEfSearch = function() {
+  return jspb.Message.setField(this, 5, undefined);
+};
+
+
+/**
+ * Returns whether this field is set.
+ * @return {boolean}
+ */
+proto.hyperspace.SearchMultiCollectionRequest.prototype.hasEfSearch = function() {
+  return jspb.Message.getField(this, 5) != null;
 };
 
 

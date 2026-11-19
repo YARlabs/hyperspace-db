@@ -583,7 +583,7 @@ function CreateCollectionDialog() {
                                 </p>
                                 {selectedMode.calibration && (
                                     <p className="text-amber-400">
-                                        Requires calibration: run “Rebuild Index” after the initial ingest to train the codebook / centroid on real data.
+                                        Trained quantizer: each shard calibrates its codebook / centroid on real data once it holds 1,024 vectors (4,096 for PQ / OPQ). “Rebuild Index” after a large ingest also rebuilds the graph on the trained codes.
                                     </p>
                                 )}
                             </div>
@@ -1130,9 +1130,19 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                         {stats.dimension}d · {stats.metric}
                                     </div>
                                     {needsCalibration(stats.quantization) && (
-                                        <div className="text-[10px] text-amber-400">
-                                            Trained quantizer — rebuild the index after bulk ingest to calibrate.
-                                        </div>
+                                        stats.quantizer_calibrated === false ? (
+                                            <div className="text-[10px] text-amber-400">
+                                                Default codebook — calibrates automatically as shards grow, or run “Rebuild Index”.
+                                            </div>
+                                        ) : stats.quantizer_calibrated === true ? (
+                                            <div className="text-[10px] text-emerald-400">
+                                                Calibrated on collection data.
+                                            </div>
+                                        ) : (
+                                            <div className="text-[10px] text-amber-400">
+                                                Trained quantizer — calibrated online (server ≥ 4.2.5) or by “Rebuild Index”.
+                                            </div>
+                                        )
                                     )}
                                 </div>
                                 <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">

@@ -44,6 +44,18 @@ bool HyperspaceClient::CreateCollection(const std::string& name, const ::hypersp
     return status.ok();
 }
 
+bool HyperspaceClient::DeleteCollection(const std::string& name) {
+    ::hyperspace::DeleteCollectionRequest request;
+    request.set_name(name);
+    ::hyperspace::StatusResponse response;
+    ClientContext context;
+    if (!app_id_.empty()) {
+        context.AddMetadata("x-api-key", app_id_);
+    }
+    Status status = stub_->DeleteCollection(&context, request, &response);
+    return status.ok();
+}
+
 std::vector<CollectionSummaryRec> HyperspaceClient::ListCollections() {
     ::hyperspace::Empty request;
     ::hyperspace::ListCollectionsResponse response;
@@ -238,7 +250,7 @@ std::vector<double> HyperspaceClient::Vectorize(const std::string& text, const s
     return output;
 }
 
-std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein, bool include_payload, const std::unordered_map<std::string, float>& component_weights, bool use_wave, const std::optional<float>& restart_factor) {
+std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>& vector, int top_k, const std::string& collection, const std::string& hybrid_query, float hybrid_alpha, const Bm25Params* bm25, uint32_t mrl_dimension, bool use_wasserstein, bool include_payload, const std::unordered_map<std::string, float>& component_weights, bool use_wave, const std::optional<float>& restart_factor, uint32_t ef_search) {
     std::string metric = "l2";
     {
         auto it = collection_metrics_.find(collection);
@@ -276,6 +288,8 @@ std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>&
     request.set_collection(collection);
     request.set_top_k(top_k);
     AddWireVector(&request, final_vector);
+    // Per-request HNSW beam width (server >= 4.2.5); 0 = collection default.
+    if (ef_search > 0) request.set_ef_search(ef_search);
     if (!hybrid_query.empty()) request.set_hybrid_query(hybrid_query);
     if (hybrid_alpha != 0.0f) request.set_hybrid_alpha(hybrid_alpha);
     if (bm25) {
@@ -330,13 +344,14 @@ std::vector<SearchResultRec> HyperspaceClient::Search(const std::vector<double>&
     return output;
 }
 
-std::vector<std::vector<SearchResultRec>> HyperspaceClient::SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k, const std::string& collection) {
+std::vector<std::vector<SearchResultRec>> HyperspaceClient::SearchBatch(const std::vector<std::vector<double>>& vectors, int top_k, const std::string& collection, uint32_t ef_search) {
     ::hyperspace::BatchSearchRequest request;
     for (const auto& v : vectors) {
         auto* s = request.add_searches();
         s->set_top_k(top_k);
         s->set_collection(collection);
         AddWireVector(s, v);
+        if (ef_search > 0) s->set_ef_search(ef_search);
     }
 
     ::hyperspace::BatchSearchResponse response;
@@ -363,11 +378,12 @@ std::vector<std::vector<SearchResultRec>> HyperspaceClient::SearchBatch(const st
     return output;
 }
 
-std::vector<SearchResultRec> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection, float hybrid_alpha, const Bm25Params* bm25) {
+std::vector<SearchResultRec> HyperspaceClient::SearchText(const std::string& text, int top_k, const std::string& collection, float hybrid_alpha, const Bm25Params* bm25, uint32_t ef_search) {
     ::hyperspace::SearchTextRequest request;
     request.set_text(text);
     request.set_top_k(top_k);
     request.set_collection(collection);
+    if (ef_search > 0) request.set_ef_search(ef_search);
     if (hybrid_alpha != 0.0f) request.set_hybrid_alpha(hybrid_alpha);
     if (bm25) {
         auto* p = request.mutable_bm25_options();
@@ -398,11 +414,12 @@ std::vector<SearchResultRec> HyperspaceClient::SearchText(const std::string& tex
     return output;
 }
 
-std::unordered_map<std::string, std::vector<SearchResultRec>> HyperspaceClient::SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k) {
+std::unordered_map<std::string, std::vector<SearchResultRec>> HyperspaceClient::SearchMultiCollection(const std::vector<std::string>& collections, const std::vector<double>& query, int top_k, uint32_t ef_search) {
     ::hyperspace::SearchMultiCollectionRequest request;
     for (const auto& c : collections) request.add_collections(c);
     AddWireVector(&request, query);
     request.set_top_k(top_k);
+    if (ef_search > 0) request.set_ef_search(ef_search);
 
     ::hyperspace::SearchMultiCollectionResponse response;
     ClientContext context;

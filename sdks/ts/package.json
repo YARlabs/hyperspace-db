@@ -9,7 +9,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "ts-node test_request_options.ts"
   },
   "keywords": [
     "hyperspace",

@@ -2,8 +2,10 @@
 
 - `compactVectors` client option: send vectors as `repeated float` (`vector_f32`), half the
   wire size of `repeated double` (requires server >= 4.2.5).
-- Protobuf messages regenerated with `vector_f32` on `SearchRequest`, `InsertRequest`,
-  `VectorData`, `SearchMultiCollectionRequest`.
+- Protobuf stubs regenerated with `protoc_plugin` 25 (`protobuf` 6): `vector_f32` on `SearchRequest`,
+  `InsertRequest`, `VectorData`, `SearchMultiCollectionRequest`, plus the PDK extension messages
+  (`ExtensionRequest`, `ExtensionInfo`, `ListExtensionsResponse`, ...) that the 4.2.4 stubs lacked.
+- Integration tests read `HS_TEST_HOST`, `HS_TEST_PORT`, `HS_TEST_API_KEY` and `HS_TEST_COMPACT`.
 - New quantization levels accepted by `createCollection(quantization: ...)`: `rabitq`, `pq4`.
 
 ## 4.2.4

@@ -327,6 +327,17 @@ class HyperspaceClient:
         return {"vector_f32": v} if self.compact_vectors else {"vector": v}
 
     @staticmethod
+    def _ef_kwargs(ef_search: Optional[int]) -> Dict[str, int]:
+        """Per-request HNSW beam width (server >= 4.2.5). ``None`` = the collection's
+        configured ``ef_search``; larger values raise recall at the cost of latency."""
+        if ef_search is None:
+            return {}
+        ef = int(ef_search)
+        if ef < 0:
+            raise ValueError("ef_search must be >= 0")
+        return {"ef_search": ef}
+
+    @staticmethod
     def _to_proto_metadata_value(value):
         mv = hyperspace_pb2.MetadataValue()
         if isinstance(value, bool):
@@ -846,7 +857,7 @@ class HyperspaceClient:
             print(f"RPC Error: {e}")
             return False
 
-    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None, use_wave: bool = False, restart_factor: float = None, include_payload: bool = None) -> List[Dict]:
+    def search(self, vector: List[float] = None, query_text: str = None, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_query: str = None, hybrid_alpha: float = None, bm25: Dict = None, mrl_dimension: int = None, use_wasserstein: bool = None, collection: str = "", options: Dict = None, use_wave: bool = False, restart_factor: float = None, include_payload: bool = None, ef_search: Optional[int] = None) -> List[Dict]:
         if vector is None and query_text is not None:
             if self.embedder is None:
                 raise ValueError("No embedder configured. Please pass 'vector' or init client with an embedder.")
@@ -897,7 +908,8 @@ class HyperspaceClient:
             top_k=top_k,
             collection=collection,
             use_wave=use_wave,
-            include_payload=include_payload if include_payload is not None else (True if context else False)
+            include_payload=include_payload if include_payload is not None else (True if context else False),
+            **self._ef_kwargs(ef_search)
         )
         if filter:
             req.filter.update(filter)
@@ -976,7 +988,8 @@ class HyperspaceClient:
                     use_wasserstein=use_wasserstein,
                     collection=collection,
                     options=options,
-                    use_wave=False
+                    use_wave=False,
+                    ef_search=ef_search
                 )
                 if not seeds:
                     return []
@@ -1021,18 +1034,19 @@ class HyperspaceClient:
                 print(f"RPC Error: {e}")
                 return []
 
-    def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "") -> List[Dict]:
+    def search_text(self, text: str, top_k: int = 10, filter: Dict[str, str] = None, filters: List[Dict] = None, hybrid_alpha: float = None, bm25: Dict = None, collection: str = "", ef_search: Optional[int] = None) -> List[Dict]:
         if collection in self.collection_keys:
             if self.embedder is None:
                 raise ValueError("Cannot search text in encrypted collection without an embedder. Please configure an embedder or use search() directly with a vector.")
-            return self.search(query_text=text, top_k=top_k, filter=filter, filters=filters, hybrid_alpha=hybrid_alpha, bm25=bm25, collection=collection)
+            return self.search(query_text=text, top_k=top_k, filter=filter, filters=filters, hybrid_alpha=hybrid_alpha, bm25=bm25, collection=collection, ef_search=ef_search)
 
         proto_filters = [self._to_proto_filter(f) for f in filters] if filters else []
 
         req = hyperspace_pb2.SearchTextRequest(
             text=text,
             top_k=top_k,
-            collection=collection
+            collection=collection,
+            **self._ef_kwargs(ef_search)
         )
         if filter:
             req.filter.update(filter)
@@ -1079,6 +1093,7 @@ class HyperspaceClient:
         vectors: List[List[float]],
         top_k: int = 10,
         collection: str = "",
+        ef_search: Optional[int] = None,
     ) -> List[List[Dict]]:
         searches = []
         for vector in vectors:
@@ -1087,6 +1102,7 @@ class HyperspaceClient:
                     **self._vec_kwargs(vector),
                     top_k=top_k,
                     collection=collection,
+                    **self._ef_kwargs(ef_search),
                 )
             )
         req = hyperspace_pb2.BatchSearchRequest(searches=searches)
@@ -1396,11 +1412,12 @@ class HyperspaceClient:
             print(f"RPC Error in get_metrics: {e}")
             return
 
-    def search_multi_collection(self, query: List[float], collections: List[str], top_k: int = 10) -> Dict[str, List[Dict]]:
+    def search_multi_collection(self, query: List[float], collections: List[str], top_k: int = 10, ef_search: Optional[int] = None) -> Dict[str, List[Dict]]:
         req = hyperspace_pb2.SearchMultiCollectionRequest(
             collections=collections,
             **self._vec_kwargs(query),
-            top_k=top_k
+            top_k=top_k,
+            **self._ef_kwargs(ef_search)
         )
         try:
             resp = self.stub.SearchMultiCollection(req, metadata=self.metadata)
@@ -1420,9 +1437,9 @@ class HyperspaceClient:
             print(f"RPC Error in search_multi_collection: {e}")
             return {}
 
-    def search_multi_collection_text(self, text: str, collections: List[str], top_k: int = 10) -> Dict[str, List[Dict]]:
+    def search_multi_collection_text(self, text: str, collections: List[str], top_k: int = 10, ef_search: Optional[int] = None) -> Dict[str, List[Dict]]:
         vector = self.vectorize(text)
-        return self.search_multi_collection(vector, collections, top_k)
+        return self.search_multi_collection(vector, collections, top_k, ef_search=ef_search)
 
     def trigger_reconsolidation(self, collection: str, target_vector: List[float], learning_rate: float = 0.01) -> bool:
         req = hyperspace_pb2.ReconsolidationRequest(

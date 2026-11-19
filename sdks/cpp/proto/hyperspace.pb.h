@@ -4680,6 +4680,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchMultiCollectionRequest final 
     kVectorFieldNumber = 2,
     kVectorF32FieldNumber = 4,
     kTopKFieldNumber = 3,
+    kEfSearchFieldNumber = 5,
   };
   // repeated string collections = 1;
   [[nodiscard]] int collections_size()
@@ -4754,11 +4755,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchMultiCollectionRequest final 
   void _internal_set_top_k(::uint32_t value);
 
   public:
+  // optional uint32 ef_search = 5;
+  [[nodiscard]] bool has_ef_search()
+      const;
+  void clear_ef_search() ;
+  [[nodiscard]] ::uint32_t ef_search() const;
+  void set_ef_search(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_ef_search() const;
+  void _internal_set_ef_search(::uint32_t value);
+
+  public:
   // @@protoc_insertion_point(class_scope:hyperspace.SearchMultiCollectionRequest)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<2, 4,
+  static const ::google::protobuf::internal::TcParseTable<3, 5,
                                    0, 59,
                                    2>
       _table_;
@@ -4786,6 +4799,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchMultiCollectionRequest final 
     ::google::protobuf::RepeatedField<double> vector_;
     ::google::protobuf::RepeatedField<float> vector_f32_;
     ::uint32_t top_k_;
+    ::uint32_t ef_search_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -19856,6 +19870,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchTextRequest final : public ::
     kTopKFieldNumber = 3,
     kHybridAlphaFieldNumber = 7,
     kIncludePayloadFieldNumber = 8,
+    kEfSearchFieldNumber = 10,
     kFilterFieldNumber = 4,
     kComponentWeightsFieldNumber = 9,
   };
@@ -19957,6 +19972,18 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchTextRequest final : public ::
   void _internal_set_include_payload(bool value);
 
   public:
+  // optional uint32 ef_search = 10;
+  [[nodiscard]] bool has_ef_search()
+      const;
+  void clear_ef_search() ;
+  [[nodiscard]] ::uint32_t ef_search() const;
+  void set_ef_search(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_ef_search() const;
+  void _internal_set_ef_search(::uint32_t value);
+
+  public:
   // map<string, string> filter = 4;
   [[nodiscard]] int filter_size()
       const;
@@ -19993,7 +20020,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchTextRequest final : public ::
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 9,
+  static const ::google::protobuf::internal::TcParseTable<4, 10,
                                    4, 82,
                                    2>
       _table_;
@@ -20024,6 +20051,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchTextRequest final : public ::
     ::uint32_t top_k_;
     float hybrid_alpha_;
     bool include_payload_;
+    ::uint32_t ef_search_;
     ::google::protobuf::internal::MapField<SearchTextRequest_FilterEntry_DoNotUse, ::std::string, ::std::string> filter_;
     ::google::protobuf::internal::MapField<SearchTextRequest_ComponentWeightsEntry_DoNotUse, ::std::string, float> component_weights_;
     PROTOBUF_TSAN_DECLARE_MEMBER
@@ -20456,6 +20484,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
     kUseWassersteinFieldNumber = 8,
     kIncludePayloadFieldNumber = 11,
     kUseWaveFieldNumber = 13,
+    kEfSearchFieldNumber = 15,
     kFilterFieldNumber = 4,
     kComponentWeightsFieldNumber = 12,
   };
@@ -20629,6 +20658,18 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
   void _internal_set_use_wave(bool value);
 
   public:
+  // optional uint32 ef_search = 15;
+  [[nodiscard]] bool has_ef_search()
+      const;
+  void clear_ef_search() ;
+  [[nodiscard]] ::uint32_t ef_search() const;
+  void set_ef_search(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_ef_search() const;
+  void _internal_set_ef_search(::uint32_t value);
+
+  public:
   // map<string, string> filter = 4;
   [[nodiscard]] int filter_size()
       const;
@@ -20665,7 +20706,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<4, 14,
+  static const ::google::protobuf::internal::TcParseTable<4, 15,
                                    4, 86,
                                    2>
       _table_;
@@ -20701,6 +20742,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED SearchRequest final : public ::goog
     bool use_wasserstein_;
     bool include_payload_;
     bool use_wave_;
+    ::uint32_t ef_search_;
     ::google::protobuf::internal::MapField<SearchRequest_FilterEntry_DoNotUse, ::std::string, ::std::string> filter_;
     ::google::protobuf::internal::MapField<SearchRequest_ComponentWeightsEntry_DoNotUse, ::std::string, float> component_weights_;
     PROTOBUF_TSAN_DECLARE_MEMBER
@@ -30922,7 +30964,7 @@ inline void SearchTextRequest::clear_filter() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.filter_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000080U);
+                  0x00000100U);
 }
 inline const ::google::protobuf::Map<::std::string, ::std::string>& SearchTextRequest::_internal_filter() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -30938,7 +30980,7 @@ inline ::google::protobuf::Map<::std::string, ::std::string>* PROTOBUF_NONNULL S
 }
 inline ::google::protobuf::Map<::std::string, ::std::string>* PROTOBUF_NONNULL SearchTextRequest::mutable_filter()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
   // @@protoc_insertion_point(field_mutable_map:hyperspace.SearchTextRequest.filter)
   return _internal_mutable_filter();
 }
@@ -31163,7 +31205,7 @@ inline void SearchTextRequest::clear_component_weights() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.component_weights_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000100U);
+                  0x00000200U);
 }
 inline const ::google::protobuf::Map<::std::string, float>& SearchTextRequest::_internal_component_weights() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -31179,9 +31221,38 @@ inline ::google::protobuf::Map<::std::string, float>* PROTOBUF_NONNULL SearchTex
 }
 inline ::google::protobuf::Map<::std::string, float>* PROTOBUF_NONNULL SearchTextRequest::mutable_component_weights()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000200U);
   // @@protoc_insertion_point(field_mutable_map:hyperspace.SearchTextRequest.component_weights)
   return _internal_mutable_component_weights();
+}
+
+// optional uint32 ef_search = 10;
+inline bool SearchTextRequest::has_ef_search() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
+  return value;
+}
+inline void SearchTextRequest::clear_ef_search() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.ef_search_ = 0u;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000080U);
+}
+inline ::uint32_t SearchTextRequest::ef_search() const {
+  // @@protoc_insertion_point(field_get:hyperspace.SearchTextRequest.ef_search)
+  return _internal_ef_search();
+}
+inline void SearchTextRequest::set_ef_search(::uint32_t value) {
+  _internal_set_ef_search(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_set:hyperspace.SearchTextRequest.ef_search)
+}
+inline ::uint32_t SearchTextRequest::_internal_ef_search() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.ef_search_;
+}
+inline void SearchTextRequest::_internal_set_ef_search(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.ef_search_ = value;
 }
 
 // -------------------------------------------------------------------
@@ -32623,7 +32694,7 @@ inline void SearchRequest::clear_filter() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.filter_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00001000U);
+                  0x00002000U);
 }
 inline const ::google::protobuf::Map<::std::string, ::std::string>& SearchRequest::_internal_filter() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -32639,7 +32710,7 @@ inline ::google::protobuf::Map<::std::string, ::std::string>* PROTOBUF_NONNULL S
 }
 inline ::google::protobuf::Map<::std::string, ::std::string>* PROTOBUF_NONNULL SearchRequest::mutable_filter()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00002000U);
   // @@protoc_insertion_point(field_mutable_map:hyperspace.SearchRequest.filter)
   return _internal_mutable_filter();
 }
@@ -32987,7 +33058,7 @@ inline void SearchRequest::clear_component_weights() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.component_weights_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00002000U);
+                  0x00004000U);
 }
 inline const ::google::protobuf::Map<::std::string, float>& SearchRequest::_internal_component_weights() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -33003,7 +33074,7 @@ inline ::google::protobuf::Map<::std::string, float>* PROTOBUF_NONNULL SearchReq
 }
 inline ::google::protobuf::Map<::std::string, float>* PROTOBUF_NONNULL SearchRequest::mutable_component_weights()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00004000U);
   // @@protoc_insertion_point(field_mutable_map:hyperspace.SearchRequest.component_weights)
   return _internal_mutable_component_weights();
 }
@@ -33082,6 +33153,35 @@ inline ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL
 SearchRequest::_internal_mutable_vector_f32() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.vector_f32_;
+}
+
+// optional uint32 ef_search = 15;
+inline bool SearchRequest::has_ef_search() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00001000U);
+  return value;
+}
+inline void SearchRequest::clear_ef_search() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.ef_search_ = 0u;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00001000U);
+}
+inline ::uint32_t SearchRequest::ef_search() const {
+  // @@protoc_insertion_point(field_get:hyperspace.SearchRequest.ef_search)
+  return _internal_ef_search();
+}
+inline void SearchRequest::set_ef_search(::uint32_t value) {
+  _internal_set_ef_search(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  // @@protoc_insertion_point(field_set:hyperspace.SearchRequest.ef_search)
+}
+inline ::uint32_t SearchRequest::_internal_ef_search() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.ef_search_;
+}
+inline void SearchRequest::_internal_set_ef_search(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.ef_search_ = value;
 }
 
 // -------------------------------------------------------------------
@@ -35209,6 +35309,35 @@ inline ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL
 SearchMultiCollectionRequest::_internal_mutable_vector_f32() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.vector_f32_;
+}
+
+// optional uint32 ef_search = 5;
+inline bool SearchMultiCollectionRequest::has_ef_search() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
+  return value;
+}
+inline void SearchMultiCollectionRequest::clear_ef_search() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.ef_search_ = 0u;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000010U);
+}
+inline ::uint32_t SearchMultiCollectionRequest::ef_search() const {
+  // @@protoc_insertion_point(field_get:hyperspace.SearchMultiCollectionRequest.ef_search)
+  return _internal_ef_search();
+}
+inline void SearchMultiCollectionRequest::set_ef_search(::uint32_t value) {
+  _internal_set_ef_search(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  // @@protoc_insertion_point(field_set:hyperspace.SearchMultiCollectionRequest.ef_search)
+}
+inline ::uint32_t SearchMultiCollectionRequest::_internal_ef_search() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.ef_search_;
+}
+inline void SearchMultiCollectionRequest::_internal_set_ef_search(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.ef_search_ = value;
 }
 
 // -------------------------------------------------------------------

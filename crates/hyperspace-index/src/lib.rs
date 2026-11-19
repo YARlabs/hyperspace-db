@@ -96,6 +96,8 @@ pub struct SnapshotMetadata {
 /// Side files persisting code-quantizer state next to `index.snap`.
 const RABITQ_FILE: &str = "rabitq_centroid.bin";
 const PQ4_FILE: &str = "pq4_codebook.bin";
+/// Written next to the snapshot once a trained quantizer has been fitted to data.
+const CALIBRATED_MARKER: &str = "quantizer.calibrated";
 
 /// Metadata key prefix for typed values (`{"v": ...}` JSON payloads).
 const TYPED_META_PREFIX: &str = "__hs_typed__";
@@ -335,18 +337,21 @@ impl<M: Metric> HnswIndex<M> {
             }
         }
 
-        if let Some(ref pq) = self.pq {
+        if let Some(ref pq) = *self.pq.load() {
             if let Some(parent) = path.parent() {
                 let codebook_path = parent.join("pq_codebook.bin");
                 let _ = pq.save_to_file(&codebook_path);
             }
         }
         if let Some(parent) = path.parent() {
-            if let Some(ref rq) = self.rabitq {
+            if let Some(ref rq) = *self.rabitq.load() {
                 let _ = rq.save_to_file(&parent.join(RABITQ_FILE));
             }
-            if let Some(ref pq4) = self.pq4 {
+            if let Some(ref pq4) = *self.pq4.load() {
                 let _ = pq4.save_to_file(&parent.join(PQ4_FILE));
+            }
+            if self.mode.needs_training() && self.is_calibrated() {
+                let _ = std::fs::write(parent.join(CALIBRATED_MARKER), b"1");
             }
         }
 
@@ -581,11 +586,19 @@ impl<M: Metric> HnswIndex<M> {
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(node_count as u32),
             spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
-            pq,
+            pq: arc_swap::ArcSwapOption::from(pq),
             flat_l0: arc_swap::ArcSwapOption::empty(),
             deletes_since_repair: AtomicUsize::new(0),
-            rabitq,
-            pq4,
+            rabitq: arc_swap::ArcSwapOption::from(rabitq),
+            pq4: arc_swap::ArcSwapOption::from(pq4),
+            calibrated: AtomicBool::new(
+                !mode.needs_training()
+                    || path
+                        .parent()
+                        .is_some_and(|d| d.join(CALIBRATED_MARKER).exists()),
+            ),
+            calibration_gate: RwLock::new(()),
+            calibrated_at: AtomicUsize::new(0),
             repair_running: AtomicBool::new(false),
             graph_engine: None,
             _marker: PhantomData,
@@ -786,11 +799,15 @@ impl<M: Metric> HnswIndex<M> {
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(node_count as u32),
             spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
-            pq,
+            pq: arc_swap::ArcSwapOption::from(pq),
             flat_l0: arc_swap::ArcSwapOption::empty(),
             deletes_since_repair: AtomicUsize::new(0),
-            rabitq,
-            pq4,
+            rabitq: arc_swap::ArcSwapOption::from(rabitq),
+            pq4: arc_swap::ArcSwapOption::from(pq4),
+            // A byte snapshot carries no calibration marker; never re-calibrate it online.
+            calibrated: AtomicBool::new(true),
+            calibration_gate: RwLock::new(()),
+            calibrated_at: AtomicUsize::new(0),
             repair_running: AtomicBool::new(false),
             graph_engine: None,
             _marker: PhantomData,
@@ -859,9 +876,20 @@ pub struct HnswIndex<M: Metric> {
     pub zonal_storage: dashmap::DashMap<NodeId, hyperspace_core::vector::ZonalVector>,
     pub node_counter: AtomicU32,
     pub spatial_index: Arc<spatial_aabb::SpatialAabbIndex>,
-    pub pq: Option<Arc<hyperspace_core::pq::ProductQuantizer>>,
-    pub rabitq: Option<Arc<hyperspace_core::rabitq::RaBitQ>>,
-    pub pq4: Option<Arc<hyperspace_core::pq4::Pq4Quantizer>>,
+    // Trained quantizers. Swappable so online auto-calibration can replace a default
+    // codebook while the index keeps serving reads (see `calibrate_online`).
+    pub pq: arc_swap::ArcSwapOption<hyperspace_core::pq::ProductQuantizer>,
+    pub rabitq: arc_swap::ArcSwapOption<hyperspace_core::rabitq::RaBitQ>,
+    pub pq4: arc_swap::ArcSwapOption<hyperspace_core::pq4::Pq4Quantizer>,
+    /// `true` once a trained mode's quantizer was fitted to data (always `true` for
+    /// modes without training).
+    calibrated: AtomicBool,
+    /// Vectors stored when the quantizer was last fitted online (0 = never / unknown).
+    calibrated_at: AtomicUsize,
+    /// Held shared while a vector is encoded and appended / updated, exclusively while
+    /// the quantizer is swapped, so no code is written with a stale codebook after the
+    /// swap without being re-encoded.
+    calibration_gate: RwLock<()>,
     pub flat_l0: arc_swap::ArcSwapOption<FlatLayer0Segment>,
     /// Deletes recorded since the last graph repair (see [`HnswIndex::repair_deleted`]).
     deletes_since_repair: AtomicUsize,
@@ -1103,6 +1131,25 @@ impl PartialOrd for MaxCandidate {
     }
 }
 
+/// Global switch for the per-query prepared kernels of `extreme`, `ternary` (nibble
+/// tables) and `medium_plus` (de-interleaved ScalarI4), on by default. Only for A/B tests
+/// and benchmarks: results are the same either way, the prepared kernels are just faster.
+static BIT_LUT_KERNELS: AtomicBool = AtomicBool::new(true);
+
+/// Enables / disables the `extreme` / `ternary` nibble-table kernels process-wide.
+#[doc(hidden)]
+pub fn set_bit_lut_kernels(enabled: bool) {
+    BIT_LUT_KERNELS.store(enabled, Ordering::Relaxed);
+}
+
+/// Nibble-table kernel family for bit-packed quantizers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BitLutKind {
+    Binary,
+    TernaryL2,
+    TernaryCos,
+}
+
 /// Distance kernel resolved **once per query** from (quantization mode, metric, storage
 /// precision). Hot loops dispatch on this small loop-invariant enum instead of re-walking
 /// the full `mode × metric` decision tree in [`HnswIndex::dist_bytes_opt`] per candidate,
@@ -1129,6 +1176,14 @@ enum DistKernel<'a> {
     RaBitQ(&'a hyperspace_core::rabitq::RaBitQQuery),
     /// PQ4 codes (L1-resident u8 LUT).
     Pq4(&'a hyperspace_core::pq4::Pq4Lut),
+    /// 1-bit `extreme` codes, ADC through a per-query nibble table.
+    BinaryLut(&'a hyperspace_core::vector::BitPlaneLut),
+    /// Ternary codes, squared L2 through a per-query nibble table.
+    TernaryL2Lut(&'a hyperspace_core::vector::BitPlaneLut),
+    /// Ternary codes, cosine through a per-query nibble table.
+    TernaryCosLut(&'a hyperspace_core::vector::BitPlaneLut),
+    /// ScalarI4 codes, squared L2 against a de-interleaved query (NEON on aarch64).
+    I4L2(&'a [f32], &'a [f32], f64),
     /// Everything else: full `dist_bytes_opt` dispatch.
     Generic,
 }
@@ -1142,6 +1197,14 @@ pub enum QueryPrep {
     RaBitQ(hyperspace_core::rabitq::RaBitQQuery),
     /// 4-bit PQ fast-scan table.
     Pq4(hyperspace_core::pq4::Pq4Lut),
+    /// Nibble table for bit-packed codes (`extreme` 1-bit ADC, ternary).
+    Bits(hyperspace_core::vector::BitPlaneLut),
+    /// De-interleaved `f32` query for ScalarI4 (`medium_plus`) squared L2.
+    I4 {
+        even: Vec<f32>,
+        odd: Vec<f32>,
+        norm_sq: f64,
+    },
 }
 
 /// Per-query layer-0 traversal policy.
@@ -1231,11 +1294,14 @@ impl<M: Metric> HnswIndex<M> {
             zonal_storage: dashmap::DashMap::new(),
             node_counter: AtomicU32::new(0),
             spatial_index: Arc::new(spatial_aabb::SpatialAabbIndex::new(dimension)),
-            pq,
+            pq: arc_swap::ArcSwapOption::from(pq),
             flat_l0: arc_swap::ArcSwapOption::empty(),
             deletes_since_repair: AtomicUsize::new(0),
-            rabitq,
-            pq4,
+            rabitq: arc_swap::ArcSwapOption::from(rabitq),
+            pq4: arc_swap::ArcSwapOption::from(pq4),
+            calibrated: AtomicBool::new(!mode.needs_training()),
+            calibration_gate: RwLock::new(()),
+            calibrated_at: AtomicUsize::new(0),
             repair_running: AtomicBool::new(false),
             graph_engine: None,
             _marker: PhantomData,
@@ -1309,34 +1375,130 @@ impl<M: Metric> HnswIndex<M> {
     /// Fine-tune the Product Quantizer codebooks on training samples.
     ///
     /// Also fits the RaBitQ centroid and trains the PQ4 codebook for those modes.
+    /// Fits the trained quantizer to `samples` before any vector is stored (vacuum /
+    /// rebuild path). For an index that already holds vectors use [`Self::calibrate_online`].
     pub fn train_pq(&mut self, samples: &[&[f32]], iterations: usize) {
-        if let Some(ref mut pq) = self.pq {
-            let mut new_pq = (**pq).clone();
+        self.fit_quantizer(samples, iterations);
+        self.calibrated.store(true, Ordering::Release);
+    }
+
+    /// Trains a copy of the current quantizer and swaps it in.
+    fn fit_quantizer(&self, samples: &[&[f32]], iterations: usize) {
+        if samples.is_empty() {
+            return;
+        }
+        if let Some(pq) = self.pq.load_full() {
+            let mut new_pq = (*pq).clone();
             new_pq.train(samples, iterations);
-            self.pq = Some(Arc::new(new_pq));
+            self.pq.store(Some(Arc::new(new_pq)));
         }
-        if let Some(ref rq) = self.rabitq {
-            let mut new_rq = (**rq).clone();
+        if let Some(rq) = self.rabitq.load_full() {
+            let mut new_rq = (*rq).clone();
             new_rq.fit_centroid(samples);
-            self.rabitq = Some(Arc::new(new_rq));
+            self.rabitq.store(Some(Arc::new(new_rq)));
         }
-        if let Some(ref pq4) = self.pq4 {
-            let mut new_pq4 = (**pq4).clone();
+        if let Some(pq4) = self.pq4.load_full() {
+            let mut new_pq4 = (*pq4).clone();
             new_pq4.train(samples, iterations);
-            self.pq4 = Some(Arc::new(new_pq4));
+            self.pq4.store(Some(Arc::new(new_pq4)));
+        }
+    }
+
+    /// `true` for a trained mode (PQ / OPQ / PQ4 / RaBitQ) whose quantizer still uses
+    /// the data-independent default codebook.
+    #[inline]
+    pub fn needs_calibration(&self) -> bool {
+        self.mode.needs_training() && !self.calibrated.load(Ordering::Acquire)
+    }
+
+    #[inline]
+    pub fn is_calibrated(&self) -> bool {
+        self.calibrated.load(Ordering::Acquire)
+    }
+
+    /// Online auto-calibration of a trained quantizer on a live index.
+    ///
+    /// Trains on `samples`, swaps the quantizer while holding the calibration gate
+    /// exclusively (so every vector stored afterwards is encoded with the new codebook),
+    /// then re-encodes the vectors stored before the swap from their exact values
+    /// (`raw(id)`, which must return the same pre-processed vector that was passed to
+    /// `insert_to_storage`). Vectors without an exact copy keep their old code.
+    /// Returns `(re_encoded, missing_raw)`.
+    pub fn calibrate_online<F>(
+        &self,
+        samples: &[&[f32]],
+        iterations: usize,
+        raw: F,
+    ) -> (usize, usize)
+    where
+        F: Fn(u32) -> Option<Vec<f32>>,
+    {
+        if !self.needs_calibration() {
+            return (0, 0);
+        }
+        self.refit_online(samples, iterations, raw)
+    }
+
+    /// Vectors stored when the quantizer was last fitted online (0 if never).
+    #[inline]
+    pub fn calibrated_at(&self) -> usize {
+        self.calibrated_at.load(Ordering::Acquire)
+    }
+
+    /// Re-fits an already calibrated quantizer on a larger sample (progressive
+    /// calibration) with the same swap-and-re-encode protocol as
+    /// [`Self::calibrate_online`]. No-op for modes without training.
+    pub fn refit_online<F>(&self, samples: &[&[f32]], iterations: usize, raw: F) -> (usize, usize)
+    where
+        F: Fn(u32) -> Option<Vec<f32>>,
+    {
+        if !self.mode.needs_training() || samples.is_empty() {
+            return (0, 0);
+        }
+        let stored_before_swap = {
+            let _g = self.calibration_gate.write();
+            self.fit_quantizer(samples, iterations);
+            self.calibrated.store(true, Ordering::Release);
+            let n = self.storage.count();
+            self.calibrated_at.store(n.max(1), Ordering::Release);
+            n
+        };
+        let mut re_encoded = 0usize;
+        let mut missing = 0usize;
+        for id in 0..stored_before_swap as u32 {
+            match raw(id) {
+                Some(v) => {
+                    let code = {
+                        let _g = self.calibration_gate.read();
+                        self.encode_code_f32(&v)
+                    };
+                    if !code.is_empty() && self.storage.update(id, &code).is_ok() {
+                        re_encoded += 1;
+                    }
+                }
+                None => missing += 1,
+            }
+        }
+        (re_encoded, missing)
+    }
+
+    /// Encodes a vector with the current trained quantizer (PQ / OPQ / RaBitQ / PQ4).
+    fn encode_code_f32(&self, v: &[f32]) -> Vec<u8> {
+        if let Some(ref pq) = *self.pq.load() {
+            pq.encode(v).to_bytes()
+        } else if let Some(ref rq) = *self.rabitq.load() {
+            rq.encode(v)
+        } else if let Some(ref pq4) = *self.pq4.load() {
+            pq4.encode(v)
+        } else {
+            Vec::new()
         }
     }
 
     /// Encodes a vector for the RaBitQ / PQ4 code modes.
     fn encode_code(&self, coords: &[f64]) -> Vec<u8> {
         let v: Vec<f32> = coords.iter().map(|&x| x as f32).collect();
-        if let Some(ref rq) = self.rabitq {
-            rq.encode(&v)
-        } else if let Some(ref pq4) = self.pq4 {
-            pq4.encode(&v)
-        } else {
-            Vec::new()
-        }
+        self.encode_code_f32(&v)
     }
 
     #[inline]
@@ -2240,6 +2402,21 @@ impl<M: Metric> HnswIndex<M> {
 
     /// Per-query ADC precomputation for code-based modes (PQ / OPQ / RaBitQ / PQ4).
     fn prepare_query(&self, query: &HyperVector, query_f32: Option<&[f32]>) -> Option<QueryPrep> {
+        if self.bit_lut_kind().is_some() {
+            return Some(QueryPrep::Bits(hyperspace_core::vector::BitPlaneLut::new(
+                &query.coords,
+            )));
+        }
+        if self.i4_kernel_applies() {
+            let (even, odd) = ScalarI4Vector::deinterleave_query(&query.coords, self.dimension);
+            let norm_sq = query
+                .coords
+                .iter()
+                .take(self.dimension)
+                .map(|&x| f64::from(x as f32).powi(2))
+                .sum();
+            return Some(QueryPrep::I4 { even, odd, norm_sq });
+        }
         let owned;
         let q: &[f32] = if let Some(q) = query_f32 {
             q
@@ -2248,11 +2425,21 @@ impl<M: Metric> HnswIndex<M> {
             &owned
         };
         match self.mode {
-            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
-                self.pq.as_ref().map(|pq| QueryPrep::Pq(pq.compute_lut(q)))
-            }
-            QuantizationMode::RaBitQ => self.rabitq.as_ref().map(|r| QueryPrep::RaBitQ(r.query(q))),
-            QuantizationMode::PQ4 => self.pq4.as_ref().map(|p| QueryPrep::Pq4(p.compute_lut(q))),
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => self
+                .pq
+                .load()
+                .as_ref()
+                .map(|pq| QueryPrep::Pq(pq.compute_lut(q))),
+            QuantizationMode::RaBitQ => self
+                .rabitq
+                .load()
+                .as_ref()
+                .map(|r| QueryPrep::RaBitQ(r.query(q))),
+            QuantizationMode::PQ4 => self
+                .pq4
+                .load()
+                .as_ref()
+                .map(|p| QueryPrep::Pq4(p.compute_lut(q))),
             _ => None,
         }
     }
@@ -2268,8 +2455,50 @@ impl<M: Metric> HnswIndex<M> {
         match prep {
             Some(QueryPrep::RaBitQ(q)) => DistKernel::RaBitQ(q),
             Some(QueryPrep::Pq4(l)) => DistKernel::Pq4(l),
-            Some(QueryPrep::Pq(_)) => DistKernel::Generic,
+            Some(QueryPrep::Bits(l)) if mrl_dim.is_none() => match self.bit_lut_kind() {
+                Some(BitLutKind::Binary) => DistKernel::BinaryLut(l),
+                Some(BitLutKind::TernaryL2) => DistKernel::TernaryL2Lut(l),
+                Some(BitLutKind::TernaryCos) => DistKernel::TernaryCosLut(l),
+                None => DistKernel::Generic,
+            },
+            Some(QueryPrep::I4 { even, odd, norm_sq }) if mrl_dim.is_none() => {
+                DistKernel::I4L2(even, odd, *norm_sq)
+            }
+            // 8-bit PQ scores through `dist_bytes_opt`; MRL truncation needs the generic path.
+            Some(QueryPrep::Pq(_) | QueryPrep::Bits(_) | QueryPrep::I4 { .. }) => {
+                DistKernel::Generic
+            }
             None => self.resolve_kernel(query, query_f32, mrl_dim),
+        }
+    }
+
+    /// ScalarI4 indexes whose distance is plain squared L2 over the whole vector (mirrors
+    /// the `else` branch of the `ScalarI4` arm of `dist_bytes_raw`).
+    #[inline]
+    fn i4_kernel_applies(&self) -> bool {
+        self.mode == QuantizationMode::ScalarI4
+            && BIT_LUT_KERNELS.load(Ordering::Relaxed)
+            && !matches!(M::name(), "poincare" | "lorentz")
+            && !(M::name() == "hybrid" && self.dimension == 801)
+    }
+
+    /// Which nibble-table kernel serves this index (mirrors the metric dispatch of the
+    /// `Binary` / `Ternary` arms of `dist_bytes_raw`; MRL-head hybrid ternary excluded).
+    #[inline]
+    fn bit_lut_kind(&self) -> Option<BitLutKind> {
+        if !BIT_LUT_KERNELS.load(Ordering::Relaxed) {
+            return None;
+        }
+        let name = M::name();
+        match self.mode {
+            QuantizationMode::Binary if name != "poincare" => Some(BitLutKind::Binary),
+            QuantizationMode::Ternary => match name {
+                "poincare" | "lorentz" => None,
+                "hybrid" if self.dimension == 801 => None,
+                "cosine" => Some(BitLutKind::TernaryCos),
+                _ => Some(BitLutKind::TernaryL2),
+            },
+            _ => None,
         }
     }
 
@@ -2376,6 +2605,28 @@ impl<M: Metric> HnswIndex<M> {
             }
             DistKernel::RaBitQ(q) => f64::from(q.distance_sq(bytes)),
             DistKernel::Pq4(l) => f64::from(l.distance(bytes)),
+            DistKernel::BinaryLut(l) => BinaryHyperVector::adc_distance_lut(bytes, l),
+            DistKernel::TernaryL2Lut(l) => {
+                hyperspace_core::vector::TernaryHyperVector::distance_l2_sq_lut(
+                    bytes,
+                    l,
+                    self.dimension,
+                )
+            }
+            DistKernel::TernaryCosLut(l) => {
+                hyperspace_core::vector::TernaryHyperVector::distance_cosine_lut(
+                    bytes,
+                    l,
+                    self.dimension,
+                )
+            }
+            DistKernel::I4L2(even, odd, norm_sq) => ScalarI4Vector::distance_l2_sq_deinterleaved(
+                bytes,
+                even,
+                odd,
+                norm_sq,
+                self.dimension,
+            ),
             DistKernel::Generic => {
                 self.dist_bytes_opt(bytes, query, query_f32, pq_lut, mrl_dim, threshold)
             }
@@ -2417,7 +2668,7 @@ impl<M: Metric> HnswIndex<M> {
                 let thresh_f32 = threshold.map(|t| t as f32);
                 if let Some(QueryPrep::Pq(lut)) = pq_lut {
                     f64::from(lut.distance_bytes_thresh(bytes, thresh_f32))
-                } else if let Some(ref pq) = self.pq {
+                } else if let Some(ref pq) = *self.pq.load() {
                     if let Some(buf) = query_f32 {
                         let lut = pq.compute_lut(buf);
                         f64::from(lut.distance_bytes_thresh(bytes, thresh_f32))
@@ -2519,6 +2770,15 @@ impl<M: Metric> HnswIndex<M> {
                         ScalarI4Vector::reconstruct_bytes_into(bytes, active_dim, head_dim, &mut b);
                         LorentzMetric::cosh_distance(&b, &query.coords[..active_dim])
                     })
+                } else if let (Some(QueryPrep::I4 { even, odd, norm_sq }), None) = (pq_lut, mrl_dim)
+                {
+                    ScalarI4Vector::distance_l2_sq_deinterleaved(
+                        bytes,
+                        even,
+                        odd,
+                        *norm_sq,
+                        self.dimension,
+                    )
                 } else {
                     ScalarI4Vector::distance_bytes_l2_sq_mrl(bytes, query, active_dim, head_dim)
                 }
@@ -2549,8 +2809,32 @@ impl<M: Metric> HnswIndex<M> {
                 let name = M::name();
                 if name == "poincare" {
                     BinaryHyperVector::poincare_distance_sq_bytes(bytes, query)
+                } else if let (Some(QueryPrep::Bits(l)), None) = (pq_lut, mrl_dim) {
+                    BinaryHyperVector::adc_distance_lut(bytes, l)
                 } else {
                     BinaryHyperVector::adc_distance_bytes(bytes, query)
+                }
+            }
+            QuantizationMode::Ternary
+                if mrl_dim.is_none() && matches!(pq_lut, Some(QueryPrep::Bits(_))) =>
+            {
+                let Some(QueryPrep::Bits(l)) = pq_lut else {
+                    unreachable!()
+                };
+                match self.bit_lut_kind() {
+                    Some(BitLutKind::TernaryCos) => {
+                        hyperspace_core::vector::TernaryHyperVector::distance_cosine_lut(
+                            bytes,
+                            l,
+                            self.dimension,
+                        )
+                    }
+                    Some(_) => hyperspace_core::vector::TernaryHyperVector::distance_l2_sq_lut(
+                        bytes,
+                        l,
+                        self.dimension,
+                    ),
+                    None => self.dist_bytes_raw(bytes, query, query_f32, None, mrl_dim, threshold),
                 }
             }
             QuantizationMode::Ternary => {
@@ -3906,14 +4190,14 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         if self.mode == QuantizationMode::RaBitQ {
-            if let Some(ref rq) = self.rabitq {
+            if let Some(ref rq) = *self.rabitq.load() {
                 rq.reconstruct_into(bytes, out);
                 *alpha_out = 1.0;
                 return;
             }
         }
         if self.mode == QuantizationMode::PQ4 {
-            if let Some(ref pq4) = self.pq4 {
+            if let Some(ref pq4) = *self.pq4.load() {
                 pq4.decode_into(bytes, out);
                 *alpha_out = 1.0;
                 return;
@@ -3923,7 +4207,7 @@ impl<M: Metric> HnswIndex<M> {
             self.mode,
             QuantizationMode::ProductQuantization | QuantizationMode::OPQ
         ) {
-            if let Some(ref pq) = self.pq {
+            if let Some(ref pq) = *self.pq.load() {
                 out.clear();
                 out.resize(self.dimension, 0.0);
                 let sub_dim = pq.subvector_dim;
@@ -4549,7 +4833,7 @@ impl<M: Metric> HnswIndex<M> {
                 }
             }
             QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
-                if let Some(ref pq) = self.pq {
+                if let Some(ref pq) = *self.pq.load() {
                     let enc = hyperspace_core::pq::PQVector::from_bytes(bytes);
                     let dec = pq.decode(&enc);
                     let coords: Vec<f64> = dec.into_iter().map(f64::from).collect();
@@ -4560,9 +4844,9 @@ impl<M: Metric> HnswIndex<M> {
             }
             QuantizationMode::RaBitQ | QuantizationMode::PQ4 => {
                 let mut rec = Vec::with_capacity(self.dimension);
-                if let Some(ref rq) = self.rabitq {
+                if let Some(ref rq) = *self.rabitq.load() {
                     rq.reconstruct_into(bytes, &mut rec);
-                } else if let Some(ref pq4) = self.pq4 {
+                } else if let Some(ref pq4) = *self.pq4.load() {
                     pq4.decode_into(bytes, &mut rec);
                 }
                 rec.resize(self.dimension, 0.0);
@@ -4657,6 +4941,12 @@ impl<M: Metric> HnswIndex<M> {
 
         // Create vector (we already validated)
         let q_vec_full = Self::build_hyper_vector(vector.to_vec());
+        // Trained modes: encode + append under the shared calibration gate so an online
+        // quantizer swap can never miss a code written with the previous codebook.
+        let _calibration_guard = self
+            .mode
+            .needs_training()
+            .then(|| self.calibration_gate.read());
 
         let mut q_bytes: Vec<u8> = vec![];
         match self.mode {
@@ -4756,7 +5046,8 @@ impl<M: Metric> HnswIndex<M> {
             }
             QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
                 let q_f32: Vec<f32> = q_vec_full.coords.iter().map(|&x| x as f32).collect();
-                let pq = self.pq.as_ref().expect("PQ quantizer must be initialized");
+                let pq_guard = self.pq.load();
+                let pq = pq_guard.as_ref().expect("PQ quantizer must be initialized");
                 let enc = pq.encode(&q_f32);
                 q_bytes = enc.to_bytes();
                 0
@@ -4800,6 +5091,10 @@ impl<M: Metric> HnswIndex<M> {
 
         // Create vector
         let q_vec_full = HyperVector::new_unchecked(arr);
+        let _calibration_guard = self
+            .mode
+            .needs_training()
+            .then(|| self.calibration_gate.read());
 
         // Update storage at existing ID
         match self.mode {
@@ -4890,7 +5185,8 @@ impl<M: Metric> HnswIndex<M> {
             }
             QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
                 let q_f32: Vec<f32> = q_vec_full.coords.iter().map(|&x| x as f32).collect();
-                let pq = self.pq.as_ref().expect("PQ quantizer must be initialized");
+                let pq_guard = self.pq.load();
+                let pq = pq_guard.as_ref().expect("PQ quantizer must be initialized");
                 let enc = pq.encode(&q_f32);
                 self.storage.update(id, &enc.to_bytes())?;
             }

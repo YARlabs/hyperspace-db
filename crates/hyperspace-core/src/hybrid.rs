@@ -1005,6 +1005,66 @@ impl ScalarI4Vector {
         sum
     }
 
+    /// Squared L2 between a ScalarI4 code (no MRL head) and a query prepared once per query
+    /// by [`Self::deinterleave_query`]: even (`xe`, high nibbles) and odd (`xo`, low
+    /// nibbles) coordinates in `f32`, zero-padded to whole 16-dim blocks, plus
+    /// `q_norm_sq = Σ x_i²`.
+    ///
+    /// Per block: Σ (s·v_i − x_i)² = s²·Σv_i² − 2s·Σv_i·x_i, with Σx_i² added once. The
+    /// contiguous 8-lane multiply-adds vectorize (~2.7× faster than the per-dimension
+    /// `f64` loop of [`Self::distance_bytes_l2_sq_mrl`] at 1024 dims). Returns `f64::MAX`
+    /// for a malformed / truncated code.
+    #[inline]
+    #[must_use]
+    pub fn distance_l2_sq_deinterleaved(
+        bytes: &[u8],
+        xe: &[f32],
+        xo: &[f32],
+        q_norm_sq: f64,
+        dim: usize,
+    ) -> f64 {
+        const HALF: usize = 8;
+        let blocks = dim.div_ceil(2 * HALF);
+        if bytes.len() < 4 || xe.len() < blocks * HALF || xo.len() < blocks * HALF {
+            return f64::MAX;
+        }
+        let scales_count = u32::from_le_bytes(bytes[..4].try_into().unwrap_or([0; 4])) as usize;
+        let packed_offset = 4 + scales_count * 4;
+        if scales_count < blocks || bytes.len() < packed_offset + blocks * HALF {
+            return f64::MAX;
+        }
+        let scales = &bytes[4..packed_offset];
+        let packed = &bytes[packed_offset..packed_offset + blocks * HALF];
+        #[cfg(target_arch = "aarch64")]
+        let (cross, self_sq) = {
+            // SAFETY: NEON is mandatory on aarch64; every pointer below is derived from a
+            // slice whose length was checked above (`blocks * HALF` bytes / floats).
+            unsafe { i4_block_sums_neon(scales, packed, xe, xo, blocks) }
+        };
+        #[cfg(not(target_arch = "aarch64"))]
+        let (cross, self_sq) = i4_block_sums_scalar(scales, packed, xe, xo);
+        // Lanes past `dim` hold query weight 0, and the encoder stores value 0 (nibble 8)
+        // there, so padding contributes nothing to either sum.
+        (f64::from(self_sq) - 2.0 * f64::from(cross) + q_norm_sq).max(0.0)
+    }
+
+    /// Splits a query into even / odd coordinates padded to whole 16-dim blocks (see
+    /// [`Self::distance_l2_sq_deinterleaved`]).
+    #[must_use]
+    pub fn deinterleave_query(q: &[f64], dim: usize) -> (Vec<f32>, Vec<f32>) {
+        let half = dim.div_ceil(16) * 8;
+        let mut xe = vec![0.0f32; half];
+        let mut xo = vec![0.0f32; half];
+        for (i, &x) in q.iter().take(dim).enumerate() {
+            if i % 2 == 0 {
+                xe[i / 2] = x as f32;
+            } else {
+                xo[i / 2] = x as f32;
+            }
+        }
+        (xe, xo)
+    }
+
     #[allow(clippy::cast_possible_wrap)]
     pub fn reconstruct_bytes_into(
         bytes: &[u8],
@@ -1480,4 +1540,97 @@ impl TurboVector {
         // This ensures cand.distance matches M::distance scale in HNSW heuristic edge selection.
         (2.0 * (1.0 - dot)).max(0.0)
     }
+}
+
+/// Per-block ScalarI4 sums `(Σ_b s_b·Σ v·x, Σ_b s_b²·Σ v²)` (portable path).
+#[cfg(any(not(target_arch = "aarch64"), test))]
+pub(crate) fn i4_block_sums_scalar(
+    scales: &[u8],
+    packed: &[u8],
+    xe: &[f32],
+    xo: &[f32],
+) -> (f32, f32) {
+    const HALF: usize = 8;
+    let mut cross = 0.0f32;
+    let mut self_sq = 0.0f32;
+    let (pk_blocks, _) = packed.as_chunks::<HALF>();
+    let (xe_blocks, _) = xe.as_chunks::<HALF>();
+    let (xo_blocks, _) = xo.as_chunks::<HALF>();
+    for (b, ((pk, e), o)) in pk_blocks.iter().zip(xe_blocks).zip(xo_blocks).enumerate() {
+        let s = f32::from_le_bytes([
+            scales[4 * b],
+            scales[4 * b + 1],
+            scales[4 * b + 2],
+            scales[4 * b + 3],
+        ]);
+        let mut dot = 0.0f32;
+        let mut vv = 0.0f32;
+        for i in 0..HALF {
+            let hi = f32::from(pk[i] >> 4) - 8.0;
+            let lo = f32::from(pk[i] & 0x0F) - 8.0;
+            dot += hi * e[i] + lo * o[i];
+            vv += hi * hi + lo * lo;
+        }
+        cross += s * dot;
+        self_sq += s * s * vv;
+    }
+    (cross, self_sq)
+}
+
+/// NEON version of [`i4_block_sums_scalar`]: 8 packed bytes -> 16 signed nibbles per
+/// block; `Σv²` in integer lanes, `Σv·x` with two f32x4 FMAs per half.
+///
+/// # Safety
+/// `packed`, `xe`, `xo` must hold at least `blocks * 8` elements and `scales` at least
+/// `blocks * 4` bytes.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+pub(crate) unsafe fn i4_block_sums_neon(
+    scales: &[u8],
+    packed: &[u8],
+    xe: &[f32],
+    xo: &[f32],
+    blocks: usize,
+) -> (f32, f32) {
+    use core::arch::aarch64::{
+        vaddlvq_s16, vaddq_s16, vaddvq_f32, vand_u8, vcvtq_f32_s32, vdup_n_s8, vdup_n_u8,
+        vdupq_n_f32, vfmaq_f32, vfmaq_n_f32, vget_high_s16, vget_low_s16, vld1_u8, vld1q_f32,
+        vmovl_s16, vmovl_s8, vmull_s8, vmulq_f32, vreinterpret_s8_u8, vshr_n_u8, vsub_s8,
+    };
+    debug_assert!(packed.len() >= blocks * 8 && xe.len() >= blocks * 8 && xo.len() >= blocks * 8);
+    debug_assert!(scales.len() >= blocks * 4);
+    let eight = vdup_n_s8(8);
+    let mask = vdup_n_u8(0x0F);
+    let mut cross = vdupq_n_f32(0.0);
+    let mut self_sq = 0.0f32;
+    for b in 0..blocks {
+        let s = f32::from_le_bytes([
+            scales[4 * b],
+            scales[4 * b + 1],
+            scales[4 * b + 2],
+            scales[4 * b + 3],
+        ]);
+        let raw = vld1_u8(packed.as_ptr().add(b * 8));
+        let hi = vsub_s8(vreinterpret_s8_u8(vshr_n_u8::<4>(raw)), eight);
+        let lo = vsub_s8(vreinterpret_s8_u8(vand_u8(raw, mask)), eight);
+        // Σ v² in integers (|v| <= 8 -> v² <= 64; 16 lanes fit easily in i16).
+        let sq = vaddq_s16(vmull_s8(hi, hi), vmull_s8(lo, lo));
+        let vv = vaddlvq_s16(sq) as f32;
+        // Widen i8 -> i16 -> i32 -> f32.
+        let hi16 = vmovl_s8(hi);
+        let lo16 = vmovl_s8(lo);
+        let h0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(hi16)));
+        let h1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(hi16)));
+        let l0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(lo16)));
+        let l1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(lo16)));
+        let ep = xe.as_ptr().add(b * 8);
+        let op = xo.as_ptr().add(b * 8);
+        let mut d = vmulq_f32(h0, vld1q_f32(ep));
+        d = vfmaq_f32(d, h1, vld1q_f32(ep.add(4)));
+        d = vfmaq_f32(d, l0, vld1q_f32(op));
+        d = vfmaq_f32(d, l1, vld1q_f32(op.add(4)));
+        cross = vfmaq_n_f32(cross, d, s);
+        self_sq += s * s * vv;
+    }
+    (vaddvq_f32(cross), self_sq)
 }

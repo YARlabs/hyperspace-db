@@ -50,8 +50,8 @@ fn test_product_quantization_hnsw_insertion_and_search() {
         dim,
     );
 
-    assert!(index.pq.is_some());
-    assert!(!index.pq.as_ref().unwrap().is_opq);
+    assert!(index.pq.load().is_some());
+    assert!(!index.pq.load().as_ref().unwrap().is_opq);
 
     let vectors = generate_random_vectors(150, dim, 42);
     for (i, v) in vectors.iter().enumerate() {
@@ -98,8 +98,8 @@ fn test_opq_hnsw_insertion_search_and_persistence() {
     let index: HnswIndex<EuclideanMetric> =
         HnswIndex::new(storage.clone(), QuantizationMode::OPQ, config.clone(), dim);
 
-    assert!(index.pq.is_some());
-    assert!(index.pq.as_ref().unwrap().is_opq);
+    assert!(index.pq.load().is_some());
+    assert!(index.pq.load().as_ref().unwrap().is_opq);
 
     let vectors = generate_random_vectors(200, dim, 12345);
     for (i, v) in vectors.iter().enumerate() {
@@ -139,8 +139,8 @@ fn test_opq_hnsw_insertion_search_and_persistence() {
         HnswIndex::load_snapshot(&snap_path, storage, QuantizationMode::OPQ, config, dim)
             .expect("Load snapshot failed");
 
-    assert!(loaded_index.pq.is_some());
-    assert!(loaded_index.pq.as_ref().unwrap().is_opq);
+    assert!(loaded_index.pq.load().is_some());
+    assert!(loaded_index.pq.load().as_ref().unwrap().is_opq);
     assert_eq!(loaded_index.count(), 200);
 
     // Search after reloading

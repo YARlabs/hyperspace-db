@@ -48,6 +48,8 @@ public:
         this->declare_parameter<std::string>("api_key", "I_LOVE_HYPERSPACEDB");
         // Send vectors as compact `repeated float` (half the wire size; server >= 4.2.5).
         this->declare_parameter<bool>("compact_vectors", false);
+        // Per-request HNSW beam width for every search (server >= 4.2.5); 0 = collection default.
+        this->declare_parameter<int>("ef_search", 0);
         
         std::string endpoint = this->get_parameter("hyperspace_endpoint").as_string();
         std::string api_key = this->get_parameter("api_key").as_string();
@@ -55,6 +57,8 @@ public:
         // Initialize Real Hyperspace Client
         client_ = std::make_unique<hyperspace::HyperspaceClient>(endpoint, api_key);
         client_->SetCompactVectors(this->get_parameter("compact_vectors").as_bool());
+        const auto ef = this->get_parameter("ef_search").as_int();
+        ef_search_ = ef > 0 ? static_cast<uint32_t>(ef) : 0;
 
         // Core AI Navigation Service (Math-driven)
         navigate_service_ = this->create_service<hyperspace_interfaces::srv::NavigateToAttractor>(
@@ -179,6 +183,7 @@ public:
     }
 
 private:
+    uint32_t ef_search_ = 0;
     void handle_navigate(
         const std::shared_ptr<hyperspace_interfaces::srv::NavigateToAttractor::Request> request,
         std::shared_ptr<hyperspace_interfaces::srv::NavigateToAttractor::Response> response) 
@@ -224,7 +229,7 @@ private:
 
         // In a real implementation we would parse filters_json here.
         // For now, passing standard search parameters.
-        auto results = client_->SearchText(request->query, request->top_k, request->collection, request->hybrid_alpha, &bm25);
+        auto results = client_->SearchText(request->query, request->top_k, request->collection, request->hybrid_alpha, &bm25, ef_search_);
         
         for (const auto& r : results) {
             hyperspace_interfaces::msg::SearchResult msg;
@@ -312,7 +317,7 @@ private:
         std::vector<double> vec;
         for (double v : request->vector) vec.push_back(v);
 
-        auto results = client_->SearchMultiCollection(cols, vec, request->top_k);
+        auto results = client_->SearchMultiCollection(cols, vec, request->top_k, ef_search_);
         for (const auto& kv : results) {
             for (const auto& r : kv.second) {
                 hyperspace_interfaces::msg::SearchResult msg;
@@ -345,7 +350,7 @@ private:
             restart_factor = request->restart_factor;
         }
 
-        auto results = client_->Search(vec, request->top_k, request->collection, request->hybrid_query, request->hybrid_alpha, nullptr, request->mrl_dimension, request->use_wasserstein, false, weights, request->use_wave, restart_factor);
+        auto results = client_->Search(vec, request->top_k, request->collection, request->hybrid_query, request->hybrid_alpha, nullptr, request->mrl_dimension, request->use_wasserstein, false, weights, request->use_wave, restart_factor, ef_search_);
         for (const auto& r : results) {
             hyperspace_interfaces::msg::SearchResult msg;
             msg.id = r.id;

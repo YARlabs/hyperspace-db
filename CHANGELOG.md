@@ -13,6 +13,19 @@ graph, graph repair after deletes, ACORN-style filtered traversal, WAL group com
 compact f32 wire format.
 
 ### Fixed
+* **`ConfigUpdate` `ef_search` was ignored by gRPC / HTTP searches**: every request carried the
+  server-wide default (`HS_HNSW_EF_SEARCH`, 100), overriding the collection's configured beam.
+  Requests without `ef_search` now use the collection value; the collection default is 100 so
+  recall is unchanged.
+* **`HS_PORT` / `HS_HTTP_PORT` were ignored**: the listen ports could only be set with
+  `--port` / `--http-port`, so containers configured through the environment silently bound
+  the defaults. Both variables are read now (flags still win).
+* **Dart SDK did not compile**: its protobuf stubs had been patched by hand. They are
+  regenerated with `protoc_plugin` 25 (also adding the PDK extension messages missing since
+  4.2.4); `dart analyze` is clean and the integration suite passes against a 4.2.5 server.
+* **Python SDK missing dependency**: `hyperspace` imports `cryptography` unconditionally but
+  the package did not declare it, so `pip install hyperspacedb` + `import hyperspace` failed
+  on a clean environment.
 * **Recall loss in multi-shard search (regression from 4.2.4)**: 4.2.4 divided `ef_search` by
   √(shard count) on every shard and asked each shard for only `top_k + 4` candidates. With the
   default one shard per core (12 on an Apple M4 Pro) a search with `ef_search = 100` ran each shard
@@ -64,6 +77,27 @@ compact f32 wire format.
   chunks it re-ingested. Legacy chunks without a manifest are kept.
 
 ### Added
+* **Online auto-calibration of trained quantizers** (`rabitq`, `pq4`, `pq`, `opq`): each shard
+  fits its codebook / centroid on exact vectors once it holds `HS_AUTO_CALIBRATE_MIN` vectors
+  (default 1,024; at least 4,096 for `pq` / `opq`, 16 samples per centroid) and re-fits after
+  every 8× growth (re-encoding cost ~1.14 × N in total). The quantizer is swapped atomically
+  under a calibration gate and every stored code is re-encoded in place, so concurrent
+  inserts never keep a code from the old codebook. The state is persisted
+  (`quantizer.calibrated`) and reported as `quantizer_calibrated` in collection stats and the
+  dashboard. `RebuildIndex` still retrains and rebuilds the graph for the best recall.
+* **Per-request `ef_search`**: new `ef_search` field on `SearchRequest`, `SearchTextRequest`,
+  `SearchMultiCollectionRequest` and the HTTP search bodies, clamped to `HS_MAX_EF_SEARCH`
+  (default 4096). Exposed in every SDK (Python `ef_search=`, TypeScript `efSearch`, Go
+  `SearchParams.EfSearch` / `WithEfSearch`, Rust `SearchOptions::ef_search`, Dart `efSearch:`,
+  C++ trailing `ef_search`), the ROS2 node (`ef_search` parameter) and the MCP
+  `hyperspace_search_text` tool.
+* **C++ SDK**: `DeleteCollection`; integration test target (`hyperspace_sdk_integration_test`).
+  **TypeScript SDK**: `searchMultiCollection` takes `topK` (was fixed at 10).
+* **CI**: `scripts/check_sdk_protos.py` fails the build when any SDK's generated stubs miss a
+  field of `hyperspace.proto`; offline request-building tests for the Python, TypeScript and
+  Go SDKs; the Dart suite runs against a live server in both wire formats; a quick
+  quantization sweep enforces recall floors (`run_quantization_sweep.py --min-recall`), which
+  would have caught the 4.2.4 multi-shard regression.
 * **Dashboard**: the collection-create dialog is driven by the server's quantization catalog and
   covers every level (`none` … `rabitq`, `pq4`, `pq`, `opq`), with bytes per vector for the chosen
   dimension, metric compatibility (unsupported levels disabled) and a calibration hint. The
@@ -75,10 +109,11 @@ compact f32 wire format.
   `vector_f32`, an opt-in compact-vector switch (`compact_vectors` / `compactVectors` /
   `SetCompactVectors` / `with_compact_vectors` / ROS2 `compact_vectors` parameter), and the
   quantization catalog with calibration notes in every README. SDK versions bumped to 4.2.5.
-* **Benchmarks** (local harness; `benchmarks/` is not tracked): `run_quantization_sweep.py` covers `rabitq` and `pq4`, calibrates every
+* **Benchmarks**: `benchmarks/run_quantization_sweep.py` (now tracked) covers `rabitq` and `pq4`, calibrates every
   trained mode (pq, opq, pq4, rabitq) with a rebuild before measuring, and accepts
   `HS_BENCH_SERVER_BIN` / `HS_BENCH_LABEL` / `HS_BENCH_REPORT` / `HS_BENCH_RESULT` /
-  `HS_BENCH_GRPC_PORT` and `--exclude` for before/after runs.
+  `HS_BENCH_GRPC_PORT`, `HS_BENCH_CALIBRATE`, `--exclude`, `--no-report` and the
+  `--min-recall config=percent` gate (exit 1 on a recall regression).
 * **RaBitQ quantization (`QuantizationMode::RaBitQ`, `quantization: "rabitq"`)** —
   `hyperspace-core::rabitq`. 1-bit code of the FWHT-rotated residual + norm + correction
   factor `⟨o', x̄⟩` (Gao & Long, SIGMOD 2024), giving an unbiased inner-product / L2 estimator.
@@ -121,6 +156,18 @@ compact f32 wire format.
   round-trip, and SIMD kernel parity (`f64` byte kernels, pair dispatch).
 
 ### Changed (performance)
+* **`extreme` and `ternary` nibble-table kernels**: a per-query table (16 entries per 4
+  dimensions, 16 KB at 1024-D, L1-resident) turns the per-bit loops into `D/4` loads and adds,
+  and query-only terms (Σq, ‖q‖²) are computed once per query instead of per candidate. Kernel
+  time at 1024-D: `extreme` 701 → 62 ns (×11), `ternary` L2 1,269 → 127 ns (×10), `ternary`
+  cosine 2,558 → 127 ns (×20). Used for graph construction too.
+* **`medium_plus` (ScalarI4) kernel**: the query is de-interleaved once per query and blocks
+  are scored as s²·Σv² − 2s·Σv·x with NEON on aarch64 (portable path elsewhere): 743 → 105 ns
+  (×7) at 1024-D.
+* Evaluated and **not shipped**: cooperative scatter-gather pruning with a shared k-th-best
+  bound. Shards start far from the query, so pruning at the global k-th distance stops their
+  traversal before it reaches near nodes (merged top-10 agreed with the unpruned search for
+  only 46% of results in tests).
 * **Chunk index cache**: `search_chunk` previously deserialized `index.snap` and re-opened the
   mmap store on *every query for every chunk*. Loaded chunks now live in a process-wide LRU
   (`HS_CHUNK_CACHE_SIZE`, default 64), invalidated on compaction and collection deletion; chunks
@@ -176,10 +223,10 @@ compact f32 wire format.
 
 Measured with `benchmarks/run_quantization_sweep.py` (20,000 × 1024D, cosine, 200 queries, M = 64, ef_construction = 400, ef_search = 100, 12 shards, Apple M4 Pro), v4.2.4 and v4.2.5 on the same machine:
 
-- **Recall@10 +1.5 pp on average** over 32 configurations (up to +6.6 pp), mostly from the multi-shard fix above: `none` 92.90% → **99.00%**, `medium` + rerank ×4 97.15% → **99.70%**, `extreme` + rerank ×4 89.75% → **96.35%**.
-- Search QPS at the same `ef_search` is ×0.83 (geometric mean) because each shard again runs the full beam. At matched recall most modes are as fast or faster: `none` 99.0% at 796 QPS vs 99.15% at 743 QPS (ef_search = 400) in v4.2.4; `turbo` + rerank ×4 99.8% at 919 QPS vs 99.15% at 916 QPS. 1-bit `extreme` is ~20% slower at equal recall.
-- Ingest ×1.15 (median); ternary index drain 6–11 s → ~2 s.
-- New tiers: `rabitq` + rerank ×4 **98.5% @ 1,388 QPS** (29× compression); `pq4` + rerank ×8 **99.65% @ 1,062 QPS** (31× compression, ~11k vec/s ingest).
+- **Search QPS ×1.95** (geometric mean over 32 configurations), **recall@10 +1.5 pp** on average (up to +6.7 pp), **ingest ×1.54** (median).
+- Low-bit modes, same recall: `ternary` 97 → 1,344 QPS (×13.9; + rerank ×4: 81 → 1,036), `extreme` 811 → 1,967 QPS (×2.4; + rerank ×8: 447 → 1,240 at 97.45% → 99.15%), `medium_plus` 597 → 1,408 QPS (×2.4). Ingest: `extreme` 5,169 → 11,330 vec/s, `medium_plus` 4,211 → 9,058, `ternary` 1,052 → 1,737.
+- Multi-shard fix: `none` 92.90% → **99.05%** recall at ef_search = 100 (1,145 → 808 QPS; v4.2.4 needed ef_search = 400 for 99.15% at 743 QPS). `medium` + rerank ×4: 97.15% → 98.75%; `extreme` + rerank ×4: 89.75% → 96.45%.
+- New tiers: `rabitq` + rerank ×4 **98.5% @ 1,666 QPS** (29×); `pq4` + rerank ×8 **99.65% @ 1,154 QPS** (31×). Online calibration alone (no `RebuildIndex`) lifts `pq4` single-pass recall 25.65% → 35.80% and rerank ×4 90.85% → 97.60%.
 - Full matrix: `BENCHMARK_QUANTIZATION_SWEEP.md`; summary: `BENCHMARK_V3_VS_V4_REPORT.md` §10.
 
 ### Compatibility

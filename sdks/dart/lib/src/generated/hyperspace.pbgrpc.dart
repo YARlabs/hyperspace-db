@@ -363,6 +363,21 @@ class DatabaseClient extends $grpc.Client {
     return $createUnaryCall(_$verifyGeneration, request, options: options);
   }
 
+  /// Extension & Plugin Architecture (v4.2 pgrx-style PDK)
+  $grpc.ResponseFuture<$0.ExtensionResponse> callExtension(
+    $0.ExtensionRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$callExtension, request, options: options);
+  }
+
+  $grpc.ResponseFuture<$0.ListExtensionsResponse> listExtensions(
+    $0.Empty request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$listExtensions, request, options: options);
+  }
+
   // method descriptors
 
   static final _$createCollection =
@@ -577,6 +592,16 @@ class DatabaseClient extends $grpc.Client {
       '/hyperspace.Database/VerifyGeneration',
       ($0.VerifyGenerationRequest value) => value.writeToBuffer(),
       $0.VerifyGenerationResponse.fromBuffer);
+  static final _$callExtension =
+      $grpc.ClientMethod<$0.ExtensionRequest, $0.ExtensionResponse>(
+          '/hyperspace.Database/CallExtension',
+          ($0.ExtensionRequest value) => value.writeToBuffer(),
+          $0.ExtensionResponse.fromBuffer);
+  static final _$listExtensions =
+      $grpc.ClientMethod<$0.Empty, $0.ListExtensionsResponse>(
+          '/hyperspace.Database/ListExtensions',
+          ($0.Empty value) => value.writeToBuffer(),
+          $0.ListExtensionsResponse.fromBuffer);
 }
 
 @$pb.GrpcServiceName('hyperspace.Database')
@@ -921,6 +946,20 @@ abstract class DatabaseServiceBase extends $grpc.Service {
         ($core.List<$core.int> value) =>
             $0.VerifyGenerationRequest.fromBuffer(value),
         ($0.VerifyGenerationResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.ExtensionRequest, $0.ExtensionResponse>(
+        'CallExtension',
+        callExtension_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) => $0.ExtensionRequest.fromBuffer(value),
+        ($0.ExtensionResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.Empty, $0.ListExtensionsResponse>(
+        'ListExtensions',
+        listExtensions_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) => $0.Empty.fromBuffer(value),
+        ($0.ListExtensionsResponse value) => value.writeToBuffer()));
   }
 
   $async.Future<$0.StatusResponse> createCollection_Pre($grpc.ServiceCall $call,
@@ -1272,4 +1311,20 @@ abstract class DatabaseServiceBase extends $grpc.Service {
 
   $async.Future<$0.VerifyGenerationResponse> verifyGeneration(
       $grpc.ServiceCall call, $0.VerifyGenerationRequest request);
+
+  $async.Future<$0.ExtensionResponse> callExtension_Pre($grpc.ServiceCall $call,
+      $async.Future<$0.ExtensionRequest> $request) async {
+    return callExtension($call, await $request);
+  }
+
+  $async.Future<$0.ExtensionResponse> callExtension(
+      $grpc.ServiceCall call, $0.ExtensionRequest request);
+
+  $async.Future<$0.ListExtensionsResponse> listExtensions_Pre(
+      $grpc.ServiceCall $call, $async.Future<$0.Empty> $request) async {
+    return listExtensions($call, await $request);
+  }
+
+  $async.Future<$0.ListExtensionsResponse> listExtensions(
+      $grpc.ServiceCall call, $0.Empty request);
 }

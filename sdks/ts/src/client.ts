@@ -437,6 +437,14 @@ export class HyperspaceClient {
         return this;
     }
 
+    /** Validates a per-request `ef_search` (non-negative integer; 0 = collection default). */
+    public static checkEfSearch(ef: number): number {
+        if (!Number.isInteger(ef) || ef < 0) {
+            throw new RangeError(`efSearch must be a non-negative integer, got ${ef}`);
+        }
+        return ef;
+    }
+
     private applyVector(
         msg: { setVectorList(v: number[]): unknown; setVectorF32List(v: number[]): unknown },
         vector: number[],
@@ -1146,7 +1154,9 @@ export class HyperspaceClient {
             includePayload?: boolean,
             componentWeights?: { [key: string]: number },
             useWave?: boolean,
-            restartFactor?: number
+            restartFactor?: number,
+            /** Per-request HNSW beam width (server >= 4.2.5); omitted = collection default. */
+            efSearch?: number
         }
     ): Promise<SearchResult[]> {
         return new Promise(async (resolve, reject) => {
@@ -1210,6 +1220,7 @@ export class HyperspaceClient {
                 if (options?.mrlDimension !== undefined) req.setMrlDimension(options.mrlDimension);
                 if (options?.useWasserstein !== undefined) req.setUseWasserstein(options.useWasserstein);
                 if (includePayload !== undefined) req.setIncludePayload(includePayload);
+                if (options?.efSearch !== undefined) req.setEfSearch(HyperspaceClient.checkEfSearch(options.efSearch));
                 
                 if (options?.componentWeights) {
                     const map = req.getComponentWeightsMap();
@@ -1275,7 +1286,9 @@ export class HyperspaceClient {
             filters?: Filter[],
             bm25?: Bm25Options,
             hybridAlpha?: number,
-            includePayload?: boolean
+            includePayload?: boolean,
+            /** Per-request HNSW beam width (server >= 4.2.5). */
+            efSearch?: number
         }
     ): Promise<SearchResult[]> {
         if (this.collectionKeys[collection]) {
@@ -1291,6 +1304,7 @@ export class HyperspaceClient {
             req.setText(text);
             req.setTopK(topK);
             req.setCollection(collection);
+            if (options?.efSearch !== undefined) req.setEfSearch(HyperspaceClient.checkEfSearch(options.efSearch));
 
             if (options?.filters) {
                 req.setFiltersList(options.filters.map(f => this.toProtoFilter(f)));
@@ -1353,8 +1367,14 @@ export class HyperspaceClient {
         });
     }
 
-    public searchBatch(vectors: Array<number[] | Float32Array | Float64Array>, topK: number, collection: string = ''): Promise<SearchResult[][]> {
+    public searchBatch(
+        vectors: Array<number[] | Float32Array | Float64Array>,
+        topK: number,
+        collection: string = '',
+        options?: { efSearch?: number }
+    ): Promise<SearchResult[][]> {
         return new Promise((resolve, reject) => {
+            const ef = options?.efSearch !== undefined ? HyperspaceClient.checkEfSearch(options.efSearch) : undefined;
             const req = new BatchSearchRequest();
             req.setSearchesList(
                 vectors.map((vector) => {
@@ -1362,6 +1382,7 @@ export class HyperspaceClient {
                     this.applyVector(s, HyperspaceClient.toVectorList(vector));
                     s.setTopK(topK);
                     s.setCollection(collection);
+                    if (ef !== undefined) s.setEfSearch(ef);
                     return s;
                 })
             );
@@ -1800,12 +1821,18 @@ export class HyperspaceClient {
         return stream;
     }
 
-    public searchMultiCollection(collections: string[], query: number[]): Promise<any> {
+    public searchMultiCollection(
+        collections: string[],
+        query: number[],
+        topK: number = 10,
+        options?: { efSearch?: number }
+    ): Promise<any> {
         return new Promise((resolve, reject) => {
             const req = new SearchMultiCollectionRequest();
             req.setCollectionsList(collections);
             this.applyVector(req, HyperspaceClient.toVectorList(query));
-            req.setTopK(10);
+            req.setTopK(topK);
+            if (options?.efSearch !== undefined) req.setEfSearch(HyperspaceClient.checkEfSearch(options.efSearch));
 
             this.client.searchMultiCollection(req, this.metadata, (err, resp) => {
                 if (err) return reject(err);

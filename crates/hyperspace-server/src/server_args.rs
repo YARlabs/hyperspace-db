@@ -8,12 +8,12 @@ pub struct Args {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Port to listen on (gRPC)
-    #[arg(short, long, default_value = "50051")]
+    /// Port to listen on (gRPC). `--port` wins over `HS_PORT`.
+    #[arg(short, long, default_value = "50051", env = "HS_PORT")]
     pub port: u16,
 
-    /// HTTP Dashboard Port
-    #[arg(long, default_value = "50050")]
+    /// HTTP Dashboard Port. `--http-port` wins over `HS_HTTP_PORT`.
+    #[arg(long, default_value = "50050", env = "HS_HTTP_PORT")]
     pub http_port: u16,
 
     /// Role: leader or follower
@@ -67,4 +67,40 @@ pub enum PluginCommands {
         #[arg(long)]
         offline: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+    use clap::Parser;
+
+    // One test so the env-var cases never race each other.
+    #[test]
+    fn ports_come_from_flags_env_or_defaults() {
+        std::env::remove_var("HS_PORT");
+        std::env::remove_var("HS_HTTP_PORT");
+        let a = Args::try_parse_from(["hyperspace-server"]).unwrap();
+        assert_eq!((a.port, a.http_port), (50051, 50050));
+
+        std::env::set_var("HS_PORT", "61001");
+        std::env::set_var("HS_HTTP_PORT", "61000");
+        let a = Args::try_parse_from(["hyperspace-server"]).unwrap();
+        assert_eq!((a.port, a.http_port), (61001, 61000));
+
+        let a = Args::try_parse_from([
+            "hyperspace-server",
+            "--port",
+            "62001",
+            "--http-port",
+            "62000",
+        ])
+        .unwrap();
+        assert_eq!((a.port, a.http_port), (62001, 62000), "flags win over env");
+
+        std::env::set_var("HS_PORT", "not-a-port");
+        assert!(Args::try_parse_from(["hyperspace-server"]).is_err());
+
+        std::env::remove_var("HS_PORT");
+        std::env::remove_var("HS_HTTP_PORT");
+    }
 }

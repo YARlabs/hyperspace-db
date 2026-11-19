@@ -1212,6 +1212,7 @@ async fn get_stats(
             "quantization": format!("{:?}", col.quantization_mode()),
             "indexing_queue": col.queue_size(),
             "write_buffer_size": col.write_buffer_size(),
+            "quantizer_calibrated": !col.needs_calibration(),
             "active_tasks": usage.active_indexing_tasks,
             "ef_search": hnsw.ef_search,
             "ef_construction": hnsw.ef_construction,
@@ -1330,7 +1331,7 @@ fn engine_tunables() -> serde_json::Value {
     serde_json::json!({
         "hnsw_m": env("HS_HNSW_M", "16"),
         "hnsw_ef_construct": env("HS_HNSW_EF_CONSTRUCT", "100"),
-        "hnsw_ef_search": env("HS_HNSW_EF_SEARCH", "64"),
+        "hnsw_ef_search": env("HS_HNSW_EF_SEARCH", "100"),
         "hnsw_alpha": env("HS_HNSW_ALPHA", "1.0"),
         "filter_acorn": env("HS_FILTER_ACORN", "true"),
         "filter_bruteforce_threshold": env("HS_FILTER_BRUTEFORCE_THRESHOLD", "auto"),
@@ -1788,6 +1789,8 @@ struct SearchReq {
     mrl_dimension: Option<usize>,
     include_payload: Option<bool>,
     weights: Option<HashMap<String, f32>>,
+    /// Per-request HNSW beam width; omitted = the collection's `ef_search`.
+    ef_search: Option<usize>,
 }
 
 #[derive(serde::Deserialize)]
@@ -2006,16 +2009,6 @@ fn graph_match_filters(
     true
 }
 
-fn default_ef_search() -> usize {
-    static DEFAULT_EF_SEARCH: OnceLock<usize> = OnceLock::new();
-    *DEFAULT_EF_SEARCH.get_or_init(|| {
-        std::env::var("HS_HNSW_EF_SEARCH")
-            .unwrap_or_else(|_| "100".to_string())
-            .parse()
-            .unwrap_or(100)
-    })
-}
-
 #[derive(serde::Serialize)]
 struct SearchResultHit {
     id: u32,
@@ -2077,7 +2070,7 @@ async fn search_collection(
         }
         let dummy_params = SearchParams {
             top_k: search_ctx.top_k,
-            ef_search: default_ef_search(),
+            ef_search: hyperspace_core::request_ef_search(payload.ef_search),
             hybrid_query: None,
             hybrid_alpha: None,
             use_wasserstein: payload.use_wasserstein.unwrap_or(false),
@@ -2272,6 +2265,7 @@ struct SearchMultiReq {
     collections: Vec<String>,
     vector: Vec<f64>,
     top_k: Option<usize>,
+    ef_search: Option<usize>,
 }
 
 async fn search_multi_http(
@@ -2290,7 +2284,7 @@ async fn search_multi_http(
         if let Some(col) = manager.get(&ctx.user_id, &name).await {
             let params = SearchParams {
                 top_k: k,
-                ef_search: default_ef_search(),
+                ef_search: hyperspace_core::request_ef_search(payload.ef_search),
                 ..Default::default()
             };
             if let Ok(res) = col
@@ -2331,7 +2325,7 @@ async fn search_batch_http(
                     let k = req.top_k.unwrap_or(10);
                     let params = SearchParams {
                         top_k: k,
-                        ef_search: default_ef_search(),
+                        ef_search: hyperspace_core::request_ef_search(req.ef_search),
                         use_wasserstein: req.use_wasserstein.unwrap_or(false),
                         mrl_dimension: req.mrl_dimension,
                         ..Default::default()

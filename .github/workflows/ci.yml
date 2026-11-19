@@ -58,6 +58,9 @@ jobs:
           npm run build
 
       # 1. Check Formatting
+      - name: Check SDK protobuf stubs match hyperspace.proto
+        run: python3 scripts/check_sdk_protos.py
+
       - name: Check Formatting
         run: cargo fmt --all -- --check
 
@@ -118,16 +121,25 @@ jobs:
           npm install
           npm run build
 
+      - name: Check SDK protobuf stubs match hyperspace.proto
+        run: python3 scripts/check_sdk_protos.py
+
       - name: Start HyperspaceDB Server
         run: |
-          cargo run --release -p hyperspace-server &
-          sleep 10
+          cargo build --release -p hyperspace-server
+          HS_DATA_DIR=$RUNNER_TEMP/hs-data ./target/release/hyperspace-server --port 50051 --http-port 50050 &
+          for i in $(seq 1 120); do
+            (echo > /dev/tcp/127.0.0.1/50051) 2>/dev/null && exit 0
+            sleep 1
+          done
+          echo "server did not open port 50051" && exit 1
 
       - name: Test TS SDK
         run: |
           cd sdks/ts
           npm install
           npm run build
+          npm test
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -136,8 +148,25 @@ jobs:
       - name: Test Python SDK
         run: |
           cd sdks/python
-          pip install grpcio grpcio-tools protobuf
-          python -m unittest discover -s tests -p "test_*.py" || echo "No python tests or tests failed"
+          pip install ./  # installs declared dependencies; fails if one is missing
+          python test_request_options.py
+
+      - name: Recall gate (quantization sweep, quick)
+        run: |
+          pip install numpy
+          HS_BENCH_GRPC_PORT=56051 python benchmarks/run_quantization_sweep.py --quick --no-report \
+            --filter none_ef100,medium_rerank4,turbo_rerank4,ternary_rerank4,extreme_rerank8,pq4_rerank8 \
+            --min-recall none_ef100=96,medium_rerank4=97,turbo_rerank4=97,ternary_rerank4=97,extreme_rerank8=95,pq4_rerank8=97
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Test Go SDK
+        run: |
+          cd sdks/go
+          go vet ./...
+          go test ./...
 
       - name: Setup Dart
         uses: dart-lang/setup-dart@v1
@@ -145,7 +174,10 @@ jobs:
         run: |
           cd sdks/dart
           dart pub get
-          dart analyze
+          dart analyze --fatal-infos
+          dart format --output=none --set-exit-if-changed lib test
+          HS_TEST_PORT=50051 dart test
+          HS_TEST_PORT=50051 HS_TEST_COMPACT=1 dart test
 
   wasm-tests:
     runs-on: ubuntu-latest

@@ -85,6 +85,19 @@ pub enum QuantizationMode {
     PQ4,
 }
 
+impl QuantizationMode {
+    /// Modes whose codebook / centroid is learned from data (`RebuildIndex`, vacuum or
+    /// online auto-calibration). Before training they use a data-independent default
+    /// codebook, which costs recall (PQ4 / PQ / OPQ) but stays usable.
+    #[must_use]
+    pub const fn needs_training(self) -> bool {
+        matches!(
+            self,
+            Self::ProductQuantization | Self::OPQ | Self::RaBitQ | Self::PQ4
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum StorageMode {
     Performance, // Default: Huge single HNSW index, high RAM usage, max speed.
@@ -314,6 +327,32 @@ pub struct SearchParams {
     pub use_wave: bool,
 }
 
+/// Upper bound on a per-request `ef_search` (`HS_MAX_EF_SEARCH`, default 4096). A beam
+/// wider than this only burns CPU and memory; clamping it bounds the cost one request can
+/// impose (denial-of-service guard).
+#[must_use]
+pub fn max_request_ef_search() -> usize {
+    static MAX: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *MAX.get_or_init(|| {
+        std::env::var("HS_MAX_EF_SEARCH")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .filter(|&v| v > 0)
+            .unwrap_or(4096)
+    })
+}
+
+/// Beam width for one search request: the caller's `ef_search` clamped to
+/// [`max_request_ef_search`], or `0` ("use the collection's configured `ef_search`",
+/// which `HS_HNSW_EF_SEARCH` and `ConfigUpdate` control).
+#[must_use]
+pub fn request_ef_search(requested: Option<usize>) -> usize {
+    match requested {
+        Some(ef) if ef > 0 => ef.min(max_request_ef_search()),
+        _ => 0,
+    }
+}
+
 /// A single search result: (id, distance, metadata, `optional_payload`).
 /// The `payload` field is `Some(bytes)` ONLY when `SearchParams::include_payload = true`
 /// AND the vector was inserted with a payload. The bytes are the original uncompressed
@@ -479,6 +518,11 @@ pub trait Collection: Send + Sync + 'static {
     fn state_hash(&self) -> u64;
     fn buckets(&self) -> Vec<u64>; // New method
     fn queue_size(&self) -> u64; // Indexing queue size for eventual consistency
+    /// `true` while a trained quantizer (PQ / OPQ / PQ4 / RaBitQ) still uses its default
+    /// codebook; it is calibrated online (`HS_AUTO_CALIBRATE_MIN`) or by `RebuildIndex`.
+    fn needs_calibration(&self) -> bool {
+        false
+    }
     fn write_buffer_size(&self) -> usize {
         0
     }

@@ -218,16 +218,6 @@ fn server_wave_search_enabled() -> bool {
     })
 }
 
-fn default_ef_search() -> usize {
-    static DEFAULT_EF_SEARCH: OnceLock<usize> = OnceLock::new();
-    *DEFAULT_EF_SEARCH.get_or_init(|| {
-        std::env::var("HS_HNSW_EF_SEARCH")
-            .unwrap_or_else(|_| "100".to_string())
-            .parse()
-            .unwrap_or(100)
-    })
-}
-
 fn search_batch_inner_concurrency() -> usize {
     static INNER_CONCURRENCY: OnceLock<usize> = OnceLock::new();
     *INNER_CONCURRENCY.get_or_init(|| {
@@ -371,7 +361,7 @@ fn build_filters(
 
     let params = hyperspace_core::SearchParams {
         top_k: req.top_k as usize,
-        ef_search: default_ef_search(),
+        ef_search: hyperspace_core::request_ef_search(req.ef_search.map(|v| v as usize)),
         hybrid_query: req.hybrid_query,
         hybrid_alpha: req.hybrid_alpha,
         component_weights: (!req.component_weights.is_empty())
@@ -1580,7 +1570,9 @@ impl Database for HyperspaceService {
 
                 let params = hyperspace_core::SearchParams {
                     top_k: req.top_k as usize,
-                    ef_search: default_ef_search(),
+                    ef_search: hyperspace_core::request_ef_search(
+                        req.ef_search.map(|v| v as usize),
+                    ),
                     hybrid_query: None,
                     hybrid_alpha: req.hybrid_alpha,
                     component_weights: (!req.component_weights.is_empty())
@@ -2054,7 +2046,9 @@ impl Database for HyperspaceService {
                 })?;
                 let params = hyperspace_core::SearchParams {
                     top_k: req.top_k as usize,
-                    ef_search: default_ef_search(),
+                    ef_search: hyperspace_core::request_ef_search(
+                        req.ef_search.map(|v| v as usize),
+                    ),
                     hybrid_query: None,
                     hybrid_alpha: None,
                     component_weights: None,
@@ -2100,6 +2094,7 @@ impl Database for HyperspaceService {
                 })?;
             let vector = req.vector.clone();
             let top_k = req.top_k;
+            let req_ef = req.ef_search;
             let permit = semaphore.clone().acquire_owned().await.map_err(|e| {
                 Status::internal(format!("search_multi_collection semaphore error: {e}"))
             })?;
@@ -2108,7 +2103,7 @@ impl Database for HyperspaceService {
                 let _permit = permit;
                 let params = hyperspace_core::SearchParams {
                     top_k: top_k as usize,
-                    ef_search: default_ef_search(),
+                    ef_search: hyperspace_core::request_ef_search(req_ef.map(|v| v as usize)),
                     hybrid_query: None,
                     hybrid_alpha: None,
                     component_weights: None,

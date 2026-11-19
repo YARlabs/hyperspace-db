@@ -347,3 +347,266 @@ fn test_lorentz_validate_still_rejects_garbage() {
     let lower_sheet = [-2.0_f64, 0.0, 0.0, 0.0];
     assert!(LorentzMetric::validate_with_tolerance(&lower_sheet, 0.1).is_err());
 }
+
+#[test]
+fn request_ef_search_defaults_and_clamps() {
+    assert_eq!(
+        crate::request_ef_search(None),
+        0,
+        "unset = collection default"
+    );
+    assert_eq!(
+        crate::request_ef_search(Some(0)),
+        0,
+        "0 = collection default"
+    );
+    assert_eq!(crate::request_ef_search(Some(250)), 250);
+    let max = crate::max_request_ef_search();
+    assert!(max >= 1024);
+    assert_eq!(crate::request_ef_search(Some(usize::MAX)), max, "DoS guard");
+}
+
+// Exact sentinel / zero comparisons are intended in these kernel tests.
+#[allow(clippy::float_cmp)]
+mod bit_plane_lut {
+    use crate::vector::{BinaryHyperVector, BitPlaneLut, HyperVector, TernaryHyperVector};
+    use proptest::prelude::*;
+
+    fn vec_strategy() -> impl Strategy<Value = (Vec<f64>, Vec<f64>)> {
+        // Odd dimensions exercise the partial nibble / byte tails.
+        (1usize..300).prop_flat_map(|d| {
+            (
+                proptest::collection::vec(-2.0f64..2.0, d),
+                proptest::collection::vec(-2.0f64..2.0, d),
+            )
+        })
+    }
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() <= 1e-4 * (1.0 + a.abs().max(b.abs()))
+    }
+
+    proptest! {
+        #[test]
+        fn binary_lut_matches_reference((v, q) in vec_strategy()) {
+            let code = BinaryHyperVector::from_float(&HyperVector::new_unchecked(v)).as_bytes();
+            let query = HyperVector::new_unchecked(q.clone());
+            let lut = BitPlaneLut::new(&q);
+            let reference = BinaryHyperVector::adc_distance_bytes(&code, &query);
+            let fast = BinaryHyperVector::adc_distance_lut(&code, &lut);
+            prop_assert!(close(reference, fast), "{reference} vs {fast}");
+        }
+
+        #[test]
+        fn ternary_lut_matches_reference((v, q) in vec_strategy()) {
+            let d = v.len();
+            let code = TernaryHyperVector::from_float(&HyperVector::new_unchecked(v), 0).as_bytes();
+            let query = HyperVector::new_unchecked(q.clone());
+            let lut = BitPlaneLut::new(&q);
+            let l2_ref = TernaryHyperVector::distance_bytes_l2_sq(&code, &query, d, 0);
+            let l2 = TernaryHyperVector::distance_l2_sq_lut(&code, &lut, d);
+            prop_assert!(close(l2_ref, l2), "l2 {l2_ref} vs {l2}");
+            let cos_ref = TernaryHyperVector::distance_bytes_cosine(&code, &query, d, 0);
+            let cos = TernaryHyperVector::distance_cosine_lut(&code, &lut, d);
+            prop_assert!(close(cos_ref, cos), "cos {cos_ref} vs {cos}");
+        }
+    }
+
+    #[test]
+    fn masked_sum_is_exact_for_known_masks() {
+        let q: Vec<f64> = (1..=12).map(f64::from).collect(); // 12 dims, odd nibble count
+        let lut = BitPlaneLut::new(&q);
+        assert!((lut.masked_sum(&[0xFF, 0x0F]) - 78.0).abs() < 1e-6);
+        assert!((lut.masked_sum(&[0b0000_0101, 0]) - 4.0).abs() < 1e-6);
+        assert!((lut.masked_sum(&[0, 0b1000]) - 12.0).abs() < 1e-6);
+        assert_eq!(lut.masked_sum(&[]), 0.0);
+        assert!((lut.q_sum - 78.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn truncated_codes_do_not_panic() {
+        let lut = BitPlaneLut::new(&[1.0; 64]);
+        assert_eq!(BinaryHyperVector::adc_distance_lut(&[1, 2], &lut), f64::MAX);
+        assert_eq!(
+            TernaryHyperVector::distance_l2_sq_lut(&[0; 5], &lut, 64),
+            f64::MAX
+        );
+        assert_eq!(
+            TernaryHyperVector::distance_cosine_lut(&[0; 5], &lut, 64),
+            2.0
+        );
+        // Code longer than the query: extra bits map to zero weight.
+        let _ = lut.masked_sum(&[0xFF; 64]);
+    }
+}
+
+/// Kernel micro-benchmark (`cargo test -p hyperspace-core --release -- --ignored --nocapture
+/// bit_lut_kernel_speed`): per-bit reference vs nibble table, 1024 dims.
+#[test]
+#[ignore = "timing benchmark"]
+fn bit_lut_kernel_speed() {
+    use crate::vector::{BinaryHyperVector, BitPlaneLut, HyperVector, TernaryHyperVector};
+    use std::hint::black_box;
+    use std::time::Instant;
+    let dim = 1024;
+    let mk = |s: u64| -> Vec<f64> {
+        (0..dim as u64)
+            .map(|i| (((s * 7919 + i * 104_729) % 2001) as f64 / 1000.0) - 1.0)
+            .collect()
+    };
+    let codes_b: Vec<Vec<u8>> = (0..256)
+        .map(|s| BinaryHyperVector::from_float(&HyperVector::new_unchecked(mk(s))).as_bytes())
+        .collect();
+    let codes_t: Vec<Vec<u8>> = (0..256)
+        .map(|s| TernaryHyperVector::from_float(&HyperVector::new_unchecked(mk(s)), 0).as_bytes())
+        .collect();
+    let q = HyperVector::new_unchecked(mk(999));
+    let lut = BitPlaneLut::new(&q.coords);
+    let iters = 400_000usize;
+    let time = |f: &dyn Fn(usize) -> f64| {
+        let t = Instant::now();
+        let mut acc = 0.0;
+        for i in 0..iters {
+            acc += f(i);
+        }
+        black_box(acc);
+        t.elapsed().as_nanos() as f64 / iters as f64
+    };
+    let b_ref = time(&|i| BinaryHyperVector::adc_distance_bytes(&codes_b[i & 255], &q));
+    let b_lut = time(&|i| BinaryHyperVector::adc_distance_lut(&codes_b[i & 255], &lut));
+    let t_ref = time(&|i| TernaryHyperVector::distance_bytes_l2_sq(&codes_t[i & 255], &q, dim, 0));
+    let t_lut = time(&|i| TernaryHyperVector::distance_l2_sq_lut(&codes_t[i & 255], &lut, dim));
+    let c_ref = time(&|i| TernaryHyperVector::distance_bytes_cosine(&codes_t[i & 255], &q, dim, 0));
+    let c_lut = time(&|i| TernaryHyperVector::distance_cosine_lut(&codes_t[i & 255], &lut, dim));
+    println!(
+        "extreme ADC     : {b_ref:7.1} ns -> {b_lut:6.1} ns  (x{:.1})",
+        b_ref / b_lut
+    );
+    println!(
+        "ternary L2      : {t_ref:7.1} ns -> {t_lut:6.1} ns  (x{:.1})",
+        t_ref / t_lut
+    );
+    println!(
+        "ternary cosine  : {c_ref:7.1} ns -> {c_lut:6.1} ns  (x{:.1})",
+        c_ref / c_lut
+    );
+}
+
+#[allow(clippy::float_cmp)]
+mod scalar_i4_f32_kernel {
+    use crate::hybrid::ScalarI4Vector;
+    use crate::vector::HyperVector;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn matches_reference(d in 1usize..200, seed in 0u64..1000) {
+            let gen = |s: u64| -> Vec<f64> {
+                (0..d as u64).map(|i| (((s * 7919 + i * 104_729) % 2001) as f64 / 1000.0) - 1.0).collect()
+            };
+            let v = gen(seed);
+            let q = gen(seed + 1);
+            let code = ScalarI4Vector::from_float(&HyperVector::new_unchecked(v), 0).as_bytes();
+            let reference = ScalarI4Vector::distance_bytes_l2_sq_mrl(&code, &HyperVector::new_unchecked(q.clone()), d, 0);
+            let qn: f64 = q.iter().map(|&x| f64::from(x as f32).powi(2)).sum();
+            let (xe, xo) = ScalarI4Vector::deinterleave_query(&q, d);
+            let fast = ScalarI4Vector::distance_l2_sq_deinterleaved(&code, &xe, &xo, qn, d);
+            prop_assert!((reference - fast).abs() <= 1e-3 * (1.0 + reference), "{reference} vs {fast}");
+        }
+    }
+
+    #[test]
+    fn malformed_codes_are_rejected_without_panicking() {
+        let (xe, xo) = ScalarI4Vector::deinterleave_query(&[0.5; 32], 32);
+        assert_eq!(
+            ScalarI4Vector::distance_l2_sq_deinterleaved(&[1, 2], &xe, &xo, 8.0, 32),
+            f64::MAX
+        );
+        let mut code = 2u32.to_le_bytes().to_vec();
+        code.extend_from_slice(&[0; 8]); // scales + packed bytes missing
+        assert_eq!(
+            ScalarI4Vector::distance_l2_sq_deinterleaved(&code, &xe, &xo, 8.0, 32),
+            f64::MAX
+        );
+        // Query shorter than the code's blocks.
+        assert_eq!(
+            ScalarI4Vector::distance_l2_sq_deinterleaved(&code, &xe[..4], &xo, 8.0, 32),
+            f64::MAX
+        );
+    }
+}
+
+#[test]
+#[ignore = "timing benchmark"]
+fn scalar_i4_kernel_speed() {
+    use crate::hybrid::ScalarI4Vector;
+    use crate::vector::HyperVector;
+    use std::hint::black_box;
+    use std::time::Instant;
+    let dim = 1024;
+    let mk = |s: u64| -> Vec<f64> {
+        (0..dim as u64)
+            .map(|i| (((s * 7919 + i * 104_729) % 2001) as f64 / 1000.0) - 1.0)
+            .collect()
+    };
+    let codes: Vec<Vec<u8>> = (0..256)
+        .map(|s| ScalarI4Vector::from_float(&HyperVector::new_unchecked(mk(s)), 0).as_bytes())
+        .collect();
+    let q = HyperVector::new_unchecked(mk(999));
+    let qn: f64 = q.coords.iter().map(|&x| x * x).sum();
+    let iters = 400_000usize;
+    let time = |f: &dyn Fn(usize) -> f64| {
+        let t = Instant::now();
+        let mut acc = 0.0;
+        for i in 0..iters {
+            acc += f(i);
+        }
+        black_box(acc);
+        t.elapsed().as_nanos() as f64 / iters as f64
+    };
+    let r = time(&|i| ScalarI4Vector::distance_bytes_l2_sq_mrl(&codes[i & 255], &q, dim, 0));
+    let (xe, xo) = ScalarI4Vector::deinterleave_query(&q.coords, dim);
+    let g =
+        time(&|i| ScalarI4Vector::distance_l2_sq_deinterleaved(&codes[i & 255], &xe, &xo, qn, dim));
+    println!(
+        "medium_plus L2  : {r:7.1} ns -> {g:6.1} ns  (x{:.1})",
+        r / g
+    );
+}
+
+#[cfg(target_arch = "aarch64")]
+#[test]
+fn scalar_i4_neon_matches_scalar_block_sums() {
+    use crate::hybrid::ScalarI4Vector;
+    use crate::vector::HyperVector;
+    for d in [16usize, 17, 100, 1024] {
+        let v: Vec<f64> = (0..d)
+            .map(|i| ((i * 37 % 101) as f64 / 50.0) - 1.0)
+            .collect();
+        let q: Vec<f64> = (0..d)
+            .map(|i| ((i * 53 % 97) as f64 / 48.0) - 1.0)
+            .collect();
+        let code = ScalarI4Vector::from_float(&HyperVector::new_unchecked(v), 0).as_bytes();
+        let (xe, xo) = ScalarI4Vector::deinterleave_query(&q, d);
+        let qn: f64 = q.iter().map(|&x| f64::from(x as f32).powi(2)).sum();
+        let fast = ScalarI4Vector::distance_l2_sq_deinterleaved(&code, &xe, &xo, qn, d);
+        let reference =
+            ScalarI4Vector::distance_bytes_l2_sq_mrl(&code, &HyperVector::new_unchecked(q), d, 0);
+        assert!(
+            (fast - reference).abs() <= 1e-3 * (1.0 + reference),
+            "d={d}: {fast} vs {reference}"
+        );
+
+        // NEON and portable block sums agree.
+        let blocks = d.div_ceil(16);
+        let sc = u32::from_le_bytes(code[..4].try_into().unwrap()) as usize;
+        let scales = &code[4..4 + sc * 4];
+        let packed = &code[4 + sc * 4..];
+        let (c1, s1) = crate::hybrid::i4_block_sums_scalar(scales, &packed[..blocks * 8], &xe, &xo);
+        // SAFETY: slice lengths cover `blocks` by construction.
+        let (c2, s2) =
+            unsafe { crate::hybrid::i4_block_sums_neon(scales, packed, &xe, &xo, blocks) };
+        assert!((c1 - c2).abs() <= 1e-3 * (1.0 + c1.abs()));
+        assert!((s1 - s2).abs() <= 1e-3 * (1.0 + s1));
+    }
+}

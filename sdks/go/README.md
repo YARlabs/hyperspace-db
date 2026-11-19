@@ -98,13 +98,20 @@ Pass one of these values as `quantization` when creating a collection:
 | `pq4` | **PQ4 fast-scan** 4-bit PQ, L1-resident LUT (new in 4.2.5) | 128 | l2, cosine | ✔ |
 | `opq` / `pq` | 8-bit product quantization | 64 | l2, cosine | ✔ |
 
-Trained modes (`rabitq`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from real data: after the initial bulk ingest, call **rebuild index** once (it re-encodes the collection with the trained quantizer). `rabitq` / `pq4` requested on other metrics fall back to `medium`.
+Trained modes (`rabitq`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from real data. Since server 4.2.5 each shard calibrates them online once it holds 1,024 vectors (`HS_AUTO_CALIBRATE_MIN`; 4,096 for `pq` / `opq`) and re-encodes stored codes in place; **rebuild index** after a large initial ingest additionally rebuilds the graph on the trained codes (best recall). `rabitq` / `pq4` requested on other metrics fall back to `medium`.
 
 **Compact wire vectors.** Since server 4.2.5 requests may carry vectors as `repeated float` (`vector_f32`) instead of `repeated double` — half the bytes on the wire and half the decode cost (the server stores f32 anyway). It is opt-in because older servers ignore the new field:
 
 ```go
 client, _ := hyperspace.NewClient("localhost:50051", apiKey)
 client.SetCompactVectors(true) // send vector_f32 (server >= 4.2.5)
+```
+
+**Per-request `ef_search` (server ≥ 4.2.5).** Searches use the collection's beam width (`ef_search`, default 100) unless a request sets its own; larger values raise recall at the cost of latency (capped by `HS_MAX_EF_SEARCH`, 4096):
+
+```go
+hits, err := client.Search(ctx, query, 10, "docs", &hyperspace.SearchParams{EfSearch: 256})
+multi, err := client.SearchMultiCollection(ctx, []string{"a", "b"}, query, 10, hyperspace.WithEfSearch(128))
 ```
 
 ## Matryoshka Representation Learning (MRL) & Cascading

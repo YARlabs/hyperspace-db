@@ -101,6 +101,8 @@ pub struct SearchOptions {
     pub bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
     /// Whether to include sidecar stored payloads in search results.
     pub include_payload: Option<bool>,
+    /// Per-request HNSW beam width (server >= 4.2.5); `None` = collection default.
+    pub ef_search: Option<u32>,
 }
 
 impl SearchOptions {
@@ -156,6 +158,13 @@ impl SearchOptions {
 
     pub fn bm25_options(mut self, opts: hyperspace_proto::hyperspace::Bm25Options) -> Self {
         self.bm25_options = Some(opts);
+        self
+    }
+
+    /// Per-request HNSW beam width (server >= 4.2.5). Larger = higher recall, slower.
+    #[must_use]
+    pub fn ef_search(mut self, ef: u32) -> Self {
+        self.ef_search = Some(ef);
         self
     }
 
@@ -915,6 +924,7 @@ impl Client {
             include_payload: final_include_payload,
             component_weights: options.component_weights,
             use_wave: options.use_wave,
+            ef_search: options.ef_search,
         }
         .compact(self.compact_vectors);
         let resp = self.inner.search(req).await?;
@@ -1019,7 +1029,24 @@ impl Client {
         collection: Option<String>,
         bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
+        self.search_text_with_ef(text, top_k, collection, bm25_options, None)
+            .await
+    }
+
+    /// [`Self::search_text`] with a per-request HNSW beam width (server >= 4.2.5).
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_text_with_ef(
+        &mut self,
+        text: String,
+        top_k: u32,
+        collection: Option<String>,
+        bm25_options: Option<hyperspace_proto::hyperspace::Bm25Options>,
+        ef_search: Option<u32>,
+    ) -> Result<Vec<SearchResult>, tonic::Status> {
         let req = SearchTextRequest {
+            ef_search,
             text,
             top_k,
             collection: collection.unwrap_or_default(),
@@ -1045,6 +1072,7 @@ impl Client {
         collection: Option<String>,
     ) -> Result<Vec<SearchResult>, tonic::Status> {
         let req = SearchRequest {
+            ef_search: None,
             vector_f32: Vec::new(),
             vector,
             top_k,
@@ -1158,6 +1186,7 @@ impl Client {
                     include_payload: final_include_payload,
                     component_weights: options.component_weights.clone(),
                     use_wave: options.use_wave,
+                    ef_search: options.ef_search,
                 }
                 .compact(self.compact_vectors)
             })
@@ -1299,10 +1328,26 @@ impl Client {
         collections: Vec<String>,
         top_k: u32,
     ) -> Result<std::collections::HashMap<String, Vec<SearchResult>>, tonic::Status> {
+        self.search_multi_collection_with_ef(vector, collections, top_k, None)
+            .await
+    }
+
+    /// [`Self::search_multi_collection`] with a per-request HNSW beam width.
+    ///
+    /// # Errors
+    /// Returns error if search fails.
+    pub async fn search_multi_collection_with_ef(
+        &mut self,
+        vector: Vec<f64>,
+        collections: Vec<String>,
+        top_k: u32,
+        ef_search: Option<u32>,
+    ) -> Result<std::collections::HashMap<String, Vec<SearchResult>>, tonic::Status> {
         let searches = collections
             .iter()
             .map(|col_name| {
                 SearchRequest {
+                    ef_search,
                     vector_f32: Vec::new(),
                     vector: vector.clone(),
                     top_k,
@@ -2610,5 +2655,18 @@ mod tests {
         assert!(!res.is_hallucination);
         assert!(res.is_valid);
         assert_eq!(res.resolved_context_ids, vec![42, 101]);
+    }
+}
+
+#[cfg(test)]
+mod request_option_tests {
+    use super::SearchOptions;
+
+    #[test]
+    fn search_options_carry_ef_search() {
+        assert_eq!(SearchOptions::new().ef_search, None);
+        let o = SearchOptions::new().collection("c").ef_search(256);
+        assert_eq!(o.ef_search, Some(256));
+        assert_eq!(o.collection.as_deref(), Some("c"));
     }
 }

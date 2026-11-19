@@ -20,3 +20,10 @@ add_library(hyperspace_sdk
     proto/hyperspace.grpc.pb.cc
 )
 target_link_libraries(hyperspace_sdk PUBLIC gRPC::grpc++ protobuf::libprotobuf OpenSSL::Crypto)
+
+# Integration test (needs a running server; see tests/integration_test.cpp).
+option(HYPERSPACE_BUILD_TESTS "Build the C++ SDK integration test" ON)
+if(HYPERSPACE_BUILD_TESTS)
+    add_executable(hyperspace_sdk_integration_test tests/integration_test.cpp)
+    target_link_libraries(hyperspace_sdk_integration_test PRIVATE hyperspace_sdk)
+endif()

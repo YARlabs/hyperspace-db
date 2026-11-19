@@ -26,33 +26,49 @@ class Filter {
   Filter(this._proto);
 
   static Filter match(String key, String value) {
-    final f = pb.Filter()..match = (Match()..key = key..value = value);
+    final f = pb.Filter()
+      ..match = (Match()
+        ..key = key
+        ..value = value);
     return Filter(f);
   }
 
   static Filter range(String key, {num? gte, num? lte}) {
     final r = Range()..key = key;
     if (gte != null) {
-      if (gte is int) r.gte = Int64(gte); else r.gteF64 = gte.toDouble();
+      if (gte is int)
+        r.gte = Int64(gte);
+      else
+        r.gteF64 = gte.toDouble();
     }
     if (lte != null) {
-      if (lte is int) r.lte = Int64(lte); else r.lteF64 = lte.toDouble();
+      if (lte is int)
+        r.lte = Int64(lte);
+      else
+        r.lteF64 = lte.toDouble();
     }
     return Filter(pb.Filter()..range = r);
   }
 
   static Filter inCone(List<double> axes, List<double> apertures, double cen) {
-    final c = InCone()..axes.addAll(axes)..apertures.addAll(apertures)..cen = cen;
+    final c = InCone()
+      ..axes.addAll(axes)
+      ..apertures.addAll(apertures)
+      ..cen = cen;
     return Filter(pb.Filter()..inCone = c);
   }
 
   static Filter inBall(List<double> center, double radius) {
-    final b = InBall()..center.addAll(center)..radius = radius;
+    final b = InBall()
+      ..center.addAll(center)
+      ..radius = radius;
     return Filter(pb.Filter()..inBall = b);
   }
 
   static Filter inBox(List<double> minBounds, List<double> maxBounds) {
-    final b = InBox()..minBounds.addAll(minBounds)..maxBounds.addAll(maxBounds);
+    final b = InBox()
+      ..minBounds.addAll(minBounds)
+      ..maxBounds.addAll(maxBounds);
     return Filter(pb.Filter()..inBox = b);
   }
 
@@ -95,11 +111,13 @@ class HyperspaceClient {
   final _collectionNoiseSigmas = <String, double>{};
   final _collectionSchemas = <String, pb.CollectionSchema>{};
 
-  HyperspaceClient(String address, int port, {this.apiKey = '', this.tenantId, this.compactVectors = false})
+  HyperspaceClient(String address, int port,
+      {this.apiKey = '', this.tenantId, this.compactVectors = false})
       : _channel = ClientChannel(
           address,
           port: port,
-          options: const ChannelOptions(credentials: ChannelCredentials.insecure()),
+          options:
+              const ChannelOptions(credentials: ChannelCredentials.insecure()),
         ) {
     _stub = DatabaseClient(_channel, options: _callOptions());
   }
@@ -134,10 +152,15 @@ class HyperspaceClient {
 
   /// Creates a collection with optional client-side encryption and quantization level.
   /// Supported [quantization] levels: `'ternary'` (BitNet 1.58-bit {-1, 0, +1}), `'turbo'`, `'extreme'`, `'medium_plus'`, `'medium'`, `'none'`.
-  Future<bool> createCollection(String name, pb.CollectionSchema schema, {String encryptionKey = '', double noiseSigma = 0.02, String? quantization}) async {
-    final metric = schema.components.isNotEmpty ? schema.components[0].metric : "l2";
+  Future<bool> createCollection(String name, pb.CollectionSchema schema,
+      {String encryptionKey = '',
+      double noiseSigma = 0.02,
+      String? quantization}) async {
+    final metric =
+        schema.components.isNotEmpty ? schema.components[0].metric : "l2";
     if (encryptionKey.isNotEmpty) {
-      registerCollectionKey(name, encryptionKey, metric: metric, noiseSigma: noiseSigma, schema: schema);
+      registerCollectionKey(name, encryptionKey,
+          metric: metric, noiseSigma: noiseSigma, schema: schema);
       schema.encrypted = true;
     }
     final req = CreateCollectionRequest(name: name, schema: schema);
@@ -160,15 +183,17 @@ class HyperspaceClient {
     return resp.collections;
   }
 
-
-  Future<bool> insert(int id, List<double> vector, {
-    String collection = '', 
+  Future<bool> insert(
+    int id,
+    List<double> vector, {
+    String collection = '',
     Map<String, String>? metadata,
     Map<String, dynamic>? typedMetadata,
     List<int>? payload,
   }) async {
     final metric = _collectionMetrics[collection] ?? "l2";
-    final context = await _getEncryptionContext(collection, vectorDim: vector.length, metric: metric);
+    final context = await _getEncryptionContext(collection,
+        vectorDim: vector.length, metric: metric);
 
     List<double> finalVector = vector;
     Map<String, String>? finalMetadata = metadata;
@@ -179,13 +204,15 @@ class HyperspaceClient {
       // 1. Noise injection
       final sigma = _collectionNoiseSigmas[collection] ?? 0.02;
       if (sigma > 0.0) {
-        finalVector = hsMath.injectAnisotropicNoise(vector, context.hmacKey, sigma);
+        finalVector =
+            hsMath.injectAnisotropicNoise(vector, context.hmacKey, sigma);
       } else {
         finalVector = List.from(vector);
       }
 
       // 2. Vector projection
-      finalVector = _projectCollectionVector(collection, finalVector, context, metric);
+      finalVector =
+          _projectCollectionVector(collection, finalVector, context, metric);
 
       // 3. Payload Encryption
       if (payload != null && payload.isNotEmpty) {
@@ -223,7 +250,8 @@ class HyperspaceClient {
     if (finalTypedMetadata != null) {
       req.typedMetadata.addAll(finalTypedMetadata);
     } else if (typedMetadata != null) {
-      typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
+      typedMetadata
+          .forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
     }
     if (finalPayload != null) req.payload = finalPayload;
 
@@ -231,7 +259,8 @@ class HyperspaceClient {
     return resp.success;
   }
 
-  Future<bool> batchInsert(List<Map<String, dynamic>> points, {String collection = ''}) async {
+  Future<bool> batchInsert(List<Map<String, dynamic>> points,
+      {String collection = ''}) async {
     final req = BatchInsertRequest(collection: collection);
     for (var p in points) {
       final vec = p['vector'] as List<double>;
@@ -240,9 +269,11 @@ class HyperspaceClient {
         vector: compactVectors ? null : vec,
         vectorF32: compactVectors ? vec : null,
       );
-      if (p['metadata'] != null) vd.metadata.addAll(Map<String, String>.from(p['metadata']));
+      if (p['metadata'] != null)
+        vd.metadata.addAll(Map<String, String>.from(p['metadata']));
       if (p['typedMetadata'] != null) {
-        (p['typedMetadata'] as Map<String, dynamic>).forEach((k, v) => vd.typedMetadata[k] = _toProtoMetadataValue(v));
+        (p['typedMetadata'] as Map<String, dynamic>)
+            .forEach((k, v) => vd.typedMetadata[k] = _toProtoMetadataValue(v));
       }
       req.vectors.add(vd);
     }
@@ -250,15 +281,18 @@ class HyperspaceClient {
     return resp.success;
   }
 
-  Future<List<VectorData>> getPoints(List<int> ids, {String collection = ''}) async {
+  Future<List<VectorData>> getPoints(List<int> ids,
+      {String collection = ''}) async {
     final req = GetPointsRequest(collection: collection, ids: ids);
     final resp = await _stub.getPoints(req);
     return resp.points;
   }
 
-  Future<bool> updatePayload(int id, Map<String, dynamic> typedMetadata, {String collection = ''}) async {
+  Future<bool> updatePayload(int id, Map<String, dynamic> typedMetadata,
+      {String collection = ''}) async {
     final req = UpdatePayloadRequest(collection: collection, id: id);
-    typedMetadata.forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
+    typedMetadata
+        .forEach((k, v) => req.typedMetadata[k] = _toProtoMetadataValue(v));
     final resp = await _stub.updatePayload(req);
     return resp.status.isNotEmpty;
   }
@@ -288,11 +322,20 @@ class HyperspaceClient {
     return resp.vector;
   }
 
+  /// Validates a per-request HNSW beam width (server >= 4.2.5): a non-negative
+  /// integer below 2^32; 0 means the collection's configured `ef_search`.
+  static int checkEfSearch(int ef) {
+    if (ef < 0 || ef > 0xFFFFFFFF) {
+      throw RangeError.range(ef, 0, 0xFFFFFFFF, 'efSearch');
+    }
+    return ef;
+  }
+
   Future<List<SearchResult>> search(
-    List<double> vector, 
+    List<double> vector,
     int topK, {
-    String collection = '', 
-    String? hybridQuery, 
+    String collection = '',
+    String? hybridQuery,
     double? hybridAlpha,
     bool includePayload = false,
     Bm25Options? bm25Options,
@@ -303,9 +346,11 @@ class HyperspaceClient {
     Map<String, double>? componentWeights,
     bool useWave = false,
     double? restartFactor,
+    int? efSearch,
   }) async {
     final metric = _collectionMetrics[collection] ?? "l2";
-    final context = await _getEncryptionContext(collection, vectorDim: vector.length, metric: metric);
+    final context = await _getEncryptionContext(collection,
+        vectorDim: vector.length, metric: metric);
 
     List<double> finalVector = vector;
     Map<String, String>? finalFilter = filter;
@@ -316,13 +361,15 @@ class HyperspaceClient {
       // 1. Noise injection
       final sigma = _collectionNoiseSigmas[collection] ?? 0.02;
       if (sigma > 0.0) {
-        finalVector = hsMath.injectAnisotropicNoise(vector, context.hmacKey, sigma);
+        finalVector =
+            hsMath.injectAnisotropicNoise(vector, context.hmacKey, sigma);
       } else {
         finalVector = List.from(vector);
       }
 
       // 2. Vector projection
-      finalVector = _projectCollectionVector(collection, finalVector, context, metric);
+      finalVector =
+          _projectCollectionVector(collection, finalVector, context, metric);
 
       // 3. Encrypt filters
       if (filter != null) {
@@ -335,7 +382,8 @@ class HyperspaceClient {
       }
 
       if (filters != null) {
-        finalFilters = _encryptFilters(filters.map((f) => f._proto).toList(), context);
+        finalFilters =
+            _encryptFilters(filters.map((f) => f._proto).toList(), context);
       }
 
       // 4. Force payload inclusion so we can decrypt locally
@@ -365,6 +413,7 @@ class HyperspaceClient {
     }
     if (componentWeights != null) req.componentWeights.addAll(componentWeights);
     if (useWave) req.useWave = useWave;
+    if (efSearch != null) req.efSearch = checkEfSearch(efSearch);
 
     final resp = await _stub.search(req);
 
@@ -382,7 +431,10 @@ class HyperspaceClient {
     return resp.results;
   }
 
-  Future<List<List<SearchResult>>> searchBatch(List<List<double>> vectors, int topK, {String collection = ''}) async {
+  Future<List<List<SearchResult>>> searchBatch(
+      List<List<double>> vectors, int topK,
+      {String collection = '', int? efSearch}) async {
+    final ef = efSearch == null ? null : checkEfSearch(efSearch);
     final req = BatchSearchRequest();
     for (var v in vectors) {
       req.searches.add(SearchRequest(
@@ -390,6 +442,7 @@ class HyperspaceClient {
         vectorF32: compactVectors ? v : null,
         topK: topK,
         collection: collection,
+        efSearch: ef,
       ));
     }
     final resp = await _stub.searchBatch(req);
@@ -397,19 +450,21 @@ class HyperspaceClient {
   }
 
   Future<List<SearchResult>> searchText(
-    String text, 
+    String text,
     int topK, {
-    String collection = '', 
+    String collection = '',
     double? hybridAlpha,
     Bm25Options? bm25Options,
     Map<String, String>? filter,
     List<Filter>? filters,
     bool includePayload = false,
+    int? efSearch,
   }) async {
     final req = SearchTextRequest(
       text: text,
       topK: topK,
       collection: collection,
+      efSearch: efSearch == null ? null : checkEfSearch(efSearch),
     );
     if (includePayload) req.includePayload = includePayload;
     if (hybridAlpha != null) req.hybridAlpha = hybridAlpha;
@@ -422,7 +477,9 @@ class HyperspaceClient {
   }
 
   // Delta Sync API
-  Future<SyncHandshakeResponse> syncHandshake(String collection, List<Int64> clientBuckets, {Int64? clientLogicalClock, Int64? clientCount}) async {
+  Future<SyncHandshakeResponse> syncHandshake(
+      String collection, List<Int64> clientBuckets,
+      {Int64? clientLogicalClock, Int64? clientCount}) async {
     final req = SyncHandshakeRequest(
       collection: collection,
       clientBuckets: clientBuckets,
@@ -458,7 +515,8 @@ class HyperspaceClient {
     }
   }
 
-  Future<bool> updateCollection(String name, {int? efSearch, int? efConstruction, int? m}) async {
+  Future<bool> updateCollection(String name,
+      {int? efSearch, int? efConstruction, int? m}) async {
     final req = ConfigUpdate(collection: name);
     if (efSearch != null) req.efSearch = efSearch;
     if (efConstruction != null) req.efConstruction = efConstruction;
@@ -467,8 +525,10 @@ class HyperspaceClient {
     return resp.status.contains('success') || resp.status.contains('updated');
   }
 
-  Future<ScrollResponse> scroll(String collection, {int limit = 100, int offset = 0, List<Filter>? filters}) async {
-    final req = ScrollRequest(collection: collection, limit: limit, offset: offset);
+  Future<ScrollResponse> scroll(String collection,
+      {int limit = 100, int offset = 0, List<Filter>? filters}) async {
+    final req =
+        ScrollRequest(collection: collection, limit: limit, offset: offset);
     if (filters != null) req.filters.addAll(filters.map((f) => f._proto));
     return _stub.scroll(req);
   }
@@ -503,12 +563,15 @@ class HyperspaceClient {
     return _stub.monitor(MonitorRequest());
   }
 
-  Future<SearchMultiCollectionResponse> searchMultiCollection(List<String> collections, List<double> query, {int topK = 10}) {
+  Future<SearchMultiCollectionResponse> searchMultiCollection(
+      List<String> collections, List<double> query,
+      {int topK = 10, int? efSearch}) {
     final req = SearchMultiCollectionRequest(
       collections: collections,
       vector: compactVectors ? null : query,
       vectorF32: compactVectors ? query : null,
       topK: topK,
+      efSearch: efSearch == null ? null : checkEfSearch(efSearch),
     );
     return _stub.searchMultiCollection(req);
   }
@@ -519,8 +582,15 @@ class HyperspaceClient {
     return _stub.getNode(req);
   }
 
-  Future<GetNeighborsResponse> getNeighbors(String collection, int id, int layer, {int limit = 10, int offset = 0}) {
-    final req = GetNeighborsRequest(collection: collection, id: id, layer: layer, limit: limit, offset: offset);
+  Future<GetNeighborsResponse> getNeighbors(
+      String collection, int id, int layer,
+      {int limit = 10, int offset = 0}) {
+    final req = GetNeighborsRequest(
+        collection: collection,
+        id: id,
+        layer: layer,
+        limit: limit,
+        offset: offset);
     return _stub.getNeighbors(req);
   }
 
@@ -528,11 +598,13 @@ class HyperspaceClient {
     return _stub.traverse(req);
   }
 
-  Future<FindSemanticClustersResponse> findSemanticClusters(FindSemanticClustersRequest req) {
+  Future<FindSemanticClustersResponse> findSemanticClusters(
+      FindSemanticClustersRequest req) {
     return _stub.findSemanticClusters(req);
   }
 
-  Future<GetSubsumptionTreeResponse> getSubsumptionTree(String collection, int rootId, int maxDepth) {
+  Future<GetSubsumptionTreeResponse> getSubsumptionTree(
+      String collection, int rootId, int maxDepth) {
     final req = GetSubsumptionTreeRequest(
       collection: collection,
       rootId: rootId,
@@ -617,7 +689,8 @@ class HyperspaceClient {
     return _stub.getDigest(req);
   }
 
-  Stream<EventMessage> subscribeToEvents(List<EventType> types, {String? collection}) {
+  Stream<EventMessage> subscribeToEvents(List<EventType> types,
+      {String? collection}) {
     final req = EventSubscriptionRequest(
       types: types,
       collection: collection,
@@ -625,7 +698,8 @@ class HyperspaceClient {
     return _stub.subscribeToEvents(req);
   }
 
-  Future<bool> triggerReconsolidation(String collection, List<double> target, double lr) async {
+  Future<bool> triggerReconsolidation(
+      String collection, List<double> target, double lr) async {
     final req = ReconsolidationRequest(
       collection: collection,
       targetVector: target,
@@ -647,8 +721,11 @@ class HyperspaceClient {
     return resp.status.isNotEmpty;
   }
 
-  Future<GetConceptParentsResponse> getConceptParents(String collection, int id, int layer, {int limit = 10}) {
-    final req = GetConceptParentsRequest(collection: collection, id: id, layer: layer, limit: limit);
+  Future<GetConceptParentsResponse> getConceptParents(
+      String collection, int id, int layer,
+      {int limit = 10}) {
+    final req = GetConceptParentsRequest(
+        collection: collection, id: id, layer: layer, limit: limit);
     return _stub.getConceptParents(req);
   }
 
@@ -657,11 +734,13 @@ class HyperspaceClient {
     return _stub.replicate(req);
   }
 
-
   /// Calculates Gromov Delta-hyperbolicity of a dataset.
   /// Used for geometric analytics.
-  static Map<String, dynamic> analyzeDeltaHyperbolicity(List<List<double>> vectors, {int numSamples = 1000}) {
-    if (vectors.length < 4) return {'delta': 0.0, 'recommendation': 'euclidean'};
+  static Map<String, dynamic> analyzeDeltaHyperbolicity(
+      List<List<double>> vectors,
+      {int numSamples = 1000}) {
+    if (vectors.length < 4)
+      return {'delta': 0.0, 'recommendation': 'euclidean'};
 
     double l2Dist(List<double> a, List<double> b) {
       double sum = 0;
@@ -678,7 +757,7 @@ class HyperspaceClient {
       final idxs = <int>{};
       while (idxs.length < 4) idxs.add(rand.nextInt(vectors.length));
       final p = idxs.toList();
-      
+
       final d_ij = l2Dist(vectors[p[0]], vectors[p[1]]);
       final d_kl = l2Dist(vectors[p[2]], vectors[p[3]]);
       final d_ik = l2Dist(vectors[p[0]], vectors[p[2]]);
@@ -695,11 +774,15 @@ class HyperspaceClient {
       if (delta > maxDelta) maxDelta = delta;
     }
 
-    final String recommendation = maxDelta < 0.15 ? 'lorentz' : (maxDelta < 0.30 ? 'poincare' : 'l2');
+    final String recommendation =
+        maxDelta < 0.15 ? 'lorentz' : (maxDelta < 0.30 ? 'poincare' : 'l2');
     return {'delta': maxDelta, 'recommendation': recommendation};
   }
 
-  void registerCollectionKey(String collectionName, String key, {String metric = "l2", double noiseSigma = 0.02, pb.CollectionSchema? schema}) {
+  void registerCollectionKey(String collectionName, String key,
+      {String metric = "l2",
+      double noiseSigma = 0.02,
+      pb.CollectionSchema? schema}) {
     _collectionKeys[collectionName] = key;
     _collectionMetrics[collectionName] = metric;
     _collectionNoiseSigmas[collectionName] = noiseSigma;
@@ -709,9 +792,11 @@ class HyperspaceClient {
     _encryptionContexts.remove(collectionName);
   }
 
-  List<int> pbkdf2Derive(List<int> passwordBytes, List<int> salt, int iterations, int keyLength) {
+  List<int> pbkdf2Derive(
+      List<int> passwordBytes, List<int> salt, int iterations, int keyLength) {
     final kdf = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA256Digest(), 64));
-    kdf.init(pc.Pbkdf2Parameters(Uint8List.fromList(salt), iterations, keyLength));
+    kdf.init(
+        pc.Pbkdf2Parameters(Uint8List.fromList(salt), iterations, keyLength));
     return kdf.process(Uint8List.fromList(passwordBytes));
   }
 
@@ -733,7 +818,10 @@ class HyperspaceClient {
     for (int i = 0; i < 12; i++) iv[i] = rng.nextInt(256);
 
     final cipher = pc.GCMBlockCipher(pc.AESEngine());
-    cipher.init(true, pc.AEADParameters(pc.KeyParameter(Uint8List.fromList(derivedKey)), 128, iv, Uint8List(0)));
+    cipher.init(
+        true,
+        pc.AEADParameters(pc.KeyParameter(Uint8List.fromList(derivedKey)), 128,
+            iv, Uint8List(0)));
 
     final ciphertextAndTag = cipher.process(Uint8List.fromList(plaintext));
 
@@ -755,7 +843,10 @@ class HyperspaceClient {
     final derivedKey = pbkdf2Derive(aesKey, pbkdf2Salt, 100000, 32);
 
     final cipher = pc.GCMBlockCipher(pc.AESEngine());
-    cipher.init(false, pc.AEADParameters(pc.KeyParameter(Uint8List.fromList(derivedKey)), 128, Uint8List.fromList(iv), Uint8List(0)));
+    cipher.init(
+        false,
+        pc.AEADParameters(pc.KeyParameter(Uint8List.fromList(derivedKey)), 128,
+            Uint8List.fromList(iv), Uint8List(0)));
 
     return cipher.process(Uint8List.fromList(ciphertextAndTag));
   }
@@ -772,7 +863,8 @@ class HyperspaceClient {
     return "val_" + hash;
   }
 
-  Future<EncryptionContext?> _getEncryptionContext(String collection, {int? vectorDim, String metric = "l2"}) async {
+  Future<EncryptionContext?> _getEncryptionContext(String collection,
+      {int? vectorDim, String metric = "l2"}) async {
     if (collection.isEmpty) return null;
     final key = _collectionKeys[collection];
     if (key == null) return null;
@@ -788,7 +880,8 @@ class HyperspaceClient {
 
     if (!_encryptionContexts.containsKey(collection)) {
       final keys = deriveKeys(key, collection);
-      _encryptionContexts[collection] = EncryptionContext(keys['aesKey']!, keys['hmacKey']!);
+      _encryptionContexts[collection] =
+          EncryptionContext(keys['aesKey']!, keys['hmacKey']!);
     }
 
     final context = _encryptionContexts[collection]!;
@@ -796,12 +889,16 @@ class HyperspaceClient {
     if (vectorDim != null) {
       final cacheKey = vectorDim.toString();
       if (!context.projectionMatrices.containsKey(cacheKey)) {
-        final isLorentz = ["lorentz", "poincare"].contains(metric.toLowerCase());
-        final matrixDim = metric.toLowerCase() == "poincare" ? vectorDim + 1 : vectorDim;
+        final isLorentz =
+            ["lorentz", "poincare"].contains(metric.toLowerCase());
+        final matrixDim =
+            metric.toLowerCase() == "poincare" ? vectorDim + 1 : vectorDim;
         if (isLorentz) {
-          context.projectionMatrices[cacheKey] = hsMath.generateLorentzMatrix(matrixDim, context.hmacKey);
+          context.projectionMatrices[cacheKey] =
+              hsMath.generateLorentzMatrix(matrixDim, context.hmacKey);
         } else {
-          context.projectionMatrices[cacheKey] = hsMath.generateOrthogonalMatrix(matrixDim, context.hmacKey);
+          context.projectionMatrices[cacheKey] =
+              hsMath.generateOrthogonalMatrix(matrixDim, context.hmacKey);
         }
       }
     }
@@ -809,7 +906,9 @@ class HyperspaceClient {
     return context;
   }
 
-  List<double> _projectSingleBlock(List<double> subVec, String metric, EncryptionContext context, {String? blockId}) {
+  List<double> _projectSingleBlock(
+      List<double> subVec, String metric, EncryptionContext context,
+      {String? blockId}) {
     final dim = subVec.length;
     if (dim == 0) return [];
 
@@ -825,9 +924,11 @@ class HyperspaceClient {
       }
 
       if (isLorentz) {
-        context.projectionMatrices[cacheKey] = hsMath.generateLorentzMatrix(matrixDim, seed);
+        context.projectionMatrices[cacheKey] =
+            hsMath.generateLorentzMatrix(matrixDim, seed);
       } else {
-        context.projectionMatrices[cacheKey] = hsMath.generateOrthogonalMatrix(matrixDim, seed);
+        context.projectionMatrices[cacheKey] =
+            hsMath.generateOrthogonalMatrix(matrixDim, seed);
       }
     }
 
@@ -842,7 +943,8 @@ class HyperspaceClient {
     }
   }
 
-  List<double> _projectCollectionVector(String collection, List<double> vector, EncryptionContext context, String metric) {
+  List<double> _projectCollectionVector(String collection, List<double> vector,
+      EncryptionContext context, String metric) {
     final schema = _collectionSchemas[collection];
     if (schema == null || schema.components.isEmpty) {
       return _projectSingleBlock(vector, metric, context);
@@ -878,7 +980,10 @@ class HyperspaceClient {
       if (end > vector.length) end = vector.length;
       var subVec = vector.sublist(currentOffset, end);
       if (subVec.length < compDim) {
-        subVec = [...subVec, ...List<double>.filled(compDim - subVec.length, 0.0)];
+        subVec = [
+          ...subVec,
+          ...List<double>.filled(compDim - subVec.length, 0.0)
+        ];
       }
 
       final cutoffs = componentCutoffs[compName] ?? [];
@@ -892,13 +997,15 @@ class HyperspaceClient {
         var blockStart = 0;
         for (var cutoff in validCutoffs) {
           final blockData = subVec.sublist(blockStart, cutoff);
-          final projBlock = _projectSingleBlock(blockData, compMetric, context, blockId: "${compName}_block_${blockStart}_$cutoff");
+          final projBlock = _projectSingleBlock(blockData, compMetric, context,
+              blockId: "${compName}_block_${blockStart}_$cutoff");
           projSub.addAll(projBlock);
           blockStart = cutoff;
         }
         if (blockStart < compDim) {
           final blockData = subVec.sublist(blockStart, compDim);
-          final projBlock = _projectSingleBlock(blockData, compMetric, context, blockId: "${compName}_block_${blockStart}_$compDim");
+          final projBlock = _projectSingleBlock(blockData, compMetric, context,
+              blockId: "${compName}_block_${blockStart}_$compDim");
           projSub.addAll(projBlock);
         }
       }
@@ -914,7 +1021,8 @@ class HyperspaceClient {
     return projectedParts;
   }
 
-  List<pb.Filter> _encryptFilters(List<pb.Filter> filters, EncryptionContext context) {
+  List<pb.Filter> _encryptFilters(
+      List<pb.Filter> filters, EncryptionContext context) {
     return filters.map((f) {
       final nf = pb.Filter();
       if (f.hasMatch()) {
@@ -926,11 +1034,14 @@ class HyperspaceClient {
           ..key = hashMetadataKey(f.prefix.key, context.hmacKey)
           ..prefix = hashMetadataValue(f.prefix.prefix, context.hmacKey);
       } else if (f.hasAndOp()) {
-        nf.andOp = pb.FilterAnd()..conditions.addAll(_encryptFilters(f.andOp.conditions, context));
+        nf.andOp = pb.FilterAnd()
+          ..conditions.addAll(_encryptFilters(f.andOp.conditions, context));
       } else if (f.hasOrOp()) {
-        nf.orOp = pb.FilterOr()..conditions.addAll(_encryptFilters(f.orOp.conditions, context));
+        nf.orOp = pb.FilterOr()
+          ..conditions.addAll(_encryptFilters(f.orOp.conditions, context));
       } else if (f.hasNotOp()) {
-        nf.notOp = pb.FilterNot()..condition = _encryptFilters([f.notOp.condition], context)[0];
+        nf.notOp = pb.FilterNot()
+          ..condition = _encryptFilters([f.notOp.condition], context)[0];
       } else {
         nf.mergeFromMessage(f);
       }
@@ -1013,4 +1124,3 @@ class VerificationResult {
     required this.resolvedContextIds,
   });
 }
-

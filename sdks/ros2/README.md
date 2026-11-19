@@ -69,6 +69,7 @@ ros2 run ros2_hyperspace_node tribunal_router_node --ros-args -p hyperspace_endp
 | `hyperspace_endpoint` | `localhost:50051` | gRPC endpoint of the HyperspaceDB server. |
 | `api_key` | `I_LOVE_HYPERSPACEDB` | API key sent with every request. |
 | `compact_vectors` | `false` | Send vectors as `repeated float` (`vector_f32`): half the wire size of `repeated double`. Requires server >= 4.2.5. |
+| `ef_search` | `0` | HNSW beam width sent with every search (higher = better recall, slower); `0` uses the collection's `ef_search`. Requires server >= 4.2.5. |
 
 ## Zero-Knowledge Client-Side Encryption (ZK-Privacy)
 
