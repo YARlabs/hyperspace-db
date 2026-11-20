@@ -2080,6 +2080,7 @@ async fn search_collection(
             include_payload: payload.include_payload.unwrap_or(false),
             component_weights: payload.weights,
             use_wave: false,
+            skip_metadata: false,
         };
         match col
             .search(

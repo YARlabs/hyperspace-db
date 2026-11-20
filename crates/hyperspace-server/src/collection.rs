@@ -71,6 +71,18 @@ fn env_cache_read_through() -> bool {
     })
 }
 
+/// Entries of the per-shard raw-vector cache (exact f32 copies used by rerank and online
+/// calibration; the payload store keeps every exact vector anyway). Budget:
+/// `HS_RAW_CACHE_MB` (default 256) per collection, split across `shards`.
+fn raw_cache_capacity(dimension: usize, shards: usize) -> usize {
+    let mb = std::env::var("HS_RAW_CACHE_MB")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(256);
+    let per_vector = dimension.max(1) * 4 + 64; // f32 data + map / Vec overhead
+    (mb * 1024 * 1024 / per_vector / shards.max(1)).max(if mb == 0 { 0 } else { 256 })
+}
+
 /// Minimum vectors a shard must hold before a trained quantizer (PQ / OPQ / PQ4 /
 /// RaBitQ) is calibrated online. `HS_AUTO_CALIBRATE_MIN=0` disables auto-calibration
 /// (calibrate explicitly with `RebuildIndex` instead).
@@ -104,15 +116,16 @@ const AUTO_CALIBRATE_GROWTH: usize = 8;
 /// time the shard grows `AUTO_CALIBRATE_GROWTH`-fold, until the sample cap is reached
 /// (re-encoding cost stays ~1.14 × N in total). Training uses exact vectors from the
 /// raw-vector cache and every stored code is re-encoded (`HnswIndex::refit_online`).
-/// Returns `true` if it (re)calibrated.
+/// Returns `(re_encoded, missing)` if it (re)calibrated.
 fn maybe_auto_calibrate<M: Metric>(
     index: &HnswIndex<M>,
     raw_cache: &DashMap<u32, Vec<f32>>,
+    payload: Option<&PayloadStore>,
     min_vectors: usize,
     name: &str,
-) -> bool {
+) -> Option<(usize, usize)> {
     if min_vectors == 0 || !index.mode.needs_training() {
-        return false;
+        return None;
     }
     let min_vectors = min_vectors.max(auto_calibrate_floor(index.mode));
     let count = index.count();
@@ -127,7 +140,7 @@ fn maybe_auto_calibrate<M: Metric>(
             && count >= last.saturating_mul(AUTO_CALIBRATE_GROWTH)
     };
     if !due {
-        return false;
+        return None;
     }
     let samples: Vec<Vec<f32>> = raw_cache
         .iter()
@@ -135,12 +148,25 @@ fn maybe_auto_calibrate<M: Metric>(
         .map(|e| e.value().clone())
         .collect();
     if samples.len() < min_vectors.min(256) {
-        return false;
+        return None;
     }
     let started = std::time::Instant::now();
     let refs: Vec<&[f32]> = samples.iter().map(Vec::as_slice).collect();
+    // Exact vectors: the bounded raw cache first, then the payload store (which keeps the
+    // exact f32 copy of every vector of a quantized collection).
+    let dim = index.dimension;
     let (re_encoded, missing) = index.refit_online(&refs, 10, |id| {
-        raw_cache.get(&id).map(|v| v.value().clone())
+        raw_cache.get(&id).map(|v| v.value().clone()).or_else(|| {
+            let bytes = payload?.fetch_blocking(id).ok()??;
+            (bytes.len() == dim * 4).then(|| {
+                bytes
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| f32::from_le_bytes(*c))
+                    .collect()
+            })
+        })
     });
     println!(
         "🎓 [{name}] Auto-calibrated {:?} quantizer on {} samples in {:?}: {re_encoded} codes re-encoded, {missing} without an exact copy",
@@ -148,7 +174,7 @@ fn maybe_auto_calibrate<M: Metric>(
         samples.len(),
         started.elapsed()
     );
-    true
+    Some((re_encoded, missing))
 }
 
 pub struct CollectionImpl<M: Metric> {
@@ -209,6 +235,9 @@ pub struct CollectionImpl<M: Metric> {
     storage_f32: bool,
     raw_vector_cache: Arc<DashMap<u32, Vec<f32>>>,
     raw_vector_cache_len: Arc<AtomicUsize>,
+    /// Max entries of `raw_vector_cache` (byte budget `HS_RAW_CACHE_MB` per collection,
+    /// split across shards).
+    raw_vector_cache_cap: usize,
     pub explicit_graph: Arc<hyperspace_core::graph::GraphEngine>,
 }
 
@@ -281,6 +310,15 @@ impl<M: Metric> CollectionImpl<M> {
     /// Normalizes vector if metric is Cosine.
     /// Returns Cow to avoid allocation if normalization is not needed.
     #[inline]
+    /// Exact re-ranking is a no-op for full-precision single-component collections (the
+    /// index already ranks by the exact metric distance).
+    fn rerank_is_redundant(&self, params: &SearchParams) -> bool {
+        self.mode == hyperspace_core::QuantizationMode::None
+            && self.layout.components.len() <= 1
+            && params.component_weights.is_none()
+            && params.mrl_dimension.is_none()
+    }
+
     fn normalize_if_cosine(vector: &[f64]) -> Cow<'_, [f64]> {
         if M::name() != "cosine" {
             return Cow::Borrowed(vector);
@@ -308,6 +346,35 @@ impl<M: Metric> CollectionImpl<M> {
         dimension: usize,
         schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::new_shard(
+            name,
+            node_id,
+            data_dir,
+            wal_path,
+            mode,
+            replication_tx,
+            dimension,
+            schema,
+            1,
+        )
+        .await
+    }
+
+    /// Like [`Self::new`] for one of `shard_share` shards of a collection: collection-wide
+    /// memory budgets (hot-tier cache capacity, raw-vector cache) are split across shards.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new_shard(
+        name: String,
+        node_id: String,
+        data_dir: std::path::PathBuf,
+        wal_path: std::path::PathBuf,
+        mode: hyperspace_core::QuantizationMode,
+        replication_tx: broadcast::Sender<ReplicationLog>,
+        dimension: usize,
+        schema: hyperspace_proto::hyperspace::CollectionSchema,
+        shard_share: usize,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let shard_share = shard_share.max(1);
         let snap_path = data_dir.join("index.snap");
         let config = Arc::new(GlobalConfig::new());
 
@@ -749,9 +816,31 @@ impl<M: Metric> CollectionImpl<M> {
             .unwrap_or(0.0)
             .max(0.0);
 
+        // ── Open Sidecar Payload Storage (v3.2) ──────────────────────────────────────
+        // Lives in the same data_dir as VectorStore. payloads.hyp is strictly disk-only;
+        // payload_index.hyp is the tiny in-RAM index (16 bytes/entry).
+        let zstd_level = std::env::var("HS_PAYLOAD_ZSTD_LEVEL")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(DEFAULT_ZSTD_LEVEL);
+        let payload_store = match PayloadStore::open(&data_dir, zstd_level) {
+            Ok(ps) => {
+                println!("📦 Payload Store: successfully opened");
+                Arc::new(ps)
+            }
+            Err(e) => {
+                eprintln!("⚠️  Payload Store: failed to open ({e}), payload writes will be no-ops");
+                // Fall back to a temp-dir store that won't persist but won't crash either.
+                let tmp = std::env::temp_dir().join(format!("hs_payload_{}", uuid::Uuid::new_v4()));
+                Arc::new(PayloadStore::open(&tmp, zstd_level).expect("fallback payload store"))
+            }
+        };
+
         let write_buffer_for_indexer = write_buffer.clone();
         let raw_vector_cache: Arc<DashMap<u32, Vec<f32>>> = Arc::new(DashMap::new());
         let raw_cache_for_indexer = Arc::clone(&raw_vector_cache);
+        let payload_for_indexer = Arc::clone(&payload_store);
+        let raw_vector_cache_cap = raw_cache_capacity(dimension, shard_share);
         let auto_calibrate_min = env_auto_calibrate_min();
         let calibrating = Arc::new(AtomicBool::new(false));
         let indexer_name = name.clone();
@@ -798,6 +887,7 @@ impl<M: Metric> CollectionImpl<M> {
                     maybe_auto_calibrate(
                         &idx,
                         &raw_cache_for_indexer,
+                        Some(&payload_for_indexer),
                         auto_calibrate_min,
                         &indexer_name,
                     );
@@ -883,6 +973,7 @@ impl<M: Metric> CollectionImpl<M> {
                         && !calibrating.swap(true, Ordering::AcqRel)
                     {
                         let raw = Arc::clone(&raw_cache_for_indexer);
+                        let payload = Arc::clone(&payload_for_indexer);
                         let flag = Arc::clone(&calibrating);
                         let name_cal = indexer_name.clone();
                         let cfg_cal = cfg_worker.clone();
@@ -890,7 +981,13 @@ impl<M: Metric> CollectionImpl<M> {
                         cfg_cal.inc_queue();
                         cfg_cal.inc_active();
                         tokio::task::spawn_blocking(move || {
-                            maybe_auto_calibrate(&idx_now, &raw, auto_calibrate_min, &name_cal);
+                            maybe_auto_calibrate(
+                                &idx_now,
+                                &raw,
+                                Some(&payload),
+                                auto_calibrate_min,
+                                &name_cal,
+                            );
                             cfg_cal.dec_active();
                             cfg_cal.dec_queue();
                             flag.store(false, Ordering::Release);
@@ -1056,33 +1153,16 @@ impl<M: Metric> CollectionImpl<M> {
             initial_root_hash ^= b.load(Ordering::Relaxed);
         }
 
-        // ── Open Sidecar Payload Storage (v3.2) ──────────────────────────────────────
-        // Lives in the same data_dir as VectorStore. payloads.hyp is strictly disk-only;
-        // payload_index.hyp is the tiny in-RAM index (16 bytes/entry).
-        let zstd_level = std::env::var("HS_PAYLOAD_ZSTD_LEVEL")
-            .ok()
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(DEFAULT_ZSTD_LEVEL);
-        let payload_store = match PayloadStore::open(&data_dir, zstd_level) {
-            Ok(ps) => {
-                println!("📦 Payload Store: successfully opened");
-                Arc::new(ps)
-            }
-            Err(e) => {
-                eprintln!("⚠️  Payload Store: failed to open ({e}), payload writes will be no-ops");
-                // Fall back to a temp-dir store that won't persist but won't crash either.
-                let tmp = std::env::temp_dir().join(format!("hs_payload_{}", uuid::Uuid::new_v4()));
-                Arc::new(PayloadStore::open(&tmp, zstd_level).expect("fallback payload store"))
-            }
-        };
-
         let cache = if std::env::var("HYPERSPACE_CACHE_ENABLED")
             .map_or(true, |v| v.to_lowercase() != "false")
         {
+            // Collection-wide capacity, split across the shards of a sharded collection.
             let l1_capacity = std::env::var("HYPERSPACE_CACHE_L1_CAPACITY")
                 .ok()
                 .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(10000);
+                .unwrap_or(10000)
+                .div_ceil(shard_share)
+                .max(1);
 
             let eviction_policy = match std::env::var("HYPERSPACE_CACHE_EVICTION_POLICY")
                 .unwrap_or_default()
@@ -1168,6 +1248,7 @@ impl<M: Metric> CollectionImpl<M> {
             chunk_backend,
             storage_f32,
             raw_vector_cache,
+            raw_vector_cache_cap,
             raw_vector_cache_len: Arc::new(AtomicUsize::new(0)),
             explicit_graph,
         };
@@ -1721,6 +1802,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
         // Move only the required fields to avoid cloning whole params struct.
         let top_k = params.top_k;
+        let skip_metadata = params.skip_metadata;
         // RECALL FIX #3: Per HNSW spec, ef_search MUST be >= top_k.
         // Respect caller's explicit ef_search when > 0; otherwise fall back to collection default.
         let ef_search = if params.ef_search > 0 {
@@ -1804,11 +1886,23 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             (req_rerank, req_oversample, clean)
         };
 
-        let rerank_enabled = request_rerank
+        let rerank_requested = request_rerank
             .unwrap_or(env_rerank_enabled || schema_rerank_top_k.is_some())
             && params.hybrid_query.is_none();
-
         let rerank_oversample = request_oversample.unwrap_or(env_rerank_oversample).max(1);
+        // Full-precision single-component collections already rank by the exact distance:
+        // re-scoring would decode every candidate to f64 and compute the same values again.
+        // Keep the oversampled beam (`top_k × oversample`) so results stay identical.
+        let rerank_redundant = rerank_requested && self.rerank_is_redundant(params);
+        let rerank_enabled = rerank_requested && !rerank_redundant;
+        let ef_search = if rerank_redundant {
+            let search_k = top_k
+                .saturating_mul(rerank_oversample)
+                .max(schema_rerank_top_k.unwrap_or(0));
+            ef_search.max(search_k)
+        } else {
+            ef_search
+        };
 
         let use_wasserstein = params.use_wasserstein;
         let meta_router_ref = self.meta_router.clone();
@@ -1845,7 +1939,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 let _permit = permit;
                 let processed_query = query_owned;
                 let index = index_link.load();
-                let include_metadata = index.has_nonempty_metadata();
+                let include_metadata = index.has_nonempty_metadata() && !skip_metadata;
                 let filters_ref = filters_owned
                     .as_ref()
                     .map_or(&*EMPTY_LEGACY_FILTERS, |f| f);
@@ -2111,7 +2205,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             let processed_query: &[f64] = &processed_query_cow;
             let _permit = permit;
             let index = index_link.load();
-            let include_metadata = index.has_nonempty_metadata();
+            let include_metadata = index.has_nonempty_metadata() && !skip_metadata;
             let filters_ref = clean_filters_cow
                 .as_deref()
                 .unwrap_or(&*EMPTY_LEGACY_FILTERS);
@@ -3093,7 +3187,7 @@ impl<M: Metric> CollectionImpl<M> {
             // One f64 -> f32 conversion feeds both the rerank cache and the payload store.
             let v_f32: Vec<f32> = processed_vector.iter().map(|&x| x as f32).collect();
             let vector_bytes: Vec<u8> = v_f32.iter().flat_map(|v| v.to_le_bytes()).collect();
-            if self.raw_vector_cache_len.load(Ordering::Relaxed) < 200_000
+            if self.raw_vector_cache_len.load(Ordering::Relaxed) < self.raw_vector_cache_cap
                 && self.raw_vector_cache.insert(internal_id, v_f32).is_none()
             {
                 self.raw_vector_cache_len.fetch_add(1, Ordering::Relaxed);
@@ -3335,7 +3429,7 @@ impl<M: Metric> CollectionImpl<M> {
 
         if self.mode != hyperspace_core::QuantizationMode::None {
             for entry in &entries {
-                if self.raw_vector_cache_len.load(Ordering::Relaxed) < 200_000 {
+                if self.raw_vector_cache_len.load(Ordering::Relaxed) < self.raw_vector_cache_cap {
                     let v_f32: Vec<f32> = entry.vector.iter().map(|&x| x as f32).collect();
                     if self
                         .raw_vector_cache
@@ -3403,10 +3497,11 @@ impl<M: Metric> CollectionImpl<M> {
 
 #[cfg(test)]
 mod auto_calibration_tests {
-    use super::{maybe_auto_calibrate, AUTO_CALIBRATE_GROWTH};
+    use super::{maybe_auto_calibrate, raw_cache_capacity, AUTO_CALIBRATE_GROWTH};
     use dashmap::DashMap;
     use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
     use hyperspace_index::HnswIndex;
+    use hyperspace_store::PayloadStore;
     use hyperspace_store::VectorStore;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -3447,15 +3542,22 @@ mod auto_calibration_tests {
     fn calibrates_at_threshold_then_refits_after_growth() {
         let (_d, index, raw) = fill(QuantizationMode::PQ4, 300);
         assert!(
-            !maybe_auto_calibrate(&index, &raw, 400, "t"),
+            maybe_auto_calibrate(&index, &raw, None, 400, "t").is_none(),
             "below threshold"
         );
-        assert!(!maybe_auto_calibrate(&index, &raw, 0, "t"), "0 disables");
-        assert!(maybe_auto_calibrate(&index, &raw, 256, "t"));
+        assert!(
+            maybe_auto_calibrate(&index, &raw, None, 0, "t").is_none(),
+            "0 disables"
+        );
+        assert_eq!(
+            maybe_auto_calibrate(&index, &raw, None, 256, "t"),
+            Some((300, 0)),
+            "every stored code re-encoded"
+        );
         assert!(!index.needs_calibration());
         assert_eq!(index.calibrated_at(), 300);
         assert!(
-            !maybe_auto_calibrate(&index, &raw, 256, "t"),
+            maybe_auto_calibrate(&index, &raw, None, 256, "t").is_none(),
             "no refit before growth"
         );
 
@@ -3467,14 +3569,14 @@ mod auto_calibration_tests {
             let id = index.insert_to_storage(&v).unwrap();
             raw.insert(id, v.iter().map(|&x| x as f32).collect());
         }
-        assert!(maybe_auto_calibrate(&index, &raw, 256, "t"));
+        assert!(maybe_auto_calibrate(&index, &raw, None, 256, "t").is_some());
         assert_eq!(index.calibrated_at(), 300 * AUTO_CALIBRATE_GROWTH);
     }
 
     #[test]
     fn pq_waits_for_enough_samples_per_centroid() {
         let (_d, index, raw) = fill(QuantizationMode::ProductQuantization, 1500);
-        assert!(!maybe_auto_calibrate(&index, &raw, 64, "t"));
+        assert!(maybe_auto_calibrate(&index, &raw, None, 64, "t").is_none());
         assert!(
             index.needs_calibration(),
             "PQ keeps the default codebook below 4096 vectors"
@@ -3491,6 +3593,51 @@ mod auto_calibration_tests {
             Arc::new(GlobalConfig::default()),
             DIM,
         );
-        assert!(!maybe_auto_calibrate(&index, &DashMap::new(), 1, "t"));
+        assert!(maybe_auto_calibrate(&index, &DashMap::new(), None, 1, "t").is_none());
+    }
+
+    #[test]
+    fn calibration_falls_back_to_the_payload_store() {
+        // Raw cache holds only the training sample; every other exact vector comes from
+        // the payload store, so all codes are still re-encoded.
+        let (_d, index, full) = fill(QuantizationMode::PQ4, 600);
+        let pdir = tempfile::tempdir().unwrap();
+        let payload = PayloadStore::open(pdir.path(), 1).unwrap();
+        for e in &full {
+            let bytes: Vec<u8> = e.value().iter().flat_map(|x| x.to_le_bytes()).collect();
+            payload.insert(*e.key(), &bytes).unwrap();
+        }
+        let partial: DashMap<u32, Vec<f32>> = DashMap::new();
+        for e in full.iter().take(300) {
+            partial.insert(*e.key(), e.value().clone());
+        }
+        assert_eq!(
+            maybe_auto_calibrate(&index, &partial, Some(&payload), 256, "t"),
+            Some((600, 0)),
+            "vectors missing from the raw cache are read from the payload store"
+        );
+        // Without the payload store the other 300 keep their old code.
+        let (_d2, index2, full2) = fill(QuantizationMode::PQ4, 600);
+        let half: DashMap<u32, Vec<f32>> = DashMap::new();
+        for e in full2.iter().take(300) {
+            half.insert(*e.key(), e.value().clone());
+        }
+        assert_eq!(
+            maybe_auto_calibrate(&index2, &half, None, 256, "t"),
+            Some((300, 300))
+        );
+    }
+
+    #[test]
+    fn raw_cache_budget_is_split_across_shards() {
+        // 256 MiB default, 1024-D vectors (4,160 B incl. overhead).
+        let one = raw_cache_capacity(1024, 1);
+        let twelve = raw_cache_capacity(1024, 12);
+        assert!((60_000..=70_000).contains(&one), "{one}");
+        assert!(twelve * 12 <= one + 12 && twelve >= 256);
+        assert!(
+            raw_cache_capacity(16, 1) > one,
+            "small vectors fit more entries"
+        );
     }
 }

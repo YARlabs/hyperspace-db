@@ -140,36 +140,35 @@ Empirical evaluation on 5,000 normalized 1024-dimensional embeddings (50 queries
 
 ---
 
-### 10. v4.2.4 → v4.2.5 Performance & Recall Audit (A/B, 2026-11-19)
+### 10. v4.2.4 → v4.2.5 Performance & Recall Audit (A/B, 2026-11-20)
 
 Same machine (Apple M4 Pro, release build, 12 shards = 1 per core), same harness (`benchmarks/run_quantization_sweep.py`): 20,000 × 1024-D clustered embeddings, cosine, 200 queries against brute-force ground truth, M = 64, ef_construction = 400, ef_search = 100. Baseline is v4.2.4 (`2fa9d9f`) with only the `flat_l0.bin` kernel-deadlock fix back-ported, because without it the baseline hangs after the first `RebuildIndex`.
 
 | Configuration | Recall@10 v4.2.4 → v4.2.5 | Search QPS v4.2.4 → v4.2.5 | Speedup | Ingest (vec/s) v4.2.4 → v4.2.5 |
 | :--- | :---: | :---: | :---: | :---: |
-| `none`, ef = 100 | 92.90% → **99.05%** | 1,145 → **808** | ×0.71 | 13,205 → **16,375** |
-| `none`, ef = 400 | 99.15% → **99.90%** | 743 → **698** | ×0.94 | 13,563 → **16,829** |
-| `medium` (8-bit) | 84.65% → **88.35%** | 1,715 → **1,552** | ×0.91 | 11,801 → **14,495** |
-| `medium` + rerank ×4 | 97.15% → **98.75%** | 1,269 → **1,145** | ×0.90 | 11,390 → **14,919** |
-| `medium_plus` (4-bit) | 83.90% → **87.00%** | 597 → **1,408** | ×2.36 | 4,211 → **9,058** |
-| `medium_plus` + rerank ×4 | 97.50% → **99.40%** | 372 → **1,080** | ×2.90 | 3,983 → **9,035** |
-| `turbo` + rerank ×4 | 99.15% → **99.95%** | 916 → **867** | ×0.95 | 5,030 → **7,683** |
-| `ternary` | 53.95% → **53.70%** | 97 → **1,344** | ×13.85 | 1,052 → **1,737** |
-| `ternary` + rerank ×4 | 99.15% → **99.75%** | 81 → **1,036** | ×12.82 | 914 → **1,646** |
-| `extreme` (1-bit) | 34.55% → **35.55%** | 811 → **1,967** | ×2.43 | 5,169 → **11,330** |
-| `extreme` + rerank ×8 | 97.45% → **99.15%** | 447 → **1,240** | ×2.77 | 5,152 → **11,204** |
-| `pq` + rerank ×8 | 82.70% → **84.80%** | 1,307 → **1,268** | ×0.97 | 6,836 → **7,284** |
-| `rabitq` + rerank ×4 *(new)* | — → **98.50%** | — → **1,666** | — | — → 5,961 |
-| `pq4` + rerank ×8 *(new)* | — → **99.65%** | — → **1,154** | — | — → 9,255 |
+| `none`, ef = 100 | 92.90% → **100.00%** | 1,145 → **1,518** | ×1.33 | 13,205 → **16,382** |
+| `medium` (8-bit) | 84.65% → **88.60%** | 1,715 → **1,791** | ×1.04 | 11,801 → **14,944** |
+| `medium` + rerank ×4 | 97.15% → **100.00%** | 1,269 → **1,419** | ×1.12 | 11,390 → **14,557** |
+| `medium_plus` (4-bit) | 83.90% → **87.15%** | 597 → **1,607** | ×2.69 | 4,211 → **8,918** |
+| `medium_plus` + rerank ×4 | 97.50% → **100.00%** | 372 → **1,299** | ×3.49 | 3,983 → **8,787** |
+| `turbo` + rerank ×4 | 99.15% → **100.00%** | 916 → **861** | ×0.94 | 5,030 → **7,414** |
+| `ternary` | 53.95% → **53.90%** | 97 → **1,337** | ×13.78 | 1,052 → **1,434** |
+| `ternary` + rerank ×4 | 99.15% → **100.00%** | 81 → **954** | ×11.81 | 914 → **1,454** |
+| `extreme` (1-bit) | 34.55% → **36.00%** | 811 → **1,982** | ×2.44 | 5,169 → **11,409** |
+| `extreme` + rerank ×4 | 89.75% → **98.80%** | 500 → **1,184** | ×2.37 | 5,291 → **11,485** |
+| `extreme` + rerank ×8 | 97.45% → **99.80%** | 447 → **1,334** | ×2.98 | 5,152 → **11,597** |
+| `pq` + rerank ×8 | 82.70% → **84.90%** | 1,307 → **1,300** | ×0.99 | 6,836 → **7,450** |
+| `rabitq` + rerank ×4 *(new)* | — → **98.55%** | — → **1,576** | — | — → 5,143 |
+| `pq4` + rerank ×8 *(new)* | — → **99.75%** | — → **1,112** | — | — → 9,300 |
 
-**Across all 32 shared configurations:** search QPS ×1.95 (geometric mean, ×0.71 – ×13.8), recall@10 +1.5 pp on average (up to +6.7 pp, never lower by more than 0.25 pp), ingest ×1.54 (median). The full matrix is in `BENCHMARK_QUANTIZATION_SWEEP.md`.
+**Across all 32 shared configurations:** search QPS ×2.16 (geometric mean), recall@10 +1.8 pp on average (up to +9.1 pp), ingest ×1.44 (median). The full matrix is in `BENCHMARK_QUANTIZATION_SWEEP.md`.
 
 **Where the gains come from:**
-* **Low-bit kernels**: `extreme` and `ternary` score candidates through a per-query nibble table (`BitPlaneLut`, 16 KB at 1024-D) and hoist Σq / ‖q‖² out of the candidate loop; `medium_plus` scores 16-dim blocks with NEON on a de-interleaved query. Per-distance time at 1024-D: `extreme` 701 → 62 ns, `ternary` 1,269 → 127 ns (L2) and 2,558 → 127 ns (cosine), `medium_plus` 743 → 105 ns. Graph construction uses the same kernels, so ingest of these modes rises ×1.5 – ×2.2.
-* **Multi-shard recall fix**: v4.2.4 divided `ef_search` by √(shard count) on each shard (ef ≈ 29 at ef_search = 100 with 12 shards). v4.2.5 runs the full beam on every shard, which lifts full-precision recall@10 from 92.90% to 99.05% and is the only reason `none` at ef = 100 is slower; at matched recall v4.2.5 is faster (v4.2.4 needed ef = 400 for 99.15% at 743 QPS).
-* **Hot loop**: per-query `DistKernel` dispatch, a flat seqlocked layer-0 adjacency array, the hybrid metric without `sqrt` / `acosh` in the loop, adaptive neighbor pruning, `1/M` level distribution, `Arc` metadata and WAL group commit.
+* **Exact flat scan for small shards**: below `ef · 2M` live nodes a shard is scanned sequentially instead of graph-walked (which at that size visits most nodes with random access). Controlled measurement, 20k × 1024-D, 12 shards: server CPU per query 6.98 → 2.62 ms, recall 99.95% → 100%; 100k: 24.9 → 15.4 ms, 96.9% → 100%.
+* **Low-bit kernels**: per-query nibble tables for `extreme` / `ternary` (701 → 62 ns and 1,269 → 127 ns per 1024-D distance) and a NEON ScalarI4 block kernel for `medium_plus` (743 → 105 ns); graph construction uses them too.
+* **Multi-shard recall fix**: v4.2.4 divided `ef_search` by √(shard count) per shard; v4.2.5 runs the full beam.
+* **Less per-query work**: metadata only for the merged top-k (+16% QPS with 10 metadata fields), no redundant rerank for full precision, per-query kernel dispatch, flat layer-0 arena, hybrid metric without `sqrt` / `acosh` in the loop.
 
-**Trained quantizers without `RebuildIndex`** (online auto-calibration, 1,024 vectors per shard): `pq4` single-pass recall 25.65% → 35.80%, with rerank ×4 90.85% → 97.60%; `rabitq` is unchanged (98.30% → 98.15% with rerank ×4) because its zero-centroid default already suits normalized embeddings.
+**Trained quantizers without `RebuildIndex`** (online auto-calibration): `pq4` single-pass recall 25.65% → 35.80%, with rerank ×4 90.85% → 97.60%.
 
-**New quantizers:** RaBitQ (1-bit + unbiased estimator, 140 B/vector incl. header, 29×) and PQ4 fast-scan (4-bit, 132 B/vector, 31×) reach 98.50% / 98.15% recall with rerank ×4 at 1,666 / 1,381 QPS.
-
-*Caveat: a HyperspaceDB Docker container was running on the host during both runs; differences of a few percent are within noise.*
+*Caveat: single-run QPS varies by about ±10% on this machine (a HyperspaceDB Docker container was running during the runs).*

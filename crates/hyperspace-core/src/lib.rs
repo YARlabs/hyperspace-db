@@ -310,6 +310,8 @@ fn get_meta_numeric(
         .map(|s| s.v)
 }
 
+// Independent per-request switches, not a state machine.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Default)]
 pub struct SearchParams {
     pub top_k: usize,
@@ -325,6 +327,9 @@ pub struct SearchParams {
     /// for the final Top-K results. Default false = zero extra I/O.
     pub include_payload: bool,
     pub use_wave: bool,
+    /// Return results without metadata. Set by the scatter-gather layer for per-shard
+    /// searches, which fetch metadata only for the merged top-k.
+    pub skip_metadata: bool,
 }
 
 /// Upper bound on a per-request `ef_search` (`HS_MAX_EF_SEARCH`, default 4096). A beam

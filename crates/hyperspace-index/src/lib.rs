@@ -230,11 +230,33 @@ impl<M: Metric> HnswIndex<M> {
         self.flat_l0.load().is_some()
     }
 
-    /// Freezes Layer-0 into a cache-aligned, continuous strided FlatLayer0Segment
-    /// if not already active and the index contains nodes.
+    /// Freezes Layer-0 into a cache-aligned, continuous strided FlatLayer0Segment if not
+    /// already active (explicit request: unlike the automatic freeze on snapshot / load it
+    /// ignores the small-index skip).
     pub fn ensure_flat_layer0(&self) {
         if self.flat_l0.load().is_none() && self.nodes.count() > 0 {
             self.freeze_flat_layer0();
+        }
+    }
+
+    /// The frozen segment copies every vector next to its adjacency. Indexes small enough
+    /// for an exact flat scan at the configured beam never walk it, so they skip the copy.
+    fn flat_segment_worthwhile(&self) -> bool {
+        let n = self.nodes.count();
+        n > 0
+            && n > self.flat_scan_limit(&hyperspace_core::SearchParams {
+                top_k: 10,
+                ..Default::default()
+            })
+    }
+
+    /// Mirrors a layer-0 neighbor update into the frozen segment. A memory-mapped segment
+    /// (loaded from `flat_l0.bin`) is read-only: drop it instead of serving stale links.
+    fn sync_flat_neighbors(&self, id: NodeId, links: &[NodeId]) {
+        if let Some(ref flat) = *self.flat_l0.load() {
+            if !flat.update_neighbors_in_place(id, links) && (id as usize) < flat.node_count() {
+                self.flat_l0.store(None);
+            }
         }
     }
 
@@ -327,7 +349,7 @@ impl<M: Metric> HnswIndex<M> {
         }
 
         if let Some(parent) = path.parent() {
-            if self.flat_l0.load().is_none() && self.nodes.count() > 0 {
+            if self.flat_l0.load().is_none() && self.flat_segment_worthwhile() {
                 self.freeze_flat_layer0();
             }
             let flat_guard = self.flat_l0.load();
@@ -610,11 +632,13 @@ impl<M: Metric> HnswIndex<M> {
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
             .join("flat_l0.bin");
-        if flat_path.exists() {
+        if !index.flat_segment_worthwhile() {
+            // Small index: searches scan it flat; keep neither the copy nor the file mapping.
+        } else if flat_path.exists() {
             if let Ok(seg) = FlatLayer0Segment::load_from_file(&flat_path) {
                 index.flat_l0.store(Some(Arc::new(seg)));
             }
-        } else if node_count > 0 {
+        } else {
             index.freeze_flat_layer0();
         }
         Ok(index)
@@ -1129,6 +1153,19 @@ impl PartialOrd for MaxCandidate {
     fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
         Some(self.cmp(other))
     }
+}
+
+/// Process-wide override of the flat-scan node limit (`-1` = `HS_FLAT_SCAN` / auto).
+static FLAT_SCAN_OVERRIDE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(-1);
+
+/// Forces the flat-scan node limit (`Some(0)` = always walk the graph, `None` = default).
+/// For A/B tests and benchmarks.
+#[doc(hidden)]
+pub fn set_flat_scan_limit(limit: Option<usize>) {
+    FLAT_SCAN_OVERRIDE.store(
+        limit.map_or(-1, |l| i64::try_from(l).unwrap_or(i64::MAX)),
+        Ordering::Relaxed,
+    );
 }
 
 /// Global switch for the per-query prepared kernels of `extreme`, `ternary` (nibble
@@ -1977,78 +2014,90 @@ impl<M: Metric> HnswIndex<M> {
             mrl_dim: params.mrl_dimension,
         };
 
-        let storage_view = self.storage.view();
-        let mut curr_dist = if (entry_node as usize) < storage_view.count() {
-            self.dist_upper_bytes(
-                storage_view.get(entry_node),
+        let mut candidates = if allowed_bitmap.is_none() && self.flat_scan_applies(params) {
+            // Small index: an exact sequential scan touches fewer cache lines than a
+            // graph walk that would visit most nodes anyway (and has 100% recall).
+            self.search_flat_all(
                 qctx.query,
                 qctx.query_f32,
-                qctx.query_klein,
-                qctx.query_klein_f32,
+                params.top_k,
                 qctx.pq_lut,
                 qctx.mrl_dim,
             )
         } else {
-            f64::MAX
-        };
-        let mut curr_node = entry_node;
+            let storage_view = self.storage.view();
+            let mut curr_dist = if (entry_node as usize) < storage_view.count() {
+                self.dist_upper_bytes(
+                    storage_view.get(entry_node),
+                    qctx.query,
+                    qctx.query_f32,
+                    qctx.query_klein,
+                    qctx.query_klein_f32,
+                    qctx.pq_lut,
+                    qctx.mrl_dim,
+                )
+            } else {
+                f64::MAX
+            };
+            let mut curr_node = entry_node;
 
-        // 1. Zoom-in phase: Greedy search from top to layer 1.
-        {
-            let nodes_count = self.nodes.count().min(storage_view.count());
-            for level in (1..=start_layer).rev() {
-                let mut changed = true;
-                while changed {
-                    changed = false;
-                    if (curr_node as usize) >= nodes_count {
-                        break;
-                    }
-                    let Some(node) = self.nodes.get(curr_node as usize) else {
-                        break;
-                    };
-                    if node.level() < level {
-                        break;
-                    }
-                    let neighbor_ids: SmallVec<[NodeId; 16]> =
-                        node.upper[level - 1].read().iter().copied().collect();
-                    for neighbor in neighbor_ids {
-                        if (neighbor as usize) >= nodes_count {
-                            continue;
+            // 1. Zoom-in phase: Greedy search from top to layer 1.
+            {
+                let nodes_count = self.nodes.count().min(storage_view.count());
+                for level in (1..=start_layer).rev() {
+                    let mut changed = true;
+                    while changed {
+                        changed = false;
+                        if (curr_node as usize) >= nodes_count {
+                            break;
                         }
-                        let d = self.dist_upper_bytes(
-                            storage_view.get(neighbor),
-                            qctx.query,
-                            qctx.query_f32,
-                            qctx.query_klein,
-                            qctx.query_klein_f32,
-                            qctx.pq_lut,
-                            qctx.mrl_dim,
-                        );
-                        if d < curr_dist {
-                            curr_dist = d;
-                            curr_node = neighbor;
-                            changed = true;
+                        let Some(node) = self.nodes.get(curr_node as usize) else {
+                            break;
+                        };
+                        if node.level() < level {
+                            break;
+                        }
+                        let neighbor_ids: SmallVec<[NodeId; 16]> =
+                            node.upper[level - 1].read().iter().copied().collect();
+                        for neighbor in neighbor_ids {
+                            if (neighbor as usize) >= nodes_count {
+                                continue;
+                            }
+                            let d = self.dist_upper_bytes(
+                                storage_view.get(neighbor),
+                                qctx.query,
+                                qctx.query_f32,
+                                qctx.query_klein,
+                                qctx.query_klein_f32,
+                                qctx.pq_lut,
+                                qctx.mrl_dim,
+                            );
+                            if d < curr_dist {
+                                curr_dist = d;
+                                curr_node = neighbor;
+                                changed = true;
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // 2. Local search phase: Layer 0 with Filter
-        // RECALL FIX #4: Enforce ef >= top_k. Per HNSW spec the beam size must
-        // be at least as large as the number of results requested, or the
-        // result set is truncated to ef < top_k silently.
-        let ef_for_search = params.ef_search.max(params.top_k);
-        let mut candidates = self.search_layer0(
-            curr_node,
-            qctx.query,
-            qctx.query_f32,
-            params.top_k,
-            ef_for_search,
-            allowed_bitmap,
-            qctx.pq_lut,
-            qctx.mrl_dim,
-        );
+            // 2. Local search phase: Layer 0 with Filter
+            // RECALL FIX #4: Enforce ef >= top_k. Per HNSW spec the beam size must
+            // be at least as large as the number of results requested, or the
+            // result set is truncated to ef < top_k silently.
+            let ef_for_search = params.ef_search.max(params.top_k);
+            self.search_layer0(
+                curr_node,
+                qctx.query,
+                qctx.query_f32,
+                params.top_k,
+                ef_for_search,
+                allowed_bitmap,
+                qctx.pq_lut,
+                qctx.mrl_dim,
+            )
+        };
 
         // MRL Reranking: If we used truncated search, we must recalculate full distance for the results.
         if params.mrl_dimension.is_some() {
@@ -3309,6 +3358,118 @@ impl<M: Metric> HnswIndex<M> {
         (base as u64).clamp(min_threshold, max_threshold)
     }
 
+    /// Upper bound on live nodes for which an unfiltered search scans the whole index
+    /// instead of walking the graph (`HS_FLAT_SCAN`: `auto` (default), `off`, or a node
+    /// count). `auto` uses `ef · 2M`: a layer-0 beam of width `ef` over nodes with up to
+    /// `2M` neighbors evaluates on the order of that many distances before it converges,
+    /// so below it the graph walk visits most of the index anyway — with random instead of
+    /// sequential memory access. Capped at 32,768 nodes.
+    fn flat_scan_limit(&self, params: &hyperspace_core::SearchParams) -> usize {
+        static MODE: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+        const CAP: usize = 32_768;
+        let fixed = *MODE.get_or_init(|| match std::env::var("HS_FLAT_SCAN") {
+            Ok(v) => match v.trim().to_ascii_lowercase().as_str() {
+                "" | "auto" | "on" | "true" => None,
+                "off" | "false" | "0" | "no" => Some(0),
+                n => n.parse::<usize>().ok().or(None),
+            },
+            Err(_) => None,
+        });
+        let forced = FLAT_SCAN_OVERRIDE.load(Ordering::Relaxed);
+        if forced >= 0 {
+            return usize::try_from(forced).unwrap_or(0);
+        }
+        if let Some(limit) = fixed {
+            return limit;
+        }
+        let ef = if params.ef_search > 0 {
+            params.ef_search
+        } else {
+            self.config.get_ef_search()
+        }
+        .max(params.top_k);
+        ef.saturating_mul(2 * self.config.get_m().max(1)).min(CAP)
+    }
+
+    /// Whether an unfiltered search should scan the whole index (see [`Self::flat_scan_limit`]).
+    fn flat_scan_applies(&self, params: &hyperspace_core::SearchParams) -> bool {
+        if self.zonal
+            || params.hybrid_query.is_some()
+            // KAG-guided traversal expands knowledge-graph edges during the graph walk.
+            || self.graph_engine.as_ref().is_some_and(|g| g.config.enabled)
+        {
+            return false;
+        }
+        let nodes = self.nodes.count().min(self.storage.count());
+        let deleted = if self.metadata.has_deletions.load(Ordering::Relaxed) {
+            self.metadata.deleted.read().len() as usize
+        } else {
+            0
+        };
+        let live = nodes.saturating_sub(deleted);
+        live > 0 && live <= self.flat_scan_limit(params)
+    }
+
+    /// Exact top-`k` over every live node (sequential scan, early-abandon threshold).
+    /// Returns internal distances, ascending.
+    fn search_flat_all(
+        &self,
+        query: &HyperVector,
+        query_f32: Option<&[f32]>,
+        k: usize,
+        prep: Option<&QueryPrep>,
+        mrl_dim: Option<usize>,
+    ) -> Vec<(NodeId, f64)> {
+        if k == 0 {
+            return Vec::new();
+        }
+        let storage_view = self.storage.view();
+        let n = self.nodes.count().min(storage_view.count()) as u32;
+        let deleted = self
+            .metadata
+            .has_deletions
+            .load(Ordering::Relaxed)
+            .then(|| self.metadata.deleted.read());
+        let deleted = deleted.as_deref().filter(|d| !d.is_empty());
+        let kernel = self.kernel_for(query, query_f32, prep, mrl_dim);
+        let bias = Self::dist_bias();
+        let mut heap: BinaryHeap<MaxCandidate> = BinaryHeap::with_capacity(k + 1);
+        let mut worst: Option<f64> = None;
+        for id in 0..n {
+            if deleted.is_some_and(|d| d.contains(id)) {
+                continue;
+            }
+            if id + 4 < n {
+                prefetch_bytes(storage_view.get(id + 4));
+            }
+            let d = self.dist_k(
+                kernel,
+                storage_view.get(id),
+                query,
+                query_f32,
+                prep,
+                mrl_dim,
+                worst,
+            );
+            if heap.len() < k {
+                heap.push(MaxCandidate::biased(id, d, bias));
+                if heap.len() == k {
+                    worst = heap.peek().map(|w| w.unbiased(bias));
+                }
+            } else if worst.is_some_and(|w| d < w) {
+                heap.pop();
+                heap.push(MaxCandidate::biased(id, d, bias));
+                worst = heap.peek().map(|w| w.unbiased(bias));
+            }
+        }
+        let mut out: Vec<(NodeId, f64)> = heap
+            .into_iter()
+            .map(|c| (c.id(), c.unbiased(bias)))
+            .collect();
+        out.sort_by(|a, b| a.1.total_cmp(&b.1));
+        out
+    }
+
     fn search_bruteforce_bitmap(
         &self,
         query: &HyperVector,
@@ -3363,9 +3524,7 @@ impl<M: Metric> HnswIndex<M> {
             }
             out.sort_by(|a, b| a.1.total_cmp(&b.1));
             out.truncate(k);
-            for item in &mut out {
-                item.1 = Self::finalize_distance(item.1);
-            }
+            // Internal distances: `search_with_allowed` finalizes them once.
             return out;
         }
 
@@ -3489,10 +3648,7 @@ impl<M: Metric> HnswIndex<M> {
             out.push((c.id(), c.unbiased(Self::dist_bias())));
         }
         out.reverse();
-
-        for item in &mut out {
-            item.1 = Self::finalize_distance(item.1);
-        }
+        // Internal distances: `search_with_allowed` finalizes them once.
         out
     }
 
@@ -5454,9 +5610,7 @@ impl<M: Metric> HnswIndex<M> {
             }
         });
         if changed && level == 0 {
-            if let Some(ref flat) = *self.flat_l0.load() {
-                let _ = flat.update_neighbors_in_place(src, &snapshot);
-            }
+            self.sync_flat_neighbors(src, &snapshot);
         }
         len
     }
@@ -5561,9 +5715,7 @@ impl<M: Metric> HnswIndex<M> {
             }
         });
         if level == 0 {
-            if let Some(ref flat) = *self.flat_l0.load() {
-                let _ = flat.update_neighbors_in_place(node_id, &snapshot);
-            }
+            self.sync_flat_neighbors(node_id, &snapshot);
         }
         keepers
     }

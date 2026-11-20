@@ -380,6 +380,7 @@ pub fn search_chunk<M: Metric>(
         mrl_dimension: None,
         include_payload: false,
         use_wave: false,
+        skip_metadata: false,
     };
 
     let include_metadata = chunk.index.has_nonempty_metadata();

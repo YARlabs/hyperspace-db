@@ -373,6 +373,7 @@ fn build_filters(
         // Sidecar Payload Storage (v3.2): opt-in lazy disk I/O
         include_payload: req.include_payload,
         use_wave: req.use_wave,
+        skip_metadata: false,
     };
 
     (col_name, req.vector, exact_filter, complex_filters, params)
@@ -1583,6 +1584,7 @@ impl Database for HyperspaceService {
                     fusion_method: req.bm25_options.and_then(|opts| opts.fusion_method),
                     include_payload: req.include_payload,
                     use_wave: false,
+                    skip_metadata: false,
                 };
 
                 if let Some(col) = self.manager.get(&owner, &col_name).await {
@@ -2058,6 +2060,7 @@ impl Database for HyperspaceService {
                     fusion_method: None,
                     include_payload: false,
                     use_wave: false,
+                    skip_metadata: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();
@@ -2113,6 +2116,7 @@ impl Database for HyperspaceService {
                     fusion_method: None,
                     include_payload: false,
                     use_wave: false,
+                    skip_metadata: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();

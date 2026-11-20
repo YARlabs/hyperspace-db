@@ -1494,3 +1494,153 @@ fn grpc_search_request_ef_search_reaches_search_params() {
     let (_, _, _, _, p) = super::build_filters(req(Some(u32::MAX)));
     assert_eq!(p.ef_search, hyperspace_core::max_request_ef_search());
 }
+
+/// Rerank is skipped for full-precision collections (it would recompute identical exact
+/// distances) but still re-scores quantized ones.
+#[tokio::test]
+async fn test_rerank_redundant_for_full_precision_only() {
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let dim = 16usize;
+    let point = |i: u32| -> Vec<f64> {
+        (0..dim)
+            .map(|d| f64::from((i * 37 + d as u32 * 11) % 101) / 101.0 - 0.5)
+            .collect()
+    };
+    let l2 = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum::<f64>();
+    for (name, quant) in [("rr_none", "none"), ("rr_medium", "medium")] {
+        let schema = hyperspace_proto::hyperspace::CollectionSchema {
+            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                name: "default".to_string(),
+                metric: "l2".to_string(),
+                full_dimension: dim as u32,
+                weight: 1.0,
+            }],
+            cascade_pipeline: vec![],
+            encrypted: Some(false),
+        };
+        manager
+            .create_collection_with_quantization("default_admin", name, schema, Some(quant.into()))
+            .await
+            .unwrap();
+        let col = manager.get("default_admin", name).await.unwrap();
+        for i in 0..300u32 {
+            col.insert(&point(i), i, HashMap::new(), 0, Durability::Default)
+                .await
+                .unwrap();
+        }
+        for _ in 0..200 {
+            if col.queue_size() == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let q = point(1234);
+        let p = hyperspace_core::SearchParams {
+            top_k: 5,
+            ef_search: 64,
+            ..Default::default()
+        };
+        let mut with = HashMap::new();
+        with.insert("rerank".to_string(), "true".to_string());
+        let mut without = HashMap::new();
+        without.insert("rerank".to_string(), "false".to_string());
+        let a = col.search(&q, &with, &[], &p).await.unwrap();
+        let b = col.search(&q, &without, &[], &p).await.unwrap();
+        assert_eq!(a.len(), 5, "{quant}");
+        if quant == "none" {
+            let ids_a: Vec<u32> = a.iter().map(|r| r.0).collect();
+            let ids_b: Vec<u32> = b.iter().map(|r| r.0).collect();
+            assert_eq!(
+                ids_a, ids_b,
+                "rerank must not change full-precision results"
+            );
+        }
+        // With rerank the reported distances are exact for both modes.
+        for r in &a {
+            let exact = l2(&point(r.0), &q);
+            assert!(
+                (r.1 - exact).abs() < 1e-3,
+                "{quant}: id {} distance {} vs exact {exact}",
+                r.0,
+                r.1
+            );
+        }
+    }
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+/// Shards skip metadata during scatter-gather; the merged top-k must still carry each
+/// result's own metadata.
+#[tokio::test]
+async fn test_sharded_search_fetches_metadata_for_top_k_only() {
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let dim = 8usize;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+    manager
+        .create_collection_with_quantization(
+            "default_admin",
+            "meta_topk",
+            schema,
+            Some("none".into()),
+        )
+        .await
+        .unwrap();
+    let col = manager.get("default_admin", "meta_topk").await.unwrap();
+    let point = |i: u32| -> Vec<f64> { (0..dim).map(|d| f64::from(i) + d as f64 * 0.01).collect() };
+    for i in 0..200u32 {
+        let mut meta = HashMap::new();
+        meta.insert("owner".to_string(), format!("user_{i}"));
+        meta.insert("parity".to_string(), (i % 2).to_string());
+        col.insert(&point(i), i, meta, 0, Durability::Default)
+            .await
+            .unwrap();
+    }
+    for _ in 0..200 {
+        if col.queue_size() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let res = col
+        .search(
+            &point(50),
+            &HashMap::new(),
+            &[],
+            &hyperspace_core::SearchParams {
+                top_k: 7,
+                ef_search: 64,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.len(), 7);
+    assert_eq!(res[0].0, 50);
+    for r in &res {
+        assert_eq!(
+            r.2.get("owner"),
+            Some(&format!("user_{}", r.0)),
+            "id {}",
+            r.0
+        );
+        assert_eq!(r.2.get("parity"), Some(&(r.0 % 2).to_string()));
+    }
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

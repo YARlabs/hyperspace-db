@@ -1,0 +1,9 @@
+# CMake build output (build out of tree: cmake -S . -B build)
+build/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+*.a
+*.o
+test_math

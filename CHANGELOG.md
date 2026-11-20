@@ -13,6 +13,16 @@ graph, graph repair after deletes, ACORN-style filtered traversal, WAL group com
 compact f32 wire format.
 
 ### Fixed
+* **Wrong distances in small filtered searches (Poincaré / Lorentz / hybrid)**: the filtered
+  brute-force scan finalized distances (`acosh`, `sqrt`) and the search finalized them again,
+  so e.g. a Poincaré distance of 0.588 was returned as 0. Distances are now finalized once.
+* **Hot-tier cache capacity applied per shard**: `HYPERSPACE_CACHE_L1_CAPACITY` (10,000) was
+  given to every shard, i.e. up to 120,000 cached f64 vectors (~960 MB at 1024-D) per
+  collection with 12 shards. It is now the collection-wide capacity, split across shards.
+* **Stale adjacency after graph repair**: a frozen layer-0 segment loaded from `flat_l0.bin`
+  is read-only, and neighbor updates to it were silently ignored, so searches could follow
+  links to deleted nodes after `repair_deleted`. The segment is now dropped on the first
+  update it cannot take.
 * **`ConfigUpdate` `ef_search` was ignored by gRPC / HTTP searches**: every request carried the
   server-wide default (`HS_HNSW_EF_SEARCH`, 100), overriding the collection's configured beam.
   Requests without `ef_search` now use the collection value; the collection default is 100 so
@@ -156,6 +166,24 @@ compact f32 wire format.
   round-trip, and SIMD kernel parity (`f64` byte kernels, pair dispatch).
 
 ### Changed (performance)
+* **Exact flat scan for small shards**: when a shard holds at most `ef · 2M` live nodes
+  (`HS_FLAT_SCAN`: `auto` / `off` / node count; capped at 32,768) an unfiltered search scans it
+  sequentially instead of walking the graph, which at that size visits most nodes anyway with
+  random memory access. 20k × 1024-D, 12 shards, M = 64: **QPS 811 → 1,678, server CPU per
+  query 6.98 → 2.62 ms, recall 99.95% → 100%**; 100k: QPS 298 → 453, CPU 24.9 → 15.4 ms, recall
+  96.9% → 100%. Small indexes also skip the frozen layer-0 segment copy.
+* **Metadata only for the merged top-k**: shards no longer clone metadata for every
+  scatter-gather candidate (`SearchParams::skip_metadata`); with 10 fields per vector QPS rises
+  1,325 → 1,532 and server CPU per query drops 3.00 → 2.72 ms.
+* **No redundant rerank for full-precision collections**: their candidates already carry the
+  exact distance, so the f64 decode + re-scoring is skipped (the oversampled beam is kept).
+* **Memory**: the raw-vector cache (exact copies for rerank / calibration) is bounded by
+  `HS_RAW_CACHE_MB` (256 MB per collection, split across shards; the payload store serves the
+  rest), and the hot-tier cache budget is per collection. 100k × 1024-D `pq4`: RSS after ingest
+  +1,954 MB → +1,228 MB (−37%).
+* `.env` default `HS_HNSW_EF_SEARCH` 400 → 100 (per-request `ef_search` covers higher recall).
+* Removed the uncompiled `hyperspace-server/src/server.rs` (a stale 3,669-line copy of `lib.rs`)
+  and the CMake build output committed under `sdks/cpp`.
 * **`extreme` and `ternary` nibble-table kernels**: a per-query table (16 entries per 4
   dimensions, 16 KB at 1024-D, L1-resident) turns the per-bit loops into `D/4` loads and adds,
   and query-only terms (Σq, ‖q‖²) are computed once per query instead of per candidate. Kernel
@@ -223,10 +251,11 @@ compact f32 wire format.
 
 Measured with `benchmarks/run_quantization_sweep.py` (20,000 × 1024D, cosine, 200 queries, M = 64, ef_construction = 400, ef_search = 100, 12 shards, Apple M4 Pro), v4.2.4 and v4.2.5 on the same machine:
 
-- **Search QPS ×1.95** (geometric mean over 32 configurations), **recall@10 +1.5 pp** on average (up to +6.7 pp), **ingest ×1.54** (median).
-- Low-bit modes, same recall: `ternary` 97 → 1,344 QPS (×13.9; + rerank ×4: 81 → 1,036), `extreme` 811 → 1,967 QPS (×2.4; + rerank ×8: 447 → 1,240 at 97.45% → 99.15%), `medium_plus` 597 → 1,408 QPS (×2.4). Ingest: `extreme` 5,169 → 11,330 vec/s, `medium_plus` 4,211 → 9,058, `ternary` 1,052 → 1,737.
-- Multi-shard fix: `none` 92.90% → **99.05%** recall at ef_search = 100 (1,145 → 808 QPS; v4.2.4 needed ef_search = 400 for 99.15% at 743 QPS). `medium` + rerank ×4: 97.15% → 98.75%; `extreme` + rerank ×4: 89.75% → 96.45%.
-- New tiers: `rabitq` + rerank ×4 **98.5% @ 1,666 QPS** (29×); `pq4` + rerank ×8 **99.65% @ 1,154 QPS** (31×). Online calibration alone (no `RebuildIndex`) lifts `pq4` single-pass recall 25.65% → 35.80% and rerank ×4 90.85% → 97.60%.
+- **Search QPS ×2.16** (geometric mean over 32 configurations), **recall@10 +1.8 pp** on average (up to +9.1 pp), **ingest ×1.44** (median).
+- Full precision: 92.90% → **100%** recall at 1,145 → 1,518 QPS (exact flat scan of small shards). Every reranked mode reaches 98.5–100%: `medium` + rerank ×4 97.15% → 100.00%, `extreme` + rerank ×4 89.75% → 98.80%.
+- Low-bit modes: `ternary` 97 → 1,337 QPS, `extreme` 811 → 1,982, `medium_plus` 597 → 1,607; ingest `extreme` 5,169 → 11,409 vec/s, `medium_plus` 4,211 → 8,918.
+- Controlled CPU per query (20k, 12 shards, full precision): 6.98 → 2.62 ms; 100k: 24.9 → 15.4 ms.
+- New tiers: `rabitq` + rerank ×4 **98.55% @ 1,576 QPS** (29×); `pq4` + rerank ×8 **99.75% @ 1,112 QPS** (31×). Online calibration alone lifts `pq4` single-pass recall 25.65% → 35.80%.
 - Full matrix: `BENCHMARK_QUANTIZATION_SWEEP.md`; summary: `BENCHMARK_V3_VS_V4_REPORT.md` §10.
 
 ### Compatibility

@@ -150,6 +150,7 @@ impl HyperspaceDB {
                     include_payload: false,
                     component_weights: None,
                     use_wave: false,
+                    skip_metadata: false,
                 };
                 $idx.search(vector, &HashMap::new(), &[], &params)
             }};

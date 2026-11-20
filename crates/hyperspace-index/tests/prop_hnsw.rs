@@ -72,6 +72,7 @@ proptest! {
                 mrl_dimension: None,
                 include_payload: false,
                 use_wave: false,
+                skip_metadata: false,
             };
             let results = index.search(vec, &empty_filter, &[], &search_params);
 

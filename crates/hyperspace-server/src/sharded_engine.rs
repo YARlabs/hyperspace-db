@@ -162,7 +162,7 @@ impl<M: Metric> ShardedCollection<M> {
                 .map_err(|e| format!("Failed to create shard dir {}: {e}", shard_dir.display()))?;
             let shard_wal = shard_dir.join("wal.log");
 
-            let shard = CollectionImpl::<M>::new(
+            let shard = CollectionImpl::<M>::new_shard(
                 format!("{name}_shard_{i}"),
                 node_id.clone(),
                 shard_dir,
@@ -171,6 +171,7 @@ impl<M: Metric> ShardedCollection<M> {
                 replication_tx.clone(),
                 dimension,
                 schema.clone(),
+                num_shards,
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -790,6 +791,8 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             mrl_dimension: params.mrl_dimension,
             include_payload: false,
             use_wave: params.use_wave,
+            // Metadata is fetched below for the merged top-k only.
+            skip_metadata: true,
         });
 
         let vector_arc: Arc<[f64]> = Arc::from(vector);
@@ -866,6 +869,15 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         // verify and ensure correctness regardless of future stdlib changes.
         output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
+        // Metadata only for the top-K winners (shards skipped it for every candidate).
+        if !params.skip_metadata {
+            for out in &mut output {
+                if out.2.is_empty() {
+                    out.2 = self.shards[self.get_shard_index(out.0)].metadata_by_id(out.0);
+                }
+            }
+        }
+
         // Fetch payload lazily only for the top-K winners across shards
         if params.include_payload && !output.is_empty() {
             let ids: Vec<u32> = output.iter().map(|(id, ..)| *id).collect();
@@ -934,6 +946,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             mrl_dimension: params.mrl_dimension,
             include_payload: false,
             use_wave: params.use_wave,
+            skip_metadata: false,
         });
 
         let vector_arc: Arc<[f64]> = Arc::from(vector);

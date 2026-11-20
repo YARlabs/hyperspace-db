@@ -193,7 +193,9 @@ fn test_auto_freezing_flat_layer0_and_search_equivalence() {
     )
     .unwrap();
 
-    assert!(loaded.has_flat_layer0());
+    // A 48-node index is answered by the exact flat scan, so the reload skips the frozen
+    // segment copy (see flat_segment_policy_test); results must still be identical.
+    assert!(!loaded.has_flat_layer0());
     for (i, q) in queries.iter().enumerate() {
         let res = loaded.search(q, &empty_map, &[], &params);
         assert_eq!(res.len(), dynamic_results[i].len());

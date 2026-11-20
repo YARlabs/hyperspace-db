@@ -11,6 +11,9 @@ use std::sync::Arc;
 
 #[test]
 fn test_flat_layer0_search_equivalence_and_persistence() {
+    // This test exercises the frozen-segment graph walk, so disable the exact flat scan
+    // (and the small-index segment skip) that a 64-node index would otherwise use.
+    hyperspace_index::set_flat_scan_limit(Some(0));
     let dir = tempfile::tempdir().expect("tempdir");
     let storage_path = dir.path().join("vectors");
     let config = Arc::new(GlobalConfig::default());
