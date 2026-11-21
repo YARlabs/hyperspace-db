@@ -21,7 +21,7 @@ huggingface = ["local-onnx", "dep:hf-hub"]
 
 [dependencies]
 hyperspace-proto = { path = "../hyperspace-proto", version = "4.2.5" }
-tonic = "0.10"
+tonic = "0.12"
 tokio = { version = "1.35", features = ["full"] }
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
