@@ -150,12 +150,28 @@ class HyperspaceClient {
     await _channel.shutdown();
   }
 
+  /// gRPC metadata of a `CreateCollection` call (`x-quantization-level`, `x-expected-vectors`).
+  static Map<String, String> createCollectionMetadata(
+      String? quantization, int? expectedVectors) {
+    final md = <String, String>{};
+    if (quantization != null && quantization.trim().isNotEmpty) {
+      md['x-quantization-level'] = quantization.trim();
+    }
+    if (expectedVectors != null && expectedVectors > 0) {
+      md['x-expected-vectors'] = expectedVectors.toString();
+    }
+    return md;
+  }
+
   /// Creates a collection with optional client-side encryption and quantization level.
+  /// [expectedVectors] (server >= 4.2.5) sizes the shard count at creation (one shard per
+  /// 2M vectors by default); set it only for collections of millions of vectors.
   /// Supported [quantization] levels: `'medium'` (default), `'none'`, `'medium_plus'`, `'turbo'`, `'ternary'` (BitNet 1.58-bit {-1, 0, +1}), `'extreme'`, and for l2 / cosine `'rabitq'`, `'rabitq4'`, `'rabitq2'` (extended RaBitQ), `'pq4'`, `'pq'`, `'opq'`.
   Future<bool> createCollection(String name, pb.CollectionSchema schema,
       {String encryptionKey = '',
       double noiseSigma = 0.02,
-      String? quantization}) async {
+      String? quantization,
+      int? expectedVectors}) async {
     final metric =
         schema.components.isNotEmpty ? schema.components[0].metric : "l2";
     if (encryptionKey.isNotEmpty) {
@@ -164,9 +180,8 @@ class HyperspaceClient {
       schema.encrypted = true;
     }
     final req = CreateCollectionRequest(name: name, schema: schema);
-    final options = quantization != null && quantization.isNotEmpty
-        ? CallOptions(metadata: {'x-quantization-level': quantization})
-        : null;
+    final metadata = createCollectionMetadata(quantization, expectedVectors);
+    final options = metadata.isEmpty ? null : CallOptions(metadata: metadata);
     final resp = await _stub.createCollection(req, options: options);
     return resp.status.isNotEmpty;
   }

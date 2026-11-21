@@ -80,6 +80,32 @@ def test_compact_vectors_uses_vector_f32():
     assert list(req.vector) == [] and len(req.vector_f32) == 2
 
 
+
+
+def test_create_collection_metadata():
+    from hyperspace.client import create_collection_metadata as md
+    assert md() == []
+    assert md("  ", 0) == []
+    assert md("rabitq4", 5_000_000) == [
+        ("x-quantization-level", "rabitq4"),
+        ("x-expected-vectors", "5000000"),
+    ]
+
+
+def test_create_collection_sends_expected_vectors():
+    c = HyperspaceClient("localhost:1", api_key="k")
+    sent = {}
+
+    class Stub:
+        def CreateCollection(self, req, metadata=None):
+            sent["md"] = metadata
+
+    c.stubs = [Stub()] * len(c.stubs)
+    assert c.create_collection("big", dimension=8, metric="cosine", expected_vectors=3_000_000)
+    assert ("x-expected-vectors", "3000000") in sent["md"]
+    assert ("x-api-key", "k") in sent["md"]
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

@@ -428,6 +428,18 @@ private:
             encrypted = (enc_match.str(1) == "true");
         }
 
+        // Optional size hint (server >= 4.2.5): "expected_vectors": 5000000 sizes the shard count.
+        uint64_t expected_vectors = 0;
+        std::regex ev_regex(R"("expected_vectors"\s*:\s*([0-9]+))");
+        std::smatch ev_match;
+        if (std::regex_search(request->schema_json, ev_match, ev_regex) && ev_match.size() > 1) {
+            try {
+                expected_vectors = std::stoull(ev_match.str(1));
+            } catch (const std::exception&) {
+                expected_vectors = 0;
+            }
+        }
+
         ::hyperspace::CollectionSchema schema;
         google::protobuf::util::JsonParseOptions parse_options;
         parse_options.ignore_unknown_fields = true;
@@ -437,7 +449,7 @@ private:
             response->message = "Invalid Schema JSON: " + status.ToString();
             return;
         }
-        bool ok = client_->CreateCollection(request->name, schema, quantization, encrypted);
+        bool ok = client_->CreateCollection(request->name, schema, quantization, encrypted, expected_vectors);
         response->success = ok;
         response->message = ok ? "Successfully created." : "Failed to create collection.";
     }

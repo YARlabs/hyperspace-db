@@ -488,6 +488,36 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
+    /// Creates a collection with an optional quantization level and an optional expected size.
+    ///
+    /// `expected_vectors` (server >= 4.2.5, `x-expected-vectors` metadata) sizes the shard
+    /// count at creation: one shard per `HS_SHARD_TARGET_VECTORS` (2M by default). Only
+    /// collections expected to reach millions of vectors need it; the layout is fixed once
+    /// created. Older servers ignore the header.
+    ///
+    /// # Errors
+    /// Returns error if the collection already exists or if network fails.
+    pub async fn create_collection_with_options(
+        &mut self,
+        name: String,
+        schema: CollectionSchema,
+        quantization: Option<String>,
+        expected_vectors: Option<u64>,
+    ) -> Result<String, tonic::Status> {
+        let req = hyperspace_proto::hyperspace::CreateCollectionRequest {
+            name,
+            schema: Some(schema),
+        };
+        let mut tonic_req = tonic::Request::new(req);
+        for (key, value) in create_collection_metadata(quantization.as_deref(), expected_vectors) {
+            if let Ok(val) = value.parse() {
+                tonic_req.metadata_mut().insert(key, val);
+            }
+        }
+        let resp = self.inner.create_collection(tonic_req).await?;
+        Ok(resp.into_inner().status)
+    }
+
     /// Convenience helper to create a simple single-component collection without cascade pipeline.
     pub async fn create_collection_simple(
         &mut self,
@@ -2555,8 +2585,43 @@ impl<'a> ExtensionClient<'a> {
     }
 }
 
+/// gRPC metadata of a `CreateCollection` call: `x-quantization-level` and
+/// `x-expected-vectors` (empty / zero values are omitted).
+#[must_use]
+pub fn create_collection_metadata(
+    quantization: Option<&str>,
+    expected_vectors: Option<u64>,
+) -> Vec<(&'static str, String)> {
+    let mut md = Vec::new();
+    if let Some(q) = quantization.map(str::trim).filter(|q| !q.is_empty()) {
+        md.push(("x-quantization-level", q.to_string()));
+    }
+    if let Some(n) = expected_vectors.filter(|&n| n > 0) {
+        md.push(("x-expected-vectors", n.to_string()));
+    }
+    md
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn create_collection_metadata_carries_quantization_and_size() {
+        use super::create_collection_metadata as md;
+        assert!(md(None, None).is_empty());
+        assert!(md(Some("  "), Some(0)).is_empty());
+        assert_eq!(
+            md(Some("rabitq4"), Some(5_000_000)),
+            vec![
+                ("x-quantization-level", "rabitq4".to_string()),
+                ("x-expected-vectors", "5000000".to_string())
+            ]
+        );
+        assert_eq!(
+            md(None, Some(7)),
+            vec![("x-expected-vectors", "7".to_string())]
+        );
+    }
+
     use super::*;
 
     #[test]

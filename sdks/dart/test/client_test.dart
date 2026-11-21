@@ -6,6 +6,7 @@ import 'package:hyperspacedb/src/generated/hyperspace.pbgrpc.dart' as pb;
 import 'package:fixnum/fixnum.dart';
 
 void main() {
+  createCollectionMetadataTests();
   late HyperspaceClient client;
   final collectionName = 'test_dart_collection';
 
@@ -397,6 +398,17 @@ void main() {
       final globalCtx = [0.0, 0.5];
       final pull = contextResonance(thought, globalCtx, 0.5, c: 1.0);
       expect(pull.length, equals(2));
+    });
+  });
+}
+
+void createCollectionMetadataTests() {
+  test('createCollection metadata carries quantization and expected size', () {
+    expect(HyperspaceClient.createCollectionMetadata(null, null), isEmpty);
+    expect(HyperspaceClient.createCollectionMetadata('  ', 0), isEmpty);
+    expect(HyperspaceClient.createCollectionMetadata('rabitq4', 5000000), {
+      'x-quantization-level': 'rabitq4',
+      'x-expected-vectors': '5000000',
     });
   });
 }

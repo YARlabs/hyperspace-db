@@ -75,4 +75,4 @@ ros2 run ros2_hyperspace_node tribunal_router_node --ros-args -p hyperspace_endp
 
 Since the ROS2 node compiles and links against the C++ SDK, it natively supports Zero-Knowledge client-side encryption. Robotic developers can call `RegisterCollectionKey` and `InsertSecure` on the underlying `HyperspaceClient` instance in their custom node extensions to ensure all sensor readings, maps, and private interaction logs are projected and encrypted before sending them to the cloud or a shared DePIN server.
 
-
+**Large collections (server ≥ 4.2.5).** Add `"expected_vectors": 5000000` in `schema_json` to the `CreateCollection` request to create one shard per 2M expected vectors (`HS_SHARD_TARGET_VECTORS`); leave it out below a few million vectors.

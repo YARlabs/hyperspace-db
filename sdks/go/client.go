@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	pb "github.com/yarlabs/hyperspace-sdk-go/proto"
@@ -86,8 +87,9 @@ func (c *HyperspaceClient) Close() error {
 // withContext adds authentication headers if an API key is set
 func (c *HyperspaceClient) withContext(ctx context.Context) context.Context {
 	if c.apiKey != "" {
-		md := metadata.Pairs("x-api-key", c.apiKey)
-		return metadata.NewOutgoingContext(ctx, md)
+		// Append, so metadata the caller already attached (e.g. x-expected-vectors or a
+		// tracing header) is kept.
+		return metadata.AppendToOutgoingContext(ctx, "x-api-key", c.apiKey)
 	}
 	return ctx
 }
@@ -123,6 +125,17 @@ func (c *HyperspaceClient) CreateCollectionWithQuantization(ctx context.Context,
 
 	_, err := c.client.CreateCollection(ctxToUse, req)
 	return err
+}
+
+// CreateCollectionWithOptions creates a collection with an optional quantization level and an
+// optional expected size. expectedVectors (server >= 4.2.5, "x-expected-vectors" metadata)
+// sizes the shard count at creation: one shard per HS_SHARD_TARGET_VECTORS (2M by default).
+// Pass 0 unless the collection will hold millions of vectors; older servers ignore it.
+func (c *HyperspaceClient) CreateCollectionWithOptions(ctx context.Context, name string, schema *pb.CollectionSchema, encryptionKey string, noiseSigma float64, quantization string, expectedVectors uint64) error {
+	if expectedVectors > 0 {
+		ctx = metadata.AppendToOutgoingContext(ctx, "x-expected-vectors", strconv.FormatUint(expectedVectors, 10))
+	}
+	return c.CreateCollectionWithQuantization(ctx, name, schema, encryptionKey, noiseSigma, quantization)
 }
 
 func (c *HyperspaceClient) FreezeCollection(ctx context.Context, name string) (string, error) {

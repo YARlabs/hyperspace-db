@@ -55,7 +55,21 @@ async function main() {
     assert(ccalls.search.getVectorList().length === 0 && ccalls.search.getVectorF32List().length === 2,
         'compactVectors sends vector_f32');
 
-    console.log('ok  test_request_options (7 checks)');
+    // createCollection over gRPC carries x-expected-vectors; HTTP endpoint resolution.
+    const sized = new HyperspaceClient('localhost:1');
+    let createMd: any = null;
+    (sized as any).client = new Proxy({}, {
+        get: (_t, _rpc: string) => (_req: any, md: any, cb: (e: any, r: any) => void) => { createMd = md; cb(null, {}); },
+    });
+    await sized.createCollection('big', { components: [{ name: 'v', fullDimension: 8, metric: 'cosine' }] } as any,
+        '', 0.02, undefined, 5_000_000);
+    assert(createMd && createMd.get('x-expected-vectors')[0] === '5000000', 'expectedVectors sent as x-expected-vectors');
+    assert(HyperspaceClient.collectionsHttpUrl('db.internal:7051') === 'http://db.internal:7050/api/collections',
+        'self-hosted HTTP = gRPC port - 1 on the same host (never the SaaS)');
+    assert(HyperspaceClient.collectionsHttpUrl('10.0.0.5') === 'http://10.0.0.5:50050/api/collections', 'default port');
+    assert(HyperspaceClient.collectionsHttpUrl('grpc.yar.ink:443') === 'https://the.yar.ink/api/collections', 'SaaS host');
+
+    console.log('ok  test_request_options (11 checks)');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

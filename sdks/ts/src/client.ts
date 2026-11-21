@@ -735,15 +735,31 @@ export class HyperspaceClient {
 
     // ... (create/delete unchanged) ...
 
-    public createCollection(name: string, schema: CollectionSchema, encryptionKey: string = '', noiseSigma: number = 0.02, quantization?: string): Promise<boolean> {
+    /**
+     * HTTP endpoint used for `createCollection` with a quantization level: the managed service
+     * for `*.yar.ink` hosts, otherwise the same host on the gRPC port − 1 (the server default
+     * layout, 50051 → 50050).
+     */
+    public static collectionsHttpUrl(host: string): string {
+        const [hostOnly, portText] = host.replace(/^[a-z]+:\/\//i, '').split('/')[0].split(':');
+        if (hostOnly === 'yar.ink' || hostOnly.endsWith('.yar.ink')) {
+            return 'https://the.yar.ink/api/collections';
+        }
+        const grpcPort = Number(portText) || 50051;
+        return `http://${hostOnly}:${grpcPort - 1}/api/collections`;
+    }
+
+    /**
+     * Creates a collection. `expectedVectors` (server >= 4.2.5) sizes the shard count at creation
+     * (one shard per 2M vectors by default); set it only for collections of millions of vectors.
+     */
+    public createCollection(name: string, schema: CollectionSchema, encryptionKey: string = '', noiseSigma: number = 0.02, quantization?: string, expectedVectors?: number): Promise<boolean> {
         const metric = (schema.components && schema.components[0]) ? schema.components[0].metric : "l2";
         if (encryptionKey) {
             this.registerCollectionKey(name, encryptionKey, metric, noiseSigma, schema);
         }
         if (quantization) {
-            const isYarSaaS = this.host.includes('yar.ink') || (!this.host.includes('localhost') && !this.host.includes('127.0.0.1'));
-            const hostOnly = this.host.split(':')[0];
-            const url = isYarSaaS ? 'https://the.yar.ink/api/collections' : `http://${hostOnly}:50050/api/collections`;
+            const url = HyperspaceClient.collectionsHttpUrl(this.host);
             const comp = schema.components && schema.components[0];
             const payload: any = {
                 name,
@@ -752,6 +768,9 @@ export class HyperspaceClient {
                 quantization,
                 encrypted: !!(schema.encrypted || encryptionKey),
             };
+            if (expectedVectors && expectedVectors > 0) {
+                payload.expected_vectors = expectedVectors;
+            }
             if (schema.cascadePipeline && schema.cascadePipeline.length > 0) {
                 payload.mrl_cutoff_dimension = schema.cascadePipeline[0].cutoffDimension;
                 payload.mrl_rerank_top_k = schema.cascadePipeline[0].rerankTopK || 100;
@@ -769,14 +788,14 @@ export class HyperspaceClient {
                 if (r.ok) {
                     return true;
                 }
-                return this.createCollectionGrpc(name, schema, quantization);
+                return this.createCollectionGrpc(name, schema, quantization, expectedVectors);
             })
-            .catch(() => this.createCollectionGrpc(name, schema, quantization));
+            .catch(() => this.createCollectionGrpc(name, schema, quantization, expectedVectors));
         }
-        return this.createCollectionGrpc(name, schema, quantization);
+        return this.createCollectionGrpc(name, schema, quantization, expectedVectors);
     }
 
-    private createCollectionGrpc(name: string, schema: CollectionSchema, quantization?: string): Promise<boolean> {
+    private createCollectionGrpc(name: string, schema: CollectionSchema, quantization?: string, expectedVectors?: number): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const req = new CreateCollectionRequest();
             req.setName(name);
@@ -811,6 +830,9 @@ export class HyperspaceClient {
             const meta = this.metadata ? this.metadata.clone() : new (require('@grpc/grpc-js').Metadata)();
             if (quantization) {
                 meta.set('x-quantization-level', quantization);
+            }
+            if (expectedVectors && expectedVectors > 0) {
+                meta.set('x-expected-vectors', String(Math.floor(expectedVectors)));
             }
 
             this.client.createCollection(req, meta, (err, resp) => {

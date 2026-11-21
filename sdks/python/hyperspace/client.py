@@ -1,6 +1,6 @@
 import grpc
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Union, Iterator
+from typing import List, Dict, Optional, Tuple, Union, Iterator
 import sys
 import os
 
@@ -48,6 +48,16 @@ class VerificationResult:
     cone_satisfied: bool = True
     details: str = ""
     resolved_context_ids: Optional[List[int]] = None
+
+
+def create_collection_metadata(quantization: Optional[str] = None, expected_vectors: Optional[int] = None) -> List[Tuple[str, str]]:
+    """gRPC metadata of a ``CreateCollection`` call (``x-quantization-level``, ``x-expected-vectors``)."""
+    meta: List[Tuple[str, str]] = []
+    if quantization and str(quantization).strip():
+        meta.append(("x-quantization-level", str(quantization).strip()))
+    if expected_vectors is not None and int(expected_vectors) > 0:
+        meta.append(("x-expected-vectors", str(int(expected_vectors))))
+    return meta
 
 
 class HyperspaceClient:
@@ -400,7 +410,17 @@ class HyperspaceClient:
 
     # ... (create/delete/list unchanged) ...
 
-    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None, encryption_key: str = None, noise_sigma: float = 0.0, quantization: str = None, encrypted: bool = None) -> bool:
+    def create_collection(self, name: str, schema: Union[Dict, hyperspace_pb2.CollectionSchema] = None, dimension: int = None, metric: str = None, encryption_key: str = None, noise_sigma: float = 0.0, quantization: str = None, encrypted: bool = None, expected_vectors: Optional[int] = None) -> bool:
+        """Creates a collection.
+
+        ``quantization``: ``medium`` (default), ``none``, ``medium_plus``, ``turbo``, ``ternary``,
+        ``extreme`` and, for l2 / cosine, ``rabitq4`` / ``rabitq2`` (extended RaBitQ), ``rabitq``,
+        ``pq4``, ``pq``, ``opq``.
+
+        ``expected_vectors`` (server >= 4.2.5, ``x-expected-vectors`` metadata) sizes the shard
+        count at creation: one shard per ``HS_SHARD_TARGET_VECTORS`` (2M by default). Set it only
+        for collections that will hold millions of vectors; older servers ignore it.
+        """
         # Extract metric for encryption context
         derived_metric = metric
         if not derived_metric and isinstance(schema, dict) and "components" in schema and schema["components"]:
@@ -506,8 +526,7 @@ class HyperspaceClient:
 
         req = hyperspace_pb2.CreateCollectionRequest(name=name, schema=schema)
         meta = list(self.metadata) if self.metadata else []
-        if quantization:
-            meta.append(('x-quantization-level', str(quantization)))
+        meta.extend(create_collection_metadata(quantization, expected_vectors))
         try:
             self.stub.CreateCollection(req, metadata=meta)
             return True

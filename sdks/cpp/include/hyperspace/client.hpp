@@ -92,7 +92,10 @@ public:
     // "ternary" (BitNet 1.58-bit), "extreme", "rabitq", "rabitq4", "rabitq2", "pq4", "pq", "opq".
     // Trained levels (rabitq*, pq4, pq, opq) calibrate online on servers >= 4.2.5; RebuildIndex()
     // after a large initial ingest also rebuilds the graph on the trained codes.
-    bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "", bool encrypted = false);
+    // expected_vectors (server >= 4.2.5, `x-expected-vectors` metadata) sizes the shard count at
+    // creation (one shard per 2M vectors by default); leave 0 unless the collection will hold
+    // millions of vectors. Older servers ignore it.
+    bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "", bool encrypted = false, uint64_t expected_vectors = 0);
     // Deletes a collection and its data. Returns false if it does not exist or the call fails.
     bool DeleteCollection(const std::string& name);
     std::vector<CollectionSummaryRec> ListCollections();
@@ -159,7 +162,7 @@ public:
     // Zero-Knowledge Client-Side Encryption
     void RegisterCollectionKey(const std::string& collection_name, const std::string& key, const std::string& metric = "l2", double noise_sigma = 0.02, const ::hyperspace::CollectionSchema* schema = nullptr);
     // Create collection securely with client-side encryption and optional quantization ("ternary", "turbo", etc.)
-    bool CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key = "", double noise_sigma = 0.02, const std::string& quantization = "");
+    bool CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key = "", double noise_sigma = 0.02, const std::string& quantization = "", uint64_t expected_vectors = 0);
     bool InsertSecure(uint32_t id, const std::vector<double>& vector, const std::unordered_map<std::string, std::string>& metadata = {}, const std::string& collection = "", const std::vector<uint8_t>& payload = {});
 
 private:

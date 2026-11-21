@@ -1,7 +1,10 @@
 package hyperspace
 
 import (
+	"context"
 	"testing"
+
+	"google.golang.org/grpc/metadata"
 
 	pb "github.com/yarlabs/hyperspace-sdk-go/proto"
 )
@@ -40,4 +43,16 @@ func TestBuildMultiCollectionRequestOptions(t *testing.T) {
 		t.Fatal("no option = unset EfSearch")
 	}
 	var _ *pb.SearchMultiCollectionRequest = req
+}
+
+func TestWithContextKeepsCallerMetadata(t *testing.T) {
+	c := &HyperspaceClient{apiKey: "k"}
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "x-expected-vectors", "5000000")
+	md, _ := metadata.FromOutgoingContext(c.withContext(ctx))
+	if got := md.Get("x-expected-vectors"); len(got) != 1 || got[0] != "5000000" {
+		t.Fatalf("caller metadata dropped: %v", md)
+	}
+	if got := md.Get("x-api-key"); len(got) != 1 || got[0] != "k" {
+		t.Fatalf("api key missing: %v", md)
+	}
 }

@@ -22,7 +22,7 @@ HyperspaceClient::HyperspaceClient(const std::string& endpoint, const std::strin
     stub_ = Database::NewStub(channel);
 }
 
-bool HyperspaceClient::CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization, bool encrypted) {
+bool HyperspaceClient::CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization, bool encrypted, uint64_t expected_vectors) {
     ::hyperspace::CreateCollectionRequest request;
     request.set_name(name);
     auto* s = request.mutable_schema();
@@ -38,6 +38,9 @@ bool HyperspaceClient::CreateCollection(const std::string& name, const ::hypersp
     }
     if (!quantization.empty()) {
         context.AddMetadata("x-quantization-level", quantization);
+    }
+    if (expected_vectors > 0) {
+        context.AddMetadata("x-expected-vectors", std::to_string(expected_vectors));
     }
 
     Status status = stub_->CreateCollection(&context, request, &response);
@@ -1138,7 +1141,7 @@ std::vector<::hyperspace::Filter> HyperspaceClient::encrypt_filters(const std::v
     return res;
 }
 
-bool HyperspaceClient::CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key, double noise_sigma, const std::string& quantization) {
+bool HyperspaceClient::CreateCollectionSecure(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& encryption_key, double noise_sigma, const std::string& quantization, uint64_t expected_vectors) {
     std::string metric = "l2";
     if (schema.components_size() > 0) {
         metric = schema.components(0).metric();
@@ -1146,7 +1149,7 @@ bool HyperspaceClient::CreateCollectionSecure(const std::string& name, const ::h
     if (!encryption_key.empty()) {
         RegisterCollectionKey(name, encryption_key, metric, noise_sigma, &schema);
     }
-    return CreateCollection(name, schema, quantization);
+    return CreateCollection(name, schema, quantization, !encryption_key.empty(), expected_vectors);
 }
 
 } // namespace hyperspace

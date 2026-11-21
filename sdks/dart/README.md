@@ -105,6 +105,8 @@ Pass one of these values as `quantization` when creating a collection:
 
 Trained modes (`rabitq`, `rabitq4`, `rabitq2`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from real data. Since server 4.2.5 each shard calibrates them online once it holds 1,024 vectors (`HS_AUTO_CALIBRATE_MIN`; 4,096 for `pq` / `opq`) and re-encodes stored codes in place; **rebuild index** after a large initial ingest additionally rebuilds the graph on the trained codes. `rabitq*` / `pq4` requested on other metrics fall back to `medium`. Server 4.2.5 reranks quantized candidates against exact vectors by default, so `medium` and `rabitq4` return exact top-k; `rabitq4` does it with half the memory of `medium`.
 
+**Large collections (server ≥ 4.2.5).** A new collection gets one shard unless you pass the expected size: `createCollection(name, schema, quantization: 'medium', expectedVectors: 5000000)` sends `x-expected-vectors`, and the server creates one shard per `HS_SHARD_TARGET_VECTORS` (2M by default). The layout is fixed at creation; leave it unset below a few million vectors. Older servers ignore it.
+
 **Compact wire vectors.** Since server 4.2.5 requests may carry vectors as `repeated float` (`vector_f32`) instead of `repeated double` — half the bytes on the wire and half the decode cost (the server stores f32 anyway). It is opt-in because older servers ignore the new field:
 
 ```dart
