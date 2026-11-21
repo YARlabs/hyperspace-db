@@ -152,6 +152,8 @@ HyperspaceDB relies on principles from modern cosmology to execute vector search
    Instead of $O(N^3)$ generic OT, we execute an ultra-fast $O(N)$ 1D L1-CDF algorithm to compare distributions along feature axes directly inside the metric dispatch.
 8. **Cascading Funnel (The MRL Horiz    To avoid the "Curse of Dimensionality" in RAM, HyperspaceDB uses **Matryoshka Representation Learning (MRL)**. The engine defines a **Cascade Pipeline** in the schema: a truncated "head" (e.g. 64D) is indexed in RAM for microsecond retrieval, while the "tail" (e.g. 1536D) is stored on disk for a final precision-rerank phase.
 
+   *Implementation (4.2.5).* For a single-component L2 / cosine collection whose first cascade layer has `8 ≤ cutoff_dimension < dimension`, the shard's HNSW index is created with `index_dim = cutoff` (`CollectionImpl::index_view` takes the prefix and re-normalizes it for cosine) and the exact store keeps the full `f32` vector. Inserts, WAL replay, `RebuildIndex` and MemTable flushes index the prefix; searches walk the graph with the query prefix and always rerank `max(top_k × HS_RERANK_OVERSAMPLE, rerank_top_k)` candidates on the full vector (never deferred to the scatter-gather layer). The width is persisted in `mrl_index.dim`, so collections created before 4.2.5 (full-dimension data, no marker) keep their layout; `HS_MRL_INDEX=0` disables it. Cold chunks keep full vectors. Stats expose `dimension` (full) and `index_dimension` (prefix). Before 4.2.5 the cutoff was stored but unused. A per-request `mrl_dimension` (truncated scoring on a full-dimension index) re-scores a `4 × top_k` pool on the full vector.
+
 ---
 
 ## ⚡️ Seastar-Inspired Thread-per-Core Architecture (v4.0.0)

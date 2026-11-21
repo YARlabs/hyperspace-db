@@ -20,7 +20,9 @@ compact f32 wire format.
   their full-dimension layout; `HS_MRL_INDEX=0` opts out). 100k × 1024-D MRL-shaped data,
   cutoff 256, M = 16: `medium` indexing 14.8k → 28.3k vec/s, rebuild 7.1 → 3.7 s, QPS
   2.9k → 4.3k (1 client) / 20.7k → 27.6k (16 clients), recall 99.84% → 99.58%, RSS −15%;
-  `none` indexing ×2.1, 1-client QPS ×1.6, RSS −28%. Stats report `index_dimension`.
+  `none` indexing ×2.1, 1-client QPS ×1.6, RSS −28%. `GET /api/collections` and `/stats` report
+  `index_dimension`; the dashboard's MRL tab shows whether the prefix index is active (it used to
+  claim a prefix scan for every collection with a cutoff). `hs_loadbench --mrl-cutoff/--mrl-decay`.
 * **Per-request `mrl_dimension` re-scored only the top-k**: it now re-scores a `4 × top_k` pool on
   the full vector (recall 87.5% → 96.7%, equal to a full search, ~25% faster).
 * **gRPC `CreateCollection` ignored the quantization level**: the Go, TypeScript, Dart, C++ and

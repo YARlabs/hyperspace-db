@@ -150,7 +150,7 @@ AI is moving from text-in/text-out to autonomous action. Agents need *episodic m
   </tr>
   <tr>
     <td>🧭 <b>Schema-Driven Cascade</b></td>
-    <td>Native <b>MRL (Matryoshka)</b> support. Define one schema with multiple layers; the RAM-resident <code>CascadePipeline</code> queries truncated dimensions in microseconds, automatically reranking results via full-resolution vectors on NVMe/S3.</td>
+    <td>Native <b>MRL (Matryoshka)</b> support. Set <code>cascade_pipeline[0].cutoff_dimension</code> and (since 4.2.5, single-component L2 / cosine collections) the HNSW graph is built on the re-normalized prefix while full vectors stay in the memory-mapped exact store; every search reranks a candidate pool on the full vector. 100k × 1024-D, cutoff 256: indexing ×1.9, QPS ×1.3–1.5, recall 99.6%.</td>
   </tr>
   <tr>
     <td>🎓 <b>Cognitive Math Engine</b></td>
@@ -727,15 +727,16 @@ from hyperspace import HyperspaceClient
 # Connect to local instance
 client = HyperspaceClient()
 
-# Create a collection with Schema-Driven Cascade (128D Poincaré + MRL)
+# Create an MRL collection: the graph indexes the first 256 of 1024 dimensions
+# (L2 / cosine), every search reranks the candidates on the full vector.
 client.create_collection(
-    name="world_model", 
+    name="world_model",
     schema={
         "components": [
-            {"name": "primary", "metric": "poincare", "full_dimension": 128, "weight": 1.0}
+            {"name": "primary", "metric": "cosine", "full_dimension": 1024, "weight": 1.0}
         ],
         "cascade_pipeline": [
-            {"component_name": "primary", "cutoff_dimension": 32, "store_in_ram": True, "rerank_top_k": 100}
+            {"component_name": "primary", "cutoff_dimension": 256, "store_in_ram": True, "rerank_top_k": 100}
         ]
     }
 )
@@ -834,6 +835,7 @@ Configure these via `.env` file or environment variables:
 | `HS_RERANK_DEFER` | Rerank once after the shard merge (`true`) or inside every shard (`false`, pre-4.2.5 behavior) | `true` / `false` | `true` |
 | `HS_RAW_CACHE_MB` | Optional heap copy of exact vectors for rerank / calibration, per collection. The memory-mapped exact store (`exact_f32/`, 4.2.5+) already serves them; vectors written by older versions are read from the payload store until `RebuildIndex` | Integer (MB) | `0` |
 | `HS_AUTO_CALIBRATE_MIN` | Vectors per shard before `rabitq` / `rabitq4` / `rabitq2` / `pq4` / `pq` / `opq` calibrate online (`pq` / `opq` need ≥ 4,096); `0` = only via `RebuildIndex` | Integer | `1024` |
+| `HS_MRL_INDEX` | MRL collections (`cascade_pipeline[0].cutoff_dimension`, single-component L2 / cosine) index the vector prefix and rerank on the full vector; `0` keeps full-dimension indexes for new collections (existing ones keep their layout, recorded in `mrl_index.dim`) | `1` / `0` | `1` |
 | `HS_PORT` / `HS_HTTP_PORT` | gRPC / HTTP listen ports (`--port` / `--http-port` win) | Integers | `50051` / `50050` |
 | `HS_HNSW_ALPHA` | Vamana α for neighbor selection (> 1 keeps longer edges) | Float ≥ 1.0 | `1.0` |
 | `HS_FILTER_ACORN` | ACORN 2-hop traversal for selective filters | `true` / `false` | `true` |

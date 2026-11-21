@@ -842,6 +842,10 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
         enabled: open,
         refetchInterval: 5000
     })
+    // Width of the ANN index (server >= 4.2.5): smaller than `dimension` when the MRL prefix
+    // index is active; older servers do not report it and always index the full vector.
+    const indexDim: number = stats?.index_dimension ?? stats?.dimension ?? 0
+    const prefixIndex = Boolean(stats?.index_dimension && stats.index_dimension < stats.dimension)
 
     const configMutation = useMutation({
         mutationFn: (config: any) => updateCollectionConfig(collectionName, config),
@@ -1016,16 +1020,30 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                                 <div className="text-[10px] text-sky-400/80">Nested Dimensionality Cascade Engine</div>
                                             </div>
                                         </div>
-                                        <Badge className="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-mono">
-                                            ACTIVE
-                                        </Badge>
+                                        {prefixIndex ? (
+                                            <Badge className="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-mono">
+                                                PREFIX INDEX
+                                            </Badge>
+                                        ) : (
+                                            <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono">
+                                                FULL INDEX
+                                            </Badge>
+                                        )}
                                     </div>
+
+                                    {!prefixIndex && (
+                                        <div className="p-2.5 rounded bg-amber-950/30 border border-amber-500/20 text-[11px] text-amber-200/90">
+                                            A cutoff is configured, but this collection's graph indexes all {stats.dimension} dimensions
+                                            (created before v4.2.5, a non-L2 / cosine or multi-component schema, or <code>HS_MRL_INDEX=0</code>).
+                                            Re-create the collection to get the prefix index.
+                                        </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                         <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
-                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Cutoff Prefix</div>
-                                            <div className="text-2xl font-mono font-bold text-sky-400">{stats.mrl_cutoff_dimension}d</div>
-                                            <div className="text-[10px] text-zinc-500">Fast Candidate Phase</div>
+                                            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Index Width</div>
+                                            <div className="text-2xl font-mono font-bold text-sky-400">{indexDim}d</div>
+                                            <div className="text-[10px] text-zinc-500">Cutoff {stats.mrl_cutoff_dimension}d · graph phase</div>
                                         </div>
                                         <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
                                             <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Full Dimension</div>
@@ -1035,14 +1053,14 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                         <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
                                             <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Scan Reduction</div>
                                             <div className="text-2xl font-mono font-bold text-emerald-400">
-                                                {stats.mrl_cutoff_dimension ? (stats.dimension / stats.mrl_cutoff_dimension).toFixed(1) : '1.0'}x
+                                                {indexDim ? (stats.dimension / indexDim).toFixed(1) : '1.0'}x
                                             </div>
                                             <div className="text-[10px] text-zinc-500">RAM / Bandwidth Ratio</div>
                                         </div>
                                         <div className="p-3 rounded bg-zinc-900 border border-white/5 space-y-1">
                                             <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Rerank Pool</div>
-                                            <div className="text-2xl font-mono font-bold text-amber-400">Top {stats.mrl_rerank_top_k || 100}</div>
-                                            <div className="text-[10px] text-zinc-500">Stage 2 Rescoring</div>
+                                            <div className="text-2xl font-mono font-bold text-amber-400">{stats.mrl_rerank_top_k ? `≥ ${stats.mrl_rerank_top_k}` : 'k × 4'}</div>
+                                            <div className="text-[10px] text-zinc-500">max(top_k × oversample, rerank_top_k)</div>
                                         </div>
                                     </div>
 
@@ -1055,9 +1073,11 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                             <div className="flex items-start gap-2.5 p-2.5 rounded bg-zinc-950/60 border border-white/5">
                                                 <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-500/20 shrink-0">Stage 1</span>
                                                 <div className="space-y-0.5">
-                                                    <div className="font-medium text-zinc-200 text-xs">Fast SIMD Scan (Prefix [0..{stats.mrl_cutoff_dimension}])</div>
+                                                    <div className="font-medium text-zinc-200 text-xs">Graph Search (Prefix [0..{indexDim}])</div>
                                                     <div className="text-[10px] text-zinc-400">
-                                                        Scans index graph using leading {stats.mrl_cutoff_dimension} coordinates for minimal latency and maximum cache locality.
+                                                        {prefixIndex
+                                                            ? `The HNSW graph and its codes hold only the leading ${indexDim} coordinates: ${(stats.dimension / indexDim).toFixed(1)}× less graph RAM and distance work.`
+                                                            : `The graph indexes the full ${stats.dimension}d vector.`}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1066,7 +1086,7 @@ function CollectionStatsDialog({ collectionName }: { collectionName: string }) {
                                                 <div className="space-y-0.5">
                                                     <div className="font-medium text-zinc-200 text-xs">High-Fidelity Rerank (Full {stats.dimension}d Space)</div>
                                                     <div className="text-[10px] text-zinc-400">
-                                                        Exact rescoring of top {stats.mrl_rerank_top_k || 100} candidate vectors across the complete {stats.dimension} dimensions to guarantee full recall.
+                                                        Candidates are re-scored on the complete {stats.dimension}d vector from the memory-mapped exact store, so returned distances are full-vector distances.
                                                     </div>
                                                 </div>
                                             </div>

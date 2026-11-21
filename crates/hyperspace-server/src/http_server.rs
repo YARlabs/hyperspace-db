@@ -579,6 +579,10 @@ struct CollectionSummary {
     name: String,
     count: usize,
     dimension: usize,
+    /// Width of the ANN index (< `dimension` for an MRL prefix index); known for loaded
+    /// collections only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    index_dimension: Option<usize>,
     metric: String,
     indexing_queue: u64,
     status: String,
@@ -646,6 +650,7 @@ async fn list_collections(
                     name: name.clone(),
                     count: col.count(),
                     dimension: col.dimension(),
+                    index_dimension: Some(col.index_dimension()),
                     metric: col.metric_name().to_string(),
                     indexing_queue: col.queue_size(),
                     status: "active".to_string(),
@@ -677,6 +682,7 @@ async fn list_collections(
                 name: name.clone(),
                 count: meta.vector_count,
                 dimension: meta.dimension(),
+                index_dimension: None,
                 metric: meta.metric_name(),
                 indexing_queue: 0,
                 status: "idle".to_string(),
@@ -718,6 +724,7 @@ async fn list_collections(
                     name: format!("{owner}:{name}"),
                     count: col.count(),
                     dimension: col.dimension(),
+                    index_dimension: Some(col.index_dimension()),
                     metric: col.metric_name().to_string(),
                     indexing_queue: col.queue_size(),
                     status: "active".to_string(),
@@ -749,6 +756,7 @@ async fn list_collections(
                 name: format!("{owner}:{name}"),
                 count: meta.vector_count,
                 dimension: meta.dimension(),
+                index_dimension: None,
                 metric: meta.metric_name(),
                 indexing_queue: 0,
                 status: "idle".to_string(),
