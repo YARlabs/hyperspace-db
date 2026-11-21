@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.2.5] - 2026-11-19
 
 Performance & recall audit release. It removes per-query disk work on cold chunks, fixes
-several silent recall losses, and adds RaBitQ / PQ4 fast-scan quantizers, a flat layer-0
+several silent recall losses, and adds RaBitQ (1-, 2- and 4-bit) / PQ4 fast-scan quantizers, a flat layer-0
 graph, graph repair after deletes, ACORN-style filtered traversal, WAL group commit, and a
 compact f32 wire format.
 
@@ -118,7 +118,7 @@ compact f32 wire format.
   wait so background calibration / beam tuning finishes before measuring.
 * A/B switches: `HS_RERANK_DEFER=0` (rerank inside each shard, as before),
   `hyperspace_index::set_sq8_int_kernel` / `set_sq8_scaled_codes` (doc-hidden).
-* **Online auto-calibration of trained quantizers** (`rabitq`, `pq4`, `pq`, `opq`): each shard
+* **Online auto-calibration of trained quantizers** (`rabitq`, `rabitq4`, `rabitq2`, `pq4`, `pq`, `opq`): each shard
   fits its codebook / centroid on exact vectors once it holds `HS_AUTO_CALIBRATE_MIN` vectors
   (default 1,024; at least 4,096 for `pq` / `opq`, 16 samples per centroid) and re-fits after
   every 8× growth (re-encoding cost ~1.14 × N in total). The quantizer is swapped atomically
@@ -140,7 +140,7 @@ compact f32 wire format.
   quantization sweep enforces recall floors (`run_quantization_sweep.py --min-recall`), which
   would have caught the 4.2.4 multi-shard regression.
 * **Dashboard**: the collection-create dialog is driven by the server's quantization catalog and
-  covers every level (`none` … `rabitq`, `pq4`, `pq`, `opq`), with bytes per vector for the chosen
+  covers every level (`none` … `rabitq4`, `rabitq2`, `rabitq`, `pq4`, `pq`, `opq`), with bytes per vector for the chosen
   dimension, metric compatibility (unsupported levels disabled) and a calibration hint. The
   Settings → Dynamic Config tab shows all engine tunables and the quantization table; collection
   details label RaBitQ / PQ4 and flag modes that need a rebuild.
@@ -150,8 +150,8 @@ compact f32 wire format.
   `vector_f32`, an opt-in compact-vector switch (`compact_vectors` / `compactVectors` /
   `SetCompactVectors` / `with_compact_vectors` / ROS2 `compact_vectors` parameter), and the
   quantization catalog with calibration notes in every README. SDK versions bumped to 4.2.5.
-* **Benchmarks**: `benchmarks/run_quantization_sweep.py` (now tracked) covers `rabitq` and `pq4`, calibrates every
-  trained mode (pq, opq, pq4, rabitq) with a rebuild before measuring, and accepts
+* **Benchmarks**: `benchmarks/run_quantization_sweep.py` (now tracked) covers `rabitq`, `rabitq4`, `rabitq2` and `pq4`, calibrates every
+  trained mode (pq, opq, pq4, rabitq, rabitq4, rabitq2) with a rebuild before measuring, and accepts
   `HS_BENCH_SERVER_BIN` / `HS_BENCH_LABEL` / `HS_BENCH_REPORT` / `HS_BENCH_RESULT` /
   `HS_BENCH_GRPC_PORT`, `HS_BENCH_CALIBRATE`, `--exclude`, `--no-report` and the
   `--min-recall config=percent` gate (exit 1 on a recall regression).
@@ -162,6 +162,22 @@ compact f32 wire format.
   Codes are `⌈D/64⌉·8 + 8` bytes (104 B for 768-D). The centroid is fitted by `train_pq`
   (vacuum / optimize) and persisted as `rabitq_centroid.bin`. L2 / cosine only; other metrics
   fall back to ScalarI8.
+* **Extended (multi-bit) RaBitQ: `rabitq4` and `rabitq2`** (`QuantizationMode::RaBitQ4` /
+  `RaBitQ2`, aliases `rabitq_4bit` / `exrabitq` and `rabitq_2bit`) — Gao et al., SIGMOD 2025.
+  The rotated unit residual is coded on a `2^B`-level grid with the scale that maximizes
+  `cos(w, o')`; the estimator `⟨o, q⟩ ≈ ⟨w, q'⟩ / ⟨w, o'⟩` runs as a `u8 × i8` dot product
+  against an int8 query (NEON `SDOT`, AVX2 `maddubs`, scalar fallback). Codes are bit planes
+  plus `‖x‖` and `1/⟨w, o'⟩`: 520 B (4-bit) / 264 B (2-bit) per 1024-D vector. Single-pass
+  recall@10 on 1024-D clustered data: 1-bit ~36%, 2-bit ~60%, 4-bit ~87%; the true top-10 is
+  inside the top-40 candidates 72% / 96% / 100% of the time. `rabitq4` therefore defers the
+  exact rerank like `medium`, and `rabitq2` uses the coarse ×24 pool. 100k × 1024-D,
+  `hs_loadbench`, M = 16, 16 clients: `rabitq4` matches `medium` throughput (~18k QPS,
+  99.8% recall) at half its code size, with lower single-client latency. Both are trained
+  (online calibration, `RebuildIndex`), share the `rabitq_centroid.bin` file (the width comes
+  from the collection's mode), are L2 / cosine only (other metrics fall back to `medium`), and
+  are listed in `GET /api/status`, the dashboard, every SDK README and the MCP server.
+  Encoding uses a two-stage (12 coarse + 10 fine) scale search without materializing codes:
+  18.6 µs (4-bit) / 22.7 µs (2-bit) per 1024-D vector.
 * **PQ4 fast-scan (`QuantizationMode::PQ4`, `quantization: "pq4" | "pq_fastscan"`)** —
   `hyperspace-core::pq4`. 4-bit PQ (16 centroids per 4-D sub-space, `D/8`-byte codes) with an
   `m × 16` `u8` lookup table that stays in L1 (768 B for 768-D vs 48 KB+ for 8-bit PQ);
@@ -209,9 +225,19 @@ compact f32 wire format.
   thread hops per query). For `medium`, `medium_plus` and `turbo` shards now return
   compact-code candidates and the merged top `top_k × oversample` are reranked once. 20k ×
   1024-D `medium` + rerank ×4, 16 clients: **2.5k → 9.0k QPS, p99 19.7 → 3.6 ms, server CPU
-  3.8 → 1.16 ms/query, recall 100%**. Coarse codes (`extreme`, `ternary`, `rabitq`, `pq4`,
+  3.8 → 1.16 ms/query, recall 100%**. Coarse codes (`extreme`, `ternary`, `rabitq`, `rabitq2`, `pq4`,
   `pq`, `opq`) need the wider per-shard pool and keep reranking in each shard (in parallel).
   L2 / cosine reranks score f32 vectors straight from the exact store with the SIMD kernel.
+* **Faster graph construction on RaBitQ / OPQ codes**: the RNG neighbour heuristic decoded
+  every candidate to the original space (unpack + inverse FWHT + centroid; ~80% of indexing
+  CPU for RaBitQ). The rotation is orthonormal and the centroid shared, so neighbour distances
+  are now taken in the rotated domain (no inverse rotation), and 1-bit RaBitQ uses an exact
+  popcount pair kernel (`rabitq::code_pair_l2_sq`). 100k × 1024-D indexed throughput, before /
+  after: `rabitq` 8.4k → **25.1k**, `rabitq4` 4.6k → **10.8k**, `rabitq2` 6.0k → **12.3k**
+  vectors/s; recall and QPS unchanged.
+* **Parallel re-encoding after online calibration**: `refit_online` re-encodes the stored codes
+  on all cores (rayon) instead of one thread; each code still takes the calibration gate
+  shared, so a concurrent swap is never missed.
 * **Rerank is on by default** for quantized collections (`HS_RERANK_ENABLED=0` disables it):
   with the changes above it costs ~3% QPS for exact top-k. Full precision skips it as before.
 * **Memory-mapped exact vector store** (`exact_f32/` per shard, `dim × 4 + 4` bytes per slot):
@@ -253,7 +279,7 @@ compact f32 wire format.
   pools are split across idle cores while fewer searches run than half the cores; under load
   they stay single-threaded. 20k × 1024-D single query: f32 scan 1.28 → 0.42 ms, int8 0.42 →
   0.16 ms.
-* **Coarse-code rerank pool** (`extreme`, `ternary`, `rabitq`, `pq4`, `pq`, `opq`): `top_k ×
+* **Coarse-code rerank pool** (`extreme`, `ternary`, `rabitq`, `rabitq2`, `pq4`, `pq`, `opq`): `top_k ×
   oversample × 24` candidates in total, independent of the shard count (the former 12-shard
   default provided it implicitly; with one shard and a 40-candidate pool `extreme` + rerank ×4
   fell from 98.8% to 61% recall).

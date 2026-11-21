@@ -98,7 +98,9 @@ func (c *HyperspaceClient) CreateCollection(ctx context.Context, name string, sc
 }
 
 // CreateCollectionWithQuantization creates a collection specifying custom quantization
-// Supported quantization levels: "ternary" (BitNet 1.58-bit {-1, 0, +1}), "turbo", "extreme", "medium_plus", "medium", "none".
+// Supported quantization levels: "medium" (default), "none", "medium_plus", "turbo",
+// "ternary" (BitNet 1.58-bit {-1, 0, +1}), "extreme", and for l2 / cosine "rabitq",
+// "rabitq4" / "rabitq2" (extended RaBitQ), "pq4", "pq", "opq".
 func (c *HyperspaceClient) CreateCollectionWithQuantization(ctx context.Context, name string, schema *pb.CollectionSchema, encryptionKey string, noiseSigma float64, quantization string) error {
 	metric := "l2"
 	if len(schema.Components) > 0 {

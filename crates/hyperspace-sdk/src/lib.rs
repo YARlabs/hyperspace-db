@@ -462,7 +462,9 @@ impl Client {
         Ok(resp.into_inner().status)
     }
 
-    /// Creates a new collection with a specific quantization level override (`none`, `medium`, `medium_plus`, `turbo`, `extreme`, `ternary`).
+    /// Creates a new collection with a specific quantization level override (`none`, `medium`,
+    /// `medium_plus`, `turbo`, `ternary`, `extreme`, `rabitq`, `rabitq4`, `rabitq2`, `pq4`,
+    /// `pq`, `opq`).
     ///
     /// Sends the quantization level to HyperspaceDB via the `x-quantization-level` gRPC metadata header.
     ///
@@ -2624,6 +2626,12 @@ mod tests {
             "turbo",
             "extreme",
             "ternary",
+            "rabitq",
+            "rabitq4",
+            "rabitq2",
+            "pq4",
+            "pq",
+            "opq",
         ];
         for level in levels {
             let parsed: Result<tonic::metadata::MetadataValue<tonic::metadata::Ascii>, _> =

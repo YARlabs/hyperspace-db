@@ -18,7 +18,7 @@ This package provides a bridge between HyperspaceDB and the ROS2 environment, al
 
 You can now define complex schemas (Multi-Vector, MRL, Hybrid) using JSON via the ROS2 service, specifying `quantization` and `encrypted`.
 
-Supported `quantization` values: `none`, `medium` (8-bit), `medium_plus` (4-bit), `turbo`, `ternary` (BitNet 1.58-bit), `extreme` (1-bit), and — for `l2` / `cosine` collections — `rabitq` (1-bit RaBitQ estimator), `pq4` (4-bit PQ fast-scan), `pq`, `opq`. The trained modes (`rabitq`, `pq4`, `pq`, `opq`) must be calibrated after the initial ingest with the `hyperspace/rebuild_index` service:
+Supported `quantization` values: `none`, `medium` (8-bit, default), `medium_plus` (4-bit), `turbo`, `ternary` (BitNet 1.58-bit), `extreme` (1-bit), and — for `l2` / `cosine` collections — `rabitq` (1-bit RaBitQ estimator), `rabitq4` / `rabitq2` (extended 4- / 2-bit RaBitQ), `pq4` (4-bit PQ fast-scan), `pq`, `opq`. The trained modes (`rabitq`, `rabitq4`, `rabitq2`, `pq4`, `pq`, `opq`) calibrate themselves online on servers >= 4.2.5; after a large initial ingest the `hyperspace/rebuild_index` service also rebuilds the graph on the trained codes:
 
 ```bash
 ros2 service call /hyperspace/create_collection hyperspace_interfaces/srv/CreateCollection "{name: 'robot_memory', schema_json: '{\"components\": [{\"name\": \"main\", \"metric\": \"lorentz\", \"full_dimension\": 1025}], \"quantization\": \"ternary\", \"encrypted\": true}'}"

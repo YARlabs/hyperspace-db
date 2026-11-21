@@ -11,6 +11,8 @@ Tests all quantization levels:
   - 'pq'          (Naive Product Quantization, 64-byte ADC)
   - 'extreme'     (Binary ADC 1-bit)
   - 'rabitq'      (RaBitQ 1-bit + unbiased estimator, popcount bit-planes)   [v4.2.5+]
+  - 'rabitq4'     (Extended RaBitQ 4-bit grid code, int8 SDOT estimator)     [v4.2.5+]
+  - 'rabitq2'     (Extended RaBitQ 2-bit grid code, int8 SDOT estimator)     [v4.2.5+]
   - 'pq4'         (4-bit PQ fast-scan, L1-resident u8 LUT)                  [v4.2.5+]
 
 Code-based modes (pq, opq, pq4, rabitq) are calibrated before searching: after ingest
@@ -66,7 +68,7 @@ REPORT_MD  = os.environ.get("HS_BENCH_REPORT", os.path.join(BASE_DIR, "BENCHMARK
 RESULT_JSON = os.environ.get("HS_BENCH_RESULT", os.path.join(BASE_DIR, "benchmarks", "quantization_sweep_results.json"))
 
 # Modes whose codebooks / centroid must be trained on real data before searching.
-CALIBRATED_MODES = {"pq", "opq", "pq4", "rabitq"}
+CALIBRATED_MODES = {"pq", "opq", "pq4", "rabitq", "rabitq4", "rabitq2"}
 CALIBRATE = os.environ.get("HS_BENCH_CALIBRATE", "1") not in ("0", "false", "no", "off")
 # Unmeasured warm-up queries before each search run (`HS_BENCH_WARMUP`, default: all).
 WARMUP_QUERIES = int(os.environ.get("HS_BENCH_WARMUP", "100000"))
@@ -273,6 +275,8 @@ def run_single_config(
             "pq": (DIMENSION // 16) + 4,        # 68 B
             "extreme": (DIMENSION // 8) + 4,    # 132 B
             "rabitq": ((DIMENSION + 63) // 64) * 8 + 8 + 4,  # 140 B (bits + norm + ip + ID)
+            "rabitq4": ((DIMENSION + 1) // 2 + 31) // 32 * 32 + 8,  # 520 B (4-bit planes + norm + 1/<w,o>)
+            "rabitq2": ((DIMENSION + 3) // 4 + 31) // 32 * 32 + 8,  # 264 B
             "pq4": (DIMENSION // 4 + 1) // 2 + 4,              # 132 B (D/4 nibbles + ID)
         }.get(quant, 1024)
         theor_mb = (theor_bytes * N_VECTORS) / (1024 * 1024)
@@ -374,7 +378,7 @@ def generate_markdown_report(results: List[Dict[str, Any]], baseline_res: Dict[s
         f.write(f"# HyperspaceDB {ENGINE_LABEL} Quantization & Rerank Sweep Benchmark Report\n\n")
         f.write("> **Environment & Test Parameters**\n")
         f.write(f"> - **Engine**: HyperspaceDB {ENGINE_LABEL} (`{os.path.basename(SERVER_BIN)}`)\n")
-        f.write(f"> - **Code-mode calibration**: {'RebuildIndex after ingest (pq, opq, pq4, rabitq)' if CALIBRATE else 'disabled'}\n")
+        f.write(f"> - **Code-mode calibration**: {'RebuildIndex after ingest (pq, opq, pq4, rabitq, rabitq4, rabitq2)' if CALIBRATE else 'disabled'}\n")
         f.write(f"> - **Dataset**: {N_VECTORS:,} vectors, {DIMENSION}D Dense Semantic Clustered Embedding ({N_CLUSTERS} clusters)\n")
         f.write(f"> - **Metric**: Cosine Distance (Normalized Euclidean)\n")
         f.write(f"> - **Queries**: {N_QUERIES:,} queries evaluated against Exact Brute-Force Ground Truth\n")
@@ -465,11 +469,13 @@ def generate_markdown_report(results: List[Dict[str, Any]], baseline_res: Dict[s
 
         f.write("\n---\n\n")
 
-        f.write("## 6. Deep Dive: RaBitQ & PQ4 Fast-Scan (v4.2.5)\n\n")
+        f.write("## 6. Deep Dive: RaBitQ (1 / 2 / 4-bit) & PQ4 Fast-Scan (v4.2.5)\n\n")
         f.write("RaBitQ stores a 1-bit code of the FWHT-rotated residual plus norm and the correction factor "
                 "⟨o', x̄⟩ (136 B for 1024D), giving an unbiased distance estimator evaluated with popcount over 4 query bit-planes. "
+                "Extended RaBitQ (`rabitq4`, `rabitq2`) codes the rotated residual on a 4- / 2-bit grid with the scale that maximizes "
+                "cos(w, o') (520 / 264 B for 1024D) and estimates ⟨o, q⟩ = ⟨w, q'⟩ / ⟨w, o'⟩ with one int8 dot product per candidate. "
                 "PQ4 stores 4-bit codes over 4-D sub-spaces (128 B for 1024D) and scores them with an L1-resident u8 lookup table.\n\n")
-        new_runs = [r for r in results if r["quant"] in ("rabitq", "pq4")]
+        new_runs = [r for r in results if r["quant"] in ("rabitq", "rabitq4", "rabitq2", "pq4")]
         if new_runs:
             f.write("| Variant | Recall@10 | Search QPS | Mean Lat | P99 Lat | Calibration |\n")
             f.write("| :--- | :---: | :---: | :---: | :---: | :---: |\n")
@@ -848,6 +854,16 @@ def main():
          "desc": "RaBitQ (Server Rerank 8x)"},
         {"name": "rabitq_twopass_raw40", "quant": "rabitq", "rerank": False, "oversample": 1, "ef_search": 100,
          "two_pass_raw": True, "raw_fetch_k": 40, "desc": "RaBitQ + Client Two-Pass Exact Raw Rerank (Top-40)"},
+
+        # Extended RaBitQ (multi-bit grid code + unbiased estimator, v4.2.5+)
+        {"name": "rabitq4", "quant": "rabitq4", "rerank": False, "oversample": 1, "ef_search": 100,
+         "desc": "Extended RaBitQ 4-bit (Single Pass, No Rerank)"},
+        {"name": "rabitq4_rerank4", "quant": "rabitq4", "rerank": True, "oversample": 4, "ef_search": 100,
+         "desc": "Extended RaBitQ 4-bit (Server Rerank 4x)"},
+        {"name": "rabitq2", "quant": "rabitq2", "rerank": False, "oversample": 1, "ef_search": 100,
+         "desc": "Extended RaBitQ 2-bit (Single Pass, No Rerank)"},
+        {"name": "rabitq2_rerank4", "quant": "rabitq2", "rerank": True, "oversample": 4, "ef_search": 100,
+         "desc": "Extended RaBitQ 2-bit (Server Rerank 4x)"},
 
         # PQ4 fast-scan (4-bit PQ, v4.2.5+)
         {"name": "pq4", "quant": "pq4", "rerank": False, "oversample": 1, "ef_search": 100,

@@ -89,8 +89,9 @@ public:
     void SetCompactVectors(bool enabled) { compact_vectors_ = enabled; }
 
     // Create collection with optional quantization: "none", "medium", "medium_plus", "turbo",
-    // "ternary" (BitNet 1.58-bit), "extreme", "rabitq", "pq4", "pq", "opq".
-    // rabitq / pq4 / pq / opq must be calibrated with RebuildIndex() after the initial ingest.
+    // "ternary" (BitNet 1.58-bit), "extreme", "rabitq", "rabitq4", "rabitq2", "pq4", "pq", "opq".
+    // Trained levels (rabitq*, pq4, pq, opq) calibrate online on servers >= 4.2.5; RebuildIndex()
+    // after a large initial ingest also rebuilds the graph on the trained codes.
     bool CreateCollection(const std::string& name, const ::hyperspace::CollectionSchema& schema, const std::string& quantization = "", bool encrypted = false);
     // Deletes a collection and its data. Returns false if it does not exist or the call fails.
     bool DeleteCollection(const std::string& name);

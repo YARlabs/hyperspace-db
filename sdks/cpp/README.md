@@ -144,16 +144,18 @@ Pass one of these values as `quantization` when creating a collection:
 | Value | Mode | Bytes / vector (1024-D) | Metrics | Needs calibration |
 | :--- | :--- | ---: | :--- | :---: |
 | `none` | Full precision (f32 storage) | 4,100 | all | — |
-| `medium` | ScalarI8 (8-bit) | 1,028 | all | — |
+| `medium` | ScalarI8 (8-bit, int8 SDOT kernel) — **default** | 1,028 | all | — |
 | `medium_plus` | ScalarI4 (4-bit block-wise) | 772 | all | — |
 | `turbo` | TurboQuant 4-bit spherical | 520 | l2, cosine, hybrid | — |
 | `ternary` | BitNet 1.58-bit {-1, 0, +1} | 264 | all | — |
 | `extreme` | Binary 1-bit | 132 | all | — |
 | `rabitq` | **RaBitQ** 1-bit + unbiased estimator (new in 4.2.5) | 136 | l2, cosine | ✔ |
+| `rabitq4` | **Extended RaBitQ** 4-bit grid code + unbiased estimator, int8 SDOT kernel (new in 4.2.5) | 520 | l2, cosine | ✔ |
+| `rabitq2` | **Extended RaBitQ** 2-bit grid code + unbiased estimator (new in 4.2.5) | 264 | l2, cosine | ✔ |
 | `pq4` | **PQ4 fast-scan** 4-bit PQ, L1-resident LUT (new in 4.2.5) | 128 | l2, cosine | ✔ |
 | `opq` / `pq` | 8-bit product quantization | 64 | l2, cosine | ✔ |
 
-Trained modes (`rabitq`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from real data. Since server 4.2.5 each shard calibrates them online once it holds 1,024 vectors (`HS_AUTO_CALIBRATE_MIN`; 4,096 for `pq` / `opq`) and re-encodes stored codes in place; **rebuild index** after a large initial ingest additionally rebuilds the graph on the trained codes (best recall). `rabitq` / `pq4` requested on other metrics fall back to `medium`.
+Trained modes (`rabitq`, `rabitq4`, `rabitq2`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from real data. Since server 4.2.5 each shard calibrates them online once it holds 1,024 vectors (`HS_AUTO_CALIBRATE_MIN`; 4,096 for `pq` / `opq`) and re-encodes stored codes in place; **rebuild index** after a large initial ingest additionally rebuilds the graph on the trained codes. `rabitq*` / `pq4` requested on other metrics fall back to `medium`. Server 4.2.5 reranks quantized candidates against exact vectors by default, so `medium` and `rabitq4` return exact top-k; `rabitq4` does it with half the memory of `medium`.
 
 **Compact wire vectors.** Since server 4.2.5 requests may carry vectors as `repeated float` (`vector_f32`) instead of `repeated double` — half the bytes on the wire and half the decode cost (the server stores f32 anyway). It is opt-in because older servers ignore the new field:
 
@@ -283,7 +285,7 @@ int main() {
     comp->set_full_dimension(3);
     comp->set_weight(1.0);
 
-    // 3. Register Key and Create Collection Securely (quantization: "none", "medium", "medium_plus", "turbo", "ternary", "extreme", "rabitq", "pq4", "pq", "opq")
+    // 3. Register Key and Create Collection Securely (quantization: "none", "medium", "medium_plus", "turbo", "ternary", "extreme", "rabitq", "rabitq4", "rabitq2", "pq4", "pq", "opq")
     client.RegisterCollectionKey(collection, secret_key, "cosine", 0.02, &schema);
     client.CreateCollectionSecure(collection, schema, secret_key, 0.02, "ternary");
 

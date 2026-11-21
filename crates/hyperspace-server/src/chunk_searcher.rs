@@ -97,6 +97,8 @@ pub fn storage_element_size<M: Metric>(
             hyperspace_core::pq::default_num_subvectors(dimension)
         }
         QuantizationMode::RaBitQ => hyperspace_core::rabitq::code_size(dimension),
+        QuantizationMode::RaBitQ4 => hyperspace_core::rabitq::code_size_bits(dimension, 4),
+        QuantizationMode::RaBitQ2 => hyperspace_core::rabitq::code_size_bits(dimension, 2),
         QuantizationMode::PQ4 => {
             hyperspace_core::pq4::code_size(hyperspace_core::pq4::default_num_subvectors(dimension))
         }

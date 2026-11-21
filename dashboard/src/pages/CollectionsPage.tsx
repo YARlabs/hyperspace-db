@@ -359,7 +359,7 @@ function CollectionRow({ collection, isString, onDelete }: any) {
                                 <DropdownMenuItem onClick={() => {
                                     if (window.confirm(`Are you sure you want to rebuild index for '${name}'? This is a heavy operation.`)) {
                                         api.post(`/collections/${name}/rebuild`)
-                                            .then(() => alert("Index rebuild started!"))
+                                            .then(() => alert("Index rebuilt: the new graph is live."))
                                             .catch(e => alert("Failed: " + e.message))
                                     }
                                 }}>

@@ -35,6 +35,8 @@ fn point(i: u32) -> Vec<f64> {
 fn element_size(mode: QuantizationMode) -> usize {
     match mode {
         QuantizationMode::RaBitQ => hyperspace_core::rabitq::code_size(DIM),
+        QuantizationMode::RaBitQ4 => hyperspace_core::rabitq::code_size_bits(DIM, 4),
+        QuantizationMode::RaBitQ2 => hyperspace_core::rabitq::code_size_bits(DIM, 2),
         QuantizationMode::PQ4 => {
             hyperspace_core::pq4::code_size(hyperspace_core::pq4::default_num_subvectors(DIM))
         }
@@ -133,6 +135,8 @@ fn online_calibration_matches_upfront_training() {
         QuantizationMode::PQ4,
         QuantizationMode::ProductQuantization,
         QuantizationMode::RaBitQ,
+        QuantizationMode::RaBitQ4,
+        QuantizationMode::RaBitQ2,
     ] {
         let never = run(mode, &Calibration::Never);
         let upfront = run(mode, &Calibration::Upfront);
@@ -146,6 +150,18 @@ fn online_calibration_matches_upfront_training() {
             "{mode:?}: online {online:.3} must not be worse than default codebook {never:.3}"
         );
     }
+}
+
+/// Extended RaBitQ (2 / 4 bits per dimension) ranks far better than the 1-bit code on the
+/// same data, and 4 bits keep the true top-10 inside a 50-candidate rerank window.
+#[test]
+fn extended_rabitq_recall_grows_with_bits() {
+    let one = run(QuantizationMode::RaBitQ, &Calibration::Upfront);
+    let two = run(QuantizationMode::RaBitQ2, &Calibration::Upfront);
+    let four = run(QuantizationMode::RaBitQ4, &Calibration::Upfront);
+    assert!(two > one, "2-bit {two:.3} vs 1-bit {one:.3}");
+    assert!(four >= two, "4-bit {four:.3} vs 2-bit {two:.3}");
+    assert!(four >= 0.95, "4-bit top-10 within 50: {four:.3}");
 }
 
 #[test]
@@ -275,4 +291,83 @@ fn progressive_refit_tracks_growth_and_re_encodes_everything() {
     assert_eq!(index.refit_online(&refs, 8, raw), (1200, 0));
     assert_eq!(index.calibrated_at(), 1200);
     assert!(recall(&index, &data) >= 0.85);
+}
+
+/// A reloaded extended-RaBitQ index decodes its codes with the collection's bit width (the
+/// centroid file does not record it) and returns the same results as before the reload.
+#[test]
+fn extended_rabitq_survives_snapshot_reload() {
+    for mode in [QuantizationMode::RaBitQ4, QuantizationMode::RaBitQ2] {
+        let data: Vec<Vec<f64>> = (0..600).map(point).collect();
+        let dir = tempdir().unwrap();
+        let snap = dir.path().join("index.snap");
+        let params = SearchParams {
+            top_k: 10,
+            ef_search: 64,
+            ..Default::default()
+        };
+        let queries: Vec<Vec<f64>> = (0..8).map(|i| point(5_000 + i)).collect();
+        let before: Vec<Vec<u32>>;
+        {
+            let index = new_index(dir.path(), mode);
+            let f32s: Vec<Vec<f32>> = data.iter().map(|v| to_f32(v)).collect();
+            let refs: Vec<&[f32]> = f32s.iter().map(Vec::as_slice).collect();
+            let mut index = index;
+            index.train_pq(&refs, 8);
+            for v in &data {
+                let id = index.insert_to_storage(v).unwrap();
+                index.index_node(id, HashMap::new()).unwrap();
+            }
+            before = queries
+                .iter()
+                .map(|q| {
+                    index
+                        .search(q, &HashMap::new(), &[], &params)
+                        .into_iter()
+                        .map(|r| r.0)
+                        .collect()
+                })
+                .collect();
+            index.save_snapshot(&snap).unwrap();
+        }
+        let store = Arc::new(VectorStore::new(dir.path(), element_size(mode)));
+        let reloaded = HnswIndex::<EuclideanMetric>::load_snapshot(
+            &snap,
+            store,
+            mode,
+            Arc::new(GlobalConfig::default()),
+            DIM,
+        )
+        .unwrap();
+        assert_eq!(
+            reloaded.rabitq.load().as_ref().map(|r| r.bits),
+            mode.rabitq_bits(),
+            "{mode:?} bit width after reload"
+        );
+        let after: Vec<Vec<u32>> = queries
+            .iter()
+            .map(|q| {
+                reloaded
+                    .search(q, &HashMap::new(), &[], &params)
+                    .into_iter()
+                    .map(|r| r.0)
+                    .collect()
+            })
+            .collect();
+        assert_eq!(before, after, "{mode:?}");
+        // Decoded vectors stay close to the originals.
+        let v = reloaded.get_vector(3).coords;
+        let err: f64 = v
+            .iter()
+            .zip(&data[3])
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        let n: f64 = data[3].iter().map(|x| x * x).sum::<f64>().sqrt();
+        assert!(
+            err / n < 0.35,
+            "{mode:?} reconstruction error {:.3}",
+            err / n
+        );
+    }
 }

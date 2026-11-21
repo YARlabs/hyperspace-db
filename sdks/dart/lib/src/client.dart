@@ -151,7 +151,7 @@ class HyperspaceClient {
   }
 
   /// Creates a collection with optional client-side encryption and quantization level.
-  /// Supported [quantization] levels: `'ternary'` (BitNet 1.58-bit {-1, 0, +1}), `'turbo'`, `'extreme'`, `'medium_plus'`, `'medium'`, `'none'`.
+  /// Supported [quantization] levels: `'medium'` (default), `'none'`, `'medium_plus'`, `'turbo'`, `'ternary'` (BitNet 1.58-bit {-1, 0, +1}), `'extreme'`, and for l2 / cosine `'rabitq'`, `'rabitq4'`, `'rabitq2'` (extended RaBitQ), `'pq4'`, `'pq'`, `'opq'`.
   Future<bool> createCollection(String name, pb.CollectionSchema schema,
       {String encryptionKey = '',
       double noiseSigma = 0.02,

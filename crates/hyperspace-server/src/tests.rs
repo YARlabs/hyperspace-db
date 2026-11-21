@@ -1893,3 +1893,104 @@ async fn shard_count_follows_the_expected_collection_size() {
     );
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+/// Extended RaBitQ levels (`rabitq4`, `rabitq2`) create, calibrate online and serve exact
+/// results through the default rerank; hyperbolic metrics fall back to `medium`.
+#[tokio::test]
+async fn extended_rabitq_levels_end_to_end() {
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let dim = 64usize;
+    let schema = |metric: &str| hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: metric.to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+    let point = |i: u32| -> Vec<f64> {
+        (0..dim)
+            .map(|d| {
+                let mut x = (u64::from(i) << 20 | d as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                x ^= x >> 29;
+                (x % 20_001) as f64 / 10_000.0 - 1.0 + f64::from(i % 9) * 0.4
+            })
+            .collect()
+    };
+    for (level, mode) in [
+        ("rabitq4", hyperspace_core::QuantizationMode::RaBitQ4),
+        ("rabitq2", hyperspace_core::QuantizationMode::RaBitQ2),
+    ] {
+        manager
+            .create_collection_with_options(
+                "default_admin",
+                level,
+                schema("l2"),
+                Some(level.into()),
+                None,
+            )
+            .await
+            .unwrap();
+        let col = manager.get("default_admin", level).await.unwrap();
+        assert_eq!(col.quantization_mode(), mode);
+        let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> = (0..2500u32)
+            .map(|i| (point(i), i, HashMap::new()))
+            .collect();
+        col.insert_batch(batch, 1, Durability::Default)
+            .await
+            .unwrap();
+        for _ in 0..800 {
+            if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(!col.needs_calibration(), "{level} calibrated online");
+        for i in [7u32, 1234, 2499] {
+            let res = col
+                .search(
+                    &point(i),
+                    &HashMap::new(),
+                    &[],
+                    &hyperspace_core::SearchParams {
+                        top_k: 5,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(res[0].0, i, "{level}: self match for {i}");
+            assert!(
+                res[0].1 < 1e-4,
+                "{level}: exact distance after rerank {}",
+                res[0].1
+            );
+        }
+    }
+    manager
+        .create_collection_with_options(
+            "default_admin",
+            "hyp",
+            schema("poincare"),
+            Some("rabitq4".into()),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        manager
+            .get("default_admin", "hyp")
+            .await
+            .unwrap()
+            .quantization_mode(),
+        hyperspace_core::QuantizationMode::ScalarI8,
+        "hyperbolic metrics fall back to medium"
+    );
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

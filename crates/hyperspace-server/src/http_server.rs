@@ -1370,6 +1370,10 @@ fn quantization_catalog() -> serde_json::Value {
          "description": "4-bit PQ over 4-D sub-spaces, L1-resident u8 LUT"},
         {"value": "rabitq", "label": "RaBitQ", "bits": 1, "bytes_per_dim": 0.125, "metrics": ["l2", "cosine"], "calibration": true,
          "description": "1-bit code + unbiased estimator (popcount bit-planes)"},
+        {"value": "rabitq4", "label": "RaBitQ 4-bit", "bits": 4, "bytes_per_dim": 0.5, "metrics": ["l2", "cosine"], "calibration": true,
+         "description": "Extended RaBitQ: 4-bit grid code + unbiased estimator (int8 SDOT kernel)"},
+        {"value": "rabitq2", "label": "RaBitQ 2-bit", "bits": 2, "bytes_per_dim": 0.25, "metrics": ["l2", "cosine"], "calibration": true,
+         "description": "Extended RaBitQ: 2-bit grid code + unbiased estimator (int8 SDOT kernel)"},
         {"value": "extreme", "label": "Extreme (Binary)", "bits": 1, "bytes_per_dim": 0.125, "metrics": ["l2", "cosine", "poincare", "lorentz", "hybrid"], "calibration": false,
          "description": "1-bit sign code with ADC"},
         {"value": "opq", "label": "Optimized PQ", "bits": 0, "bytes_per_dim": 0.0625, "metrics": ["l2", "cosine"], "calibration": true,
@@ -1457,6 +1461,7 @@ fn compute_collection_eco_badge(
     match quantization {
         QuantizationMode::Binary
         | QuantizationMode::RaBitQ
+        | QuantizationMode::RaBitQ2
         | QuantizationMode::PQ4
         | QuantizationMode::Ternary
         | QuantizationMode::AsymmetricHybridExtreme
@@ -1464,6 +1469,7 @@ fn compute_collection_eco_badge(
         | QuantizationMode::OPQ => (Some("Platinum".to_string()), Some(true)),
         QuantizationMode::ScalarI4
         | QuantizationMode::Turbo
+        | QuantizationMode::RaBitQ4
         | QuantizationMode::AsymmetricHybridLowBit
         | QuantizationMode::ScalarI8
         | QuantizationMode::AsymmetricHybrid801 => (Some("Gold".to_string()), Some(true)),

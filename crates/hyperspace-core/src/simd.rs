@@ -2835,3 +2835,168 @@ pub fn sq8_scaled_l2_int(code: &[u8], alpha: f32, q: &Sq8Query) -> f32 {
     let sx = alpha / 127.0;
     (sx * sx * self_sq as f32 - 2.0 * sx * q.scale * dot as f32 + q.norm_sq).max(0.0)
 }
+
+// ── Extended RaBitQ: packed 2- / 4-bit codes × int8 query ─────────────────────────────
+
+/// `Σ_d u_d · q̂_d` for an extended RaBitQ code in the plane layout: `code` holds `L`
+/// bytes, byte `j` packing dimension `j + p·L` in bits `[bits·p, bits·(p+1))`; `q` holds
+/// the int8 query as `8/bits` consecutive planes of `L` values (`q.len() = L · 8/bits`).
+#[must_use]
+pub fn ex_code_dot(code: &[u8], q: &[i8], bits: u8) -> i32 {
+    let planes = 8 / usize::from(bits.max(1));
+    let l = code.len().min(q.len() / planes.max(1));
+    let (code, q) = (&code[..l], &q[..l * planes]);
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    {
+        static DOTPROD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if l.is_multiple_of(16)
+            && *DOTPROD.get_or_init(|| std::arch::is_aarch64_feature_detected!("dotprod"))
+        {
+            // SAFETY: dotprod detected; `l` is a multiple of 16 and `q` holds `planes · l`.
+            return unsafe {
+                match bits {
+                    4 => ex_dot4_sdot(code, q),
+                    2 => ex_dot2_sdot(code, q),
+                    _ => ex_code_dot_scalar(code, q, bits),
+                }
+            };
+        }
+    }
+    #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+    {
+        if l.is_multiple_of(32) && matches!(backend(), SimdBackend::Avx2 | SimdBackend::Avx512) {
+            // SAFETY: AVX2 detected; `l` is a multiple of 32 and `q` holds `planes · l`.
+            return unsafe { ex_code_dot_avx2(code, q, bits) };
+        }
+    }
+    ex_code_dot_scalar(code, q, bits)
+}
+
+/// Portable reference of [`ex_code_dot`].
+#[must_use]
+pub fn ex_code_dot_scalar(code: &[u8], q: &[i8], bits: u8) -> i32 {
+    let planes = 8 / usize::from(bits.max(1));
+    let l = code.len();
+    let mask = (1u16 << bits) - 1;
+    let mut acc = 0i32;
+    for (j, &b) in code.iter().enumerate() {
+        for p in 0..planes {
+            let u = (u16::from(b) >> (usize::from(bits) * p)) & mask;
+            acc += i32::from(u) * i32::from(q[p * l + j]);
+        }
+    }
+    acc
+}
+
+/// # Safety
+/// `dotprod` must be available; `code.len()` is a multiple of 16, `q.len() = 2·code.len()`.
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+#[target_feature(enable = "neon,dotprod")]
+pub(crate) unsafe fn ex_dot4_sdot(code: &[u8], q: &[i8]) -> i32 {
+    use core::arch::aarch64::{
+        vaddvq_s32, vandq_u8, vdupq_n_s32, vdupq_n_u8, vld1q_s8, vld1q_u8, vreinterpretq_s8_u8,
+        vshrq_n_u8,
+    };
+    let l = code.len();
+    let mask = vdupq_n_u8(0x0F);
+    let (mut a0, mut a1) = (vdupq_n_s32(0), vdupq_n_s32(0));
+    let mut j = 0;
+    while j < l {
+        let b = vld1q_u8(code.as_ptr().add(j));
+        let lo = vreinterpretq_s8_u8(vandq_u8(b, mask));
+        let hi = vreinterpretq_s8_u8(vshrq_n_u8::<4>(b));
+        let q0 = vld1q_s8(q.as_ptr().add(j));
+        let q1 = vld1q_s8(q.as_ptr().add(l + j));
+        core::arch::asm!(
+            "sdot {a0:v}.4s, {lo:v}.16b, {q0:v}.16b",
+            "sdot {a1:v}.4s, {hi:v}.16b, {q1:v}.16b",
+            a0 = inout(vreg) a0, a1 = inout(vreg) a1,
+            lo = in(vreg) lo, hi = in(vreg) hi, q0 = in(vreg) q0, q1 = in(vreg) q1,
+            options(pure, nomem, nostack),
+        );
+        j += 16;
+    }
+    vaddvq_s32(a0) + vaddvq_s32(a1)
+}
+
+/// # Safety
+/// `dotprod` must be available; `code.len()` is a multiple of 16, `q.len() = 4·code.len()`.
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+#[target_feature(enable = "neon,dotprod")]
+pub(crate) unsafe fn ex_dot2_sdot(code: &[u8], q: &[i8]) -> i32 {
+    use core::arch::aarch64::{
+        vaddvq_s32, vandq_u8, vdupq_n_s32, vdupq_n_u8, vld1q_s8, vld1q_u8, vreinterpretq_s8_u8,
+        vshrq_n_u8,
+    };
+    let l = code.len();
+    let mask = vdupq_n_u8(0x03);
+    let (mut a0, mut a1) = (vdupq_n_s32(0), vdupq_n_s32(0));
+    let mut j = 0;
+    while j < l {
+        let b = vld1q_u8(code.as_ptr().add(j));
+        let p0 = vreinterpretq_s8_u8(vandq_u8(b, mask));
+        let p1 = vreinterpretq_s8_u8(vandq_u8(vshrq_n_u8::<2>(b), mask));
+        let p2 = vreinterpretq_s8_u8(vandq_u8(vshrq_n_u8::<4>(b), mask));
+        let p3 = vreinterpretq_s8_u8(vshrq_n_u8::<6>(b));
+        let q0 = vld1q_s8(q.as_ptr().add(j));
+        let q1 = vld1q_s8(q.as_ptr().add(l + j));
+        let q2 = vld1q_s8(q.as_ptr().add(2 * l + j));
+        let q3 = vld1q_s8(q.as_ptr().add(3 * l + j));
+        core::arch::asm!(
+            "sdot {a0:v}.4s, {p0:v}.16b, {q0:v}.16b",
+            "sdot {a1:v}.4s, {p1:v}.16b, {q1:v}.16b",
+            "sdot {a0:v}.4s, {p2:v}.16b, {q2:v}.16b",
+            "sdot {a1:v}.4s, {p3:v}.16b, {q3:v}.16b",
+            a0 = inout(vreg) a0, a1 = inout(vreg) a1,
+            p0 = in(vreg) p0, p1 = in(vreg) p1, p2 = in(vreg) p2, p3 = in(vreg) p3,
+            q0 = in(vreg) q0, q1 = in(vreg) q1, q2 = in(vreg) q2, q3 = in(vreg) q3,
+            options(pure, nomem, nostack),
+        );
+        j += 16;
+    }
+    vaddvq_s32(a0) + vaddvq_s32(a1)
+}
+
+/// AVX2: unsigned codes × signed query with `maddubs` (`u8 × i8 → i16` pairs; at most
+/// `2 · 15 · 127` per pair, no saturation), widened to `i32` by `madd(…, 1)`.
+///
+/// # Safety
+/// AVX2 must be available; `code.len()` is a multiple of 32, `q.len() = (8/bits)·code.len()`.
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx2")]
+unsafe fn ex_code_dot_avx2(code: &[u8], q: &[i8], bits: u8) -> i32 {
+    use std::arch::x86_64::{
+        __m256i, _mm256_add_epi32, _mm256_and_si256, _mm256_castsi256_si128,
+        _mm256_extracti128_si256, _mm256_loadu_si256, _mm256_madd_epi16, _mm256_maddubs_epi16,
+        _mm256_set1_epi16, _mm256_set1_epi8, _mm256_setzero_si256, _mm256_srli_epi16,
+        _mm_add_epi32, _mm_cvtsi128_si32, _mm_hadd_epi32,
+    };
+    let l = code.len();
+    let planes = 8 / usize::from(bits);
+    let mask = _mm256_set1_epi8(((1u16 << bits) - 1) as i8);
+    let ones = _mm256_set1_epi16(1);
+    let mut acc = _mm256_setzero_si256();
+    let mut j = 0;
+    while j < l {
+        let b = _mm256_loadu_si256(code.as_ptr().add(j).cast::<__m256i>());
+        for p in 0..planes {
+            let shifted = match p * usize::from(bits) {
+                0 => b,
+                2 => _mm256_srli_epi16::<2>(b),
+                4 => _mm256_srli_epi16::<4>(b),
+                _ => _mm256_srli_epi16::<6>(b),
+            };
+            let u = _mm256_and_si256(shifted, mask);
+            let qv = _mm256_loadu_si256(q.as_ptr().add(p * l + j).cast::<__m256i>());
+            acc = _mm256_add_epi32(acc, _mm256_madd_epi16(_mm256_maddubs_epi16(u, qv), ones));
+        }
+        j += 32;
+    }
+    let s = _mm_add_epi32(
+        _mm256_castsi256_si128(acc),
+        _mm256_extracti128_si256::<1>(acc),
+    );
+    let s = _mm_hadd_epi32(s, s);
+    let s = _mm_hadd_epi32(s, s);
+    _mm_cvtsi128_si32(s)
+}

@@ -262,7 +262,7 @@
   - [ ] Post-build graph relabeling for locality (permute ids after the build, not the insertion order).
   - [ ] Prefix-block exact pruning for `none`: no gain in natural coordinates (71% of rows still read their tail); needs a PCA rotation first (`scan_speed_bench::prefix_block_pruning`).
   - [ ] Dense internal→user id table instead of `DashMap` for sparse user ids (≤ 3% CPU in the profile; identity ids already bypass it).
-  - [ ] Multi-bit (extended) RaBitQ tier: a new `QuantizationMode` touches every SDK / dashboard enumeration.
+  - [x] Multi-bit (extended) RaBitQ tier: `rabitq4` / `rabitq2` (`QuantizationMode::RaBitQ4` / `RaBitQ2`), int8 SDOT / AVX2 kernel, online calibration, every SDK / dashboard enumeration (4.2.5).
   - [ ] f16 storage for full precision — deferred: `medium` + exact rerank (100% recall, 9.0k QPS on 20k × 1024-D at 16 clients) already beats what f16 can reach for `none` (bandwidth-bound, ≈2× of 2.8–3.4k QPS), and f16 would make `none` inexact.
   - [ ] Configurable PQ sub-space count: needs the PQ `M` stored in collection metadata and threaded through every storage-layout site (22) — use `pq4` for higher recall at ~2× the bytes meanwhile.
   - [x] ~~Cooperative shard pruning~~: evaluated, rejected (a global k-th bound stops HNSW traversal before it reaches near nodes; 46% top-10 agreement).

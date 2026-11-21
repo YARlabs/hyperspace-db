@@ -574,6 +574,8 @@ impl CollectionManager {
             "ternary" | "bitnet" => "ternary".to_string(),
             "pq" | "product_quantization" => "pq".to_string(),
             "rabitq" => "rabitq".to_string(),
+            "rabitq4" | "rabitq_4bit" | "exrabitq" => "rabitq4".to_string(),
+            "rabitq2" | "rabitq_2bit" => "rabitq2".to_string(),
             "pq4" | "pq_fastscan" | "fastscan" => "pq4".to_string(),
             "opq" | "optimized_product_quantization" => "opq".to_string(),
             _ => "medium".to_string(), // scalar, medium, asymmetric_hybrid_801, anything else
@@ -1114,6 +1116,12 @@ impl CollectionMetadata {
             // RaBitQ / PQ4 estimate Euclidean geometry; other metrics fall back to ScalarI8.
             "rabitq" if matches!(metric.as_str(), "l2" | "cosine") => {
                 hyperspace_core::QuantizationMode::RaBitQ
+            }
+            "rabitq4" if matches!(metric.as_str(), "l2" | "cosine") => {
+                hyperspace_core::QuantizationMode::RaBitQ4
+            }
+            "rabitq2" if matches!(metric.as_str(), "l2" | "cosine") => {
+                hyperspace_core::QuantizationMode::RaBitQ2
             }
             "pq4" | "pq_fastscan" if matches!(metric.as_str(), "l2" | "cosine") => {
                 hyperspace_core::QuantizationMode::PQ4

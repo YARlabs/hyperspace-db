@@ -652,14 +652,20 @@ impl<M: Metric> CollectionImpl<M> {
     }
 
     /// Codes too coarse to keep the true neighbours within `top_k × oversample` merged
-    /// candidates (1–2 bit, PQ). They need the wide pool of per-shard reranking (each shard
+    /// candidates (1–2 bit, PQ; 4-bit RaBitQ keeps them within 40 and defers). They need the wide pool of per-shard reranking (each shard
     /// reranks its own `2 · top_k × oversample`), which also runs in parallel across shards,
     /// so they do not defer.
     fn rerank_full_pool(&self) -> bool {
         use hyperspace_core::QuantizationMode as Q;
         matches!(
             self.mode,
-            Q::Binary | Q::Ternary | Q::RaBitQ | Q::PQ4 | Q::ProductQuantization | Q::OPQ
+            Q::Binary
+                | Q::Ternary
+                | Q::RaBitQ
+                | Q::RaBitQ2
+                | Q::PQ4
+                | Q::ProductQuantization
+                | Q::OPQ
         )
     }
 
@@ -1889,6 +1895,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let vector_bytes_per_doc: u64 = match self.mode {
             hyperspace_core::QuantizationMode::RaBitQ => {
                 hyperspace_core::rabitq::code_size(dim) as u64
+            }
+            hyperspace_core::QuantizationMode::RaBitQ4 => {
+                hyperspace_core::rabitq::code_size_bits(dim, 4) as u64
+            }
+            hyperspace_core::QuantizationMode::RaBitQ2 => {
+                hyperspace_core::rabitq::code_size_bits(dim, 2) as u64
             }
             hyperspace_core::QuantizationMode::PQ4 => {
                 hyperspace_core::pq4::code_size(hyperspace_core::pq4::default_num_subvectors(dim))

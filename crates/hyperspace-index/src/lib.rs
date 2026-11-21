@@ -1605,7 +1605,7 @@ impl<M: Metric> HnswIndex<M> {
         raw: F,
     ) -> (usize, usize)
     where
-        F: Fn(u32) -> Option<Vec<f32>>,
+        F: Fn(u32) -> Option<Vec<f32>> + Sync,
     {
         if !self.needs_calibration() {
             return (0, 0);
@@ -1624,8 +1624,9 @@ impl<M: Metric> HnswIndex<M> {
     /// [`Self::calibrate_online`]. No-op for modes without training.
     pub fn refit_online<F>(&self, samples: &[&[f32]], iterations: usize, raw: F) -> (usize, usize)
     where
-        F: Fn(u32) -> Option<Vec<f32>>,
+        F: Fn(u32) -> Option<Vec<f32>> + Sync,
     {
+        use rayon::prelude::*;
         if !self.mode.needs_training() || samples.is_empty() {
             return (0, 0);
         }
@@ -1637,23 +1638,24 @@ impl<M: Metric> HnswIndex<M> {
             self.calibrated_at.store(n.max(1), Ordering::Release);
             n
         };
-        let mut re_encoded = 0usize;
-        let mut missing = 0usize;
-        for id in 0..stored_before_swap as u32 {
-            match raw(id) {
+        // Re-encode on all cores: each code is independent and the storage slots already
+        // exist. Small blocks keep the shared gate's read sections short so a concurrent
+        // swap is never starved.
+        (0..stored_before_swap as u32)
+            .into_par_iter()
+            .with_min_len(256)
+            .map(|id| match raw(id) {
                 Some(v) => {
                     let code = {
                         let _g = self.calibration_gate.read();
                         self.encode_code_f32(&v)
                     };
-                    if !code.is_empty() && self.storage.update(id, &code).is_ok() {
-                        re_encoded += 1;
-                    }
+                    let ok = !code.is_empty() && self.storage.update(id, &code).is_ok();
+                    (usize::from(ok), 0usize)
                 }
-                None => missing += 1,
-            }
-        }
-        (re_encoded, missing)
+                None => (0, 1),
+            })
+            .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1))
     }
 
     /// Encodes a vector with the current trained quantizer (PQ / OPQ / RaBitQ / PQ4).
@@ -2431,6 +2433,8 @@ impl<M: Metric> HnswIndex<M> {
                     | QuantizationMode::ProductQuantization
                     | QuantizationMode::OPQ
                     | QuantizationMode::RaBitQ
+                    | QuantizationMode::RaBitQ4
+                    | QuantizationMode::RaBitQ2
                     | QuantizationMode::PQ4
             )
     }
@@ -2582,13 +2586,18 @@ impl<M: Metric> HnswIndex<M> {
         Option<Arc<hyperspace_core::pq4::Pq4Quantizer>>,
     ) {
         match mode {
-            QuantizationMode::RaBitQ => {
+            QuantizationMode::RaBitQ | QuantizationMode::RaBitQ4 | QuantizationMode::RaBitQ2 => {
+                let bits = mode.rabitq_bits().unwrap_or(1);
+                // The centroid file holds no width: the collection's mode decides it.
                 let rq = dir
                     .and_then(|d| {
                         hyperspace_core::rabitq::RaBitQ::load_from_file(&d.join(RABITQ_FILE)).ok()
                     })
                     .filter(|r| r.dim == dimension)
-                    .unwrap_or_else(|| hyperspace_core::rabitq::RaBitQ::new(dimension));
+                    .map_or_else(
+                        || hyperspace_core::rabitq::RaBitQ::with_bits(dimension, bits),
+                        |r| hyperspace_core::rabitq::RaBitQ { bits, ..r },
+                    );
                 (Some(Arc::new(rq)), None)
             }
             QuantizationMode::PQ4 => {
@@ -2652,11 +2661,12 @@ impl<M: Metric> HnswIndex<M> {
                 .load()
                 .as_ref()
                 .map(|pq| QueryPrep::Pq(pq.compute_lut(q))),
-            QuantizationMode::RaBitQ => self
-                .rabitq
-                .load()
-                .as_ref()
-                .map(|r| QueryPrep::RaBitQ(r.query(q))),
+            QuantizationMode::RaBitQ | QuantizationMode::RaBitQ4 | QuantizationMode::RaBitQ2 => {
+                self.rabitq
+                    .load()
+                    .as_ref()
+                    .map(|r| QueryPrep::RaBitQ(r.query(q)))
+            }
             QuantizationMode::PQ4 => self
                 .pq4
                 .load()
@@ -2978,7 +2988,10 @@ impl<M: Metric> HnswIndex<M> {
         threshold: Option<f64>,
     ) -> f64 {
         match self.mode {
-            QuantizationMode::RaBitQ | QuantizationMode::PQ4 => match pq_lut {
+            QuantizationMode::RaBitQ
+            | QuantizationMode::RaBitQ4
+            | QuantizationMode::RaBitQ2
+            | QuantizationMode::PQ4 => match pq_lut {
                 Some(QueryPrep::RaBitQ(q)) => f64::from(q.distance_sq(bytes)),
                 Some(QueryPrep::Pq4(l)) => f64::from(l.distance(bytes)),
                 _ => match self.prepare_query(query, query_f32) {
@@ -4759,6 +4772,8 @@ impl<M: Metric> HnswIndex<M> {
         })
     }
 
+    /// Decodes a stored node for pairwise distances in `select_neighbors` only: codes may be
+    /// returned in an isometric (e.g. rotated) domain, not the original coordinates.
     fn load_node_coords_f32(
         &self,
         storage_view: &hyperspace_store::StorageView,
@@ -4855,9 +4870,11 @@ impl<M: Metric> HnswIndex<M> {
             return;
         }
 
-        if self.mode == QuantizationMode::RaBitQ {
+        if self.mode.rabitq_bits().is_some() {
             if let Some(ref rq) = *self.rabitq.load() {
-                rq.reconstruct_into(bytes, out);
+                // Only pairwise distances are taken from these coordinates (RNG pruning), so
+                // the rotated, centred decode is enough and skips the inverse FWHT.
+                rq.reconstruct_rotated_into(bytes, out);
                 *alpha_out = 1.0;
                 return;
             }
@@ -4886,9 +4903,8 @@ impl<M: Metric> HnswIndex<M> {
                     out[sub_offset..sub_offset + copy_len]
                         .copy_from_slice(&pq.centroids[c_offset..c_offset + copy_len]);
                 }
-                if pq.is_opq {
-                    hyperspace_core::turbo_rot::unrotate_vector_in_place(out);
-                }
+                // OPQ codebooks live in the rotated domain; pairwise distances are
+                // rotation-invariant, so the inverse rotation is skipped here.
                 *alpha_out = 1.0;
                 return;
             }
@@ -4918,7 +4934,12 @@ impl<M: Metric> HnswIndex<M> {
                 "l2" | "cosine" | "poincare" | "lorentz" | "hybrid"
             )
         } else {
-            self.sq8_scaled || (self.mode == QuantizationMode::ScalarI8 && M::name() == "lorentz")
+            self.sq8_scaled
+                || (self.mode == QuantizationMode::ScalarI8 && M::name() == "lorentz")
+                // 1-bit RaBitQ: popcount pair distance in the rotated domain. Multi-bit codes
+                // decode to the rotated domain instead (`load_node_coords_f32`): an O(m)
+                // unpack plus f32 SIMD pairs beats an O(m²) packed-integer pair kernel.
+                || (self.mode == QuantizationMode::RaBitQ && matches!(M::name(), "l2" | "cosine"))
         }
     }
 
@@ -4934,6 +4955,15 @@ impl<M: Metric> HnswIndex<M> {
         }
         if self.sq8_scaled {
             return f64::from(hyperspace_core::simd::sq8_scaled_l2_pair(bytes_a, bytes_b));
+        }
+        if let Some(bits) = self.mode.rabitq_bits() {
+            // Only reached for 1-bit (see `can_dist_storage_pair`); correct for every width.
+            return f64::from(hyperspace_core::rabitq::code_pair_l2_sq(
+                bytes_a,
+                bytes_b,
+                self.dimension,
+                bits,
+            ));
         }
         let ca = &bytes_a[..bytes_a.len().saturating_sub(4)];
         let cb = &bytes_b[..bytes_b.len().saturating_sub(4)];
@@ -5473,7 +5503,10 @@ impl<M: Metric> HnswIndex<M> {
                     HyperVector::new_unchecked(vec![0.0; self.dimension])
                 }
             }
-            QuantizationMode::RaBitQ | QuantizationMode::PQ4 => {
+            QuantizationMode::RaBitQ
+            | QuantizationMode::RaBitQ4
+            | QuantizationMode::RaBitQ2
+            | QuantizationMode::PQ4 => {
                 let mut rec = Vec::with_capacity(self.dimension);
                 if let Some(ref rq) = *self.rabitq.load() {
                     rq.reconstruct_into(bytes, &mut rec);
@@ -5655,7 +5688,10 @@ impl<M: Metric> HnswIndex<M> {
                     .ok_or_else(|| "PQ quantizer must be initialized".to_string())?;
                 pq.encode(&q_f32).to_bytes()
             }
-            QuantizationMode::RaBitQ | QuantizationMode::PQ4 => self.encode_code(&v.coords),
+            QuantizationMode::RaBitQ
+            | QuantizationMode::RaBitQ4
+            | QuantizationMode::RaBitQ2
+            | QuantizationMode::PQ4 => self.encode_code(&v.coords),
         })
     }
 

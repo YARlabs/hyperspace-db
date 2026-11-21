@@ -83,6 +83,10 @@ pub enum QuantizationMode {
     RaBitQ,
     /// 4-bit Product Quantization with an L1-resident fast-scan LUT.
     PQ4,
+    /// Extended RaBitQ, 4 bits per dimension (int8 dot-product estimator, L2 / cosine).
+    RaBitQ4,
+    /// Extended RaBitQ, 2 bits per dimension (L2 / cosine).
+    RaBitQ2,
 }
 
 impl QuantizationMode {
@@ -93,8 +97,24 @@ impl QuantizationMode {
     pub const fn needs_training(self) -> bool {
         matches!(
             self,
-            Self::ProductQuantization | Self::OPQ | Self::RaBitQ | Self::PQ4
+            Self::ProductQuantization
+                | Self::OPQ
+                | Self::RaBitQ
+                | Self::PQ4
+                | Self::RaBitQ4
+                | Self::RaBitQ2
         )
+    }
+
+    /// RaBitQ family (1-bit classic or extended), with its bits per dimension.
+    #[must_use]
+    pub const fn rabitq_bits(self) -> Option<u8> {
+        match self {
+            Self::RaBitQ => Some(1),
+            Self::RaBitQ2 => Some(2),
+            Self::RaBitQ4 => Some(4),
+            _ => None,
+        }
     }
 }
 

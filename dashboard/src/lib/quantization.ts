@@ -9,7 +9,7 @@ export interface QuantizationMode {
     bytes_per_dim: number
     /** Metrics the mode is valid for (others fall back to ScalarI8 server-side). */
     metrics: string[]
-    /** Needs codebook / centroid training via index rebuild (vacuum) after ingest. */
+    /** Learns a codebook / centroid from data (online since server 4.2.5, or via index rebuild). */
     calibration: boolean
     description: string
 }
@@ -21,6 +21,8 @@ export const FALLBACK_QUANTIZATION_MODES: QuantizationMode[] = [
     { value: "turbo", label: "Turbo", bytes_per_dim: 0.5, metrics: ["l2", "cosine", "hybrid"], calibration: false, description: "4-bit Lloyd-Max spherical with FWHT rotation" },
     { value: "ternary", label: "Ternary (BitNet 1.58)", bytes_per_dim: 0.25, metrics: ["l2", "cosine", "poincare", "lorentz", "hybrid"], calibration: false, description: "{-1, 0, +1} dual bitmask with SIMD popcount" },
     { value: "pq4", label: "PQ4 Fast-Scan", bytes_per_dim: 0.125, metrics: ["l2", "cosine"], calibration: true, description: "4-bit PQ over 4-D sub-spaces, L1-resident u8 LUT" },
+    { value: "rabitq4", label: "RaBitQ 4-bit", bytes_per_dim: 0.5, metrics: ["l2", "cosine"], calibration: true, description: "Extended RaBitQ: 4-bit grid code + unbiased estimator (int8 SDOT kernel)" },
+    { value: "rabitq2", label: "RaBitQ 2-bit", bytes_per_dim: 0.25, metrics: ["l2", "cosine"], calibration: true, description: "Extended RaBitQ: 2-bit grid code + unbiased estimator (int8 SDOT kernel)" },
     { value: "rabitq", label: "RaBitQ", bytes_per_dim: 0.125, metrics: ["l2", "cosine"], calibration: true, description: "1-bit code + unbiased estimator (popcount bit-planes)" },
     { value: "extreme", label: "Extreme (Binary)", bytes_per_dim: 0.125, metrics: ["l2", "cosine", "poincare", "lorentz", "hybrid"], calibration: false, description: "1-bit sign code with ADC" },
     { value: "opq", label: "Optimized PQ", bytes_per_dim: 0.0625, metrics: ["l2", "cosine"], calibration: true, description: "8-bit PQ (16-D sub-spaces) with FWHT rotation" },
@@ -37,6 +39,8 @@ export function bytesPerVector(mode: string, dim: number): number {
         case "ternary": return 2 * Math.ceil(dim / 8) + 8
         case "pq4": return Math.ceil(Math.ceil(dim / 4) / 2)
         case "rabitq": return Math.ceil(dim / 64) * 8 + 8
+        case "rabitq4": return Math.ceil(Math.ceil(dim / 2) / 32) * 32 + 8
+        case "rabitq2": return Math.ceil(Math.ceil(dim / 4) / 32) * 32 + 8
         case "extreme": return Math.ceil(dim / 8) + 4
         case "opq":
         case "pq": return Math.ceil(dim / 16)
@@ -56,6 +60,8 @@ export function quantizationModeLabel(q: string | undefined): string {
         case "ProductQuantization": case "pq": case "PQ": return "Product Quantization — 8-bit, 16-D sub-spaces"
         case "PQ4": case "pq4": return "PQ4 Fast-Scan — 4-bit, L1 LUT"
         case "RaBitQ": case "rabitq": return "RaBitQ — 1-bit + unbiased estimator"
+        case "RaBitQ4": case "rabitq4": return "RaBitQ 4-bit — extended code, int8 estimator"
+        case "RaBitQ2": case "rabitq2": return "RaBitQ 2-bit — extended code, int8 estimator"
         case "AsymmetricHybrid801": return "Medium — Hybrid 801 (Lorentz-aware)"
         case "AsymmetricHybridLowBit": return "Medium Plus — Hybrid 801 low-bit"
         case "AsymmetricHybridExtreme": return "Extreme — Hybrid 801"
@@ -66,5 +72,5 @@ export function quantizationModeLabel(q: string | undefined): string {
 
 /** Server debug names whose quantizer must be trained by an index rebuild. */
 export function needsCalibration(q: string | undefined): boolean {
-    return ["PQ4", "RaBitQ", "OPQ", "ProductQuantization"].includes(q ?? "")
+    return ["PQ4", "RaBitQ", "RaBitQ4", "RaBitQ2", "OPQ", "ProductQuantization"].includes(q ?? "")
 }
