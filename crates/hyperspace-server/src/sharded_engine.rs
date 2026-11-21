@@ -9,16 +9,46 @@ use hyperspace_proto::hyperspace::{CollectionSchema, ReplicationLog};
 use hyperspace_store::wal::{Wal, WalSyncMode};
 use std::collections::{BinaryHeap, HashMap};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
 static TMP_MAP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Scatter-gather searches in flight process-wide (see `parallel_fanout`).
+static SEARCHES_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+/// Decrements [`SEARCHES_IN_FLIGHT`] when a search ends (also on early return / error).
+struct InFlight;
+
+impl InFlight {
+    fn enter() -> (Self, usize) {
+        (Self, SEARCHES_IN_FLIGHT.fetch_add(1, Ordering::Relaxed) + 1)
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        SEARCHES_IN_FLIGHT.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Fan a query out to shards on separate tasks only while cores are idle. Once at least
+/// as many searches run as there are cores, every core is busy anyway: spawning one task
+/// per shard then only adds wake-ups and cross-core cache traffic, so the shards are
+/// searched one after another on the calling task (measured: 12 shards, 16 clients).
+fn parallel_fanout(in_flight: usize) -> bool {
+    static CORES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    in_flight
+        < *CORES
+            .get_or_init(|| std::thread::available_parallelism().map_or(8, std::num::NonZero::get))
+}
+
 #[derive(Debug)]
 struct ScoredCandidate {
     distance: f64,
     id: u32,
+    shard: usize,
     metadata: HashMap<String, String>,
     payload: Option<Vec<u8>>,
 }
@@ -42,38 +72,6 @@ impl Ord for ScoredCandidate {
         // Max-heap: peek() always returns the candidate with the LARGEST distance.
         // This lets us efficiently discard the worst candidate when the heap is full.
         // NaN is treated as greater than any finite value so it is always evicted first.
-        other
-            .distance
-            .partial_cmp(&self.distance)
-            .map(|o| o.reverse())
-            .unwrap_or(std::cmp::Ordering::Less)
-    }
-}
-
-#[derive(Debug)]
-struct ScoredCandidate64 {
-    distance: f64,
-    id: u64,
-    metadata: HashMap<String, String>,
-    payload: Option<Vec<u8>>,
-}
-
-impl PartialEq for ScoredCandidate64 {
-    fn eq(&self, other: &Self) -> bool {
-        self.distance == other.distance
-    }
-}
-
-impl Eq for ScoredCandidate64 {}
-
-impl PartialOrd for ScoredCandidate64 {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ScoredCandidate64 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         other
             .distance
             .partial_cmp(&self.distance)
@@ -118,18 +116,7 @@ impl<M: Metric> ShardedCollection<M> {
     ) -> Result<Self, String> {
         let cpu_cores = std::thread::available_parallelism().map_or(8, std::num::NonZero::get);
         let requested_shards = num_shards_opt
-            .or_else(|| {
-                std::env::var("HS_SHARDS").ok().and_then(|s| {
-                    let trimmed = s.trim();
-                    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") || trimmed == "0"
-                    {
-                        None
-                    } else {
-                        trimmed.parse().ok()
-                    }
-                })
-            })
-            .unwrap_or_else(|| cpu_cores.clamp(8, 32))
+            .unwrap_or_else(|| auto_shard_count(None))
             .max(1);
 
         // Shard routing is `id % num_shards`, so the shard count is part of the on-disk
@@ -467,6 +454,174 @@ impl<M: Metric> ShardedCollection<M> {
         }
     }
 
+    /// Scatter-gather search shared by `search` and `search_u64`. Results carry the shard
+    /// index and the shard-local user id, best first.
+    ///
+    /// Shards return their compact-code top candidates without metadata; the merged
+    /// candidates are reranked once when the collection defers its exact rerank (see
+    /// `CollectionImpl::deferred_rerank_k`), then metadata and payloads are fetched for the
+    /// final top-k only.
+    async fn scatter_gather(
+        &self,
+        vector: &[f64],
+        filter: &HashMap<String, String>,
+        complex_filters: &[FilterExpr],
+        params: &SearchParams,
+    ) -> Result<Vec<(usize, SearchResult)>, String> {
+        let active: Vec<usize> = (0..self.num_shards)
+            .filter(|&i| {
+                let s = &self.shards[i];
+                s.count() > 0 || s.write_buffer_size() > 0 || s.queue_size() > 0
+            })
+            .collect();
+        match active.as_slice() {
+            [] => return Ok(Vec::new()),
+            [only] => {
+                // One shard: it applies rerank, metadata and payloads itself.
+                let i = *only;
+                return Ok(self.shards[i]
+                    .search(vector, filter, complex_filters, params)
+                    .await?
+                    .into_iter()
+                    .map(|r| (i, r))
+                    .collect());
+            }
+            _ => {}
+        }
+
+        let (_in_flight, in_flight) = InFlight::enter();
+        let rerank_k = self.shards[active[0]].deferred_rerank_k(filter, params);
+        let top_k = params.top_k.max(1);
+        let merge_k = rerank_k.unwrap_or(top_k).max(top_k);
+        let (shard_top_k, shard_ef) = shard_fanout(&SearchParams {
+            top_k: merge_k,
+            ef_search: params.ef_search,
+            ..SearchParams::default()
+        });
+        let shard_params = Arc::new(SearchParams {
+            top_k: shard_top_k,
+            ef_search: shard_ef,
+            hybrid_query: params.hybrid_query.clone(),
+            hybrid_alpha: params.hybrid_alpha,
+            component_weights: params.component_weights.clone(),
+            use_wasserstein: params.use_wasserstein,
+            bm25_options: params.bm25_options.clone(),
+            fusion_method: params.fusion_method.clone(),
+            mrl_dimension: params.mrl_dimension,
+            include_payload: false,
+            use_wave: params.use_wave,
+            skip_metadata: true,
+            defer_rerank: rerank_k.is_some(),
+        });
+        let vector_arc: Arc<[f64]> = Arc::from(vector);
+        let mut shard_results: Vec<(usize, Result<Vec<SearchResult>, String>)> =
+            Vec::with_capacity(active.len());
+        if parallel_fanout(in_flight) {
+            let filter_arc = Arc::new(filter.clone());
+            let complex_filters_arc = Arc::new(complex_filters.to_vec());
+            let handles: Vec<_> = active
+                .iter()
+                .map(|&i| {
+                    let shard = Arc::clone(&self.shards[i]);
+                    let sp = Arc::clone(&shard_params);
+                    let v = Arc::clone(&vector_arc);
+                    let f = Arc::clone(&filter_arc);
+                    let cf = Arc::clone(&complex_filters_arc);
+                    tokio::spawn(async move { (i, shard.search(&v, &f, &cf, &sp).await) })
+                })
+                .collect();
+            for handle in handles {
+                shard_results.push(
+                    handle
+                        .await
+                        .map_err(|e| format!("Shard query task failed: {e}"))?,
+                );
+            }
+        } else {
+            for &i in &active {
+                let res = self.shards[i]
+                    .search(vector, filter, complex_filters, &shard_params)
+                    .await;
+                shard_results.push((i, res));
+            }
+        }
+
+        // Global top-`merge_k`: max-heap keyed by distance (peek = current worst).
+        let mut heap: BinaryHeap<ScoredCandidate> = BinaryHeap::with_capacity(merge_k + 1);
+        for (shard, res) in shard_results {
+            for (id, distance, metadata, payload) in res? {
+                if heap.len() >= merge_k {
+                    if distance >= heap.peek().map_or(f64::INFINITY, |w| w.distance) {
+                        // Shard results are ascending: nothing later in this shard wins.
+                        break;
+                    }
+                    heap.pop();
+                }
+                heap.push(ScoredCandidate {
+                    distance,
+                    id,
+                    shard,
+                    metadata,
+                    payload,
+                });
+            }
+        }
+        let mut output: Vec<(usize, SearchResult)> = heap
+            .into_sorted_vec()
+            .into_iter()
+            .map(|c| (c.shard, (c.id, c.distance, c.metadata, c.payload)))
+            .collect();
+        output.sort_by(|a, b| a.1 .1.total_cmp(&b.1 .1));
+
+        if rerank_k.is_some() {
+            // One exact pass over the merged candidates (blocking: mmap / disk reads).
+            let shards = self.shards.clone();
+            let q = Arc::clone(&vector_arc);
+            let lead = active[0];
+            output = tokio::task::spawn_blocking(move || {
+                let processed = shards[lead].process_query(&q).into_owned();
+                let q32: Vec<f32> = processed.iter().map(|&x| x as f32).collect();
+                for (shard, r) in &mut output {
+                    if let Some(d) = shards[*shard].exact_distance(r.0, &processed, &q32) {
+                        r.1 = d;
+                    }
+                }
+                output.sort_by(|a, b| a.1 .1.total_cmp(&b.1 .1));
+                output
+            })
+            .await
+            .map_err(|e| format!("Rerank task failed: {e}"))?;
+        }
+        output.truncate(top_k);
+
+        // Metadata only for the top-k winners (shards skipped it for every candidate).
+        if !params.skip_metadata {
+            for (shard, r) in &mut output {
+                if r.2.is_empty() {
+                    r.2 = self.shards[*shard].metadata_by_id(r.0);
+                }
+            }
+        }
+        // Payloads lazily for the winners, one batch per shard.
+        if params.include_payload && !output.is_empty() {
+            let mut per_shard: Vec<Vec<(usize, u32)>> = vec![Vec::new(); self.num_shards];
+            for (pos, (shard, r)) in output.iter().enumerate() {
+                per_shard[*shard].push((pos, r.0));
+            }
+            for (shard, items) in per_shard.into_iter().enumerate() {
+                if items.is_empty() {
+                    continue;
+                }
+                let ids: Vec<u32> = items.iter().map(|(_, id)| *id).collect();
+                let payloads = self.shards[shard].fetch_payloads(&ids).await;
+                for ((pos, _), payload) in items.into_iter().zip(payloads) {
+                    output[pos].1 .3 = payload;
+                }
+            }
+        }
+        Ok(output)
+    }
+
     /// Decomposes a global 64-bit ID into a target shard index and local 32-bit ID.
     /// This enables collections with > 5B to 21.2B+ vectors (e.g. 34.3B vectors across 8 shards)
     /// without converting internal HNSW graph pointers to 64-bit (saving gigabytes/terabytes of RAM).
@@ -751,174 +906,13 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         complex_filters: &[FilterExpr],
         params: &SearchParams,
     ) -> Result<Vec<SearchResult>, String> {
-        if self.num_shards == 1 {
-            return self.shards[0]
-                .search(vector, filter, complex_filters, params)
-                .await;
-        }
-
-        let active_shards: Vec<(usize, &Arc<CollectionImpl<M>>)> = self
-            .shards
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.count() > 0 || s.write_buffer_size() > 0 || s.queue_size() > 0)
-            .collect();
-
-        if active_shards.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        if active_shards.len() == 1 {
-            return active_shards[0]
-                .1
-                .search(vector, filter, complex_filters, params)
-                .await;
-        }
-
-        // ── Scatter-Gather Oversampling ──────────────────────────────────────
-        // An exact rerank runs once on the merged candidates (`rerank_k` of them) instead
-        // of once per shard: shards return their compact-code top candidates only.
-        let rerank_k = active_shards[0].1.deferred_rerank_k(filter, params);
-        let top_k = params.top_k.max(1);
-        let merge_k = rerank_k.unwrap_or(top_k).max(top_k);
-        let (shard_top_k, shard_ef) = shard_fanout(&SearchParams {
-            top_k: merge_k,
-            ef_search: params.ef_search,
-            ..SearchParams::default()
-        });
-
-        let shard_params = Arc::new(SearchParams {
-            top_k: shard_top_k,
-            ef_search: shard_ef,
-            hybrid_query: params.hybrid_query.clone(),
-            hybrid_alpha: params.hybrid_alpha,
-            component_weights: params.component_weights.clone(),
-            use_wasserstein: params.use_wasserstein,
-            bm25_options: params.bm25_options.clone(),
-            fusion_method: params.fusion_method.clone(),
-            mrl_dimension: params.mrl_dimension,
-            include_payload: false,
-            use_wave: params.use_wave,
-            // Metadata is fetched below for the merged top-k only.
-            skip_metadata: true,
-            defer_rerank: rerank_k.is_some(),
-        });
-
-        let vector_arc: Arc<[f64]> = Arc::from(vector);
-        let filter_arc = Arc::new(filter.clone());
-        let complex_filters_arc = Arc::new(complex_filters.to_vec());
-
-        let handles: Vec<_> = active_shards
+        // u32 ids are routed by `id % shards` and stored unchanged in their shard.
+        Ok(self
+            .scatter_gather(vector, filter, complex_filters, params)
+            .await?
             .into_iter()
-            .map(|(_, shard)| {
-                let shard_ref = Arc::clone(shard);
-                let sp = Arc::clone(&shard_params);
-                let v = Arc::clone(&vector_arc);
-                let f = Arc::clone(&filter_arc);
-                let cf = Arc::clone(&complex_filters_arc);
-                tokio::spawn(async move { shard_ref.search(&v, &f, &cf, &sp).await })
-            })
-            .collect();
-
-        let mut shard_results = Vec::with_capacity(handles.len());
-        for handle in handles {
-            match handle.await {
-                Ok(res) => shard_results.push(res),
-                Err(e) => return Err(format!("Shard query task failed: {e}")),
-            }
-        }
-
-        // ── Global Top-K Merge ───────────────────────────────────────────────
-        // Max-heap keyed by distance: peek() always holds the worst (largest
-        // distance) candidate currently in the set, making eviction O(log N).
-        let mut heap: BinaryHeap<ScoredCandidate> = BinaryHeap::with_capacity(merge_k + 1);
-
-        for res in shard_results {
-            match res {
-                Ok(items) => {
-                    for (id, dist, meta, payload) in items {
-                        if heap.len() < merge_k {
-                            heap.push(ScoredCandidate {
-                                distance: dist,
-                                id,
-                                metadata: meta,
-                                payload,
-                            });
-                        } else {
-                            // SAFETY: heap is non-empty because len >= top_k >= 1.
-                            let worst = heap.peek().unwrap().distance;
-                            if dist < worst {
-                                heap.pop();
-                                heap.push(ScoredCandidate {
-                                    distance: dist,
-                                    id,
-                                    metadata: meta,
-                                    payload,
-                                });
-                            } else {
-                                // Since items are sorted in ascending distance order,
-                                // no subsequent item in this shard can beat `worst`.
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        // Drain heap; it pops in descending distance order (max-heap), so
-        // reverse to produce best-first (ascending distance) output.
-        let mut output: Vec<SearchResult> = heap
-            .into_sorted_vec()
-            .into_iter()
-            .map(|c| (c.id, c.distance, c.metadata, c.payload))
-            .collect();
-        // `into_sorted_vec` already returns ascending order for a max-heap;
-        // verify and ensure correctness regardless of future stdlib changes.
-        output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        if rerank_k.is_some() {
-            // One exact pass over the merged candidates (blocking: mmap / disk reads).
-            let shards = self.shards.clone();
-            let num_shards = self.num_shards;
-            let q = Arc::clone(&vector_arc);
-            output = tokio::task::spawn_blocking(move || {
-                let processed = shards[0].process_query(&q).into_owned();
-                let q32: Vec<f32> = processed.iter().map(|&x| x as f32).collect();
-                for out in &mut output {
-                    let shard = &shards[out.0 as usize % num_shards];
-                    if let Some(d) = shard.exact_distance(out.0, &processed, &q32) {
-                        out.1 = d;
-                    }
-                }
-                output.sort_by(|a, b| a.1.total_cmp(&b.1));
-                output
-            })
-            .await
-            .map_err(|e| format!("Rerank task failed: {e}"))?;
-        }
-        output.truncate(top_k);
-
-        // Metadata only for the top-K winners (shards skipped it for every candidate).
-        if !params.skip_metadata {
-            for out in &mut output {
-                if out.2.is_empty() {
-                    out.2 = self.shards[self.get_shard_index(out.0)].metadata_by_id(out.0);
-                }
-            }
-        }
-
-        // Fetch payload lazily only for the top-K winners across shards
-        if params.include_payload && !output.is_empty() {
-            let ids: Vec<u32> = output.iter().map(|(id, ..)| *id).collect();
-            let payloads = self.fetch_payloads(&ids).await;
-            for (out, payload) in output.iter_mut().zip(payloads) {
-                out.3 = payload;
-            }
-        }
-
-        Ok(output)
+            .map(|(_, r)| r)
+            .collect())
     }
 
     async fn search_u64(
@@ -928,159 +922,13 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         complex_filters: &[FilterExpr],
         params: &SearchParams,
     ) -> Result<Vec<hyperspace_core::SearchResultU64>, String> {
-        if self.num_shards == 1 {
-            let res = self.shards[0]
-                .search(vector, filter, complex_filters, params)
-                .await?;
-            let mapped = res
-                .into_iter()
-                .map(|(lid, d, m, p)| (self.compose_id64(0, lid), d, m, p))
-                .collect();
-            return Ok(mapped);
-        }
-
-        let active_shards: Vec<(usize, &Arc<CollectionImpl<M>>)> = self
-            .shards
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.count() > 0 || s.write_buffer_size() > 0 || s.queue_size() > 0)
-            .collect();
-
-        if active_shards.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        if active_shards.len() == 1 {
-            let (shard_idx, shard) = active_shards[0];
-            let res = shard
-                .search(vector, filter, complex_filters, params)
-                .await?;
-            let mapped = res
-                .into_iter()
-                .map(|(lid, d, m, p)| (self.compose_id64(shard_idx, lid), d, m, p))
-                .collect();
-            return Ok(mapped);
-        }
-
-        let top_k = params.top_k.max(1);
-        let (shard_top_k, shard_ef) = shard_fanout(params);
-
-        let shard_params = Arc::new(SearchParams {
-            top_k: shard_top_k,
-            ef_search: shard_ef,
-            hybrid_query: params.hybrid_query.clone(),
-            hybrid_alpha: params.hybrid_alpha,
-            component_weights: params.component_weights.clone(),
-            use_wasserstein: params.use_wasserstein,
-            bm25_options: params.bm25_options.clone(),
-            fusion_method: params.fusion_method.clone(),
-            mrl_dimension: params.mrl_dimension,
-            include_payload: false,
-            use_wave: params.use_wave,
-            skip_metadata: false,
-            defer_rerank: false,
-        });
-
-        let vector_arc: Arc<[f64]> = Arc::from(vector);
-        let filter_arc = Arc::new(filter.clone());
-        let complex_filters_arc = Arc::new(complex_filters.to_vec());
-
-        let handles: Vec<_> = active_shards
+        // u64 ids are stored as `id / shards` in shard `id % shards`.
+        Ok(self
+            .scatter_gather(vector, filter, complex_filters, params)
+            .await?
             .into_iter()
-            .map(|(shard_idx, shard)| {
-                let shard_ref = Arc::clone(shard);
-                let sp = Arc::clone(&shard_params);
-                let v = Arc::clone(&vector_arc);
-                let f = Arc::clone(&filter_arc);
-                let cf = Arc::clone(&complex_filters_arc);
-                tokio::spawn(async move {
-                    let res = shard_ref.search(&v, &f, &cf, &sp).await;
-                    (shard_idx, res)
-                })
-            })
-            .collect();
-
-        let mut shard_results = Vec::with_capacity(handles.len());
-        for handle in handles {
-            match handle.await {
-                Ok(res) => shard_results.push(res),
-                Err(e) => return Err(format!("Shard query task failed: {e}")),
-            }
-        }
-
-        let mut heap: BinaryHeap<ScoredCandidate64> = BinaryHeap::with_capacity(top_k + 1);
-
-        for (shard_idx, res) in shard_results {
-            match res {
-                Ok(items) => {
-                    for (local_id, dist, meta, payload) in items {
-                        if heap.len() < top_k {
-                            let global_id = self.compose_id64(shard_idx, local_id);
-                            heap.push(ScoredCandidate64 {
-                                distance: dist,
-                                id: global_id,
-                                metadata: meta,
-                                payload,
-                            });
-                        } else {
-                            let worst = heap.peek().unwrap().distance;
-                            if dist < worst {
-                                let global_id = self.compose_id64(shard_idx, local_id);
-                                heap.pop();
-                                heap.push(ScoredCandidate64 {
-                                    distance: dist,
-                                    id: global_id,
-                                    metadata: meta,
-                                    payload,
-                                });
-                            } else {
-                                // Shard items are sorted ascending by distance;
-                                // no subsequent item can beat `worst`.
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        let mut output: Vec<hyperspace_core::SearchResultU64> = heap
-            .into_sorted_vec()
-            .into_iter()
-            .map(|c| (c.id, c.distance, c.metadata, c.payload))
-            .collect();
-        output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Fetch payload lazily only for the top-K winners across shards
-        if params.include_payload && !output.is_empty() {
-            let mut shard_winner_map: Vec<Vec<(usize, u32)>> = vec![Vec::new(); self.num_shards];
-            for (pos, item) in output.iter().enumerate() {
-                if let Ok((shard_idx, local_id)) = self.decompose_id64(item.0) {
-                    shard_winner_map[shard_idx].push((pos, local_id));
-                }
-            }
-            let mut tasks = Vec::with_capacity(self.num_shards);
-            for (shard_idx, items) in shard_winner_map.into_iter().enumerate() {
-                if !items.is_empty() {
-                    let shard = Arc::clone(&self.shards[shard_idx]);
-                    tasks.push(tokio::spawn(async move {
-                        let local_ids: Vec<u32> = items.iter().map(|(_, lid)| *lid).collect();
-                        let payloads = shard.fetch_payloads(&local_ids).await;
-                        (items, payloads)
-                    }));
-                }
-            }
-            for task in tasks {
-                if let Ok((items, payloads)) = task.await {
-                    for ((orig_pos, _), payload) in items.into_iter().zip(payloads) {
-                        output[orig_pos].3 = payload;
-                    }
-                }
-            }
-        }
-
-        Ok(output)
+            .map(|(shard, (lid, d, m, p))| (self.compose_id64(shard, lid), d, m, p))
+            .collect())
     }
 
     fn count(&self) -> usize {
@@ -1652,6 +1500,53 @@ impl<M: Metric> Drop for ShardedCollection<M> {
 /// Each shard returns `max(top_k + 6, 2 * top_k)` candidates so the merge still has the
 /// true top-k when the nearest neighbors cluster in a few shards. `ef_search == 0` keeps
 /// meaning "use the collection default" on the shard.
+/// Vectors per shard targeted by [`auto_shard_count`] (`HS_SHARD_TARGET_VECTORS`).
+fn shard_target_vectors() -> u64 {
+    std::env::var("HS_SHARD_TARGET_VECTORS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(2_000_000)
+}
+
+/// Shard count for a new collection (fixed at creation: routing is `id % shards`).
+///
+/// Every shard is searched on every query, so on one node more shards multiply the work
+/// per query: at equal recall 12 shards gave 4.3× less throughput than one on 100k ×
+/// 1024-D (2.9× on 20k), and only shorten single-query latency for collections of many
+/// millions of vectors. Hence one shard per `HS_SHARD_TARGET_VECTORS` (default 2M) of the
+/// expected size, at most one per core, and a single shard without a size hint.
+/// `HS_SHARDS=<n>` forces a count (`auto` / `0` / empty: this rule).
+#[must_use]
+pub fn auto_shard_count(expected_vectors: Option<u64>) -> usize {
+    if let Some(n) = std::env::var("HS_SHARDS").ok().and_then(|s| {
+        let t = s.trim();
+        (!t.is_empty() && !t.eq_ignore_ascii_case("auto") && t != "0")
+            .then(|| t.parse::<usize>().ok())
+            .flatten()
+    }) {
+        return n.max(1);
+    }
+    shards_for(
+        expected_vectors,
+        shard_target_vectors(),
+        std::thread::available_parallelism().map_or(8, std::num::NonZero::get),
+    )
+}
+
+/// Pure part of [`auto_shard_count`].
+fn shards_for(expected_vectors: Option<u64>, target: u64, cores: usize) -> usize {
+    match expected_vectors {
+        Some(n) if n > 0 => {
+            let want = n.div_ceil(target.max(1));
+            usize::try_from(want)
+                .unwrap_or(usize::MAX)
+                .clamp(1, cores.max(1))
+        }
+        _ => 1,
+    }
+}
+
 fn shard_fanout(params: &SearchParams) -> (usize, usize) {
     let top_k = params.top_k.max(1);
     let shard_top_k = (top_k + 6).max(top_k * 2);
@@ -1668,6 +1563,38 @@ mod tests {
     use super::*;
     use hyperspace_core::{EuclideanMetric, Metric};
     use tempfile::tempdir;
+
+    #[test]
+    fn fanout_goes_sequential_once_every_core_is_busy() {
+        let cores = std::thread::available_parallelism().map_or(8, std::num::NonZero::get);
+        assert!(parallel_fanout(1));
+        assert!(parallel_fanout(cores - 1));
+        assert!(!parallel_fanout(cores));
+        let before = SEARCHES_IN_FLIGHT.load(Ordering::Relaxed);
+        {
+            let (_g, n) = InFlight::enter();
+            assert!(n > before);
+        }
+        // Guards release on drop (other tests may run searches concurrently: only check
+        // that this guard did not leak).
+        assert!(SEARCHES_IN_FLIGHT.load(Ordering::Relaxed) <= before + 64);
+    }
+
+    #[test]
+    fn shard_count_follows_expected_size() {
+        assert_eq!(shards_for(None, 2_000_000, 12), 1, "no hint: one shard");
+        assert_eq!(shards_for(Some(0), 2_000_000, 12), 1);
+        assert_eq!(shards_for(Some(100_000), 2_000_000, 12), 1);
+        assert_eq!(shards_for(Some(2_000_000), 2_000_000, 12), 1);
+        assert_eq!(shards_for(Some(2_000_001), 2_000_000, 12), 2);
+        assert_eq!(shards_for(Some(9_000_000), 2_000_000, 12), 5);
+        assert_eq!(
+            shards_for(Some(1_000_000_000), 2_000_000, 12),
+            12,
+            "capped at cores"
+        );
+        assert_eq!(shards_for(Some(10), 0, 4), 4, "target 0 treated as 1");
+    }
 
     #[test]
     fn shard_fanout_keeps_full_ef_per_shard() {
@@ -1843,6 +1770,80 @@ mod tests {
             hits += got.iter().filter(|r| want.contains(&r.0)).count();
         }
         assert!(hits >= 180, "extreme + rerank recall {hits}/200");
+    }
+
+    /// `search_u64` shares the scatter-gather core: 64-bit ids, metadata fetched after the
+    /// merge, payloads from the owning shard and the exact rerank all apply to it.
+    #[tokio::test]
+    async fn search_u64_reranks_and_returns_metadata() {
+        let dir = tempdir().unwrap();
+        let (tx, _) = broadcast::channel(128);
+        let dim = 32;
+        let schema = CollectionSchema {
+            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                name: "default".to_string(),
+                metric: "l2".to_string(),
+                full_dimension: dim as u32,
+                weight: 1.0,
+            }],
+            cascade_pipeline: vec![],
+            encrypted: Some(false),
+        };
+        let col = ShardedCollection::<EuclideanMetric>::new(
+            "u64".to_string(),
+            "node_1".to_string(),
+            dir.path().to_path_buf(),
+            hyperspace_core::QuantizationMode::ScalarI8,
+            tx,
+            dim,
+            schema,
+            Some(3),
+        )
+        .await
+        .unwrap();
+        let base: u64 = 5_000_000_000;
+        for i in 0..600u32 {
+            let mut meta = HashMap::new();
+            meta.insert("i".to_string(), i.to_string());
+            let id = base + u64::from(i) * 7;
+            col.insert_u64(&unit(i, dim), id, meta, 1, Durability::Default)
+                .await
+                .unwrap();
+        }
+        for _ in 0..400 {
+            if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let mut rerank = HashMap::new();
+        rerank.insert("rerank".to_string(), "1".to_string());
+        for qi in [3u32, 250, 599] {
+            let q = unit(qi, dim);
+            let got = col
+                .search_u64(
+                    &q,
+                    &rerank,
+                    &[],
+                    &SearchParams {
+                        top_k: 5,
+                        ef_search: 64,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(got[0].0, base + u64::from(qi) * 7, "self match for {qi}");
+            assert!(got[0].1 < 1e-6, "exact distance after rerank: {}", got[0].1);
+            assert_eq!(
+                got[0].2.get("i"),
+                Some(&qi.to_string()),
+                "metadata after merge"
+            );
+            for w in got.windows(2) {
+                assert!(w[0].1 <= w[1].1, "ascending distances");
+            }
+        }
     }
 
     #[tokio::test]

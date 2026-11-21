@@ -351,6 +351,7 @@ impl MigrationEngine {
                 sharded: true,
                 encrypted: false,
                 vector_count: 0,
+                shards: None,
                 schema: Some(CollectionSchema {
                     components: vec![hyperspace_proto::hyperspace::VectorComponent {
                         name: "default".to_string(),
@@ -871,6 +872,7 @@ mod tests {
             sharded: false,
             encrypted: false,
             vector_count: 0,
+            shards: None,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -939,6 +941,7 @@ mod tests {
             sharded: false,
             encrypted: false,
             vector_count: 0,
+            shards: None,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -1006,6 +1009,7 @@ mod tests {
             sharded: false,
             encrypted: false,
             vector_count: 0,
+            shards: None,
             schema: Some(CollectionSchema {
                 components: vec![hyperspace_proto::hyperspace::VectorComponent {
                     name: "default".to_string(),
@@ -1072,6 +1076,7 @@ mod tests {
             sharded: false,
             encrypted: false,
             vector_count: 0,
+            shards: None,
             schema: None,
         };
         meta.save(&col_dir).unwrap();
@@ -1130,6 +1135,7 @@ mod tests {
             sharded: false,
             encrypted: false,
             vector_count: 0,
+            shards: None,
             schema: None,
         };
         meta.save(&col_dir).unwrap();
@@ -1238,6 +1244,7 @@ mod tests {
             sharded: false,
             encrypted: false,
             vector_count: 0,
+            shards: None,
             schema: None,
         };
         meta.save(&col_dir).unwrap();

@@ -22,6 +22,7 @@ Before/after comparisons:
   HS_BENCH_LABEL="v4.2.4 (before)"                 label used in the report
   HS_BENCH_REPORT=/path/report.md                  Markdown output path
   HS_BENCH_RESULT=/path/results.json               JSON output path
+  HS_BENCH_WARMUP=200                              unmeasured warm-up queries per run (default: all)
 
 Along with:
   - Reranking variants (Disabled, Server Rerank 4x, 8x, 16x)
@@ -67,6 +68,8 @@ RESULT_JSON = os.environ.get("HS_BENCH_RESULT", os.path.join(BASE_DIR, "benchmar
 # Modes whose codebooks / centroid must be trained on real data before searching.
 CALIBRATED_MODES = {"pq", "opq", "pq4", "rabitq"}
 CALIBRATE = os.environ.get("HS_BENCH_CALIBRATE", "1") not in ("0", "false", "no", "off")
+# Unmeasured warm-up queries before each search run (`HS_BENCH_WARMUP`, default: all).
+WARMUP_QUERIES = int(os.environ.get("HS_BENCH_WARMUP", "100000"))
 
 API_KEY = "I_LOVE_HYPERSPACEDB"
 PORT_GRPC = int(os.environ.get("HS_BENCH_GRPC_PORT", "50051"))
@@ -274,8 +277,16 @@ def run_single_config(
         }.get(quant, 1024)
         theor_mb = (theor_bytes * N_VECTORS) / (1024 * 1024)
 
-        # Warmup search
-        client.search(queries[0].tolist(), top_k=TOP_K, collection=col_name)
+        # Warm-up pass (not measured), as in VectorDBBench: every query once, then wait for
+        # the server's background work (4.2.5+ re-tunes ef_search on the sampled queries).
+        for q in queries[: max(1, WARMUP_QUERIES)]:
+            client.search(q.tolist(), top_k=TOP_K, collection=col_name)
+        t_idle = time.perf_counter()
+        while time.perf_counter() - t_idle < 10.0:
+            stats = client.get_collection_stats(col_name) or {}
+            if stats.get("indexing_queue", 0) == 0:
+                break
+            time.sleep(0.1)
 
         # Search benchmark
         latencies_ms = []

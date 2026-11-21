@@ -341,6 +341,23 @@ fn parse_complex_filters(filters: &[Filter]) -> Vec<hyperspace_core::FilterExpr>
         .collect()
 }
 
+/// `x-quantization-level` and `x-expected-vectors` metadata of a `CreateCollection` call.
+pub(crate) fn create_collection_hints(
+    md: &tonic::metadata::MetadataMap,
+) -> (Option<String>, Option<u64>) {
+    let text = |k: &str| {
+        md.get(k)
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    (
+        text("x-quantization-level"),
+        text("x-expected-vectors").and_then(|v| v.parse::<u64>().ok()),
+    )
+}
+
 fn build_filters(
     mut req: SearchRequest,
 ) -> (
@@ -849,6 +866,10 @@ impl Database for HyperspaceService {
             .remote_addr()
             .map(|addr| addr.ip().to_string())
             .unwrap_or_else(|| "unknown".to_string());
+        // The SDKs send the quantization level (and optionally the expected collection size,
+        // which sets the shard count) as metadata: CreateCollectionRequest has no fields
+        // for them. Before 4.2.5 the gRPC path ignored the header.
+        let (quantization, expected_vectors) = create_collection_hints(request.metadata());
         let req = request.into_inner();
         let name = req.name.clone();
 
@@ -865,7 +886,13 @@ impl Database for HyperspaceService {
                 return Err(Status::invalid_argument("CollectionSchema is required"));
             };
             self.manager
-                .create_collection(&ctx.user_id, &name, schema)
+                .create_collection_with_options(
+                    &ctx.user_id,
+                    &name,
+                    schema,
+                    quantization,
+                    expected_vectors,
+                )
                 .await
                 .map_err(Status::already_exists)
         }

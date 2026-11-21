@@ -366,7 +366,8 @@ impl CollectionManager {
                         self.replication_tx.clone(),
                         dim,
                         schema.clone(),
-                        None, // auto-detect shard count from available CPU cores
+                        // Chosen at creation (expected size); existing shard dirs win.
+                        meta.shards,
                     )
                     .await
                     .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?,
@@ -440,7 +441,7 @@ impl CollectionManager {
         schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<(), String> {
         let internal_name = Self::get_internal_name(user_id, name);
-        self.create_collection_internal(&internal_name, schema, true, None)
+        self.create_collection_internal(&internal_name, schema, true, None, None)
             .await
     }
 
@@ -451,9 +452,29 @@ impl CollectionManager {
         schema: hyperspace_proto::hyperspace::CollectionSchema,
         quantization: Option<String>,
     ) -> Result<(), String> {
-        let internal_name = Self::get_internal_name(user_id, name);
-        self.create_collection_internal(&internal_name, schema, true, quantization)
+        self.create_collection_with_options(user_id, name, schema, quantization, None)
             .await
+    }
+
+    /// Creates a collection with an optional quantization override and an expected size,
+    /// which sets the shard count of the v4 engine (see `auto_shard_count`).
+    pub async fn create_collection_with_options(
+        &self,
+        user_id: &str,
+        name: &str,
+        schema: hyperspace_proto::hyperspace::CollectionSchema,
+        quantization: Option<String>,
+        expected_vectors: Option<u64>,
+    ) -> Result<(), String> {
+        let internal_name = Self::get_internal_name(user_id, name);
+        self.create_collection_internal(
+            &internal_name,
+            schema,
+            true,
+            quantization,
+            expected_vectors,
+        )
+        .await
     }
 
     pub async fn create_collection_from_replication(
@@ -461,7 +482,7 @@ impl CollectionManager {
         name: &str,
         schema: hyperspace_proto::hyperspace::CollectionSchema,
     ) -> Result<(), String> {
-        self.create_collection_internal(name, schema, false, None)
+        self.create_collection_internal(name, schema, false, None, None)
             .await
     }
 
@@ -525,6 +546,7 @@ impl CollectionManager {
         schema: hyperspace_proto::hyperspace::CollectionSchema,
         replicate: bool,
         quantization_override: Option<String>,
+        expected_vectors: Option<u64>,
     ) -> Result<(), String> {
         if self.collections.contains_key(name) {
             return Err(format!("Collection '{name}' already exists"));
@@ -574,6 +596,7 @@ impl CollectionManager {
             sharded,
             encrypted,
             vector_count: 0,
+            shards: sharded.then(|| crate::sharded_engine::auto_shard_count(expected_vectors)),
         };
 
         meta.save(&col_dir).map_err(|e| e.to_string())?;
@@ -992,6 +1015,10 @@ pub struct CollectionMetadata {
     pub encrypted: bool,
     #[serde(default)]
     pub vector_count: usize,
+    /// Shard count chosen at creation (v4 engine). `None` in pre-4.2.5 `meta.json`; the
+    /// shard directories on disk win either way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shards: Option<usize>,
 }
 
 impl CollectionMetadata {

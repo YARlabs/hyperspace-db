@@ -627,6 +627,12 @@ impl<M: Metric> HnswIndex<M> {
             ),
             calibration_gate: RwLock::new(()),
             calibrated_at: AtomicUsize::new(0),
+            tuned_ef: AtomicUsize::new(0),
+            tuned_at: AtomicUsize::new(0),
+            query_samples: Mutex::new(std::collections::VecDeque::new()),
+            queries_seen: AtomicUsize::new(0),
+            tuned_queries_seen: AtomicUsize::new(usize::MAX),
+            tuned_at_ms: AtomicU64::new(0),
             sq8_scaled: Self::sq8_scaled_supported(mode)
                 && path
                     .parent()
@@ -842,6 +848,12 @@ impl<M: Metric> HnswIndex<M> {
             calibrated: AtomicBool::new(true),
             calibration_gate: RwLock::new(()),
             calibrated_at: AtomicUsize::new(0),
+            tuned_ef: AtomicUsize::new(0),
+            tuned_at: AtomicUsize::new(0),
+            query_samples: Mutex::new(std::collections::VecDeque::new()),
+            queries_seen: AtomicUsize::new(0),
+            tuned_queries_seen: AtomicUsize::new(usize::MAX),
+            tuned_at_ms: AtomicU64::new(0),
             // Byte snapshots are produced and read by the same build (wasm).
             sq8_scaled: Self::sq8_scaled_supported(mode),
             repair_running: AtomicBool::new(false),
@@ -922,6 +934,19 @@ pub struct HnswIndex<M: Metric> {
     calibrated: AtomicBool,
     /// Vectors stored when the quantizer was last fitted online (0 = never / unknown).
     calibrated_at: AtomicUsize,
+    /// Beam width found by [`Self::tune_ef_search`] (0 = not tuned) and the live node count
+    /// it was measured at.
+    tuned_ef: AtomicUsize,
+    tuned_at: AtomicUsize,
+    /// Every `QUERY_SAMPLE_EVERY`-th unfiltered search query (last `QUERY_SAMPLES`), used by
+    /// [`Self::tune_ef_search`] once enough are collected.
+    query_samples: Mutex<std::collections::VecDeque<Vec<f64>>>,
+    queries_seen: AtomicUsize,
+    /// `queries_seen` at the last tuning that used real queries (`usize::MAX` = none yet).
+    tuned_queries_seen: AtomicUsize,
+    /// Milliseconds since process start at the last tuning (rate limit for re-measuring on
+    /// new queries; growth-triggered re-measurements ignore it).
+    tuned_at_ms: AtomicU64,
     /// Held shared while a vector is encoded and appended / updated, exclusively while
     /// the quantizer is swapped, so no code is written with a stale codebook after the
     /// swap without being re-encoded.
@@ -1213,6 +1238,72 @@ pub fn set_sq8_scaled_codes(enabled: bool) {
     SQ8_SCALED_CODES.store(enabled, Ordering::Relaxed);
 }
 
+/// One in `QUERY_SAMPLE_EVERY` searches is kept for beam tuning, up to `QUERY_SAMPLES`.
+const QUERY_SAMPLE_EVERY: usize = 8;
+const QUERY_SAMPLES: usize = 64;
+/// Stored vectors averaged into one synthetic tuning query (a local centroid).
+const TUNE_NEIGHBOURHOOD: usize = 5;
+/// Real queries needed before tuning uses them instead of synthetic ones.
+const MIN_REAL_QUERIES: usize = 16;
+
+/// Milliseconds since the first call (monotonic, never 0).
+fn process_millis() -> u64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let start = *START.get_or_init(std::time::Instant::now);
+    u64::try_from(start.elapsed().as_millis())
+        .unwrap_or(u64::MAX)
+        .max(1)
+}
+
+/// Index searches in flight process-wide (drives [`flat_scan_parallelism`]).
+static SEARCHES_ACTIVE: AtomicUsize = AtomicUsize::new(0);
+
+/// Rows per parallel flat-scan part (smaller parts cost more in scheduling than they save).
+const FLAT_PART_ROWS: usize = 1024;
+
+/// Decrements [`SEARCHES_ACTIVE`] on drop.
+struct ActiveSearch;
+
+impl ActiveSearch {
+    fn enter() -> Self {
+        SEARCHES_ACTIVE.fetch_add(1, Ordering::Relaxed);
+        Self
+    }
+}
+
+impl Drop for ActiveSearch {
+    fn drop(&mut self) {
+        SEARCHES_ACTIVE.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Parts a flat scan of `rows` is split into: one per idle core (searches in flight leave
+/// the rest busy), at least `FLAT_PART_ROWS` rows each; 1 = scan on the calling thread.
+fn flat_scan_parallelism(rows: usize) -> usize {
+    parallel_parts(rows, FLAT_PART_ROWS)
+}
+
+/// Parts (≥ `min_rows` each) that per-query work over `rows` items can be split into on
+/// idle cores: 1 when at least half the cores already run searches (the rayon pool would
+/// only add scheduling overhead then). Used by flat scans and large reranks.
+#[must_use]
+pub fn parallel_parts(rows: usize, min_rows: usize) -> usize {
+    let cores = rayon::current_num_threads().max(1);
+    let active = SEARCHES_ACTIVE.load(Ordering::Relaxed).max(1);
+    if active * 2 > cores {
+        return 1;
+    }
+    (cores / active).min(rows / min_rows.max(1)).max(1)
+}
+
+/// Whether a search may pick the exact flat scan (`Auto`) or is forced to one path.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScanMode {
+    Auto,
+    Graph,
+    Flat,
+}
+
 /// Nibble-table kernel family for bit-packed quantizers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BitLutKind {
@@ -1377,6 +1468,12 @@ impl<M: Metric> HnswIndex<M> {
             calibrated: AtomicBool::new(!mode.needs_training()),
             calibration_gate: RwLock::new(()),
             calibrated_at: AtomicUsize::new(0),
+            tuned_ef: AtomicUsize::new(0),
+            tuned_at: AtomicUsize::new(0),
+            query_samples: Mutex::new(std::collections::VecDeque::new()),
+            queries_seen: AtomicUsize::new(0),
+            tuned_queries_seen: AtomicUsize::new(usize::MAX),
+            tuned_at_ms: AtomicU64::new(0),
             sq8_scaled: Self::sq8_scaled_supported(mode)
                 && SQ8_SCALED_CODES.load(Ordering::Relaxed),
             repair_running: AtomicBool::new(false),
@@ -1940,6 +2037,17 @@ impl<M: Metric> HnswIndex<M> {
         allowed_bitmap: Option<&roaring::RoaringBitmap>,
         params: &hyperspace_core::SearchParams,
     ) -> Vec<(NodeId, f64)> {
+        self.search_impl(query, allowed_bitmap, params, ScanMode::Auto)
+    }
+
+    fn search_impl(
+        &self,
+        query: &[f64],
+        allowed_bitmap: Option<&roaring::RoaringBitmap>,
+        params: &hyperspace_core::SearchParams,
+        mode: ScanMode,
+    ) -> Vec<(NodeId, f64)> {
+        let _active = ActiveSearch::enter();
         if allowed_bitmap.is_some_and(roaring::RoaringBitmap::is_empty) {
             return Vec::new();
         }
@@ -2054,7 +2162,19 @@ impl<M: Metric> HnswIndex<M> {
             mrl_dim: params.mrl_dimension,
         };
 
-        let mut candidates = if allowed_bitmap.is_none() && self.flat_scan_applies(params) {
+        if mode == ScanMode::Auto
+            && allowed_bitmap.is_none()
+            && params.mrl_dimension.is_none()
+            && params.hybrid_query.is_none()
+        {
+            self.sample_query(query);
+        }
+        let flat = match mode {
+            ScanMode::Auto => self.flat_scan_applies(params),
+            ScanMode::Graph => false,
+            ScanMode::Flat => true,
+        };
+        let mut candidates = if allowed_bitmap.is_none() && flat {
             // Small index: an exact sequential scan touches fewer cache lines than a
             // graph walk that would visit most nodes anyway (and has 100% recall).
             self.search_flat_all(
@@ -2624,6 +2744,42 @@ impl<M: Metric> HnswIndex<M> {
             hyperspace_core::simd::sq8_scaled_l2_and_norm_sq(&bytes[..n], alpha / 127.0, &q32[..n])
                 .0,
         )
+    }
+
+    /// Decodes a stored ScalarI8 code (`codes ‖ alpha`) into `out` without allocating and
+    /// returns the `alpha` a `HyperVector` of this metric carries: 0 for Lorentz (the time
+    /// coordinate is recomputed on the hyperboloid from the scaled spatial part), 1 for
+    /// per-vector scaled codes, the stored `1 / (1 − ‖x‖²)` for legacy codes.
+    fn decode_sq8(&self, bytes: &[u8], out: &mut [f64]) -> f64 {
+        let split = bytes.len().saturating_sub(4);
+        let stored = if bytes.len() >= 4 {
+            f32::from_le_bytes(bytes[split..].try_into().unwrap_or([0; 4]))
+        } else {
+            1.0
+        };
+        let codes = &bytes[..split];
+        if M::name() == "lorentz" {
+            let scale = f64::from(stored) / 127.0;
+            let mut norm_sq = 0.0;
+            for (o, &c) in out.iter_mut().zip(codes).skip(1) {
+                let v = f64::from(c.cast_signed()) * scale;
+                *o = v;
+                norm_sq += v * v;
+            }
+            if let Some(t) = out.first_mut() {
+                *t = (1.0 + norm_sq).sqrt();
+            }
+            return 0.0;
+        }
+        let step = f64::from(self.sq8_step(stored));
+        for (o, &c) in out.iter_mut().zip(codes) {
+            *o = f64::from(c.cast_signed()) * step;
+        }
+        if self.sq8_scaled {
+            1.0
+        } else {
+            f64::from(stored)
+        }
     }
 
     /// Whether this index stores per-vector scaled ScalarI8 codes.
@@ -3512,6 +3668,210 @@ impl<M: Metric> HnswIndex<M> {
     }
 
     /// Whether an unfiltered search should scan the whole index (see [`Self::flat_scan_limit`]).
+    /// Keeps every `QUERY_SAMPLE_EVERY`-th query for beam tuning (never blocks a search).
+    fn sample_query(&self, query: &[f64]) {
+        let seen = self.queries_seen.fetch_add(1, Ordering::Relaxed);
+        if !seen.is_multiple_of(QUERY_SAMPLE_EVERY) {
+            return;
+        }
+        if let Some(mut q) = self.query_samples.try_lock() {
+            if q.len() >= QUERY_SAMPLES {
+                q.pop_front();
+            }
+            q.push_back(query.to_vec());
+        }
+    }
+
+    /// Sampled real queries collected since the last tuning that used them (all sampled
+    /// queries when none did), and whether enough exist to tune with.
+    #[must_use]
+    pub fn fresh_query_samples(&self) -> (usize, bool) {
+        let seen = self.queries_seen.load(Ordering::Relaxed);
+        let last = self.tuned_queries_seen.load(Ordering::Relaxed);
+        let fresh = if last == usize::MAX {
+            seen
+        } else {
+            seen.saturating_sub(last)
+        };
+        (
+            fresh / QUERY_SAMPLE_EVERY,
+            self.query_samples.lock().len() >= MIN_REAL_QUERIES,
+        )
+    }
+
+    /// Milliseconds since the last [`Self::tune_ef_search`] (`u64::MAX` if never).
+    #[must_use]
+    pub fn millis_since_tuning(&self) -> u64 {
+        match self.tuned_at_ms.load(Ordering::Relaxed) {
+            0 => u64::MAX,
+            t => process_millis().saturating_sub(t),
+        }
+    }
+
+    /// Whether the last tuning used real (sampled) queries.
+    #[must_use]
+    pub fn tuned_with_real_queries(&self) -> bool {
+        self.tuned_queries_seen.load(Ordering::Relaxed) != usize::MAX
+    }
+
+    /// Beam width found by the last [`Self::tune_ef_search`] (0 = never tuned).
+    #[must_use]
+    pub fn tuned_ef(&self) -> usize {
+        self.tuned_ef.load(Ordering::Relaxed)
+    }
+
+    /// Records that the beam was evaluated at `live` nodes without a result (flat-scanned
+    /// or too small), so the caller waits for growth before measuring again.
+    pub fn mark_ef_tuned(&self, live: usize) {
+        self.tuned_at.store(live.max(1), Ordering::Relaxed);
+    }
+
+    /// Live node count at the last [`Self::tune_ef_search`].
+    #[must_use]
+    pub fn tuned_at(&self) -> usize {
+        self.tuned_at.load(Ordering::Relaxed)
+    }
+
+    fn live_count(&self) -> usize {
+        let nodes = self.nodes.count().min(self.storage.count());
+        let deleted = if self.metadata.has_deletions.load(Ordering::Relaxed) {
+            self.metadata.deleted.read().len() as usize
+        } else {
+            0
+        };
+        nodes.saturating_sub(deleted)
+    }
+
+    /// Measures, on recent real queries (once `MIN_REAL_QUERIES` are sampled) or else on
+    /// `samples` held-out-like queries (local centroids of stored vectors), which share of
+    /// the exact top-`pool` (flat scan of the same codes) the graph search returns among
+    /// its top-`pool` candidates, and stores the smallest beam from a fixed ladder that
+    /// reaches `target`. `pool > k` models a reranked search: the true top `k` can sit
+    /// anywhere in the code ranking's first `top_k × oversample`, so the graph must find
+    /// that whole candidate list, not just its first `k`. A graph over more nodes
+    /// needs a wider beam for the same recall, and how much depends on the data, so the
+    /// beam is measured instead of guessed. Returns `None` when the index is small enough
+    /// to be flat-scanned (no beam involved) or has too few nodes to sample.
+    pub fn tune_ef_search(
+        &self,
+        k: usize,
+        pool: usize,
+        target: f64,
+        samples: usize,
+    ) -> Option<usize> {
+        const LADDER: [usize; 14] = [
+            16, 24, 32, 48, 64, 96, 128, 160, 192, 256, 384, 512, 768, 1024,
+        ];
+        let k = k.max(1);
+        let pool = pool.max(k);
+        let live = self.live_count();
+        if live < (pool + 1) * 8 || samples == 0 {
+            return None;
+        }
+        let probe = hyperspace_core::SearchParams {
+            top_k: pool + 1,
+            ef_search: LADDER[0].max(pool + 1),
+            ..Default::default()
+        };
+        if self.flat_scan_applies(&probe) {
+            return None;
+        }
+        let nodes = self.nodes.count().min(self.storage.count());
+        let step = (nodes / samples).max(1);
+        let ids: Vec<NodeId> = {
+            let deleted = self.metadata.deleted.read();
+            (0..nodes)
+                .step_by(step)
+                .map(|i| i as NodeId)
+                .filter(|id| !deleted.contains(*id))
+                .take(samples)
+                .collect()
+        };
+        // Held-out-like queries: the centroid of a stored vector and its nearest stored
+        // neighbours. A stored vector itself is a graph node linked to its neighbours (an
+        // easy query that overstates recall); a local centroid is not a node and, on
+        // diffuse clusters, approaches the cluster centre — where real queries often land
+        // and where the graph is weakest.
+        let nn_probe = hyperspace_core::SearchParams {
+            top_k: TUNE_NEIGHBOURHOOD,
+            ef_search: TUNE_NEIGHBOURHOOD,
+            ..Default::default()
+        };
+        let real: Vec<Vec<f64>> = self.query_samples.lock().iter().cloned().collect();
+        let seen_now = self.queries_seen.load(Ordering::Relaxed);
+        let use_real = real.len() >= MIN_REAL_QUERIES;
+        let mut queries: Vec<Vec<f64>> = if use_real {
+            real
+        } else {
+            Vec::with_capacity(ids.len())
+        };
+        for id in ids.into_iter().filter(|_| !use_real) {
+            let x = self.get_vector(id).coords;
+            if M::validate(&x).is_err() {
+                continue;
+            }
+            let near = self.search_impl(&x, None, &nn_probe, ScanMode::Flat);
+            let mut q = x.clone();
+            let mut members = 1.0;
+            for r in near.iter().filter(|r| r.0 != id) {
+                for (a, b) in q.iter_mut().zip(self.get_vector(r.0).coords) {
+                    *a += b;
+                }
+                members += 1.0;
+            }
+            for v in &mut q {
+                *v /= members;
+            }
+            if M::name() == "cosine" {
+                let n = q.iter().map(|v| v * v).sum::<f64>().sqrt().max(1e-12);
+                for v in &mut q {
+                    *v /= n;
+                }
+            }
+            if M::validate(&q).is_ok() {
+                queries.push(q);
+            }
+        }
+        if queries.is_empty() {
+            return None;
+        }
+        let top = |res: Vec<(NodeId, f64)>, n: usize| -> Vec<NodeId> {
+            res.into_iter().map(|r| r.0).take(n).collect()
+        };
+        let truth: Vec<std::collections::HashSet<NodeId>> = queries
+            .iter()
+            .map(|q| {
+                top(self.search_impl(q, None, &probe, ScanMode::Flat), pool)
+                    .into_iter()
+                    .collect()
+            })
+            .collect();
+        let mut chosen = *LADDER.last().unwrap_or(&1024);
+        for &ef in LADDER.iter().filter(|&&ef| ef > pool) {
+            let p = hyperspace_core::SearchParams {
+                ef_search: ef,
+                ..probe.clone()
+            };
+            let (mut hit, mut total) = (0usize, 0usize);
+            for (q, t) in queries.iter().zip(&truth) {
+                let got = top(self.search_impl(q, None, &p, ScanMode::Graph), pool);
+                hit += got.iter().filter(|x| t.contains(x)).count();
+                total += t.len();
+            }
+            if total == 0 || hit as f64 >= target * total as f64 {
+                chosen = ef;
+                break;
+            }
+        }
+        self.tuned_ef.store(chosen, Ordering::Relaxed);
+        self.tuned_at.store(live, Ordering::Relaxed);
+        self.tuned_at_ms.store(process_millis(), Ordering::Relaxed);
+        if use_real {
+            self.tuned_queries_seen.store(seen_now, Ordering::Relaxed);
+        }
+        Some(chosen)
+    }
+
     fn flat_scan_applies(&self, params: &hyperspace_core::SearchParams) -> bool {
         if self.zonal
             || params.hybrid_query.is_some()
@@ -3553,35 +3913,61 @@ impl<M: Metric> HnswIndex<M> {
         let deleted = deleted.as_deref().filter(|d| !d.is_empty());
         let kernel = self.kernel_for(query, query_f32, prep, mrl_dim);
         let bias = Self::dist_bias();
-        let mut heap: BinaryHeap<MaxCandidate> = BinaryHeap::with_capacity(k + 1);
-        let mut worst: Option<f64> = None;
-        for id in 0..n {
-            if deleted.is_some_and(|d| d.contains(id)) {
-                continue;
-            }
-            if id + 4 < n {
-                prefetch_bytes(storage_view.get(id + 4));
-            }
-            let d = self.dist_k(
-                kernel,
-                storage_view.get(id),
-                query,
-                query_f32,
-                prep,
-                mrl_dim,
-                worst,
-            );
-            if heap.len() < k {
-                heap.push(MaxCandidate::biased(id, d, bias));
-                if heap.len() == k {
+        let scan = |lo: u32, hi: u32| -> BinaryHeap<MaxCandidate> {
+            let mut heap: BinaryHeap<MaxCandidate> = BinaryHeap::with_capacity(k + 1);
+            let mut worst: Option<f64> = None;
+            for id in lo..hi {
+                if deleted.is_some_and(|d| d.contains(id)) {
+                    continue;
+                }
+                if id + 4 < hi {
+                    prefetch_bytes(storage_view.get(id + 4));
+                }
+                let d = self.dist_k(
+                    kernel,
+                    storage_view.get(id),
+                    query,
+                    query_f32,
+                    prep,
+                    mrl_dim,
+                    worst,
+                );
+                if heap.len() < k {
+                    heap.push(MaxCandidate::biased(id, d, bias));
+                    if heap.len() == k {
+                        worst = heap.peek().map(|w| w.unbiased(bias));
+                    }
+                } else if worst.is_some_and(|w| d < w) {
+                    heap.pop();
+                    heap.push(MaxCandidate::biased(id, d, bias));
                     worst = heap.peek().map(|w| w.unbiased(bias));
                 }
-            } else if worst.is_some_and(|w| d < w) {
-                heap.pop();
-                heap.push(MaxCandidate::biased(id, d, bias));
-                worst = heap.peek().map(|w| w.unbiased(bias));
             }
-        }
+            heap
+        };
+        // Idle server: split the scan across cores (a scan is memory-bound per core, so a
+        // single query gets the latency of a sharded scan). Under load every core already
+        // serves another query and the scan stays on the calling thread.
+        let parts = flat_scan_parallelism(n as usize);
+        let heap = if parts > 1 {
+            let chunk = n.div_ceil(parts as u32);
+            let heaps: Vec<BinaryHeap<MaxCandidate>> = (0..parts as u32)
+                .into_par_iter()
+                .map(|p| scan(p * chunk, ((p + 1) * chunk).min(n)))
+                .collect();
+            let mut merged: BinaryHeap<MaxCandidate> = BinaryHeap::with_capacity(k + 1);
+            for c in heaps.into_iter().flat_map(BinaryHeap::into_vec) {
+                if merged.len() < k {
+                    merged.push(c);
+                } else if merged.peek().is_some_and(|w| c.distance < w.distance) {
+                    merged.pop();
+                    merged.push(c);
+                }
+            }
+            merged
+        } else {
+            scan(0, n)
+        };
         let mut out: Vec<(NodeId, f64)> = heap
             .into_iter()
             .map(|c| (c.id(), c.unbiased(bias)))
@@ -4861,25 +5247,8 @@ impl<M: Metric> HnswIndex<M> {
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::from_bytes(bytes);
                 scratch.resize(self.dimension, 0.0);
-                if M::name() == "lorentz" {
-                    let scale = f64::from(q.alpha) / 127.0;
-                    let mut norm_sq = 0.0;
-                    for (i, &c) in q.coords.iter().enumerate().skip(1) {
-                        let val = f64::from(c) * scale;
-                        scratch[i] = val;
-                        norm_sq += val * val;
-                    }
-                    if !scratch.is_empty() {
-                        scratch[0] = (1.0 + norm_sq).sqrt();
-                    }
-                } else {
-                    let step = f64::from(self.sq8_step(q.alpha));
-                    for (i, &c) in q.coords.iter().enumerate() {
-                        scratch[i] = f64::from(c) * step;
-                    }
-                }
+                self.decode_sq8(bytes, scratch);
                 f(scratch)
             }
             QuantizationMode::None => {
@@ -4948,37 +5317,9 @@ impl<M: Metric> HnswIndex<M> {
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::from_bytes(bytes);
                 let mut coords = vec![0.0; self.dimension];
-                if M::name() == "lorentz" {
-                    // Lorentz: alpha stores spatial dynamic-range scale; time coord is on hyperboloid
-                    let scale = f64::from(q.alpha) / 127.0;
-                    let mut norm_sq = 0.0;
-                    for (i, &c) in q.coords.iter().enumerate().skip(1) {
-                        let val = f64::from(c) * scale;
-                        coords[i] = val;
-                        norm_sq += val * val;
-                    }
-                    if !coords.is_empty() {
-                        coords[0] = (1.0 + norm_sq).sqrt();
-                    }
-                    HyperVector { coords, alpha: 0.0 }
-                } else {
-                    // Poincare / legacy Euclidean / Cosine: alpha stores 1/(1-||x||^2);
-                    // scaled Euclidean / Cosine codes: alpha is the per-vector scale.
-                    let step = f64::from(self.sq8_step(q.alpha));
-                    for (i, &c) in q.coords.iter().enumerate() {
-                        coords[i] = f64::from(c) * step;
-                    }
-                    HyperVector {
-                        coords,
-                        alpha: if self.sq8_scaled {
-                            1.0
-                        } else {
-                            f64::from(q.alpha)
-                        },
-                    }
-                }
+                let alpha = self.decode_sq8(bytes, &mut coords);
+                HyperVector { coords, alpha }
             }
             QuantizationMode::None => {
                 if self.storage_f32 {
@@ -5238,117 +5579,7 @@ impl<M: Metric> HnswIndex<M> {
             .needs_training()
             .then(|| self.calibration_gate.read());
 
-        let mut q_bytes: Vec<u8> = vec![];
-        match self.mode {
-            QuantizationMode::ScalarI8 => {
-                let q = if M::name() == "lorentz" {
-                    QuantizedHyperVector::from_float_lorentz(&q_vec_full)
-                } else if self.sq8_scaled {
-                    QuantizedHyperVector::from_float_scaled(&q_vec_full)
-                } else {
-                    QuantizedHyperVector::from_float(
-                        &q_vec_full,
-                        self.config.is_anisotropic_enabled(),
-                    )
-                };
-                q_bytes = q.as_bytes();
-                0 // Placeholder, we assign ID under lock below
-            }
-            QuantizationMode::AsymmetricHybrid801 => {
-                if self.dimension != 801 {
-                    return Err("AsymmetricHybrid801 requires dimension 801".into());
-                }
-                let q = HybridQuantizedVector::from_float(
-                    &q_vec_full,
-                    33,
-                    q_vec_full.coords.len() - 33,
-                );
-                q_bytes = q.as_bytes();
-                0
-            }
-            QuantizationMode::AsymmetricHybridLowBit => {
-                if self.dimension != 801 {
-                    return Err("AsymmetricHybridLowBit requires dimension 801".into());
-                }
-                let q = HybridLowBitQuantizedVector::from_float(
-                    &q_vec_full,
-                    33,
-                    q_vec_full.coords.len() - 33,
-                );
-                q_bytes = q.as_bytes();
-                0
-            }
-            QuantizationMode::AsymmetricHybridExtreme => {
-                if self.dimension != 801 {
-                    return Err("AsymmetricHybridExtreme requires dimension 801".into());
-                }
-                let q = HybridExtremeQuantizedVector::from_float(
-                    &q_vec_full,
-                    33,
-                    q_vec_full.coords.len() - 33,
-                );
-                q_bytes = q.as_bytes();
-                0
-            }
-            QuantizationMode::ScalarI4 => {
-                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let q = ScalarI4Vector::from_float(&q_vec_full, head_dim);
-                q_bytes = q.as_bytes();
-                0
-            }
-            QuantizationMode::Turbo => {
-                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let q =
-                    hyperspace_core::hybrid::TurboQuantVector::from_float(&q_vec_full, head_dim);
-                q_bytes = q.as_bytes();
-                0
-            }
-            QuantizationMode::None if self.storage_f32 => {
-                let v32 = HyperVectorF32::from_float64(&q_vec_full);
-                q_bytes = v32.as_bytes();
-                0
-            }
-            QuantizationMode::None => {
-                q_bytes = q_vec_full.as_bytes();
-                0
-            }
-            QuantizationMode::Binary => {
-                let b = BinaryHyperVector::from_float(&q_vec_full);
-                q_bytes = b.as_bytes();
-                0
-            }
-            QuantizationMode::Ternary => {
-                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let t =
-                    hyperspace_core::vector::TernaryHyperVector::from_float(&q_vec_full, head_dim);
-                q_bytes = t.as_bytes();
-                0
-            }
-            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
-                let q_f32: Vec<f32> = q_vec_full.coords.iter().map(|&x| x as f32).collect();
-                let pq_guard = self.pq.load();
-                let pq = pq_guard.as_ref().expect("PQ quantizer must be initialized");
-                let enc = pq.encode(&q_f32);
-                q_bytes = enc.to_bytes();
-                0
-            }
-            QuantizationMode::RaBitQ | QuantizationMode::PQ4 => {
-                q_bytes = self.encode_code(&q_vec_full.coords);
-                0
-            }
-        };
+        let q_bytes = self.encode_for_storage(&q_vec_full)?;
 
         // Guarantee that storage sequence and boxcar sequence strictly match
         let new_id = {
@@ -5368,6 +5599,66 @@ impl<M: Metric> HnswIndex<M> {
         Ok(new_id)
     }
 
+    /// Storage encoding of a validated vector for this index's quantization mode (shared
+    /// by inserts and updates). Trained modes must hold the calibration gate.
+    fn encode_for_storage(&self, v: &HyperVector) -> Result<Vec<u8>, String> {
+        let hybrid_head = if self.dimension == 801 && M::name() == "hybrid" {
+            33
+        } else {
+            0
+        };
+        let require_801 = |name: &str| {
+            if self.dimension == 801 {
+                Ok(())
+            } else {
+                Err(format!("{name} requires dimension 801"))
+            }
+        };
+        Ok(match self.mode {
+            QuantizationMode::ScalarI8 => if M::name() == "lorentz" {
+                QuantizedHyperVector::from_float_lorentz(v)
+            } else if self.sq8_scaled {
+                QuantizedHyperVector::from_float_scaled(v)
+            } else {
+                QuantizedHyperVector::from_float(v, self.config.is_anisotropic_enabled())
+            }
+            .as_bytes(),
+            QuantizationMode::AsymmetricHybrid801 => {
+                require_801("AsymmetricHybrid801")?;
+                HybridQuantizedVector::from_float(v, 33, v.coords.len() - 33).as_bytes()
+            }
+            QuantizationMode::AsymmetricHybridLowBit => {
+                require_801("AsymmetricHybridLowBit")?;
+                HybridLowBitQuantizedVector::from_float(v, 33, v.coords.len() - 33).as_bytes()
+            }
+            QuantizationMode::AsymmetricHybridExtreme => {
+                require_801("AsymmetricHybridExtreme")?;
+                HybridExtremeQuantizedVector::from_float(v, 33, v.coords.len() - 33).as_bytes()
+            }
+            QuantizationMode::ScalarI4 => ScalarI4Vector::from_float(v, hybrid_head).as_bytes(),
+            QuantizationMode::Turbo => {
+                hyperspace_core::hybrid::TurboQuantVector::from_float(v, hybrid_head).as_bytes()
+            }
+            QuantizationMode::None if self.storage_f32 => {
+                HyperVectorF32::from_float64(v).as_bytes()
+            }
+            QuantizationMode::None => v.as_bytes(),
+            QuantizationMode::Binary => BinaryHyperVector::from_float(v).as_bytes(),
+            QuantizationMode::Ternary => {
+                hyperspace_core::vector::TernaryHyperVector::from_float(v, hybrid_head).as_bytes()
+            }
+            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
+                let q_f32: Vec<f32> = v.coords.iter().map(|&x| x as f32).collect();
+                let pq_guard = self.pq.load();
+                let pq = pq_guard
+                    .as_ref()
+                    .ok_or_else(|| "PQ quantizer must be initialized".to_string())?;
+                pq.encode(&q_f32).to_bytes()
+            }
+            QuantizationMode::RaBitQ | QuantizationMode::PQ4 => self.encode_code(&v.coords),
+        })
+    }
+
     /// Update existing vector in storage (for upsert)
     pub fn update_storage(&self, id: u32, vector: &[f64]) -> Result<u32, String> {
         let arr = vector.to_vec();
@@ -5381,114 +5672,15 @@ impl<M: Metric> HnswIndex<M> {
             return Ok(id);
         }
 
-        // Create vector
-        let q_vec_full = HyperVector::new_unchecked(arr);
+        // Same constructor as `insert_to_storage` (alpha = 1 outside Poincaré): updated and
+        // inserted vectors must encode identically.
+        let q_vec_full = Self::build_hyper_vector(arr);
         let _calibration_guard = self
             .mode
             .needs_training()
             .then(|| self.calibration_gate.read());
-
-        // Update storage at existing ID
-        match self.mode {
-            QuantizationMode::ScalarI8 => {
-                let q = if M::name() == "lorentz" {
-                    QuantizedHyperVector::from_float_lorentz(&q_vec_full)
-                } else if self.sq8_scaled {
-                    QuantizedHyperVector::from_float_scaled(&q_vec_full)
-                } else {
-                    QuantizedHyperVector::from_float(
-                        &q_vec_full,
-                        self.config.is_anisotropic_enabled(),
-                    )
-                };
-                self.storage.update(id, &q.as_bytes())?;
-            }
-            QuantizationMode::None => {
-                if self.storage_f32 {
-                    let v32 = HyperVectorF32::from_float64(&q_vec_full);
-                    self.storage.update(id, &v32.as_bytes())?;
-                } else {
-                    self.storage.update(id, &q_vec_full.as_bytes())?;
-                }
-            }
-            QuantizationMode::Binary => {
-                let b = BinaryHyperVector::from_float(&q_vec_full);
-                self.storage.update(id, &b.as_bytes())?;
-            }
-            QuantizationMode::Ternary => {
-                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let t =
-                    hyperspace_core::vector::TernaryHyperVector::from_float(&q_vec_full, head_dim);
-                self.storage.update(id, &t.as_bytes())?;
-            }
-            QuantizationMode::AsymmetricHybrid801 => {
-                if self.dimension != 801 {
-                    return Err("AsymmetricHybrid801 requires dimension 801".into());
-                }
-                let q = HybridQuantizedVector::from_float(
-                    &q_vec_full,
-                    33,
-                    q_vec_full.coords.len() - 33,
-                );
-                self.storage.update(id, &q.as_bytes())?;
-            }
-            QuantizationMode::AsymmetricHybridLowBit => {
-                if self.dimension != 801 {
-                    return Err("AsymmetricHybridLowBit requires dimension 801".into());
-                }
-                let q = HybridLowBitQuantizedVector::from_float(
-                    &q_vec_full,
-                    33,
-                    q_vec_full.coords.len() - 33,
-                );
-                self.storage.update(id, &q.as_bytes())?;
-            }
-            QuantizationMode::AsymmetricHybridExtreme => {
-                if self.dimension != 801 {
-                    return Err("AsymmetricHybridExtreme requires dimension 801".into());
-                }
-                let q = HybridExtremeQuantizedVector::from_float(
-                    &q_vec_full,
-                    33,
-                    q_vec_full.coords.len() - 33,
-                );
-                self.storage.update(id, &q.as_bytes())?;
-            }
-            QuantizationMode::ScalarI4 => {
-                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let q = ScalarI4Vector::from_float(&q_vec_full, head_dim);
-                self.storage.update(id, &q.as_bytes())?;
-            }
-            QuantizationMode::Turbo => {
-                let head_dim = if self.dimension == 801 && M::name() == "hybrid" {
-                    33
-                } else {
-                    0
-                };
-                let q =
-                    hyperspace_core::hybrid::TurboQuantVector::from_float(&q_vec_full, head_dim);
-                self.storage.update(id, &q.as_bytes())?;
-            }
-            QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
-                let q_f32: Vec<f32> = q_vec_full.coords.iter().map(|&x| x as f32).collect();
-                let pq_guard = self.pq.load();
-                let pq = pq_guard.as_ref().expect("PQ quantizer must be initialized");
-                let enc = pq.encode(&q_f32);
-                self.storage.update(id, &enc.to_bytes())?;
-            }
-            QuantizationMode::RaBitQ | QuantizationMode::PQ4 => {
-                self.storage
-                    .update(id, &self.encode_code(&q_vec_full.coords))?;
-            }
-        }
+        self.storage
+            .update(id, &self.encode_for_storage(&q_vec_full)?)?;
         if self.spatial_index.indexed_count() > 0 {
             self.spatial_index.insert_vector(id, vector);
         }

@@ -255,9 +255,14 @@
   - [x] **Flat scan for small shards** (cost model `ef · 2M`), metadata after merge, no redundant rerank for full precision, per-collection cache budgets (`HS_RAW_CACHE_MB`, hot-tier L1); fixed double distance finalization in filtered brute force and stale mmap segments after repair.
   - [x] **Integer SQ8**: per-vector scaled `medium` codes + int8 `SDOT` / NEON / AVX2 kernel (scan ×3.5, recall 88.6% → 98.5%), marker-gated format (`sq8.scaled`).
   - [x] **Two-stage search by default**: rerank once on the merged scatter-gather candidates (`HS_RERANK_DEFER`), memory-mapped exact store (`exact_f32/`), rerank on by default; fixed exact copies missing for batch inserts and the payload / exact-vector key collision.
-  - [x] **Streaming `RebuildIndex`**: exact vectors streamed from the exact store, parallel graph build, BFS renumbering, all id-keyed structures remapped and persisted (fixes wrong vectors / metadata after rebuilds with deletions).
+  - [x] **Streaming `RebuildIndex`**: exact vectors streamed from the exact store, parallel graph build with the collection's M, all id-keyed structures remapped and persisted (fixes wrong vectors / metadata after rebuilds with deletions). BFS insertion order evaluated and rejected (recall −1 pp, QPS −34%).
+  - [x] **Adaptive shard count** (one per 2M expected vectors, one without a hint) + **auto-tuned ef_search** + load-aware fan-out: 100k × 1024-D 2.7k → 13.3k QPS at equal recall.
+  - [x] Unified `search` / `search_u64` scatter-gather; single storage encoder for insert / update (fixed ∞ alpha on updates); allocation-free SQ8 decode; gRPC create reads `x-quantization-level`.
   - [x] **`hs_loadbench`**: concurrent gRPC load benchmark (QPS, tail latency, recall, CPU/query, `SearchBatch`, rebuild timing + peak RSS).
-  - [ ] Rebuild peak memory is dominated by the second graph (`RebuildIndex` builds with M = 128): build in place or with the collection's M.
+  - [ ] Post-build graph relabeling for locality (permute ids after the build, not the insertion order).
+  - [ ] Prefix-block exact pruning for `none`: no gain in natural coordinates (71% of rows still read their tail); needs a PCA rotation first (`scan_speed_bench::prefix_block_pruning`).
+  - [ ] Dense internal→user id table instead of `DashMap` for sparse user ids (≤ 3% CPU in the profile; identity ids already bypass it).
+  - [ ] Multi-bit (extended) RaBitQ tier: a new `QuantizationMode` touches every SDK / dashboard enumeration.
   - [ ] f16 storage for full precision — deferred: `medium` + exact rerank (100% recall, 9.0k QPS on 20k × 1024-D at 16 clients) already beats what f16 can reach for `none` (bandwidth-bound, ≈2× of 2.8–3.4k QPS), and f16 would make `none` inexact.
   - [ ] Configurable PQ sub-space count: needs the PQ `M` stored in collection metadata and threaded through every storage-layout site (22) — use `pq4` for higher recall at ~2× the bytes meanwhile.
   - [x] ~~Cooperative shard pruning~~: evaluated, rejected (a global k-th bound stops HNSW traversal before it reaches near nodes; 46% top-10 agreement).

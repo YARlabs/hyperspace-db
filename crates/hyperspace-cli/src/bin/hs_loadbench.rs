@@ -59,6 +59,8 @@ struct Opts {
     compact: bool,
     skip_ingest: bool,
     rebuild: bool,
+    /// Sent as `x-expected-vectors` on create (shard count); `None` = `n`, `Some(0)` = omit.
+    expected_vectors: Option<u64>,
     json: Option<String>,
     min_recall: Option<f64>,
     min_qps: Option<f64>,
@@ -90,6 +92,7 @@ impl Default for Opts {
             compact: true,
             skip_ingest: false,
             rebuild: false,
+            expected_vectors: None,
             json: None,
             min_recall: None,
             min_qps: None,
@@ -103,6 +106,7 @@ const USAGE: &str = "hs_loadbench [--addr URL | --server-bin PATH [--port P] [--
   [--n N] [--dim D] [--queries Q] [--clusters C] [--clients 1,4,16]
   [--connections K (0 = one per client)] [--duration SECS] [--warmup SECS]
   [--batch B (0 = unary Search)] [--top-k K] [--ef EF] [--f64-wire] [--skip-ingest] [--rebuild]
+  [--expected-vectors N (default --n; 0 = no size hint)]
   [--label TEXT] [--json PATH] [--min-recall R] [--min-qps Q]";
 
 fn parse_args() -> Result<Opts, String> {
@@ -145,6 +149,13 @@ fn parse_args() -> Result<Opts, String> {
             "--f64-wire" => o.compact = false,
             "--skip-ingest" => o.skip_ingest = true,
             "--rebuild" => o.rebuild = true,
+            "--expected-vectors" => {
+                o.expected_vectors = Some(
+                    val()?
+                        .parse()
+                        .map_err(|e| format!("--expected-vectors: {e}"))?,
+                );
+            }
             "--label" => o.label = val()?,
             "--json" => o.json = Some(val()?),
             "--min-recall" => {
@@ -471,6 +482,29 @@ fn spawn_server(o: &Opts) -> Result<ServerGuard, Box<dyn std::error::Error>> {
     Ok(guard)
 }
 
+/// Waits until the collection's indexing queue stays empty for 1.5 s: background work the
+/// server queues after ingest or a rebuild (online calibration, ef auto-tuning) is done.
+async fn wait_idle(admin: &mut Client, collection: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let mut idle_since: Option<Instant> = None;
+    loop {
+        let s = admin
+            .get_collection_stats(CollectionStatsRequest {
+                name: collection.to_string(),
+            })
+            .await?
+            .into_inner();
+        if s.indexing_queue == 0 {
+            let since = *idle_since.get_or_insert_with(Instant::now);
+            if since.elapsed() >= Duration::from_millis(1500) {
+                return Ok(());
+            }
+        } else {
+            idle_since = None;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -514,6 +548,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         req.metadata_mut()
             .insert("x-quantization-level", o.quant.parse()?);
+        let expected = o.expected_vectors.unwrap_or(o.n as u64);
+        if expected > 0 {
+            req.metadata_mut()
+                .insert("x-expected-vectors", expected.to_string().parse()?);
+        }
         admin.create_collection(req).await?;
         let t = Instant::now();
         for (b, chunk) in data.chunks(1000).enumerate() {
@@ -545,13 +584,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if s.indexing_queue == 0 {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        let total = t.elapsed().as_secs_f64();
+        let indexed = t.elapsed().as_secs_f64();
+        wait_idle(&mut admin, &o.collection).await?;
         println!(
-            "ingest: {:.0} vec/s sent, {:.0} vec/s indexed ({total:.1}s)",
+            "ingest: {:.0} vec/s sent, {:.0} vec/s indexed ({indexed:.1}s, then idle after {:.1}s)",
             o.n as f64 / sent,
-            o.n as f64 / total
+            o.n as f64 / indexed,
+            t.elapsed().as_secs_f64()
         );
     }
 
@@ -580,6 +621,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .await?;
         let secs = t.elapsed().as_secs_f64();
+        wait_idle(&mut admin, &o.collection).await?;
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Some(h) = sampler {
             let _ = h.join();

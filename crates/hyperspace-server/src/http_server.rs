@@ -777,6 +777,9 @@ struct CreateCollectionRequest {
     mrl_rerank_top_k: Option<u32>,
     quantization: Option<String>,
     encrypted: Option<bool>,
+    /// Expected number of vectors: sets the shard count (one per ~2M, see `HS_SHARDS`).
+    #[serde(default)]
+    expected_vectors: Option<u64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -817,11 +820,12 @@ async fn create_collection(
     };
 
     let result = manager
-        .create_collection_with_quantization(
+        .create_collection_with_options(
             &ctx.user_id,
             &payload.name,
             schema,
             payload.quantization,
+            payload.expected_vectors,
         )
         .await;
 

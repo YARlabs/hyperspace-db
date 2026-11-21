@@ -78,6 +78,184 @@ fn env_cache_read_through() -> bool {
     })
 }
 
+/// `HS_AUTO_EF` (default on): tune the default `ef_search` from measured graph recall.
+fn env_auto_ef() -> bool {
+    std::env::var("HS_AUTO_EF").map_or(true, |v| {
+        !matches!(
+            v.trim().to_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        )
+    })
+}
+
+/// Graph recall the auto-tuned beam must reach (`HS_AUTO_EF_TARGET`, default 0.99).
+fn env_auto_ef_target() -> f64 {
+    std::env::var("HS_AUTO_EF_TARGET")
+        .ok()
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|v| (0.5..=1.0).contains(v))
+        .unwrap_or(0.99)
+}
+
+/// Smallest live node count worth tuning (below it the shard is flat-scanned anyway).
+const AUTO_EF_MIN_NODES: usize = 1_000;
+/// Re-tune whenever the graph has doubled since the last measurement.
+const AUTO_EF_GROWTH: usize = 2;
+
+/// Rerank candidates per result for coarse codes (1–2 bit, PQ) searched in one piece:
+/// `top_k × oversample × COARSE_RERANK_POOL`. Their codes rank the true neighbours far
+/// down the list; before 4.2.5 the pool came implicitly from 12 shards × `2 · top_k ×
+/// oversample` (e.g. `extreme` + rerank ×4: 98.8% recall with that pool, 61% with 40).
+const COARSE_RERANK_POOL: usize = 24;
+
+/// Per-shard multiplier of `top_k × oversample` that gives a coarse-code collection a
+/// total rerank pool of `top_k × oversample × COARSE_RERANK_POOL`. One shard is asked for
+/// `top_k`; each of `S > 1` shards for `2 · top_k` (scatter-gather oversampling).
+fn coarse_pool_factor(shards: usize) -> usize {
+    if shards <= 1 {
+        COARSE_RERANK_POOL
+    } else {
+        (COARSE_RERANK_POOL / 2).div_ceil(shards).max(1)
+    }
+}
+
+/// Whether the background tuner will re-measure this graph's beam.
+fn ef_tuning_due<M: Metric>(idx: &HnswIndex<M>) -> bool {
+    if !env_auto_ef() {
+        return false;
+    }
+    let live = idx.count_nodes();
+    let last = idx.tuned_at();
+    if live < AUTO_EF_MIN_NODES {
+        return false;
+    }
+    if last == 0 || live >= last.saturating_mul(AUTO_EF_GROWTH) {
+        return true;
+    }
+    // Re-measure on the real query distribution: first when enough queries are sampled,
+    // then after every `AUTO_EF_REQUERY` new samples.
+    let (fresh, enough) = idx.fresh_query_samples();
+    enough
+        && (!idx.tuned_with_real_queries()
+            || (fresh >= AUTO_EF_REQUERY && idx.millis_since_tuning() >= AUTO_EF_REQUERY_MS))
+}
+
+/// New sampled queries after which the beam is re-measured on real queries ...
+const AUTO_EF_REQUERY: usize = 512;
+/// ... at most once a minute (a measurement costs ~64 flat scans + graph searches).
+const AUTO_EF_REQUERY_MS: u64 = 60_000;
+
+/// Background task that re-measures the beam width (`HnswIndex::tune_ef_search`) once the
+/// indexing queue is idle and the graph has grown `AUTO_EF_GROWTH`× since the last run.
+/// Candidates per query: `top_k × rerank oversample` when quantized collections rerank.
+fn spawn_ef_tuner<M: Metric>(
+    index_link: Arc<ArcSwap<HnswIndex<M>>>,
+    config: Arc<hyperspace_core::config::GlobalConfig>,
+    name: String,
+    quantized: bool,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        if !env_auto_ef() {
+            return;
+        }
+        // Default top-k 10; reranked collections keep `10 × oversample` code candidates,
+        // of which the exact top 10 must survive.
+        let k = 10;
+        let pool = k * if quantized && env_rerank_enabled() {
+            env_rerank_oversample()
+        } else {
+            1
+        };
+        let target = env_auto_ef_target();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let idx = index_link.load_full();
+            let live = idx.count_nodes();
+            if !ef_tuning_due(&idx) || config.get_queue_size() > 0 {
+                continue;
+            }
+            // Counted as an indexing task so readiness checks wait for the new beam.
+            config.inc_queue();
+            let started = std::time::Instant::now();
+            let tuned =
+                tokio::task::spawn_blocking(move || idx.tune_ef_search(k, pool, target, 96))
+                    .await
+                    .ok()
+                    .flatten();
+            config.dec_queue();
+            if let Some(ef) = tuned {
+                println!(
+                    "🎯 [{name}] auto ef_search = {ef} (exact top-{k} within {pool} graph candidates ≥ {target}, {live} nodes, {:?})",
+                    started.elapsed()
+                );
+            } else {
+                // Flat-scanned or too small: mark as measured so we wait for growth.
+                index_link.load().mark_ef_tuned(live);
+            }
+        }
+    })
+}
+
+/// Final step shared by both search paths: maps internal hits to user ids (with metadata
+/// when requested), merges cold-chunk hits and write-buffer hits (vectors not yet in the
+/// graph, searched with `wb.1` candidates), drops duplicate user ids (an upsert can sit in
+/// both the buffer and the graph) and keeps the best `top_k`.
+#[allow(clippy::too_many_arguments)]
+fn finish_hits<M: Metric>(
+    index: &HnswIndex<M>,
+    hits: Vec<(u32, f64)>,
+    extra: Vec<(u32, f64, HashMap<String, String>)>,
+    include_metadata: bool,
+    ids_are_identity: bool,
+    reverse_id_map: &DashMap<u32, u32>,
+    write_buffer: &crate::write_buffer::WriteBuffer,
+    wb: (&[f64], usize, &HashMap<String, String>, &[FilterExpr]),
+    top_k: usize,
+) -> Vec<(u32, f64, HashMap<String, String>)> {
+    let mut out: Vec<(u32, f64, HashMap<String, String>)> = hits
+        .into_iter()
+        .map(|(internal_id, dist)| {
+            let meta = if include_metadata {
+                index
+                    .metadata
+                    .forward
+                    .get(&internal_id)
+                    .map(|m| m.clone())
+                    .unwrap_or_default()
+            } else {
+                HashMap::new()
+            };
+            let user_id = if ids_are_identity {
+                internal_id
+            } else {
+                reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v)
+            };
+            (user_id, dist, meta)
+        })
+        .collect();
+    let merged_extra = !extra.is_empty();
+    out.extend(extra);
+    let buffered = !write_buffer.is_empty();
+    if buffered {
+        let (query, k, filters, complex) = wb;
+        out.extend(
+            write_buffer
+                .search::<M>(query, k, filters, complex)
+                .into_iter()
+                .map(|(id, dist, meta, _)| (id, dist, meta)),
+        );
+    }
+    if merged_extra || buffered {
+        out.sort_by(|a, b| a.1.total_cmp(&b.1));
+    }
+    if merged_extra || buffered || !ids_are_identity {
+        let mut seen = std::collections::HashSet::with_capacity(out.len());
+        out.retain(|(user_id, _, _)| seen.insert(*user_id));
+    }
+    out.truncate(top_k);
+    out
+}
+
 /// Output of the blocking half of `RebuildIndex`.
 struct RebuildOutput {
     element_size: usize,
@@ -86,43 +264,10 @@ struct RebuildOutput {
     vacuum_config: Arc<hyperspace_core::config::GlobalConfig>,
     temp_dir: PathBuf,
     new_snap_path: PathBuf,
-    /// Old internal ids in their new order (new id = position).
+    /// Old internal ids of the survivors in their new order (new id = position).
     order: Vec<u32>,
     old_len: usize,
     has_exact: bool,
-}
-
-/// Live ids in breadth-first order of the layer-0 graph, so that graph neighbours get
-/// nearby ids after a rebuild (better cache / prefetch locality during traversal).
-/// Components the BFS does not reach follow in id order.
-fn rebuild_bfs_order<M: Metric>(index: &HnswIndex<M>, live: &[u32], max_len: usize) -> Vec<u32> {
-    let mut allowed = vec![false; max_len];
-    for &id in live {
-        allowed[id as usize] = true;
-    }
-    let mut seen = vec![false; max_len];
-    let mut order = Vec::with_capacity(live.len());
-    let mut queue = std::collections::VecDeque::new();
-    for &root in live {
-        if seen[root as usize] {
-            continue;
-        }
-        seen[root as usize] = true;
-        queue.push_back(root);
-        while let Some(id) = queue.pop_front() {
-            order.push(id);
-            if let Ok(ns) = index.graph_neighbors(id, 0, usize::MAX) {
-                for n in ns {
-                    let n_us = n as usize;
-                    if n_us < max_len && allowed[n_us] && !seen[n_us] {
-                        seen[n_us] = true;
-                        queue.push_back(n);
-                    }
-                }
-            }
-        }
-    }
-    order
 }
 
 /// Entries of the per-shard heap raw-vector cache (exact f32 copies for rerank and online
@@ -319,6 +464,8 @@ pub struct CollectionImpl<M: Metric> {
     /// Max entries of `raw_vector_cache` (byte budget `HS_RAW_CACHE_MB` per collection,
     /// split across shards).
     raw_vector_cache_cap: usize,
+    /// Number of shards of the collection this one belongs to (1 = unsharded).
+    shard_share: usize,
     pub explicit_graph: Arc<hyperspace_core::graph::GraphEngine>,
 }
 
@@ -1321,6 +1468,12 @@ impl<M: Metric> CollectionImpl<M> {
             .parse::<u64>()
             .unwrap_or(60);
 
+        let ef_tuner = spawn_ef_tuner::<M>(
+            index_link.clone(),
+            config.clone(),
+            name.clone(),
+            mode != hyperspace_core::QuantizationMode::None,
+        );
         let snapshot_handle = tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(snap_interval)).await;
@@ -1435,7 +1588,7 @@ impl<M: Metric> CollectionImpl<M> {
             index_tx,
             replication_tx,
             config,
-            bg_tasks: vec![indexer_task, snapshot_handle],
+            bg_tasks: vec![indexer_task, snapshot_handle, ef_tuner],
             buckets,
             root_hash: AtomicU64::new(initial_root_hash),
             reverse_id_map,
@@ -1464,6 +1617,7 @@ impl<M: Metric> CollectionImpl<M> {
             storage_f32,
             raw_vector_cache,
             raw_vector_cache_cap,
+            shard_share,
             raw_vector_cache_len: Arc::new(AtomicUsize::new(0)),
             explicit_graph,
         };
@@ -2026,7 +2180,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let ef_search = if params.ef_search > 0 {
             params.ef_search.max(top_k)
         } else {
-            self.config.get_ef_search().max(top_k)
+            // The collection default is a floor: the auto-tuned beam (see
+            // `spawn_ef_tuner`) widens it as the graph grows.
+            self.config
+                .get_ef_search()
+                .max(self.index_link.load().tuned_ef())
+                .max(top_k)
         };
         let include_payload = params.include_payload;
 
@@ -2113,6 +2272,13 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         // Keep the oversampled beam (`top_k × oversample`) so results stay identical.
         let rerank_redundant = rerank_requested && self.rerank_is_redundant(params);
         let rerank_enabled = rerank_requested && !rerank_redundant && !params.defer_rerank;
+        // Coarse codes keep the true neighbours only within a wide pool (see
+        // `COARSE_RERANK_POOL`); a scatter-gather caller already widened each shard's share.
+        let coarse_pool = if self.rerank_full_pool() {
+            coarse_pool_factor(self.shard_share)
+        } else {
+            1
+        };
         let ef_search = if rerank_redundant {
             let search_k = top_k
                 .saturating_mul(rerank_oversample)
@@ -2167,7 +2333,11 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     .map_or(EMPTY_COMPLEX_FILTERS.as_slice(), Vec::as_slice);
                 let search_k = if rerank_enabled {
                     let min_k = schema_rerank_top_k.unwrap_or(0);
-                    top_k.saturating_mul(rerank_oversample).max(top_k).max(min_k)
+                    top_k
+                        .saturating_mul(rerank_oversample)
+                        .saturating_mul(coarse_pool)
+                        .max(top_k)
+                        .max(min_k)
                 } else {
                     top_k
                 };
@@ -2237,7 +2407,6 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                         Some((user_id, meta)) => chunk_hits.push((user_id, dist, meta)),
                     }
                 }
-                let had_chunk_hits = !chunk_hits.is_empty();
 
                 let metric_tag = match M::name() {
                     "cosine" => GpuMetric::Cosine,
@@ -2306,9 +2475,37 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                         )
                     } else {
                         let mut exact_scratch = vec![0.0; processed_query.len()];
+                        // Wide pools (coarse codes) on an idle server: score the candidates
+                        // that have an exact copy on idle cores, the rest below.
+                        let parts = hyperspace_index::parallel_parts(results.len(), 128);
+                        let pre: Option<Vec<f64>> = (l2_like && parts > 1)
+                            .then_some(exact_store_owned.as_ref())
+                            .flatten()
+                            .map(|ex| {
+                                use rayon::prelude::*;
+                                results
+                                    .par_chunks(results.len().div_ceil(parts))
+                                    .flat_map_iter(|c| {
+                                        c.iter().map(|(id, _)| {
+                                            ex.get_bytes(*id).map_or(f64::NAN, |b| {
+                                                f64::from(hyperspace_core::simd::l2_sq_f32_bytes(
+                                                    b,
+                                                    &q32_for_rerank,
+                                                    None,
+                                                ))
+                                            })
+                                        })
+                                    })
+                                    .collect()
+                            });
                         let mut exact_scores: Vec<(u32, f64)> = results
                             .iter()
-                            .map(|(id, _)| {
+                            .enumerate()
+                            .map(|(i, r)| (r, pre.as_ref().map_or(f64::NAN, |p| p[i])))
+                            .map(|((id, _), known)| {
+                                if !known.is_nan() {
+                                    return (*id, known);
+                                }
                                 if l2_like {
                                     if let Some(bytes) = exact_store_owned.as_ref().and_then(|e| e.get_bytes(*id)) {
                                         return (
@@ -2330,60 +2527,18 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     results
                 };
 
-                // Fetch metadata and convert IDs inside blocking worker.
-                // Payload fetch happens AFTER spawn_blocking returns (lazy I/O).
-                let mut hnsw_mapped = reranked_internal
-                    .into_iter()
-                    .map(|(internal_id, dist)| {
-                        let meta = if include_metadata {
-                            index
-                                .metadata
-                                .forward
-                                .get(&internal_id)
-                                .map(|m| m.clone())
-                                .unwrap_or_default()
-                        } else {
-                            HashMap::new()
-                        };
-
-                        let user_id = if ids_are_identity {
-                            internal_id
-                        } else {
-                            reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v)
-                        };
-
-                        (user_id, dist, meta)
-                    })
-                    .collect::<Vec<(u32, f64, HashMap<String, String>)>>();
-
-                if had_chunk_hits {
-                    hnsw_mapped.extend(chunk_hits);
-                    hnsw_mapped.sort_by(|a, b| a.1.total_cmp(&b.1));
-                }
-
-                if !write_buffer_for_search.is_empty() {
-                    let buffer_results = write_buffer_for_search.search::<M>(
-                        &processed_query,
-                        search_k,
-                        filters_ref,
-                        complex_filters_ref,
-                    );
-
-                    hnsw_mapped.extend(
-                        buffer_results
-                            .into_iter()
-                            .map(|(id, dist, meta, _)| (id, dist, meta)),
-                    );
-                    hnsw_mapped.sort_by(|a, b| a.1.total_cmp(&b.1));
-                }
-
-                if had_chunk_hits || !ids_are_identity || !write_buffer_for_search.is_empty() {
-                    let mut seen = std::collections::HashSet::with_capacity(hnsw_mapped.len());
-                    hnsw_mapped.retain(|(user_id, _, _)| seen.insert(*user_id));
-                }
-                hnsw_mapped.truncate(top_k);
-
-                hnsw_mapped
+                // Metadata / user ids inside the blocking worker; payloads after it (lazy I/O).
+                finish_hits(
+                    &index,
+                    reranked_internal,
+                    chunk_hits,
+                    include_metadata,
+                    ids_are_identity,
+                    &reverse_id_map,
+                    &write_buffer_for_search,
+                    (&processed_query, search_k, filters_ref, complex_filters_ref),
+                    top_k,
+                )
             })
             .await
             .map_err(|e| format!("Search task failed: {e}"))?;
@@ -2465,51 +2620,17 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             // === 2. Search cold chunks (none when use_blocking is false) ===
 
             // === 3. Convert results & merge write buffer (if non-empty) ===
-            let mut raw_results: Vec<(u32, f64, HashMap<String, String>)> = mem_results
-                .into_iter()
-                .map(|(internal_id, dist)| {
-                    let meta = if include_metadata {
-                        index
-                            .metadata
-                            .forward
-                            .get(&internal_id)
-                            .map(|m| m.clone())
-                            .unwrap_or_default()
-                    } else {
-                        HashMap::new()
-                    };
-
-                    let user_id = if ids_are_identity {
-                        internal_id
-                    } else {
-                        reverse_id_map.get(&internal_id).map_or(internal_id, |v| *v)
-                    };
-
-                    (user_id, dist, meta)
-                })
-                .collect();
-
-            if !self.write_buffer.is_empty() {
-                let buffer_results = self.write_buffer.search::<M>(
-                    processed_query,
-                    top_k,
-                    filters_ref,
-                    complex_filters_ref,
-                );
-
-                raw_results.extend(
-                    buffer_results
-                        .into_iter()
-                        .map(|(id, dist, meta, _)| (id, dist, meta)),
-                );
-                raw_results.sort_by(|a, b| a.1.total_cmp(&b.1));
-            }
-
-            if !ids_are_identity || !self.write_buffer.is_empty() {
-                let mut seen = std::collections::HashSet::with_capacity(raw_results.len());
-                raw_results.retain(|(user_id, _, _)| seen.insert(*user_id));
-            }
-            raw_results.truncate(top_k);
+            let raw_results = finish_hits(
+                &index,
+                mem_results,
+                Vec::new(),
+                include_metadata,
+                ids_are_identity,
+                &reverse_id_map,
+                &self.write_buffer,
+                (processed_query, top_k, filters_ref, complex_filters_ref),
+                top_k,
+            );
 
             // === Step 3: Lazy Payload Fetch (v3.2) — inline path ================
             if include_payload {
@@ -2548,8 +2669,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let payload_store = Arc::clone(&self.payload_store);
 
         // Heavy lifting off the async runtime. Vectors are streamed one at a time from
-        // their exact source into the new index (no all-vectors copy), in BFS order of
-        // the current graph so neighbours get nearby ids (better cache locality).
+        // their exact source into the new index (no all-vectors copy), graph built with
+        // the collection's M in parallel.
         let built =
             tokio::task::spawn_blocking(move || -> Result<Option<RebuildOutput>, String> {
                 use hyperspace_core::config::GlobalConfig;
@@ -2572,7 +2693,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 if live.is_empty() {
                     return Ok(None);
                 }
-                let order = rebuild_bfs_order(&current_index, &live, max_len);
+                // Id order. Inserting in BFS order of the old graph (cluster by cluster) was
+                // measured to degrade the new graph: recall 99.67% → 98.70%, QPS −34%.
+                let order = live;
 
                 let exact_of = |old: u32| -> Vec<f64> {
                     if let Some(v) = exact_store.as_ref().and_then(|e| e.get(old)) {
@@ -2597,8 +2720,17 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     current_index.get_vector_original(old).coords
                 };
 
-                let vacuum_m = 128;
-                let vacuum_ef = 800;
+                // The collection's own M (a wider graph doubles layer-0 memory and slows
+                // every later search); a deeper build beam is cheap and improves recall.
+                let env_usize = |k: &str| {
+                    std::env::var(k)
+                        .ok()
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .filter(|&v| v > 0)
+                };
+                let vacuum_m = env_usize("HS_REBUILD_M").unwrap_or_else(|| original_config.get_m());
+                let vacuum_ef = env_usize("HS_REBUILD_EF_CONSTRUCT")
+                    .unwrap_or_else(|| original_config.get_ef_construction().max(200));
                 let vacuum_config = Arc::new(GlobalConfig::new());
                 vacuum_config.set_m(vacuum_m);
                 vacuum_config.set_ef_construction(vacuum_ef);
@@ -2760,6 +2892,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             })
             .collect();
 
+        // The rebuilt graph starts untuned: the background tuner re-measures its beam
+        // (a beam carried over from the old graph measured 98.2% instead of 99.6% recall).
         println!("\u{1f504} Swapping indexes in memory...");
         self.index_link.store(Arc::new(final_index));
         self.id_map.clear();
@@ -2905,7 +3039,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         // Return only the active indexing queue size.
         // WAL pending and flushing counts are internal LSM state and don't
         // necessarily indicate "pending indexing" from a user/search perspective.
-        self.config.get_queue_size()
+        // A due beam re-measurement counts as pending work, so callers that wait for the
+        // queue to drain (benchmarks, readiness checks) search with the tuned beam.
+        self.config.get_queue_size() + u64::from(ef_tuning_due(&self.index_link.load()))
     }
 
     fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {
@@ -3809,7 +3945,10 @@ impl<M: Metric> CollectionImpl<M> {
 
 #[cfg(test)]
 mod auto_calibration_tests {
-    use super::{maybe_auto_calibrate, raw_cache_capacity, AUTO_CALIBRATE_GROWTH};
+    use super::{
+        coarse_pool_factor, maybe_auto_calibrate, raw_cache_capacity, AUTO_CALIBRATE_GROWTH,
+        COARSE_RERANK_POOL,
+    };
     use dashmap::DashMap;
     use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
     use hyperspace_index::HnswIndex;
@@ -3938,6 +4077,22 @@ mod auto_calibration_tests {
             maybe_auto_calibrate(&index2, &half, None, None, 256, "t"),
             Some((300, 300))
         );
+    }
+
+    #[test]
+    fn coarse_rerank_pool_is_the_same_for_any_shard_count() {
+        // Total pool = shards × per-shard top_k × factor, in units of top_k × oversample.
+        let total = |s: usize| s * if s == 1 { 1 } else { 2 } * coarse_pool_factor(s);
+        assert_eq!(total(1), COARSE_RERANK_POOL);
+        assert_eq!(total(12), COARSE_RERANK_POOL, "pre-4.2.5 default layout");
+        for s in [2, 3, 4, 6, 8, 16, 32] {
+            assert!(total(s) >= COARSE_RERANK_POOL, "{s} shards: {}", total(s));
+            assert!(
+                total(s) < 2 * COARSE_RERANK_POOL + 2 * s,
+                "{s} shards: {}",
+                total(s)
+            );
+        }
     }
 
     #[test]

@@ -910,8 +910,12 @@ async fn test_superkmeans_semantic_compactor_and_meta_router() {
     let _ = fs::remove_dir_all(&tmp_dir);
 }
 
+/// Serializes tests that set or depend on `HS_SHARDS` (process-wide environment).
+static SHARD_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 async fn test_billion_scale_64bit_id_addressing_and_routing() {
+    let _env = SHARD_ENV_LOCK.lock().await;
     std::env::set_var("HS_SHARDS", "8");
     let uuid = Uuid::new_v4();
     let tmp_dir = env::temp_dir().join(format!("hyperspace_64bit_test_{uuid}"));
@@ -1794,5 +1798,98 @@ async fn rebuild_keeps_user_ids_vectors_and_payloads_aligned() {
             "vector of user id {uid} after restart: err {err}"
         );
     }
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[test]
+fn create_collection_hints_read_grpc_metadata() {
+    let mut md = tonic::metadata::MetadataMap::new();
+    assert_eq!(super::create_collection_hints(&md), (None, None));
+    md.insert("x-quantization-level", "pq4".parse().unwrap());
+    md.insert("x-expected-vectors", " 5000000 ".parse().unwrap());
+    assert_eq!(
+        super::create_collection_hints(&md),
+        (Some("pq4".to_string()), Some(5_000_000))
+    );
+    md.insert("x-expected-vectors", "lots".parse().unwrap());
+    assert_eq!(
+        super::create_collection_hints(&md).1,
+        None,
+        "garbage is ignored"
+    );
+}
+
+/// v4 collections get one shard unless the expected size asks for more; the count is
+/// stored in meta.json and the shard directories survive restarts unchanged.
+#[tokio::test]
+async fn shard_count_follows_the_expected_collection_size() {
+    let _env = SHARD_ENV_LOCK.lock().await;
+    if std::env::var("HS_SHARDS").is_ok() {
+        return; // forced from outside the test run
+    }
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let schema = || hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: 8,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+    manager
+        .create_collection_with_options("default_admin", "small", schema(), None, None)
+        .await
+        .unwrap();
+    let cores = std::thread::available_parallelism().map_or(8, std::num::NonZero::get);
+    let want_big = 3.min(cores);
+    manager
+        .create_collection_with_options(
+            "default_admin",
+            "big",
+            schema(),
+            Some("pq4".to_string()),
+            Some(5_000_000),
+        )
+        .await
+        .unwrap();
+    let shard_dirs = |name: &str| -> usize {
+        let dir = std::fs::read_dir(&tmp_dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.file_name().unwrap().to_string_lossy().ends_with(name))
+            .unwrap();
+        (0..64)
+            .take_while(|i| dir.join(format!("shard_{i}")).is_dir())
+            .count()
+    };
+    assert_eq!(shard_dirs("small"), 1);
+    assert_eq!(shard_dirs("big"), want_big);
+    let big = manager.get("default_admin", "big").await.unwrap();
+    assert_eq!(
+        big.quantization_mode(),
+        hyperspace_core::QuantizationMode::PQ4,
+        "quantization override applied"
+    );
+    drop(big);
+    drop(manager);
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let big = manager.get("default_admin", "big").await.unwrap();
+    big.insert(&[0.5; 8], 7, HashMap::new(), 1, Durability::Default)
+        .await
+        .unwrap();
+    assert_eq!(
+        shard_dirs("big"),
+        want_big,
+        "restart keeps the shard layout"
+    );
     let _ = fs::remove_dir_all(&tmp_dir);
 }

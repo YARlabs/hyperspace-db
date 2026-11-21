@@ -13,6 +13,13 @@ graph, graph repair after deletes, ACORN-style filtered traversal, WAL group com
 compact f32 wire format.
 
 ### Fixed
+* **gRPC `CreateCollection` ignored the quantization level**: the Go, TypeScript, Dart, C++ and
+  Rust SDKs send it as `x-quantization-level` metadata, which only the HTTP path read, so their
+  collections silently used the server default. The gRPC handler reads it now (and
+  `x-expected-vectors`).
+* **Updated vectors were encoded differently from inserted ones**: `update_storage` built the
+  vector with `alpha = 1 / (1 − ‖x‖²)` for every metric (∞ for unit-norm cosine vectors) while
+  inserts used 1 outside Poincaré. Both now go through one encoder.
 * **Exact vectors and user payloads shared one key space**: quantized collections stored the
   exact f32 copy of every vector (used by rerank, calibration and `RebuildIndex`) in the payload
   store under the *internal* id, while user payloads use the *user* id. The two overwrote each
@@ -104,6 +111,11 @@ compact f32 wire format.
   server CPU per query, unary `Search` or `SearchBatch`, optional `RebuildIndex` timing and peak
   RSS, JSON output and `--min-recall` / `--min-qps` gates. It can spawn the server on a temp dir.
   Unlike single-client Python harnesses it measures throughput under concurrency.
+* `run_quantization_sweep.py` runs every query once unmeasured before each search run
+  (`HS_BENCH_WARMUP`), as VectorDBBench does, then waits for an idle queue.
+* `HS_SHARD_TARGET_VECTORS`, `HS_AUTO_EF`, `HS_AUTO_EF_TARGET`, `HS_REBUILD_M`,
+  `HS_REBUILD_EF_CONSTRUCT`; `hs_loadbench --expected-vectors` (defaults to `--n`) and an idle
+  wait so background calibration / beam tuning finishes before measuring.
 * A/B switches: `HS_RERANK_DEFER=0` (rerank inside each shard, as before),
   `hyperspace_index::set_sq8_int_kernel` / `set_sq8_scaled_codes` (doc-hidden).
 * **Online auto-calibration of trained quantizers** (`rabitq`, `pq4`, `pq`, `opq`): each shard
@@ -208,8 +220,52 @@ compact f32 wire format.
   by older versions are still reranked from their payload-store copies; `RebuildIndex` moves
   them into the exact store.
 * **Streaming `RebuildIndex`**: vectors are read one at a time from the exact store instead of
-  being copied into one f64 array, the graph is built in parallel, and nodes are renumbered in
-  BFS order of the old graph so that neighbours get nearby ids (memory locality).
+  being copied into one f64 array, and the graph is built in parallel with the collection's `M`
+  (it used M = 128 / ef_construction = 800, doubling layer-0 memory): 50k × 1024-D rebuild
+  7.9 s → 1.6 s, RSS afterwards 1,115 → 846 MB, recall and QPS unchanged. Survivors keep id
+  order (BFS insertion order was measured: recall 99.67% → 98.70%, QPS −34%).
+* **Shard count follows the expected collection size**: every shard is searched on every query,
+  so on one node more shards multiply the work per query. New collections get one shard per
+  `HS_SHARD_TARGET_VECTORS` (default 2M) of the size given by the `x-expected-vectors` gRPC
+  metadata / `expected_vectors` HTTP field (at most one per core), and one shard without a
+  hint; it used to be one per core (8–32). `HS_SHARDS` still forces a count, and existing
+  collections keep their layout. Together with the beam tuning below (`hs_loadbench`, 16
+  clients, M = 16, before / after in the same session):
+
+  | 1024-D | QPS | recall@10 | server CPU / query | 1-client latency |
+  | :--- | :---: | :---: | :---: | :---: |
+  | `medium` + rerank, 20k | 9.8k → **26.4k** | 100% → 99.53% | 1.09 → 0.31 ms | 0.29 → 0.22 ms |
+  | `none`, 20k | 3.4k → **23.4k** | 100% → 99.63% | 3.08 → 0.34 ms | 0.53 → 0.35 ms |
+  | `medium` + rerank, 100k | 3.5k → **14.4k** | 99.93% → 99.60% | 3.09 → 0.60 ms | 0.62 → 0.50 ms |
+  | `none`, 100k | 1.4k → **9.5k** | 99.93% → 98.50% | 7.31 → 0.95 ms | 1.09 → 0.76 ms |
+
+  The former default scanned 12 small shards exhaustively (hence ~100% recall at a 3–8× CPU
+  cost); one graph trades up to 1.4 pp of recall for that throughput at the default target
+  (`HS_AUTO_EF_TARGET=0.99`). Raise the target, or pass `ef_search`, for exact-like recall.
+* **Auto-tuned `ef_search`** (`HS_AUTO_EF`, target `HS_AUTO_EF_TARGET` = 0.99): every 8th query is
+  sampled (last 64), and a background task measures the smallest beam whose graph candidates keep
+  99% of the exact top-`10 × oversample` code candidates — on the sampled real queries once 16 exist, before that on local
+  centroids of stored vectors — whenever the graph doubles, real queries first arrive, or 512
+  new samples accumulate (at most once a minute). The collection `ef_search` remains a floor and explicit request values
+  are honored. One 100k shard: recall 95.2% at ef = 100 → 99.87%; diffuse 20k sweep data: 90.2% →
+  100% once tuned on real queries.
+* **Idle-core parallelism within a query**: flat scans (≥ 2,048 rows per part) and wide rerank
+  pools are split across idle cores while fewer searches run than half the cores; under load
+  they stay single-threaded. 20k × 1024-D single query: f32 scan 1.28 → 0.42 ms, int8 0.42 →
+  0.16 ms.
+* **Coarse-code rerank pool** (`extreme`, `ternary`, `rabitq`, `pq4`, `pq`, `opq`): `top_k ×
+  oversample × 24` candidates in total, independent of the shard count (the former 12-shard
+  default provided it implicitly; with one shard and a 40-candidate pool `extreme` + rerank ×4
+  fell from 98.8% to 61% recall).
+* **Load-aware scatter-gather**: once as many searches run as there are cores, shards are
+  searched one after another on the calling task instead of one task per shard (12 shards,
+  16 / 32 clients: +18% / +16% QPS, p99 −25%).
+* **One scatter-gather core for `search` and `search_u64`**: the 64-bit search had its own copy
+  without the 4.2.5 optimizations (metadata after the merge, deferred rerank) and located the
+  shard of a reranked candidate from the composite id; both now share `scatter_gather`, which
+  carries the shard index with every candidate.
+* **No allocation when decoding `medium` codes**: one `decode_sq8` helper replaces three copies
+  that each built a `QuantizedHyperVector` (`Vec<i8>`) per decode.
 * **Exact flat scan for small shards**: when a shard holds at most `ef · 2M` live nodes
   (`HS_FLAT_SCAN`: `auto` / `off` / node count; capped at 32,768) an unfiltered search scans it
   sequentially instead of walking the graph, which at that size visits most nodes anyway with
@@ -303,6 +359,15 @@ Measured with `benchmarks/run_quantization_sweep.py` (20,000 × 1024D, cosine, 2
 - Full matrix: `BENCHMARK_QUANTIZATION_SWEEP.md`; summary: `BENCHMARK_V3_VS_V4_REPORT.md` §10.
 
 ### Compatibility
+* Single-client `run_quantization_sweep.py` numbers (QPS = 1 / latency) are lower than with the
+  former 12-shard default for modes whose search is a flat scan (`none` −9%, coarse codes with
+  rerank −35–50%): 12 shards scanned in parallel per query, one shard parallelizes only on idle
+  cores. Under concurrent load the single shard is 3–7× faster (see Changed).
+* New collections get **one shard** unless `x-expected-vectors` / `expected_vectors` or
+  `HS_SHARDS` asks for more (previously one per core). The count is stored in `meta.json`
+  (`shards`); collections created earlier keep the shard directories they have.
+* The collection `ef_search` is now a floor: with `HS_AUTO_EF` (default on) the default beam can
+  be wider. Set `HS_AUTO_EF=0` for a fixed beam.
 * **`medium` collections created by 4.2.5 must not be opened by older binaries**: their codes use
   the per-vector scale (marked by `sq8.scaled` next to the snapshot), which older versions would
   decode with the fixed scale. Collections created earlier keep the legacy codes and stay
