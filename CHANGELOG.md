@@ -13,6 +13,16 @@ graph, graph repair after deletes, ACORN-style filtered traversal, WAL group com
 compact f32 wire format.
 
 ### Fixed
+* **MRL cutoff was ignored**: `cascade_pipeline[0].cutoff_dimension` was stored and reported but
+  never used — "MRL" collections indexed the full vector. Single-component L2 / cosine
+  collections now build the HNSW graph on the (re-normalized) prefix and rerank a candidate
+  pool on the full vector from the exact store (`mrl_index.dim` marker; older collections keep
+  their full-dimension layout; `HS_MRL_INDEX=0` opts out). 100k × 1024-D MRL-shaped data,
+  cutoff 256, M = 16: `medium` indexing 14.8k → 28.3k vec/s, rebuild 7.1 → 3.7 s, QPS
+  2.9k → 4.3k (1 client) / 20.7k → 27.6k (16 clients), recall 99.84% → 99.58%, RSS −15%;
+  `none` indexing ×2.1, 1-client QPS ×1.6, RSS −28%. Stats report `index_dimension`.
+* **Per-request `mrl_dimension` re-scored only the top-k**: it now re-scores a `4 × top_k` pool on
+  the full vector (recall 87.5% → 96.7%, equal to a full search, ~25% faster).
 * **gRPC `CreateCollection` ignored the quantization level**: the Go, TypeScript, Dart, C++ and
   Rust SDKs send it as `x-quantization-level` metadata, which only the HTTP path read, so their
   collections silently used the server default. The gRPC handler reads it now (and

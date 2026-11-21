@@ -939,6 +939,12 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         self.dimension
     }
 
+    fn index_dimension(&self) -> usize {
+        self.shards
+            .first()
+            .map_or(self.dimension, |s| s.index_dimension())
+    }
+
     fn metric_name(&self) -> &'static str {
         M::name()
     }

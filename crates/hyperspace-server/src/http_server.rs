@@ -1212,6 +1212,7 @@ async fn get_stats(
         Json(serde_json::json!({
             "count": col.count(),
             "dimension": col.dimension(),
+            "index_dimension": col.index_dimension(),
             "metric": col.metric_name(),
             "quantization": format!("{:?}", col.quantization_mode()),
             "indexing_queue": col.queue_size(),

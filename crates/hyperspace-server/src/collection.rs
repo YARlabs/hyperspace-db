@@ -256,11 +256,91 @@ fn finish_hits<M: Metric>(
     out
 }
 
+/// File (in a collection / shard data directory) recording the dimension of an MRL prefix
+/// index. The index width is a property of the stored data: collections created before
+/// 4.2.5 (or with `HS_MRL_INDEX=0`) index the full vector and have no marker.
+const MRL_INDEX_MARKER: &str = "mrl_index.dim";
+
+/// Prefix width an MRL collection indexes: the first cascade layer's `cutoff_dimension`
+/// for a single-component L2 / cosine collection (8 ≤ cutoff < dimension). The graph and its
+/// codes then hold only the prefix (cutoff / dimension of the RAM and distance cost) and
+/// every search reranks a pool of candidates on the full vectors from the exact store.
+/// `HS_MRL_INDEX=0` keeps full-dimension indexes.
+fn mrl_index_dimension<M: Metric>(
+    schema: &hyperspace_proto::hyperspace::CollectionSchema,
+    dimension: usize,
+) -> Option<usize> {
+    if std::env::var("HS_MRL_INDEX").is_ok_and(|v| matches!(v.trim(), "0" | "false" | "no" | "off"))
+    {
+        return None;
+    }
+    if schema.components.len() > 1 || !matches!(M::name(), "l2" | "cosine") {
+        return None;
+    }
+    let cut = schema.cascade_pipeline.first()?.cutoff_dimension as usize;
+    (8..dimension).contains(&cut).then_some(cut)
+}
+
+/// Resolves the index width of a collection directory: the persisted marker, else the MRL
+/// prefix for a brand-new directory (writing the marker), else the full dimension.
+fn resolve_index_dim(data_dir: &std::path::Path, dimension: usize, mrl: Option<usize>) -> usize {
+    let marker = data_dir.join(MRL_INDEX_MARKER);
+    if let Some(d) = std::fs::read_to_string(&marker)
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|&d| d > 0 && d <= dimension)
+    {
+        return d;
+    }
+    let Some(cut) = mrl else {
+        return dimension;
+    };
+    let has_data = data_dir.join("index.snap").exists()
+        || std::fs::read_dir(data_dir).is_ok_and(|entries| {
+            entries.flatten().any(|e| {
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                name.ends_with(".hyp") || name == "memtable"
+            })
+        });
+    if has_data {
+        // Existing full-dimension data (pre-4.2.5 MRL collection): keep its layout.
+        return dimension;
+    }
+    match std::fs::write(&marker, cut.to_string()) {
+        Ok(()) => cut,
+        Err(e) => {
+            eprintln!("⚠️ Cannot persist the MRL index marker ({e}); indexing the full vector.");
+            dimension
+        }
+    }
+}
+
+/// First `d` coordinates of `v` (re-normalized for cosine), borrowed when `d` covers `v`.
+fn mrl_prefix<M: Metric>(v: &[f64], d: usize) -> Cow<'_, [f64]> {
+    if d >= v.len() {
+        return Cow::Borrowed(v);
+    }
+    let mut p = v[..d].to_vec();
+    if M::name() == "cosine" {
+        let n = p.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if n > 1e-12 {
+            for x in &mut p {
+                *x /= n;
+            }
+        }
+    }
+    Cow::Owned(p)
+}
+
 /// Output of the blocking half of `RebuildIndex`.
 struct RebuildOutput {
     element_size: usize,
     storage_f32: bool,
+    /// Index width (the MRL prefix, or the full dimension).
     dimension: usize,
+    /// Full vector dimension (the exact store's slot width).
+    full_dimension: usize,
     vacuum_config: Arc<hyperspace_core::config::GlobalConfig>,
     temp_dir: PathBuf,
     new_snap_path: PathBuf,
@@ -401,6 +481,8 @@ fn maybe_auto_calibrate<M: Metric>(
 }
 
 pub struct CollectionImpl<M: Metric> {
+    /// Width of the HNSW index: the MRL prefix (`mrl_index_dimension`) or `dimension`.
+    index_dim: usize,
     name: String,
     node_id: String,
     index_link: Arc<ArcSwap<HnswIndex<M>>>,
@@ -541,7 +623,10 @@ impl<M: Metric> CollectionImpl<M> {
     /// Exact re-ranking is a no-op for full-precision single-component collections (the
     /// index already ranks by the exact metric distance).
     fn rerank_is_redundant(&self, params: &SearchParams) -> bool {
-        self.mode == hyperspace_core::QuantizationMode::None
+        // An MRL prefix index ranks by prefix distances: the full-vector rerank is the
+        // second stage of the funnel, never redundant.
+        self.index_dim == self.dimension
+            && self.mode == hyperspace_core::QuantizationMode::None
             && self.layout.components.len() <= 1
             && params.component_weights.is_none()
             && params.mrl_dimension.is_none()
@@ -577,6 +662,7 @@ impl<M: Metric> CollectionImpl<M> {
             || self.layout.components.len() > 1
             || params.component_weights.is_some()
             || params.mrl_dimension.is_some()
+            || self.index_dim < self.dimension
             || self.meta_router.chunk_count() > 0
         {
             return None;
@@ -673,6 +759,28 @@ impl<M: Metric> CollectionImpl<M> {
     /// the shard must use the same processed query.
     pub(crate) fn process_query<'q>(&self, query: &'q [f64]) -> Cow<'q, [f64]> {
         Self::normalize_if_cosine(&query[..query.len().min(self.dimension)])
+    }
+
+    /// The vector the HNSW index sees: the first `index_dim` coordinates (MRL prefix index,
+    /// re-normalized for cosine), or `v` itself for a full-dimension index.
+    #[inline]
+    fn index_view<'a>(&self, v: &'a [f64]) -> Cow<'a, [f64]> {
+        mrl_prefix::<M>(v, self.index_dim)
+    }
+
+    /// Exact (full-dimension) vector of an internal id: the exact store when present,
+    /// otherwise the index's own decoded vector.
+    fn stored_vector(&self, index: &HnswIndex<M>, internal_id: u32) -> Vec<f64> {
+        if self.index_dim < self.dimension {
+            if let Some(v) = self
+                .exact_store
+                .load_full()
+                .and_then(|e| e.get(internal_id))
+            {
+                return v.into_iter().map(f64::from).collect();
+            }
+        }
+        index.get_vector(internal_id).coords
     }
 
     fn normalize_if_cosine(vector: &[f64]) -> Cow<'_, [f64]> {
@@ -840,15 +948,32 @@ impl<M: Metric> CollectionImpl<M> {
             std::fs::create_dir_all(&data_dir)?;
         }
 
+        // MRL collections index the vector prefix; the exact store keeps the full vector.
+        let index_dim = resolve_index_dim(
+            &data_dir,
+            dimension,
+            mrl_index_dimension::<M>(&schema, dimension),
+        );
+        let index_element_size = if index_dim == dimension || element_size == 0 {
+            element_size
+        } else {
+            chunk_searcher::storage_element_size::<M>(mode, index_dim, storage_f32)
+        };
+        if index_dim < dimension {
+            println!(
+                "🪆 [{name}] MRL prefix index: {index_dim} of {dimension} dimensions, full-vector rerank"
+            );
+        }
+
         let (_store, index, _recovered_count) = if snap_path.exists() {
-            let store = Arc::new(VectorStore::new(&data_dir, element_size));
+            let store = Arc::new(VectorStore::new(&data_dir, index_element_size));
             match HnswIndex::<M>::load_snapshot_with_storage_precision(
                 &snap_path,
                 store.clone(),
                 mode,
                 config.clone(),
                 storage_f32,
-                dimension,
+                index_dim,
             ) {
                 Ok(idx) => {
                     let count = idx.count_nodes();
@@ -856,7 +981,7 @@ impl<M: Metric> CollectionImpl<M> {
                 }
                 Err(e) => {
                     eprintln!("Failed to load snapshot for {name}: {e}. Starting fresh.");
-                    let store = Arc::new(VectorStore::new(&data_dir, element_size));
+                    let store = Arc::new(VectorStore::new(&data_dir, index_element_size));
                     (
                         store.clone(),
                         Arc::new(HnswIndex::new_with_storage_precision(
@@ -864,14 +989,14 @@ impl<M: Metric> CollectionImpl<M> {
                             mode,
                             config.clone(),
                             storage_f32,
-                            dimension,
+                            index_dim,
                         )),
                         0,
                     )
                 }
             }
         } else {
-            let store = Arc::new(VectorStore::new(&data_dir, element_size));
+            let store = Arc::new(VectorStore::new(&data_dir, index_element_size));
             (
                 store.clone(),
                 Arc::new(HnswIndex::new_with_storage_precision(
@@ -879,7 +1004,7 @@ impl<M: Metric> CollectionImpl<M> {
                     mode,
                     config.clone(),
                     storage_f32,
-                    dimension,
+                    index_dim,
                 )),
                 0,
             )
@@ -1034,7 +1159,9 @@ impl<M: Metric> CollectionImpl<M> {
                                 reverse_id_map_data.remove(&old_internal_id);
                             }
 
-                            if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
+                            if let Ok(internal_id) =
+                                index_ref.insert(&mrl_prefix::<M>(&vector, index_dim), metadata)
+                            {
                                 id_map_data.insert(id, internal_id);
                                 reverse_id_map_data.insert(internal_id, id);
 
@@ -1068,7 +1195,9 @@ impl<M: Metric> CollectionImpl<M> {
                                 reverse_id_map_data.remove(&old_internal_id);
                             }
 
-                            if let Ok(internal_id) = index_ref.insert(&vector, metadata) {
+                            if let Ok(internal_id) =
+                                index_ref.insert(&mrl_prefix::<M>(&vector, index_dim), metadata)
+                            {
                                 id_map_data.insert(id, internal_id);
                                 reverse_id_map_data.insert(internal_id, id);
 
@@ -1192,9 +1321,10 @@ impl<M: Metric> CollectionImpl<M> {
             }
         };
 
-        // Exact f32 copies for rerank / calibration / RebuildIndex (quantized modes only).
+        // Exact f32 copies for rerank / calibration / RebuildIndex (quantized modes and MRL
+        // prefix indexes, whose graph does not hold the full vector).
         let exact_store = Arc::new(arc_swap::ArcSwapOption::new(
-            (mode != hyperspace_core::QuantizationMode::None)
+            (mode != hyperspace_core::QuantizationMode::None || index_dim < dimension)
                 .then(|| Arc::new(ExactVectorStore::open(&data_dir, dimension))),
         ));
         let exact_for_indexer = exact_store.clone();
@@ -1615,6 +1745,7 @@ impl<M: Metric> CollectionImpl<M> {
             payload_store,
             exact_store,
             dimension,
+            index_dim,
             schema,
             layout,
             cache,
@@ -1639,7 +1770,8 @@ impl<M: Metric> CollectionImpl<M> {
         // (±1/√dim). This is a very lossy approximation — unusable for ANN distance
         // calculations in the cache. Every other mode (None, ScalarI8, Hybrid) returns
         // reasonable f64 coords via proper de-quantization inside get_vector().
-        if col.mode != hyperspace_core::QuantizationMode::Binary {
+        // MRL prefix indexes skip it: their index vectors are prefixes, not the full vector.
+        if col.mode != hyperspace_core::QuantizationMode::Binary && col.index_dim == col.dimension {
             if let Some(ref cache_arc) = col.cache {
                 let cache_clone = cache_arc.clone();
                 let idx_full = col.index_link.load_full();
@@ -1699,10 +1831,14 @@ impl<M: Metric> CollectionImpl<M> {
         _reverse_id_map: Arc<DashMap<u32, u32>>,
         flushing_vector_count: Arc<AtomicUsize>,
         dimension: usize,
+        index_dim: usize,
         chunk_backend: Arc<dyn ChunkBackend>,
     ) {
         let storage_f32 = chunk_searcher::storage_f32_enabled(mode);
+        // Chunks hold full vectors; the fresh MemTable index keeps the collection's width.
         let element_size = chunk_searcher::storage_element_size::<M>(mode, dimension, storage_f32);
+        let memtable_element_size =
+            chunk_searcher::storage_element_size::<M>(mode, index_dim, storage_f32);
 
         tokio::spawn(async move {
             let permit = flush_limiter.clone().acquire_owned().await;
@@ -1829,13 +1965,14 @@ impl<M: Metric> CollectionImpl<M> {
                     // ArcSwap atomically swaps the pointer — zero downtime.
                     let memtable_dir = data_dir.join("memtable");
                     let _ = std::fs::create_dir_all(&memtable_dir);
-                    let fresh_store = Arc::new(VectorStore::new(&memtable_dir, element_size));
+                    let fresh_store =
+                        Arc::new(VectorStore::new(&memtable_dir, memtable_element_size));
                     let fresh_index = Arc::new(HnswIndex::<M>::new_with_storage_precision(
                         fresh_store,
                         mode,
                         config.clone(),
                         storage_f32,
-                        dimension,
+                        index_dim,
                     ));
                     index_link.store(fresh_index);
 
@@ -1891,7 +2028,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         }
 
         let count = self.index_link.load().count();
-        let dim = self.dimension;
+        // In-RAM codes cover the indexed width (the MRL prefix for MRL collections).
+        let dim = self.index_dim;
         let vector_bytes_per_doc: u64 = match self.mode {
             hyperspace_core::QuantizationMode::RaBitQ => {
                 hyperspace_core::rabitq::code_size(dim) as u64
@@ -2101,8 +2239,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         if self.config.is_gossip_enabled() {
             // Defensive check: only update if ID is within bounds of active index
             if (internal_id as usize) < idx.count() {
-                let vector = idx.get_vector(internal_id);
-                let hash = CollectionDigest::hash_entry(id, &vector.coords);
+                let vector = self.stored_vector(&idx, internal_id);
+                let hash = CollectionDigest::hash_entry(id, &vector);
                 let b_idx = CollectionDigest::get_bucket_index(id);
 
                 self.buckets[b_idx].fetch_xor(hash, Ordering::Relaxed);
@@ -2275,8 +2413,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             (req_rerank, req_oversample, clean)
         };
 
+        let mrl_index = self.index_dim < self.dimension;
         let rerank_requested = request_rerank
-            .unwrap_or(env_rerank_enabled || schema_rerank_top_k.is_some())
+            .unwrap_or(env_rerank_enabled || schema_rerank_top_k.is_some() || mrl_index)
             && params.hybrid_query.is_none();
         let rerank_oversample = request_oversample.unwrap_or(env_rerank_oversample).max(1);
         // Full-precision single-component collections already rank by the exact distance:
@@ -2328,6 +2467,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 (!complex_filters.is_empty()).then(|| complex_filters.to_vec()),
             );
             let write_buffer_for_search = self.write_buffer.clone();
+            let index_dim = self.index_dim;
             let mut search_params_owned = params.clone();
             let payload_store_owned = Arc::clone(&self.payload_store);
             let exact_store_owned = self.exact_store.load_full();
@@ -2356,8 +2496,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
                 search_params_owned.top_k = search_k;
                 search_params_owned.ef_search = ef_search.max(search_k);
+                // MRL prefix index: the graph is searched with the query prefix; chunks,
+                // routing and the rerank below use the full query.
+                let index_query = mrl_prefix::<M>(&processed_query, index_dim);
+                if index_dim < processed_query.len() {
+                    search_params_owned.mrl_dimension =
+                        search_params_owned.mrl_dimension.filter(|&d| d < index_dim);
+                }
                 let mem_results = index.search(
-                    &processed_query,
+                    &index_query,
                     filters_ref,
                     complex_filters_ref,
                     &search_params_owned,
@@ -2622,8 +2769,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 p.ef_search = ef_search;
                 Cow::Owned(p)
             };
+            let index_query = self.index_view(processed_query);
             let mem_results = index.search(
-                processed_query,
+                &index_query,
                 filters_ref,
                 complex_filters_ref,
                 &effective_params,
@@ -2679,6 +2827,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         let raw_vector_cache = Arc::clone(&self.raw_vector_cache);
         let exact_store = self.exact_store.load_full();
         let payload_store = Arc::clone(&self.payload_store);
+        let full_dimension = self.dimension;
 
         // Heavy lifting off the async runtime. Vectors are streamed one at a time from
         // their exact source into the new index (no all-vectors copy), graph built with
@@ -2689,7 +2838,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 use hyperspace_store::VectorStore;
 
                 let current_index = index_link.load().clone();
+                // Index width (MRL prefix or full); exact vectors are `full_dimension` wide.
                 let dimension = current_index.dimension;
+                let mrl = dimension < full_dimension;
                 let max_len = current_index.count_nodes();
                 let mut live: Vec<u32> = {
                     let deleted = current_index.metadata.deleted.read();
@@ -2719,7 +2870,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     if mode != hyperspace_core::QuantizationMode::None {
                         // Pre-4.2.5 collections kept exact copies in the payload store.
                         if let Ok(Some(bytes)) = payload_store.fetch_blocking(old) {
-                            if bytes.len() == dimension * 4 {
+                            if bytes.len() == full_dimension * 4 {
                                 return bytes
                                     .as_chunks::<4>()
                                     .0
@@ -2774,7 +2925,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                         .iter()
                         .step_by(step)
                         .take(sample_limit)
-                        .map(|&old| exact_of(old).iter().map(|&x| x as f32).collect())
+                        .map(|&old| {
+                            mrl_prefix::<M>(&exact_of(old), dimension)
+                                .iter()
+                                .map(|&x| x as f32)
+                                .collect()
+                        })
                         .collect();
                     let refs: Vec<&[f32]> = samples.iter().map(Vec::as_slice).collect();
                     println!(
@@ -2784,12 +2940,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     new_index.train_pq(&refs, 10);
                 }
 
-                let new_exact = (mode != hyperspace_core::QuantizationMode::None)
-                    .then(|| ExactVectorStore::open(&temp_dir, dimension));
+                let new_exact = (mode != hyperspace_core::QuantizationMode::None || mrl)
+                    .then(|| ExactVectorStore::open(&temp_dir, full_dimension));
                 let mut metas = Vec::with_capacity(order.len());
                 for (pos, &old) in order.iter().enumerate() {
                     let v = exact_of(old);
-                    let new_id = new_index.insert_to_storage(&v)?;
+                    let new_id = new_index.insert_to_storage(&mrl_prefix::<M>(&v, dimension))?;
                     if new_id as usize != pos {
                         return Err(format!("rebuild: unexpected id {new_id} at position {pos}"));
                     }
@@ -2830,6 +2986,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     element_size,
                     storage_f32,
                     dimension,
+                    full_dimension,
                     vacuum_config,
                     temp_dir,
                     new_snap_path,
@@ -2932,7 +3089,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 .map_err(|e| format!("Failed to install the exact vector store: {e}"))?;
             self.exact_store.store(Some(Arc::new(ExactVectorStore::open(
                 &self.data_dir,
-                out.dimension,
+                out.full_dimension,
             ))));
         }
         let _ = std::fs::remove_dir_all(&out.temp_dir);
@@ -2995,6 +3152,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
 
     fn dimension(&self) -> usize {
         self.dimension
+    }
+
+    fn index_dimension(&self) -> usize {
+        self.index_dim
     }
 
     // Updated peek to use index_link
@@ -3083,13 +3244,13 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     ) -> Result<Vec<f64>, String> {
         let idx = self.index_link.load();
         let source_internal_id = self.to_internal_id(source_id);
-        let source = idx.get_vector(source_internal_id);
+        let source = self.stored_vector(&idx, source_internal_id);
         let distances = neighbor_ids
             .iter()
             .map(|neighbor_id| {
                 let n_internal = self.to_internal_id(*neighbor_id);
-                let n_vec = idx.get_vector(n_internal);
-                M::distance(&source.coords, &n_vec.coords)
+                let n_vec = self.stored_vector(&idx, n_internal);
+                M::distance(&source, &n_vec)
             })
             .collect();
         Ok(distances)
@@ -3524,16 +3685,16 @@ impl<M: Metric> CollectionImpl<M> {
         if let Some(old_internal_id) = existing_internal_id {
             let index = self.index_link.load();
             if (old_internal_id as usize) < index.count() {
-                let old_vector = index.get_vector(old_internal_id);
+                let old_vector = self.stored_vector(&index, old_internal_id);
                 if self.config.is_gossip_enabled() {
-                    let old_id_hash = CollectionDigest::hash_entry(id, &old_vector.coords);
+                    let old_id_hash = CollectionDigest::hash_entry(id, &old_vector);
                     let bucket_idx = CollectionDigest::get_bucket_index(id);
                     self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
                     self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
                 }
 
                 if self.fast_upsert_delta > 0.0 {
-                    let shift_sq = Self::shift_l2_sq(&old_vector.coords, processed_vector);
+                    let shift_sq = Self::shift_l2_sq(&old_vector, processed_vector);
                     let old_meta = index.metadata_by_id(old_internal_id);
                     let metadata_changed = old_meta != metadata;
                     reindex_needed = metadata_changed
@@ -3563,14 +3724,14 @@ impl<M: Metric> CollectionImpl<M> {
             }
             self.index_link
                 .load()
-                .update_storage(old_id, processed_vector)
+                .update_storage(old_id, &self.index_view(processed_vector))
                 .map_err(|e| e.clone())?;
             old_id
         } else {
             let new_id = self
                 .index_link
                 .load()
-                .insert_to_storage(processed_vector)
+                .insert_to_storage(&self.index_view(processed_vector))
                 .map_err(|e| e.clone())?;
             self.id_map.insert(id, new_id);
             self.reverse_id_map.insert(new_id, id);
@@ -3631,7 +3792,7 @@ impl<M: Metric> CollectionImpl<M> {
                 .map_err(|e| format!("WAL Sync Error: {e}"))?;
         }
 
-        if self.mode != hyperspace_core::QuantizationMode::None {
+        if self.mode != hyperspace_core::QuantizationMode::None || self.index_dim < self.dimension {
             // One f64 -> f32 conversion feeds the exact store and the optional heap cache.
             let v_f32: Vec<f32> = processed_vector.iter().map(|&x| x as f32).collect();
             if let Some(exact) = self.exact_store.load_full() {
@@ -3660,7 +3821,8 @@ impl<M: Metric> CollectionImpl<M> {
                 self.id_map.clone(),
                 self.reverse_id_map.clone(),
                 self.flushing_vector_count.clone(),
-                self.index_link.load().dimension,
+                self.dimension,
+                self.index_dim,
                 self.chunk_backend.clone(),
             );
         }
@@ -3741,16 +3903,16 @@ impl<M: Metric> CollectionImpl<M> {
             let mut reindex_needed = true;
             if let Some(old_internal_id) = existing_internal_id {
                 if (old_internal_id as usize) < index_reader.count() {
-                    let old_vector = index_reader.get_vector(old_internal_id);
+                    let old_vector = self.stored_vector(&index_reader, old_internal_id);
                     if self.config.is_gossip_enabled() {
-                        let old_id_hash = CollectionDigest::hash_entry(*id, &old_vector.coords);
+                        let old_id_hash = CollectionDigest::hash_entry(*id, &old_vector);
                         let bucket_idx = CollectionDigest::get_bucket_index(*id);
                         self.buckets[bucket_idx].fetch_xor(old_id_hash, Ordering::Relaxed);
                         self.root_hash.fetch_xor(old_id_hash, Ordering::Relaxed);
                     }
 
                     if self.fast_upsert_delta > 0.0 {
-                        let shift_sq = Self::shift_l2_sq(&old_vector.coords, &processed_vector);
+                        let shift_sq = Self::shift_l2_sq(&old_vector, &processed_vector);
                         let old_meta = index_reader.metadata_by_id(old_internal_id);
                         let metadata_changed = old_meta != *metadata;
                         reindex_needed = metadata_changed
@@ -3779,12 +3941,12 @@ impl<M: Metric> CollectionImpl<M> {
                     self.ids_are_identity.store(false, Ordering::Release);
                 }
                 index_reader
-                    .update_storage(old_id, &processed_vector)
+                    .update_storage(old_id, &self.index_view(&processed_vector))
                     .map_err(|e| e.clone())?;
                 old_id
             } else {
                 let new_id = index_reader
-                    .insert_to_storage(&processed_vector)
+                    .insert_to_storage(&self.index_view(&processed_vector))
                     .map_err(|e| e.clone())?;
 
                 self.id_map.insert(*id, new_id);
@@ -3869,7 +4031,8 @@ impl<M: Metric> CollectionImpl<M> {
                 self.id_map.clone(),
                 self.reverse_id_map.clone(),
                 self.flushing_vector_count.clone(),
-                self.index_link.load().dimension,
+                self.dimension,
+                self.index_dim,
                 self.chunk_backend.clone(),
             );
         }
@@ -3878,7 +4041,7 @@ impl<M: Metric> CollectionImpl<M> {
             self.config.inc_queue();
         }
 
-        if self.mode != hyperspace_core::QuantizationMode::None {
+        if self.mode != hyperspace_core::QuantizationMode::None || self.index_dim < self.dimension {
             for entry in &entries {
                 let v_f32: Vec<f32> = entry.vector.iter().map(|&x| x as f32).collect();
                 // Batch inserts need exact copies too (rerank, calibration, RebuildIndex);
@@ -4118,5 +4281,97 @@ mod auto_calibration_tests {
             raw_cache_capacity(16, 1, false) > one,
             "small vectors fit more entries"
         );
+    }
+}
+
+#[cfg(test)]
+mod mrl_index_tests {
+    use super::{mrl_index_dimension, mrl_prefix, resolve_index_dim, MRL_INDEX_MARKER};
+    use hyperspace_core::{CosineMetric, EuclideanMetric, PoincareMetric};
+    use hyperspace_proto::hyperspace::{CollectionSchema, MrlLayer, VectorComponent};
+
+    fn schema(components: usize, cutoff: u32) -> CollectionSchema {
+        CollectionSchema {
+            components: (0..components)
+                .map(|i| VectorComponent {
+                    name: format!("c{i}"),
+                    metric: "cosine".into(),
+                    full_dimension: 256,
+                    weight: 1.0,
+                })
+                .collect(),
+            cascade_pipeline: vec![MrlLayer {
+                component_name: "c0".into(),
+                cutoff_dimension: cutoff,
+                store_in_ram: true,
+                rerank_top_k: 0,
+            }],
+            encrypted: None,
+        }
+    }
+
+    #[test]
+    fn eligibility() {
+        assert_eq!(
+            mrl_index_dimension::<CosineMetric>(&schema(1, 64), 256),
+            Some(64)
+        );
+        assert_eq!(
+            mrl_index_dimension::<EuclideanMetric>(&schema(1, 64), 256),
+            Some(64)
+        );
+        assert_eq!(
+            mrl_index_dimension::<PoincareMetric>(&schema(1, 64), 256),
+            None,
+            "l2 / cosine only"
+        );
+        assert_eq!(
+            mrl_index_dimension::<CosineMetric>(&schema(2, 64), 256),
+            None,
+            "single component"
+        );
+        assert_eq!(
+            mrl_index_dimension::<CosineMetric>(&schema(1, 256), 256),
+            None,
+            "cutoff < dim"
+        );
+        assert_eq!(
+            mrl_index_dimension::<CosineMetric>(&schema(1, 4), 256),
+            None,
+            "tiny cutoff"
+        );
+        let mut no_cascade = schema(1, 64);
+        no_cascade.cascade_pipeline.clear();
+        assert_eq!(mrl_index_dimension::<CosineMetric>(&no_cascade, 256), None);
+    }
+
+    #[test]
+    fn marker_decides_the_layout() {
+        let fresh = tempfile::tempdir().unwrap();
+        assert_eq!(resolve_index_dim(fresh.path(), 256, Some(64)), 64);
+        assert!(fresh.path().join(MRL_INDEX_MARKER).exists());
+        // The marker wins on reopen, whatever the schema says now.
+        assert_eq!(resolve_index_dim(fresh.path(), 256, None), 64);
+
+        // Pre-existing full-dimension data without a marker stays full.
+        let legacy = tempfile::tempdir().unwrap();
+        std::fs::write(legacy.path().join("chunk_0.hyp"), b"x").unwrap();
+        assert_eq!(resolve_index_dim(legacy.path(), 256, Some(64)), 256);
+        assert!(!legacy.path().join(MRL_INDEX_MARKER).exists());
+
+        let plain = tempfile::tempdir().unwrap();
+        assert_eq!(resolve_index_dim(plain.path(), 256, None), 256);
+        assert!(!plain.path().join(MRL_INDEX_MARKER).exists());
+    }
+
+    #[test]
+    fn prefix_view() {
+        let v = vec![3.0, 4.0, 12.0];
+        assert_eq!(&*mrl_prefix::<CosineMetric>(&v, 2), &[0.6, 0.8]);
+        assert_eq!(&*mrl_prefix::<EuclideanMetric>(&v, 2), &[3.0, 4.0]);
+        assert!(matches!(
+            mrl_prefix::<CosineMetric>(&v, 3),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 }

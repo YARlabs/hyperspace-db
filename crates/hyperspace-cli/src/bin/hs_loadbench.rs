@@ -61,6 +61,10 @@ struct Opts {
     rebuild: bool,
     /// Sent as `x-expected-vectors` on create (shard count); `None` = `n`, `Some(0)` = omit.
     expected_vectors: Option<u64>,
+    /// MRL collection: `cascade_pipeline[0].cutoff_dimension` (0 = none).
+    mrl_cutoff: u32,
+    /// MRL-shaped data: coordinate `d` scaled by `(d + 1)^-decay` before normalizing (0 = isotropic).
+    mrl_decay: f32,
     json: Option<String>,
     min_recall: Option<f64>,
     min_qps: Option<f64>,
@@ -93,6 +97,8 @@ impl Default for Opts {
             skip_ingest: false,
             rebuild: false,
             expected_vectors: None,
+            mrl_cutoff: 0,
+            mrl_decay: 0.0,
             json: None,
             min_recall: None,
             min_qps: None,
@@ -107,6 +113,7 @@ const USAGE: &str = "hs_loadbench [--addr URL | --server-bin PATH [--port P] [--
   [--connections K (0 = one per client)] [--duration SECS] [--warmup SECS]
   [--batch B (0 = unary Search)] [--top-k K] [--ef EF] [--f64-wire] [--skip-ingest] [--rebuild]
   [--expected-vectors N (default --n; 0 = no size hint)]
+  [--mrl-cutoff C (MRL prefix index of C dims)] [--mrl-decay A (MRL-shaped data, e.g. 0.5)]
   [--label TEXT] [--json PATH] [--min-recall R] [--min-qps Q]";
 
 fn parse_args() -> Result<Opts, String> {
@@ -149,6 +156,12 @@ fn parse_args() -> Result<Opts, String> {
             "--f64-wire" => o.compact = false,
             "--skip-ingest" => o.skip_ingest = true,
             "--rebuild" => o.rebuild = true,
+            "--mrl-cutoff" => {
+                o.mrl_cutoff = val()?.parse().map_err(|e| format!("--mrl-cutoff: {e}"))?
+            }
+            "--mrl-decay" => {
+                o.mrl_decay = val()?.parse().map_err(|e| format!("--mrl-decay: {e}"))?
+            }
             "--expected-vectors" => {
                 o.expected_vectors = Some(
                     val()?
@@ -200,7 +213,14 @@ fn centroids(dim: usize, clusters: usize, rng: &mut StdRng) -> Vec<Vec<f32>> {
 
 /// Clustered unit vectors (semantic-manifold-like): `n` points drawn around shared
 /// centroids, deterministic per seed. `stream` separates data (0) from queries (1).
-fn clustered(n: usize, dim: usize, clusters: usize, seed: u64, stream: u64) -> Vec<Vec<f32>> {
+fn clustered(
+    n: usize,
+    dim: usize,
+    clusters: usize,
+    seed: u64,
+    stream: u64,
+    decay: f32,
+) -> Vec<Vec<f32>> {
     let cents = centroids(dim, clusters, &mut StdRng::seed_from_u64(seed));
     let spread = 1.5 / (dim as f32).sqrt();
     let mut rng = StdRng::seed_from_u64(seed ^ (stream + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
@@ -208,6 +228,11 @@ fn clustered(n: usize, dim: usize, clusters: usize, seed: u64, stream: u64) -> V
         .map(|_| {
             let c = &cents[rng.gen_range(0..cents.len())];
             let mut v: Vec<f32> = c.iter().map(|&x| x + spread * normal(&mut rng)).collect();
+            if decay > 0.0 {
+                for (d, x) in v.iter_mut().enumerate() {
+                    *x *= ((d + 1) as f32).powf(-decay);
+                }
+            }
             normalize(&mut v);
             v
         })
@@ -520,8 +545,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut admin = connect(&o).await?;
 
     let t = Instant::now();
-    let data = clustered(o.n, o.dim, o.clusters, 42, 0);
-    let qs = clustered(o.queries, o.dim, o.clusters, 42, 1);
+    let data = clustered(o.n, o.dim, o.clusters, 42, 0, o.mrl_decay);
+    let qs = clustered(o.queries, o.dim, o.clusters, 42, 1, o.mrl_decay);
     println!(
         "data: {} × {}D ({} clusters), {} queries generated in {:.1}s",
         o.n,
@@ -539,7 +564,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 full_dimension: o.dim as u32,
                 weight: 1.0,
             }],
-            cascade_pipeline: vec![],
+            cascade_pipeline: if o.mrl_cutoff > 0 {
+                vec![hyperspace_proto::hyperspace::MrlLayer {
+                    component_name: "default".into(),
+                    cutoff_dimension: o.mrl_cutoff,
+                    store_in_ram: true,
+                    rerank_top_k: 0,
+                }]
+            } else {
+                vec![]
+            },
             encrypted: Some(false),
         };
         let mut req = Request::new(CreateCollectionRequest {

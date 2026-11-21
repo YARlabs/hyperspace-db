@@ -1994,3 +1994,193 @@ async fn extended_rabitq_levels_end_to_end() {
     );
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+/// MRL collections (`cascade_pipeline[0].cutoff_dimension`) index the vector prefix and
+/// rerank on the full vector: the cutoff used to be stored and reported but never used.
+#[tokio::test]
+async fn mrl_prefix_index_end_to_end() {
+    let _env = SHARD_ENV_LOCK.lock().await;
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx.clone(), etx.clone());
+    let (dim, cut) = (128usize, 32u32);
+    let schema = |cutoff: u32| hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "cosine".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: if cutoff == 0 {
+            vec![]
+        } else {
+            vec![hyperspace_proto::hyperspace::MrlLayer {
+                component_name: "default".to_string(),
+                cutoff_dimension: cutoff,
+                store_in_ram: true,
+                rerank_top_k: 0,
+            }]
+        },
+        encrypted: Some(false),
+    };
+    // MRL-shaped: energy decays along the dimensions, 20 clusters.
+    let point = |i: u32| -> Vec<f64> {
+        let mut v: Vec<f64> = (0..dim)
+            .map(|d| {
+                let h = |s: u64| {
+                    let mut x = s.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                    x ^= x >> 29;
+                    (x % 20_001) as f64 / 10_000.0 - 1.0
+                };
+                let w = 1.0 / ((d + 1) as f64).sqrt();
+                w * (h(u64::from(i % 20) << 20 | d as u64)
+                    + 0.7 * h(u64::from(i) << 24 | d as u64 | 1 << 40))
+            })
+            .collect();
+        let n = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+        for x in &mut v {
+            *x /= n;
+        }
+        v
+    };
+    let n = 3000u32;
+    let exact_top = |q: &[f64], k: usize| -> Vec<u32> {
+        let mut d: Vec<(f64, u32)> = (0..n)
+            .map(|i| {
+                (
+                    point(i).iter().zip(q).map(|(a, b)| (a - b) * (a - b)).sum(),
+                    i,
+                )
+            })
+            .collect();
+        d.sort_by(|a, b| a.0.total_cmp(&b.0));
+        d.into_iter().take(k).map(|x| x.1).collect()
+    };
+    std::env::set_var("HS_SHARDS", "1");
+    for (name, cutoff, quant) in [
+        ("mrl_none", cut, "none"),
+        ("mrl_medium", cut, "medium"),
+        ("full", 0, "none"),
+    ] {
+        manager
+            .create_collection_with_options(
+                "default_admin",
+                name,
+                schema(cutoff),
+                Some(quant.into()),
+                None,
+            )
+            .await
+            .unwrap();
+        let col = manager.get("default_admin", name).await.unwrap();
+        let want_index = if cutoff == 0 { dim } else { cut as usize };
+        assert_eq!(col.dimension(), dim, "{name}");
+        assert_eq!(col.index_dimension(), want_index, "{name}: index width");
+        let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> =
+            (0..n).map(|i| (point(i), i, HashMap::new())).collect();
+        col.insert_batch(batch, 1, Durability::Default)
+            .await
+            .unwrap();
+        for _ in 0..800 {
+            if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        let mut hits = 0usize;
+        for qi in 0..40u32 {
+            let q = point(1_000_000 + qi);
+            let truth = exact_top(&q, 10);
+            let res = col
+                .search(
+                    &q,
+                    &HashMap::new(),
+                    &[],
+                    &hyperspace_core::SearchParams {
+                        top_k: 10,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            hits += res.iter().filter(|r| truth.contains(&r.0)).count();
+            // Distances are full-vector distances, not prefix distances.
+            let top = &res[0];
+            let exact: f64 = point(top.0)
+                .iter()
+                .zip(&q)
+                .map(|(a, b)| (a - b) * (a - b))
+                .sum();
+            let cos_dist = exact / 2.0;
+            assert!(
+                (top.1 - cos_dist).abs() < 0.02 || (top.1 - exact).abs() < 0.02,
+                "{name}: distance {} is not the full-vector distance {cos_dist}",
+                top.1
+            );
+        }
+        let recall = hits as f64 / 400.0;
+        assert!(recall >= 0.95, "{name}: recall {recall}");
+        // Get returns the full vector.
+        let pts = col.get_points(&[17]);
+        assert_eq!(pts[0].1.len(), dim, "{name}: full vector returned");
+        let err = pts[0]
+            .1
+            .iter()
+            .zip(point(17))
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max);
+        assert!(err < 1e-3, "{name}: stored vector error {err}");
+        if cutoff > 0 {
+            // RebuildIndex keeps the prefix layout and the full-vector rerank.
+            col.optimize().await.unwrap();
+            assert_eq!(col.index_dimension(), cut as usize, "{name}: after rebuild");
+            let q = point(1_000_123);
+            let truth = exact_top(&q, 10);
+            let res = col
+                .search(
+                    &q,
+                    &HashMap::new(),
+                    &[],
+                    &hyperspace_core::SearchParams {
+                        top_k: 10,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            let overlap = res.iter().filter(|r| truth.contains(&r.0)).count();
+            assert!(overlap >= 9, "{name}: post-rebuild overlap {overlap}/10");
+        }
+    }
+    std::env::remove_var("HS_SHARDS");
+    // Reopen: the marker keeps the prefix layout.
+    drop(manager);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let col = manager.get("default_admin", "mrl_none").await.unwrap();
+    assert_eq!(
+        col.index_dimension(),
+        cut as usize,
+        "prefix layout survives a restart"
+    );
+    let q = point(1_000_007);
+    let truth = exact_top(&q, 10);
+    let res = col
+        .search(
+            &q,
+            &HashMap::new(),
+            &[],
+            &hyperspace_core::SearchParams {
+                top_k: 10,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        res.iter().filter(|r| truth.contains(&r.0)).count() >= 9,
+        "search after reopen"
+    );
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

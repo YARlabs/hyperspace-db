@@ -542,6 +542,11 @@ pub trait Collection: Send + Sync + 'static {
     }
     fn count(&self) -> usize;
     fn dimension(&self) -> usize;
+    /// Width of the ANN index: smaller than [`Self::dimension`] for an MRL prefix index
+    /// (the full vector is kept for the rerank).
+    fn index_dimension(&self) -> usize {
+        self.dimension()
+    }
     fn metric_name(&self) -> &'static str;
     fn state_hash(&self) -> u64;
     fn buckets(&self) -> Vec<u64>; // New method
