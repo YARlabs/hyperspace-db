@@ -2607,3 +2607,231 @@ mod tests {
         }
     }
 }
+
+// ── Integer SQ8 kernels (per-vector scaled codes × int8-quantized query) ─────────────────
+
+/// A query prepared once for integer SQ8 scoring: int8 codes on the query's own scale
+/// (`q_i ≈ codes_i · scale`), zero-padded to a multiple of 16, plus the exact `‖q‖²`.
+#[derive(Debug, Clone)]
+pub struct Sq8Query {
+    pub codes: Vec<i8>,
+    pub scale: f32,
+    pub norm_sq: f32,
+    pub dim: usize,
+}
+
+impl Sq8Query {
+    #[must_use]
+    pub fn new(q: &[f32]) -> Self {
+        let dim = q.len();
+        let max = q.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
+        let scale = if max > 0.0 { max / 127.0 } else { 1.0 };
+        let inv = 1.0 / scale;
+        let mut codes = vec![0i8; dim.div_ceil(16) * 16];
+        for (c, &x) in codes.iter_mut().zip(q) {
+            *c = (x * inv).round().clamp(-127.0, 127.0) as i8;
+        }
+        Self {
+            codes,
+            scale,
+            norm_sq: q.iter().map(|x| x * x).sum(),
+            dim,
+        }
+    }
+}
+
+/// `(Σ a_i·b_i, Σ a_i²)` over two int8 slices of equal length (portable reference).
+#[must_use]
+pub fn i8_dot_and_self_scalar(a: &[i8], b: &[i8]) -> (i32, i32) {
+    let mut d = 0i32;
+    let mut s = 0i32;
+    for (&x, &y) in a.iter().zip(b) {
+        d += i32::from(x) * i32::from(y);
+        s += i32::from(x) * i32::from(x);
+    }
+    (d, s)
+}
+
+/// NEON `SDOT` (ARMv8.2 dot-product extension, present on every Apple Silicon and Graviton2+):
+/// 16 int8 multiply-adds per instruction into int32 lanes.
+///
+/// # Safety
+/// The CPU must support `dotprod`; `a.len() == b.len()` and a multiple of 16.
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+#[target_feature(enable = "neon,dotprod")]
+pub(crate) unsafe fn i8_dot_and_self_sdot(a: &[i8], b: &[i8]) -> (i32, i32) {
+    use core::arch::aarch64::{vaddvq_s32, vdupq_n_s32, vld1q_s8};
+    let mut acc_d0 = vdupq_n_s32(0);
+    let mut acc_d1 = vdupq_n_s32(0);
+    let mut acc_s0 = vdupq_n_s32(0);
+    let mut acc_s1 = vdupq_n_s32(0);
+    let n = a.len();
+    let mut i = 0;
+    while i + 32 <= n {
+        let a0 = vld1q_s8(a.as_ptr().add(i));
+        let b0 = vld1q_s8(b.as_ptr().add(i));
+        let a1 = vld1q_s8(a.as_ptr().add(i + 16));
+        let b1 = vld1q_s8(b.as_ptr().add(i + 16));
+        core::arch::asm!(
+            "sdot {d0:v}.4s, {a0:v}.16b, {b0:v}.16b",
+            "sdot {s0:v}.4s, {a0:v}.16b, {a0:v}.16b",
+            "sdot {d1:v}.4s, {a1:v}.16b, {b1:v}.16b",
+            "sdot {s1:v}.4s, {a1:v}.16b, {a1:v}.16b",
+            d0 = inout(vreg) acc_d0, s0 = inout(vreg) acc_s0,
+            d1 = inout(vreg) acc_d1, s1 = inout(vreg) acc_s1,
+            a0 = in(vreg) a0, b0 = in(vreg) b0, a1 = in(vreg) a1, b1 = in(vreg) b1,
+            options(pure, nomem, nostack),
+        );
+        i += 32;
+    }
+    while i + 16 <= n {
+        let a0 = vld1q_s8(a.as_ptr().add(i));
+        let b0 = vld1q_s8(b.as_ptr().add(i));
+        core::arch::asm!(
+            "sdot {d0:v}.4s, {a0:v}.16b, {b0:v}.16b",
+            "sdot {s0:v}.4s, {a0:v}.16b, {a0:v}.16b",
+            d0 = inout(vreg) acc_d0, s0 = inout(vreg) acc_s0,
+            a0 = in(vreg) a0, b0 = in(vreg) b0,
+            options(pure, nomem, nostack),
+        );
+        i += 16;
+    }
+    let (mut d, mut s) = (
+        vaddvq_s32(acc_d0) + vaddvq_s32(acc_d1),
+        vaddvq_s32(acc_s0) + vaddvq_s32(acc_s1),
+    );
+    let (td, ts) = i8_dot_and_self_scalar(&a[i..], &b[i..]);
+    d += td;
+    s += ts;
+    (d, s)
+}
+
+/// Baseline NEON (no dot-product extension): widening `i8 × i8 → i16` multiplies with
+/// pairwise accumulation into int32.
+///
+/// # Safety
+/// `a.len() == b.len()`.
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+#[target_feature(enable = "neon")]
+pub(crate) unsafe fn i8_dot_and_self_neon(a: &[i8], b: &[i8]) -> (i32, i32) {
+    use core::arch::aarch64::{
+        vaddvq_s32, vdupq_n_s32, vget_high_s8, vget_low_s8, vld1q_s8, vmull_s8, vpadalq_s16,
+    };
+    let mut acc_d = vdupq_n_s32(0);
+    let mut acc_s = vdupq_n_s32(0);
+    let n = a.len();
+    let mut i = 0;
+    while i + 16 <= n {
+        let x = vld1q_s8(a.as_ptr().add(i));
+        let y = vld1q_s8(b.as_ptr().add(i));
+        acc_d = vpadalq_s16(acc_d, vmull_s8(vget_low_s8(x), vget_low_s8(y)));
+        acc_d = vpadalq_s16(acc_d, vmull_s8(vget_high_s8(x), vget_high_s8(y)));
+        acc_s = vpadalq_s16(acc_s, vmull_s8(vget_low_s8(x), vget_low_s8(x)));
+        acc_s = vpadalq_s16(acc_s, vmull_s8(vget_high_s8(x), vget_high_s8(x)));
+        i += 16;
+    }
+    let (mut d, mut s) = (vaddvq_s32(acc_d), vaddvq_s32(acc_s));
+    let (td, ts) = i8_dot_and_self_scalar(&a[i..], &b[i..]);
+    d += td;
+    s += ts;
+    (d, s)
+}
+
+/// AVX2: sign-extend 16 int8 lanes to int16 and `vpmaddwd` into int32.
+///
+/// # Safety
+/// The CPU must support AVX2; `a.len() == b.len()`.
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[target_feature(enable = "avx2")]
+unsafe fn i8_dot_and_self_avx2(a: &[i8], b: &[i8]) -> (i32, i32) {
+    use core::arch::x86_64::{
+        __m128i, _mm256_add_epi32, _mm256_castsi256_si128, _mm256_cvtepi8_epi16,
+        _mm256_extracti128_si256, _mm256_madd_epi16, _mm256_setzero_si256, _mm_add_epi32,
+        _mm_cvtsi128_si32, _mm_loadu_si128, _mm_shuffle_epi32,
+    };
+    let hsum = |v| {
+        let lo = _mm256_castsi256_si128(v);
+        let hi = _mm256_extracti128_si256::<1>(v);
+        let s = _mm_add_epi32(lo, hi);
+        let s = _mm_add_epi32(s, _mm_shuffle_epi32::<0b0100_1110>(s));
+        let s = _mm_add_epi32(s, _mm_shuffle_epi32::<0b1011_0001>(s));
+        _mm_cvtsi128_si32(s)
+    };
+    let mut acc_d = _mm256_setzero_si256();
+    let mut acc_s = _mm256_setzero_si256();
+    let n = a.len();
+    let mut i = 0;
+    while i + 16 <= n {
+        let x = _mm256_cvtepi8_epi16(_mm_loadu_si128(a.as_ptr().add(i).cast::<__m128i>()));
+        let y = _mm256_cvtepi8_epi16(_mm_loadu_si128(b.as_ptr().add(i).cast::<__m128i>()));
+        acc_d = _mm256_add_epi32(acc_d, _mm256_madd_epi16(x, y));
+        acc_s = _mm256_add_epi32(acc_s, _mm256_madd_epi16(x, x));
+        i += 16;
+    }
+    let (mut d, mut s) = (hsum(acc_d), hsum(acc_s));
+    let (td, ts) = i8_dot_and_self_scalar(&a[i..], &b[i..]);
+    d += td;
+    s += ts;
+    (d, s)
+}
+
+/// `(Σ a_i·b_i, Σ a_i²)` for int8 slices with the fastest available instructions.
+#[inline]
+#[must_use]
+pub fn i8_dot_and_self(a: &[i8], b: &[i8]) -> (i32, i32) {
+    let n = a.len().min(b.len());
+    let (a, b) = (&a[..n], &b[..n]);
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    {
+        static DOTPROD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *DOTPROD.get_or_init(|| std::arch::is_aarch64_feature_detected!("dotprod")) {
+            // SAFETY: feature detected; equal lengths.
+            return unsafe { i8_dot_and_self_sdot(a, b) };
+        }
+        if backend() == SimdBackend::Neon {
+            // SAFETY: NEON is mandatory on aarch64; equal lengths.
+            return unsafe { i8_dot_and_self_neon(a, b) };
+        }
+    }
+    #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+    {
+        if matches!(backend(), SimdBackend::Avx2 | SimdBackend::Avx512) {
+            // SAFETY: AVX2 detected by `backend()`; equal lengths.
+            return unsafe { i8_dot_and_self_avx2(a, b) };
+        }
+    }
+    i8_dot_and_self_scalar(a, b)
+}
+
+/// Squared L2 between two stored per-vector scaled int8 vectors (`codes ‖ alpha` layout,
+/// `x_i = code_i · alpha / 127`), computed in integer arithmetic.
+#[must_use]
+pub fn sq8_scaled_l2_pair(a: &[u8], b: &[u8]) -> f32 {
+    if a.len() < 4 || b.len() < 4 {
+        return f32::MAX;
+    }
+    let (sa, sb) = (a.len() - 4, b.len() - 4);
+    let alpha_a = f32::from_le_bytes(a[sa..].try_into().unwrap_or([0; 4]));
+    let alpha_b = f32::from_le_bytes(b[sb..].try_into().unwrap_or([0; 4]));
+    let n = sa.min(sb);
+    // SAFETY: i8 and u8 have identical size and alignment.
+    let ca: &[i8] = unsafe { std::slice::from_raw_parts(a.as_ptr().cast::<i8>(), n) };
+    let cb: &[i8] = unsafe { std::slice::from_raw_parts(b.as_ptr().cast::<i8>(), n) };
+    let (dot, aa) = i8_dot_and_self(ca, cb);
+    let (_, bb) = i8_dot_and_self(cb, cb);
+    let (x, y) = (alpha_a / 127.0, alpha_b / 127.0);
+    (x * x * aa as f32 + y * y * bb as f32 - 2.0 * x * y * dot as f32).max(0.0)
+}
+
+/// Squared L2 between a per-vector-scaled SQ8 code (`x_i ≈ code_i · alpha / 127`) and a
+/// prepared query: `sx²·Σc² − 2·sx·sq·Σc·q + ‖q‖²`, all products in integer SIMD.
+#[inline]
+#[must_use]
+pub fn sq8_scaled_l2_int(code: &[u8], alpha: f32, q: &Sq8Query) -> f32 {
+    let n = code.len().min(q.dim);
+    // SAFETY: i8 and u8 have identical size and alignment.
+    let c: &[i8] = unsafe { std::slice::from_raw_parts(code.as_ptr().cast::<i8>(), n) };
+    let (dot, self_sq) = i8_dot_and_self(c, &q.codes[..n]);
+    let sx = alpha / 127.0;
+    (sx * sx * self_sq as f32 - 2.0 * sx * q.scale * dot as f32 + q.norm_sq).max(0.0)
+}

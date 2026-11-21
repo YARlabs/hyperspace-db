@@ -610,3 +610,135 @@ fn scalar_i4_neon_matches_scalar_block_sums() {
         assert!((s1 - s2).abs() <= 1e-3 * (1.0 + s1));
     }
 }
+
+mod sq8_int_kernels {
+    use crate::simd::{i8_dot_and_self, i8_dot_and_self_scalar, sq8_scaled_l2_int, Sq8Query};
+    use crate::vector::{HyperVector, QuantizedHyperVector};
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn int_dot_paths_agree(v in proptest::collection::vec((-127i8..=127, -127i8..=127), 0..300)) {
+            let a: Vec<i8> = v.iter().map(|p| p.0).collect();
+            let b: Vec<i8> = v.iter().map(|p| p.1).collect();
+            let r = i8_dot_and_self_scalar(&a, &b);
+            prop_assert_eq!(i8_dot_and_self(&a, &b), r);
+            #[cfg(target_arch = "aarch64")]
+            {
+                // SAFETY: NEON is mandatory on aarch64; dotprod is checked below.
+                prop_assert_eq!(unsafe { crate::simd::i8_dot_and_self_neon(&a, &b) }, r);
+                if std::arch::is_aarch64_feature_detected!("dotprod") {
+                    prop_assert_eq!(unsafe { crate::simd::i8_dot_and_self_sdot(&a, &b) }, r);
+                }
+            }
+        }
+
+        #[test]
+        fn scaled_sq8_distance_tracks_the_exact_distance(d in 8usize..600, seed in 0u64..500) {
+            let gen = |s: u64| -> Vec<f64> {
+                let v: Vec<f64> = (0..d as u64).map(|i| (((s * 7919 + i * 104_729) % 2001) as f64 / 1000.0) - 1.0).collect();
+                let n = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+                v.into_iter().map(|x| x / n).collect()
+            };
+            let x = gen(seed);
+            let q = gen(seed + 1);
+            let code = QuantizedHyperVector::from_float_scaled(&HyperVector { coords: x.clone(), alpha: 1.0 });
+            let exact: f64 = x.iter().zip(&q).map(|(a, b)| (a - b) * (a - b)).sum();
+            let qf: Vec<f32> = q.iter().map(|&v| v as f32).collect();
+            let approx = f64::from(sq8_scaled_l2_int(
+                &code.coords.iter().map(|&c| c.cast_unsigned()).collect::<Vec<u8>>(),
+                code.alpha,
+                &Sq8Query::new(&qf),
+            ));
+            // 8-bit codes on both sides of unit vectors (distance range 0..4): the absolute
+            // error stays within 0.5% of the range.
+            prop_assert!((approx - exact).abs() <= 0.02, "{approx} vs {exact}");
+        }
+    }
+
+    fn stored(v: &[f64]) -> Vec<u8> {
+        let q = QuantizedHyperVector::from_float_scaled(&HyperVector {
+            coords: v.to_vec(),
+            alpha: 1.0,
+        });
+        let mut b: Vec<u8> = q.coords.iter().map(|&c| c.cast_unsigned()).collect();
+        b.extend_from_slice(&q.alpha.to_le_bytes());
+        b
+    }
+
+    #[test]
+    fn scaled_pair_distance_matches_the_decoded_distance() {
+        for d in [1usize, 15, 16, 17, 64, 333, 1024] {
+            let a: Vec<f64> = (0..d)
+                .map(|i| ((i * 37 % 101) as f64 - 50.0) / 70.0)
+                .collect();
+            let b: Vec<f64> = (0..d)
+                .map(|i| ((i * 53 % 97) as f64 - 48.0) / 90.0)
+                .collect();
+            let (ba, bb) = (stored(&a), stored(&b));
+            let dec = |bytes: &[u8]| -> Vec<f64> {
+                let n = bytes.len() - 4;
+                let alpha = f32::from_le_bytes(bytes[n..].try_into().unwrap());
+                bytes[..n]
+                    .iter()
+                    .map(|&c| f64::from(c.cast_signed()) * f64::from(alpha / 127.0))
+                    .collect()
+            };
+            let (da, db) = (dec(&ba), dec(&bb));
+            let want: f64 = da.iter().zip(&db).map(|(x, y)| (x - y) * (x - y)).sum();
+            let got = f64::from(crate::simd::sq8_scaled_l2_pair(&ba, &bb));
+            assert!(
+                (got - want).abs() <= 1e-3 * want.max(1.0),
+                "d={d}: {got} vs {want}"
+            );
+            assert!(f64::from(crate::simd::sq8_scaled_l2_pair(&ba, &ba)) < 1e-4);
+        }
+    }
+
+    #[test]
+    fn scaled_int_kernel_matches_the_f32_query_kernel() {
+        let d = 768;
+        let x: Vec<f64> = (0..d)
+            .map(|i| ((i * 31 % 89) as f64 - 44.0) / 400.0)
+            .collect();
+        let q: Vec<f32> = (0..d)
+            .map(|i| ((i * 17 % 83) as f32 - 41.0) / 380.0)
+            .collect();
+        let bytes = stored(&x);
+        let n = bytes.len() - 4;
+        let alpha = f32::from_le_bytes(bytes[n..].try_into().unwrap());
+        let f = crate::simd::sq8_scaled_l2_and_norm_sq(&bytes[..n], alpha / 127.0, &q).0;
+        let i = sq8_scaled_l2_int(&bytes[..n], alpha, &Sq8Query::new(&q));
+        assert!((f - i).abs() <= 0.01 * f.max(0.1), "{f} vs {i}");
+    }
+
+    #[test]
+    fn zero_vector_scales_safely() {
+        let b = stored(&[0.0; 40]);
+        let d = sq8_scaled_l2_int(&b[..40], 1.0, &Sq8Query::new(&[0.5f32; 40]));
+        assert!((d - 10.0).abs() < 0.2, "{d}");
+        assert!(sq8_scaled_l2_int(&b[..40], 1.0, &Sq8Query::new(&[0.0f32; 40])) < 1e-6);
+    }
+
+    #[test]
+    fn scaled_codes_use_the_full_int8_range() {
+        let v: Vec<f64> = (0..1024).map(|i| ((i % 17) as f64 - 8.0) * 0.004).collect();
+        let fixed = QuantizedHyperVector::from_float(
+            &HyperVector {
+                coords: v.clone(),
+                alpha: 1.0,
+            },
+            false,
+        );
+        let scaled = QuantizedHyperVector::from_float_scaled(&HyperVector {
+            coords: v,
+            alpha: 1.0,
+        });
+        let span = |c: &[i8]| c.iter().map(|x| i32::from(*x).abs()).max().unwrap();
+        assert!(
+            span(&fixed.coords) <= 5,
+            "legacy fixed scale wastes the range"
+        );
+        assert_eq!(span(&scaled.coords), 127);
+    }
+}

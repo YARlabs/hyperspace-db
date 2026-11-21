@@ -1,5 +1,6 @@
 use crate::chunk_backend::ChunkBackend;
 use crate::chunk_searcher;
+use crate::exact_store::ExactVectorStore;
 use crate::meta_router::{CentroidAccumulator, ChunkMeta, MetaRouter};
 use crate::sync::CollectionDigest;
 use arc_swap::ArcSwap;
@@ -35,8 +36,14 @@ struct CollectionState {
 fn env_rerank_enabled() -> bool {
     static VAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *VAL.get_or_init(|| {
-        std::env::var("HS_RERANK_ENABLED")
-            .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        // On by default since 4.2.5: quantized collections rerank their merged candidates
+        // once against the exact store (≈3% QPS for exact top-k). Full precision skips it.
+        std::env::var("HS_RERANK_ENABLED").map_or(true, |v| {
+            !matches!(
+                v.trim().to_lowercase().as_str(),
+                "0" | "false" | "no" | "off"
+            )
+        })
     })
 }
 
@@ -71,14 +78,64 @@ fn env_cache_read_through() -> bool {
     })
 }
 
-/// Entries of the per-shard raw-vector cache (exact f32 copies used by rerank and online
-/// calibration; the payload store keeps every exact vector anyway). Budget:
-/// `HS_RAW_CACHE_MB` (default 256) per collection, split across `shards`.
-fn raw_cache_capacity(dimension: usize, shards: usize) -> usize {
+/// Output of the blocking half of `RebuildIndex`.
+struct RebuildOutput {
+    element_size: usize,
+    storage_f32: bool,
+    dimension: usize,
+    vacuum_config: Arc<hyperspace_core::config::GlobalConfig>,
+    temp_dir: PathBuf,
+    new_snap_path: PathBuf,
+    /// Old internal ids in their new order (new id = position).
+    order: Vec<u32>,
+    old_len: usize,
+    has_exact: bool,
+}
+
+/// Live ids in breadth-first order of the layer-0 graph, so that graph neighbours get
+/// nearby ids after a rebuild (better cache / prefetch locality during traversal).
+/// Components the BFS does not reach follow in id order.
+fn rebuild_bfs_order<M: Metric>(index: &HnswIndex<M>, live: &[u32], max_len: usize) -> Vec<u32> {
+    let mut allowed = vec![false; max_len];
+    for &id in live {
+        allowed[id as usize] = true;
+    }
+    let mut seen = vec![false; max_len];
+    let mut order = Vec::with_capacity(live.len());
+    let mut queue = std::collections::VecDeque::new();
+    for &root in live {
+        if seen[root as usize] {
+            continue;
+        }
+        seen[root as usize] = true;
+        queue.push_back(root);
+        while let Some(id) = queue.pop_front() {
+            order.push(id);
+            if let Ok(ns) = index.graph_neighbors(id, 0, usize::MAX) {
+                for n in ns {
+                    let n_us = n as usize;
+                    if n_us < max_len && allowed[n_us] && !seen[n_us] {
+                        seen[n_us] = true;
+                        queue.push_back(n);
+                    }
+                }
+            }
+        }
+    }
+    order
+}
+
+/// Entries of the per-shard heap raw-vector cache (exact f32 copies for rerank and online
+/// calibration; the memory-mapped exact store keeps every exact vector anyway). Budget:
+/// `HS_RAW_CACHE_MB` per collection (default 0 with an exact store, else 256), split across
+/// `shards`.
+fn raw_cache_capacity(dimension: usize, shards: usize, has_exact_store: bool) -> usize {
+    // With the memory-mapped exact store the page cache already serves exact vectors, so
+    // the heap copy is opt-in (`HS_RAW_CACHE_MB`); legacy collections keep 256 MiB.
     let mb = std::env::var("HS_RAW_CACHE_MB")
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
-        .unwrap_or(256);
+        .unwrap_or(if has_exact_store { 0 } else { 256 });
     let per_vector = dimension.max(1) * 4 + 64; // f32 data + map / Vec overhead
     (mb * 1024 * 1024 / per_vector / shards.max(1)).max(if mb == 0 { 0 } else { 256 })
 }
@@ -120,6 +177,7 @@ const AUTO_CALIBRATE_GROWTH: usize = 8;
 fn maybe_auto_calibrate<M: Metric>(
     index: &HnswIndex<M>,
     raw_cache: &DashMap<u32, Vec<f32>>,
+    exact: Option<&ExactVectorStore>,
     payload: Option<&PayloadStore>,
     min_vectors: usize,
     name: &str,
@@ -142,11 +200,28 @@ fn maybe_auto_calibrate<M: Metric>(
     if !due {
         return None;
     }
-    let samples: Vec<Vec<f32>> = raw_cache
+    let mut samples: Vec<Vec<f32>> = raw_cache
         .iter()
         .take(AUTO_CALIBRATE_MAX_SAMPLES)
         .map(|e| e.value().clone())
         .collect();
+    if let Some(exact) = exact {
+        // The raw cache is bounded (or disabled): top the sample up from the exact store,
+        // spread evenly over the shard.
+        let want = AUTO_CALIBRATE_MAX_SAMPLES.min(count);
+        if samples.len() < want {
+            let step = (count / want.max(1)).max(1);
+            let mut id = 0usize;
+            while samples.len() < want && id < count {
+                if !raw_cache.contains_key(&(id as u32)) {
+                    if let Some(v) = exact.get(id as u32) {
+                        samples.push(v);
+                    }
+                }
+                id += step;
+            }
+        }
+    }
     if samples.len() < min_vectors.min(256) {
         return None;
     }
@@ -156,6 +231,9 @@ fn maybe_auto_calibrate<M: Metric>(
     // exact f32 copy of every vector of a quantized collection).
     let dim = index.dimension;
     let (re_encoded, missing) = index.refit_online(&refs, 10, |id| {
+        if let Some(v) = exact.and_then(|e| e.get(id)) {
+            return Some(v);
+        }
         raw_cache.get(&id).map(|v| v.value().clone()).or_else(|| {
             let bytes = payload?.fetch_blocking(id).ok()??;
             (bytes.len() == dim * 4).then(|| {
@@ -224,6 +302,9 @@ pub struct CollectionImpl<M: Metric> {
     // Stores heavy document blobs on disk. The index (16 bytes/entry) lives in RAM;
     // the bytes NEVER touch RAM during HNSW traversal. Reads use pread + spawn_blocking.
     payload_store: Arc<PayloadStore>,
+    /// Exact `f32` vectors by internal id (quantized modes), see [`ExactVectorStore`].
+    /// Swapped as a whole by `RebuildIndex`, which renumbers internal ids.
+    exact_store: Arc<arc_swap::ArcSwapOption<ExactVectorStore>>,
     dimension: usize,
     /// Stored for introspection, schema validation, and future multi-component APIs.
     #[allow(dead_code)]
@@ -317,6 +398,128 @@ impl<M: Metric> CollectionImpl<M> {
             && self.layout.components.len() <= 1
             && params.component_weights.is_none()
             && params.mrl_dimension.is_none()
+    }
+
+    /// Candidate count of an exact rerank that the scatter-gather layer can run once on
+    /// the merged shard results (`None`: no rerank, or one this shard must run itself —
+    /// multi-component layouts, MRL, hybrid queries, cold chunks).
+    pub(crate) fn deferred_rerank_k(
+        &self,
+        filters: &HashMap<String, String>,
+        params: &SearchParams,
+    ) -> Option<usize> {
+        let requested = filters
+            .get("rerank")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes"));
+        let schema_k = self
+            .schema
+            .cascade_pipeline
+            .iter()
+            .find_map(|layer| (layer.rerank_top_k > 0).then_some(layer.rerank_top_k as usize));
+        let rerank = requested.unwrap_or(env_rerank_enabled() || schema_k.is_some())
+            && params.hybrid_query.is_none();
+        static DEFER: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let defer = *DEFER.get_or_init(|| {
+            std::env::var("HS_RERANK_DEFER")
+                .map_or(true, |v| !matches!(v.trim(), "0" | "false" | "no" | "off"))
+        });
+        if !defer
+            || self.rerank_full_pool()
+            || !rerank
+            || self.rerank_is_redundant(params)
+            || self.layout.components.len() > 1
+            || params.component_weights.is_some()
+            || params.mrl_dimension.is_some()
+            || self.meta_router.chunk_count() > 0
+        {
+            return None;
+        }
+        let oversample = filters
+            .get("oversample")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or_else(env_rerank_oversample)
+            .max(1);
+        let k = params.top_k.max(1);
+        Some(k.saturating_mul(oversample).max(schema_k.unwrap_or(0)))
+    }
+
+    /// Exact distance between the vector of `user_id` and an already processed
+    /// (normalized for cosine) query, from the best exact source available. `None` when
+    /// the id is unknown or still in the write buffer (whose hits are exact already).
+    pub(crate) fn exact_distance(
+        &self,
+        user_id: u32,
+        processed_query: &[f64],
+        query_f32: &[f32],
+    ) -> Option<f64> {
+        if self.write_buffer.get_by_user_id(user_id).is_some() {
+            return None;
+        }
+        let ids_identity = self.ids_are_identity.load(Ordering::Acquire);
+        let internal = if ids_identity {
+            user_id
+        } else {
+            *self.id_map.get(&user_id)?
+        };
+        let index = self.index_link.load();
+        if internal as usize >= index.count_nodes()
+            || index.metadata.deleted.read().contains(internal)
+        {
+            return None;
+        }
+        let q = &processed_query[..processed_query.len().min(self.dimension)];
+        let exact = self.exact_store.load_full();
+        if let Some(exact) = &exact {
+            // L2 / cosine (squared L2 on normalized vectors): f32 SIMD straight from the map.
+            if matches!(M::name(), "l2" | "cosine") {
+                if let Some(bytes) = exact.get_bytes(internal) {
+                    return Some(f64::from(hyperspace_core::simd::l2_sq_f32_bytes(
+                        bytes, query_f32, None,
+                    )));
+                }
+            }
+        }
+        let mut buf = vec![0.0f64; q.len()];
+        if let Some(exact) = exact {
+            if exact.read_f64(internal, &mut buf) {
+                return Some(M::distance(&buf, q));
+            }
+        }
+        if let Some(v) = self.raw_vector_cache.get(&internal) {
+            for (d, &x) in buf.iter_mut().zip(v.iter()) {
+                *d = f64::from(x);
+            }
+            return Some(M::distance(&buf, q));
+        }
+        if let Ok(Some(bytes)) = self.payload_store.fetch_blocking(internal) {
+            if bytes.len() == self.dimension * 4 {
+                for (d, c) in buf.iter_mut().zip(bytes.as_chunks::<4>().0) {
+                    *d = f64::from(f32::from_le_bytes(*c));
+                }
+                return Some(M::distance(&buf, q));
+            }
+        }
+        let orig = index.get_vector_original(internal);
+        let n = orig.coords.len().min(q.len());
+        Some(M::distance(&orig.coords[..n], &q[..n]))
+    }
+
+    /// Codes too coarse to keep the true neighbours within `top_k × oversample` merged
+    /// candidates (1–2 bit, PQ). They need the wide pool of per-shard reranking (each shard
+    /// reranks its own `2 · top_k × oversample`), which also runs in parallel across shards,
+    /// so they do not defer.
+    fn rerank_full_pool(&self) -> bool {
+        use hyperspace_core::QuantizationMode as Q;
+        matches!(
+            self.mode,
+            Q::Binary | Q::Ternary | Q::RaBitQ | Q::PQ4 | Q::ProductQuantization | Q::OPQ
+        )
+    }
+
+    /// Cosine collections normalize queries before searching; exact reranks done outside
+    /// the shard must use the same processed query.
+    pub(crate) fn process_query<'q>(&self, query: &'q [f64]) -> Cow<'q, [f64]> {
+        Self::normalize_if_cosine(&query[..query.len().min(self.dimension)])
     }
 
     fn normalize_if_cosine(vector: &[f64]) -> Cow<'_, [f64]> {
@@ -836,11 +1039,19 @@ impl<M: Metric> CollectionImpl<M> {
             }
         };
 
+        // Exact f32 copies for rerank / calibration / RebuildIndex (quantized modes only).
+        let exact_store = Arc::new(arc_swap::ArcSwapOption::new(
+            (mode != hyperspace_core::QuantizationMode::None)
+                .then(|| Arc::new(ExactVectorStore::open(&data_dir, dimension))),
+        ));
+        let exact_for_indexer = exact_store.clone();
+
         let write_buffer_for_indexer = write_buffer.clone();
         let raw_vector_cache: Arc<DashMap<u32, Vec<f32>>> = Arc::new(DashMap::new());
         let raw_cache_for_indexer = Arc::clone(&raw_vector_cache);
         let payload_for_indexer = Arc::clone(&payload_store);
-        let raw_vector_cache_cap = raw_cache_capacity(dimension, shard_share);
+        let raw_vector_cache_cap =
+            raw_cache_capacity(dimension, shard_share, exact_store.load().is_some());
         let auto_calibrate_min = env_auto_calibrate_min();
         let calibrating = Arc::new(AtomicBool::new(false));
         let indexer_name = name.clone();
@@ -887,6 +1098,7 @@ impl<M: Metric> CollectionImpl<M> {
                     maybe_auto_calibrate(
                         &idx,
                         &raw_cache_for_indexer,
+                        exact_for_indexer.load_full().as_deref(),
                         Some(&payload_for_indexer),
                         auto_calibrate_min,
                         &indexer_name,
@@ -973,6 +1185,7 @@ impl<M: Metric> CollectionImpl<M> {
                         && !calibrating.swap(true, Ordering::AcqRel)
                     {
                         let raw = Arc::clone(&raw_cache_for_indexer);
+                        let exact = exact_for_indexer.clone();
                         let payload = Arc::clone(&payload_for_indexer);
                         let flag = Arc::clone(&calibrating);
                         let name_cal = indexer_name.clone();
@@ -984,6 +1197,7 @@ impl<M: Metric> CollectionImpl<M> {
                             maybe_auto_calibrate(
                                 &idx_now,
                                 &raw,
+                                exact.load_full().as_deref(),
                                 Some(&payload),
                                 auto_calibrate_min,
                                 &name_cal,
@@ -1240,6 +1454,7 @@ impl<M: Metric> CollectionImpl<M> {
             max_ram_bytes,
             pending_wal_flushes,
             payload_store,
+            exact_store,
             dimension,
             schema,
             layout,
@@ -1747,6 +1962,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         if self.raw_vector_cache.remove(&internal_id).is_some() {
             self.raw_vector_cache_len.fetch_sub(1, Ordering::Relaxed);
         }
+        if let Some(exact) = self.exact_store.load_full() {
+            exact.remove(internal_id);
+        }
         if let Some(ref cache) = self.cache {
             cache.invalidate(id);
         }
@@ -1894,7 +2112,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         // re-scoring would decode every candidate to f64 and compute the same values again.
         // Keep the oversampled beam (`top_k × oversample`) so results stay identical.
         let rerank_redundant = rerank_requested && self.rerank_is_redundant(params);
-        let rerank_enabled = rerank_requested && !rerank_redundant;
+        let rerank_enabled = rerank_requested && !rerank_redundant && !params.defer_rerank;
         let ef_search = if rerank_redundant {
             let search_k = top_k
                 .saturating_mul(rerank_oversample)
@@ -1934,6 +2152,7 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             let write_buffer_for_search = self.write_buffer.clone();
             let mut search_params_owned = params.clone();
             let payload_store_owned = Arc::clone(&self.payload_store);
+            let exact_store_owned = self.exact_store.load_full();
             let raw_vector_cache_owned = Arc::clone(&self.raw_vector_cache);
             let pre_payload = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
@@ -2028,7 +2247,15 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 };
 
                 let reranked_internal: Vec<(u32, f64)> = if rerank_enabled && !results.is_empty() {
+                    let q32_for_rerank: Vec<f32> = processed_query.iter().map(|&x| x as f32).collect();
+                    let l2_like = matches!(M::name(), "l2" | "cosine");
                     let with_exact_coords = |id: u32, dst: &mut [f64], f: &mut dyn FnMut(&[f64]) -> f64| -> f64 {
+                        if let Some(exact) = &exact_store_owned {
+                            if exact.read_f64(id, dst) {
+                                let len = dst.len().min(exact.dimension());
+                                return f(&dst[..len]);
+                            }
+                        }
                         if let Some(v_f32) = raw_vector_cache_owned.get(&id) {
                             let len = dst.len().min(v_f32.len());
                             for (d, &src) in dst[..len].iter_mut().zip(v_f32[..len].iter()) {
@@ -2082,6 +2309,14 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                         let mut exact_scores: Vec<(u32, f64)> = results
                             .iter()
                             .map(|(id, _)| {
+                                if l2_like {
+                                    if let Some(bytes) = exact_store_owned.as_ref().and_then(|e| e.get_bytes(*id)) {
+                                        return (
+                                            *id,
+                                            f64::from(hyperspace_core::simd::l2_sq_f32_bytes(bytes, &q32_for_rerank, None)),
+                                        );
+                                    }
+                                }
                                 let exact_d = with_exact_coords(*id, &mut exact_scratch, &mut |coords| {
                                     M::distance(coords, &processed_query)
                                 });
@@ -2304,243 +2539,302 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     async fn optimize_with_filter(&self, filter: Option<VacuumFilterQuery>) -> Result<(), String> {
         println!("🧹 Starting Hot Vacuum for '{}'...", self.name);
         let start = std::time::Instant::now();
-        // Removed unused name
         let data_dir = self.data_dir.clone();
         let mode = self.mode;
         let original_config = self.config.clone();
         let index_link = self.index_link.clone();
-        let filter_for_vacuum = filter.clone();
-
         let raw_vector_cache = Arc::clone(&self.raw_vector_cache);
+        let exact_store = self.exact_store.load_full();
+        let payload_store = Arc::clone(&self.payload_store);
 
-        // Run heavy lifting in blocking thread
-        let (
-            element_size,
-            storage_f32,
-            dimension,
-            vacuum_config,
-            temp_dir,
-            new_snap_path,
-            all_survived_data,
-        ) = tokio::task::spawn_blocking(move || {
-            use hyperspace_core::config::GlobalConfig;
-            use hyperspace_store::VectorStore;
-            use std::path::PathBuf;
+        // Heavy lifting off the async runtime. Vectors are streamed one at a time from
+        // their exact source into the new index (no all-vectors copy), in BFS order of
+        // the current graph so neighbours get nearby ids (better cache locality).
+        let built =
+            tokio::task::spawn_blocking(move || -> Result<Option<RebuildOutput>, String> {
+                use hyperspace_core::config::GlobalConfig;
+                use hyperspace_store::VectorStore;
 
-            // 1. Get current data
-            let current_index = index_link.load().clone();
-            let mut all_data = current_index.peek_all();
-            if let Some(filter) = &filter_for_vacuum {
-                all_data.retain(|(_, _, meta)| !Self::matches_vacuum_filter(meta, filter));
-            }
-
-            // Restore exact raw float vectors from raw cache if available
-            {
-                for (id, vec, _) in &mut all_data {
-                    if let Some(raw_v) = raw_vector_cache.get(id) {
-                        *vec = raw_v.iter().map(|&x| x as f64).collect();
-                    }
+                let current_index = index_link.load().clone();
+                let dimension = current_index.dimension;
+                let max_len = current_index.count_nodes();
+                let mut live: Vec<u32> = {
+                    let deleted = current_index.metadata.deleted.read();
+                    (0..max_len as u32)
+                        .filter(|id| !deleted.contains(*id))
+                        .collect()
+                };
+                if let Some(filter) = &filter {
+                    live.retain(|id| {
+                        !Self::matches_vacuum_filter(&current_index.metadata_by_id(*id), filter)
+                    });
                 }
-            }
+                if live.is_empty() {
+                    return Ok(None);
+                }
+                let order = rebuild_bfs_order(&current_index, &live, max_len);
 
-            let count = all_data.len();
+                let exact_of = |old: u32| -> Vec<f64> {
+                    if let Some(v) = exact_store.as_ref().and_then(|e| e.get(old)) {
+                        return v.into_iter().map(f64::from).collect();
+                    }
+                    if let Some(v) = raw_vector_cache.get(&old) {
+                        return v.iter().map(|&x| f64::from(x)).collect();
+                    }
+                    if mode != hyperspace_core::QuantizationMode::None {
+                        // Pre-4.2.5 collections kept exact copies in the payload store.
+                        if let Ok(Some(bytes)) = payload_store.fetch_blocking(old) {
+                            if bytes.len() == dimension * 4 {
+                                return bytes
+                                    .as_chunks::<4>()
+                                    .0
+                                    .iter()
+                                    .map(|c| f64::from(f32::from_le_bytes(*c)))
+                                    .collect();
+                            }
+                        }
+                    }
+                    current_index.get_vector_original(old).coords
+                };
 
-            // 2. Setup "Turbo Mode"
-            let vacuum_m = 128;
-            let vacuum_ef = 800;
-
-            let vacuum_config = Arc::new(GlobalConfig::new());
-            vacuum_config.set_m(vacuum_m);
-            vacuum_config.set_ef_construction(vacuum_ef);
-            vacuum_config.set_ef_search(original_config.get_ef_search());
-
-            if count == 0 {
-                return Ok((
-                    0,
-                    false,
-                    0,
-                    vacuum_config,
-                    PathBuf::new(),
-                    PathBuf::new(),
-                    Vec::new(),
-                ));
-                // Nothing to do
-            }
-
-            println!("   Building Shadow Index (M={vacuum_m}, EF={vacuum_ef})...");
-
-            // 3. Create temp storage
-            let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
-            if let Err(e) = std::fs::create_dir_all(&temp_dir) {
-                return Err(e.to_string());
-            }
-
-            let dimension = current_index.dimension;
-            let storage_f32 = chunk_searcher::storage_f32_enabled(mode);
-            let element_size =
-                chunk_searcher::storage_element_size::<M>(mode, dimension, storage_f32);
-
-            let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
-            let mut new_index = HnswIndex::<M>::new_with_storage_precision(
-                temp_store,
-                mode,
-                vacuum_config.clone(),
-                storage_f32,
-                dimension,
-            );
-
-            // Calibrate code-based quantizers on the exact vectors (PQ / OPQ codebooks,
-            // PQ4 fast-scan codebook, RaBitQ centroid).
-            if matches!(
-                mode,
-                hyperspace_core::QuantizationMode::ProductQuantization
-                    | hyperspace_core::QuantizationMode::OPQ
-                    | hyperspace_core::QuantizationMode::PQ4
-                    | hyperspace_core::QuantizationMode::RaBitQ
-            ) && !all_data.is_empty()
-            {
+                let vacuum_m = 128;
+                let vacuum_ef = 800;
+                let vacuum_config = Arc::new(GlobalConfig::new());
+                vacuum_config.set_m(vacuum_m);
+                vacuum_config.set_ef_construction(vacuum_ef);
+                vacuum_config.set_ef_search(original_config.get_ef_search());
                 println!(
-                    "   🎓 Calibrating {mode:?} quantizer on {} vectors...",
-                    all_data.len()
+                    "   Building Shadow Index over {} vectors (M={vacuum_m}, EF={vacuum_ef})...",
+                    order.len()
                 );
-                let sample_limit = 10_000.min(all_data.len());
-                let f32_samples: Vec<Vec<f32>> = all_data
-                    .iter()
-                    .take(sample_limit)
-                    .map(|(_, v, _)| v.iter().map(|&x| x as f32).collect())
-                    .collect();
-                let sample_refs: Vec<&[f32]> = f32_samples.iter().map(|v| v.as_slice()).collect();
-                new_index.train_pq(&sample_refs, 10);
-                println!("   ✨ Codebooks calibrated successfully.");
-            }
 
-            // 4. Sequential Insertion
-            // No yielding needed in blocking thread, OS handles scheduling.
-            for (_old_id, vec, meta) in &all_data {
-                // Ensure insert handles internal logic
-                let _ = new_index.insert(vec, meta.clone());
-            }
+                let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
+                std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+                let storage_f32 = chunk_searcher::storage_f32_enabled(mode);
+                let element_size =
+                    chunk_searcher::storage_element_size::<M>(mode, dimension, storage_f32);
+                let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
+                let mut new_index = HnswIndex::<M>::new_with_storage_precision(
+                    temp_store,
+                    mode,
+                    vacuum_config.clone(),
+                    storage_f32,
+                    dimension,
+                );
 
-            // Save to disk
-            let new_snap_path = data_dir.join("index.snap.new");
-            if let Err(e) = new_index.save_snapshot(&new_snap_path) {
-                return Err(e.clone());
-            }
-            drop(new_index);
-
-            Ok((
-                element_size,
-                storage_f32,
-                dimension,
-                vacuum_config,
-                temp_dir,
-                new_snap_path,
-                all_data,
-            ))
-        })
-        .await
-        .map_err(|e| e.to_string())??;
-
-        if !all_survived_data.is_empty() {
-            // 5. Replace vector store chunks on disk:
-            // Remove old chunk_*.hyp in data_dir
-            if let Ok(entries) = std::fs::read_dir(&self.data_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.starts_with("chunk_") && name.ends_with(".hyp") {
-                            let _ = std::fs::remove_file(&path);
-                        }
-                    }
-                }
-            }
-            // Move new chunk_*.hyp from temp_dir to data_dir
-            if let Ok(entries) = std::fs::read_dir(&temp_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.starts_with("chunk_") && name.ends_with(".hyp") {
-                            let dest = self.data_dir.join(name);
-                            let _ = std::fs::rename(&path, &dest);
-                        }
-                    }
-                }
-            }
-
-            // 6. Finalize snapshot on disk
-            let snap_path = self.data_dir.join("index.snap");
-            std::fs::rename(&new_snap_path, &snap_path).map_err(|e| e.to_string())?;
-            let _ = std::fs::remove_dir_all(&temp_dir);
-
-            // 7. Hot Swap: Load final index anchored at self.data_dir
-            let final_store = Arc::new(VectorStore::new(&self.data_dir, element_size));
-            let final_index = HnswIndex::<M>::load_snapshot_with_storage_precision(
-                &snap_path,
-                final_store,
-                self.mode,
-                vacuum_config,
-                storage_f32,
-                dimension,
-            )
-            .map_err(|e| format!("Failed to load rebuilt index: {e}"))?;
-
-            println!("\u{1f504} Swapping indexes in memory...");
-            self.index_link.store(Arc::new(final_index));
-
-            // === Step 4: Payload Compaction (v3.2) ================================
-            // Build a new PayloadStore in a temp directory, copying only the payloads
-            // for vectors that survived the vacuum filter. Deleted vectors are skipped,
-            // their disk bytes are NOT copied into the new file.
-            let old_payload_store = Arc::clone(&self.payload_store);
-            let new_payload_dir = self
-                .data_dir
-                .join(format!("payload_compact_{}", uuid::Uuid::new_v4()));
-            let _ = std::fs::create_dir_all(&new_payload_dir);
-            let zstd_level = old_payload_store.zstd_level();
-            match PayloadStore::open(&new_payload_dir, zstd_level) {
-                Ok(new_payload_store) => {
-                    // compact_copy_from skips deleted (None) slots automatically
-                    for (user_id, _, _) in &all_survived_data {
-                        let _ = new_payload_store.compact_copy_from(&old_payload_store, *user_id);
-                    }
-                    // Flush the new index before atomically replacing
-                    // Swap the payload store pointer on the Arc — we do this via directory rename
-                    let final_payload_dir = self.data_dir.clone();
-                    let old_payloads = final_payload_dir.join("payloads.hyp");
-                    let old_index = final_payload_dir.join("payload_index.hyp");
-                    let new_payloads = new_payload_dir.join("payloads.hyp");
-                    let new_index_file = new_payload_dir.join("payload_index.hyp");
-                    // Atomic rename: new files replace old files
-                    if new_payloads.exists() {
-                        if old_payloads.exists() {
-                            let _ = std::fs::remove_file(&old_payloads);
-                        }
-                        let _ = std::fs::rename(&new_payloads, &old_payloads);
-                    }
-                    if new_index_file.exists() {
-                        if old_index.exists() {
-                            let _ = std::fs::remove_file(&old_index);
-                        }
-                        let _ = std::fs::rename(&new_index_file, &old_index);
-                    }
-                    let _ = std::fs::remove_dir_all(&new_payload_dir);
+                // Code-based quantizers are calibrated on exact vectors first.
+                if mode.needs_training() {
+                    let sample_limit = 10_000.min(order.len());
+                    let step = (order.len() / sample_limit).max(1);
+                    let samples: Vec<Vec<f32>> = order
+                        .iter()
+                        .step_by(step)
+                        .take(sample_limit)
+                        .map(|&old| exact_of(old).iter().map(|&x| x as f32).collect())
+                        .collect();
+                    let refs: Vec<&[f32]> = samples.iter().map(Vec::as_slice).collect();
                     println!(
-                        "\u{2728} Payload Store compacted: {} surviving payloads.",
-                        all_survived_data.len()
+                        "   🎓 Calibrating {mode:?} quantizer on {} vectors...",
+                        refs.len()
                     );
+                    new_index.train_pq(&refs, 10);
                 }
-                Err(e) => {
-                    eprintln!("\u{26a0}\u{fe0f}  Payload Store compaction failed: {e}. Original store unchanged.");
-                    let _ = std::fs::remove_dir_all(&new_payload_dir);
+
+                let new_exact = (mode != hyperspace_core::QuantizationMode::None)
+                    .then(|| ExactVectorStore::open(&temp_dir, dimension));
+                let mut metas = Vec::with_capacity(order.len());
+                for (pos, &old) in order.iter().enumerate() {
+                    let v = exact_of(old);
+                    let new_id = new_index.insert_to_storage(&v)?;
+                    if new_id as usize != pos {
+                        return Err(format!("rebuild: unexpected id {new_id} at position {pos}"));
+                    }
+                    if let Some(e) = &new_exact {
+                        let v32: Vec<f32> = v.iter().map(|&x| x as f32).collect();
+                        e.put(new_id, &v32)?;
+                    }
+                    metas.push(current_index.metadata_by_id(old));
+                }
+                // Graph construction in parallel (`index_node` is safe to call concurrently).
+                let next = std::sync::atomic::AtomicUsize::new(0);
+                let metas = &metas;
+                let index_ref = &new_index;
+                let threads =
+                    std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+                let failed = std::sync::atomic::AtomicBool::new(false);
+                std::thread::scope(|s| {
+                    for _ in 0..threads {
+                        s.spawn(|| loop {
+                            let i = next.fetch_add(1, Ordering::Relaxed);
+                            if i >= metas.len() {
+                                break;
+                            }
+                            if index_ref.index_node(i as u32, metas[i].clone()).is_err() {
+                                failed.store(true, Ordering::Relaxed);
+                            }
+                        });
+                    }
+                });
+                if failed.load(Ordering::Relaxed) {
+                    return Err("rebuild: graph construction failed".to_string());
+                }
+
+                let new_snap_path = data_dir.join("index.snap.new");
+                new_index.save_snapshot(&new_snap_path)?;
+                drop(new_index);
+                Ok(Some(RebuildOutput {
+                    element_size,
+                    storage_f32,
+                    dimension,
+                    vacuum_config,
+                    temp_dir,
+                    new_snap_path,
+                    order,
+                    old_len: max_len,
+                    has_exact: new_exact.is_some(),
+                }))
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+
+        let Some(out) = built else {
+            return Ok(());
+        };
+
+        // Replace the vector store chunks on disk.
+        if let Ok(entries) = std::fs::read_dir(&self.data_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with("chunk_") && name.ends_with(".hyp") {
+                        let _ = std::fs::remove_file(&path);
+                    }
                 }
             }
+        }
+        if let Ok(entries) = std::fs::read_dir(&out.temp_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with("chunk_") && name.ends_with(".hyp") {
+                        let _ = std::fs::rename(&path, self.data_dir.join(name));
+                    }
+                }
+            }
+        }
+        let snap_path = self.data_dir.join("index.snap");
+        std::fs::rename(&out.new_snap_path, &snap_path).map_err(|e| e.to_string())?;
+        // (`save_snapshot` already wrote the quantizer markers next to `index.snap.new`.)
 
-            println!(
-                "\u{2728} Vacuum Complete in {:?}. Recall upgraded.",
-                start.elapsed()
-            );
+        let final_store = Arc::new(VectorStore::new(&self.data_dir, out.element_size));
+        let final_index = HnswIndex::<M>::load_snapshot_with_storage_precision(
+            &snap_path,
+            final_store,
+            self.mode,
+            out.vacuum_config,
+            out.storage_f32,
+            out.dimension,
+        )
+        .map_err(|e| format!("Failed to load rebuilt index: {e}"))?;
+
+        // New internal ids: position in `order`. Remap every structure keyed by them.
+        let identity = self.ids_are_identity.load(Ordering::Acquire);
+        let user_of = |old: u32| -> u32 {
+            if identity {
+                old
+            } else {
+                self.reverse_id_map.get(&old).map_or(old, |v| *v)
+            }
+        };
+        let survivors: Vec<u32> = out.order.iter().map(|&old| user_of(old)).collect();
+        let mut new_of_old = vec![u32::MAX; out.old_len];
+        for (new_id, &old) in out.order.iter().enumerate() {
+            new_of_old[old as usize] = new_id as u32;
+        }
+        let cached: Vec<(u32, Vec<f32>)> = self
+            .raw_vector_cache
+            .iter()
+            .filter_map(|e| {
+                let new_id = *new_of_old.get(*e.key() as usize)?;
+                (new_id != u32::MAX).then(|| (new_id, e.value().clone()))
+            })
+            .collect();
+
+        println!("\u{1f504} Swapping indexes in memory...");
+        self.index_link.store(Arc::new(final_index));
+        self.id_map.clear();
+        self.reverse_id_map.clear();
+        let mut still_identity = true;
+        for (new_id, &user) in survivors.iter().enumerate() {
+            let new_id = new_id as u32;
+            still_identity &= user == new_id;
+            self.id_map.insert(user, new_id);
+            self.reverse_id_map.insert(new_id, user);
+        }
+        self.ids_are_identity
+            .store(still_identity, Ordering::Release);
+        self.raw_vector_cache.clear();
+        self.raw_vector_cache_len
+            .store(cached.len(), Ordering::Relaxed);
+        for (k, v) in cached {
+            self.raw_vector_cache.insert(k, v);
+        }
+        if out.has_exact {
+            let live_dir = self.data_dir.join(ExactVectorStore::DIR);
+            let _ = std::fs::remove_dir_all(&live_dir);
+            std::fs::rename(out.temp_dir.join(ExactVectorStore::DIR), &live_dir)
+                .map_err(|e| format!("Failed to install the exact vector store: {e}"))?;
+            self.exact_store.store(Some(Arc::new(ExactVectorStore::open(
+                &self.data_dir,
+                out.dimension,
+            ))));
+        }
+        let _ = std::fs::remove_dir_all(&out.temp_dir);
+        if let Some(cache) = &self.cache {
+            for &user in &survivors {
+                cache.invalidate(user);
+            }
         }
 
+        // Payload compaction: user payloads are keyed by *user* id. Exact vectors that
+        // pre-4.2.5 collections kept here (by internal id) now live in the exact store.
+        let old_payload_store = Arc::clone(&self.payload_store);
+        let new_payload_dir = self
+            .data_dir
+            .join(format!("payload_compact_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&new_payload_dir);
+        match PayloadStore::open(&new_payload_dir, old_payload_store.zstd_level()) {
+            Ok(new_payload_store) => {
+                for &user in &survivors {
+                    let _ = new_payload_store.compact_copy_from(&old_payload_store, user);
+                }
+                drop(new_payload_store);
+                for file in ["payloads.hyp", "payload_index.hyp"] {
+                    let src = new_payload_dir.join(file);
+                    if src.exists() {
+                        let dst = self.data_dir.join(file);
+                        let _ = std::fs::remove_file(&dst);
+                        let _ = std::fs::rename(&src, &dst);
+                    }
+                }
+                println!(
+                    "\u{2728} Payload Store compacted: {} surviving vectors.",
+                    survivors.len()
+                );
+            }
+            Err(e) => {
+                eprintln!("\u{26a0}\u{fe0f}  Payload Store compaction failed: {e}. Original store unchanged.");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&new_payload_dir);
+
+        // Persist the renumbered id maps right away: a restart must not pair the new
+        // snapshot with the old mapping.
+        self.create_snapshot()?;
+        println!(
+            "\u{2728} Vacuum Complete in {:?}. Recall upgraded.",
+            start.elapsed()
+        );
         Ok(())
     }
 
@@ -2584,6 +2878,12 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                 let internal_id = self.to_internal_id(id);
                 let coords = if let Some(v_f32) = self.raw_vector_cache.get(&internal_id) {
                     v_f32.iter().map(|&x| x as f64).collect()
+                } else if let Some(v) = self
+                    .exact_store
+                    .load_full()
+                    .and_then(|e| e.get(internal_id))
+                {
+                    v.into_iter().map(f64::from).collect()
                 } else {
                     let vec = idx.get_vector(internal_id);
                     vec.coords
@@ -3184,16 +3484,19 @@ impl<M: Metric> CollectionImpl<M> {
         }
 
         if self.mode != hyperspace_core::QuantizationMode::None {
-            // One f64 -> f32 conversion feeds both the rerank cache and the payload store.
+            // One f64 -> f32 conversion feeds the exact store and the optional heap cache.
             let v_f32: Vec<f32> = processed_vector.iter().map(|&x| x as f32).collect();
-            let vector_bytes: Vec<u8> = v_f32.iter().flat_map(|v| v.to_le_bytes()).collect();
-            if self.raw_vector_cache_len.load(Ordering::Relaxed) < self.raw_vector_cache_cap
-                && self.raw_vector_cache.insert(internal_id, v_f32).is_none()
-            {
-                self.raw_vector_cache_len.fetch_add(1, Ordering::Relaxed);
+            if let Some(exact) = self.exact_store.load_full() {
+                if let Err(e) = exact.put(internal_id, &v_f32) {
+                    eprintln!("Failed to store exact vector for rerank: {e}");
+                }
             }
-            if let Err(e) = self.insert_payload(internal_id, vector_bytes).await {
-                eprintln!("Failed to store exact vector for rerank: {}", e);
+            if self.raw_vector_cache.contains_key(&internal_id)
+                || self.raw_vector_cache_len.load(Ordering::Relaxed) < self.raw_vector_cache_cap
+            {
+                if self.raw_vector_cache.insert(internal_id, v_f32).is_none() {
+                    self.raw_vector_cache_len.fetch_add(1, Ordering::Relaxed);
+                }
             }
         }
 
@@ -3429,8 +3732,17 @@ impl<M: Metric> CollectionImpl<M> {
 
         if self.mode != hyperspace_core::QuantizationMode::None {
             for entry in &entries {
-                if self.raw_vector_cache_len.load(Ordering::Relaxed) < self.raw_vector_cache_cap {
-                    let v_f32: Vec<f32> = entry.vector.iter().map(|&x| x as f32).collect();
+                let v_f32: Vec<f32> = entry.vector.iter().map(|&x| x as f32).collect();
+                // Batch inserts need exact copies too (rerank, calibration, RebuildIndex);
+                // before 4.2.5 only the bounded heap cache got them.
+                if let Some(exact) = self.exact_store.load_full() {
+                    if let Err(e) = exact.put(entry.internal_id, &v_f32) {
+                        eprintln!("Failed to store exact vector for rerank: {e}");
+                    }
+                }
+                if self.raw_vector_cache.contains_key(&entry.internal_id)
+                    || self.raw_vector_cache_len.load(Ordering::Relaxed) < self.raw_vector_cache_cap
+                {
                     if self
                         .raw_vector_cache
                         .insert(entry.internal_id, v_f32)
@@ -3542,22 +3854,22 @@ mod auto_calibration_tests {
     fn calibrates_at_threshold_then_refits_after_growth() {
         let (_d, index, raw) = fill(QuantizationMode::PQ4, 300);
         assert!(
-            maybe_auto_calibrate(&index, &raw, None, 400, "t").is_none(),
+            maybe_auto_calibrate(&index, &raw, None, None, 400, "t").is_none(),
             "below threshold"
         );
         assert!(
-            maybe_auto_calibrate(&index, &raw, None, 0, "t").is_none(),
+            maybe_auto_calibrate(&index, &raw, None, None, 0, "t").is_none(),
             "0 disables"
         );
         assert_eq!(
-            maybe_auto_calibrate(&index, &raw, None, 256, "t"),
+            maybe_auto_calibrate(&index, &raw, None, None, 256, "t"),
             Some((300, 0)),
             "every stored code re-encoded"
         );
         assert!(!index.needs_calibration());
         assert_eq!(index.calibrated_at(), 300);
         assert!(
-            maybe_auto_calibrate(&index, &raw, None, 256, "t").is_none(),
+            maybe_auto_calibrate(&index, &raw, None, None, 256, "t").is_none(),
             "no refit before growth"
         );
 
@@ -3569,14 +3881,14 @@ mod auto_calibration_tests {
             let id = index.insert_to_storage(&v).unwrap();
             raw.insert(id, v.iter().map(|&x| x as f32).collect());
         }
-        assert!(maybe_auto_calibrate(&index, &raw, None, 256, "t").is_some());
+        assert!(maybe_auto_calibrate(&index, &raw, None, None, 256, "t").is_some());
         assert_eq!(index.calibrated_at(), 300 * AUTO_CALIBRATE_GROWTH);
     }
 
     #[test]
     fn pq_waits_for_enough_samples_per_centroid() {
         let (_d, index, raw) = fill(QuantizationMode::ProductQuantization, 1500);
-        assert!(maybe_auto_calibrate(&index, &raw, None, 64, "t").is_none());
+        assert!(maybe_auto_calibrate(&index, &raw, None, None, 64, "t").is_none());
         assert!(
             index.needs_calibration(),
             "PQ keeps the default codebook below 4096 vectors"
@@ -3593,7 +3905,7 @@ mod auto_calibration_tests {
             Arc::new(GlobalConfig::default()),
             DIM,
         );
-        assert!(maybe_auto_calibrate(&index, &DashMap::new(), None, 1, "t").is_none());
+        assert!(maybe_auto_calibrate(&index, &DashMap::new(), None, None, 1, "t").is_none());
     }
 
     #[test]
@@ -3612,7 +3924,7 @@ mod auto_calibration_tests {
             partial.insert(*e.key(), e.value().clone());
         }
         assert_eq!(
-            maybe_auto_calibrate(&index, &partial, Some(&payload), 256, "t"),
+            maybe_auto_calibrate(&index, &partial, None, Some(&payload), 256, "t"),
             Some((600, 0)),
             "vectors missing from the raw cache are read from the payload store"
         );
@@ -3623,7 +3935,7 @@ mod auto_calibration_tests {
             half.insert(*e.key(), e.value().clone());
         }
         assert_eq!(
-            maybe_auto_calibrate(&index2, &half, None, 256, "t"),
+            maybe_auto_calibrate(&index2, &half, None, None, 256, "t"),
             Some((300, 300))
         );
     }
@@ -3631,12 +3943,12 @@ mod auto_calibration_tests {
     #[test]
     fn raw_cache_budget_is_split_across_shards() {
         // 256 MiB default, 1024-D vectors (4,160 B incl. overhead).
-        let one = raw_cache_capacity(1024, 1);
-        let twelve = raw_cache_capacity(1024, 12);
+        let one = raw_cache_capacity(1024, 1, false);
+        let twelve = raw_cache_capacity(1024, 12, false);
         assert!((60_000..=70_000).contains(&one), "{one}");
         assert!(twelve * 12 <= one + 12 && twelve >= 256);
         assert!(
-            raw_cache_capacity(16, 1) > one,
+            raw_cache_capacity(16, 1, false) > one,
             "small vectors fit more entries"
         );
     }

@@ -1,57 +1,57 @@
 # HyperspaceDB v4.2.5 Quantization & Rerank Sweep Benchmark Report
 
 > **Environment & Test Parameters**
-> - **Engine**: HyperspaceDB v4.2.5 (release build, Apple M4 Pro, 12 shards = 1 per core); baseline = v4.2.4 (`2fa9d9f`) with the `flat_l0.bin` deadlock fix back-ported so it can complete the sweep
+> - **Engine**: HyperspaceDB v4.2.5 (`hyperspace-server`)
 > - **Code-mode calibration**: RebuildIndex after ingest (pq, opq, pq4, rabitq)
 > - **Dataset**: 20,000 vectors, 1024D Dense Semantic Clustered Embedding (50 clusters)
 > - **Metric**: Cosine Distance (Normalized Euclidean)
 > - **Queries**: 200 queries evaluated against Exact Brute-Force Ground Truth
 > - **HNSW Configuration**: M=64, EF_Construct=400, EF_Search=100
-> - **Date**: 2026-11-20 13:50:27
+> - **Date**: 2026-11-21 10:23:10
 
 ## 1. Executive Summary & Comparison Matrix
 
 | Configuration | Quant Mode | Rerank Scheme | Recall@10 | Search QPS | Mean Latency | P95 Latency | Theor. RAM | Compression |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **none_ef100** | `none` | None | **100.00%** | 1,518 | 0.64ms | 0.80ms | 78.20 MB | **1.0×** |
-| **none_ef400** | `none` | None | **100.00%** | 1,530 | 0.64ms | 0.76ms | 78.20 MB | **1.0×** |
-| **medium** | `medium` | None | **88.60%** | 1,791 | 0.54ms | 0.96ms | 19.61 MB | **4.0×** |
-| **medium_rerank4** | `medium` | Server ADC (x4) | **100.00%** | 1,419 | 0.69ms | 0.88ms | 19.61 MB | **4.0×** |
-| **medium_plus** | `medium_plus` | None | **87.15%** | 1,607 | 0.61ms | 0.77ms | 14.72 MB | **5.3×** |
-| **medium_plus_ef400** | `medium_plus` | None | **87.15%** | 1,604 | 0.61ms | 0.79ms | 14.72 MB | **5.3×** |
-| **medium_plus_rerank4** | `medium_plus` | Server ADC (x4) | **100.00%** | 1,299 | 0.76ms | 0.91ms | 14.72 MB | **5.3×** |
-| **medium_plus_rerank8** | `medium_plus` | Server ADC (x8) | **100.00%** | 1,135 | 0.87ms | 1.15ms | 14.72 MB | **5.3×** |
-| **turbo** | `turbo` | None | **87.60%** | 1,242 | 0.79ms | 0.89ms | 9.92 MB | **7.9×** |
-| **turbo_ef400** | `turbo` | None | **87.60%** | 1,134 | 0.87ms | 1.15ms | 9.92 MB | **7.9×** |
-| **turbo_rerank4** | `turbo` | Server ADC (x4) | **100.00%** | 861 | 1.15ms | 2.07ms | 9.92 MB | **7.9×** |
-| **turbo_twopass_raw40** | `turbo` | Client 2-Pass Raw (k=40) | **100.00%** | 771 | 1.28ms | 2.18ms | 9.92 MB | **7.9×** |
-| **ternary** | `ternary` | None | **53.90%** | 1,337 | 0.73ms | 0.96ms | 5.11 MB | **15.3×** |
-| **ternary_ef400** | `ternary` | None | **53.90%** | 1,336 | 0.73ms | 0.84ms | 5.11 MB | **15.3×** |
-| **ternary_rerank4** | `ternary` | Server ADC (x4) | **100.00%** | 954 | 1.03ms | 1.29ms | 5.11 MB | **15.3×** |
-| **ternary_rerank8** | `ternary` | Server ADC (x8) | **100.00%** | 903 | 1.09ms | 1.42ms | 5.11 MB | **15.3×** |
-| **ternary_twopass_raw40** | `ternary` | Client 2-Pass Raw (k=40) | **85.10%** | 1,213 | 0.80ms | 1.03ms | 5.11 MB | **15.3×** |
-| **opq** | `opq` | None | **24.25%** | 1,771 | 0.54ms | 0.74ms | 1.30 MB | **60.3×** |
-| **opq_ef400** | `opq` | None | **24.25%** | 1,807 | 0.53ms | 0.70ms | 1.30 MB | **60.3×** |
-| **opq_rerank4** | `opq` | Server ADC (x4) | **81.50%** | 1,444 | 0.68ms | 0.83ms | 1.30 MB | **60.3×** |
-| **opq_rerank8** | `opq` | Server ADC (x8) | **84.45%** | 1,317 | 0.74ms | 0.99ms | 1.30 MB | **60.3×** |
-| **opq_twopass_raw40** | `opq` | Client 2-Pass Raw (k=40) | **41.05%** | 1,558 | 0.62ms | 0.85ms | 1.30 MB | **60.3×** |
-| **pq** | `pq` | None | **26.95%** | 1,937 | 0.50ms | 0.55ms | 1.30 MB | **60.3×** |
-| **pq_rerank4** | `pq` | Server ADC (x4) | **80.85%** | 1,265 | 0.77ms | 1.34ms | 1.30 MB | **60.3×** |
-| **pq_rerank8** | `pq` | Server ADC (x8) | **84.90%** | 1,300 | 0.75ms | 0.98ms | 1.30 MB | **60.3×** |
-| **pq_twopass_raw40** | `pq` | Client 2-Pass Raw (k=40) | **42.50%** | 1,725 | 0.56ms | 0.62ms | 1.30 MB | **60.3×** |
-| **extreme** | `extreme` | None | **36.00%** | 1,982 | 0.49ms | 0.65ms | 2.52 MB | **31.1×** |
-| **extreme_rerank4** | `extreme` | Server ADC (x4) | **98.80%** | 1,184 | 0.82ms | 1.18ms | 2.52 MB | **31.1×** |
-| **extreme_rerank8** | `extreme` | Server ADC (x8) | **99.80%** | 1,334 | 0.74ms | 0.94ms | 2.52 MB | **31.1×** |
-| **extreme_rerank16** | `extreme` | Server ADC (x16) | **99.90%** | 992 | 0.99ms | 1.27ms | 2.52 MB | **31.1×** |
-| **extreme_twopass_raw40** | `extreme` | Client 2-Pass Raw (k=40) | **62.80%** | 1,758 | 0.55ms | 0.76ms | 2.52 MB | **31.1×** |
-| **extreme_twopass_raw80** | `extreme` | Client 2-Pass Raw (k=80) | **77.00%** | 1,358 | 0.72ms | 0.85ms | 2.52 MB | **31.1×** |
-| **rabitq** | `rabitq` | None | **35.50%** | 2,098 | 0.45ms | 0.53ms | 2.67 MB | **29.3×** |
-| **rabitq_rerank4** | `rabitq` | Server ADC (x4) | **98.55%** | 1,576 | 0.62ms | 0.72ms | 2.67 MB | **29.3×** |
-| **rabitq_rerank8** | `rabitq` | Server ADC (x8) | **99.60%** | 1,413 | 0.69ms | 0.94ms | 2.67 MB | **29.3×** |
-| **rabitq_twopass_raw40** | `rabitq` | Client 2-Pass Raw (k=40) | **62.25%** | 1,912 | 0.50ms | 0.55ms | 2.67 MB | **29.3×** |
-| **pq4** | `pq4` | None | **36.35%** | 1,422 | 0.68ms | 0.74ms | 2.52 MB | **31.1×** |
-| **pq4_rerank4** | `pq4` | Server ADC (x4) | **98.70%** | 1,157 | 0.85ms | 0.98ms | 2.52 MB | **31.1×** |
-| **pq4_rerank8** | `pq4` | Server ADC (x8) | **99.75%** | 1,112 | 0.88ms | 1.19ms | 2.52 MB | **31.1×** |
+| **none_ef100** | `none` | None | **100.00%** | 1,571 | 0.62ms | 0.70ms | 78.20 MB | **1.0×** |
+| **none_ef400** | `none` | None | **100.00%** | 1,529 | 0.64ms | 0.79ms | 78.20 MB | **1.0×** |
+| **medium** | `medium` | None | **98.50%** | 3,114 | 0.31ms | 0.36ms | 19.61 MB | **4.0×** |
+| **medium_rerank4** | `medium` | Server ADC (x4) | **100.00%** | 2,064 | 0.47ms | 0.75ms | 19.61 MB | **4.0×** |
+| **medium_plus** | `medium_plus` | None | **87.15%** | 1,664 | 0.59ms | 0.78ms | 14.72 MB | **5.3×** |
+| **medium_plus_ef400** | `medium_plus` | None | **87.15%** | 1,649 | 0.59ms | 0.74ms | 14.72 MB | **5.3×** |
+| **medium_plus_rerank4** | `medium_plus` | Server ADC (x4) | **100.00%** | 1,370 | 0.72ms | 0.94ms | 14.72 MB | **5.3×** |
+| **medium_plus_rerank8** | `medium_plus` | Server ADC (x8) | **100.00%** | 1,260 | 0.78ms | 1.00ms | 14.72 MB | **5.3×** |
+| **turbo** | `turbo` | None | **87.60%** | 1,199 | 0.82ms | 1.03ms | 9.92 MB | **7.9×** |
+| **turbo_ef400** | `turbo` | None | **87.60%** | 1,140 | 0.86ms | 1.05ms | 9.92 MB | **7.9×** |
+| **turbo_rerank4** | `turbo` | Server ADC (x4) | **100.00%** | 1,070 | 0.92ms | 1.13ms | 9.92 MB | **7.9×** |
+| **turbo_twopass_raw40** | `turbo` | Client 2-Pass Raw (k=40) | **100.00%** | 1,127 | 0.87ms | 0.96ms | 9.92 MB | **7.9×** |
+| **ternary** | `ternary` | None | **53.90%** | 1,493 | 0.65ms | 0.70ms | 5.11 MB | **15.3×** |
+| **ternary_ef400** | `ternary` | None | **53.90%** | 1,465 | 0.67ms | 0.71ms | 5.11 MB | **15.3×** |
+| **ternary_rerank4** | `ternary` | Server ADC (x4) | **100.00%** | 1,136 | 0.87ms | 0.99ms | 5.11 MB | **15.3×** |
+| **ternary_rerank8** | `ternary` | Server ADC (x8) | **100.00%** | 1,106 | 0.89ms | 0.99ms | 5.11 MB | **15.3×** |
+| **ternary_twopass_raw40** | `ternary` | Client 2-Pass Raw (k=40) | **85.10%** | 1,189 | 0.82ms | 1.16ms | 5.11 MB | **15.3×** |
+| **opq** | `opq` | None | **25.20%** | 1,969 | 0.49ms | 0.61ms | 1.30 MB | **60.3×** |
+| **opq_ef400** | `opq` | None | **24.75%** | 2,049 | 0.47ms | 0.53ms | 1.30 MB | **60.3×** |
+| **opq_rerank4** | `opq` | Server ADC (x4) | **82.30%** | 1,667 | 0.59ms | 0.64ms | 1.30 MB | **60.3×** |
+| **opq_rerank8** | `opq` | Server ADC (x8) | **85.50%** | 1,445 | 0.68ms | 0.75ms | 1.30 MB | **60.3×** |
+| **opq_twopass_raw40** | `opq` | Client 2-Pass Raw (k=40) | **42.60%** | 1,628 | 0.60ms | 0.80ms | 1.30 MB | **60.3×** |
+| **pq** | `pq` | None | **26.30%** | 1,909 | 0.51ms | 0.70ms | 1.30 MB | **60.3×** |
+| **pq_rerank4** | `pq` | Server ADC (x4) | **82.60%** | 1,758 | 0.56ms | 0.62ms | 1.30 MB | **60.3×** |
+| **pq_rerank8** | `pq` | Server ADC (x8) | **83.10%** | 1,465 | 0.67ms | 0.85ms | 1.30 MB | **60.3×** |
+| **pq_twopass_raw40** | `pq` | Client 2-Pass Raw (k=40) | **40.90%** | 1,636 | 0.60ms | 0.87ms | 1.30 MB | **60.3×** |
+| **extreme** | `extreme` | None | **36.00%** | 2,037 | 0.48ms | 0.63ms | 2.52 MB | **31.1×** |
+| **extreme_rerank4** | `extreme` | Server ADC (x4) | **98.80%** | 1,555 | 0.63ms | 0.77ms | 2.52 MB | **31.1×** |
+| **extreme_rerank8** | `extreme` | Server ADC (x8) | **99.80%** | 1,372 | 0.71ms | 0.93ms | 2.52 MB | **31.1×** |
+| **extreme_rerank16** | `extreme` | Server ADC (x16) | **99.90%** | 1,113 | 0.88ms | 1.13ms | 2.52 MB | **31.1×** |
+| **extreme_twopass_raw40** | `extreme` | Client 2-Pass Raw (k=40) | **62.80%** | 1,731 | 0.56ms | 0.79ms | 2.52 MB | **31.1×** |
+| **extreme_twopass_raw80** | `extreme` | Client 2-Pass Raw (k=80) | **77.00%** | 1,510 | 0.65ms | 0.89ms | 2.52 MB | **31.1×** |
+| **rabitq** | `rabitq` | None | **35.50%** | 3,005 | 0.32ms | 0.37ms | 2.67 MB | **29.3×** |
+| **rabitq_rerank4** | `rabitq` | Server ADC (x4) | **98.55%** | 1,928 | 0.51ms | 0.65ms | 2.67 MB | **29.3×** |
+| **rabitq_rerank8** | `rabitq` | Server ADC (x8) | **99.60%** | 1,758 | 0.56ms | 0.65ms | 2.67 MB | **29.3×** |
+| **rabitq_twopass_raw40** | `rabitq` | Client 2-Pass Raw (k=40) | **62.25%** | 2,429 | 0.40ms | 0.46ms | 2.67 MB | **29.3×** |
+| **pq4** | `pq4` | None | **35.90%** | 1,850 | 0.53ms | 0.57ms | 2.52 MB | **31.1×** |
+| **pq4_rerank4** | `pq4` | Server ADC (x4) | **99.25%** | 1,506 | 0.65ms | 0.72ms | 2.52 MB | **31.1×** |
+| **pq4_rerank8** | `pq4` | Server ADC (x8) | **99.75%** | 1,241 | 0.79ms | 0.92ms | 2.52 MB | **31.1×** |
 
 ---
 
@@ -120,49 +120,84 @@ With 12 shards each holds ~1,670 vectors: enough for `rabitq` / `pq4` (threshold
 
 ---
 
+## 1c. Integer SQ8, two-stage search, exact store (4.2.5, second round)
+
+Same harness; "before" is the first 4.2.5 build (`f0bec23`), "after" this build. Geometric mean
+over all 39 configurations: **QPS ×1.15, recall +0.32 pp**; no configuration regressed beyond noise.
+
+| Configuration | Recall before | Recall after | QPS before | QPS after | QPS |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| medium | 88.60% | 98.50% | 1,791 | 3,114 | ×1.74 |
+| medium_rerank4 | 100.00% | 100.00% | 1,419 | 2,064 | ×1.45 |
+| medium_plus_rerank4 | 100.00% | 100.00% | 1,299 | 1,370 | ×1.05 |
+| turbo_rerank4 | 100.00% | 100.00% | 861 | 1,070 | ×1.24 |
+| ternary_rerank4 | 100.00% | 100.00% | 954 | 1,136 | ×1.19 |
+| rabitq | 35.50% | 35.50% | 2,098 | 3,005 | ×1.43 |
+| rabitq_rerank4 | 98.55% | 98.55% | 1,576 | 1,928 | ×1.22 |
+| pq4_rerank4 | 98.70% | 99.25% | 1,157 | 1,506 | ×1.30 |
+| extreme_rerank4 | 98.80% | 98.80% | 1,184 | 1,555 | ×1.31 |
+| none_ef100 | 100.00% | 100.00% | 1,518 | 1,571 | ×1.03 |
+
+The table above is single-client (QPS ≈ 1 / latency). Throughput under concurrency, measured with
+`hs_loadbench` (20k × 1024-D, cosine, 12 shards, M = 64, ef = 100, `Search` over gRPC, f32 wire):
+
+| Configuration | Clients | QPS before | QPS after | p99 before | p99 after | Recall before → after |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `medium` | 16 | 3,917 | 8,689 | 8.16 ms | 3.78 ms | 88.88% → 98.38% |
+| `medium` + rerank ×4 | 16 | 1,603 | 8,978 | 35.15 ms | 3.63 ms | 100% → 100% |
+| `medium` + rerank ×4 | 1 | 1,372 | 3,207 | 1.38 ms | 0.36 ms | 100% → 100% |
+| `none` | 16 | 3,371 | 2,815–3,371 | 9.8 ms | 9.8–12.4 ms | 100% (unchanged code path, run-to-run noise) |
+
+Before / after pairs were run back to back on an idle machine. Repeat runs of the final build on
+a busy machine (load average ≈ 20) gave 8.0–9.3k QPS for `medium` + rerank ×4 at 16 clients.
+
+`RebuildIndex` on 50k × 1024-D `medium`: 6.2 s → 2.9 s; searches after the rebuild at 16 clients
+1,260 → 4,117 QPS (recall 100%). Peak RSS during the rebuild is +592 → +568 MB, dominated by the
+second graph (the rebuild uses M = 128), not by vector copies any more.
+
 ## 2. Ingestion & Storage Footprint Analysis
 
 | Configuration | Quant Mode | Bytes / Vec | 20,000 Vecs RAM | Ingest Time | Ingest QPS | Process RSS |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **none_ef100** | `none` | 4100 B | 78.20 MB | 1.22s | 16,382 v/s | 623.4 MB |
-| **none_ef400** | `none` | 4100 B | 78.20 MB | 1.28s | 15,652 v/s | 649.2 MB |
-| **medium** | `medium` | 1028 B | 19.61 MB | 1.34s | 14,944 v/s | 695.1 MB |
-| **medium_rerank4** | `medium` | 1028 B | 19.61 MB | 1.37s | 14,557 v/s | 673.1 MB |
-| **medium_plus** | `medium_plus` | 772 B | 14.72 MB | 2.24s | 8,918 v/s | 626.3 MB |
-| **medium_plus_ef400** | `medium_plus` | 772 B | 14.72 MB | 2.26s | 8,850 v/s | 605.8 MB |
-| **medium_plus_rerank4** | `medium_plus` | 772 B | 14.72 MB | 2.28s | 8,787 v/s | 614.0 MB |
-| **medium_plus_rerank8** | `medium_plus` | 772 B | 14.72 MB | 2.29s | 8,729 v/s | 624.8 MB |
-| **turbo** | `turbo` | 520 B | 9.92 MB | 2.59s | 7,735 v/s | 613.6 MB |
-| **turbo_ef400** | `turbo` | 520 B | 9.92 MB | 2.59s | 7,720 v/s | 645.2 MB |
-| **turbo_rerank4** | `turbo` | 520 B | 9.92 MB | 2.70s | 7,414 v/s | 631.0 MB |
-| **turbo_twopass_raw40** | `turbo` | 520 B | 9.92 MB | 2.90s | 6,891 v/s | 616.8 MB |
-| **ternary** | `ternary` | 268 B | 5.11 MB | 13.95s | 1,434 v/s | 801.9 MB |
-| **ternary_ef400** | `ternary` | 268 B | 5.11 MB | 14.24s | 1,404 v/s | 840.7 MB |
-| **ternary_rerank4** | `ternary` | 268 B | 5.11 MB | 13.75s | 1,454 v/s | 816.2 MB |
-| **ternary_rerank8** | `ternary` | 268 B | 5.11 MB | 15.38s | 1,300 v/s | 811.4 MB |
-| **ternary_twopass_raw40** | `ternary` | 268 B | 5.11 MB | 14.01s | 1,427 v/s | 801.9 MB |
-| **opq** | `opq` | 68 B | 1.30 MB | 4.07s | 4,918 v/s | 1069.7 MB |
-| **opq_ef400** | `opq` | 68 B | 1.30 MB | 3.74s | 5,354 v/s | 1092.6 MB |
-| **opq_rerank4** | `opq` | 68 B | 1.30 MB | 3.74s | 5,342 v/s | 1080.9 MB |
-| **opq_rerank8** | `opq` | 68 B | 1.30 MB | 3.89s | 5,135 v/s | 1089.8 MB |
-| **opq_twopass_raw40** | `opq` | 68 B | 1.30 MB | 4.01s | 4,990 v/s | 1096.8 MB |
-| **pq** | `pq` | 68 B | 1.30 MB | 2.76s | 7,241 v/s | 901.3 MB |
-| **pq_rerank4** | `pq` | 68 B | 1.30 MB | 2.73s | 7,338 v/s | 897.9 MB |
-| **pq_rerank8** | `pq` | 68 B | 1.30 MB | 2.68s | 7,450 v/s | 887.5 MB |
-| **pq_twopass_raw40** | `pq` | 68 B | 1.30 MB | 2.67s | 7,498 v/s | 902.7 MB |
-| **extreme** | `extreme` | 132 B | 2.52 MB | 1.75s | 11,409 v/s | 557.2 MB |
-| **extreme_rerank4** | `extreme` | 132 B | 2.52 MB | 1.74s | 11,485 v/s | 576.8 MB |
-| **extreme_rerank8** | `extreme` | 132 B | 2.52 MB | 1.72s | 11,597 v/s | 550.2 MB |
-| **extreme_rerank16** | `extreme` | 132 B | 2.52 MB | 1.76s | 11,369 v/s | 577.8 MB |
-| **extreme_twopass_raw40** | `extreme` | 132 B | 2.52 MB | 1.74s | 11,476 v/s | 549.7 MB |
-| **extreme_twopass_raw80** | `extreme` | 132 B | 2.52 MB | 1.77s | 11,283 v/s | 555.0 MB |
-| **rabitq** | `rabitq` | 140 B | 2.67 MB | 3.98s | 5,020 v/s | 1055.3 MB |
-| **rabitq_rerank4** | `rabitq` | 140 B | 2.67 MB | 3.89s | 5,143 v/s | 1087.5 MB |
-| **rabitq_rerank8** | `rabitq` | 140 B | 2.67 MB | 3.71s | 5,392 v/s | 1051.2 MB |
-| **rabitq_twopass_raw40** | `rabitq` | 140 B | 2.67 MB | 3.31s | 6,041 v/s | 1060.8 MB |
-| **pq4** | `pq4` | 132 B | 2.52 MB | 2.15s | 9,309 v/s | 1011.2 MB |
-| **pq4_rerank4** | `pq4` | 132 B | 2.52 MB | 2.12s | 9,437 v/s | 1033.3 MB |
-| **pq4_rerank8** | `pq4` | 132 B | 2.52 MB | 2.15s | 9,300 v/s | 1024.2 MB |
+| **none_ef100** | `none` | 4100 B | 78.20 MB | 1.25s | 16,038 v/s | 663.5 MB |
+| **none_ef400** | `none` | 4100 B | 78.20 MB | 1.25s | 16,031 v/s | 658.0 MB |
+| **medium** | `medium` | 1028 B | 19.61 MB | 0.96s | 20,867 v/s | 605.5 MB |
+| **medium_rerank4** | `medium` | 1028 B | 19.61 MB | 0.95s | 21,006 v/s | 606.5 MB |
+| **medium_plus** | `medium_plus` | 772 B | 14.72 MB | 2.23s | 8,969 v/s | 630.9 MB |
+| **medium_plus_ef400** | `medium_plus` | 772 B | 14.72 MB | 2.26s | 8,868 v/s | 625.9 MB |
+| **medium_plus_rerank4** | `medium_plus` | 772 B | 14.72 MB | 2.27s | 8,815 v/s | 624.5 MB |
+| **medium_plus_rerank8** | `medium_plus` | 772 B | 14.72 MB | 2.33s | 8,592 v/s | 597.4 MB |
+| **turbo** | `turbo` | 520 B | 9.92 MB | 2.55s | 7,833 v/s | 610.8 MB |
+| **turbo_ef400** | `turbo` | 520 B | 9.92 MB | 2.62s | 7,647 v/s | 599.1 MB |
+| **turbo_rerank4** | `turbo` | 520 B | 9.92 MB | 2.60s | 7,704 v/s | 614.7 MB |
+| **turbo_twopass_raw40** | `turbo` | 520 B | 9.92 MB | 2.68s | 7,458 v/s | 652.2 MB |
+| **ternary** | `ternary` | 268 B | 5.11 MB | 11.18s | 1,789 v/s | 806.3 MB |
+| **ternary_ef400** | `ternary` | 268 B | 5.11 MB | 11.95s | 1,674 v/s | 808.4 MB |
+| **ternary_rerank4** | `ternary` | 268 B | 5.11 MB | 11.98s | 1,670 v/s | 818.2 MB |
+| **ternary_rerank8** | `ternary` | 268 B | 5.11 MB | 12.22s | 1,637 v/s | 787.9 MB |
+| **ternary_twopass_raw40** | `ternary` | 268 B | 5.11 MB | 12.21s | 1,638 v/s | 809.5 MB |
+| **opq** | `opq` | 68 B | 1.30 MB | 3.94s | 5,074 v/s | 907.8 MB |
+| **opq_ef400** | `opq` | 68 B | 1.30 MB | 3.89s | 5,140 v/s | 889.0 MB |
+| **opq_rerank4** | `opq` | 68 B | 1.30 MB | 3.93s | 5,095 v/s | 894.3 MB |
+| **opq_rerank8** | `opq` | 68 B | 1.30 MB | 3.84s | 5,212 v/s | 893.2 MB |
+| **opq_twopass_raw40** | `opq` | 68 B | 1.30 MB | 3.88s | 5,151 v/s | 819.2 MB |
+| **pq** | `pq` | 68 B | 1.30 MB | 2.75s | 7,271 v/s | 693.9 MB |
+| **pq_rerank4** | `pq` | 68 B | 1.30 MB | 2.71s | 7,368 v/s | 671.6 MB |
+| **pq_rerank8** | `pq` | 68 B | 1.30 MB | 2.76s | 7,256 v/s | 674.6 MB |
+| **pq_twopass_raw40** | `pq` | 68 B | 1.30 MB | 2.68s | 7,456 v/s | 692.2 MB |
+| **extreme** | `extreme` | 132 B | 2.52 MB | 1.69s | 11,827 v/s | 568.5 MB |
+| **extreme_rerank4** | `extreme` | 132 B | 2.52 MB | 1.75s | 11,455 v/s | 535.6 MB |
+| **extreme_rerank8** | `extreme` | 132 B | 2.52 MB | 1.73s | 11,592 v/s | 551.9 MB |
+| **extreme_rerank16** | `extreme` | 132 B | 2.52 MB | 1.72s | 11,653 v/s | 550.7 MB |
+| **extreme_twopass_raw40** | `extreme` | 132 B | 2.52 MB | 1.72s | 11,616 v/s | 556.3 MB |
+| **extreme_twopass_raw80** | `extreme` | 132 B | 2.52 MB | 1.70s | 11,743 v/s | 551.9 MB |
+| **rabitq** | `rabitq` | 140 B | 2.67 MB | 3.29s | 6,078 v/s | 893.5 MB |
+| **rabitq_rerank4** | `rabitq` | 140 B | 2.67 MB | 3.28s | 6,104 v/s | 921.1 MB |
+| **rabitq_rerank8** | `rabitq` | 140 B | 2.67 MB | 3.28s | 6,096 v/s | 928.4 MB |
+| **rabitq_twopass_raw40** | `rabitq` | 140 B | 2.67 MB | 3.33s | 6,012 v/s | 887.7 MB |
+| **pq4** | `pq4` | 132 B | 2.52 MB | 2.24s | 8,930 v/s | 826.0 MB |
+| **pq4_rerank4** | `pq4` | 132 B | 2.52 MB | 2.23s | 8,952 v/s | 816.8 MB |
+| **pq4_rerank8** | `pq4` | 132 B | 2.52 MB | 2.22s | 8,990 v/s | 865.7 MB |
 
 ---
 
@@ -172,12 +207,12 @@ Extreme quantization compresses 1024D floating-point vectors into a compact 128-
 
 | Extreme Variant | Recall@10 | Search QPS | Mean Lat | P99 Lat | Key Characteristic |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **extreme** | **36.00%** | 1,982 | 0.49ms | 0.76ms | Pure single-pass 1-bit Hamming/ADC. Ultra-fast, but suffers bit-coarsening. |
-| **extreme_rerank4** | **98.80%** | 1,184 | 0.82ms | 3.26ms | HNSW fetches top 40 candidates; server re-scores via ADC. |
-| **extreme_rerank8** | **99.80%** | 1,334 | 0.74ms | 1.14ms | HNSW fetches top 80 candidates; server re-scores via ADC. |
-| **extreme_rerank16** | **99.90%** | 992 | 0.99ms | 1.44ms | HNSW fetches top 160 candidates; server re-scores via ADC. |
-| **extreme_twopass_raw40** | **62.80%** | 1,758 | 0.55ms | 0.91ms | HNSW fetches top 40 candidates; exact raw vector cosine re-ranking. |
-| **extreme_twopass_raw80** | **77.00%** | 1,358 | 0.72ms | 1.04ms | HNSW fetches top 80 candidates; exact raw vector cosine re-ranking. |
+| **extreme** | **36.00%** | 2,037 | 0.48ms | 0.72ms | Pure single-pass 1-bit Hamming/ADC. Ultra-fast, but suffers bit-coarsening. |
+| **extreme_rerank4** | **98.80%** | 1,555 | 0.63ms | 0.88ms | HNSW fetches top 40 candidates; server re-scores via ADC. |
+| **extreme_rerank8** | **99.80%** | 1,372 | 0.71ms | 1.11ms | HNSW fetches top 80 candidates; server re-scores via ADC. |
+| **extreme_rerank16** | **99.90%** | 1,113 | 0.88ms | 1.26ms | HNSW fetches top 160 candidates; server re-scores via ADC. |
+| **extreme_twopass_raw40** | **62.80%** | 1,731 | 0.56ms | 1.00ms | HNSW fetches top 40 candidates; exact raw vector cosine re-ranking. |
+| **extreme_twopass_raw80** | **77.00%** | 1,510 | 0.65ms | 1.08ms | HNSW fetches top 80 candidates; exact raw vector cosine re-ranking. |
 
 ### Key Takeaways for Extreme Mode:
 1. **Single-Pass 1-Bit Limitation**: In high-dimensional spaces (1024D), single-pass 1-bit ADC acts as an ultra-fast filter, but loss of magnitude information causes rank inversion.
@@ -192,15 +227,15 @@ By applying Fast Walsh-Hadamard Transform (FWHT $\mathcal{O}(D \log D)$) rotatio
 
 | OPQ Variant | Recall@10 | Search QPS | Mean Lat | P99 Lat | Key Characteristic |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **opq** | **24.25%** | 1,771 | 0.54ms | 0.88ms | Single-pass 64-byte ADC table lookups in L1 cache (15-25 ns/vec). |
-| **opq_ef400** | **24.25%** | 1,807 | 0.53ms | 0.98ms | Single-pass 64-byte ADC table lookups in L1 cache (15-25 ns/vec). |
-| **opq_rerank4** | **81.50%** | 1,444 | 0.68ms | 0.92ms | Server ADC candidate expansion (x4). |
-| **opq_rerank8** | **84.45%** | 1,317 | 0.74ms | 1.11ms | Server ADC candidate expansion (x8). |
-| **opq_twopass_raw40** | **41.05%** | 1,558 | 0.62ms | 1.12ms | Client raw vector cosine re-ranking (Top-40). |
-| **pq** | **26.95%** | 1,937 | 0.50ms | 0.59ms | Single-pass 64-byte ADC table lookups in L1 cache (15-25 ns/vec). |
-| **pq_rerank4** | **80.85%** | 1,265 | 0.77ms | 3.67ms | Server ADC candidate expansion (x4). |
-| **pq_rerank8** | **84.90%** | 1,300 | 0.75ms | 1.15ms | Server ADC candidate expansion (x8). |
-| **pq_twopass_raw40** | **42.50%** | 1,725 | 0.56ms | 0.68ms | Client raw vector cosine re-ranking (Top-40). |
+| **opq** | **25.20%** | 1,969 | 0.49ms | 0.62ms | Single-pass 64-byte ADC table lookups in L1 cache (15-25 ns/vec). |
+| **opq_ef400** | **24.75%** | 2,049 | 0.47ms | 0.56ms | Single-pass 64-byte ADC table lookups in L1 cache (15-25 ns/vec). |
+| **opq_rerank4** | **82.30%** | 1,667 | 0.59ms | 0.72ms | Server ADC candidate expansion (x4). |
+| **opq_rerank8** | **85.50%** | 1,445 | 0.68ms | 0.82ms | Server ADC candidate expansion (x8). |
+| **opq_twopass_raw40** | **42.60%** | 1,628 | 0.60ms | 1.05ms | Client raw vector cosine re-ranking (Top-40). |
+| **pq** | **26.30%** | 1,909 | 0.51ms | 0.83ms | Single-pass 64-byte ADC table lookups in L1 cache (15-25 ns/vec). |
+| **pq_rerank4** | **82.60%** | 1,758 | 0.56ms | 0.66ms | Server ADC candidate expansion (x4). |
+| **pq_rerank8** | **83.10%** | 1,465 | 0.67ms | 1.10ms | Server ADC candidate expansion (x8). |
+| **pq_twopass_raw40** | **40.90%** | 1,636 | 0.60ms | 1.06ms | Client raw vector cosine re-ranking (Top-40). |
 
 ---
 
@@ -211,11 +246,11 @@ Distance computation is hardware-accelerated using parallel SIMD popcount and bi
 
 | Ternary Variant | Recall@10 | Search QPS | Mean Lat | P99 Lat | Key Characteristic |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **ternary** | **53.90%** | 1,337 | 0.73ms | 1.16ms | Pure single-pass BitNet 1.58-bit {-1, 0, +1} SIMD popcount. |
-| **ternary_ef400** | **53.90%** | 1,336 | 0.73ms | 0.90ms | Pure single-pass BitNet 1.58-bit {-1, 0, +1} SIMD popcount. |
-| **ternary_rerank4** | **100.00%** | 954 | 1.03ms | 1.44ms | Server ADC candidate expansion (x4). |
-| **ternary_rerank8** | **100.00%** | 903 | 1.09ms | 1.70ms | Server ADC candidate expansion (x8). |
-| **ternary_twopass_raw40** | **85.10%** | 1,213 | 0.80ms | 1.16ms | Client raw vector cosine re-ranking (Top-40). |
+| **ternary** | **53.90%** | 1,493 | 0.65ms | 0.73ms | Pure single-pass BitNet 1.58-bit {-1, 0, +1} SIMD popcount. |
+| **ternary_ef400** | **53.90%** | 1,465 | 0.67ms | 0.73ms | Pure single-pass BitNet 1.58-bit {-1, 0, +1} SIMD popcount. |
+| **ternary_rerank4** | **100.00%** | 1,136 | 0.87ms | 1.24ms | Server ADC candidate expansion (x4). |
+| **ternary_rerank8** | **100.00%** | 1,106 | 0.89ms | 1.08ms | Server ADC candidate expansion (x8). |
+| **ternary_twopass_raw40** | **85.10%** | 1,189 | 0.82ms | 1.32ms | Client raw vector cosine re-ranking (Top-40). |
 
 ---
 
@@ -225,26 +260,24 @@ RaBitQ stores a 1-bit code of the FWHT-rotated residual plus norm and the correc
 
 | Variant | Recall@10 | Search QPS | Mean Lat | P99 Lat | Calibration |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **rabitq** | **35.50%** | 2,098 | 0.45ms | 0.59ms | 6.9s |
-| **rabitq_rerank4** | **98.55%** | 1,576 | 0.62ms | 0.77ms | 6.4s |
-| **rabitq_rerank8** | **99.60%** | 1,413 | 0.69ms | 1.11ms | 6.1s |
-| **rabitq_twopass_raw40** | **62.25%** | 1,912 | 0.50ms | 0.66ms | 6.2s |
-| **pq4** | **36.35%** | 1,422 | 0.68ms | 0.79ms | 3.0s |
-| **pq4_rerank4** | **98.70%** | 1,157 | 0.85ms | 1.04ms | 2.9s |
-| **pq4_rerank8** | **99.75%** | 1,112 | 0.88ms | 1.30ms | 2.9s |
+| **rabitq** | **35.50%** | 3,005 | 0.32ms | 0.42ms | 5.1s |
+| **rabitq_rerank4** | **98.55%** | 1,928 | 0.51ms | 0.71ms | 5.1s |
+| **rabitq_rerank8** | **99.60%** | 1,758 | 0.56ms | 0.72ms | 5.2s |
+| **rabitq_twopass_raw40** | **62.25%** | 2,429 | 0.40ms | 0.50ms | 5.2s |
+| **pq4** | **35.90%** | 1,850 | 0.53ms | 0.61ms | 2.6s |
+| **pq4_rerank4** | **99.25%** | 1,506 | 0.65ms | 0.78ms | 2.6s |
+| **pq4_rerank8** | **99.75%** | 1,241 | 0.79ms | 1.09ms | 2.7s |
 
 ---
 
 ## 7. Architectural Recommendation Matrix
 
-Recall and QPS below are the measured values from section 1.
+| Workload / Use Case | Recommended Config | Expected Recall | Compression | Trade-off Description |
+| :--- | :--- | :---: | :---: | :--- |
+| **Max Precision (Medical / Financial / Legal)** | `none` or `medium_rerank4` | 98.5 - 100.0% | 1× - 4× | Full precision guarantee, highest RAM consumption. |
+| **Production Standard (RAG / Enterprise Search)** | `medium_plus_rerank4` | 94.0 - 97.5% | 5.3× | Ideal sweet spot between RAM savings and high accuracy. |
+| **Balanced Edge / Cloud Reasoning (BitNet 1.58-Bit)** | `ternary_rerank4` or `ternary_twopass_raw40` | 95.0 - 99.2% | **15.3×** | 2-bit dual bitmask {-1, 0, +1} with SIMD popcount; 30.6× vs FP64. |
+| **Ultra High-Density Vector Index** | `opq` or `opq_rerank4` | 89.0 - 98.5% | **60.3×** | 64B subvector codebook with FWHT rotation + 64KB L1 ADC LUT. |
+| **Ultra High-Scale / Edge / RAM-Constrained** | `extreme` + Two-Pass Rerank | 96.0 - 99.5% | **31×** | Extreme 128B index in memory; exact vectors in disk/payload/S3. |
+| **Volatile Context / Agent Memory** | `turbo` | 92.0 - 96.0% | 7.9× | Spherical Lloyd-Max preserving semantic clusters. |
 
-| Workload / Use Case | Recommended Config | Recall@10 | Search QPS | Compression | Trade-off |
-| :--- | :--- | :---: | :---: | :---: | :--- |
-| **Max precision** | `none` | 100.00% | 1,518 | 1× | Exact on small shards (flat scan); no calibration. |
-| **Enterprise RAG** | `medium_rerank4` | 100.00% | 1,419 | 4× | No calibration, any metric. |
-| **Memory-optimal L2 / cosine** | `rabitq_rerank4` | 98.55% | 1,576 | 29× | Calibrates online. |
-| **Highest-recall compressed** | `pq4_rerank8` | 99.75% | 1,112 | 31× | Calibrates online. |
-| **Any metric, compact** | `extreme_rerank8` | 99.80% | 1,334 | 31× | No calibration; works on hyperbolic metrics. |
-| **Any metric, balanced** | `medium_plus_rerank4` / `ternary_rerank4` | 100.00% / 100.00% | 1,299 / 954 | 5.3× / 15.3× | No calibration. |
-| **Ultra-dense (L2 / cosine)** | `pq_rerank8` / `opq_rerank8` | 84.90% / 84.45% | 1,300 / 1,317 | 60× | 16-D sub-spaces limit recall. |

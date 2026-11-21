@@ -1337,7 +1337,7 @@ fn engine_tunables() -> serde_json::Value {
         "filter_bruteforce_threshold": env("HS_FILTER_BRUTEFORCE_THRESHOLD", "auto"),
         "search_patience": env("HS_SEARCH_PATIENCE", "0"),
         "repair_delete_threshold": env("HS_REPAIR_DELETE_THRESHOLD", "auto (max(256, 5%))"),
-        "rerank_enabled": env("HS_RERANK_ENABLED", "false"),
+        "rerank_enabled": env("HS_RERANK_ENABLED", "true"),
         "rerank_oversample": env("HS_RERANK_OVERSAMPLE", "4"),
         "storage_float32": env("HS_STORAGE_FLOAT32", "true"),
         "chunk_cache_size": env("HS_CHUNK_CACHE_SIZE", "64"),
@@ -2081,6 +2081,7 @@ async fn search_collection(
             component_weights: payload.weights,
             use_wave: false,
             skip_metadata: false,
+            defer_rerank: false,
         };
         match col
             .search(

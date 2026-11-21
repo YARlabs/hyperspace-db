@@ -98,6 +98,9 @@ const RABITQ_FILE: &str = "rabitq_centroid.bin";
 const PQ4_FILE: &str = "pq4_codebook.bin";
 /// Written next to the snapshot once a trained quantizer has been fitted to data.
 const CALIBRATED_MARKER: &str = "quantizer.calibrated";
+/// Written next to the snapshot of a ScalarI8 L2 / cosine index whose codes use a
+/// per-vector scale (`alpha = max |x|`); indexes without it keep the legacy `x · 127` codes.
+const SQ8_SCALED_MARKER: &str = "sq8.scaled";
 
 /// Metadata key prefix for typed values (`{"v": ...}` JSON payloads).
 const TYPED_META_PREFIX: &str = "__hs_typed__";
@@ -375,6 +378,9 @@ impl<M: Metric> HnswIndex<M> {
             if self.mode.needs_training() && self.is_calibrated() {
                 let _ = std::fs::write(parent.join(CALIBRATED_MARKER), b"1");
             }
+            if self.sq8_scaled {
+                let _ = std::fs::write(parent.join(SQ8_SCALED_MARKER), b"1");
+            }
         }
 
         Ok(())
@@ -621,6 +627,10 @@ impl<M: Metric> HnswIndex<M> {
             ),
             calibration_gate: RwLock::new(()),
             calibrated_at: AtomicUsize::new(0),
+            sq8_scaled: Self::sq8_scaled_supported(mode)
+                && path
+                    .parent()
+                    .is_some_and(|d| d.join(SQ8_SCALED_MARKER).exists()),
             repair_running: AtomicBool::new(false),
             graph_engine: None,
             _marker: PhantomData,
@@ -832,6 +842,8 @@ impl<M: Metric> HnswIndex<M> {
             calibrated: AtomicBool::new(true),
             calibration_gate: RwLock::new(()),
             calibrated_at: AtomicUsize::new(0),
+            // Byte snapshots are produced and read by the same build (wasm).
+            sq8_scaled: Self::sq8_scaled_supported(mode),
             repair_running: AtomicBool::new(false),
             graph_engine: None,
             _marker: PhantomData,
@@ -914,6 +926,8 @@ pub struct HnswIndex<M: Metric> {
     /// the quantizer is swapped, so no code is written with a stale codebook after the
     /// swap without being re-encoded.
     calibration_gate: RwLock<()>,
+    /// ScalarI8 codes carry a per-vector scale in `alpha` (see [`SQ8_SCALED_MARKER`]).
+    sq8_scaled: bool,
     pub flat_l0: arc_swap::ArcSwapOption<FlatLayer0Segment>,
     /// Deletes recorded since the last graph repair (see [`HnswIndex::repair_deleted`]).
     deletes_since_repair: AtomicUsize,
@@ -1179,6 +1193,26 @@ pub fn set_bit_lut_kernels(enabled: bool) {
     BIT_LUT_KERNELS.store(enabled, Ordering::Relaxed);
 }
 
+/// Integer (SDOT / VNNI-style) kernel for per-vector scaled ScalarI8 codes, on by default.
+/// Off falls back to the `f32`-query kernel over the same codes (A/B tests only).
+static SQ8_INT_KERNEL: AtomicBool = AtomicBool::new(true);
+
+/// Whether *new* ScalarI8 L2 / cosine indexes use per-vector scaled codes (default) or the
+/// legacy fixed `x · 127` codes. Existing indexes keep the format they were written with.
+static SQ8_SCALED_CODES: AtomicBool = AtomicBool::new(true);
+
+/// Enables / disables the integer ScalarI8 kernel process-wide.
+#[doc(hidden)]
+pub fn set_sq8_int_kernel(enabled: bool) {
+    SQ8_INT_KERNEL.store(enabled, Ordering::Relaxed);
+}
+
+/// Chooses the ScalarI8 code format for indexes created afterwards (A/B tests only).
+#[doc(hidden)]
+pub fn set_sq8_scaled_codes(enabled: bool) {
+    SQ8_SCALED_CODES.store(enabled, Ordering::Relaxed);
+}
+
 /// Nibble-table kernel family for bit-packed quantizers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BitLutKind {
@@ -1221,6 +1255,8 @@ enum DistKernel<'a> {
     TernaryCosLut(&'a hyperspace_core::vector::BitPlaneLut),
     /// ScalarI4 codes, squared L2 against a de-interleaved query (NEON on aarch64).
     I4L2(&'a [f32], &'a [f32], f64),
+    /// Per-vector scaled ScalarI8 codes, integer (SDOT) squared L2.
+    Sq8Int(&'a hyperspace_core::simd::Sq8Query),
     /// Everything else: full `dist_bytes_opt` dispatch.
     Generic,
 }
@@ -1236,6 +1272,8 @@ pub enum QueryPrep {
     Pq4(hyperspace_core::pq4::Pq4Lut),
     /// Nibble table for bit-packed codes (`extreme` 1-bit ADC, ternary).
     Bits(hyperspace_core::vector::BitPlaneLut),
+    /// Int8-quantized query for per-vector scaled ScalarI8 (`medium`) on L2 / cosine.
+    Sq8(hyperspace_core::simd::Sq8Query),
     /// De-interleaved `f32` query for ScalarI4 (`medium_plus`) squared L2.
     I4 {
         even: Vec<f32>,
@@ -1339,6 +1377,8 @@ impl<M: Metric> HnswIndex<M> {
             calibrated: AtomicBool::new(!mode.needs_training()),
             calibration_gate: RwLock::new(()),
             calibrated_at: AtomicUsize::new(0),
+            sq8_scaled: Self::sq8_scaled_supported(mode)
+                && SQ8_SCALED_CODES.load(Ordering::Relaxed),
             repair_running: AtomicBool::new(false),
             graph_engine: None,
             _marker: PhantomData,
@@ -2456,6 +2496,19 @@ impl<M: Metric> HnswIndex<M> {
                 &query.coords,
             )));
         }
+        if self.sq8_scaled && SQ8_INT_KERNEL.load(Ordering::Relaxed) {
+            let owned;
+            let q: &[f32] = if let Some(q) = query_f32 {
+                q
+            } else {
+                owned = query.coords.iter().map(|&x| x as f32).collect::<Vec<f32>>();
+                &owned
+            };
+            let n = q.len().min(self.dimension);
+            return Some(QueryPrep::Sq8(hyperspace_core::simd::Sq8Query::new(
+                &q[..n],
+            )));
+        }
         if self.i4_kernel_applies() {
             let (even, odd) = ScalarI4Vector::deinterleave_query(&query.coords, self.dimension);
             let norm_sq = query
@@ -2513,12 +2566,70 @@ impl<M: Metric> HnswIndex<M> {
             Some(QueryPrep::I4 { even, odd, norm_sq }) if mrl_dim.is_none() => {
                 DistKernel::I4L2(even, odd, *norm_sq)
             }
+            Some(QueryPrep::Sq8(q)) if mrl_dim.is_none() => DistKernel::Sq8Int(q),
             // 8-bit PQ scores through `dist_bytes_opt`; MRL truncation needs the generic path.
-            Some(QueryPrep::Pq(_) | QueryPrep::Bits(_) | QueryPrep::I4 { .. }) => {
-                DistKernel::Generic
-            }
+            Some(
+                QueryPrep::Pq(_) | QueryPrep::Bits(_) | QueryPrep::I4 { .. } | QueryPrep::Sq8(_),
+            ) => DistKernel::Generic,
             None => self.resolve_kernel(query, query_f32, mrl_dim),
         }
+    }
+
+    /// New ScalarI8 L2 / cosine indexes store per-vector scaled codes.
+    fn sq8_scaled_supported(mode: QuantizationMode) -> bool {
+        mode == QuantizationMode::ScalarI8 && matches!(M::name(), "l2" | "cosine")
+    }
+
+    /// Dequantization step of a ScalarI8 code (`x_i ≈ code_i · step`).
+    #[inline(always)]
+    fn sq8_step(&self, alpha: f32) -> f32 {
+        if self.sq8_scaled {
+            alpha / 127.0
+        } else {
+            1.0 / 127.0
+        }
+    }
+
+    /// Squared L2 over per-vector scaled ScalarI8 codes: integer kernel when a prepared
+    /// query is available, `f32` query kernel otherwise (MRL truncation included).
+    #[inline]
+    fn sq8_scaled_dist(
+        bytes: &[u8],
+        query: &HyperVector,
+        query_f32: Option<&[f32]>,
+        prep: Option<&QueryPrep>,
+        mrl_dim: Option<usize>,
+    ) -> f64 {
+        if bytes.len() < 4 {
+            return f64::MAX;
+        }
+        let split = bytes.len() - 4;
+        let alpha = f32::from_le_bytes(bytes[split..].try_into().unwrap_or([0; 4]));
+        if let (Some(QueryPrep::Sq8(q)), None) = (prep, mrl_dim) {
+            return f64::from(hyperspace_core::simd::sq8_scaled_l2_int(
+                &bytes[..split],
+                alpha,
+                q,
+            ));
+        }
+        let owned;
+        let q32: &[f32] = if let Some(q) = query_f32 {
+            q
+        } else {
+            owned = query.coords.iter().map(|&x| x as f32).collect::<Vec<f32>>();
+            &owned
+        };
+        let n = split.min(q32.len()).min(mrl_dim.unwrap_or(usize::MAX));
+        f64::from(
+            hyperspace_core::simd::sq8_scaled_l2_and_norm_sq(&bytes[..n], alpha / 127.0, &q32[..n])
+                .0,
+        )
+    }
+
+    /// Whether this index stores per-vector scaled ScalarI8 codes.
+    #[must_use]
+    pub fn sq8_scaled(&self) -> bool {
+        self.sq8_scaled
     }
 
     /// ScalarI4 indexes whose distance is plain squared L2 over the whole vector (mirrors
@@ -2576,7 +2687,9 @@ impl<M: Metric> HnswIndex<M> {
                 "lorentz" => DistKernel::F64Lorentz(&query.coords),
                 _ => DistKernel::Generic,
             },
-            (QuantizationMode::ScalarI8, _, Some(q)) if matches!(name, "l2" | "cosine") => {
+            (QuantizationMode::ScalarI8, _, Some(q))
+                if matches!(name, "l2" | "cosine") && !self.sq8_scaled =>
+            {
                 DistKernel::Sq8L2(q)
             }
             _ => DistKernel::Generic,
@@ -2642,6 +2755,11 @@ impl<M: Metric> HnswIndex<M> {
                 1.0 - f64::from(simd::dot_f32_bytes(&cb[..n * 4], &q[..n]))
             }
             DistKernel::Sq8L2(q) => QuantizedHyperVector::distance_bytes_euclidean_sq_f32(bytes, q),
+            DistKernel::Sq8Int(q) => {
+                let split = bytes.len().saturating_sub(4);
+                let alpha = f32::from_le_bytes(bytes[split..].try_into().unwrap_or([0; 4]));
+                f64::from(simd::sq8_scaled_l2_int(&bytes[..split], alpha, q))
+            }
             DistKernel::F64L2(q) => {
                 let cb = &bytes[..bytes.len().saturating_sub(8)];
                 let n = (cb.len() / 8).min(q.len());
@@ -2732,7 +2850,9 @@ impl<M: Metric> HnswIndex<M> {
             }
             QuantizationMode::ScalarI8 => {
                 let name = M::name();
-                if name == "l2" || name == "cosine" {
+                if self.sq8_scaled {
+                    Self::sq8_scaled_dist(bytes, query, query_f32, pq_lut, mrl_dim)
+                } else if name == "l2" || name == "cosine" {
                     if let Some(q_f32) = query_f32 {
                         QuantizedHyperVector::distance_bytes_euclidean_sq_f32(bytes, q_f32)
                     } else {
@@ -4309,7 +4429,7 @@ impl<M: Metric> HnswIndex<M> {
                 }
                 out[0] = (1.0 + norm_sq).sqrt() as f32;
             } else {
-                let scale = 1.0 / 127.0;
+                let scale = self.sq8_step(alpha);
                 for &b in &bytes[..n] {
                     out.push(f32::from(b.cast_signed()) * scale);
                 }
@@ -4317,7 +4437,11 @@ impl<M: Metric> HnswIndex<M> {
             if out.len() < self.dimension {
                 out.resize(self.dimension, 0.0);
             }
-            *alpha_out = f64::from(alpha);
+            *alpha_out = if self.sq8_scaled {
+                1.0
+            } else {
+                f64::from(alpha)
+            };
             return;
         }
 
@@ -4408,7 +4532,7 @@ impl<M: Metric> HnswIndex<M> {
                 "l2" | "cosine" | "poincare" | "lorentz" | "hybrid"
             )
         } else {
-            self.mode == QuantizationMode::ScalarI8 && M::name() == "lorentz"
+            self.sq8_scaled || (self.mode == QuantizationMode::ScalarI8 && M::name() == "lorentz")
         }
     }
 
@@ -4421,6 +4545,9 @@ impl<M: Metric> HnswIndex<M> {
     ) -> f64 {
         if self.mode == QuantizationMode::ScalarI8 && M::name() == "lorentz" {
             return hyperspace_core::simd::sq8_lorentz_bytes_pair(bytes_a, bytes_b);
+        }
+        if self.sq8_scaled {
+            return f64::from(hyperspace_core::simd::sq8_scaled_l2_pair(bytes_a, bytes_b));
         }
         let ca = &bytes_a[..bytes_a.len().saturating_sub(4)];
         let cb = &bytes_b[..bytes_b.len().saturating_sub(4)];
@@ -4748,8 +4875,9 @@ impl<M: Metric> HnswIndex<M> {
                         scratch[0] = (1.0 + norm_sq).sqrt();
                     }
                 } else {
+                    let step = f64::from(self.sq8_step(q.alpha));
                     for (i, &c) in q.coords.iter().enumerate() {
-                        scratch[i] = f64::from(c) / 127.0;
+                        scratch[i] = f64::from(c) * step;
                     }
                 }
                 f(scratch)
@@ -4836,13 +4964,19 @@ impl<M: Metric> HnswIndex<M> {
                     }
                     HyperVector { coords, alpha: 0.0 }
                 } else {
-                    // Poincare / Euclidean / Cosine: alpha stores 1/(1-||x||^2)
+                    // Poincare / legacy Euclidean / Cosine: alpha stores 1/(1-||x||^2);
+                    // scaled Euclidean / Cosine codes: alpha is the per-vector scale.
+                    let step = f64::from(self.sq8_step(q.alpha));
                     for (i, &c) in q.coords.iter().enumerate() {
-                        coords[i] = f64::from(c) / 127.0;
+                        coords[i] = f64::from(c) * step;
                     }
                     HyperVector {
                         coords,
-                        alpha: f64::from(q.alpha),
+                        alpha: if self.sq8_scaled {
+                            1.0
+                        } else {
+                            f64::from(q.alpha)
+                        },
                     }
                 }
             }
@@ -5109,6 +5243,8 @@ impl<M: Metric> HnswIndex<M> {
             QuantizationMode::ScalarI8 => {
                 let q = if M::name() == "lorentz" {
                     QuantizedHyperVector::from_float_lorentz(&q_vec_full)
+                } else if self.sq8_scaled {
+                    QuantizedHyperVector::from_float_scaled(&q_vec_full)
                 } else {
                     QuantizedHyperVector::from_float(
                         &q_vec_full,
@@ -5257,6 +5393,8 @@ impl<M: Metric> HnswIndex<M> {
             QuantizationMode::ScalarI8 => {
                 let q = if M::name() == "lorentz" {
                     QuantizedHyperVector::from_float_lorentz(&q_vec_full)
+                } else if self.sq8_scaled {
+                    QuantizedHyperVector::from_float_scaled(&q_vec_full)
                 } else {
                     QuantizedHyperVector::from_float(
                         &q_vec_full,

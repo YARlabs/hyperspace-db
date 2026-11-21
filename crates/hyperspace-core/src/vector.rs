@@ -348,6 +348,24 @@ impl QuantizedHyperVector {
         bytes
     }
 
+    /// Per-vector scaled SQ8 for Euclidean / cosine indexes: codes use the full int8 range
+    /// (`x_i ≈ code_i · alpha / 127`, `alpha = max |x_i|`). The legacy fixed scale (`x · 127`)
+    /// leaves a normalized 1024-D embedding (|x_i| ≈ 0.03) with only ±4 levels per coordinate.
+    #[must_use]
+    pub fn from_float_scaled(v: &HyperVector) -> Self {
+        let max = v.coords.iter().fold(0.0f64, |m, &x| m.max(x.abs()));
+        let inv = if max > 0.0 { 127.0 / max } else { 0.0 };
+        let coords = v
+            .coords
+            .iter()
+            .map(|&x| (x * inv).round().clamp(-127.0, 127.0) as i8)
+            .collect();
+        Self {
+            coords,
+            alpha: if max > 0.0 { max as f32 } else { 1.0 },
+        }
+    }
+
     pub fn from_float(v: &HyperVector, anisotropic: bool) -> Self {
         let n = v.coords.len();
         let mut coords = vec![0i8; n];

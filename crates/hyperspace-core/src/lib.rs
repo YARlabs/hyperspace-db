@@ -330,6 +330,9 @@ pub struct SearchParams {
     /// Return results without metadata. Set by the scatter-gather layer for per-shard
     /// searches, which fetch metadata only for the merged top-k.
     pub skip_metadata: bool,
+    /// Return compact-code candidates without the exact rerank. Set by the scatter-gather
+    /// layer, which reranks the merged candidate set once instead of once per shard.
+    pub defer_rerank: bool,
 }
 
 /// Upper bound on a per-request `ef_search` (`HS_MAX_EF_SEARCH`, default 4096). A beam

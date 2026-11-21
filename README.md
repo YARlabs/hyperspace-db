@@ -333,20 +333,20 @@ HyperspaceDB **v4.0.0** introduces a high-performance **Thread-per-Core (Shared-
 
 ## 🗜️ Multi-Tier Vector Quantization Suite (v4.2.5)
 
-HyperspaceDB v4.2.5 supports 10 quantization levels, measured on 20,000 unit-normalized 1024D embeddings (cosine, 200 queries, M=64, ef_construction=400, ef_search=100, 12 shards, Apple M4 Pro). Full matrix and the v4.2.4 → v4.2.5 A/B: [BENCHMARK_QUANTIZATION_SWEEP.md](BENCHMARK_QUANTIZATION_SWEEP.md).
+HyperspaceDB v4.2.5 supports 10 quantization levels, measured on 20,000 unit-normalized 1024D embeddings (cosine, 200 queries, M=64, ef_construction=400, ef_search=100, 12 shards, Apple M4 Pro). Full matrix: [BENCHMARK_QUANTIZATION_SWEEP.md](BENCHMARK_QUANTIZATION_SWEEP.md). QPS here is single-client (1 / latency); for throughput under concurrency use `hs_loadbench` (e.g. `medium` + rerank ×4: 9.0k QPS at 16 clients, p99 3.6 ms, recall 100%).
 
 | Mode | Key | Bytes / Vec | Compression | Single-Pass Recall@10 | With Rerank | Search QPS | Mean Latency | Primary Use Case |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Full Precision** | `none` | 4,100 B | **1.0×** | **100.00%** | 100.00% (ef=400) | 1,518 | 0.64 ms | Legal, Medical, Financial ground truth |
-| **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **88.60%** | 100.00% (rerank ×4) | 1,791 | 0.54 ms | Enterprise RAG standard (75% RAM savings) |
-| **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **87.15%** | 100.00% (rerank ×4) | 1,607 | 0.61 ms | Balanced 4-bit storage, any metric (NEON kernel) |
-| **TurboQuant** | `turbo` | 520 B | **7.9×** | **87.60%** | 100.00% (rerank ×4) | 1,242 | 0.79 ms | Spherical Lloyd-Max + orthogonal rotation |
-| **Ternary BitNet** | `ternary` | 268 B | **15.3×** | **53.90%** | 100.00% (rerank ×4) | 1,337 | 0.73 ms | BitNet 1.58-bit, any metric |
-| **RaBitQ *(v4.2.5)*** | `rabitq` | 140 B | **29.3×** | **35.50%** | 98.55% (rerank ×4) | 2,098 | 0.45 ms | Fastest compressed tier; L2 / cosine, auto-calibrated |
-| **PQ4 Fast-Scan *(v4.2.5)*** | `pq4` | 132 B | **31.1×** | **36.35%** | 99.75% (rerank ×8) | 1,422 | 0.68 ms | 4-bit PQ with L1 LUT; L2 / cosine, auto-calibrated |
-| **Extreme 1-Bit ADC** | `extreme` | 132 B | **31.1×** | **36.00%** | 99.80% (rerank ×8) | 1,982 | 0.49 ms | Edge, robotics (ROS 2), IoT; any metric |
-| **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **24.25%** | 84.45% (rerank ×8) | 1,771 | 0.54 ms | Ultra-scale ADC with FWHT rotation |
-| **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **26.95%** | 84.90% (rerank ×8) | 1,937 | 0.50 ms | Standard product quantization with ADC |
+| **Full Precision** | `none` | 4,100 B | **1.0×** | **100.00%** | 100.00% (ef=400) | 1,571 | 0.62 ms | Legal, Medical, Financial ground truth |
+| **Scalar SQ8** | `medium` | 1,028 B | **4.0×** | **98.50%** | 100.00% (rerank ×4) | 3,114 | 0.31 ms | Enterprise RAG standard (75% RAM savings) |
+| **Block ScalarI4** | `medium_plus` | 772 B | **5.3×** | **87.15%** | 100.00% (rerank ×4) | 1,664 | 0.59 ms | Balanced 4-bit storage, any metric (NEON kernel) |
+| **TurboQuant** | `turbo` | 520 B | **7.9×** | **87.60%** | 100.00% (rerank ×4) | 1,199 | 0.82 ms | Spherical Lloyd-Max + orthogonal rotation |
+| **Ternary BitNet** | `ternary` | 268 B | **15.3×** | **53.90%** | 100.00% (rerank ×4) | 1,493 | 0.65 ms | BitNet 1.58-bit, any metric |
+| **RaBitQ *(v4.2.5)*** | `rabitq` | 140 B | **29.3×** | **35.50%** | 98.55% (rerank ×4) | 3,005 | 0.32 ms | Fastest compressed tier; L2 / cosine, auto-calibrated |
+| **PQ4 Fast-Scan *(v4.2.5)*** | `pq4` | 132 B | **31.1×** | **35.90%** | 99.75% (rerank ×8) | 1,850 | 0.53 ms | 4-bit PQ with L1 LUT; L2 / cosine, auto-calibrated |
+| **Extreme 1-Bit ADC** | `extreme` | 132 B | **31.1×** | **36.00%** | 99.80% (rerank ×8) | 2,037 | 0.48 ms | Edge, robotics (ROS 2), IoT; any metric |
+| **Optimized PQ (OPQ-64)** | `opq` | 68 B | **60.3×** | **25.20%** | 85.50% (rerank ×8) | 1,969 | 0.49 ms | Ultra-scale ADC with FWHT rotation |
+| **Product Quant (PQ-64)** | `pq` | 68 B | **60.3×** | **26.30%** | 83.10% (rerank ×8) | 1,909 | 0.51 ms | Standard product quantization with ADC |
 
 Rerank rows use `rerank_enabled=true` with the given oversampling factor: the server fetches `top_k × factor` candidates and re-scores them before returning `top_k`. Trained modes (`rabitq`, `pq4`, `pq`, `opq`) start with a data-independent default codebook and calibrate themselves online once a shard holds `HS_AUTO_CALIBRATE_MIN` vectors (default 1,024; 4,096 for `pq` / `opq`); `RebuildIndex` also retrains and rebuilds the graph on the trained codes.
 
@@ -821,7 +821,10 @@ Configure these via `.env` file or environment variables:
 | `HS_HNSW_M` / `HS_HNSW_EF_CONSTRUCT` / `HS_HNSW_EF_SEARCH` | HNSW degree / build beam / default search beam (a request's `ef_search` overrides it) | Integers | `16` / `100` / `100` |
 | `HS_MAX_EF_SEARCH` | Upper bound on a per-request `ef_search` (DoS guard) | Integer | `4096` |
 | `HS_FLAT_SCAN` | Exact sequential scan for shards with ≤ `ef · 2M` live nodes (`auto`), never (`off`), or below a node count | `auto` / `off` / Integer | `auto` |
-| `HS_RAW_CACHE_MB` | Budget of exact-vector copies kept in RAM for rerank / calibration (quantized modes), per collection | Integer (MB) | `256` |
+| `HS_RERANK_ENABLED` | Exact rerank of quantized candidates (scatter-gather reranks the merged candidates once; full precision skips it) | `true` / `false` | `true` |
+| `HS_RERANK_OVERSAMPLE` | Candidates reranked per result (`top_k × N`) | Integer | `4` |
+| `HS_RERANK_DEFER` | Rerank once after the shard merge (`true`) or inside every shard (`false`, pre-4.2.5 behavior) | `true` / `false` | `true` |
+| `HS_RAW_CACHE_MB` | Optional heap copy of exact vectors for rerank / calibration, per collection. The memory-mapped exact store (`exact_f32/`, 4.2.5+) already serves them; vectors written by older versions are read from the payload store until `RebuildIndex` | Integer (MB) | `0` |
 | `HS_AUTO_CALIBRATE_MIN` | Vectors per shard before `rabitq` / `pq4` / `pq` / `opq` calibrate online (`pq` / `opq` need ≥ 4,096); `0` = only via `RebuildIndex` | Integer | `1024` |
 | `HS_PORT` / `HS_HTTP_PORT` | gRPC / HTTP listen ports (`--port` / `--http-port` win) | Integers | `50051` / `50050` |
 | `HS_HNSW_ALPHA` | Vamana α for neighbor selection (> 1 keeps longer edges) | Float ≥ 1.0 | `1.0` |

@@ -1644,3 +1644,155 @@ async fn test_sharded_search_fetches_metadata_for_top_k_only() {
     }
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+/// `RebuildIndex` re-inserts surviving vectors into a fresh graph, which assigns new
+/// internal ids. User ids, vectors, metadata and payloads must still line up afterwards,
+/// including when deletions leave holes and user ids are sparse (sharded collections).
+#[tokio::test]
+async fn rebuild_keeps_user_ids_vectors_and_payloads_aligned() {
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let dim = 16usize;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+    manager
+        .create_collection("default_admin", "rebuild_ids", schema)
+        .await
+        .expect("create");
+    let col = manager
+        .get("default_admin", "rebuild_ids")
+        .await
+        .expect("collection");
+    let point = |i: u32| -> Vec<f64> {
+        (0..dim)
+            .map(|d| {
+                let mut x = (u64::from(i) << 20 | d as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                x ^= x >> 29;
+                (x % 20_001) as f64 / 10_000.0 - 1.0
+            })
+            .collect()
+    };
+    let user_id = |i: u32| 10_000 + i * 7;
+    let n = 400u32;
+    for i in 0..n {
+        let mut meta = HashMap::new();
+        meta.insert("i".to_string(), i.to_string());
+        col.insert(&point(i), user_id(i), meta, 0, Durability::Default)
+            .await
+            .unwrap();
+        col.insert_payload(user_id(i), format!("payload-{i}").into_bytes())
+            .await
+            .unwrap();
+    }
+    for _ in 0..400 {
+        if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    // Holes early in every shard shift all later internal ids on rebuild.
+    let deleted: Vec<u32> = (0..n).filter(|i| i % 5 == 1).collect();
+    for &i in &deleted {
+        col.delete(user_id(i)).unwrap();
+    }
+    manager
+        .rebuild_collection("default_admin", "rebuild_ids")
+        .await
+        .expect("rebuild");
+
+    let survivors: Vec<u32> = (0..n).filter(|i| i % 5 != 1).collect();
+    let ids: Vec<u32> = survivors.iter().map(|&i| user_id(i)).collect();
+    let got = col.get_points(&ids);
+    assert_eq!(got.len(), survivors.len(), "every survivor is retrievable");
+    for (uid, v, meta) in &got {
+        let i = (uid - 10_000) / 7;
+        assert_eq!(
+            meta.get("i"),
+            Some(&i.to_string()),
+            "metadata of user id {uid}"
+        );
+        let err = v
+            .iter()
+            .zip(point(i))
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max);
+        assert!(
+            err < 0.05 * f64::from(i).max(1.0),
+            "vector of user id {uid}: err {err}"
+        );
+    }
+    let payloads = col.fetch_payloads(&ids).await;
+    for (i, p) in survivors.iter().zip(&payloads) {
+        assert_eq!(
+            p.as_deref(),
+            Some(format!("payload-{i}").as_bytes()),
+            "payload of survivor {i}"
+        );
+    }
+    for &i in &[3u32, 150, 333, 398] {
+        let res = col
+            .search(
+                &point(i),
+                &HashMap::new(),
+                &[],
+                &hyperspace_core::SearchParams {
+                    top_k: 1,
+                    ef_search: 64,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            res.first().map(|r| r.0),
+            Some(user_id(i)),
+            "nearest of point {i}"
+        );
+    }
+    assert!(
+        col.get_points(&[user_id(1)]).is_empty(),
+        "deleted ids stay deleted"
+    );
+
+    // The renumbered ids are persisted: a restart sees the same mapping.
+    drop(col);
+    drop(manager);
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let col = manager
+        .get("default_admin", "rebuild_ids")
+        .await
+        .expect("collection after restart");
+    let got = col.get_points(&ids);
+    assert_eq!(got.len(), survivors.len(), "survivors after restart");
+    for (uid, v, meta) in &got {
+        let i = (uid - 10_000) / 7;
+        assert_eq!(
+            meta.get("i"),
+            Some(&i.to_string()),
+            "metadata after restart"
+        );
+        let err = v
+            .iter()
+            .zip(point(i))
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max);
+        assert!(
+            err < 1e-5,
+            "vector of user id {uid} after restart: err {err}"
+        );
+    }
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

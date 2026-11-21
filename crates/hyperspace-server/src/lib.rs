@@ -47,6 +47,7 @@ pub mod chunk_backend;
 pub mod chunk_searcher;
 #[path = "collection.rs"]
 pub mod collection;
+pub mod exact_store;
 #[path = "gossip.rs"]
 pub mod gossip;
 #[path = "http_server.rs"]
@@ -374,6 +375,7 @@ fn build_filters(
         include_payload: req.include_payload,
         use_wave: req.use_wave,
         skip_metadata: false,
+        defer_rerank: false,
     };
 
     (col_name, req.vector, exact_filter, complex_filters, params)
@@ -1585,6 +1587,7 @@ impl Database for HyperspaceService {
                     include_payload: req.include_payload,
                     use_wave: false,
                     skip_metadata: false,
+                    defer_rerank: false,
                 };
 
                 if let Some(col) = self.manager.get(&owner, &col_name).await {
@@ -2061,6 +2064,7 @@ impl Database for HyperspaceService {
                     include_payload: false,
                     use_wave: false,
                     skip_metadata: false,
+                    defer_rerank: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();
@@ -2117,6 +2121,7 @@ impl Database for HyperspaceService {
                     include_payload: false,
                     use_wave: false,
                     skip_metadata: false,
+                    defer_rerank: false,
                 };
                 let exact_filter = std::collections::HashMap::new();
                 let complex_filters = Vec::new();

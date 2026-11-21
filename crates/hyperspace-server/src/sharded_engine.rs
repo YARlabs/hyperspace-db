@@ -776,8 +776,16 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         }
 
         // ── Scatter-Gather Oversampling ──────────────────────────────────────
+        // An exact rerank runs once on the merged candidates (`rerank_k` of them) instead
+        // of once per shard: shards return their compact-code top candidates only.
+        let rerank_k = active_shards[0].1.deferred_rerank_k(filter, params);
         let top_k = params.top_k.max(1);
-        let (shard_top_k, shard_ef) = shard_fanout(params);
+        let merge_k = rerank_k.unwrap_or(top_k).max(top_k);
+        let (shard_top_k, shard_ef) = shard_fanout(&SearchParams {
+            top_k: merge_k,
+            ef_search: params.ef_search,
+            ..SearchParams::default()
+        });
 
         let shard_params = Arc::new(SearchParams {
             top_k: shard_top_k,
@@ -793,6 +801,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             use_wave: params.use_wave,
             // Metadata is fetched below for the merged top-k only.
             skip_metadata: true,
+            defer_rerank: rerank_k.is_some(),
         });
 
         let vector_arc: Arc<[f64]> = Arc::from(vector);
@@ -822,13 +831,13 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         // ── Global Top-K Merge ───────────────────────────────────────────────
         // Max-heap keyed by distance: peek() always holds the worst (largest
         // distance) candidate currently in the set, making eviction O(log N).
-        let mut heap: BinaryHeap<ScoredCandidate> = BinaryHeap::with_capacity(top_k + 1);
+        let mut heap: BinaryHeap<ScoredCandidate> = BinaryHeap::with_capacity(merge_k + 1);
 
         for res in shard_results {
             match res {
                 Ok(items) => {
                     for (id, dist, meta, payload) in items {
-                        if heap.len() < top_k {
+                        if heap.len() < merge_k {
                             heap.push(ScoredCandidate {
                                 distance: dist,
                                 id,
@@ -868,6 +877,28 @@ impl<M: Metric> Collection for ShardedCollection<M> {
         // `into_sorted_vec` already returns ascending order for a max-heap;
         // verify and ensure correctness regardless of future stdlib changes.
         output.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        if rerank_k.is_some() {
+            // One exact pass over the merged candidates (blocking: mmap / disk reads).
+            let shards = self.shards.clone();
+            let num_shards = self.num_shards;
+            let q = Arc::clone(&vector_arc);
+            output = tokio::task::spawn_blocking(move || {
+                let processed = shards[0].process_query(&q).into_owned();
+                let q32: Vec<f32> = processed.iter().map(|&x| x as f32).collect();
+                for out in &mut output {
+                    let shard = &shards[out.0 as usize % num_shards];
+                    if let Some(d) = shard.exact_distance(out.0, &processed, &q32) {
+                        out.1 = d;
+                    }
+                }
+                output.sort_by(|a, b| a.1.total_cmp(&b.1));
+                output
+            })
+            .await
+            .map_err(|e| format!("Rerank task failed: {e}"))?;
+        }
+        output.truncate(top_k);
 
         // Metadata only for the top-K winners (shards skipped it for every candidate).
         if !params.skip_metadata {
@@ -947,6 +978,7 @@ impl<M: Metric> Collection for ShardedCollection<M> {
             include_payload: false,
             use_wave: params.use_wave,
             skip_metadata: false,
+            defer_rerank: false,
         });
 
         let vector_arc: Arc<[f64]> = Arc::from(vector);
@@ -1634,7 +1666,7 @@ fn shard_fanout(params: &SearchParams) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hyperspace_core::EuclideanMetric;
+    use hyperspace_core::{EuclideanMetric, Metric};
     use tempfile::tempdir;
 
     #[test]
@@ -1661,6 +1693,156 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(shard_fanout(&p), (9, 0));
+    }
+
+    fn unit(i: u32, dim: usize) -> Vec<f64> {
+        let v: Vec<f64> = (0..dim)
+            .map(|d| {
+                let mut x = (u64::from(i) << 20 | d as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                x ^= x >> 31;
+                (x % 20_001) as f64 / 10_000.0 - 1.0 + f64::from(i % 7) * 0.3
+            })
+            .collect();
+        let n = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+        v.into_iter().map(|x| x / n).collect()
+    }
+
+    /// Quantized sharded collections rerank the merged candidates once against the exact
+    /// store: results are the exact top-k with exact distances, for batch and single
+    /// inserts alike (batch inserts used to have no exact copy beyond the heap cache).
+    #[tokio::test]
+    async fn deferred_rerank_returns_the_exact_top_k() {
+        let dir = tempdir().unwrap();
+        let (tx, _) = broadcast::channel(128);
+        let dim = 48;
+        let schema = CollectionSchema {
+            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                name: "default".to_string(),
+                metric: "l2".to_string(),
+                full_dimension: dim as u32,
+                weight: 1.0,
+            }],
+            cascade_pipeline: vec![],
+            encrypted: Some(false),
+        };
+        let col = ShardedCollection::<EuclideanMetric>::new(
+            "rr".to_string(),
+            "node_1".to_string(),
+            dir.path().to_path_buf(),
+            hyperspace_core::QuantizationMode::ScalarI8,
+            tx,
+            dim,
+            schema,
+            Some(4),
+        )
+        .await
+        .unwrap();
+        let n = 1200u32;
+        let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> = (0..n - 100)
+            .map(|i| (unit(i, dim), i, HashMap::new()))
+            .collect();
+        col.insert_batch(batch, 1, Durability::Default)
+            .await
+            .unwrap();
+        for i in n - 100..n {
+            col.insert(&unit(i, dim), i, HashMap::new(), 2, Durability::Default)
+                .await
+                .unwrap();
+        }
+        for _ in 0..400 {
+            if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let params = SearchParams {
+            top_k: 10,
+            ef_search: 64,
+            ..Default::default()
+        };
+        let mut rerank = HashMap::new();
+        rerank.insert("rerank".to_string(), "1".to_string());
+        for qi in 0..15u32 {
+            let q = unit(50_000 + qi, dim);
+            let mut exact: Vec<(f64, u32)> = (0..n)
+                .map(|i| (EuclideanMetric::distance(&unit(i, dim), &q), i))
+                .collect();
+            exact.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let got = col.search(&q, &rerank, &[], &params).await.unwrap();
+            let ids: Vec<u32> = got.iter().map(|r| r.0).collect();
+            let want: Vec<u32> = exact.iter().take(10).map(|e| e.1).collect();
+            assert_eq!(ids, want, "query {qi}");
+            for (r, e) in got.iter().zip(&exact) {
+                assert!(
+                    (r.1 - e.0).abs() < 1e-4,
+                    "exact distance: {} vs {}",
+                    r.1,
+                    e.0
+                );
+            }
+        }
+    }
+
+    /// 1-bit codes keep the true neighbours only within a wide candidate pool, so they keep
+    /// reranking inside every shard (in parallel) instead of after the merge.
+    #[tokio::test]
+    async fn deferred_rerank_keeps_recall_for_coarse_codes() {
+        let dir = tempdir().unwrap();
+        let (tx, _) = broadcast::channel(128);
+        let dim = 64;
+        let schema = CollectionSchema {
+            components: vec![hyperspace_proto::hyperspace::VectorComponent {
+                name: "default".to_string(),
+                metric: "l2".to_string(),
+                full_dimension: dim as u32,
+                weight: 1.0,
+            }],
+            cascade_pipeline: vec![],
+            encrypted: Some(false),
+        };
+        let col = ShardedCollection::<EuclideanMetric>::new(
+            "rr_bin".to_string(),
+            "node_1".to_string(),
+            dir.path().to_path_buf(),
+            hyperspace_core::QuantizationMode::Binary,
+            tx,
+            dim,
+            schema,
+            Some(4),
+        )
+        .await
+        .unwrap();
+        let n = 2000u32;
+        let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> =
+            (0..n).map(|i| (unit(i, dim), i, HashMap::new())).collect();
+        col.insert_batch(batch, 1, Durability::Default)
+            .await
+            .unwrap();
+        for _ in 0..400 {
+            if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let params = SearchParams {
+            top_k: 10,
+            ef_search: 64,
+            ..Default::default()
+        };
+        let mut rerank = HashMap::new();
+        rerank.insert("rerank".to_string(), "1".to_string());
+        let mut hits = 0;
+        for qi in 0..20u32 {
+            let q = unit(90_000 + qi, dim);
+            let mut exact: Vec<(f64, u32)> = (0..n)
+                .map(|i| (EuclideanMetric::distance(&unit(i, dim), &q), i))
+                .collect();
+            exact.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let want: Vec<u32> = exact.iter().take(10).map(|e| e.1).collect();
+            let got = col.search(&q, &rerank, &[], &params).await.unwrap();
+            hits += got.iter().filter(|r| want.contains(&r.0)).count();
+        }
+        assert!(hits >= 180, "extreme + rerank recall {hits}/200");
     }
 
     #[tokio::test]

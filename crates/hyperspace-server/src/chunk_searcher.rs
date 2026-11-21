@@ -381,6 +381,7 @@ pub fn search_chunk<M: Metric>(
         include_payload: false,
         use_wave: false,
         skip_metadata: false,
+        defer_rerank: false,
     };
 
     let include_metadata = chunk.index.has_nonempty_metadata();

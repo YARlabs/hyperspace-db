@@ -13,6 +13,18 @@ graph, graph repair after deletes, ACORN-style filtered traversal, WAL group com
 compact f32 wire format.
 
 ### Fixed
+* **Exact vectors and user payloads shared one key space**: quantized collections stored the
+  exact f32 copy of every vector (used by rerank, calibration and `RebuildIndex`) in the payload
+  store under the *internal* id, while user payloads use the *user* id. The two overwrote each
+  other, and `include_payload` could return vector bytes instead of the payload. Exact vectors
+  now live in their own memory-mapped store (`exact_f32/`, see Changed).
+* **Batch inserts had no exact copy**: `BatchInsert` kept the exact vector only in the bounded
+  heap cache (256 MiB), so beyond it rerank silently re-scored decoded SQ8 codes (recall 98.4%
+  instead of 100% on 20k × 1024-D). Every insert path now writes the exact store.
+* **`RebuildIndex` mixed up ids after deletions**: the rebuilt graph numbers surviving vectors
+  0..n, but the user → internal id map, the rerank cache and the payload compaction kept the old
+  numbering, so after deleting vectors a user id could return another vector's data and
+  metadata. All id-keyed structures are now remapped and the mapping is persisted immediately.
 * **Wrong distances in small filtered searches (Poincaré / Lorentz / hybrid)**: the filtered
   brute-force scan finalized distances (`acosh`, `sqrt`) and the search finalized them again,
   so e.g. a Poincaré distance of 0.588 was returned as 0. Distances are now finalized once.
@@ -87,6 +99,13 @@ compact f32 wire format.
   chunks it re-ingested. Legacy chunks without a manifest are kept.
 
 ### Added
+* **`hs_loadbench`** (`cargo run --release -p hyperspace-cli --bin hs_loadbench`): closed-loop
+  concurrent gRPC load benchmark — QPS, p50/p95/p99/p99.9, recall@k against exact ground truth,
+  server CPU per query, unary `Search` or `SearchBatch`, optional `RebuildIndex` timing and peak
+  RSS, JSON output and `--min-recall` / `--min-qps` gates. It can spawn the server on a temp dir.
+  Unlike single-client Python harnesses it measures throughput under concurrency.
+* A/B switches: `HS_RERANK_DEFER=0` (rerank inside each shard, as before),
+  `hyperspace_index::set_sq8_int_kernel` / `set_sq8_scaled_codes` (doc-hidden).
 * **Online auto-calibration of trained quantizers** (`rabitq`, `pq4`, `pq`, `opq`): each shard
   fits its codebook / centroid on exact vectors once it holds `HS_AUTO_CALIBRATE_MIN` vectors
   (default 1,024; at least 4,096 for `pq` / `opq`, 16 samples per centroid) and re-fits after
@@ -166,6 +185,31 @@ compact f32 wire format.
   round-trip, and SIMD kernel parity (`f64` byte kernels, pair dispatch).
 
 ### Changed (performance)
+* **`medium` (ScalarI8) codes use a per-vector scale and an integer kernel**: codes were
+  `round(x · 127)`, which uses about ±4 of the 127 levels for normalized 1024-D embeddings. New
+  L2 / cosine indexes store `round(x · 127 / max|x|)` with the scale in the code's tail, and
+  score them with an int8 dot-product kernel (`SDOT` on ARMv8.2+, NEON / AVX2 fallbacks) against
+  an int8-quantized query. 20k × 1024-D scan: **1.48 → 0.42 ms** (now 3× faster than f32);
+  sweep: recall **88.6% → 98.5%**, QPS ×1.44, ingest ×1.37. Existing indexes keep their format
+  (the `sq8.scaled` marker next to the snapshot selects it).
+* **Rerank once per query, not once per shard**: scatter-gather searches used to rerank
+  `top_k × oversample × 2` candidates in each of the 12 shards (≈960 exact distances plus 12
+  thread hops per query). For `medium`, `medium_plus` and `turbo` shards now return
+  compact-code candidates and the merged top `top_k × oversample` are reranked once. 20k ×
+  1024-D `medium` + rerank ×4, 16 clients: **2.5k → 9.0k QPS, p99 19.7 → 3.6 ms, server CPU
+  3.8 → 1.16 ms/query, recall 100%**. Coarse codes (`extreme`, `ternary`, `rabitq`, `pq4`,
+  `pq`, `opq`) need the wider per-shard pool and keep reranking in each shard (in parallel).
+  L2 / cosine reranks score f32 vectors straight from the exact store with the SIMD kernel.
+* **Rerank is on by default** for quantized collections (`HS_RERANK_ENABLED=0` disables it):
+  with the changes above it costs ~3% QPS for exact top-k. Full precision skips it as before.
+* **Memory-mapped exact vector store** (`exact_f32/` per shard, `dim × 4 + 4` bytes per slot):
+  rerank reads are a bounds check and a copy from the page cache instead of a `pread` plus zstd
+  decode. The heap rerank cache (`HS_RAW_CACHE_MB`) is therefore off by default. Vectors written
+  by older versions are still reranked from their payload-store copies; `RebuildIndex` moves
+  them into the exact store.
+* **Streaming `RebuildIndex`**: vectors are read one at a time from the exact store instead of
+  being copied into one f64 array, the graph is built in parallel, and nodes are renumbered in
+  BFS order of the old graph so that neighbours get nearby ids (memory locality).
 * **Exact flat scan for small shards**: when a shard holds at most `ef · 2M` live nodes
   (`HS_FLAT_SCAN`: `auto` / `off` / node count; capped at 32,768) an unfiltered search scans it
   sequentially instead of walking the graph, which at that size visits most nodes anyway with
@@ -259,6 +303,14 @@ Measured with `benchmarks/run_quantization_sweep.py` (20,000 × 1024D, cosine, 2
 - Full matrix: `BENCHMARK_QUANTIZATION_SWEEP.md`; summary: `BENCHMARK_V3_VS_V4_REPORT.md` §10.
 
 ### Compatibility
+* **`medium` collections created by 4.2.5 must not be opened by older binaries**: their codes use
+  the per-vector scale (marked by `sq8.scaled` next to the snapshot), which older versions would
+  decode with the fixed scale. Collections created earlier keep the legacy codes and stay
+  readable both ways. 4.2.5 also writes `exact_f32/` per shard; older versions ignore it.
+* Rerank is now on by default for quantized collections; set `HS_RERANK_ENABLED=0` to keep the
+  4.2.4 single-pass behavior.
+* `SearchParams` gained `defer_rerank` (internal, set by scatter-gather). Code that builds it with
+  a struct literal must add the field or use `..Default::default()`.
 * Snapshots stay readable both ways. The legacy `i64` numeric section is ignored on load and
   written empty (the index is rebuilt from `forward`); older binaries fall back to their
   document scan for range filters.
