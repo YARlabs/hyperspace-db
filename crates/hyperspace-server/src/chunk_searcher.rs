@@ -96,6 +96,20 @@ pub fn storage_element_size<M: Metric>(
         QuantizationMode::ProductQuantization | QuantizationMode::OPQ => {
             hyperspace_core::pq::default_num_subvectors(dimension)
         }
+        // Hybrid tail codes (4.2.5): exact f32 Lorentz head + code of the Euclidean tail.
+        QuantizationMode::RaBitQ
+        | QuantizationMode::RaBitQ4
+        | QuantizationMode::RaBitQ2
+        | QuantizationMode::PQ4
+            if M::name() == "hybrid" && dimension > 33 =>
+        {
+            33 * 4
+                + storage_element_size::<hyperspace_core::EuclideanMetric>(
+                    mode,
+                    dimension - 33,
+                    storage_f32,
+                )
+        }
         QuantizationMode::RaBitQ => hyperspace_core::rabitq::code_size(dimension),
         QuantizationMode::RaBitQ4 => hyperspace_core::rabitq::code_size_bits(dimension, 4),
         QuantizationMode::RaBitQ2 => hyperspace_core::rabitq::code_size_bits(dimension, 2),

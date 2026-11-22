@@ -2184,3 +2184,148 @@ async fn mrl_prefix_index_end_to_end() {
     );
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+/// Hybrid collections (33-D Lorentz head + Euclidean tail): every level keeps the head exact
+/// and codes the tail, at any width; pre-4.2.5 directories keep their old mapping.
+#[tokio::test]
+#[allow(clippy::many_single_char_names)]
+async fn hybrid_tail_codes_end_to_end() {
+    use hyperspace_core::{HybridMetric, Metric, QuantizationMode as Q};
+    let _env = SHARD_ENV_LOCK.lock().await;
+    std::env::set_var("HS_SHARDS", "1");
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx.clone(), etx.clone());
+    let tail = 96usize;
+    let dim = 33 + tail;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "hybrid".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+    let h = |s: u64| {
+        let mut x = s.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        x ^= x >> 29;
+        (x % 20_001) as f64 / 10_000.0 - 1.0
+    };
+    let point = |i: u32| -> Vec<f64> {
+        let c = u64::from(i % 25);
+        let sp: Vec<f64> = (0..32u64)
+            .map(|d| 0.8 * h(c << 20 | d) + 0.25 * h(u64::from(i) << 24 | d | 1 << 50))
+            .collect();
+        let x0 = (1.0 + sp.iter().map(|x| x * x).sum::<f64>()).sqrt();
+        let mut t: Vec<f64> = (0..tail as u64)
+            .map(|d| h(c << 30 | d | 1 << 45) + 0.6 * h(u64::from(i) << 28 | d | 1 << 55))
+            .collect();
+        let n = t.iter().map(|x| x * x).sum::<f64>().sqrt();
+        for x in &mut t {
+            *x /= n;
+        }
+        let mut v = vec![x0];
+        v.extend(sp);
+        v.extend(t);
+        v
+    };
+    let n = 2000u32;
+    let exact_top = |q: &[f64]| -> Vec<u32> {
+        let mut d: Vec<(f64, u32)> = (0..n)
+            .map(|i| (HybridMetric::distance(&point(i), q), i))
+            .collect();
+        d.sort_by(|a, b| a.0.total_cmp(&b.0));
+        d.into_iter().take(10).map(|x| x.1).collect()
+    };
+    for (quant, mode) in [
+        ("medium", Q::AsymmetricHybrid801),
+        ("rabitq4", Q::RaBitQ4),
+        ("turbo", Q::RaBitQ4),
+        ("ternary", Q::RaBitQ2),
+        ("extreme", Q::RaBitQ),
+        ("pq", Q::PQ4),
+        ("none", Q::None),
+    ] {
+        let name = format!("hyb_{quant}");
+        manager
+            .create_collection_with_options(
+                "default_admin",
+                &name,
+                schema.clone(),
+                Some(quant.into()),
+                None,
+            )
+            .await
+            .unwrap();
+        let col = manager.get("default_admin", &name).await.unwrap();
+        assert_eq!(col.quantization_mode(), mode, "{quant}");
+        let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> =
+            (0..n).map(|i| (point(i), i, HashMap::new())).collect();
+        col.insert_batch(batch, 1, Durability::Default)
+            .await
+            .unwrap();
+        for _ in 0..800 {
+            if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        let mut hits = 0usize;
+        for qi in 0..20u32 {
+            let q = point(5_000_000 + qi);
+            let truth = exact_top(&q);
+            let res = col
+                .search(
+                    &q,
+                    &HashMap::new(),
+                    &[],
+                    &hyperspace_core::SearchParams {
+                        top_k: 10,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            hits += res.iter().filter(|r| truth.contains(&r.0)).count();
+            let exact = HybridMetric::distance(&point(res[0].0), &q);
+            assert!(
+                (res[0].1 - exact).abs() < 1e-3,
+                "{quant}: distance {} vs exact {exact}",
+                res[0].1
+            );
+        }
+        let recall = hits as f64 / 200.0;
+        assert!(recall >= 0.97, "{quant}: recall {recall}");
+    }
+    // A directory with data but no layout marker (pre-4.2.5) keeps the old mapping.
+    let marker = walkdir_find(&tmp_dir, "hybrid_codes.v2", "hyb_turbo").expect("marker written");
+    fs::remove_file(&marker).unwrap();
+    drop(manager);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let col = manager.get("default_admin", "hyb_turbo").await.unwrap();
+    assert_eq!(
+        col.quantization_mode(),
+        Q::Turbo,
+        "legacy directory keeps its codes"
+    );
+    std::env::remove_var("HS_SHARDS");
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+fn walkdir_find(dir: &std::path::Path, file: &str, under: &str) -> Option<std::path::PathBuf> {
+    for e in fs::read_dir(dir).ok()?.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            if let Some(f) = walkdir_find(&p, file, under) {
+                return Some(f);
+            }
+        } else if p.file_name().is_some_and(|n| n == file) && p.to_string_lossy().contains(under) {
+            return Some(p);
+        }
+    }
+    None
+}

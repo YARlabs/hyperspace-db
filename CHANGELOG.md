@@ -13,6 +13,19 @@ graph, graph repair after deletes, ACORN-style filtered traversal, WAL group com
 compact f32 wire format.
 
 ### Fixed
+* **Hybrid collections quantized the Lorentz head, or worked only at 801-D**: the hybrid codes
+  were tied to `dimension == 801`; at other widths `medium` used whole-vector ScalarI8
+  (recall@10 4.2%) and `extreme` plain binary (0.1%), while `turbo` / `ternary` / `pq` / `opq`
+  ran their Euclidean kernels on the whole vector (60–70% at any width). New hybrid collections
+  keep the 33-D head exact and code only the Euclidean tail, at any width; `rabitq*` / `pq4`
+  are no longer mapped to `medium`. 20k × (33 + 768), recall single pass / with rerank ×4:
+  `medium` 97.75% → 99.75% / 100% (int8 tail with a per-vector scale, int8 kernel, 77 → 55 µs);
+  4-bit tail (`rabitq4`, `turbo`, `medium_plus`) 96.8% / 100% at 524 B and 53 µs
+  (`AsymmetricHybridLowBit`: 712 B, 331 µs); 2-bit (`rabitq2`, `ternary`) 91.7% / 100%,
+  332 B; 1-bit (`rabitq`, `extreme`) 83.6% / 100%, 236 B, 56 µs (`AsymmetricHybridExtreme`:
+  322 µs); PQ4 (`pq4`, `pq`, `opq`) 87.3% / 100%, 228 B (8-bit PQ: 801 B, 63.4%). Graph builds are
+  3× faster. Pre-4.2.5 int8 hybrid codes (fixed step, `alpha = 1`) decode unchanged, and
+  directories created earlier keep their codes (`hybrid_codes.v2` marker).
 * **MRL cutoff was ignored**: `cascade_pipeline[0].cutoff_dimension` was stored and reported but
   never used — "MRL" collections indexed the full vector. Single-component L2 / cosine
   collections now build the HNSW graph on the (re-normalized) prefix and rerank a candidate

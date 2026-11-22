@@ -2031,6 +2031,10 @@ impl<M: Metric> Collection for CollectionImpl<M> {
         // In-RAM codes cover the indexed width (the MRL prefix for MRL collections).
         let dim = self.index_dim;
         let vector_bytes_per_doc: u64 = match self.mode {
+            // Hybrid code layouts (exact head + coded tail): the storage slot size.
+            _ if M::name() == "hybrid" && self.mode != hyperspace_core::QuantizationMode::None => {
+                chunk_searcher::storage_element_size::<M>(self.mode, dim, self.storage_f32) as u64
+            }
             hyperspace_core::QuantizationMode::RaBitQ => {
                 hyperspace_core::rabitq::code_size(dim) as u64
             }

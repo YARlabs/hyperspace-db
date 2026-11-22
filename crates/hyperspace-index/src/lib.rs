@@ -99,6 +99,34 @@ const PQ4_FILE: &str = "pq4_codebook.bin";
 /// Written next to the snapshot once a trained quantizer has been fitted to data.
 const CALIBRATED_MARKER: &str = "quantizer.calibrated";
 
+/// Lorentz head of the hybrid product space `H^32 × R^n` (time + 32 spatial coordinates),
+/// kept as exact `f32` in every hybrid code; the Euclidean tail is quantized.
+const HYBRID_HEAD: usize = 33;
+const HYBRID_HEAD_BYTES: usize = HYBRID_HEAD * 4;
+
+/// Hybrid indexes whose Euclidean tail uses a trained code (RaBitQ 1/2/4-bit, PQ4): codes
+/// are `[head f32 × 33][tail code]` and the quantizer covers the `dimension − 33` tail.
+#[inline]
+fn hybrid_tail_coded<M: Metric>(mode: QuantizationMode, dimension: usize) -> bool {
+    M::name() == "hybrid"
+        && dimension > HYBRID_HEAD
+        && matches!(
+            mode,
+            QuantizationMode::RaBitQ
+                | QuantizationMode::RaBitQ4
+                | QuantizationMode::RaBitQ2
+                | QuantizationMode::PQ4
+        )
+}
+
+/// Squared Lorentz distance between an exact `f32` head and the query head.
+#[inline(always)]
+fn hybrid_head_dist_sq(head_bytes: &[u8], q_head: &[f32]) -> f64 {
+    let cosh = hyperspace_core::simd::lorentz_f32_bytes_thresh(head_bytes, q_head, None);
+    let d = hyperspace_core::acosh_from_cosh(cosh);
+    d * d
+}
+
 /// Candidates per result re-scored on the full vector after a per-request MRL search.
 const MRL_REQUEST_POOL: usize = 4;
 /// Written next to the snapshot of a ScalarI8 L2 / cosine index whose codes use a
@@ -585,7 +613,8 @@ impl<M: Metric> HnswIndex<M> {
             _ => None,
         };
 
-        let (rabitq, pq4) = Self::code_quantizers(mode, dimension, path.parent());
+        let (rabitq, pq4) =
+            Self::code_quantizers(mode, Self::code_dim(mode, dimension), path.parent());
         let has_del = !deleted.is_empty();
         let index = Self {
             nodes: nodes_bc,
@@ -810,7 +839,7 @@ impl<M: Metric> HnswIndex<M> {
             _ => None,
         };
 
-        let (rabitq, pq4) = Self::code_quantizers(mode, dimension, None);
+        let (rabitq, pq4) = Self::code_quantizers(mode, Self::code_dim(mode, dimension), None);
         let has_del = !deleted.is_empty();
         let index = Self {
             nodes: nodes_bc,
@@ -1443,7 +1472,7 @@ impl<M: Metric> HnswIndex<M> {
         };
 
         let layer0 = layer0::Layer0Arena::new(Self::layer0_capacity(&config, 0));
-        let (rabitq, pq4) = Self::code_quantizers(mode, dimension, None);
+        let (rabitq, pq4) = Self::code_quantizers(mode, Self::code_dim(mode, dimension), None);
         Self {
             nodes: boxcar::Vec::new(),
             layer0,
@@ -1564,6 +1593,17 @@ impl<M: Metric> HnswIndex<M> {
         if samples.is_empty() {
             return;
         }
+        // Hybrid tail codes: the quantizer only ever sees the Euclidean tail.
+        let tails: Vec<&[f32]>;
+        let samples = if self.hybrid_tail() {
+            tails = samples
+                .iter()
+                .map(|s| &s[HYBRID_HEAD.min(s.len())..])
+                .collect();
+            tails.as_slice()
+        } else {
+            samples
+        };
         if let Some(pq) = self.pq.load_full() {
             let mut new_pq = (*pq).clone();
             new_pq.train(samples, iterations);
@@ -1663,6 +1703,24 @@ impl<M: Metric> HnswIndex<M> {
 
     /// Encodes a vector with the current trained quantizer (PQ / OPQ / RaBitQ / PQ4).
     fn encode_code_f32(&self, v: &[f32]) -> Vec<u8> {
+        if self.hybrid_tail() {
+            let head = HYBRID_HEAD.min(v.len());
+            let mut out = Vec::with_capacity(HYBRID_HEAD_BYTES + v.len());
+            for &x in &v[..head] {
+                out.extend_from_slice(&x.to_le_bytes());
+            }
+            out.resize(HYBRID_HEAD_BYTES, 0);
+            let tail = &v[head..];
+            let code = if let Some(ref rq) = *self.rabitq.load() {
+                rq.encode(tail)
+            } else if let Some(ref pq4) = *self.pq4.load() {
+                pq4.encode(tail)
+            } else {
+                return Vec::new();
+            };
+            out.extend_from_slice(&code);
+            return out;
+        }
         if let Some(ref pq) = *self.pq.load() {
             pq.encode(v).to_bytes()
         } else if let Some(ref rq) = *self.rabitq.load() {
@@ -2488,6 +2546,9 @@ impl<M: Metric> HnswIndex<M> {
         threshold: Option<f64>,
     ) -> f64 {
         if M::name() == "hybrid" {
+            if let Some(d) = self.hybrid_coded_dist_sq(bytes, query, query_f32, pq_lut, mrl_dim) {
+                return d;
+            }
             if self.mode == QuantizationMode::None && self.storage_f32 {
                 if let Some(q) = query_f32 {
                     let cb = &bytes[..bytes.len().saturating_sub(4)];
@@ -2505,6 +2566,74 @@ impl<M: Metric> HnswIndex<M> {
             return d * d;
         }
         self.dist_bytes_raw(bytes, query, query_f32, pq_lut, mrl_dim, threshold)
+    }
+
+    /// Hybrid codes with a quantized Euclidean tail, in internal (squared) units:
+    /// `d_lor(head)² + ‖tail − q_tail‖²` with an exact `f32` head and the tail estimated by
+    /// its code (int8 per-vector scale, RaBitQ, PQ4). `None` for other modes / MRL requests.
+    #[inline]
+    fn hybrid_coded_dist_sq(
+        &self,
+        bytes: &[u8],
+        query: &HyperVector,
+        query_f32: Option<&[f32]>,
+        pq_lut: Option<&QueryPrep>,
+        mrl_dim: Option<usize>,
+    ) -> Option<f64> {
+        let sq8 = self.mode == QuantizationMode::AsymmetricHybrid801;
+        if mrl_dim.is_some() || !(sq8 || self.hybrid_tail()) || bytes.len() < HYBRID_HEAD_BYTES {
+            return None;
+        }
+        let owned;
+        let q32: &[f32] = if let Some(q) = query_f32 {
+            q
+        } else {
+            owned = query.coords.iter().map(|&x| x as f32).collect::<Vec<f32>>();
+            &owned
+        };
+        if q32.len() < HYBRID_HEAD {
+            return Some(f64::MAX);
+        }
+        let head = hybrid_head_dist_sq(&bytes[..HYBRID_HEAD_BYTES], &q32[..HYBRID_HEAD]);
+        let tail_bytes = &bytes[HYBRID_HEAD_BYTES..];
+        let tail = if sq8 {
+            let split = tail_bytes.len().saturating_sub(4);
+            let alpha =
+                f32::from_le_bytes(tail_bytes[split..].try_into().unwrap_or([0, 0, 0x80, 0x3f]));
+            if let Some(QueryPrep::Sq8(q)) = pq_lut {
+                f64::from(hyperspace_core::simd::sq8_scaled_l2_int(
+                    &tail_bytes[..split],
+                    alpha,
+                    q,
+                ))
+            } else {
+                let qt = &q32[HYBRID_HEAD..];
+                let n = split.min(qt.len());
+                f64::from(
+                    hyperspace_core::simd::sq8_scaled_l2_and_norm_sq(
+                        &tail_bytes[..n],
+                        alpha / 127.0,
+                        &qt[..n],
+                    )
+                    .0,
+                )
+            }
+        } else {
+            let est = |p: &QueryPrep| match p {
+                QueryPrep::RaBitQ(q) => Some(f64::from(q.distance_sq(tail_bytes))),
+                QueryPrep::Pq4(l) => Some(f64::from(l.distance(tail_bytes))),
+                _ => None,
+            };
+            match pq_lut.and_then(est) {
+                Some(d) => d,
+                None => self
+                    .prepare_query(query, query_f32)
+                    .as_ref()
+                    .and_then(est)
+                    .unwrap_or(f64::MAX),
+            }
+        };
+        Some(head + tail.max(0.0))
     }
 
     /// Layer-0 slot capacity: the largest list the prune policy can leave behind
@@ -2587,6 +2716,21 @@ impl<M: Metric> HnswIndex<M> {
         });
     }
 
+    /// Width the trained code covers: the Euclidean tail for hybrid tail codes, else all.
+    #[inline]
+    fn code_dim(mode: QuantizationMode, dimension: usize) -> usize {
+        if hybrid_tail_coded::<M>(mode, dimension) {
+            dimension - HYBRID_HEAD
+        } else {
+            dimension
+        }
+    }
+
+    #[inline]
+    fn hybrid_tail(&self) -> bool {
+        hybrid_tail_coded::<M>(self.mode, self.dimension)
+    }
+
     /// Builds the RaBitQ / PQ4 quantizers for `mode`, loading persisted state from `dir`.
     #[allow(clippy::type_complexity)]
     fn code_quantizers(
@@ -2637,6 +2781,21 @@ impl<M: Metric> HnswIndex<M> {
                 &query.coords,
             )));
         }
+        if M::name() == "hybrid"
+            && self.mode == QuantizationMode::AsymmetricHybrid801
+            && self.dimension > HYBRID_HEAD
+            && SQ8_INT_KERNEL.load(Ordering::Relaxed)
+        {
+            // int8 query over the Euclidean tail; the head is scored exactly.
+            let tail: Vec<f32> = query
+                .coords
+                .iter()
+                .skip(HYBRID_HEAD)
+                .take(self.dimension - HYBRID_HEAD)
+                .map(|&x| x as f32)
+                .collect();
+            return Some(QueryPrep::Sq8(hyperspace_core::simd::Sq8Query::new(&tail)));
+        }
         if self.sq8_scaled && SQ8_INT_KERNEL.load(Ordering::Relaxed) {
             let owned;
             let q: &[f32] = if let Some(q) = query_f32 {
@@ -2667,6 +2826,12 @@ impl<M: Metric> HnswIndex<M> {
             owned = query.coords.iter().map(|&x| x as f32).collect::<Vec<f32>>();
             &owned
         };
+        // Hybrid tail codes are prepared on the Euclidean tail of the query.
+        let q = if self.hybrid_tail() {
+            &q[HYBRID_HEAD.min(q.len())..]
+        } else {
+            q
+        };
         match self.mode {
             QuantizationMode::ProductQuantization | QuantizationMode::OPQ => self
                 .pq
@@ -2696,6 +2861,15 @@ impl<M: Metric> HnswIndex<M> {
         prep: Option<&'a QueryPrep>,
         mrl_dim: Option<usize>,
     ) -> DistKernel<'a> {
+        if M::name() == "hybrid"
+            && matches!(
+                prep,
+                Some(QueryPrep::RaBitQ(_) | QueryPrep::Pq4(_) | QueryPrep::Sq8(_))
+            )
+        {
+            // Head + tail: scored by `dist_bytes_opt`'s hybrid branch.
+            return DistKernel::Generic;
+        }
         match prep {
             Some(QueryPrep::RaBitQ(q)) => DistKernel::RaBitQ(q),
             Some(QueryPrep::Pq4(l)) => DistKernel::Pq4(l),
@@ -3003,6 +3177,16 @@ impl<M: Metric> HnswIndex<M> {
             QuantizationMode::RaBitQ
             | QuantizationMode::RaBitQ4
             | QuantizationMode::RaBitQ2
+            | QuantizationMode::PQ4
+                if self.hybrid_tail() =>
+            {
+                self.hybrid_coded_dist_sq(bytes, query, query_f32, pq_lut, None)
+                    .unwrap_or(f64::MAX)
+                    .sqrt()
+            }
+            QuantizationMode::RaBitQ
+            | QuantizationMode::RaBitQ4
+            | QuantizationMode::RaBitQ2
             | QuantizationMode::PQ4 => match pq_lut {
                 Some(QueryPrep::RaBitQ(q)) => f64::from(q.distance_sq(bytes)),
                 Some(QueryPrep::Pq4(l)) => f64::from(l.distance(bytes)),
@@ -3061,9 +3245,11 @@ impl<M: Metric> HnswIndex<M> {
                 }
             }
             QuantizationMode::AsymmetricHybrid801 => {
-                // Specialized hybrid path
-                assert!(self.dimension == 801, "AsymmetricHybrid801 quantization mode is only supported for 801-dimensional vectors");
-                if let Some(q_f32) = query_f32 {
+                // Exact f32 Lorentz head + int8 Euclidean tail (any dimension > 33).
+                if let Some(d) = self.hybrid_coded_dist_sq(bytes, query, query_f32, pq_lut, mrl_dim)
+                {
+                    d.sqrt()
+                } else if let Some(q_f32) = query_f32 {
                     HybridQuantizedVector::distance_bytes_mrl_f32(bytes, q_f32, mrl_dim, threshold)
                 } else {
                     HybridQuantizedVector::distance_bytes_mrl(bytes, query, mrl_dim)
@@ -4866,22 +5052,40 @@ impl<M: Metric> HnswIndex<M> {
             }
             let euc_end = bytes.len().saturating_sub(4);
             let euc_bytes = &bytes[132..euc_end];
-            let scale = 1.0f32 / 127.0f32;
+            // `alpha` is the per-vector tail scale (1 for pre-4.2.5 codes: step 1/127).
+            let alpha = if bytes.len() >= 136 {
+                f32::from_le_bytes(bytes[euc_end..].try_into().unwrap_or([0, 0, 0x80, 0x3f]))
+            } else {
+                1.0
+            };
+            let scale = alpha / 127.0;
             for &b in euc_bytes.iter().take(self.dimension.saturating_sub(33)) {
                 out.push(f32::from(b.cast_signed()) * scale);
             }
             if out.len() < self.dimension {
                 out.resize(self.dimension, 0.0);
             }
-            if bytes.len() >= 136 {
-                let ab: [u8; 4] = bytes[euc_end..].try_into().unwrap_or([0; 4]);
-                *alpha_out = f64::from(f32::from_le_bytes(ab));
-            } else {
-                *alpha_out = 1.0;
-            }
+            *alpha_out = 1.0;
             return;
         }
 
+        if self.hybrid_tail() && bytes.len() >= HYBRID_HEAD_BYTES {
+            // Exact head, tail decoded in an isometric domain (pairwise distances only).
+            out.clear();
+            for c in bytes[..HYBRID_HEAD_BYTES].as_chunks::<4>().0 {
+                out.push(f32::from_le_bytes(*c));
+            }
+            let mut tail = Vec::new();
+            if let Some(ref rq) = *self.rabitq.load() {
+                rq.reconstruct_rotated_into(&bytes[HYBRID_HEAD_BYTES..], &mut tail);
+            } else if let Some(ref pq4) = *self.pq4.load() {
+                pq4.decode_into(&bytes[HYBRID_HEAD_BYTES..], &mut tail);
+            }
+            out.extend_from_slice(&tail);
+            out.resize(self.dimension, 0.0);
+            *alpha_out = 1.0;
+            return;
+        }
         if self.mode.rabitq_bits().is_some() {
             if let Some(ref rq) = *self.rabitq.load() {
                 // Only pairwise distances are taken from these coordinates (RNG pruning), so
@@ -5373,23 +5577,17 @@ impl<M: Metric> HnswIndex<M> {
                 }
             }
             QuantizationMode::AsymmetricHybrid801 => {
-                assert!(
-                    self.dimension == 801,
-                    "AsymmetricHybrid801 requires self.dimension=801"
-                );
                 let q = HybridQuantizedVector::from_bytes(bytes);
                 let mut coords = vec![0.0; self.dimension];
-                // Reconstruction: Lorentz part (f32) then Euclidean part (i8 SQ8)
+                // Reconstruction: Lorentz part (f32) then Euclidean part (i8, per-vector step)
+                let step = q.tail_step();
                 for (coord, &val) in coords[..33].iter_mut().zip(q.lorentz.iter()) {
                     *coord = f64::from(val);
                 }
                 for (coord, &val) in coords[33..].iter_mut().zip(q.euclidean.iter()) {
-                    *coord = f64::from(val) / 127.0;
+                    *coord = f64::from(val) * step;
                 }
-                HyperVector {
-                    coords,
-                    alpha: f64::from(q.alpha),
-                }
+                HyperVector { coords, alpha: 1.0 }
             }
             QuantizationMode::AsymmetricHybridLowBit => {
                 assert!(
@@ -5520,11 +5718,21 @@ impl<M: Metric> HnswIndex<M> {
             | QuantizationMode::RaBitQ2
             | QuantizationMode::PQ4 => {
                 let mut rec = Vec::with_capacity(self.dimension);
+                let code = if self.hybrid_tail() && bytes.len() >= HYBRID_HEAD_BYTES {
+                    for c in bytes[..HYBRID_HEAD_BYTES].as_chunks::<4>().0 {
+                        rec.push(f32::from_le_bytes(*c));
+                    }
+                    &bytes[HYBRID_HEAD_BYTES..]
+                } else {
+                    bytes
+                };
+                let mut tail = Vec::new();
                 if let Some(ref rq) = *self.rabitq.load() {
-                    rq.reconstruct_into(bytes, &mut rec);
+                    rq.reconstruct_into(code, &mut tail);
                 } else if let Some(ref pq4) = *self.pq4.load() {
-                    pq4.decode_into(bytes, &mut rec);
+                    pq4.decode_into(code, &mut tail);
                 }
+                rec.extend_from_slice(&tail);
                 rec.resize(self.dimension, 0.0);
                 HyperVector::new_unchecked(rec.into_iter().map(f64::from).collect())
             }
@@ -5669,8 +5877,11 @@ impl<M: Metric> HnswIndex<M> {
             }
             .as_bytes(),
             QuantizationMode::AsymmetricHybrid801 => {
-                require_801("AsymmetricHybrid801")?;
-                HybridQuantizedVector::from_float(v, 33, v.coords.len() - 33).as_bytes()
+                if v.coords.len() <= HYBRID_HEAD {
+                    return Err("AsymmetricHybrid801 requires more than 33 dimensions".into());
+                }
+                HybridQuantizedVector::from_float(v, HYBRID_HEAD, v.coords.len() - HYBRID_HEAD)
+                    .as_bytes()
             }
             QuantizationMode::AsymmetricHybridLowBit => {
                 require_801("AsymmetricHybridLowBit")?;

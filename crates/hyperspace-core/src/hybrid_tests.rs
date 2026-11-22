@@ -59,9 +59,10 @@ mod tests {
         assert!((f64::from(q.lorentz[0]) - 2.0).abs() < 1e-6);
         assert!((f64::from(q.lorentz[1]) - 1.73205).abs() < 1e-4);
 
-        // Check Euclidean quantization (INT8)
-        // 0.5 * 127 = 63.5 -> 63 or 64
-        assert!(q.euclidean[0] == 63 || q.euclidean[0] == 64);
+        // Check Euclidean quantization (INT8, per-vector scale since 4.2.5): the largest tail
+        // coordinate maps to ±127 and decodes back exactly.
+        assert_eq!(q.euclidean[0], 127);
+        assert!((f64::from(q.euclidean[0]) * q.tail_step() - 0.5).abs() < 1e-6);
 
         // Check distance reconstructed
         let d = q.lorentz_distance_to_float(&v);

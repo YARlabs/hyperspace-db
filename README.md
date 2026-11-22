@@ -519,10 +519,21 @@ All quantization is configured per-collection at creation time via `HS_QUANTIZAT
 | **Full Precision** | `none` | 4,100 B | 1× | All metrics | Exact ground truth, medical, legal compliance |
 
 > ⚠️ **Metric Compatibility Notice**:
-> - **Cosine & L2**: Compatible with **ALL** quantization modes (`none`, `medium`, `medium_plus`, `turbo`, `ternary`, `rabitq4`, `rabitq2`, `rabitq`, `pq4`, `opq`, `pq`, `extreme`). `rabitq*` / `pq4` requested on other metrics fall back to `medium`.
+> - **Cosine & L2**: Compatible with **ALL** quantization modes (`none`, `medium`, `medium_plus`, `turbo`, `ternary`, `rabitq4`, `rabitq2`, `rabitq`, `pq4`, `opq`, `pq`, `extreme`). `rabitq*` / `pq4` requested on Poincaré / Lorentz fall back to `medium`.
 > - **Calibration**: trained modes (`rabitq`, `rabitq4`, `rabitq2`, `pq4`, `pq`, `opq`) learn their centroid / codebooks from data. Since 4.2.5 each shard calibrates itself online once it holds `HS_AUTO_CALIBRATE_MIN` vectors (default 1,024; at least 4,096 for `pq` / `opq`, which fit 256 centroids per sub-space) and re-fits after every 8× growth; stored codes are re-encoded in place. **Rebuild Index** (`RebuildIndex` RPC, `POST /api/collections/{name}/rebuild`, dashboard button) additionally rebuilds the graph on the trained codes and gives the best recall. `GET /api/collections/{name}/stats` reports `quantizer_calibrated`.
 > - **Poincaré & Lorentz**: Only compatible with `none` and `medium` (Scalar SQ8). Product Quantization (`pq`/`opq`) and 1-bit (`extreme`) assume Euclidean metrics and orthonormal rotations that violate conformal Poincaré boundary conditions ($\|x\| < 1$) and Lorentzian pseudo-Riemannian signature $(-1, +1, \dots, +1)$.
-> - **Hybrid (801D = 33D Lorentz + 768D Euclidean)**: Uses `AsymmetricHybrid`, where the 33D Lorentz head is kept unquantized/FP64 while the 768D Euclidean tail can be compressed with `turbo`, `opq`, or `extreme`.
+> - **Hybrid (33D Lorentz head + Euclidean tail, any width)**: since 4.2.5 every level keeps the 33-D head as exact `f32` and quantizes only the tail; the distance is $d_H(\text{head})^2 + \|\Delta\text{tail}\|^2$ with the tail term estimated by its code. Measured on 20k × (33 + 768):
+>
+> | Level requested | Tail code (33 + 768-D) | Bytes | Recall@10 single pass | With rerank ×4 | Latency |
+> | :--- | :--- | ---: | :---: | :---: | :---: |
+> | `none` | — (f32) | 3,208 | 100% | 100% | 81 µs |
+> | `medium` | int8, per-vector scale | 904 | 99.75% (was 97.75%) | 100% | 55 µs (was 77) |
+> | `rabitq4`, `turbo`, `medium_plus` | 4-bit extended RaBitQ | 524 | 96.80% (turbo was 62.6%) | 100% | 53 µs |
+> | `rabitq2`, `ternary` | 2-bit extended RaBitQ | 332 | 91.70% (ternary was 70.5%) | 100% | 51 µs |
+> | `rabitq`, `extreme` | 1-bit RaBitQ | 236 | 83.60% | 100% | 56 µs (was 322) |
+> | `pq4`, `pq`, `opq` | PQ4 fast-scan | 228 | 87.30% (pq was 63.4%, 801 B) | 100% | 92 µs |
+>
+> Before 4.2.5 these codes quantized the head too or only worked at exactly 801 dimensions (`medium` at other widths: 4.2% recall, `extreme`: 0.1%). Collections created earlier keep their layout (no `hybrid_codes.v2` marker).
 
 The default `scalar` mode uses a **ScaNN-inspired anisotropic loss** $L = \|e_\parallel\|^2 + t_w \cdot \|e_\perp\|^2$ ($t_w=10$), which penalizes directional error more than magnitude error, improving Recall@10 by **+5.3% (Cosine)** and **+3.8% (L2)** versus isotropic SQ8.
 

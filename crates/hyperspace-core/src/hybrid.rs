@@ -49,23 +49,38 @@ impl HybridQuantizedVector {
         bytes
     }
 
+    /// Encodes the Lorentz head exactly (`f32`) and the Euclidean tail as int8 codes with a
+    /// per-vector scale (since 4.2.5): `tail_i ≈ code_i · alpha / 127`, `alpha = max|tail|`.
+    /// Codes written before 4.2.5 used the fixed step 1/127 and stored `alpha = 1`, which
+    /// decodes identically, so old and new codes share one format. (A unit-norm 768-D tail
+    /// has |x_i| ≈ 0.036: the fixed step left it ~5 levels instead of 255.)
     pub fn from_float(v: &HyperVector, lorentz_dim: usize, euclidean_dim: usize) -> Self {
         let mut lorentz = vec![0.0f32; lorentz_dim];
         for i in 0..lorentz_dim {
             lorentz[i] = v.coords[i] as f32;
         }
 
-        let mut euclidean = vec![0i8; euclidean_dim];
-        for i in 0..euclidean_dim {
-            let val = v.coords[lorentz_dim + i];
-            euclidean[i] = (val * 127.0).clamp(-127.0, 127.0) as i8;
-        }
+        let tail = &v.coords[lorentz_dim..lorentz_dim + euclidean_dim];
+        let max_abs = tail.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+        let alpha = if max_abs > 0.0 { max_abs } else { 1.0 };
+        let inv = 127.0 / alpha;
+        let euclidean = tail
+            .iter()
+            .map(|&x| (x * inv).round().clamp(-127.0, 127.0) as i8)
+            .collect();
 
         Self {
             lorentz,
             euclidean,
-            alpha: 1.0,
+            alpha: alpha as f32,
         }
+    }
+
+    /// Dequantization step of the tail codes.
+    #[inline(always)]
+    #[must_use]
+    pub fn tail_step(&self) -> f64 {
+        f64::from(self.alpha) / 127.0
     }
 
     #[inline(always)]
@@ -87,25 +102,26 @@ impl HybridQuantizedVector {
     #[inline(always)]
     pub fn euclidean_distance_sq_mrl(&self, other: &HyperVector, euc_dim: usize) -> f64 {
         let limit = euc_dim.min(self.euclidean.len());
-        const SCALE_INV: f32 = 1.0 / 127.0;
-
-        #[cfg(all(target_feature = "avx2", target_arch = "x86_64"))]
-        {
-            if limit.is_multiple_of(8) {
-                return unsafe { self.euclidean_simd_avx2(other, limit) };
+        // The SIMD helpers assume the legacy fixed step (alpha = 1).
+        if self.alpha.to_bits() == 1.0f32.to_bits() {
+            #[cfg(all(target_feature = "avx2", target_arch = "x86_64"))]
+            {
+                if limit.is_multiple_of(8) {
+                    return unsafe { self.euclidean_simd_avx2(other, limit) };
+                }
             }
-        }
 
-        #[cfg(all(target_feature = "neon", target_arch = "aarch64"))]
-        {
-            if limit.is_multiple_of(4) {
-                return unsafe { self.euclidean_simd_neon(other, limit) };
+            #[cfg(all(target_feature = "neon", target_arch = "aarch64"))]
+            {
+                if limit.is_multiple_of(4) {
+                    return unsafe { self.euclidean_simd_neon(other, limit) };
+                }
             }
         }
 
         // Fallback
         let mut sum = 0.0;
-        let scale_inv_f64 = SCALE_INV as f64;
+        let scale_inv_f64 = self.tail_step();
         let offset = self.lorentz.len();
         for i in 0..limit {
             let a = f64::from(self.euclidean[i]) * scale_inv_f64;
@@ -204,17 +220,19 @@ impl HybridQuantizedVector {
         let cosh_lor = 1.0 + ((sp - dt * dt) * 0.5).max(0.0);
         let d_lor = crate::acosh_from_cosh(cosh_lor);
 
-        let euc_bytes = &bytes[132..bytes.len().saturating_sub(4)];
+        let euc_end = bytes.len().saturating_sub(4);
+        let euc_bytes = &bytes[132..euc_end];
         let limit = match euc_dim {
             Some(dim) => dim.min(euc_bytes.len()),
             None => euc_bytes.len(),
         };
-        const SCALE_INV: f64 = 1.0 / 127.0;
+        let alpha = f32::from_le_bytes(bytes[euc_end..].try_into().unwrap_or([0, 0, 0x80, 0x3f]));
+        let scale_inv = f64::from(alpha) / 127.0;
         let mut d_euc = 0.0;
         let q_offset = 33;
         let n = limit.min(query.coords.len().saturating_sub(q_offset));
         for i in 0..n {
-            let a = f64::from(euc_bytes[i].cast_signed()) * SCALE_INV;
+            let a = f64::from(euc_bytes[i].cast_signed()) * scale_inv;
             let diff = a - query.coords[q_offset + i];
             d_euc += diff * diff;
         }
@@ -243,17 +261,23 @@ impl HybridQuantizedVector {
                 return d_lor;
             }
         }
-        let euc_bytes = &bytes[132..bytes.len().saturating_sub(4)];
+        let euc_end = bytes.len().saturating_sub(4);
+        let euc_bytes = &bytes[132..euc_end];
         let limit = match euc_dim {
             Some(dim) => dim.min(euc_bytes.len()),
             None => euc_bytes.len(),
         };
+        let alpha = f32::from_le_bytes(bytes[euc_end..].try_into().unwrap_or([0, 0, 0x80, 0x3f]));
         let n = limit.min(query_f32.len().saturating_sub(33));
         let d_euc = if n > 0 {
-            f64::from(crate::simd::sq8_l2_sq(
-                &euc_bytes[..n],
-                &query_f32[33..33 + n],
-            ))
+            f64::from(
+                crate::simd::sq8_scaled_l2_and_norm_sq(
+                    &euc_bytes[..n],
+                    alpha / 127.0,
+                    &query_f32[33..33 + n],
+                )
+                .0,
+            )
         } else {
             0.0
         };

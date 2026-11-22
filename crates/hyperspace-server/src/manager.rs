@@ -323,7 +323,7 @@ impl CollectionManager {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let col_dir = self.base_path.join(name);
         let wal_path = col_dir.join("wal.log");
-        let quant_mode = meta.quantization_mode();
+        let quant_mode = meta.quantization_mode_in(&col_dir);
         let node_id = self.cluster_state.read().await.node_id.clone();
         let dim = meta.dimension();
         let schema = meta.get_schema();
@@ -1098,6 +1098,61 @@ impl CollectionMetadata {
             .map(|layer| layer.rerank_top_k)
     }
 
+    /// Hybrid code layout of a collection directory (4.2.5): new hybrid collections keep
+    /// the 33-D Lorentz head exact and quantize only the Euclidean tail with a working code
+    /// for every level (see [`Self::hybrid_tail_mode`]); collections that already hold data
+    /// without the marker keep the pre-4.2.5 mapping, so their stored codes stay readable.
+    pub fn quantization_mode_in(
+        &self,
+        col_dir: &std::path::Path,
+    ) -> hyperspace_core::QuantizationMode {
+        let Some(v2) = self.hybrid_tail_mode() else {
+            return self.quantization_mode();
+        };
+        let marker = col_dir.join(HYBRID_CODES_MARKER);
+        if marker.exists() {
+            return v2;
+        }
+        if dir_has_data(col_dir) {
+            return self.quantization_mode();
+        }
+        match std::fs::write(&marker, "2") {
+            Ok(()) => v2,
+            Err(_) => self.quantization_mode(),
+        }
+    }
+
+    /// Mode of a new hybrid collection (`dimension > 33`): the 33-D Lorentz head stays exact
+    /// `f32` and the Euclidean tail gets a code of the requested size class. The pre-4.2.5
+    /// levels quantized the head too, or only worked at 801-D (recall@10 on 33 + 768-D:
+    /// `turbo` 62.6%, `ternary` 70.5%, `pq` 63.4%, `extreme` at other widths 0.1%,
+    /// `medium` at other widths 4.2%); the tail codes reach 84–99.8% single pass and 100%
+    /// with the default rerank, with 3–6× faster distances.
+    pub fn hybrid_tail_mode(&self) -> Option<hyperspace_core::QuantizationMode> {
+        use hyperspace_core::QuantizationMode as Q;
+        if self.metric_name() != "hybrid" || self.dimension() <= 33 {
+            return None;
+        }
+        Some(match self.quantization.as_str() {
+            "none" => Q::None,
+            // 4-bit class: 524 B per 33 + 768-D vector.
+            "rabitq4" | "turbo" | "turboquant" | "medium_plus" => Q::RaBitQ4,
+            // ~2-bit class: 332 B.
+            "rabitq2" | "ternary" | "bitnet" => Q::RaBitQ2,
+            // 1-bit class: 236 B.
+            "rabitq" | "extreme" | "binary" => Q::RaBitQ,
+            // Product quantization: PQ4 fast-scan of the tail, 228 B.
+            "pq4"
+            | "pq_fastscan"
+            | "pq"
+            | "product_quantization"
+            | "opq"
+            | "optimized_product_quantization" => Q::PQ4,
+            // medium / scalar: exact head + int8 tail with a per-vector scale (904 B).
+            _ => Q::AsymmetricHybrid801,
+        })
+    }
+
     pub fn quantization_mode(&self) -> hyperspace_core::QuantizationMode {
         let metric = self.metric_name();
         let dim = self.dimension();
@@ -1148,6 +1203,29 @@ impl CollectionMetadata {
             }
         }
     }
+}
+
+/// Marker of a hybrid collection created with the 4.2.5 head / tail code layout.
+const HYBRID_CODES_MARKER: &str = "hybrid_codes.v2";
+
+/// Whether a collection directory already holds vectors (any non-empty file other than
+/// its metadata, up to two levels deep: shard directories included).
+fn dir_has_data(dir: &std::path::Path) -> bool {
+    fn walk(dir: &std::path::Path, depth: usize) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        entries.flatten().any(|e| {
+            let path = e.path();
+            if path.is_dir() {
+                depth > 0 && walk(&path, depth - 1)
+            } else {
+                path.file_name().is_some_and(|n| n != "meta.json")
+                    && e.metadata().is_ok_and(|m| m.len() > 0)
+            }
+        })
+    }
+    walk(dir, 2)
 }
 
 impl Drop for CollectionManager {
