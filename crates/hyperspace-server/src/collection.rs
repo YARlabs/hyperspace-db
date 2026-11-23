@@ -3163,6 +3163,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
     }
 
     // Updated peek to use index_link
+    /// Peek/scroll return the stored (exact) vector, never the quantized index code: with
+    /// `extreme`/binary quantization the index only keeps a 1-bit code per dimension.
     fn peek(&self, limit: usize, offset: usize) -> Vec<(u32, Vec<f64>, HashMap<String, String>)> {
         let items = self.index_link.load().peek(limit, offset);
         items
@@ -3172,7 +3174,8 @@ impl<M: Metric> Collection for CollectionImpl<M> {
                     .reverse_id_map
                     .get(&internal_id)
                     .map_or(internal_id, |v| *v);
-                (user_id, vec, meta)
+                let coords = self.stored_coords(internal_id).unwrap_or(vec);
+                (user_id, coords, meta)
             })
             .collect()
     }
@@ -3187,18 +3190,9 @@ impl<M: Metric> Collection for CollectionImpl<M> {
             }
             if self.id_map.contains_key(&id) {
                 let internal_id = self.to_internal_id(id);
-                let coords = if let Some(v_f32) = self.raw_vector_cache.get(&internal_id) {
-                    v_f32.iter().map(|&x| x as f64).collect()
-                } else if let Some(v) = self
-                    .exact_store
-                    .load_full()
-                    .and_then(|e| e.get(internal_id))
-                {
-                    v.into_iter().map(f64::from).collect()
-                } else {
-                    let vec = idx.get_vector(internal_id);
-                    vec.coords
-                };
+                let coords = self
+                    .stored_coords(internal_id)
+                    .unwrap_or_else(|| idx.get_vector(internal_id).coords);
                 if !coords.is_empty() {
                     let meta = self.metadata_by_id(id);
                     results.push((id, coords, meta));
@@ -3602,6 +3596,18 @@ impl<M: Metric> Drop for CollectionImpl<M> {
 }
 
 impl<M: Metric> CollectionImpl<M> {
+    /// The exact vector as inserted (raw cache, then the exact store); `None` when only the
+    /// index representation exists (non-quantized collections, where it is already exact).
+    fn stored_coords(&self, internal_id: u32) -> Option<Vec<f64>> {
+        if let Some(v) = self.raw_vector_cache.get(&internal_id) {
+            return Some(v.iter().map(|&x| f64::from(x)).collect());
+        }
+        self.exact_store
+            .load_full()
+            .and_then(|e| e.get(internal_id))
+            .map(|v| v.into_iter().map(f64::from).collect())
+    }
+
     #[inline]
     pub fn last_clock(&self) -> u64 {
         self.last_clock.load(std::sync::atomic::Ordering::Relaxed)

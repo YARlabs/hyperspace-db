@@ -2329,3 +2329,61 @@ fn walkdir_find(dir: &std::path::Path, file: &str, under: &str) -> Option<std::p
     }
     None
 }
+
+/// `scroll`/`peek` must export the stored vector, not the 1-bit index code of an `extreme`
+/// (binary-quantized) collection: exports and re-index jobs read vectors through scroll.
+#[tokio::test]
+async fn scroll_returns_exact_vectors_for_extreme_quantization() {
+    let tmp_dir = env::temp_dir().join(format!("hyperspace_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp_dir).unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    let (etx, _) = broadcast::channel(100);
+    let manager = CollectionManager::new(tmp_dir.clone(), tx, etx);
+    let dim = 64usize;
+    let schema = hyperspace_proto::hyperspace::CollectionSchema {
+        components: vec![hyperspace_proto::hyperspace::VectorComponent {
+            name: "default".to_string(),
+            metric: "l2".to_string(),
+            full_dimension: dim as u32,
+            weight: 1.0,
+        }],
+        cascade_pipeline: vec![],
+        encrypted: Some(false),
+    };
+    manager
+        .create_collection_with_options("default_admin", "xq", schema, Some("extreme".into()), None)
+        .await
+        .unwrap();
+    let col = manager.get("default_admin", "xq").await.unwrap();
+    let point = |i: u32| -> Vec<f64> {
+        (0..dim)
+            .map(|d| {
+                let mut x = (u64::from(i) << 20 | d as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                x ^= x >> 29;
+                (x % 20_001) as f64 / 10_000.0 - 1.0
+            })
+            .collect()
+    };
+    let n = 300u32;
+    let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> =
+        (0..n).map(|i| (point(i), 1000 + i, HashMap::new())).collect();
+    col.insert_batch(batch, 1, Durability::Default).await.unwrap();
+    for _ in 0..800 {
+        if col.queue_size() == 0 && col.write_buffer_size() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let pts = col.scroll(n as usize, 0, &[]);
+    assert_eq!(pts.len(), n as usize, "scroll sees every point");
+    for (uid, v, _) in &pts {
+        let want = point(uid - 1000);
+        let err = v
+            .iter()
+            .zip(&want)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max);
+        assert!(err < 1e-5, "scroll vector of {uid} is not exact: err {err}");
+    }
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
