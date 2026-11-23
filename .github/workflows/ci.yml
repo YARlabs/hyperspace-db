@@ -114,6 +114,7 @@ jobs:
       - name: Start HyperspaceDB Server
         run: |
           cargo build --release -p hyperspace-server
+          mkdir -p "$RUNNER_TEMP/hs-data"
           HS_DATA_DIR=$RUNNER_TEMP/hs-data ./target/release/hyperspace-server --port 50051 --http-port 50050 &
           for i in $(seq 1 120); do
             (echo > /dev/tcp/127.0.0.1/50051) 2>/dev/null && exit 0

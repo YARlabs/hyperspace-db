@@ -92,6 +92,8 @@ impl SecurityRegistry {
 }
 
 pub fn init(data_dir: &Path) {
+    // The data directory may not exist yet (fresh container / CI): create it first.
+    std::fs::create_dir_all(data_dir).expect("Failed to create data directory");
     let db_path = data_dir.join("security.db");
 
     // Open or create the redb v4 database.
