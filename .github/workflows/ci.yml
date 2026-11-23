@@ -65,7 +65,12 @@ jobs:
       # 4. Clippy (Linter)
       - name: Run Clippy
         # Fail on warnings
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        # NOTE: not --all-features: it enables hyperspace-pdk/cuda (and coreml), which makes
+        # ort-sys download CUDA binaries and panic in its build script on a CPU-only runner.
+        run: >-
+          cargo clippy --workspace --all-targets
+          --features hyperspace-server/s3-tiering,hyperspace-server/depin,hyperspace-server/io-uring,hyperspace-server/nightly-simd,hyperspace-sdk/embedders,hyperspace-sdk/local-onnx,hyperspace-sdk/huggingface
+          -- -D warnings
 
   sdk-tests:
     needs: build-and-test

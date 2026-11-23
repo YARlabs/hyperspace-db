@@ -2346,268 +2346,6 @@ pub fn sq8_dot(bytes: &[u8], b: &[f32]) -> f32 {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn to_bytes(v: &[f32]) -> Vec<u8> {
-        v.iter().flat_map(|x| x.to_le_bytes()).collect()
-    }
-
-    fn reference(a: &[f32], b: &[f32]) -> f64 {
-        a.iter()
-            .zip(b)
-            .map(|(x, y)| {
-                let d = f64::from(*x) - f64::from(*y);
-                d * d
-            })
-            .sum()
-    }
-
-    fn sample(n: usize, seed: f32) -> Vec<f32> {
-        (0..n)
-            .map(|i| ((i as f32 * 0.37 + seed).sin()) * 3.0)
-            .collect()
-    }
-
-    #[test]
-    fn matches_reference_for_all_lengths() {
-        for n in 0..=300 {
-            let a = sample(n, 0.1);
-            let b = sample(n, 1.7);
-            let want = reference(&a, &b);
-            let got = f64::from(l2_sq_f32_bytes(&to_bytes(&a), &b, None));
-            assert!(
-                (got - want).abs() <= want.abs() * 1e-4 + 1e-4,
-                "n={n} backend={:?} got={got} want={want}",
-                backend()
-            );
-            let got2 = f64::from(l2_sq_f32(&a, &b));
-            assert!((got2 - want).abs() <= want.abs() * 1e-4 + 1e-4);
-        }
-    }
-
-    #[test]
-    fn every_supported_backend_agrees() {
-        let a = sample(771, 0.3);
-        let b = sample(771, 2.9);
-        let bytes = to_bytes(&a);
-        let want = reference(&a, &b);
-        for be in [
-            SimdBackend::Scalar,
-            SimdBackend::Avx2,
-            SimdBackend::Avx512,
-            SimdBackend::Neon,
-        ] {
-            if !supported(be) {
-                continue;
-            }
-            let got = f64::from(l2_sq_dispatch(be, &bytes, &b));
-            assert!(
-                (got - want).abs() <= want.abs() * 1e-4,
-                "{be:?}: got={got} want={want}"
-            );
-        }
-    }
-
-    #[test]
-    fn handles_unaligned_byte_offsets() {
-        let a = sample(131, 0.5);
-        let b = sample(131, 4.1);
-        let mut padded = vec![0u8; 1];
-        padded.extend_from_slice(&to_bytes(&a));
-        let want = reference(&a, &b);
-        let got = f64::from(l2_sq_f32_bytes(&padded[1..], &b, None));
-        assert!((got - want).abs() <= want.abs() * 1e-4);
-    }
-
-    #[test]
-    fn early_abandon_exceeds_threshold_and_exact_when_under() {
-        let a = sample(512, 0.9);
-        let b = sample(512, 3.3);
-        let bytes = to_bytes(&a);
-        let full = l2_sq_f32_bytes(&bytes, &b, None);
-        let partial = l2_sq_f32_bytes(&bytes, &b, Some(full * 0.1));
-        assert!(partial > full * 0.1 && partial <= full * 1.0001);
-        let exact = l2_sq_f32_bytes(&bytes, &b, Some(full * 2.0));
-        assert!((exact - full).abs() <= full * 1e-5);
-    }
-
-    #[test]
-    fn bench_simd_vs_scalar() {
-        let a = sample(1024, 0.5);
-        let b = sample(1024, 1.5);
-        let bytes = to_bytes(&a);
-        let iters = 50_000;
-
-        let t0 = std::time::Instant::now();
-        let mut s_scalar = 0.0f32;
-        for _ in 0..iters {
-            s_scalar += l2_sq_dispatch(SimdBackend::Scalar, &bytes, &b);
-        }
-        let dur_scalar = t0.elapsed();
-
-        #[cfg(target_arch = "aarch64")]
-        let hw_be = SimdBackend::Neon;
-        #[cfg(target_arch = "x86_64")]
-        let hw_be = SimdBackend::Avx2;
-        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-        let hw_be = SimdBackend::Scalar;
-
-        let t1 = std::time::Instant::now();
-        let mut s_hw = 0.0f32;
-        for _ in 0..iters {
-            s_hw += l2_sq_dispatch(hw_be, &bytes, &b);
-        }
-        let dur_hw = t1.elapsed();
-
-        let ns_scalar = (dur_scalar.as_nanos() as f64) / iters as f64;
-        let ns_hw = (dur_hw.as_nanos() as f64) / iters as f64;
-        let speedup = ns_scalar / ns_hw;
-
-        println!("\n=== SIMD Micro-Benchmark (1024D, 50,000 iterations) ===");
-        println!(
-            "Scalar Backend:   {:.2} ns/vector ({:.2?}) [checksum: {:.2}]",
-            ns_scalar, dur_scalar, s_scalar
-        );
-        println!(
-            "Hardware Backend ({:?}): {:.2} ns/vector ({:.2?}) [checksum: {:.2}]",
-            hw_be, ns_hw, dur_hw, s_hw
-        );
-        println!(
-            "Hardware Speedup: {:.2}x (+{:.1}% throughput)",
-            speedup,
-            (speedup - 1.0) * 100.0
-        );
-    }
-
-    #[test]
-    fn multi_metric_bytes_kernels_match_reference() {
-        for n in [1usize, 7, 16, 33, 64, 128, 384, 768] {
-            let a: Vec<f32> = (0..n)
-                .map(|i| ((i as f32 * 0.13 + 0.2).sin()) * 0.05)
-                .collect();
-            let b: Vec<f32> = (0..n)
-                .map(|i| ((i as f32 * 0.29 + 0.7).cos()) * 0.05)
-                .collect();
-            let bytes = to_bytes(&a);
-
-            // Dot product
-            let want_dot: f32 = a.iter().zip(&b).map(|(x, y)| x * y).sum();
-            let got_dot = dot_f32_bytes(&bytes, &b);
-            assert!(
-                (got_dot - want_dot).abs() <= want_dot.abs() * 1e-4 + 1e-5,
-                "dot mismatch at n={n}: got={got_dot} want={want_dot}"
-            );
-
-            // L1 Manhattan
-            let want_l1: f32 = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum();
-            let got_l1 = l1_f32_bytes(&bytes, &b, None);
-            assert!(
-                (got_l1 - want_l1).abs() <= want_l1.abs() * 1e-4 + 1e-5,
-                "l1 mismatch at n={n}: got={got_l1} want={want_l1}"
-            );
-
-            // L-inf Chebyshev
-            let want_linf: f32 = a
-                .iter()
-                .zip(&b)
-                .map(|(x, y)| (x - y).abs())
-                .fold(0.0f32, f32::max);
-            let got_linf = linf_f32_bytes(&bytes, &b, None);
-            assert!(
-                (got_linf - want_linf).abs() <= 1e-6,
-                "linf mismatch at n={n}: got={got_linf} want={want_linf}"
-            );
-
-            // Poincare
-            let u_norm_sq: f64 = a.iter().map(|&x| f64::from(x) * f64::from(x)).sum();
-            let v_norm_sq: f64 = b.iter().map(|&x| f64::from(x) * f64::from(x)).sum();
-            let diff_sq: f64 = a
-                .iter()
-                .zip(&b)
-                .map(|(&x, &y)| {
-                    let d = f64::from(x) - f64::from(y);
-                    d * d
-                })
-                .sum();
-            let want_poincare = (1.0
-                + 2.0 * diff_sq / ((1.0 - u_norm_sq).max(1e-6) * (1.0 - v_norm_sq).max(1e-6)))
-            .max(1.0)
-            .acosh();
-            let got_poincare = poincare_f32_bytes(&bytes, &b);
-            assert!(
-                (got_poincare - want_poincare).abs() <= 1e-4,
-                "poincare mismatch at n={n}: got={got_poincare} want={want_poincare}"
-            );
-        }
-    }
-
-    #[test]
-    fn sq8_kernels_match_reference() {
-        for n in [1usize, 7, 8, 15, 16, 31, 32, 64, 128, 768] {
-            let bytes: Vec<u8> = (0..n).map(|i| ((i * 17) % 255) as u8).collect();
-            let q: Vec<f32> = (0..n).map(|i| ((i as f32 * 0.1).sin()) * 0.8).collect();
-
-            let want_l2 = sq8_l2_sq_scalar(&bytes, &q);
-            let got_l2 = sq8_l2_sq(&bytes, &q);
-            assert!(
-                (got_l2 - want_l2).abs() <= want_l2.abs() * 1e-4 + 1e-5,
-                "sq8_l2 mismatch at n={n}: got={got_l2} want={want_l2}"
-            );
-
-            let want_dot = sq8_dot_scalar(&bytes, &q);
-            let got_dot = sq8_dot(&bytes, &q);
-            assert!(
-                (got_dot - want_dot).abs() <= want_dot.abs() * 1e-4 + 1e-5,
-                "sq8_dot mismatch at n={n}: got={got_dot} want={want_dot}"
-            );
-        }
-    }
-
-    #[test]
-    fn f64_byte_kernels_match_reference() {
-        for n in [0usize, 1, 3, 4, 7, 33, 128, 801] {
-            let a: Vec<f64> = (0..n).map(|i| (i as f64 * 0.37).sin()).collect();
-            let b: Vec<f64> = (0..n).map(|i| (i as f64 * 0.11).cos()).collect();
-            let bytes: Vec<u8> = a.iter().flat_map(|x| x.to_le_bytes()).collect();
-            let want: f64 = a.iter().zip(&b).map(|(x, y)| (x - y) * (x - y)).sum();
-            let got = l2_sq_f64_bytes(&bytes, &b);
-            assert!((got - want).abs() <= 1e-9 * want.max(1.0), "n={n}");
-
-            if n >= 2 {
-                let dt = a[0] - b[0];
-                let sp: f64 = a[1..]
-                    .iter()
-                    .zip(&b[1..])
-                    .map(|(x, y)| (x - y) * (x - y))
-                    .sum();
-                let want_cosh = 1.0 + ((sp - dt * dt) * 0.5).max(0.0);
-                let got_cosh = lorentz_cosh_f64_bytes(&bytes, &b);
-                assert!((got_cosh - want_cosh).abs() <= 1e-9 * want_cosh, "n={n}");
-            }
-        }
-    }
-
-    #[test]
-    fn pair_dispatch_matches_scalar() {
-        for n in [1usize, 15, 16, 63, 64, 65, 200, 768] {
-            let a: Vec<u8> = (0..n)
-                .flat_map(|i| ((i as f32) * 0.5).to_le_bytes())
-                .collect();
-            let b: Vec<u8> = (0..n)
-                .flat_map(|i| ((i as f32) * 0.25 - 1.0).to_le_bytes())
-                .collect();
-            let want = l2_sq_pair_scalar(&a, &b);
-            let got = l2_sq_pair_dispatch(backend(), &a, &b);
-            assert!(
-                (got - want).abs() <= 1e-3 * want.max(1.0),
-                "n={n}: {got} vs {want}"
-            );
-        }
-    }
-}
-
 // ── Integer SQ8 kernels (per-vector scaled codes × int8-quantized query) ─────────────────
 
 /// A query prepared once for integer SQ8 scoring: int8 codes on the query's own scale
@@ -2999,4 +2737,266 @@ unsafe fn ex_code_dot_avx2(code: &[u8], q: &[i8], bits: u8) -> i32 {
     let s = _mm_hadd_epi32(s, s);
     let s = _mm_hadd_epi32(s, s);
     _mm_cvtsi128_si32(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn to_bytes(v: &[f32]) -> Vec<u8> {
+        v.iter().flat_map(|x| x.to_le_bytes()).collect()
+    }
+
+    fn reference(a: &[f32], b: &[f32]) -> f64 {
+        a.iter()
+            .zip(b)
+            .map(|(x, y)| {
+                let d = f64::from(*x) - f64::from(*y);
+                d * d
+            })
+            .sum()
+    }
+
+    fn sample(n: usize, seed: f32) -> Vec<f32> {
+        (0..n)
+            .map(|i| ((i as f32 * 0.37 + seed).sin()) * 3.0)
+            .collect()
+    }
+
+    #[test]
+    fn matches_reference_for_all_lengths() {
+        for n in 0..=300 {
+            let a = sample(n, 0.1);
+            let b = sample(n, 1.7);
+            let want = reference(&a, &b);
+            let got = f64::from(l2_sq_f32_bytes(&to_bytes(&a), &b, None));
+            assert!(
+                (got - want).abs() <= want.abs() * 1e-4 + 1e-4,
+                "n={n} backend={:?} got={got} want={want}",
+                backend()
+            );
+            let got2 = f64::from(l2_sq_f32(&a, &b));
+            assert!((got2 - want).abs() <= want.abs() * 1e-4 + 1e-4);
+        }
+    }
+
+    #[test]
+    fn every_supported_backend_agrees() {
+        let a = sample(771, 0.3);
+        let b = sample(771, 2.9);
+        let bytes = to_bytes(&a);
+        let want = reference(&a, &b);
+        for be in [
+            SimdBackend::Scalar,
+            SimdBackend::Avx2,
+            SimdBackend::Avx512,
+            SimdBackend::Neon,
+        ] {
+            if !supported(be) {
+                continue;
+            }
+            let got = f64::from(l2_sq_dispatch(be, &bytes, &b));
+            assert!(
+                (got - want).abs() <= want.abs() * 1e-4,
+                "{be:?}: got={got} want={want}"
+            );
+        }
+    }
+
+    #[test]
+    fn handles_unaligned_byte_offsets() {
+        let a = sample(131, 0.5);
+        let b = sample(131, 4.1);
+        let mut padded = vec![0u8; 1];
+        padded.extend_from_slice(&to_bytes(&a));
+        let want = reference(&a, &b);
+        let got = f64::from(l2_sq_f32_bytes(&padded[1..], &b, None));
+        assert!((got - want).abs() <= want.abs() * 1e-4);
+    }
+
+    #[test]
+    fn early_abandon_exceeds_threshold_and_exact_when_under() {
+        let a = sample(512, 0.9);
+        let b = sample(512, 3.3);
+        let bytes = to_bytes(&a);
+        let full = l2_sq_f32_bytes(&bytes, &b, None);
+        let partial = l2_sq_f32_bytes(&bytes, &b, Some(full * 0.1));
+        assert!(partial > full * 0.1 && partial <= full * 1.0001);
+        let exact = l2_sq_f32_bytes(&bytes, &b, Some(full * 2.0));
+        assert!((exact - full).abs() <= full * 1e-5);
+    }
+
+    #[test]
+    fn bench_simd_vs_scalar() {
+        let a = sample(1024, 0.5);
+        let b = sample(1024, 1.5);
+        let bytes = to_bytes(&a);
+        let iters = 50_000;
+
+        let t0 = std::time::Instant::now();
+        let mut s_scalar = 0.0f32;
+        for _ in 0..iters {
+            s_scalar += l2_sq_dispatch(SimdBackend::Scalar, &bytes, &b);
+        }
+        let dur_scalar = t0.elapsed();
+
+        #[cfg(target_arch = "aarch64")]
+        let hw_be = SimdBackend::Neon;
+        #[cfg(target_arch = "x86_64")]
+        let hw_be = SimdBackend::Avx2;
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+        let hw_be = SimdBackend::Scalar;
+
+        let t1 = std::time::Instant::now();
+        let mut s_hw = 0.0f32;
+        for _ in 0..iters {
+            s_hw += l2_sq_dispatch(hw_be, &bytes, &b);
+        }
+        let dur_hw = t1.elapsed();
+
+        let ns_scalar = (dur_scalar.as_nanos() as f64) / iters as f64;
+        let ns_hw = (dur_hw.as_nanos() as f64) / iters as f64;
+        let speedup = ns_scalar / ns_hw;
+
+        println!("\n=== SIMD Micro-Benchmark (1024D, 50,000 iterations) ===");
+        println!(
+            "Scalar Backend:   {:.2} ns/vector ({:.2?}) [checksum: {:.2}]",
+            ns_scalar, dur_scalar, s_scalar
+        );
+        println!(
+            "Hardware Backend ({:?}): {:.2} ns/vector ({:.2?}) [checksum: {:.2}]",
+            hw_be, ns_hw, dur_hw, s_hw
+        );
+        println!(
+            "Hardware Speedup: {:.2}x (+{:.1}% throughput)",
+            speedup,
+            (speedup - 1.0) * 100.0
+        );
+    }
+
+    #[test]
+    fn multi_metric_bytes_kernels_match_reference() {
+        for n in [1usize, 7, 16, 33, 64, 128, 384, 768] {
+            let a: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 * 0.13 + 0.2).sin()) * 0.05)
+                .collect();
+            let b: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 * 0.29 + 0.7).cos()) * 0.05)
+                .collect();
+            let bytes = to_bytes(&a);
+
+            // Dot product
+            let want_dot: f32 = a.iter().zip(&b).map(|(x, y)| x * y).sum();
+            let got_dot = dot_f32_bytes(&bytes, &b);
+            assert!(
+                (got_dot - want_dot).abs() <= want_dot.abs() * 1e-4 + 1e-5,
+                "dot mismatch at n={n}: got={got_dot} want={want_dot}"
+            );
+
+            // L1 Manhattan
+            let want_l1: f32 = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum();
+            let got_l1 = l1_f32_bytes(&bytes, &b, None);
+            assert!(
+                (got_l1 - want_l1).abs() <= want_l1.abs() * 1e-4 + 1e-5,
+                "l1 mismatch at n={n}: got={got_l1} want={want_l1}"
+            );
+
+            // L-inf Chebyshev
+            let want_linf: f32 = a
+                .iter()
+                .zip(&b)
+                .map(|(x, y)| (x - y).abs())
+                .fold(0.0f32, f32::max);
+            let got_linf = linf_f32_bytes(&bytes, &b, None);
+            assert!(
+                (got_linf - want_linf).abs() <= 1e-6,
+                "linf mismatch at n={n}: got={got_linf} want={want_linf}"
+            );
+
+            // Poincare
+            let u_norm_sq: f64 = a.iter().map(|&x| f64::from(x) * f64::from(x)).sum();
+            let v_norm_sq: f64 = b.iter().map(|&x| f64::from(x) * f64::from(x)).sum();
+            let diff_sq: f64 = a
+                .iter()
+                .zip(&b)
+                .map(|(&x, &y)| {
+                    let d = f64::from(x) - f64::from(y);
+                    d * d
+                })
+                .sum();
+            let want_poincare = (1.0
+                + 2.0 * diff_sq / ((1.0 - u_norm_sq).max(1e-6) * (1.0 - v_norm_sq).max(1e-6)))
+            .max(1.0)
+            .acosh();
+            let got_poincare = poincare_f32_bytes(&bytes, &b);
+            assert!(
+                (got_poincare - want_poincare).abs() <= 1e-4,
+                "poincare mismatch at n={n}: got={got_poincare} want={want_poincare}"
+            );
+        }
+    }
+
+    #[test]
+    fn sq8_kernels_match_reference() {
+        for n in [1usize, 7, 8, 15, 16, 31, 32, 64, 128, 768] {
+            let bytes: Vec<u8> = (0..n).map(|i| ((i * 17) % 255) as u8).collect();
+            let q: Vec<f32> = (0..n).map(|i| ((i as f32 * 0.1).sin()) * 0.8).collect();
+
+            let want_l2 = sq8_l2_sq_scalar(&bytes, &q);
+            let got_l2 = sq8_l2_sq(&bytes, &q);
+            assert!(
+                (got_l2 - want_l2).abs() <= want_l2.abs() * 1e-4 + 1e-5,
+                "sq8_l2 mismatch at n={n}: got={got_l2} want={want_l2}"
+            );
+
+            let want_dot = sq8_dot_scalar(&bytes, &q);
+            let got_dot = sq8_dot(&bytes, &q);
+            assert!(
+                (got_dot - want_dot).abs() <= want_dot.abs() * 1e-4 + 1e-5,
+                "sq8_dot mismatch at n={n}: got={got_dot} want={want_dot}"
+            );
+        }
+    }
+
+    #[test]
+    fn f64_byte_kernels_match_reference() {
+        for n in [0usize, 1, 3, 4, 7, 33, 128, 801] {
+            let a: Vec<f64> = (0..n).map(|i| (i as f64 * 0.37).sin()).collect();
+            let b: Vec<f64> = (0..n).map(|i| (i as f64 * 0.11).cos()).collect();
+            let bytes: Vec<u8> = a.iter().flat_map(|x| x.to_le_bytes()).collect();
+            let want: f64 = a.iter().zip(&b).map(|(x, y)| (x - y) * (x - y)).sum();
+            let got = l2_sq_f64_bytes(&bytes, &b);
+            assert!((got - want).abs() <= 1e-9 * want.max(1.0), "n={n}");
+
+            if n >= 2 {
+                let dt = a[0] - b[0];
+                let sp: f64 = a[1..]
+                    .iter()
+                    .zip(&b[1..])
+                    .map(|(x, y)| (x - y) * (x - y))
+                    .sum();
+                let want_cosh = 1.0 + ((sp - dt * dt) * 0.5).max(0.0);
+                let got_cosh = lorentz_cosh_f64_bytes(&bytes, &b);
+                assert!((got_cosh - want_cosh).abs() <= 1e-9 * want_cosh, "n={n}");
+            }
+        }
+    }
+
+    #[test]
+    fn pair_dispatch_matches_scalar() {
+        for n in [1usize, 15, 16, 63, 64, 65, 200, 768] {
+            let a: Vec<u8> = (0..n)
+                .flat_map(|i| ((i as f32) * 0.5).to_le_bytes())
+                .collect();
+            let b: Vec<u8> = (0..n)
+                .flat_map(|i| ((i as f32) * 0.25 - 1.0).to_le_bytes())
+                .collect();
+            let want = l2_sq_pair_scalar(&a, &b);
+            let got = l2_sq_pair_dispatch(backend(), &a, &b);
+            assert!(
+                (got - want).abs() <= 1e-3 * want.max(1.0),
+                "n={n}: {got} vs {want}"
+            );
+        }
+    }
 }
