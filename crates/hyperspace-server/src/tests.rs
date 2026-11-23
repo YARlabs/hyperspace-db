@@ -2365,9 +2365,12 @@ async fn scroll_returns_exact_vectors_for_extreme_quantization() {
             .collect()
     };
     let n = 300u32;
-    let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> =
-        (0..n).map(|i| (point(i), 1000 + i, HashMap::new())).collect();
-    col.insert_batch(batch, 1, Durability::Default).await.unwrap();
+    let batch: Vec<(Vec<f64>, u32, HashMap<String, String>)> = (0..n)
+        .map(|i| (point(i), 1000 + i, HashMap::new()))
+        .collect();
+    col.insert_batch(batch, 1, Durability::Default)
+        .await
+        .unwrap();
     for _ in 0..800 {
         if col.queue_size() == 0 && col.write_buffer_size() == 0 {
             break;
